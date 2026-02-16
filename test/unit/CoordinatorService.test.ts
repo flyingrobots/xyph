@@ -1,7 +1,8 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { CoordinatorService } from '../../src/domain/services/CoordinatorService.js';
+import { IngestService } from '../../src/domain/services/IngestService.js';
+import { NormalizeService } from '../../src/domain/services/NormalizeService.js';
 import { RoadmapPort } from '../../src/ports/RoadmapPort.js';
-import { Task } from '../../src/domain/entities/Task.js';
 
 describe('CoordinatorService', () => {
   const mockRoadmap: RoadmapPort = {
@@ -12,15 +13,19 @@ describe('CoordinatorService', () => {
     sync: vi.fn()
   };
 
-  const service = new CoordinatorService(mockRoadmap, 'agent.test');
+  const service = new CoordinatorService(mockRoadmap, 'agent.test', new IngestService(), new NormalizeService());
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(mockRoadmap.upsertTask).mockResolvedValue('patch-sha');
+  });
 
   it('should orchestrate a raw markdown input', async () => {
     const input = `- [ ] task:TST-001 New orchestrated task #5`;
     await service.orchestrate(input);
 
     expect(mockRoadmap.upsertTask).toHaveBeenCalled();
-    const mockUpsert = mockRoadmap.upsertTask as unknown as { mock: { calls: Array<[Task]> } };
-    const calledTask = mockUpsert.mock.calls[0]![0];
+    const calledTask = vi.mocked(mockRoadmap.upsertTask).mock.calls[0]![0];
     expect(calledTask.id).toBe('task:TST-001');
     expect(calledTask.hours).toBe(5);
   });

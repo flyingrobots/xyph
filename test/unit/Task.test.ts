@@ -24,4 +24,27 @@ describe('Task Entity', () => {
     });
     expect(task.isDone()).toBe(true);
   });
+
+  it('should identify a claimed task', () => {
+    const task = new Task({
+      id: 'task:003',
+      title: 'Claimed Task',
+      status: 'IN_PROGRESS',
+      hours: 2,
+      type: 'task',
+      assignedTo: 'agent.test'
+    });
+    expect(task.isClaimed()).toBe(true);
+  });
+
+  it('should identify an unclaimed task', () => {
+    const task = new Task({
+      id: 'task:004',
+      title: 'Unclaimed Task',
+      status: 'BACKLOG',
+      hours: 1,
+      type: 'task'
+    });
+    expect(task.isClaimed()).toBe(false);
+  });
 });
