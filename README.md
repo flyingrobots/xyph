@@ -1,4 +1,4 @@
-# XYPH
+# XYPH ([/ˌzɪf/](https://ipa-reader.com/?text=%CB%8Cz%C9%AAf))
 **The Causal Operating System for Agentic Orchestration**
 
 XYPH is a "Planning Compiler" and Causal OS where the project roadmap is a deterministic, multi-writer graph managed by autonomous **Causal Agents**. It treats project state as a first-class citizen, using `git-warp` to provide coordination-free, cryptographically verifiable orchestration.

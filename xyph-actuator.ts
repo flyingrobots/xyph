@@ -1,5 +1,4 @@
-#!/usr/bin/env node
-import { WarpGraph, GitGraphAdapter } from '@git-stunts/git-warp';
+import WarpGraph, { GitGraphAdapter, PatchSession } from '@git-stunts/git-warp';
 import Plumbing from '@git-stunts/plumbing';
 import { program } from 'commander';
 import chalk from 'chalk';
@@ -12,8 +11,8 @@ import chalk from 'chalk';
 const plumbing = Plumbing.createDefault({ cwd: process.cwd() });
 const persistence = new GitGraphAdapter({ plumbing });
 
-async function getGraph() {
-  const writerId = process.env.XYPH_AGENT_ID || 'agent.prime';
+async function getGraph(): Promise<WarpGraph> {
+  const writerId = process.env['XYPH_AGENT_ID'] || 'agent.prime';
   // Every agent identifies as a unique writer in the XYPH roadmap
   const graph = await WarpGraph.open({
     persistence,
@@ -40,11 +39,11 @@ program
   .description('Initialize a new Quest (Task) node')
   .requiredOption('--title <text>', 'Quest title')
   .requiredOption('--campaign <id>', 'Parent Campaign (Milestone) ID')
-  .option('--hours <number>', 'Estimated human hours (PERT)', parseFloat)
-  .action(async (id, opts) => {
+  .option('--hours <number>', 'Estimated human hours (PERT)', (val) => parseFloat(val))
+  .action(async (id: string, opts: { title: string; campaign: string; hours?: number }) => {
     try {
       const graph = await getGraph();
-      const patch = await graph.createPatch();
+      const patch = (await graph.createPatch()) as PatchSession;
       
       patch.addNode(id)
         .setProperty(id, 'title', opts.title)
@@ -58,8 +57,9 @@ program
         
       const sha = await patch.commit();
       console.log(chalk.green(`[OK] Quest ${id} initialized in campaign ${opts.campaign}. Patch: ${sha}`));
-    } catch (err) {
-      console.error(chalk.red(`[ERROR] ${err.message}`));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(chalk.red(`[ERROR] ${msg}`));
       process.exit(1);
     }
   });
@@ -69,14 +69,14 @@ program
 program
   .command('claim <id>')
   .description('Volunteer for a Quest (Optimistic Claiming Protocol)')
-  .action(async (id) => {
+  .action(async (id: string) => {
     try {
-      const agentId = process.env.XYPH_AGENT_ID || 'agent:prime';
+      const agentId = process.env['XYPH_AGENT_ID'] || 'agent:prime';
       const graph = await getGraph();
       
       console.log(chalk.yellow(`[*] Attempting to claim ${id} as ${agentId}...`));
       
-      const patch = await graph.createPatch();
+      const patch = (await graph.createPatch()) as PatchSession;
       patch.setProperty(id, 'assigned_to', agentId)
            .setProperty(id, 'status', 'IN_PROGRESS')
            .setProperty(id, 'claimed_at', Date.now());
@@ -87,15 +87,16 @@ program
       await graph.materialize();
       const props = await graph.getNodeProps(id);
       
-      if (props.get('assigned_to') === agentId) {
+      if (props && props.get('assigned_to') === agentId) {
         console.log(chalk.green(`[OK] Claim confirmed. ${id} is yours.`));
       } else {
-        const winner = props.get('assigned_to');
+        const winner = props ? props.get('assigned_to') : 'unknown';
         console.log(chalk.red(`[FAIL] Lost race condition for ${id}. Current owner: ${winner}`));
         process.exit(1);
       }
-    } catch (err) {
-      console.error(chalk.red(`[ERROR] ${err.message}`));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(chalk.red(`[ERROR] ${msg}`));
       process.exit(1);
     }
   });
@@ -107,10 +108,10 @@ program
   .description('Mark Quest as DONE and seal with a Project Scroll')
   .requiredOption('--artifact <hash>', 'Content hash of the produced artifact')
   .requiredOption('--rationale <text>', 'Brief explanation of the solution')
-  .action(async (id, opts) => {
+  .action(async (id: string, opts: { artifact: string; rationale: string }) => {
     try {
       const graph = await getGraph();
-      const patch = await graph.createPatch();
+      const patch = (await graph.createPatch()) as PatchSession;
       
       const scrollId = `artifact:${id}`;
       
@@ -125,8 +126,9 @@ program
            
       const sha = await patch.commit();
       console.log(chalk.green(`[OK] Quest ${id} sealed. Scroll: ${scrollId}. Patch: ${sha}`));
-    } catch (err) {
-      console.error(chalk.red(`[ERROR] ${err.message}`));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(chalk.red(`[ERROR] ${msg}`));
       process.exit(1);
     }
   });
