@@ -1,0 +1,567 @@
+{
+  "$id": "https://xyph.dev/schemas/PATCH_OPS_SCHEMA.v1.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Plan Patch Operations Schema",
+  "description": "Canonical operation contract for deterministic planning compiler patches.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "patchId",
+    "runId",
+    "baseSnapshotDigest",
+    "policyPackRef",
+    "configRef",
+    "operations",
+    "rollbackOperations",
+    "approvals",
+    "signature",
+    "metadata"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "v1.0"
+    },
+    "patchId": {
+      "type": "string",
+      "pattern": "^PATCH-[0-9]{8}-[A-Z0-9]{6,12}$"
+    },
+    "runId": {
+      "type": "string",
+      "pattern": "^RUN-[0-9]{8}-[A-Z0-9]{6,12}$"
+    },
+    "baseSnapshotDigest": {
+      "type": "string",
+      "pattern": "^blake3:[a-f0-9]{64}$"
+    },
+    "policyPackRef": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 120
+    },
+    "configRef": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 120
+    },
+    "operations": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 2000,
+      "items": {
+        "$ref": "#/definitions/operation"
+      }
+    },
+    "rollbackOperations": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 2000,
+      "items": {
+        "$ref": "#/definitions/rollbackOperation"
+      }
+    },
+    "approvals": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required", "satisfied", "approverIds"],
+      "properties": {
+        "required": { "type": "boolean" },
+        "satisfied": { "type": "boolean" },
+        "approverIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 120
+          }
+        },
+        "approvalRef": {
+          "type": "string",
+          "maxLength": 120
+        }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["createdAt", "author", "rationale"],
+      "properties": {
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "author": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "id"],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["human", "agent", "service"]
+            },
+            "id": {
+              "type": "string",
+              "minLength": 3,
+              "maxLength": 120
+            }
+          }
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 11,
+          "maxLength": 2000
+        },
+        "idempotencyKey": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 200
+        }
+      }
+    },
+    "signature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["alg", "keyId", "payloadDigest", "sig"],
+      "properties": {
+        "alg": { "type": "string", "enum": ["ed25519"] },
+        "keyId": {
+          "type": "string",
+          "pattern": "^(?:KEY-[A-Z0-9]{6,24}|did:key:z[1-9A-HJ-NP-Za-km-z]{10,100})$"
+        },
+        "payloadDigest": {
+          "type": "string",
+          "pattern": "^blake3:[a-f0-9]{64}$"
+        },
+        "sig": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{128}$"
+        }
+      }
+    }
+  },
+  "definitions": {
+    "baseOp": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "opId",
+        "opType",
+        "phase",
+        "entityType",
+        "entityId",
+        "path",
+        "value",
+        "precondition",
+        "invertibility"
+      ],
+      "properties": {
+        "opId": {
+          "type": "string",
+          "pattern": "^OP-[0-9]{4,8}$"
+        },
+        "opType": {
+          "type": "string",
+          "enum": [
+            "ADD_TASK",
+            "UPDATE_TASK",
+            "DELETE_TASK",
+            "MOVE_TASK_MILESTONE",
+            "LINK_DEPENDENCY",
+            "UNLINK_DEPENDENCY",
+            "ADD_MILESTONE",
+            "UPDATE_MILESTONE",
+            "DELETE_MILESTONE"
+          ]
+        },
+        "phase": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9,
+          "description": "Deterministic execution stage used for canonical sorting."
+        },
+        "entityType": {
+          "type": "string",
+          "enum": ["TASK", "MILESTONE", "GRAPH_EDGE"]
+        },
+        "entityId": {
+          "type": "string",
+          "pattern": "^(TASK-[A-Z0-9]{4,10}|MILE-[A-Z0-9]+|EDGE-[A-Z0-9]{6,24})$"
+        },
+        "path": {
+          "type": "string",
+          "pattern": "^(/|(/[a-zA-Z0-9_-]+)+)$",
+          "description": "JSON-pointer-like path. '/' means full entity."
+        },
+        "value": {},
+        "precondition": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["exists", "expectedHash"],
+          "properties": {
+            "exists": { "type": "boolean" },
+            "expectedHash": {
+              "type": "string",
+              "pattern": "^blake3:[a-f0-9]{64}$"
+            },
+            "expectedStatus": {
+              "type": "string",
+              "enum": [
+                "BACKLOG",
+                "PLANNED",
+                "IN_PROGRESS",
+                "BLOCKED",
+                "DONE",
+                "WONT_DO"
+              ]
+            }
+          }
+        },
+        "invertibility": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "inverseOpType",
+            "inversePath",
+            "inverseValue",
+            "inversePreconditionHash"
+          ],
+          "properties": {
+            "inverseOpType": {
+              "type": "string",
+              "enum": [
+                "ADD_TASK",
+                "UPDATE_TASK",
+                "DELETE_TASK",
+                "MOVE_TASK_MILESTONE",
+                "LINK_DEPENDENCY",
+                "UNLINK_DEPENDENCY",
+                "ADD_MILESTONE",
+                "UPDATE_MILESTONE",
+                "DELETE_MILESTONE"
+              ]
+            },
+            "inversePath": {
+              "type": "string",
+              "pattern": "^(/|(/[a-zA-Z0-9_-]+)+)$"
+            },
+            "inverseValue": {},
+            "inversePreconditionHash": {
+              "type": "string",
+              "pattern": "^blake3:[a-f0-9]{64}$"
+            }
+          }
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 11,
+          "maxLength": 1000
+        }
+      }
+    },
+
+    "operation": {
+      "allOf": [
+        { "$ref": "#/definitions/baseOp" },
+        {
+          "if": { "type": "object", "required": ["opType"], "properties": { "opType": { "const": "ADD_TASK" } } },
+          "then": {
+            "required": ["value"],
+            "properties": {
+              "entityType": { "const": "TASK" },
+              "path": { "const": "/" },
+              "precondition": {
+                "properties": { "exists": { "const": false } }
+              },
+              "value": { "$ref": "#/definitions/taskEntity" },
+              "invertibility": {
+                "properties": { "inverseOpType": { "const": "DELETE_TASK" } }
+              }
+            }
+          }
+        },
+        {
+          "if": { "type": "object", "required": ["opType"], "properties": { "opType": { "const": "UPDATE_TASK" } } },
+          "then": {
+            "properties": {
+              "entityType": { "const": "TASK" },
+              "precondition": {
+                "properties": { "exists": { "const": true } }
+              },
+              "invertibility": {
+                "properties": { "inverseOpType": { "const": "UPDATE_TASK" } }
+              }
+            }
+          }
+        },
+        {
+          "if": { "type": "object", "required": ["opType"], "properties": { "opType": { "const": "DELETE_TASK" } } },
+          "then": {
+            "properties": {
+              "entityType": { "const": "TASK" },
+              "path": { "const": "/" },
+              "precondition": {
+                "properties": { "exists": { "const": true } }
+              },
+              "invertibility": {
+                "properties": { "inverseOpType": { "const": "ADD_TASK" } }
+              }
+            }
+          }
+        },
+        {
+          "if": { "type": "object", "required": ["opType"], "properties": { "opType": { "const": "MOVE_TASK_MILESTONE" } } },
+          "then": {
+            "properties": {
+              "entityType": { "const": "TASK" },
+              "path": { "const": "/milestoneId" },
+              "value": {
+                "type": "string",
+                "pattern": "^MILE-[A-Z0-9]+$"
+              },
+              "invertibility": {
+                "properties": { "inverseOpType": { "const": "MOVE_TASK_MILESTONE" } }
+              }
+            }
+          }
+        },
+        {
+          "if": { "type": "object", "required": ["opType"], "properties": { "opType": { "const": "LINK_DEPENDENCY" } } },
+          "then": {
+            "required": ["edge"],
+            "properties": {
+              "entityType": { "const": "GRAPH_EDGE" },
+              "path": { "const": "/blockedBy/-" },
+              "edge": { "$ref": "#/definitions/dependencyEdge" },
+              "value": { "type": "null" },
+              "invertibility": {
+                "properties": { "inverseOpType": { "const": "UNLINK_DEPENDENCY" } }
+              }
+            }
+          }
+        },
+        {
+          "if": { "type": "object", "required": ["opType"], "properties": { "opType": { "const": "UNLINK_DEPENDENCY" } } },
+          "then": {
+            "required": ["edge"],
+            "properties": {
+              "entityType": { "const": "GRAPH_EDGE" },
+              "path": { "const": "/blockedBy" },
+              "edge": { "$ref": "#/definitions/dependencyEdge" },
+              "value": { "type": "null" },
+              "invertibility": {
+                "properties": { "inverseOpType": { "const": "LINK_DEPENDENCY" } }
+              }
+            }
+          }
+        },
+        {
+          "if": { "type": "object", "required": ["opType"], "properties": { "opType": { "const": "ADD_MILESTONE" } } },
+          "then": {
+            "properties": {
+              "entityType": { "const": "MILESTONE" },
+              "path": { "const": "/" },
+              "precondition": {
+                "properties": { "exists": { "const": false } }
+              },
+              "value": { "$ref": "#/definitions/milestoneEntity" },
+              "invertibility": {
+                "properties": { "inverseOpType": { "const": "DELETE_MILESTONE" } }
+              }
+            }
+          }
+        },
+        {
+          "if": { "type": "object", "required": ["opType"], "properties": { "opType": { "const": "UPDATE_MILESTONE" } } },
+          "then": {
+            "properties": {
+              "entityType": { "const": "MILESTONE" },
+              "precondition": {
+                "properties": { "exists": { "const": true } }
+              },
+              "invertibility": {
+                "properties": { "inverseOpType": { "const": "UPDATE_MILESTONE" } }
+              }
+            }
+          }
+        },
+        {
+          "if": { "type": "object", "required": ["opType"], "properties": { "opType": { "const": "DELETE_MILESTONE" } } },
+          "then": {
+            "properties": {
+              "entityType": { "const": "MILESTONE" },
+              "path": { "const": "/" },
+              "precondition": {
+                "properties": { "exists": { "const": true } }
+              },
+              "invertibility": {
+                "properties": { "inverseOpType": { "const": "ADD_MILESTONE" } }
+              }
+            }
+          }
+        }
+      ]
+    },
+
+    "rollbackOperation": {
+      "allOf": [
+        { "$ref": "#/definitions/baseOp" },
+        {
+          "required": ["revertsOpId"],
+          "properties": {
+            "revertsOpId": {
+              "type": "string",
+              "pattern": "^OP-[0-9]{4,8}$"
+            }
+          }
+        }
+      ]
+    },
+
+    "taskEntity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "id",
+        "title",
+        "userStory",
+        "status",
+        "milestoneId",
+        "estimates",
+        "graph"
+      ],
+      "properties": {
+        "schemaVersion": { "type": "string", "const": "v1.0" },
+        "id": { "type": "string", "pattern": "^TASK-[A-Z0-9]{4,10}$" },
+        "title": { "type": "string", "maxLength": 120 },
+        "userStory": {
+          "type": "string",
+          "pattern": "^As a .+, I want .+, so that .+$"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "BACKLOG",
+            "PLANNED",
+            "IN_PROGRESS",
+            "BLOCKED",
+            "DONE",
+            "WONT_DO"
+          ]
+        },
+        "milestoneId": {
+          "type": "string",
+          "pattern": "^MILE-[A-Z0-9]+$"
+        },
+        "estimates": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["complexity", "humanHours"],
+          "properties": {
+            "complexity": {
+              "type": "string",
+              "enum": ["XS", "S", "M", "L", "XL"]
+            },
+            "humanHours": {
+              "type": "number",
+              "minimum": 0.5,
+              "maximum": 160
+            },
+            "confidence": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          }
+        },
+        "graph": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["blockedBy", "blocking"],
+          "properties": {
+            "blockedBy": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^TASK-[A-Z0-9]+$"
+              }
+            },
+            "blocking": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^TASK-[A-Z0-9]+$"
+              }
+            }
+          }
+        }
+      }
+    },
+
+    "milestoneEntity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "id", "title", "status"],
+      "properties": {
+        "schemaVersion": { "type": "string", "const": "v1.0" },
+        "id": { "type": "string", "pattern": "^MILE-[A-Z0-9]+$" },
+        "title": { "type": "string", "minLength": 3, "maxLength": 160 },
+        "status": {
+          "type": "string",
+          "enum": ["PLANNED", "ACTIVE", "COMPLETED", "ARCHIVED"]
+        },
+        "priority": {
+          "type": "string",
+          "enum": ["P0", "P1", "P2", "P3"]
+        },
+        "targetDate": {
+          "type": "string",
+          "format": "date"
+        }
+      }
+    },
+
+    "dependencyEdge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fromTaskId", "toTaskId"],
+      "properties": {
+        "fromTaskId": {
+          "type": "string",
+          "pattern": "^TASK-[A-Z0-9]+$"
+        },
+        "toTaskId": {
+          "type": "string",
+          "pattern": "^TASK-[A-Z0-9]+$"
+        }
+      }
+    }
+  },
+
+  "allOf": [
+    {
+      "description": "Rollback cardinality must match forward operations cardinality.",
+      "properties": {
+        "operations": { "type": "array" },
+        "rollbackOperations": { "type": "array" }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "approvals": {
+            "properties": { "required": { "const": true } }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "approvals": {
+            "properties": { "satisfied": { "const": true } },
+            "required": ["approvalRef"]
+          }
+        }
+      }
+    }
+  ]
+}
