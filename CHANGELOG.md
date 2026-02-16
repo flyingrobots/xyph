@@ -31,6 +31,7 @@ All notable changes to XYPH will be documented in this file.
 ## [1.0.0-alpha.1] - 2026-02-15
 
 ### Added
+- **CodeRabbit Integration**: Added `.coderabbit.yaml` to enable AI code reviews on all branches, facilitating stacked PR workflows.
 - **Triage Service**: Introduced `TriageService` for backlog auditing and linking tasks to human intent (`origin_context`).
 - **Task Entity Expansion**: Formalized `originContext` property in the domain model and persistence layer.
 - **Orchestration FSM**: Integrated `Ingest` and `Normalize` services into `CoordinatorService` to provide a full pipeline from raw input to graph mutation.
