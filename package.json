@@ -5,7 +5,7 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "lint": "eslint src/**/*.ts",
+    "lint": "eslint 'src/**/*.ts'",
     "build": "tsc",
     "coordinator": "node dist/src/coordinator-daemon.js",
     "test": "docker build -t xyph-test . && docker run --rm xyph-test npm run test:local",
