@@ -31,6 +31,8 @@ All notable changes to XYPH will be documented in this file.
 ## [1.0.0-alpha.1] - 2026-02-15
 
 ### Added
+- **Triage Service**: Introduced `TriageService` for backlog auditing and linking tasks to human intent (`origin_context`).
+- **Task Entity Expansion**: Formalized `originContext` property in the domain model and persistence layer.
 - **Orchestration FSM**: Integrated `Ingest` and `Normalize` services into `CoordinatorService` to provide a full pipeline from raw input to graph mutation.
 - **Normalize Service**: Implemented `NormalizeService` for task enrichment and constitutional validation (Phase 2).
 - **Ingest Service**: Implemented `IngestService` for parsing Markdown-based task definitions into domain entities (Phase 1 of Orchestration Pipeline).
