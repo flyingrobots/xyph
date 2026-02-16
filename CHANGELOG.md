@@ -31,6 +31,9 @@ All notable changes to XYPH will be documented in this file.
 ## [1.0.0-alpha.1] - 2026-02-15
 
 ### Added
+- **Orchestration Spec v1.0**: Integrated the definitive FSM for the Planning Compiler (`INGEST -> ... -> APPLY`).
+- **Apply Transaction Spec**: Formalized atomicity, optimistic concurrency, and rollback semantics for graph mutations.
+- **Audit Event Schema**: Introduced a strict JSON schema for pipeline transition audit records.
 - **Rebalance Service**: Implemented `RebalanceService` to enforce the 160-hour limit per campaign (Phase 4).
 - **CodeRabbit Integration**: Added `.coderabbit.yaml` to enable AI code reviews on all branches, facilitating stacked PR workflows.
 - **Triage Service**: Introduced `TriageService` for backlog auditing and linking tasks to human intent (`origin_context`).

@@ -1,0 +1,292 @@
+{
+  "$id": "https://example.org/schemas/AUDIT_EVENT_SCHEMA.v1.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Planning Compiler Audit Event",
+  "description": "Immutable audit record for every state transition in orchestration pipeline.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "eventId",
+    "runId",
+    "sequence",
+    "timestamp",
+    "fromState",
+    "toState",
+    "actor",
+    "inputDigest",
+    "outputDigest",
+    "durationMs",
+    "decisionSummary",
+    "status",
+    "policyPackRef",
+    "configRef"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "v1.0"
+    },
+    "eventId": {
+      "type": "string",
+      "pattern": "^AEVT-[0-9]{8}-[A-Z0-9]{6,12}$",
+      "description": "Unique immutable ID for audit event."
+    },
+    "runId": {
+      "type": "string",
+      "pattern": "^RUN-[0-9]{8}-[A-Z0-9]{6,12}$"
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Monotonic event index within run."
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "fromState": {
+      "type": "string",
+      "enum": [
+        "INGEST",
+        "NORMALIZE",
+        "CLASSIFY",
+        "VALIDATE",
+        "MERGE",
+        "REBALANCE",
+        "SCHEDULE",
+        "REVIEW",
+        "EMIT",
+        "APPLY",
+        "FAILED",
+        "DONE",
+        "ROLLED_BACK"
+      ]
+    },
+    "toState": {
+      "type": "string",
+      "enum": [
+        "INGEST",
+        "NORMALIZE",
+        "CLASSIFY",
+        "VALIDATE",
+        "MERGE",
+        "REBALANCE",
+        "SCHEDULE",
+        "REVIEW",
+        "EMIT",
+        "APPLY",
+        "FAILED",
+        "DONE",
+        "ROLLED_BACK"
+      ]
+    },
+    "actor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["human", "agent", "service"]
+        },
+        "id": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 120
+        },
+        "delegatedBy": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 120
+        }
+      }
+    },
+    "inputDigest": {
+      "type": "string",
+      "pattern": "^blake3:[a-f0-9]{64}$"
+    },
+    "outputDigest": {
+      "type": "string",
+      "pattern": "^blake3:[a-f0-9]{64}$"
+    },
+    "durationMs": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 3600000
+    },
+    "status": {
+      "type": "string",
+      "enum": ["OK", "WARN", "ERROR"]
+    },
+    "decisionSummary": {
+      "type": "string",
+      "minLength": 10,
+      "maxLength": 1000
+    },
+    "violations": {
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "level", "message"],
+        "properties": {
+          "code": {
+            "type": "string",
+            "pattern": "^[A-Z0-9_]{3,64}$"
+          },
+          "level": {
+            "type": "string",
+            "enum": ["MUST", "SHOULD", "COULD"]
+          },
+          "message": {
+            "type": "string",
+            "minLength": 5,
+            "maxLength": 500
+          },
+          "entityRef": {
+            "type": "string",
+            "maxLength": 120
+          }
+        }
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "message"],
+        "properties": {
+          "code": {
+            "type": "string",
+            "pattern": "^[A-Z0-9_]{3,64}$"
+          },
+          "message": {
+            "type": "string",
+            "minLength": 5,
+            "maxLength": 500
+          },
+          "remediation": {
+            "type": "string",
+            "maxLength": 500
+          }
+        }
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "inputArtifactType": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "outputArtifactType": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "patchDigest": {
+          "type": "string",
+          "pattern": "^blake3:[a-f0-9]{64}$"
+        },
+        "rollbackPatchDigest": {
+          "type": "string",
+          "pattern": "^blake3:[a-f0-9]{64}$"
+        }
+      }
+    },
+    "approvals": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "required": { "type": "boolean" },
+        "satisfied": { "type": "boolean" },
+        "approverIds": {
+          "type": "array",
+          "items": { "type": "string", "maxLength": 120 }
+        },
+        "approvalRef": {
+          "type": "string",
+          "maxLength": 120
+        }
+      }
+    },
+    "policyPackRef": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 120
+    },
+    "configRef": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 120
+    },
+    "trace": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "hostname": { "type": "string", "maxLength": 255 },
+        "processId": { "type": "integer", "minimum": 1 },
+        "correlationId": { "type": "string", "maxLength": 120 }
+      }
+    },
+    "signature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["alg", "keyId", "sig"],
+      "properties": {
+        "alg": {
+          "type": "string",
+          "enum": ["ed25519"]
+        },
+        "keyId": {
+          "type": "string",
+          "pattern": "^KEY-[A-Z0-9]{6,24}$"
+        },
+        "sig": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9+/=]{64,512}$"
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "toState": { "const": "FAILED" }
+        }
+      },
+      "then": {
+        "properties": {
+          "status": { "const": "ERROR" }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "toState": { "const": "DONE" }
+        }
+      },
+      "then": {
+        "properties": {
+          "status": { "enum": ["OK", "WARN"] }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "toState": { "const": "APPLY" }
+        }
+      },
+      "then": {
+        "required": ["approvals"]
+      }
+    }
+  ]
+}
