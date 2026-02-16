@@ -5,6 +5,7 @@ All notable changes to XYPH will be documented in this file.
 ## [1.0.0-alpha.2] - 2026-02-15
 
 ### Added
+
 - **Patch Validation Test Matrix**: 31-test suite systematically covering all 13 patch invariants via single-fault mutation of a golden fixture.
 - **Machine Error Codes**: `InvariantCode` enum and `InvariantError` interface for stable, machine-assertable validation errors (replaces raw strings).
 - **Ed25519 Signature Verification**: Full detached-signature pipeline with Blake3 payload digest and keyring-based key resolution.
@@ -13,6 +14,7 @@ All notable changes to XYPH will be documented in this file.
 - **Schema Boundary Tests**: Regex boundary validation for `signature.keyId` and `signature.sig` patterns.
 
 ### Changed
+
 - Renamed `Task` entity to `Quest` with `QuestStatus`, `QuestType`, `QuestProps` (Digital Guild terminology).
 - `Quest` constructor now enforces invariants: `task:` prefix, title >= 5 chars, finite non-negative hours.
 - `RoadmapPort` methods renamed: `getTasks`→`getQuests`, `getTask`→`getQuest`, `upsertTask`→`upsertQuest`.
@@ -23,6 +25,7 @@ All notable changes to XYPH will be documented in this file.
 - **`ValidateResult` Exported**: Type is now exported for use in test assertions.
 
 ### Fixed
+
 - Merged duplicate `### Added` sections in CHANGELOG.
 - Dockerfile: non-root user, `--no-install-recommends`, accurate CMD comment.
 - ESLint: added `ignores` for `dist/**` build artifacts.
@@ -46,6 +49,7 @@ All notable changes to XYPH will be documented in this file.
 ## [1.0.0-alpha.1] - 2026-02-15
 
 ### Added
+
 - **Orchestration Spec v1.0**: Integrated the definitive FSM for the Planning Compiler (`INGEST -> ... -> APPLY`).
 - **Apply Transaction Spec**: Formalized atomicity, optimistic concurrency, and rollback semantics for graph mutations.
 - **Audit Event Schema**: Introduced a strict JSON schema for pipeline transition audit records.
@@ -63,6 +67,7 @@ All notable changes to XYPH will be documented in this file.
 - **Inspection Tooling**: Created `src/inspect-graph.js` for deep graph state analysis.
 
 ### Changed
+
 - **TS Execution Refinement**: Switched from `ts-node` to `tsx` for CLI execution to resolve `DEP0180` (`fs.Stats`) deprecation warnings in Node 22+.
 - **Setup Script Improvements**: Enhanced `scripts/setup-milestone-2.js` with idempotency checks and robust error propagation (non-zero exit codes).
 - **Actuator Refinement**: Added ESM shebang to `xyph-actuator.ts` for direct execution.
