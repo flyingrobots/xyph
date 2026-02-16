@@ -24,6 +24,14 @@ npm test         # Run full Docker-based test suite (60+ tests)
 ```
 Never push code that doesn't pass both checks. CI failures waste time and break the review flow.
 
+**NEVER circumvent quality checks:**
+- ❌ NEVER use `--no-verify` to skip git hooks
+- ❌ NEVER disable linter rules with `eslint-disable` comments
+- ❌ NEVER use `@ts-ignore` or `@ts-expect-error` to silence TypeScript
+- ❌ NEVER bypass tests or validation to "move faster"
+
+Our duty is to write **safe, correct code**. Shortcuts that compromise quality are not acceptable.
+
 ### Current Status
 - Foundations: ✅ Canonical Corpus extracted from `chats.txt`.
 - Infrastructure: ✅ `git-warp` and `plumbing` installed.
