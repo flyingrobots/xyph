@@ -3,6 +3,9 @@ import Plumbing from '@git-stunts/plumbing';
 import { RoadmapPort } from '../../ports/RoadmapPort.js';
 import { Task, TaskStatus, TaskType } from '../../domain/entities/Task.js';
 
+const VALID_STATUSES: ReadonlySet<string> = new Set(['BACKLOG', 'PLANNED', 'IN_PROGRESS', 'BLOCKED', 'DONE']);
+const VALID_TYPES: ReadonlySet<string> = new Set(['task', 'scroll', 'milestone', 'campaign', 'roadmap']);
+
 export class WarpRoadmapAdapter implements RoadmapPort {
   private graph: WarpGraph | null = null;
 
@@ -28,6 +31,34 @@ export class WarpRoadmapAdapter implements RoadmapPort {
     return this.graph;
   }
 
+  private buildTaskFromProps(id: string, props: Map<string, unknown>): Task | null {
+    const title = props.get('title');
+    const status = props.get('status');
+    const hours = props.get('hours');
+    const type = props.get('type');
+
+    if (typeof title !== 'string') return null;
+    if (typeof status !== 'string' || !VALID_STATUSES.has(status)) return null;
+    if (typeof type !== 'string' || !VALID_TYPES.has(type)) return null;
+
+    const parsedHours = typeof hours === 'number' && Number.isFinite(hours) ? hours : 0;
+
+    const assignedTo = props.get('assigned_to');
+    const claimedAt = props.get('claimed_at');
+    const completedAt = props.get('completed_at');
+
+    return new Task({
+      id,
+      title,
+      status: status as TaskStatus,
+      hours: parsedHours,
+      assignedTo: typeof assignedTo === 'string' ? assignedTo : undefined,
+      claimedAt: typeof claimedAt === 'number' ? claimedAt : undefined,
+      completedAt: typeof completedAt === 'number' ? completedAt : undefined,
+      type: type as TaskType,
+    });
+  }
+
   public async getTasks(): Promise<Task[]> {
     const graph = await this.getGraph();
     const nodeIds = await graph.getNodes();
@@ -36,16 +67,8 @@ export class WarpRoadmapAdapter implements RoadmapPort {
     for (const id of nodeIds) {
       const props = await graph.getNodeProps(id);
       if (props && props.get('type') === 'task') {
-        tasks.push(new Task({
-          id,
-          title: props.get('title') as string,
-          status: props.get('status') as TaskStatus,
-          hours: props.get('hours') as number,
-          assignedTo: props.get('assigned_to') as string,
-          claimedAt: props.get('claimed_at') as number,
-          completedAt: props.get('completed_at') as number,
-          type: props.get('type') as TaskType,
-        }));
+        const task = this.buildTaskFromProps(id, props);
+        if (task) tasks.push(task);
       }
     }
 
@@ -55,26 +78,17 @@ export class WarpRoadmapAdapter implements RoadmapPort {
   public async getTask(id: string): Promise<Task | null> {
     const graph = await this.getGraph();
     if (!await graph.hasNode(id)) return null;
-    
+
     const props = await graph.getNodeProps(id);
     if (!props) return null;
 
-    return new Task({
-      id,
-      title: props.get('title') as string,
-      status: props.get('status') as TaskStatus,
-      hours: props.get('hours') as number,
-      assignedTo: props.get('assigned_to') as string,
-      claimedAt: props.get('claimed_at') as number,
-      completedAt: props.get('completed_at') as number,
-      type: props.get('type') as TaskType,
-    });
+    return this.buildTaskFromProps(id, props);
   }
 
   public async upsertTask(task: Task): Promise<string> {
     const graph = await this.getGraph();
     const patch = (await graph.createPatch()) as PatchSession;
-    
+
     if (!await graph.hasNode(task.id)) {
       patch.addNode(task.id);
     }
@@ -84,9 +98,9 @@ export class WarpRoadmapAdapter implements RoadmapPort {
          .setProperty(task.id, 'hours', task.hours)
          .setProperty(task.id, 'type', task.type);
 
-    if (task.assignedTo) patch.setProperty(task.id, 'assigned_to', task.assignedTo);
-    if (task.claimedAt) patch.setProperty(task.id, 'claimed_at', task.claimedAt);
-    if (task.completedAt) patch.setProperty(task.id, 'completed_at', task.completedAt);
+    if (task.assignedTo != null) patch.setProperty(task.id, 'assigned_to', task.assignedTo);
+    if (task.claimedAt != null) patch.setProperty(task.id, 'claimed_at', task.claimedAt);
+    if (task.completedAt != null) patch.setProperty(task.id, 'completed_at', task.completedAt);
 
     return await patch.commit();
   }
