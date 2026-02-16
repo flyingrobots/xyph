@@ -319,7 +319,7 @@ Every transition MUST emit:
   "runId": "RUN-...",
   "fromState": "NORMALIZE",
   "toState": "CLASSIFY",
-  "actor": "agent:planner",
+  "actor": { "type": "agent", "id": "agent:planner" },
   "timestamp": "2026-02-15T23:04:05Z",
   "inputDigest": "blake3:...",
   "outputDigest": "blake3:...",

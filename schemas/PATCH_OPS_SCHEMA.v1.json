@@ -1,5 +1,5 @@
 {
-  "$id": "https://example.org/schemas/PATCH_OPS_SCHEMA.v1.json",
+  "$id": "https://xyph.dev/schemas/PATCH_OPS_SCHEMA.v1.json",
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "Plan Patch Operations Schema",
   "description": "Canonical operation contract for deterministic planning compiler patches.",
@@ -591,6 +591,7 @@
         "properties": {
           "approvals": {
             "type": "object",
+            "required": ["required"],
             "properties": { "required": { "const": true } }
           }
         }

@@ -224,10 +224,13 @@ If non-commit path:
 
 ## 10) Exit Code Map (Apply-specific)
 - 0  committed
+- 10 validation failure (referential integrity / MUST rule)
+- 11 DAG integrity failure (dangling ref, cycle)
 - 12 approval failure
 - 13 signature/trust failure
 - 14 snapshot drift/concurrency mismatch
 - 15 lock timeout / budget timeout
+- 16 unknown op type / state corruption
 - 17 partial apply risk, rollback attempted
 - 18 rollback failed (critical)
 
