@@ -31,6 +31,7 @@ All notable changes to XYPH will be documented in this file.
 ## [1.0.0-alpha.1] - 2026-02-15
 
 ### Added
+- **Rebalance Service**: Implemented `RebalanceService` to enforce the 160-hour limit per campaign (Phase 4).
 - **CodeRabbit Integration**: Added `.coderabbit.yaml` to enable AI code reviews on all branches, facilitating stacked PR workflows.
 - **Triage Service**: Introduced `TriageService` for backlog auditing and linking tasks to human intent (`origin_context`).
 - **Task Entity Expansion**: Formalized `originContext` property in the domain model and persistence layer.
