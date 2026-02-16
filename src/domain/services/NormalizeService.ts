@@ -7,24 +7,11 @@ import { Task } from '../entities/Task.js';
  */
 export class NormalizeService {
   /**
-   * Enriches tasks with human-readable context if missing.
-   * In a real agentic flow, this might call an LLM to generate user stories.
+   * Enriches tasks with derived context if missing.
+   * Currently a pass-through; enrichment logic will be added in later milestones.
    */
   public normalize(tasks: Task[]): Task[] {
-    return tasks.map(task => {
-      // Ensure basic metadata exists
-      if (!task.hours) {
-        // Default heuristics or warning flags could go here
-      }
-
-      // We return new Task instances to keep it pure if needed,
-      // but Task props are currently readonly so we must spread.
-      // Since Task class is designed for purity, we'll implement a 'clone' or just return as is
-      // if no modifications are needed yet.
-      
-      // Future: Generate 'rationale' or 'userStory' based on task title.
-      return task;
-    });
+    return tasks;
   }
 
   /**
@@ -32,7 +19,7 @@ export class NormalizeService {
    */
   public validate(tasks: Task[]): { valid: boolean; errors: string[] } {
     const errors: string[] = [];
-    
+
     for (const task of tasks) {
       if (!task.id.startsWith('task:')) {
         errors.push(`Invalid ID prefix for ${task.id}: must start with 'task:'`);
