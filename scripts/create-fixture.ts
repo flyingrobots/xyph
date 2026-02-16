@@ -1,17 +1,19 @@
 import { signPatch } from '../src/validation/signPatchFixture.js';
 import { blake3Hex } from '../src/validation/crypto.js';
-import fs from 'fs';
-import path from 'path';
+import fs from 'node:fs';
+import path from 'node:path';
+
+// Deterministic test-only Ed25519 seed — not a real secret.
+const TEST_PRIVATE_KEY = "5a10d58f976775c62f0c8443ef14b5b831561e26648a06f2791ad88e236375c7";
 
 async function create() {
-  const privateKeyHex = fs.readFileSync('test/private.key', 'utf8').trim();
   const keyId = 'did:key:z6MkhTestSigner01';
 
   // Lineage metadata for reproducibility
   const schemaRaw = fs.readFileSync('schemas/PATCH_OPS_SCHEMA.v1.json', 'utf8');
   const schemaHash = blake3Hex(schemaRaw).slice(0, 16);
   const generatorVersion = 'create-fixture@1.0.0';
-  const keyFingerprint = blake3Hex(privateKeyHex).slice(0, 16);
+  const keyFingerprint = blake3Hex(TEST_PRIVATE_KEY).slice(0, 16);
 
   const patch = {
     schemaVersion: "v1.0",
@@ -92,7 +94,7 @@ async function create() {
     }
   };
 
-  const signedPatch = await signPatch(patch, privateKeyHex, keyId);
+  const signedPatch = await signPatch(patch, TEST_PRIVATE_KEY, keyId);
 
   const outPath = path.resolve('test/fixtures/valid/minimal-valid.patch.json');
   fs.mkdirSync(path.dirname(outPath), { recursive: true });
@@ -101,4 +103,7 @@ async function create() {
   console.log(`Lineage: generator=${generatorVersion} schemaHash=${schemaHash} keyFP=${keyFingerprint}`);
 }
 
-create();
+create().catch((err) => {
+  console.error('Failed to create fixture:', err);
+  process.exit(1);
+});
