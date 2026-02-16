@@ -22,7 +22,16 @@ async function main() {
   for (const file of files) {
     const full = path.join(absolute, file);
     const raw = fs.readFileSync(full, "utf8");
-    const doc = JSON.parse(raw);
+
+    let doc;
+    try {
+      doc = JSON.parse(raw);
+    } catch (parseErr) {
+      failed += 1;
+      console.error(`\n❌ ${file} — invalid JSON: ${parseErr.message}`);
+      continue;
+    }
+
     const result = await validatePatchOpsDocument(doc);
 
     if (!result.ok) {
