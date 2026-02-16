@@ -12,19 +12,23 @@ export interface RebalanceResult {
  * Max 160 hours per campaign.
  */
 export class RebalanceService {
-  private static readonly MAX_HOURS_PER_CAMPAIGN = 160;
+  private readonly maxHoursPerCampaign: number;
+
+  constructor(maxHoursPerCampaign: number = 160) {
+    this.maxHoursPerCampaign = maxHoursPerCampaign;
+  }
 
   /**
    * Validates if a campaign exceeds its allocation limit.
    */
   public validateCampaign(campaignId: string, tasks: Quest[]): RebalanceResult {
     const totalHours = tasks.reduce((sum, task) => sum + task.hours, 0);
-    
-    if (totalHours > RebalanceService.MAX_HOURS_PER_CAMPAIGN) {
+
+    if (totalHours > this.maxHoursPerCampaign) {
       return {
         valid: false,
         totalHours,
-        error: `Campaign ${campaignId} total hours (${totalHours}h) exceeds ${RebalanceService.MAX_HOURS_PER_CAMPAIGN}h limit`
+        error: `Campaign ${campaignId} total hours (${totalHours}h) exceeds ${this.maxHoursPerCampaign}h limit`
       };
     }
 
