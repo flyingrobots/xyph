@@ -12,7 +12,7 @@ describe('TriageService', () => {
     sync: vi.fn()
   };
 
-  const service = new TriageService(mockRoadmap, 'agent.test');
+  const service = new TriageService(mockRoadmap);
 
   it('should link intent to a quest', async () => {
     const quest = new Quest({
