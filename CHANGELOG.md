@@ -34,6 +34,10 @@ All notable changes to XYPH will be documented in this file.
 - **Triage Service**: Introduced `TriageService` for backlog auditing and linking tasks to human intent (`origin_context`).
 - **Task Entity Expansion**: Formalized `originContext` property in the domain model and persistence layer.
 - **Orchestration FSM**: Integrated `Ingest` and `Normalize` services into `CoordinatorService` to provide a full pipeline from raw input to graph mutation.
+
+### Changed
+- **Setup Script Improvements**: Enhanced `scripts/setup-milestone-2.js` with idempotency checks and robust error propagation (non-zero exit codes).
+- **Actuator Refinement**: Added ESM shebang to `xyph-actuator.ts` for direct execution.
 - **Normalize Service**: Implemented `NormalizeService` for task enrichment and constitutional validation (Phase 2).
 - **Ingest Service**: Implemented `IngestService` for parsing Markdown-based task definitions into domain entities (Phase 1 of Orchestration Pipeline).
 - **TypeScript Migration**: Full project conversion to strict TypeScript with zero `any` tolerance.
