@@ -12,14 +12,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN groupadd --system xyph && useradd --system --gid xyph xyph
 
 # Configure git for integration tests
-RUN git config --global user.email "james@flyingrobots.dev" && \
-    git config --global user.name "James Ross" && \
+RUN git config --global user.email "ci@xyph.dev" && \
+    git config --global user.name "XYPH CI" && \
     git config --global init.defaultBranch main
 
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm install
+RUN npm ci
 
 COPY . .
 RUN chown -R xyph:xyph /app
