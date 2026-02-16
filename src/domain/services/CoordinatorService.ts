@@ -1,4 +1,6 @@
 import { RoadmapPort } from '../../ports/RoadmapPort.js';
+import { IngestService } from './IngestService.js';
+import { NormalizeService } from './NormalizeService.js';
 import chalk from 'chalk';
 
 /**
@@ -6,10 +8,38 @@ import chalk from 'chalk';
  * The "Brain" of XYPH. Orchestrates the pipeline and maintains graph health.
  */
 export class CoordinatorService {
+  private readonly ingest = new IngestService();
+  private readonly normalize = new NormalizeService();
+
   constructor(
     private readonly roadmap: RoadmapPort,
     private readonly agentId: string
   ) {}
+
+  /**
+   * Orchestrates the full pipeline from raw input to roadmap mutation.
+   */
+  public async orchestrate(rawInput: string): Promise<void> {
+    console.log(chalk.magenta(`[${new Date().toISOString()}] Orchestration started by ${this.agentId}`));
+
+    // Phase 1: Ingest
+    const rawTasks = this.ingest.ingestMarkdown(rawInput);
+    if (rawTasks.length === 0) return;
+
+    // Phase 2: Normalize & Validate
+    const tasks = this.normalize.normalize(rawTasks);
+    const validation = this.normalize.validate(tasks);
+
+    if (!validation.valid) {
+      throw new Error(`Orchestration failed validation: ${validation.errors.join(', ')}`);
+    }
+
+    // Phase 6: Emit (Simplified for now - upserting directly)
+    for (const task of tasks) {
+      const sha = await this.roadmap.upsertTask(task);
+      console.log(chalk.green(`[OK] Task ${task.id} emitted to graph. Patch: ${sha}`));
+    }
+  }
 
   /**
    * Performs a single heartbeat cycle.
