@@ -4,6 +4,14 @@ All notable changes to XYPH will be documented in this file.
 
 ## [1.0.0-alpha.2] - 2026-02-15
 
+### Changed
+- Renamed `Task` entity to `Quest` with `QuestStatus`, `QuestType`, `QuestProps` (Digital Guild terminology).
+- `Quest` constructor now enforces invariants: `task:` prefix, title >= 5 chars, finite non-negative hours.
+- `RoadmapPort` methods renamed: `getTasks`→`getQuests`, `getTask`→`getQuest`, `upsertTask`→`upsertQuest`.
+- `RoadmapPort.addEdge` now uses `EdgeType` union instead of bare `string`.
+- Added `tsconfig.test.json` for test-file type-checking.
+- `declarations.d.ts`: `executeStream` return type now matches `git-warp`'s expected `StreamResult` interface.
+
 ### Fixed
 - Merged duplicate `### Added` sections in CHANGELOG.
 - Dockerfile: non-root user, `--no-install-recommends`, accurate CMD comment.
