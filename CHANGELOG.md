@@ -38,6 +38,7 @@ All notable changes to XYPH will be documented in this file.
 - **Orchestration FSM**: Integrated `Ingest` and `Normalize` services into `CoordinatorService` to provide a full pipeline from raw input to graph mutation.
 
 ### Changed
+- **TS Execution Refinement**: Switched from `ts-node` to `tsx` for CLI execution to resolve `DEP0180` (`fs.Stats`) deprecation warnings in Node 22+.
 - **Setup Script Improvements**: Enhanced `scripts/setup-milestone-2.js` with idempotency checks and robust error propagation (non-zero exit codes).
 - **Actuator Refinement**: Added ESM shebang to `xyph-actuator.ts` for direct execution.
 - **Normalize Service**: Implemented `NormalizeService` for task enrichment and constitutional validation (Phase 2).

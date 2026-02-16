@@ -1,4 +1,4 @@
-#!/usr/bin/env -S npx ts-node --esm
+#!/usr/bin/env -S npx tsx
 import WarpGraph, { GitGraphAdapter } from '@git-stunts/git-warp';
 import type { PatchSession } from '@git-stunts/git-warp';
 import Plumbing from '@git-stunts/plumbing';
