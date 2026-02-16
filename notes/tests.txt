@@ -1,0 +1,412 @@
+Hell yes. MANHATTAN PROJECT mode it is.
+
+You’re asking for the “break it in every possible way” test architecture. Good. This is how you stop polite bugs and catch the feral ones.
+
+⸻
+
+Objective
+
+Turn your current matrix into a fault-injection system that stress-tests:
+	1.	Single-fault validation (already mostly covered),
+	2.	Pairwise fault interactions (where real bugs hide),
+	3.	N-fault fuzz buckets (chaos with guardrails),
+	4.	Determinism invariants (same input → same verdict/errors),
+	5.	Coverage accounting (prove what classes of failure you tested).
+
+⸻
+
+Phase 1 — Add a Mutation Engine (Composable Corruptors)
+
+Create composable mutators so one test can apply k faults in sequence.
+
+test/matrix/mutators.ts
+
+// test/matrix/mutators.ts
+export type Mutator = {
+  id: string;
+  domain: "SCHEMA" | "DIGEST" | "SIGNATURE" | "ROLLBACK" | "GRAPH" | "GOVERNANCE";
+  apply: (doc: any) => void;
+  // Optional hints for expectations:
+  expectTokens?: string[];
+};
+
+function set(path: string[], value: unknown) {
+  return (doc: any) => {
+    let p = doc;
+    for (let i = 0; i < path.length - 1; i++) {
+      if (p[path[i]] == null || typeof p[path[i]] !== "object") p[path[i]] = {};
+      p = p[path[i]];
+    }
+    p[path[path.length - 1]] = value;
+  };
+}
+
+function del(path: string[]) {
+  return (doc: any) => {
+    let p = doc;
+    for (let i = 0; i < path.length - 1; i++) {
+      if (p == null) return;
+      p = p[path[i]];
+    }
+    if (p && typeof p === "object") delete p[path[path.length - 1]];
+  };
+}
+
+export function createMutators(recomputeDigest: (doc: any) => void): Mutator[] {
+  return [
+    // SCHEMA
+    { id: "SCH.MISS_SCHEMA_VERSION", domain: "SCHEMA", apply: del(["schemaVersion"]), expectTokens: ["required", "schemaVersion"] },
+    { id: "SCH.BAD_PATCH_ID", domain: "SCHEMA", apply: set(["patchId"], "bad-id"), expectTokens: ["pattern", "patchId"] },
+    { id: "SCH.OPS_NOT_ARRAY", domain: "SCHEMA", apply: set(["operations"], "oops"), expectTokens: ["array", "operations"] },
+
+    // DIGEST
+    {
+      id: "DIG.TAMPER_RATIONALE",
+      domain: "DIGEST",
+      apply: (doc) => { doc.rationale = `${doc.rationale ?? "x"} :: tamper`; },
+      expectTokens: ["digest", "mismatch"]
+    },
+    {
+      id: "DIG.REORDER_OPS",
+      domain: "DIGEST",
+      apply: (doc) => {
+        if (Array.isArray(doc.operations) && doc.operations.length > 1) {
+          [doc.operations[0], doc.operations[1]] = [doc.operations[1], doc.operations[0]];
+        }
+      },
+      expectTokens: ["digest", "mismatch"]
+    },
+
+    // SIGNATURE
+    { id: "SIG.UNKNOWN_KEY", domain: "SIGNATURE", apply: set(["signature", "keyId"], "nope"), expectTokens: ["unknown", "key"] },
+    { id: "SIG.BAD_ALG", domain: "SIGNATURE", apply: set(["signature", "alg"], "rsa-pss"), expectTokens: ["unsupported", "alg"] },
+    {
+      id: "SIG.CORRUPT_BYTES",
+      domain: "SIGNATURE",
+      apply: (doc) => {
+        const sig = String(doc?.signature?.sig ?? "");
+        doc.signature.sig = sig.length > 3 ? `X${sig.slice(1)}` : "BAD";
+      },
+      expectTokens: ["signature", "failed"]
+    },
+    // recompute digest but keep stale sig to isolate sig fail
+    {
+      id: "SIG.STALE_AFTER_REDIGEST",
+      domain: "SIGNATURE",
+      apply: (doc) => {
+        doc.rationale = `${doc.rationale ?? ""} changed`;
+        recomputeDigest(doc);
+      },
+      expectTokens: ["signature", "failed"]
+    },
+
+    // ROLLBACK
+    {
+      id: "RBK.LENGTH_MISMATCH",
+      domain: "ROLLBACK",
+      apply: (doc) => { if (Array.isArray(doc.rollback)) doc.rollback.pop(); },
+      expectTokens: ["rollback", "length"]
+    },
+    {
+      id: "RBK.ORDER_MISMATCH",
+      domain: "ROLLBACK",
+      apply: (doc) => {
+        if (Array.isArray(doc.rollback) && doc.rollback.length > 1) {
+          doc.rollback.reverse();
+        }
+      },
+      expectTokens: ["rollback", "order"]
+    },
+
+    // GRAPH
+    {
+      id: "GRF.SELF_LOOP",
+      domain: "GRAPH",
+      apply: (doc) => {
+        const id = "TASK-SELFLOOP";
+        doc.operations ??= [];
+        doc.operations.push({
+          op: "upsertTask",
+          taskId: id,
+          patch: {
+            schemaVersion: "v1.0",
+            id,
+            title: "loop",
+            userStory: "As a tester, I want cycle detection, so that DAG integrity is preserved",
+            status: "PLANNED",
+            milestoneId: "MILE-ALPHA",
+            estimates: { complexity: "S", humanHours: 2, confidence: 0.9 },
+            graph: { blockedBy: [id], blocking: [] }
+          }
+        });
+      },
+      expectTokens: ["self", "loop"]
+    },
+
+    // GOVERNANCE
+    { id: "GOV.SHORT_RATIONALE", domain: "GOVERNANCE", apply: set(["rationale"], "short"), expectTokens: ["rationale"] },
+    { id: "GOV.MISSING_ACTOR", domain: "GOVERNANCE", apply: del(["actor"]), expectTokens: ["required", "actor"] },
+  ];
+}
+
+
+⸻
+
+Phase 2 — Generate Pairwise Cases Automatically
+
+Don’t hand-write 80 pair tests. Generate them.
+
+test/matrix/pairwise.ts
+
+// test/matrix/pairwise.ts
+import type { Mutator } from "./mutators";
+
+export type PairCase = {
+  id: string;
+  mutators: [Mutator, Mutator];
+};
+
+export function buildPairwise(mutators: Mutator[]): PairCase[] {
+  const out: PairCase[] = [];
+  for (let i = 0; i < mutators.length; i++) {
+    for (let j = i + 1; j < mutators.length; j++) {
+      const a = mutators[i];
+      const b = mutators[j];
+      // You can choose cross-domain only:
+      if (a.domain === b.domain) continue;
+      out.push({
+        id: `PAIR.${a.id}__${b.id}`,
+        mutators: [a, b]
+      });
+    }
+  }
+  return out;
+}
+
+
+⸻
+
+Phase 3 — Manhattan Spec Runner
+
+test/matrix/manhattan.spec.ts
+
+import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { createHash } from "node:crypto";
+
+import { createMutators } from "./mutators";
+import { buildPairwise } from "./pairwise";
+import { validatePatchOpsDocument } from "../../src/validation/validatePatchOpsDocument";
+
+type ValidationResult = {
+  ok: boolean;
+  errors?: Array<{ keyword?: string; instancePath?: string; message?: string }>;
+};
+
+const FIXTURE = join(process.cwd(), "test/fixtures/valid/complex-valid.patch.json");
+
+function clone<T>(x: T): T { return JSON.parse(JSON.stringify(x)); }
+function readJson(p: string): any { return JSON.parse(readFileSync(p, "utf8")); }
+
+function canonicalize(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(canonicalize).join(",")}]`;
+  const obj = value as Record<string, unknown>;
+  const keys = Object.keys(obj).sort();
+  return `{${keys.map(k => `${JSON.stringify(k)}:${canonicalize(obj[k])}`).join(",")}}`;
+}
+
+function sha256Hex(s: string): string {
+  return createHash("sha256").update(s, "utf8").digest("hex");
+}
+
+function recomputeDigest(doc: any): void {
+  const unsigned = clone(doc);
+  delete unsigned.signature;
+  doc.payloadDigest = sha256Hex(canonicalize(unsigned));
+}
+
+function flatten(r: ValidationResult): string {
+  return (r.errors ?? []).map(e => [e.keyword, e.instancePath, e.message].filter(Boolean).join(" | ")).join("\n").toLowerCase();
+}
+
+describe("MANHATTAN PROJECT: pairwise fault injection", () => {
+  const mutators = createMutators(recomputeDigest);
+  const pairs = buildPairwise(mutators);
+
+  for (const tc of pairs) {
+    it(tc.id, () => {
+      const doc = clone(readJson(FIXTURE));
+
+      // Apply in canonical order to keep this deterministic:
+      tc.mutators[0].apply(doc);
+      tc.mutators[1].apply(doc);
+
+      const r1 = validatePatchOpsDocument(doc) as ValidationResult;
+      const r2 = validatePatchOpsDocument(clone(doc)) as ValidationResult;
+
+      // Must fail:
+      expect(r1.ok).toBe(false);
+
+      // Determinism check:
+      expect(r2.ok).toBe(r1.ok);
+      expect(flatten(r2)).toBe(flatten(r1));
+
+      // Must mention at least one token from each mutator domains ideally:
+      const blob = flatten(r1);
+      const tokA = tc.mutators[0].expectTokens ?? [];
+      const tokB = tc.mutators[1].expectTokens ?? [];
+
+      // Soft assertion: at least one token from either mutator appears
+      const seenA = tokA.some(t => blob.includes(t.toLowerCase()));
+      const seenB = tokB.some(t => blob.includes(t.toLowerCase()));
+      expect(seenA || seenB).toBe(true);
+    });
+  }
+});
+
+
+⸻
+
+Phase 4 — Add Fuzz Buckets (Controlled Chaos)
+
+Use seeded PRNG so runs are reproducible.
+
+test/matrix/fuzz.spec.ts
+
+import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { createMutators } from "./mutators";
+import { validatePatchOpsDocument } from "../../src/validation/validatePatchOpsDocument";
+
+type ValidationResult = { ok: boolean; errors?: Array<{ message?: string }> };
+const FIXTURE = join(process.cwd(), "test/fixtures/valid/complex-valid.patch.json");
+
+function readJson(p: string): any { return JSON.parse(readFileSync(p, "utf8")); }
+function clone<T>(x: T): T { return JSON.parse(JSON.stringify(x)); }
+
+// deterministic PRNG (mulberry32)
+function mulberry32(seed: number) {
+  return function() {
+    let t = (seed += 0x6D2B79F5);
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function pickN<T>(arr: T[], n: number, rand: () => number): T[] {
+  const copy = arr.slice();
+  const out: T[] = [];
+  while (out.length < n && copy.length) {
+    const idx = Math.floor(rand() * copy.length);
+    out.push(copy.splice(idx, 1)[0]);
+  }
+  return out;
+}
+
+describe("MANHATTAN PROJECT: seeded fuzz buckets", () => {
+  it("seeded 3-fault combos are deterministic and fail closed", () => {
+    const dummyRecompute = (_doc: any) => {};
+    const mutators = createMutators(dummyRecompute);
+
+    const seeds = [101, 202, 303, 404, 505];
+    for (const seed of seeds) {
+      const rand = mulberry32(seed);
+      for (let i = 0; i < 25; i++) {
+        const doc = clone(readJson(FIXTURE));
+        const combo = pickN(mutators, 3, rand);
+        combo.forEach(m => m.apply(doc));
+
+        const r1 = validatePatchOpsDocument(doc) as ValidationResult;
+        const r2 = validatePatchOpsDocument(clone(doc)) as ValidationResult;
+
+        expect(r1.ok).toBe(false);
+        expect(r2.ok).toBe(r1.ok);
+        expect(JSON.stringify(r2.errors ?? [])).toBe(JSON.stringify(r1.errors ?? []));
+      }
+    }
+  });
+});
+
+
+⸻
+
+Phase 5 — CI Gates (Fail Hard, Report Smart)
+
+Add dedicated workflow job so this isn’t optional.
+
+# .github/workflows/manhattan-gates.yml
+name: manhattan-gates
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  matrix-chaos:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run test:matrix
+      - run: npm run test:manhattan
+
+And scripts:
+
+{
+  "scripts": {
+    "test:matrix": "vitest run test/matrix/matrix.spec.ts",
+    "test:manhattan": "vitest run test/matrix/manhattan.spec.ts test/matrix/fuzz.spec.ts",
+    "test:matrix:all": "npm run test:matrix && npm run test:manhattan"
+  }
+}
+
+
+⸻
+
+Must / Should / Could / Don’t
+
+MUST
+	•	Use seeded fuzz only. Unseeded chaos is theater.
+	•	Enforce determinism assertions (same doc, same result/errors).
+	•	Keep pairwise generation automatic.
+	•	Run this suite in CI on every PR touching validation/policy/graph/provenance code.
+
+SHOULD
+	•	Track mutation coverage by domain pairs (e.g. SCHEMA×SIGNATURE count).
+	•	Snapshot normalized error envelopes (stable format).
+	•	Add timing budget assertions (e.g., each validation under N ms).
+
+COULD
+	•	Add 3-wise combinatorial sampling for critical domains only.
+	•	Add metamorphic tests:
+	•	reorder JSON keys => same result,
+	•	reorder arrays => expected semantic impact.
+	•	Add “triage mode” that prints minimal reproducer patch.
+
+DON’T
+	•	Don’t assert exact full error strings (too brittle across AJV upgrades).
+	•	Don’t let one validator short-circuit hide other critical errors forever.
+	•	Don’t mix random fixture generation with deterministic regression tests.
+
+⸻
+
+What this buys you by end-state
+
+You will have a validation system that is:
+	•	Fail-closed
+	•	Deterministic under stress
+	•	Regression-resistant
+	•	Hostile-input tested
+	•	Auditable in CI
+
+Translation: if a malformed or malicious patch gets through after this, it earned it.
+
+If you want, next I can drop Manhattan Part II: a mutation scorecard (matrix-report.json + markdown summary in CI comments) so every PR shows exactly which fault classes were exercised and which were missed.

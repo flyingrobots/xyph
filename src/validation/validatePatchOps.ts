@@ -11,6 +11,8 @@ import {
   verifyEd25519DetachedHex,
   buildUnsignedPayloadForDigest
 } from "./crypto.js";
+import { InvariantCode } from "./InvariantCode.js";
+import type { InvariantError } from "./InvariantError.js";
 
 const Ajv = AjvModule.default;
 
@@ -22,9 +24,9 @@ const Ajv = AjvModule.default;
 
 type Json = null | boolean | number | string | Json[] | { [k: string]: Json };
 
-type ValidateResult =
+export type ValidateResult =
   | { ok: true }
-  | { ok: false; errors: string[] };
+  | { ok: false; errors: InvariantError[] };
 
 interface Operation {
   opId: string;
@@ -158,11 +160,11 @@ function deepEqual(a: Json, b: Json): boolean {
   return canonicalize(a) === canonicalize(b);
 }
 
-function formatAjvErrors(errors: ErrorObject[] | null | undefined): string[] {
+function formatAjvErrors(errors: ErrorObject[] | null | undefined): InvariantError[] {
   if (!errors || errors.length === 0) return [];
   return errors.map((e) => {
     const at = e.instancePath || "/";
-    return `${at} ${e.message ?? "validation error"}`;
+    return { code: "SCHEMA", message: `${at} ${e.message ?? "validation error"}` };
   });
 }
 
@@ -172,35 +174,36 @@ function formatAjvErrors(errors: ErrorObject[] | null | undefined): string[] {
  * ============================================================
  */
 
-async function validateInvariants(patch: PatchOps): Promise<string[]> {
-  const errs: string[] = [];
+async function validateInvariants(patch: PatchOps): Promise<InvariantError[]> {
+  const errs: InvariantError[] = [];
 
   const ops = patch.operations;
   const rb = patch.rollbackOperations;
 
   // 1) Cardinality
   if (ops.length !== rb.length) {
-    errs.push(`Invariant#1 failed: operations.length (${ops.length}) != rollbackOperations.length (${rb.length})`);
+    errs.push({ code: InvariantCode.INV_001_CARDINALITY, message: `operations.length (${ops.length}) != rollbackOperations.length (${rb.length})` });
   }
 
   // 5) Duplicate op IDs
   const opIds = new Set<string>();
   for (const op of ops) {
-    if (opIds.has(op.opId)) errs.push(`Invariant#5 failed: duplicate operations opId '${op.opId}'`);
+    if (opIds.has(op.opId)) errs.push({ code: InvariantCode.INV_005_DUP_OP_ID, message: `duplicate operations opId '${op.opId}'` });
     opIds.add(op.opId);
   }
   const rbIds = new Set<string>();
   for (const r of rb) {
-    if (rbIds.has(r.opId)) errs.push(`Invariant#5 failed: duplicate rollback opId '${r.opId}'`);
+    if (rbIds.has(r.opId)) errs.push({ code: InvariantCode.INV_005_DUP_RB_ID, message: `duplicate rollback opId '${r.opId}'` });
     rbIds.add(r.opId);
   }
 
   // 4) Canonical sort check
   for (let i = 1; i < ops.length; i += 1) {
     if (opSortCompare(ops[i - 1]!, ops[i]!) > 0) {
-      errs.push(
-        `Invariant#4 failed: operations not in canonical order at index ${i - 1} (${ops[i - 1]!.opId}) and ${i} (${ops[i]!.opId})`
-      );
+      errs.push({
+        code: InvariantCode.INV_004_SORT_ORDER,
+        message: `operations not in canonical order at index ${i - 1} (${ops[i - 1]!.opId}) and ${i} (${ops[i]!.opId})`
+      });
       break;
     }
   }
@@ -212,27 +215,30 @@ async function validateInvariants(patch: PatchOps): Promise<string[]> {
     const r = rb[i]!;
 
     if (r.revertsOpId !== op.opId) {
-      errs.push(
-        `Invariant#2 failed: rollbackOperations[${i}].revertsOpId='${r.revertsOpId}' != reversed operations opId='${op.opId}'`
-      );
+      errs.push({
+        code: InvariantCode.INV_002_REVERSE_MAP,
+        message: `rollbackOperations[${i}].revertsOpId='${r.revertsOpId}' != reversed operations opId='${op.opId}'`
+      });
     }
 
     if (r.opType !== op.invertibility.inverseOpType) {
-      errs.push(
-        `Invariant#3 failed: rollback opType '${r.opType}' != inverseOpType '${op.invertibility.inverseOpType}' for ${op.opId}`
-      );
+      errs.push({
+        code: InvariantCode.INV_003_INVERSE_TYPE,
+        message: `rollback opType '${r.opType}' != inverseOpType '${op.invertibility.inverseOpType}' for ${op.opId}`
+      });
     }
 
     if (r.path !== op.invertibility.inversePath) {
-      errs.push(
-        `Invariant#3 failed: rollback path '${r.path}' != inversePath '${op.invertibility.inversePath}' for ${op.opId}`
-      );
+      errs.push({
+        code: InvariantCode.INV_003_INVERSE_PATH,
+        message: `rollback path '${r.path}' != inversePath '${op.invertibility.inversePath}' for ${op.opId}`
+      });
     }
 
     const rValue = (r.value ?? null) as Json;
     const invValue = (op.invertibility.inverseValue ?? null) as Json;
     if (!deepEqual(rValue, invValue)) {
-      errs.push(`Invariant#3 failed: rollback value != inverseValue for ${op.opId}`);
+      errs.push({ code: InvariantCode.INV_003_INVERSE_VALUE, message: `rollback value != inverseValue for ${op.opId}` });
     }
   }
 
@@ -240,7 +246,7 @@ async function validateInvariants(patch: PatchOps): Promise<string[]> {
   for (const op of ops) {
     if (op.opType === "LINK_DEPENDENCY" && op.edge) {
       if (op.edge.fromTaskId === op.edge.toTaskId) {
-        errs.push(`Invariant#6 failed: LINK_DEPENDENCY self-loop on '${op.edge.fromTaskId}' in ${op.opId}`);
+        errs.push({ code: InvariantCode.INV_006_SELF_LOOP, message: `LINK_DEPENDENCY self-loop on '${op.edge.fromTaskId}' in ${op.opId}` });
       }
     }
   }
@@ -248,9 +254,10 @@ async function validateInvariants(patch: PatchOps): Promise<string[]> {
   // 11) Signature payload digest coverage
   const computedDigest = computePayloadDigest(patch);
   if (patch.signature.payloadDigest !== computedDigest) {
-    errs.push(
-      `Invariant#11 failed: signature.payloadDigest mismatch (expected '${computedDigest}', got '${patch.signature.payloadDigest}')`
-    );
+    errs.push({
+      code: InvariantCode.INV_011_DIGEST_MISMATCH,
+      message: `signature.payloadDigest mismatch (expected '${computedDigest}', got '${patch.signature.payloadDigest}')`
+    });
   }
 
   // 12) Signature key resolution + detached verify
@@ -259,10 +266,10 @@ async function validateInvariants(patch: PatchOps): Promise<string[]> {
     const key = keyring.get(patch.signature.keyId);
 
     if (!key) {
-      errs.push(`Invariant#12 failed: unknown signature.keyId '${patch.signature.keyId}'`);
+      errs.push({ code: InvariantCode.INV_012_UNKNOWN_KEY, message: `unknown signature.keyId '${patch.signature.keyId}'` });
     } else {
       if (patch.signature.alg !== "ed25519") {
-        errs.push(`Invariant#12 failed: unsupported signature.alg '${patch.signature.alg}'`);
+        errs.push({ code: InvariantCode.INV_012_BAD_ALG, message: `unsupported signature.alg '${patch.signature.alg}'` });
       } else {
         const unsigned = buildUnsignedPayloadForDigest(patch);
         const canonical = canonicalize(unsigned);
@@ -272,22 +279,22 @@ async function validateInvariants(patch: PatchOps): Promise<string[]> {
           key.publicKeyHex
         );
         if (!ok) {
-          errs.push("Invariant#12 failed: Ed25519 signature verification failed");
+          errs.push({ code: InvariantCode.INV_012_SIG_FAILED, message: "Ed25519 signature verification failed" });
         }
       }
     }
   } catch (e) {
-    errs.push(`Invariant#12 failed: signature verification error: ${(e as Error).message}`);
+    errs.push({ code: InvariantCode.INV_012_SIG_FAILED, message: `signature verification error: ${(e as Error).message}` });
   }
 
   // 13) Rationale floor
   if ((patch.metadata?.rationale ?? "").length < 11) {
-    errs.push("Invariant#13 failed: metadata.rationale must be >= 11 chars");
+    errs.push({ code: InvariantCode.INV_013_META_RATIONALE, message: "metadata.rationale must be >= 11 chars" });
   }
   for (const op of ops) {
     const authorType = patch.metadata.author.type;
     if (authorType !== "service" && (op.rationale ?? "").length < 11) {
-      errs.push(`Invariant#13 failed: operation rationale must be >= 11 chars for non-service actors (opId=${op.opId})`);
+      errs.push({ code: InvariantCode.INV_013_OP_RATIONALE, message: `operation rationale must be >= 11 chars for non-service actors (opId=${op.opId})` });
     }
   }
 
@@ -353,7 +360,7 @@ if (isMain) {
       if (!result.ok) {
         console.error("PATCH VALIDATION FAILED");
         for (const e of result.errors) {
-          console.error(`- ${e}`);
+          console.error(`- [${e.code}] ${e.message}`);
         }
         process.exit(1);
       }

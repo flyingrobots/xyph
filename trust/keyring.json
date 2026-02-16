@@ -5,6 +5,11 @@
       "keyId": "did:key:z6MkhExampleSigner01",
       "alg": "ed25519",
       "publicKeyHex": "9f4c8b2b4c8b9fd9f06c01d6c9f4d88f2b8f7b8f6fd2a5c6e11a6f6ef9a5e123"
+    },
+    {
+      "keyId": "did:key:z6MkhTestSigner01",
+      "alg": "ed25519",
+      "publicKeyHex": "2577162074909c27c9c14979f2755816f649bd9ca42f140a37061bef25185375"
     }
   ]
 }

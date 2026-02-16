@@ -126,7 +126,7 @@
         "alg": { "type": "string", "enum": ["ed25519"] },
         "keyId": {
           "type": "string",
-          "pattern": "^KEY-[A-Z0-9]{6,24}$"
+          "pattern": "^(KEY-[A-Z0-9]{6,24}|did:key:z6[A-Za-z0-9]+)$"
         },
         "payloadDigest": {
           "type": "string",
@@ -134,7 +134,7 @@
         },
         "sig": {
           "type": "string",
-          "pattern": "^[A-Za-z0-9+/=]{64,512}$"
+          "pattern": "^[0-9a-fA-F]{128}$"
         }
       }
     }
@@ -251,6 +251,19 @@
             }
           }
         },
+        "edge": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["fromTaskId", "toTaskId"],
+          "properties": {
+            "fromTaskId": { "type": "string", "pattern": "^TASK-[A-Z0-9]+$" },
+            "toTaskId": { "type": "string", "pattern": "^TASK-[A-Z0-9]+$" }
+          }
+        },
+        "revertsOpId": {
+          "type": "string",
+          "pattern": "^OP-[0-9]{4,8}$"
+        },
         "rationale": {
           "type": "string",
           "minLength": 11,
@@ -263,54 +276,64 @@
       "allOf": [
         { "$ref": "#/definitions/baseOp" },
         {
-          "if": { "properties": { "opType": { "const": "ADD_TASK" } } },
+          "if": { "type": "object", "properties": { "opType": { "const": "ADD_TASK" } } },
           "then": {
+            "type": "object",
             "required": ["value"],
             "properties": {
               "entityType": { "const": "TASK" },
               "path": { "const": "/" },
               "precondition": {
+                "type": "object",
                 "properties": { "exists": { "const": false } }
               },
               "value": { "$ref": "#/definitions/taskEntity" },
               "invertibility": {
+                "type": "object",
                 "properties": { "inverseOpType": { "const": "DELETE_TASK" } }
               }
             }
           }
         },
         {
-          "if": { "properties": { "opType": { "const": "UPDATE_TASK" } } },
+          "if": { "type": "object", "properties": { "opType": { "const": "UPDATE_TASK" } } },
           "then": {
+            "type": "object",
             "properties": {
               "entityType": { "const": "TASK" },
               "precondition": {
+                "type": "object",
                 "properties": { "exists": { "const": true } }
               },
               "invertibility": {
+                "type": "object",
                 "properties": { "inverseOpType": { "const": "UPDATE_TASK" } }
               }
             }
           }
         },
         {
-          "if": { "properties": { "opType": { "const": "DELETE_TASK" } } },
+          "if": { "type": "object", "properties": { "opType": { "const": "DELETE_TASK" } } },
           "then": {
+            "type": "object",
             "properties": {
               "entityType": { "const": "TASK" },
               "path": { "const": "/" },
               "precondition": {
+                "type": "object",
                 "properties": { "exists": { "const": true } }
               },
               "invertibility": {
+                "type": "object",
                 "properties": { "inverseOpType": { "const": "ADD_TASK" } }
               }
             }
           }
         },
         {
-          "if": { "properties": { "opType": { "const": "MOVE_TASK_MILESTONE" } } },
+          "if": { "type": "object", "properties": { "opType": { "const": "MOVE_TASK_MILESTONE" } } },
           "then": {
+            "type": "object",
             "properties": {
               "entityType": { "const": "TASK" },
               "path": { "const": "/milestoneId" },
@@ -319,14 +342,16 @@
                 "pattern": "^MILE-[A-Z0-9]+$"
               },
               "invertibility": {
+                "type": "object",
                 "properties": { "inverseOpType": { "const": "MOVE_TASK_MILESTONE" } }
               }
             }
           }
         },
         {
-          "if": { "properties": { "opType": { "const": "LINK_DEPENDENCY" } } },
+          "if": { "type": "object", "properties": { "opType": { "const": "LINK_DEPENDENCY" } } },
           "then": {
+            "type": "object",
             "required": ["edge"],
             "properties": {
               "entityType": { "const": "GRAPH_EDGE" },
@@ -334,14 +359,16 @@
               "edge": { "$ref": "#/definitions/dependencyEdge" },
               "value": { "type": "null" },
               "invertibility": {
+                "type": "object",
                 "properties": { "inverseOpType": { "const": "UNLINK_DEPENDENCY" } }
               }
             }
           }
         },
         {
-          "if": { "properties": { "opType": { "const": "UNLINK_DEPENDENCY" } } },
+          "if": { "type": "object", "properties": { "opType": { "const": "UNLINK_DEPENDENCY" } } },
           "then": {
+            "type": "object",
             "required": ["edge"],
             "properties": {
               "entityType": { "const": "GRAPH_EDGE" },
@@ -349,51 +376,61 @@
               "edge": { "$ref": "#/definitions/dependencyEdge" },
               "value": { "type": "null" },
               "invertibility": {
+                "type": "object",
                 "properties": { "inverseOpType": { "const": "LINK_DEPENDENCY" } }
               }
             }
           }
         },
         {
-          "if": { "properties": { "opType": { "const": "ADD_MILESTONE" } } },
+          "if": { "type": "object", "properties": { "opType": { "const": "ADD_MILESTONE" } } },
           "then": {
+            "type": "object",
             "properties": {
               "entityType": { "const": "MILESTONE" },
               "path": { "const": "/" },
               "precondition": {
+                "type": "object",
                 "properties": { "exists": { "const": false } }
               },
               "value": { "$ref": "#/definitions/milestoneEntity" },
               "invertibility": {
+                "type": "object",
                 "properties": { "inverseOpType": { "const": "DELETE_MILESTONE" } }
               }
             }
           }
         },
         {
-          "if": { "properties": { "opType": { "const": "UPDATE_MILESTONE" } } },
+          "if": { "type": "object", "properties": { "opType": { "const": "UPDATE_MILESTONE" } } },
           "then": {
+            "type": "object",
             "properties": {
               "entityType": { "const": "MILESTONE" },
               "precondition": {
+                "type": "object",
                 "properties": { "exists": { "const": true } }
               },
               "invertibility": {
+                "type": "object",
                 "properties": { "inverseOpType": { "const": "UPDATE_MILESTONE" } }
               }
             }
           }
         },
         {
-          "if": { "properties": { "opType": { "const": "DELETE_MILESTONE" } } },
+          "if": { "type": "object", "properties": { "opType": { "const": "DELETE_MILESTONE" } } },
           "then": {
+            "type": "object",
             "properties": {
               "entityType": { "const": "MILESTONE" },
               "path": { "const": "/" },
               "precondition": {
+                "type": "object",
                 "properties": { "exists": { "const": true } }
               },
               "invertibility": {
+                "type": "object",
                 "properties": { "inverseOpType": { "const": "ADD_MILESTONE" } }
               }
             }
@@ -406,6 +443,7 @@
       "allOf": [
         { "$ref": "#/definitions/baseOp" },
         {
+          "type": "object",
           "required": ["revertsOpId"],
           "properties": {
             "revertsOpId": {
@@ -503,6 +541,7 @@
       "additionalProperties": false,
       "required": ["id", "title", "status"],
       "properties": {
+        "schemaVersion": { "type": "string", "pattern": "^v\\d+\\.\\d+$" },
         "id": { "type": "string", "pattern": "^MILE-[A-Z0-9]+$" },
         "title": { "type": "string", "minLength": 3, "maxLength": 160 },
         "status": {
@@ -539,6 +578,7 @@
 
   "allOf": [
     {
+      "type": "object",
       "description": "Rollback cardinality must match forward operations cardinality.",
       "properties": {
         "operations": { "type": "array" },
@@ -547,16 +587,23 @@
     },
     {
       "if": {
+        "type": "object",
         "properties": {
           "approvals": {
+            "type": "object",
             "properties": { "required": { "const": true } }
           }
         }
       },
       "then": {
+        "type": "object",
         "properties": {
           "approvals": {
-            "properties": { "satisfied": { "const": true } },
+            "type": "object",
+            "properties": {
+              "satisfied": { "const": true },
+              "approvalRef": { "type": "string" }
+            },
             "required": ["approvalRef"]
           }
         }

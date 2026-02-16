@@ -1,8 +1,14 @@
 import fs from "node:fs";
 import path from "node:path";
+import { createHash } from "node:crypto";
 import { blake3 } from "@noble/hashes/blake3.js";
 import * as ed from "@noble/ed25519";
 import { bytesToHex } from "@noble/hashes/utils.js";
+
+const sha512 = (msg: Uint8Array) => new Uint8Array(createHash("sha512").update(msg).digest());
+
+// Polyfill sha512 for @noble/ed25519 (v3 requires manual hash setup)
+(ed as any).hashes.sha512 = sha512;
 
 type Json = null | boolean | number | string | Json[] | { [k: string]: Json };
 

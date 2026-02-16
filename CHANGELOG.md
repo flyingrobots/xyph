@@ -4,6 +4,14 @@ All notable changes to XYPH will be documented in this file.
 
 ## [1.0.0-alpha.2] - 2026-02-15
 
+### Added
+- **Patch Validation Test Matrix**: 31-test suite systematically covering all 13 patch invariants via single-fault mutation of a golden fixture.
+- **Machine Error Codes**: `InvariantCode` enum and `InvariantError` interface for stable, machine-assertable validation errors (replaces raw strings).
+- **Ed25519 Signature Verification**: Full detached-signature pipeline with Blake3 payload digest and keyring-based key resolution.
+- **Golden Fixture Generator**: Deterministic `create-fixture.ts` with lineage metadata (schemaHash, keyFingerprint, generatorVersion).
+- **Test Helpers**: Reusable `resignPatch`, `clonePatch`, `buildTwoOpPatch`, `buildLinkDependencyOp`, and `assertInvariantFail` utilities.
+- **Schema Boundary Tests**: Regex boundary validation for `signature.keyId` and `signature.sig` patterns.
+
 ### Changed
 - Renamed `Task` entity to `Quest` with `QuestStatus`, `QuestType`, `QuestProps` (Digital Guild terminology).
 - `Quest` constructor now enforces invariants: `task:` prefix, title >= 5 chars, finite non-negative hours.
@@ -11,6 +19,8 @@ All notable changes to XYPH will be documented in this file.
 - `RoadmapPort.addEdge` now uses `EdgeType` union instead of bare `string`.
 - Added `tsconfig.test.json` for test-file type-checking.
 - `declarations.d.ts`: `executeStream` return type now matches `git-warp`'s expected `StreamResult` interface.
+- **Validator Error Format**: `validatePatchOps` now returns `InvariantError[]` with `{ code, message }` instead of raw strings.
+- **`ValidateResult` Exported**: Type is now exported for use in test assertions.
 
 ### Fixed
 - Merged duplicate `### Added` sections in CHANGELOG.
@@ -27,6 +37,11 @@ All notable changes to XYPH will be documented in this file.
 - `schema.ts`: validate before casting in `validateNodeId` and `validateEdgeType`.
 - `xyph-actuator.ts`: centralized `createPatch` helper, normalized default agent ID constant, added `--hours` validation via `InvalidArgumentError`.
 - Tests: `beforeEach` mock reset to prevent state leaks, `vi.mocked()` instead of brittle double-cast, added `isClaimed()` tests, expanded `NormalizeService` test coverage, renamed misleading test description.
+- **Schema `signature.keyId`**: Pattern now accepts both `KEY-` and `did:key:z6` formats.
+- **Schema `signature.sig`**: Changed from base64 to hex pattern (`^[0-9a-fA-F]{128}$`).
+- **Schema `milestoneEntity`**: Added optional `schemaVersion` property with tight `^v\d+\.\d+$` pattern.
+- **Schema `baseOp`**: Added `edge` and `revertsOpId` as optional properties to support `additionalProperties: false` with allOf composition.
+- **AJV Strict Mode**: Added `type: "object"` annotations to all `if`/`then`/nested sub-schemas across the operation definition (root allOf + 9 conditional blocks).
 
 ## [1.0.0-alpha.1] - 2026-02-15
 
