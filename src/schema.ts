@@ -31,12 +31,13 @@ export function validateNodeId(id: string): ValidationResult {
   const parts = id.split(':');
   if (parts.length < 2) return { valid: false, error: 'Node ID must follow prefix:identifier format' };
   
-  const prefix = parts[0] as Prefix;
+  const rawPrefix = parts[0];
   const identifier = parts.slice(1).join(':');
-  
-  if (!PREFIXES.includes(prefix)) {
-    return { valid: false, error: `Unknown prefix: ${prefix}` };
+
+  if (!rawPrefix || !PREFIXES.includes(rawPrefix as Prefix)) {
+    return { valid: false, error: `Unknown prefix: ${rawPrefix}` };
   }
+  const prefix: Prefix = rawPrefix as Prefix;
   
   if (!identifier) {
     return { valid: false, error: 'Identifier cannot be empty' };
@@ -46,7 +47,7 @@ export function validateNodeId(id: string): ValidationResult {
 }
 
 export function validateEdgeType(type: string): { valid: boolean; error?: string } {
-  if (!EDGE_TYPES.includes(type as EdgeType)) {
+  if (typeof type !== 'string' || !(EDGE_TYPES as readonly string[]).includes(type)) {
     return { valid: false, error: `Unknown edge type: ${type}` };
   }
   return { valid: true };

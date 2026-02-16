@@ -28,7 +28,9 @@ async function inspect(): Promise<void> {
     const neighbors = await graph.neighbors(id, 'outgoing');
     if (neighbors.length > 0) {
       console.log(chalk.gray('  Outgoing Edges:'));
-      neighbors.forEach((n: { label: string; nodeId: string }) => console.log(chalk.gray(`    --[${n.label}]--> ${n.nodeId}`)));
+      neighbors.forEach((n: { label: string; nodeId: string }) => {
+        console.log(chalk.gray(`    --[${n.label}]--> ${n.nodeId}`));
+      });
     }
   }
 
