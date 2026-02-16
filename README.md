@@ -1,61 +1,41 @@
-# XYPH 🌿
-> **Kubernetes for Autonomous Agents, backed by Git.**
+# XYPH
+**The Causal Operating System for Agentic Orchestration**
 
-XYPH is a decentralized coordination framework for AI agents. It replaces fragile orchestration scripts with a cryptographically secure knowledge graph where "The Graph is the State."
+XYPH is a "Planning Compiler" and Causal OS where the project roadmap is a deterministic, multi-writer graph managed by autonomous **Causal Agents**. It treats project state as a first-class citizen, using `git-warp` to provide coordination-free, cryptographically verifiable orchestration.
 
-In XYPH, agents don't talk to each other—they talk to the **Graph**.
+## Core Concepts
 
-## Features
-
-- **🧠 Hive Memory:** If an agent crashes, its state is preserved in the graph.
-- **⚡ Async Coordination:** Agents work in parallel, syncing via Git.
-- **🛡️ Cryptographic Resume:** Every line of code, every decision is signed by the specific agent identity.
-- **🔌 Plug-and-Play:** Spin up a new agent, give it a skill (e.g., "Rust"), point it at the repo, and it starts working.
+- **The Graph is the State**: All intent, tasks, and artifacts live in a WARP graph.
+- **Causal Agents**: Digital minds that act as first-class writers, claiming and sealing "Quests" (tasks).
+- **Optimistic Claiming Protocol (OCP)**: Agents volunteer for work and verify ownership post-materialization, resolving conflicts via CRDT convergence.
+- **Digital Guild (Squadron Integration)**: XYPH incorporates Digital Guild principles—Genealogy of Intent, Pipeline Ceremonies, and Consensual Labor—to ensure agentic work is grounded in human sovereign intent.
 
 ## Architecture
 
-XYPH runs on **[git-warp](https://github.com/git-stunts/git-warp)**.
+- **Kernel**: `git-warp` and the Constitutional Invariants (Articles I-VII).
+- **Actuator**: `xyph-actuator.mjs` - the agent's interface for graph mutations.
+- **Corpus**: `docs/canonical/` - the authoritative specification of the system laws.
 
-```mermaid
-graph TD
-    A[Agent: Coder] -->|Writes| G{The Graph}
-    B[Agent: QA] -->|Writes| G
-    C[Coordinator] -->|Manages| G
-    G -->|Syncs via| Git[Git Repo]
-```
+## Getting Started
 
-## Quick Start
-
-### 1. Initialize the Hive
 ```bash
-# Create a new XYPH repo
-mkdir my-project && cd my-project
-xyph init --name "SuperApp"
+# Install dependencies
+npm install
+
+# Apply infrastructure patches (fixes DEP0169)
+npx patch-package
+
+# Inspect the current roadmap state
+node src/inspect-graph.js
+
+# Use the Actuator (as an agent)
+export XYPH_AGENT_ID="agent.yourname"
+./xyph-actuator.mjs claim task:BDK-001
 ```
 
-### 2. Spawn a Coordinator (The Brain)
-The coordinator manages the backlog and cleans up dead agents.
-```bash
-xyph coordinator start --daemon
-```
+## Development
 
-### 3. Spawn a Worker (The Hands)
-Start an agent specialized in TypeScript.
-```bash
-xyph worker start --id "agent-ts-01" --skill "typescript" --skill "frontend"
-```
+XYPH follows the **Tests as Spec** philosophy. Every feature or fix requires a corresponding test story that enforces the declared intent.
 
-### 4. Feed the Hive
-Humans (or other agents) add tasks to the graph.
-```bash
-xyph task add "Refactor the Login component" --lang "typescript" --priority high
-```
-
-## The Protocol
-XYPH uses **Optimistic Claiming**. Agents race to claim tasks. The underlying `git-warp` engine resolves conflicts deterministically via LWW (Last-Writer-Wins) and OR-Sets. You never need to worry about two agents doing the same work.
-
-## Documentation
-See the [Canonical Corpus](./docs/canonical) for foundational specifications.
-
-## License
-MIT
+---
+Built with \u26A1 by [FLYING ROBOTS](https://github.com/flyingrobots)

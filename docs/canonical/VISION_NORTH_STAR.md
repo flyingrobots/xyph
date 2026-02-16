@@ -1,25 +1,23 @@
-# VISION NORTH STAR
+# VISION_NORTH_STAR.md
+**Version:** 1.1.0
+**Status:** AUTHORITATIVE
 
-## Thesis
-XYPH is a deterministic planning compiler that transforms roadmap intent and backlog noise into validated, schedulable, auditable execution plans.
+## 1. The Core Mission
+XYPH exists to solve the "Agentic Coordination Problem." As we move from human-led projects to agent-driven autonomous workflows, we need a substrate that ensures **Deterministic Provenance** and **Human Sovereignty**.
 
-## Primary User
-A technical lead who needs dependable plans, not vibe-driven suggestions.
+## 2. The Planning Compiler
+XYPH treats the project roadmap not as a document, but as a program to be compiled.
+- **Source Code:** Human intent, NL prompts, and formal specs.
+- **IR (Intermediate Representation):** The WARP graph.
+- **Target:** Verified artifacts (code, docs, deployments).
 
-## Core Workflow
-Ingest → Normalize → Classify → Merge → Rebalance → Schedule → Emit
+## 3. Digital Guild Integration (Squadron)
+XYPH formally adopts the **Digital Guild** model to govern the relationship between humans and agents:
 
-## Non-Goals
-- Not a chat-first PM assistant.
-- Not autonomous project mutation without approvals.
-- Not a replacement for engineering judgment.
+- **Genealogy of Intent:** Every task (`Quest`) must trace its lineage back to a human-signed `Intent` node. Agents cannot spawn work without a causal link to sovereign human desire.
+- **Pipeline Ceremonies:** State transitions (e.g., Backlog -> In Progress) are formal ceremonies requiring specific cryptographic seals and validation protocols.
+- **Guild Scrolls:** The output of every quest is a `Scroll` (Artifact). These are stored in the graph as content-addressed nodes, signed with the `Guild Seal` of the executing agent.
+- **Consensual Labor:** The Optimistic Claiming Protocol (OCP) ensures that work is volunteered, not assigned. Agents choose quests based on their charter and capability, and consensus is reached post-materialization.
 
-## Success Criteria
-- Zero DAG violations in emitted plans.
-- ≥95% schema-valid output across pipeline stages.
-- Human approval latency under 10 minutes per proposed patch.
-
-## Intolerable Failures
-- Silent mutation of plan state.
-- Untraceable decisions.
-- Non-deterministic output for same input + policy.
+## 4. The End State
+A world where "Building a Company" or "Launching a Product" is as deterministic as compiling a C++ binary. The roadmap evolves autonomously, but always within the bounds of human-defined laws (The Constitution).
