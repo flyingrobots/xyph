@@ -1,0 +1,84 @@
+{
+  "schemaVersion": "v1.0",
+  "patchId": "PATCH-20260215-ABC123",
+  "runId": "RUN-20260215-ABC123",
+  "baseSnapshotDigest": "blake3:0000000000000000000000000000000000000000000000000000000000000000",
+  "policyPackRef": "POLICY-STRICT-ENG-v1",
+  "configRef": "CFG-PROD-v3",
+  "operations": [
+    {
+      "opId": "OP-0001",
+      "opType": "ADD_MILESTONE",
+      "phase": 1,
+      "entityType": "MILESTONE",
+      "entityId": "MILE-BEDROCK",
+      "path": "/",
+      "value": {
+        "schemaVersion": "v1.0",
+        "id": "MILE-BEDROCK",
+        "title": "Bedrock Foundations",
+        "status": "ACTIVE"
+      },
+      "precondition": {
+        "exists": false,
+        "expectedHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "invertibility": {
+        "inverseOpType": "DELETE_MILESTONE",
+        "inversePath": "/",
+        "inverseValue": null,
+        "inversePreconditionHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "rationale": "Initial milestone for foundational work"
+    }
+  ],
+  "rollbackOperations": [
+    {
+      "opId": "OP-0002",
+      "revertsOpId": "OP-0001",
+      "opType": "DELETE_MILESTONE",
+      "phase": 1,
+      "entityType": "MILESTONE",
+      "entityId": "MILE-BEDROCK",
+      "path": "/",
+      "value": null,
+      "precondition": {
+        "exists": true,
+        "expectedHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "invertibility": {
+        "inverseOpType": "ADD_MILESTONE",
+        "inversePath": "/",
+        "inverseValue": {
+          "schemaVersion": "v1.0",
+          "id": "MILE-BEDROCK",
+          "title": "Bedrock Foundations",
+          "status": "ACTIVE"
+        },
+        "inversePreconditionHash": "blake3:0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "rationale": "Rollback for initial milestone"
+    }
+  ],
+  "approvals": {
+    "required": false,
+    "satisfied": true,
+    "approverIds": [],
+    "approvalRef": "AUTO-APPROVED"
+  },
+  "metadata": {
+    "createdAt": "2026-02-15T00:00:00.000Z",
+    "author": {
+      "type": "agent",
+      "id": "agent:test"
+    },
+    "rationale": "Bootstrap the roadmap with initial milestone",
+    "idempotencyKey": "create-fixture@1.0.0|schema:542958434f4bfdc9|key:de2eb399202bbb91"
+  },
+  "signature": {
+    "alg": "ed25519",
+    "keyId": "did:key:z6MkhTestSigner01",
+    "payloadDigest": "blake3:d57150159bad69b0f5fcaa97ebe45cd50086935ecb9a1050ee263ad03b348d4d",
+    "sig": "e661ae9ac9f0b661d746969638558482e506dab09b3c6444478f24f682fc447b36da12ff018df25bf477aed58f772b2bd99b176f92abba5cc2003e928078280b"
+  }
+}
