@@ -276,7 +276,7 @@
       "allOf": [
         { "$ref": "#/definitions/baseOp" },
         {
-          "if": { "type": "object", "properties": { "opType": { "const": "ADD_TASK" } } },
+          "if": { "type": "object", "required": ["opType"], "properties": { "opType": { "const": "ADD_TASK" } } },
           "then": {
             "type": "object",
             "required": ["value"],
@@ -296,7 +296,7 @@
           }
         },
         {
-          "if": { "type": "object", "properties": { "opType": { "const": "UPDATE_TASK" } } },
+          "if": { "type": "object", "required": ["opType"], "properties": { "opType": { "const": "UPDATE_TASK" } } },
           "then": {
             "type": "object",
             "properties": {
@@ -313,7 +313,7 @@
           }
         },
         {
-          "if": { "type": "object", "properties": { "opType": { "const": "DELETE_TASK" } } },
+          "if": { "type": "object", "required": ["opType"], "properties": { "opType": { "const": "DELETE_TASK" } } },
           "then": {
             "type": "object",
             "properties": {
@@ -331,7 +331,7 @@
           }
         },
         {
-          "if": { "type": "object", "properties": { "opType": { "const": "MOVE_TASK_MILESTONE" } } },
+          "if": { "type": "object", "required": ["opType"], "properties": { "opType": { "const": "MOVE_TASK_MILESTONE" } } },
           "then": {
             "type": "object",
             "properties": {
@@ -349,7 +349,7 @@
           }
         },
         {
-          "if": { "type": "object", "properties": { "opType": { "const": "LINK_DEPENDENCY" } } },
+          "if": { "type": "object", "required": ["opType"], "properties": { "opType": { "const": "LINK_DEPENDENCY" } } },
           "then": {
             "type": "object",
             "required": ["edge"],
@@ -366,7 +366,7 @@
           }
         },
         {
-          "if": { "type": "object", "properties": { "opType": { "const": "UNLINK_DEPENDENCY" } } },
+          "if": { "type": "object", "required": ["opType"], "properties": { "opType": { "const": "UNLINK_DEPENDENCY" } } },
           "then": {
             "type": "object",
             "required": ["edge"],
@@ -383,7 +383,7 @@
           }
         },
         {
-          "if": { "type": "object", "properties": { "opType": { "const": "ADD_MILESTONE" } } },
+          "if": { "type": "object", "required": ["opType"], "properties": { "opType": { "const": "ADD_MILESTONE" } } },
           "then": {
             "type": "object",
             "properties": {
@@ -402,7 +402,7 @@
           }
         },
         {
-          "if": { "type": "object", "properties": { "opType": { "const": "UPDATE_MILESTONE" } } },
+          "if": { "type": "object", "required": ["opType"], "properties": { "opType": { "const": "UPDATE_MILESTONE" } } },
           "then": {
             "type": "object",
             "properties": {
@@ -419,7 +419,7 @@
           }
         },
         {
-          "if": { "type": "object", "properties": { "opType": { "const": "DELETE_MILESTONE" } } },
+          "if": { "type": "object", "required": ["opType"], "properties": { "opType": { "const": "DELETE_MILESTONE" } } },
           "then": {
             "type": "object",
             "properties": {
@@ -579,7 +579,7 @@
   "allOf": [
     {
       "type": "object",
-      "description": "Rollback cardinality must match forward operations cardinality.",
+      "description": "Documentation-only: rollback cardinality must match forward operations (enforced by INV_001, not by schema).",
       "properties": {
         "operations": { "type": "array" },
         "rollbackOperations": { "type": "array" }
