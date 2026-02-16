@@ -9,8 +9,7 @@ import chalk from 'chalk';
  */
 export class TriageService {
   constructor(
-    private readonly roadmap: RoadmapPort,
-    private readonly agentId: string
+    private readonly roadmap: RoadmapPort
   ) {}
 
   /**

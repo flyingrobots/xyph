@@ -11,6 +11,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Run as non-root user
 RUN groupadd --system xyph && useradd --system --gid xyph xyph
 
+# Configure git for integration tests
+RUN git config --global user.email "james@flyingrobots.dev" && \
+    git config --global user.name "James Ross" && \
+    git config --global init.defaultBranch main
+
 WORKDIR /app
 
 COPY package*.json ./

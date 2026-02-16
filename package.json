@@ -8,6 +8,7 @@
     "lint": "eslint 'src/**/*.ts'",
     "build": "tsc",
     "coordinator": "node dist/src/coordinator-daemon.js",
+    "verify:patch-ops": "npm run build && node scripts/verify-patch-ops.mjs patches",
     "test": "docker build -t xyph-test . && docker run --rm xyph-test npm run test:local",
     "test:local": "vitest run"
   },
@@ -25,6 +26,9 @@
     "@typescript-eslint/eslint-plugin": "^8.55.0",
     "@typescript-eslint/parser": "^8.55.0",
     "@vitest/coverage-v8": "^4.0.18",
+    "ajv": "^8.18.0",
+    "ajv-errors": "^3.0.0",
+    "ajv-formats": "^3.0.1",
     "eslint": "^9.39.2",
     "eslint-plugin-import": "^2.32.0",
     "patch-package": "^8.0.1",
