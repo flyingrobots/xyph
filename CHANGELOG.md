@@ -2,6 +2,24 @@
 
 All notable changes to XYPH will be documented in this file.
 
+## [1.0.0-alpha.2] - 2026-02-15
+
+### Fixed
+- Merged duplicate `### Added` sections in CHANGELOG.
+- Dockerfile: non-root user, `--no-install-recommends`, accurate CMD comment.
+- ESLint: added `ignores` for `dist/**` build artifacts.
+- Quoted lint glob in `package.json` to prevent shell expansion.
+- `declarations.d.ts`: fixed invalid `static` in interface, replaced `any` with `unknown`.
+- `coordinator-daemon.ts`: validated `INTERVAL_MS`, added graceful shutdown (SIGINT/SIGTERM), circuit breaker on repeated failures.
+- `IngestService`: removed unused `TaskStatus` import, derived checkbox status from regex capture group instead of `line.includes('[x]')`.
+- `NormalizeService`: `normalize()` returns array directly instead of no-op `.map()`.
+- `CoordinatorService`: dependency injection via constructor, per-task error handling with result accumulation, proper `Task` import instead of inline `import()` type.
+- `WarpRoadmapAdapter`: extracted `buildTaskFromProps` with safe runtime type checks, fixed falsy checks on `claimedAt`/`completedAt` timestamps.
+- `inspect-graph.ts`: changed `forEach` callback to block body to avoid implicit return.
+- `schema.ts`: validate before casting in `validateNodeId` and `validateEdgeType`.
+- `xyph-actuator.ts`: centralized `createPatch` helper, normalized default agent ID constant, added `--hours` validation via `InvalidArgumentError`.
+- Tests: `beforeEach` mock reset to prevent state leaks, `vi.mocked()` instead of brittle double-cast, added `isClaimed()` tests, expanded `NormalizeService` test coverage, renamed misleading test description.
+
 ## [1.0.0-alpha.1] - 2026-02-15
 
 ### Added
