@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { WarpRoadmapAdapter } from '../../src/infrastructure/adapters/WarpRoadmapAdapter.js';
-import { Task } from '../../src/domain/entities/Task.js';
+import { Quest } from '../../src/domain/entities/Quest.js';
 import { execSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
@@ -27,7 +27,7 @@ describe('WarpRoadmapAdapter Integration', () => {
   it('should persist and retrieve a task from a real WARP graph', async () => {
     const adapter = new WarpRoadmapAdapter(repoPath, graphName, writerId);
     
-    const task = new Task({
+    const task = new Quest({
       id: 'task:INT-001',
       title: 'Integration Task',
       status: 'BACKLOG',
@@ -38,7 +38,7 @@ describe('WarpRoadmapAdapter Integration', () => {
 
     // 1. Upsert
     try {
-      const sha = await adapter.upsertTask(task);
+      const sha = await adapter.upsertQuest(task);
       expect(sha).toBeDefined();
       expect(sha.length).toBe(40); // Standard git SHA-1
     } catch (err: any) {
@@ -48,7 +48,7 @@ describe('WarpRoadmapAdapter Integration', () => {
     }
 
     // 2. Retrieve
-    const retrieved = await adapter.getTask('task:INT-001');
+    const retrieved = await adapter.getQuest('task:INT-001');
     expect(retrieved).not.toBeNull();
     expect(retrieved?.id).toBe('task:INT-001');
     expect(retrieved?.title).toBe('Integration Task');
@@ -58,7 +58,7 @@ describe('WarpRoadmapAdapter Integration', () => {
   it('should return multiple tasks', async () => {
     const adapter = new WarpRoadmapAdapter(repoPath, graphName, writerId);
     
-    await adapter.upsertTask(new Task({
+    await adapter.upsertQuest(new Quest({
       id: 'task:INT-002',
       title: 'Task 2',
       status: 'BACKLOG',
@@ -66,7 +66,7 @@ describe('WarpRoadmapAdapter Integration', () => {
       type: 'task'
     }));
 
-    const tasks = await adapter.getTasks();
+    const tasks = await adapter.getQuests();
     // includes task:INT-001 from previous test because same repo/graph
     expect(tasks.length).toBeGreaterThanOrEqual(2);
     expect(tasks.some(t => t.id === 'task:INT-002')).toBe(true);

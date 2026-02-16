@@ -1,4 +1,4 @@
-import { Task } from '../entities/Task.js';
+import { Quest } from '../entities/Quest.js';
 
 export interface RebalanceResult {
   valid: boolean;
@@ -17,7 +17,7 @@ export class RebalanceService {
   /**
    * Validates if a campaign exceeds its allocation limit.
    */
-  public validateCampaign(campaignId: string, tasks: Task[]): RebalanceResult {
+  public validateCampaign(campaignId: string, tasks: Quest[]): RebalanceResult {
     const totalHours = tasks.reduce((sum, task) => sum + task.hours, 0);
     
     if (totalHours > RebalanceService.MAX_HOURS_PER_CAMPAIGN) {

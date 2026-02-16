@@ -1,4 +1,4 @@
-import { Task } from '../entities/Task.js';
+import { Quest } from '../entities/Quest.js';
 import { RoadmapPort } from '../../ports/RoadmapPort.js';
 import chalk from 'chalk';
 
@@ -20,24 +20,24 @@ export class TriageService {
   public async linkIntent(taskId: string, contextHash: string): Promise<void> {
     console.log(chalk.cyan(`[Triage] Linking ${taskId} to intent ${contextHash}`));
     
-    const task = await this.roadmap.getTask(taskId);
+    const task = await this.roadmap.getQuest(taskId);
     if (!task) {
       throw new Error(`Task ${taskId} not found for triage`);
     }
 
-    const enrichedTask = new Task({
+    const enrichedTask = new Quest({
       ...task,
       originContext: contextHash
     });
 
-    await this.roadmap.upsertTask(enrichedTask);
+    await this.roadmap.upsertQuest(enrichedTask);
   }
 
   /**
    * Scans for tasks missing origin context and reports them.
    */
   public async auditBacklog(): Promise<string[]> {
-    const tasks = await this.roadmap.getTasks();
+    const tasks = await this.roadmap.getQuests();
     const missing = tasks
       .filter(t => t.status === 'BACKLOG' && !t.originContext)
       .map(t => t.id);
