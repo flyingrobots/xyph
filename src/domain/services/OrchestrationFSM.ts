@@ -4,8 +4,10 @@ import crypto from 'node:crypto';
 export interface FSMContext {
   runId: string;
   actorId: string;
+  actorType?: 'human' | 'agent' | 'service';
   policyPackRef: string;
   configRef: string;
+  clock?: () => string;
 }
 
 export interface TransitionResult {
@@ -38,12 +40,13 @@ export class OrchestrationFSM {
     durationMs: number
   ): TransitionResult {
     const nextState: OrchestrationState = 'NORMALIZE';
-    
+    const now = context.clock ? context.clock() : new Date().toISOString();
+
     const outputArtifact: OrchestrationArtifact = {
       schemaVersion: 'v1.0',
       runId: context.runId,
       state: nextState,
-      createdAt: new Date().toISOString(),
+      createdAt: now,
       inputDigest: inputArtifact.outputDigest,
       outputDigest: this.computeDigest({ state: nextState, runId: context.runId }) // Placeholder
     };
@@ -54,7 +57,7 @@ export class OrchestrationFSM {
       fromState: 'INGEST',
       toState: nextState,
       actor: {
-        type: 'agent',
+        type: context.actorType ?? 'agent',
         id: context.actorId
       },
       timestamp: outputArtifact.createdAt,
