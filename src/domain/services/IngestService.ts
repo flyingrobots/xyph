@@ -1,4 +1,4 @@
-import { Task, TaskProps, TaskStatus, TaskType } from '../entities/Task.js';
+import { Task, TaskProps, TaskType } from '../entities/Task.js';
 
 /**
  * IngestService
@@ -15,22 +15,22 @@ export class IngestService {
     const tasks: Task[] = [];
 
     for (const line of lines) {
-      const match = line.match(/^- \[[ xX]\]\s+([a-z]+:[A-Z0-9-]+)\s+(.+?)(?:\s+#(\d+(?:\.\d+)?))?(?:\s+@([a-z]+:[A-Z0-9-]+))?$/);
-      
+      const match = line.match(/^- \[([ xX])\]\s+([a-z]+:[A-Z0-9-]+)\s+(.+?)(?:\s+#(\d+(?:\.\d+)?))?(?:\s+@([a-z]+:[A-Z0-9-]+))?$/);
+
       if (match) {
-        const [_, id, title, hours, campaign] = match as [string, string, string, string?, string?];
-        
+        const [, checkbox, id, title, hours, _campaign] = match as [string, string, string, string, string?, string?];
+
         const props: TaskProps = {
           id,
           title: title.trim(),
-          status: line.includes('[x]') || line.includes('[X]') ? 'DONE' : 'BACKLOG',
+          status: checkbox === 'x' || checkbox === 'X' ? 'DONE' : 'BACKLOG',
           hours: hours ? parseFloat(hours) : 0,
           type: 'task' as TaskType
         };
 
         const task = new Task(props);
         tasks.push(task);
-        
+
         // Note: Campaign linkage is handled by the edge logic in the adapter,
         // but we return the raw task entities here.
       }
