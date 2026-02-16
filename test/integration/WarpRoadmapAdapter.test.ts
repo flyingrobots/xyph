@@ -63,7 +63,7 @@ describe('WarpRoadmapAdapter Integration', () => {
 
   it('should return multiple tasks', async () => {
     const adapter = new WarpRoadmapAdapter(repoPath, graphName, writerId);
-    
+
     await adapter.upsertQuest(new Quest({
       id: 'task:INT-002',
       title: 'Task 2',
@@ -72,9 +72,17 @@ describe('WarpRoadmapAdapter Integration', () => {
       type: 'task'
     }));
 
+    await adapter.upsertQuest(new Quest({
+      id: 'task:INT-003',
+      title: 'Task 3',
+      status: 'BACKLOG',
+      hours: 3,
+      type: 'task'
+    }));
+
     const tasks = await adapter.getQuests();
-    // includes task:INT-001 from previous test because same repo/graph
     expect(tasks.length).toBeGreaterThanOrEqual(2);
     expect(tasks.some(t => t.id === 'task:INT-002')).toBe(true);
+    expect(tasks.some(t => t.id === 'task:INT-003')).toBe(true);
   });
 });

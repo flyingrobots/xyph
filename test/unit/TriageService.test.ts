@@ -14,8 +14,8 @@ describe('TriageService', () => {
 
   const service = new TriageService(mockRoadmap, 'agent.test');
 
-  it('should link intent to a task', async () => {
-    const task = new Quest({
+  it('should link intent to a quest', async () => {
+    const quest = new Quest({
       id: 'task:TST-001',
       title: 'Test task',
       status: 'BACKLOG',
@@ -23,7 +23,7 @@ describe('TriageService', () => {
       type: 'task'
     });
 
-    vi.mocked(mockRoadmap.getQuest).mockResolvedValue(task);
+    vi.mocked(mockRoadmap.getQuest).mockResolvedValue(quest);
 
     await service.linkIntent('task:TST-001', 'blake3:hash');
 
@@ -32,13 +32,13 @@ describe('TriageService', () => {
     expect(mockUpsert.mock.calls[0]![0].originContext).toBe('blake3:hash');
   });
 
-  it('should identify tasks missing origin context', async () => {
-    const tasks = [
+  it('should identify quests missing origin context', async () => {
+    const quests = [
       new Quest({ id: 'task:T-001', title: 'Quest without context', status: 'BACKLOG', hours: 1, type: 'task' }),
       new Quest({ id: 'task:T-002', title: 'Quest with context', status: 'BACKLOG', hours: 1, type: 'task', originContext: 'exists' })
     ];
 
-    vi.mocked(mockRoadmap.getQuests).mockResolvedValue(tasks);
+    vi.mocked(mockRoadmap.getQuests).mockResolvedValue(quests);
 
     const missing = await service.auditBacklog();
     expect(missing).toContain('task:T-001');

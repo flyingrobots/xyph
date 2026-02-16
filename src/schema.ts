@@ -71,8 +71,7 @@ export function validateEdge({ source, target, type, confidence }: EdgeData): { 
   if (!typeVal.valid) return typeVal;
   
   if (confidence !== undefined) {
-    const conf = parseFloat(confidence.toString());
-    if (isNaN(conf) || conf < 0 || conf > 1) {
+    if (isNaN(confidence) || confidence < 0 || confidence > 1) {
       return { valid: false, error: 'Confidence must be a number between 0.0 and 1.0' };
     }
   }

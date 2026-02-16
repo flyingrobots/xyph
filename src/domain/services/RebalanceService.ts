@@ -21,8 +21,13 @@ export class RebalanceService {
   /**
    * Validates if a campaign exceeds its allocation limit.
    */
-  public validateCampaign(campaignId: string, tasks: Quest[]): RebalanceResult {
-    const totalHours = tasks.reduce((sum, task) => sum + task.hours, 0);
+  public validateCampaign(campaignId: string, quests: Quest[]): RebalanceResult {
+    const totalHours = quests.reduce((sum, quest) => {
+      if (!Number.isFinite(quest.hours) || quest.hours < 0) {
+        throw new Error(`Quest ${quest.id} has invalid hours: ${quest.hours}`);
+      }
+      return sum + quest.hours;
+    }, 0);
 
     if (totalHours > this.maxHoursPerCampaign) {
       return {

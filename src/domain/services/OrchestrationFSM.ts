@@ -1,5 +1,5 @@
 import { OrchestrationState, AuditRecord, OrchestrationArtifact } from '../entities/Orchestration.js';
-import crypto from 'node:crypto';
+import { canonicalize, prefixedBlake3 } from '../../validation/crypto.js';
 
 export interface FSMContext {
   runId: string;
@@ -25,9 +25,8 @@ export class OrchestrationFSM {
    * Computes a deterministic digest of an object.
    */
   public static computeDigest(data: Record<string, unknown>): string {
-    const sortedKeys = Object.keys(data).sort();
-    const json = JSON.stringify(data, sortedKeys);
-    return `sha256:${crypto.createHash('sha256').update(json).digest('hex')}`;
+    const canonical = canonicalize(data as any);
+    return prefixedBlake3(canonical);
   }
 
   /**
@@ -53,19 +52,23 @@ export class OrchestrationFSM {
 
     const audit: AuditRecord = {
       schemaVersion: 'v1.0',
+      eventId: `AEVT-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
       runId: context.runId,
+      sequence: 1,
+      timestamp: outputArtifact.createdAt,
       fromState: 'INGEST',
       toState: nextState,
       actor: {
         type: context.actorType ?? 'agent',
         id: context.actorId
       },
-      timestamp: outputArtifact.createdAt,
       inputDigest: inputArtifact.outputDigest,
       outputDigest: outputArtifact.outputDigest,
-      decisionSummary,
       durationMs,
-      status: 'OK'
+      decisionSummary,
+      status: 'OK',
+      policyPackRef: context.policyPackRef,
+      configRef: context.configRef
     };
 
     return { nextState, artifact: outputArtifact, audit };

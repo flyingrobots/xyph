@@ -230,9 +230,9 @@ If non-commit path:
 - 13 signature/trust failure
 - 14 snapshot drift/concurrency mismatch
 - 15 lock timeout / budget timeout
-- 16 unknown op type / state corruption
-- 17 partial apply risk, rollback attempted
-- 18 rollback failed (critical)
+- 16 unknown op type / state corruption (Line 100)
+- 17 partial apply risk, rollback attempted (Line 154)
+- 18 rollback failed (critical) (Line 156)
 
 ---
 

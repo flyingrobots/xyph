@@ -14,37 +14,37 @@ export class TriageService {
   ) {}
 
   /**
-   * Links a task to its origin context (human intent).
-   * @param taskId The task to link
+   * Links a quest to its origin context (human intent).
+   * @param taskId The quest to link
    * @param contextHash BLAKE3 hash of the originating NL prompt/intent
    */
   public async linkIntent(taskId: string, contextHash: string): Promise<void> {
-    console.log(chalk.cyan(`[Triage] Linking ${taskId} to intent ${contextHash}`));
-    
-    const task = await this.roadmap.getQuest(taskId);
-    if (!task) {
-      throw new Error(`Task ${taskId} not found for triage`);
+    console.log(chalk.cyan(`[Triage] Linking quest ${taskId} to intent ${contextHash}`));
+
+    const quest = await this.roadmap.getQuest(taskId);
+    if (!quest) {
+      throw new Error(`Quest ${taskId} not found for triage`);
     }
 
-    const enrichedTask = new Quest({
-      ...task,
+    const enrichedQuest = new Quest({
+      ...quest,
       originContext: contextHash
     });
 
-    await this.roadmap.upsertQuest(enrichedTask);
+    await this.roadmap.upsertQuest(enrichedQuest);
   }
 
   /**
-   * Scans for tasks missing origin context and reports them.
+   * Scans for quests missing origin context and reports them.
    */
   public async auditBacklog(): Promise<string[]> {
-    const tasks = await this.roadmap.getQuests();
-    const missing = tasks
-      .filter(t => t.status === 'BACKLOG' && !t.originContext)
-      .map(t => t.id);
-    
+    const quests = await this.roadmap.getQuests();
+    const missing = quests
+      .filter(q => q.status === 'BACKLOG' && !q.originContext)
+      .map(q => q.id);
+
     if (missing.length > 0) {
-      console.log(chalk.yellow(`[Triage] Audit: ${missing.length} tasks missing origin context.`));
+      console.log(chalk.yellow(`[Triage] Audit: ${missing.length} quests missing origin context.`));
     }
 
     return missing;

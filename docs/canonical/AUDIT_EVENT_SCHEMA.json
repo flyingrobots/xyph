@@ -1,5 +1,5 @@
 {
-  "$id": "https://xyph.dev/schemas/AUDIT_EVENT_SCHEMA.v1.json",
+  "$id": "https://schemas.xyph.dev/AUDIT_EVENT_SCHEMA.v1.json",
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "Planning Compiler Audit Event",
   "description": "Immutable audit record for every state transition in orchestration pipeline.",
@@ -201,7 +201,7 @@
     "approvals": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["required", "satisfied"],
+      "required": ["required", "satisfied", "approverIds", "approvalRef"],
       "properties": {
         "required": { "type": "boolean" },
         "satisfied": { "type": "boolean" },
