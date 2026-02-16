@@ -38,4 +38,4 @@ export XYPH_AGENT_ID="agent.yourname"
 XYPH follows the **Tests as Spec** philosophy. Every feature or fix requires a corresponding test story that enforces the declared intent.
 
 ---
-Built with \u26A1 by [FLYING ROBOTS](https://github.com/flyingrobots)
+Built with Ω by [FLYING ROBOTS](https://github.com/flyingrobots)
