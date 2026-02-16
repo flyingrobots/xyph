@@ -1,7 +1,8 @@
 /* eslint-disable no-console */
 import fs from "node:fs";
 import path from "node:path";
-import AjvModule, { ErrorObject, ValidateFunction } from "ajv";
+import { fileURLToPath } from "node:url";
+import Ajv, { type ErrorObject, type ValidateFunction } from "ajv";
 import addFormats from "ajv-formats";
 import ajvErrors from "ajv-errors";
 import {
@@ -9,12 +10,11 @@ import {
   prefixedBlake3,
   loadKeyring,
   verifyEd25519DetachedHex,
-  buildUnsignedPayloadForDigest
+  buildUnsignedPayloadForDigest,
+  type KeyringEntry
 } from "./crypto.js";
 import { InvariantCode } from "./InvariantCode.js";
 import type { InvariantError } from "./InvariantError.js";
-
-const Ajv = AjvModule.default;
 
 /**
  * ============================================================
@@ -99,8 +99,9 @@ const ORDERED_ENTITY_TYPES = ["GRAPH_EDGE", "MILESTONE", "TASK"] as const;
  */
 
 const validatorCache = new Map<string, ValidateFunction>();
+const keyringCache = new Map<string, Map<string, KeyringEntry>>();
 
-function buildAjv(): AjvModule.default {
+function buildAjv(): Ajv {
   const ajv = new Ajv({
     allErrors: true,
     strict: true,
@@ -126,15 +127,27 @@ function getCompiledValidator(schemaPath: string): ValidateFunction {
   return validate;
 }
 
+function getCachedKeyring(keyringPath: string): Map<string, KeyringEntry> {
+  let keyring = keyringCache.get(keyringPath);
+  if (!keyring) {
+    keyring = loadKeyring(keyringPath);
+    keyringCache.set(keyringPath, keyring);
+  }
+  return keyring;
+}
+
 /**
  * ============================================================
  * Canonicalization + Digest
  * ============================================================
  */
 
-function computePayloadDigest(patch: PatchOps): string {
+function computeCanonicalPayload(patch: PatchOps): string {
   const unsigned = buildUnsignedPayloadForDigest(patch);
-  const canonical = canonicalize(unsigned);
+  return canonicalize(unsigned);
+}
+
+function computePayloadDigest(canonical: string): string {
   return prefixedBlake3(canonical);
 }
 
@@ -261,7 +274,8 @@ async function validateInvariants(patch: PatchOps, keyringPath: string): Promise
   }
 
   // 11) Signature payload digest coverage
-  const computedDigest = computePayloadDigest(patch);
+  const canonical = computeCanonicalPayload(patch);
+  const computedDigest = computePayloadDigest(canonical);
   if (patch.signature.payloadDigest !== computedDigest) {
     errs.push({
       code: InvariantCode.INV_011_DIGEST_MISMATCH,
@@ -271,7 +285,7 @@ async function validateInvariants(patch: PatchOps, keyringPath: string): Promise
 
   // 12) Signature key resolution + detached verify
   try {
-    const keyring = loadKeyring(keyringPath);
+    const keyring = getCachedKeyring(keyringPath);
     const key = keyring.get(patch.signature.keyId);
 
     if (!key) {
@@ -280,8 +294,6 @@ async function validateInvariants(patch: PatchOps, keyringPath: string): Promise
       if (patch.signature.alg !== "ed25519") {
         errs.push({ code: InvariantCode.INV_012_BAD_ALG, message: `unsupported signature.alg '${patch.signature.alg}'` });
       } else {
-        const unsigned = buildUnsignedPayloadForDigest(patch);
-        const canonical = canonicalize(unsigned);
         const ok = await verifyEd25519DetachedHex(
           patch.signature.sig,
           canonical,
@@ -347,7 +359,7 @@ export async function validatePatchOpsDocument(
  */
 
 const isMain = process.argv[1] && (
-  path.resolve(process.argv[1]) === path.resolve(new URL(import.meta.url).pathname)
+  path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))
 );
 
 if (isMain) {

@@ -10,8 +10,30 @@ import {
 const sha512 = (msg: Uint8Array) => new Uint8Array(createHash("sha512").update(msg).digest());
 (ed as any).hashes.sha512 = sha512;
 
-export async function signPatch(patch: Record<string, unknown>, privateKeyHex: string, keyId: string) {
-  const unsigned = buildUnsignedPayloadForDigest(patch as Parameters<typeof buildUnsignedPayloadForDigest>[0]);
+export interface UnsignedPatch {
+  schemaVersion: string;
+  patchId: string;
+  runId: string;
+  baseSnapshotDigest: string;
+  policyPackRef: string;
+  configRef: string;
+  operations: unknown;
+  rollbackOperations: unknown;
+  approvals: unknown;
+  metadata: unknown;
+}
+
+export interface SignedPatch extends UnsignedPatch {
+  signature: {
+    alg: "ed25519";
+    keyId: string;
+    payloadDigest: string;
+    sig: string;
+  };
+}
+
+export async function signPatch(patch: UnsignedPatch, privateKeyHex: string, keyId: string): Promise<SignedPatch> {
+  const unsigned = buildUnsignedPayloadForDigest(patch);
   const canonical = canonicalize(unsigned);
   const digest = prefixedBlake3(canonical);
 
