@@ -6,8 +6,6 @@ reviews:
   # Auto-review all PRs
   auto_review:
     enabled: true
-    base_branches:
-      - ".*"
   # High-level summary of the PR
   high_level_summary: true
 
