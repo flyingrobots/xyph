@@ -2,15 +2,18 @@ import { signPatch } from '../src/validation/signPatchFixture.js';
 import { blake3Hex } from '../src/validation/crypto.js';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Deterministic test-only Ed25519 seed — not a real secret.
-const TEST_PRIVATE_KEY = "5a10d58f976775c62f0c8443ef14b5b831561e26648a06f2791ad88e236375c7";
+const TEST_PRIVATE_KEY = "5a10d58f976775c62f0c8443ef14b5b831561e26648a06f2791ad88e236375c7"; // gitleaks:allow
 
 async function create() {
   const keyId = 'did:key:z6MkhTestSigner01';
 
   // Lineage metadata for reproducibility
-  const schemaRaw = fs.readFileSync('schemas/PATCH_OPS_SCHEMA.v1.json', 'utf8');
+  const schemaRaw = fs.readFileSync(path.resolve(__dirname, '../schemas/PATCH_OPS_SCHEMA.v1.json'), 'utf8');
   const schemaHash = blake3Hex(schemaRaw).slice(0, 16);
   const generatorVersion = 'create-fixture@1.0.0';
   const keyFingerprint = blake3Hex(TEST_PRIVATE_KEY).slice(0, 16);
