@@ -1,0 +1,17 @@
+# CodeRabbit Configuration
+# https://docs.coderabbit.ai/configuration/overview
+
+# Review settings
+reviews:
+  # Enable reviews on PRs targeting any branch (useful for stacked PRs)
+  target_branches:
+    - "*"
+  # Auto-review all PRs
+  auto_review:
+    enabled: true
+  # High-level summary of the PR
+  summary:
+    enabled: true
+  # Chat with CodeRabbit
+  chat:
+    enabled: true
