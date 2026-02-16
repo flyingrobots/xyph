@@ -1,10 +1,16 @@
 /* eslint-disable no-console */
 import fs from "node:fs";
 import path from "node:path";
-import crypto from "node:crypto";
 import AjvModule, { ErrorObject } from "ajv";
 import addFormats from "ajv-formats";
 import ajvErrors from "ajv-errors";
+import {
+  canonicalize,
+  prefixedBlake3,
+  loadKeyring,
+  verifyEd25519DetachedHex,
+  buildUnsignedPayloadForDigest
+} from "./crypto.js";
 
 const Ajv = AjvModule.default;
 
@@ -115,43 +121,10 @@ function loadSchema(schemaPath: string): object {
  * ============================================================
  */
 
-function canonicalize(value: Json): string {
-  if (value === null || typeof value !== "object") {
-    return JSON.stringify(value);
-  }
-
-  if (Array.isArray(value)) {
-    return `[${value.map(canonicalize).join(",")}]`;
-  }
-
-  const keys = Object.keys(value).sort();
-  const entries = keys.map((k) => `${JSON.stringify(k)}:${canonicalize((value as Record<string, Json>)[k]!)}`);
-  return `{${entries.join(",")}}`;
-}
-
-function blake3CompatibleDigestHex(input: string): string {
-  // Using SHA-256 but prefixing as blake3: per spec until native BLAKE3 is available.
-  const h = crypto.createHash("sha256").update(input, "utf8").digest("hex");
-  return h;
-}
-
 function computePayloadDigest(patch: PatchOps): string {
-  const unsigned: Record<string, Json> = {
-    schemaVersion: patch.schemaVersion,
-    patchId: patch.patchId,
-    runId: patch.runId,
-    baseSnapshotDigest: patch.baseSnapshotDigest,
-    policyPackRef: patch.policyPackRef,
-    configRef: patch.configRef,
-    operations: patch.operations as unknown as Json,
-    rollbackOperations: patch.rollbackOperations as unknown as Json,
-    approvals: patch.approvals as unknown as Json,
-    metadata: patch.metadata as unknown as Json
-  };
-
-  const canonical = canonicalize(unsigned as Json);
-  const hex = blake3CompatibleDigestHex(canonical);
-  return `blake3:${hex}`;
+  const unsigned = buildUnsignedPayloadForDigest(patch);
+  const canonical = canonicalize(unsigned);
+  return prefixedBlake3(canonical);
 }
 
 /**
@@ -199,7 +172,7 @@ function formatAjvErrors(errors: ErrorObject[] | null | undefined): string[] {
  * ============================================================
  */
 
-function validateInvariants(patch: PatchOps): string[] {
+async function validateInvariants(patch: PatchOps): Promise<string[]> {
   const errs: string[] = [];
 
   const ops = patch.operations;
@@ -280,6 +253,33 @@ function validateInvariants(patch: PatchOps): string[] {
     );
   }
 
+  // 12) Signature key resolution + detached verify
+  try {
+    const keyring = loadKeyring(path.resolve(process.cwd(), "trust/keyring.json"));
+    const key = keyring.get(patch.signature.keyId);
+
+    if (!key) {
+      errs.push(`Invariant#12 failed: unknown signature.keyId '${patch.signature.keyId}'`);
+    } else {
+      if (patch.signature.alg !== "ed25519") {
+        errs.push(`Invariant#12 failed: unsupported signature.alg '${patch.signature.alg}'`);
+      } else {
+        const unsigned = buildUnsignedPayloadForDigest(patch);
+        const canonical = canonicalize(unsigned);
+        const ok = await verifyEd25519DetachedHex(
+          patch.signature.sig,
+          canonical,
+          key.publicKeyHex
+        );
+        if (!ok) {
+          errs.push("Invariant#12 failed: Ed25519 signature verification failed");
+        }
+      }
+    }
+  } catch (e) {
+    errs.push(`Invariant#12 failed: signature verification error: ${(e as Error).message}`);
+  }
+
   // 13) Rationale floor
   if ((patch.metadata?.rationale ?? "").length < 11) {
     errs.push("Invariant#13 failed: metadata.rationale must be >= 11 chars");
@@ -300,10 +300,10 @@ function validateInvariants(patch: PatchOps): string[] {
  * ============================================================
  */
 
-export function validatePatchOpsDocument(
+export async function validatePatchOpsDocument(
   doc: unknown,
   schemaPath = path.resolve(process.cwd(), "schemas/PATCH_OPS_SCHEMA.v1.json")
-): ValidateResult {
+): Promise<ValidateResult> {
   const ajv = buildAjv();
   const schema = loadSchema(schemaPath);
   const validate = ajv.compile(schema);
@@ -316,7 +316,7 @@ export function validatePatchOpsDocument(
   }
 
   const patch = doc as PatchOps;
-  const invariantErrors = validateInvariants(patch);
+  const invariantErrors = await validateInvariants(patch);
 
   if (invariantErrors.length > 0) {
     return { ok: false, errors: invariantErrors };
@@ -337,30 +337,33 @@ const isMain = process.argv[1] && (
 );
 
 if (isMain) {
-  const filePath = process.argv[2];
-  if (!filePath) {
-    console.error("Usage: validatePatchOps <patch-json-file>");
-    process.exit(2);
-  }
-
-  try {
-    const raw = fs.readFileSync(path.resolve(filePath), "utf8");
-    const doc = JSON.parse(raw) as unknown;
-
-    const result = validatePatchOpsDocument(doc);
-
-    if (!result.ok) {
-      console.error("PATCH VALIDATION FAILED");
-      for (const e of result.errors) {
-        console.error(`- ${e}`);
-      }
-      process.exit(1);
+  (async () => {
+    const filePath = process.argv[2];
+    if (!filePath) {
+      console.error("Usage: validatePatchOps <patch-json-file>");
+      process.exit(2);
     }
 
-    console.log("PATCH VALIDATION PASSED");
-    process.exit(0);
-  } catch (err) {
-    console.error("Validator crashed:", err);
-    process.exit(2);
-  }
+    try {
+      const raw = fs.readFileSync(path.resolve(filePath), "utf8");
+      const doc = JSON.parse(raw) as unknown;
+
+      const result = await validatePatchOpsDocument(doc);
+
+      if (!result.ok) {
+        console.error("PATCH VALIDATION FAILED");
+        for (const e of result.errors) {
+          console.error(`- ${e}`);
+        }
+        process.exit(1);
+      }
+
+      console.log("PATCH VALIDATION PASSED");
+      process.exit(0);
+    } catch (err) {
+      console.error("Validator crashed:", err);
+      process.exit(2);
+    }
+  })();
 }
+
