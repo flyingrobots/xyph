@@ -1,7 +1,7 @@
 /* eslint-disable no-console */
 import fs from "node:fs";
 import path from "node:path";
-import AjvModule, { ErrorObject } from "ajv";
+import AjvModule, { ErrorObject, ValidateFunction } from "ajv";
 import addFormats from "ajv-formats";
 import ajvErrors from "ajv-errors";
 import {
@@ -94,9 +94,11 @@ const ORDERED_ENTITY_TYPES = ["GRAPH_EDGE", "MILESTONE", "TASK"] as const;
 
 /**
  * ============================================================
- * AJV bootstrap
+ * AJV bootstrap (lazy-cached per schemaPath)
  * ============================================================
  */
+
+const validatorCache = new Map<string, ValidateFunction>();
 
 function buildAjv(): AjvModule.default {
   const ajv = new Ajv({
@@ -112,9 +114,16 @@ function buildAjv(): AjvModule.default {
   return ajv;
 }
 
-function loadSchema(schemaPath: string): object {
-  const raw = fs.readFileSync(schemaPath, "utf8");
-  return JSON.parse(raw) as object;
+function getCompiledValidator(schemaPath: string): ValidateFunction {
+  let validate = validatorCache.get(schemaPath);
+  if (!validate) {
+    const ajv = buildAjv();
+    const raw = fs.readFileSync(schemaPath, "utf8");
+    const schema = JSON.parse(raw) as object;
+    validate = ajv.compile(schema);
+    validatorCache.set(schemaPath, validate);
+  }
+  return validate;
 }
 
 /**
@@ -164,7 +173,7 @@ function formatAjvErrors(errors: ErrorObject[] | null | undefined): InvariantErr
   if (!errors || errors.length === 0) return [];
   return errors.map((e) => {
     const at = e.instancePath || "/";
-    return { code: "SCHEMA", message: `${at} ${e.message ?? "validation error"}` };
+    return { code: InvariantCode.SCHEMA, message: `${at} ${e.message ?? "validation error"}` };
   });
 }
 
@@ -174,7 +183,7 @@ function formatAjvErrors(errors: ErrorObject[] | null | undefined): InvariantErr
  * ============================================================
  */
 
-async function validateInvariants(patch: PatchOps): Promise<InvariantError[]> {
+async function validateInvariants(patch: PatchOps, keyringPath: string): Promise<InvariantError[]> {
   const errs: InvariantError[] = [];
 
   const ops = patch.operations;
@@ -262,7 +271,7 @@ async function validateInvariants(patch: PatchOps): Promise<InvariantError[]> {
 
   // 12) Signature key resolution + detached verify
   try {
-    const keyring = loadKeyring(path.resolve(process.cwd(), "trust/keyring.json"));
+    const keyring = loadKeyring(keyringPath);
     const key = keyring.get(patch.signature.keyId);
 
     if (!key) {
@@ -309,11 +318,10 @@ async function validateInvariants(patch: PatchOps): Promise<InvariantError[]> {
 
 export async function validatePatchOpsDocument(
   doc: unknown,
-  schemaPath = path.resolve(process.cwd(), "schemas/PATCH_OPS_SCHEMA.v1.json")
+  schemaPath = path.resolve(process.cwd(), "schemas/PATCH_OPS_SCHEMA.v1.json"),
+  keyringPath = path.resolve(process.cwd(), "trust/keyring.json")
 ): Promise<ValidateResult> {
-  const ajv = buildAjv();
-  const schema = loadSchema(schemaPath);
-  const validate = ajv.compile(schema);
+  const validate = getCompiledValidator(schemaPath);
 
   const valid = validate(doc);
   const schemaErrors = valid ? [] : formatAjvErrors(validate.errors);
@@ -323,7 +331,7 @@ export async function validatePatchOpsDocument(
   }
 
   const patch = doc as PatchOps;
-  const invariantErrors = await validateInvariants(patch);
+  const invariantErrors = await validateInvariants(patch, keyringPath);
 
   if (invariantErrors.length > 0) {
     return { ok: false, errors: invariantErrors };
@@ -339,8 +347,7 @@ export async function validatePatchOpsDocument(
  */
 
 const isMain = process.argv[1] && (
-  path.resolve(process.argv[1]) === path.resolve(new URL(import.meta.url).pathname) ||
-  path.resolve(process.argv[1]) === path.resolve(process.cwd(), "dist/src/validation/validatePatchOps.js")
+  path.resolve(process.argv[1]) === path.resolve(new URL(import.meta.url).pathname)
 );
 
 if (isMain) {
@@ -373,4 +380,3 @@ if (isMain) {
     }
   })();
 }
-

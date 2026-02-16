@@ -10,13 +10,13 @@ import {
 const sha512 = (msg: Uint8Array) => new Uint8Array(createHash("sha512").update(msg).digest());
 (ed as any).hashes.sha512 = sha512;
 
-export async function signPatch(patch: any, privateKeyHex: string, keyId: string) {
-  const unsigned = buildUnsignedPayloadForDigest(patch);
+export async function signPatch(patch: Record<string, unknown>, privateKeyHex: string, keyId: string) {
+  const unsigned = buildUnsignedPayloadForDigest(patch as Parameters<typeof buildUnsignedPayloadForDigest>[0]);
   const canonical = canonicalize(unsigned);
   const digest = prefixedBlake3(canonical);
 
   const msg = new TextEncoder().encode(canonical);
-  const priv = Uint8Array.from(Buffer.from(privateKeyHex, "hex"));
+  const priv = Buffer.from(privateKeyHex, "hex");
   const sig = await ed.sign(msg, priv);
   const sigHex = Buffer.from(sig).toString("hex");
 
