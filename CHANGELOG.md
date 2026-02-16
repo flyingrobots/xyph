@@ -13,8 +13,6 @@ All notable changes to XYPH will be documented in this file.
 - **Coordinator Daemon**: Initial implementation of the `CoordinatorService` and heartbeat loop.
 - **Dockerized Testing**: Integrated Vitest with a `node:22-slim` Docker environment for isolated verification.
 - **Strict Linting**: Configured ESLint with `typescript-eslint` strict rules.
-
-### Added
 - **Canonical Corpus**: Initialized `docs/canonical/` with 15 foundational specifications (Constitution, Agent Charter, Orchestration Spec, etc.).
 - **XYPH Actuator**: Implemented `xyph-actuator.mjs` for Quest management (Initialize, Claim, Seal) using the `git-warp` Node.js API.
 - **Graph Schema**: Formalized node/edge taxonomy and runtime validators in `src/schema.js`.
