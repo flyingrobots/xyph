@@ -16,6 +16,14 @@ You're working on **XYPH** - a Causal Operating System for Agent Planning and Or
 3. **Audit Everything**: Every decision must have a `rationale` and `confidence` score.
 4. **Guild Aesthetic**: Use the "Digital Guild" terminology (Quests, Campaigns, Scrolls, Seals).
 
+### Quality Gates
+Before opening or updating a PR, **always** run the full test suite:
+```bash
+npm run build    # Verify TypeScript compilation
+npm test         # Run full Docker-based test suite (60+ tests)
+```
+Never push code that doesn't pass both checks. CI failures waste time and break the review flow.
+
 ### Current Status
 - Foundations: ✅ Canonical Corpus extracted from `chats.txt`.
 - Infrastructure: ✅ `git-warp` and `plumbing` installed.
