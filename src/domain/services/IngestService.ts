@@ -18,17 +18,20 @@ export class IngestService {
       const match = line.match(/^- \[([ xX])\]\s+([a-z]+:[A-Z0-9-]+)\s+(.+?)(?:\s+#(\d+(?:\.\d+)?))?(?:\s+@([a-z]+:[A-Z0-9-]+))?$/);
 
       if (match) {
-        const [, checkbox, id, title, hours, _campaign] = match as [string, string, string, string, string?, string?];
+        const [, , id, title, hours, _campaign] = match as [string, string, string, string, string?, string?];
 
         const trimmedTitle = title.trim();
-        if (!id.startsWith('task:') || trimmedTitle.length < 5) continue;
+        const idPrefix = id.split(':')[0] || '';
+        if (!['task', 'scroll', 'milestone'].includes(idPrefix) || trimmedTitle.length < 5) continue;
+
+        const isCompleted = line.match(/^- \[([xX])\]/)?.[1] !== undefined;
 
         const props: QuestProps = {
           id,
           title: trimmedTitle,
-          status: checkbox === 'x' || checkbox === 'X' ? 'DONE' : 'BACKLOG',
+          status: isCompleted ? 'DONE' : 'BACKLOG',
           hours: hours ? parseFloat(hours) : 0,
-          type: 'task' as QuestType
+          type: idPrefix as QuestType
         };
 
         quests.push(new Quest(props));

@@ -15,6 +15,7 @@ export interface QuestProps {
   claimedAt?: number;
   completedAt?: number;
   type: QuestType;
+  originContext?: string;
 }
 
 export class Quest {
@@ -26,6 +27,7 @@ export class Quest {
   public readonly claimedAt?: number;
   public readonly completedAt?: number;
   public readonly type: QuestType;
+  public readonly originContext?: string;
 
   constructor(props: QuestProps) {
     if (!props.id || !props.id.startsWith('task:')) {
@@ -46,6 +48,7 @@ export class Quest {
     this.claimedAt = props.claimedAt;
     this.completedAt = props.completedAt;
     this.type = props.type;
+    this.originContext = props.originContext;
   }
 
   public isDone(): boolean {

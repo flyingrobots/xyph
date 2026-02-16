@@ -6,9 +6,10 @@ export default tseslint.config(
   ...tseslint.configs.strict,
   ...tseslint.configs.stylistic,
   {
-    ignores: ['dist/**', 'build/**'],
+    ignores: ['dist/**', 'build/**', 'scripts/**', 'test/**'],
   },
   {
+    files: ['src/**/*.ts'],
     languageOptions: {
       parserOptions: {
         project: './tsconfig.json',

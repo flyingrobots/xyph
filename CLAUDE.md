@@ -16,6 +16,22 @@ You're working on **XYPH** - a Causal Operating System for Agent Planning and Or
 3. **Audit Everything**: Every decision must have a `rationale` and `confidence` score.
 4. **Guild Aesthetic**: Use the "Digital Guild" terminology (Quests, Campaigns, Scrolls, Seals).
 
+### Quality Gates
+Before opening or updating a PR, **always** run the full test suite:
+```bash
+npm run build    # Verify TypeScript compilation
+npm test         # Run full Docker-based test suite (60+ tests)
+```
+Never push code that doesn't pass both checks. CI failures waste time and break the review flow.
+
+**NEVER circumvent quality checks:**
+- ❌ NEVER use `--no-verify` to skip git hooks
+- ❌ NEVER disable linter rules with `eslint-disable` comments
+- ❌ NEVER use `@ts-ignore` or `@ts-expect-error` to silence TypeScript
+- ❌ NEVER bypass tests or validation to "move faster"
+
+Our duty is to write **safe, correct code**. Shortcuts that compromise quality are not acceptable.
+
 ### Current Status
 - Foundations: ✅ Canonical Corpus extracted from `chats.txt`.
 - Infrastructure: ✅ `git-warp` and `plumbing` installed.

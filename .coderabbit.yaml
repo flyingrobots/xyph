@@ -1,0 +1,14 @@
+# CodeRabbit Configuration
+# https://docs.coderabbit.ai/configuration/overview
+
+# Review settings
+reviews:
+  # Auto-review all PRs
+  auto_review:
+    enabled: true
+  # High-level summary of the PR
+  high_level_summary: true
+
+# Chat with CodeRabbit
+chat:
+  auto_reply: true

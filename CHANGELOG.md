@@ -31,14 +31,11 @@ All notable changes to XYPH will be documented in this file.
 ## [1.0.0-alpha.1] - 2026-02-15
 
 ### Added
+- **Rebalance Service**: Implemented `RebalanceService` to enforce the 160-hour limit per campaign (Phase 4).
+- **CodeRabbit Integration**: Added `.coderabbit.yaml` to enable AI code reviews on all branches, facilitating stacked PR workflows.
+- **Triage Service**: Introduced `TriageService` for backlog auditing and linking tasks to human intent (`origin_context`).
+- **Task Entity Expansion**: Formalized `originContext` property in the domain model and persistence layer.
 - **Orchestration FSM**: Integrated `Ingest` and `Normalize` services into `CoordinatorService` to provide a full pipeline from raw input to graph mutation.
-- **Normalize Service**: Implemented `NormalizeService` for task enrichment and constitutional validation (Phase 2).
-- **Ingest Service**: Implemented `IngestService` for parsing Markdown-based task definitions into domain entities (Phase 1 of Orchestration Pipeline).
-- **TypeScript Migration**: Full project conversion to strict TypeScript with zero `any` tolerance.
-- **Hexagonal Architecture**: Established clean boundaries with `RoadmapPort` and `WarpRoadmapAdapter`.
-- **Coordinator Daemon**: Initial implementation of the `CoordinatorService` and heartbeat loop.
-- **Dockerized Testing**: Integrated Vitest with a `node:22-slim` Docker environment for isolated verification.
-- **Strict Linting**: Configured ESLint with `typescript-eslint` strict rules.
 - **Canonical Corpus**: Initialized `docs/canonical/` with 15 foundational specifications (Constitution, Agent Charter, Orchestration Spec, etc.).
 - **XYPH Actuator**: Implemented `xyph-actuator.mjs` for Quest management (Initialize, Claim, Seal) using the `git-warp` Node.js API.
 - **Graph Schema**: Formalized node/edge taxonomy and runtime validators in `src/schema.js`.
@@ -48,4 +45,14 @@ All notable changes to XYPH will be documented in this file.
 - **Inspection Tooling**: Created `src/inspect-graph.js` for deep graph state analysis.
 
 ### Changed
+- **TS Execution Refinement**: Switched from `ts-node` to `tsx` for CLI execution to resolve `DEP0180` (`fs.Stats`) deprecation warnings in Node 22+.
+- **Setup Script Improvements**: Enhanced `scripts/setup-milestone-2.js` with idempotency checks and robust error propagation (non-zero exit codes).
+- **Actuator Refinement**: Added ESM shebang to `xyph-actuator.ts` for direct execution.
+- **Normalize Service**: Implemented `NormalizeService` for task enrichment and constitutional validation (Phase 2).
+- **Ingest Service**: Implemented `IngestService` for parsing Markdown-based task definitions into domain entities (Phase 1 of Orchestration Pipeline).
+- **TypeScript Migration**: Full project conversion to strict TypeScript with zero `any` tolerance.
+- **Hexagonal Architecture**: Established clean boundaries with `RoadmapPort` and `WarpRoadmapAdapter`.
+- **Coordinator Daemon**: Initial implementation of the `CoordinatorService` and heartbeat loop.
+- **Dockerized Testing**: Integrated Vitest with a `node:22-slim` Docker environment for isolated verification.
+- **Strict Linting**: Configured ESLint with `typescript-eslint` strict rules.
 - Refined Actuator `syncWith` logic to use `syncCoverage()` for reliable multi-writer convergence.

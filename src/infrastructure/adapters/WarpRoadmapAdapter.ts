@@ -8,7 +8,7 @@ const VALID_STATUSES: ReadonlySet<string> = new Set(['BACKLOG', 'PLANNED', 'IN_P
 const VALID_TYPES: ReadonlySet<string> = new Set(['task', 'scroll', 'milestone', 'campaign', 'roadmap']);
 
 export class WarpRoadmapAdapter implements RoadmapPort {
-  private graph: WarpGraph | null = null;
+  private graphPromise: Promise<WarpGraph> | null = null;
 
   constructor(
     private readonly repoPath: string,
@@ -17,19 +17,24 @@ export class WarpRoadmapAdapter implements RoadmapPort {
   ) {}
 
   private async getGraph(): Promise<WarpGraph> {
-    if (!this.graph) {
-      const plumbing = Plumbing.createDefault({ cwd: this.repoPath });
-      const persistence = new GitGraphAdapter({ plumbing });
-      this.graph = await WarpGraph.open({
-        persistence,
-        graphName: this.graphName,
-        writerId: this.writerId,
-        autoMaterialize: true,
-      });
-      await this.graph.syncCoverage();
-      await this.graph.materialize();
+    if (!this.graphPromise) {
+      this.graphPromise = this.initGraph();
     }
-    return this.graph;
+    return this.graphPromise;
+  }
+
+  private async initGraph(): Promise<WarpGraph> {
+    const plumbing = Plumbing.createDefault({ cwd: this.repoPath });
+    const persistence = new GitGraphAdapter({ plumbing });
+    const graph = await WarpGraph.open({
+      persistence,
+      graphName: this.graphName,
+      writerId: this.writerId,
+      autoMaterialize: true,
+    });
+    await graph.syncCoverage();
+    await graph.materialize();
+    return graph;
   }
 
   private buildQuestFromProps(id: string, props: Map<string, unknown>): Quest | null {
@@ -48,6 +53,7 @@ export class WarpRoadmapAdapter implements RoadmapPort {
     const assignedTo = props.get('assigned_to');
     const claimedAt = props.get('claimed_at');
     const completedAt = props.get('completed_at');
+    const originContext = props.get('origin_context');
 
     return new Quest({
       id,
@@ -58,6 +64,7 @@ export class WarpRoadmapAdapter implements RoadmapPort {
       claimedAt: typeof claimedAt === 'number' ? claimedAt : undefined,
       completedAt: typeof completedAt === 'number' ? completedAt : undefined,
       type: type as QuestType,
+      originContext: typeof originContext === 'string' ? originContext : undefined,
     });
   }
 
@@ -103,6 +110,7 @@ export class WarpRoadmapAdapter implements RoadmapPort {
     if (quest.assignedTo != null) patch.setProperty(quest.id, 'assigned_to', quest.assignedTo);
     if (quest.claimedAt != null) patch.setProperty(quest.id, 'claimed_at', quest.claimedAt);
     if (quest.completedAt != null) patch.setProperty(quest.id, 'completed_at', quest.completedAt);
+    if (quest.originContext != null) patch.setProperty(quest.id, 'origin_context', quest.originContext);
 
     return await patch.commit();
   }

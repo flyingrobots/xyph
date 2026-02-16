@@ -1,4 +1,6 @@
-import WarpGraph, { GitGraphAdapter, PatchSession } from '@git-stunts/git-warp';
+#!/usr/bin/env -S npx tsx
+import WarpGraph, { GitGraphAdapter } from '@git-stunts/git-warp';
+import type { PatchSession } from '@git-stunts/git-warp';
 import Plumbing from '@git-stunts/plumbing';
 import { program, InvalidArgumentError } from 'commander';
 import chalk from 'chalk';
