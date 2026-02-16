@@ -1,7 +1,8 @@
 import WarpGraph, { GitGraphAdapter, PatchSession } from '@git-stunts/git-warp';
 import Plumbing from '@git-stunts/plumbing';
 import { RoadmapPort } from '../../ports/RoadmapPort.js';
-import { Task, TaskStatus, TaskType } from '../../domain/entities/Task.js';
+import { Quest, QuestStatus, QuestType } from '../../domain/entities/Quest.js';
+import { EdgeType } from '../../schema.js';
 
 const VALID_STATUSES: ReadonlySet<string> = new Set(['BACKLOG', 'PLANNED', 'IN_PROGRESS', 'BLOCKED', 'DONE']);
 const VALID_TYPES: ReadonlySet<string> = new Set(['task', 'scroll', 'milestone', 'campaign', 'roadmap']);
@@ -31,15 +32,16 @@ export class WarpRoadmapAdapter implements RoadmapPort {
     return this.graph;
   }
 
-  private buildTaskFromProps(id: string, props: Map<string, unknown>): Task | null {
+  private buildQuestFromProps(id: string, props: Map<string, unknown>): Quest | null {
     const title = props.get('title');
     const status = props.get('status');
     const hours = props.get('hours');
     const type = props.get('type');
 
-    if (typeof title !== 'string') return null;
+    if (typeof title !== 'string' || title.length < 5) return null;
     if (typeof status !== 'string' || !VALID_STATUSES.has(status)) return null;
     if (typeof type !== 'string' || !VALID_TYPES.has(type)) return null;
+    if (!id.startsWith('task:')) return null;
 
     const parsedHours = typeof hours === 'number' && Number.isFinite(hours) ? hours : 0;
 
@@ -47,65 +49,65 @@ export class WarpRoadmapAdapter implements RoadmapPort {
     const claimedAt = props.get('claimed_at');
     const completedAt = props.get('completed_at');
 
-    return new Task({
+    return new Quest({
       id,
       title,
-      status: status as TaskStatus,
+      status: status as QuestStatus,
       hours: parsedHours,
       assignedTo: typeof assignedTo === 'string' ? assignedTo : undefined,
       claimedAt: typeof claimedAt === 'number' ? claimedAt : undefined,
       completedAt: typeof completedAt === 'number' ? completedAt : undefined,
-      type: type as TaskType,
+      type: type as QuestType,
     });
   }
 
-  public async getTasks(): Promise<Task[]> {
+  public async getQuests(): Promise<Quest[]> {
     const graph = await this.getGraph();
     const nodeIds = await graph.getNodes();
-    const tasks: Task[] = [];
+    const quests: Quest[] = [];
 
     for (const id of nodeIds) {
       const props = await graph.getNodeProps(id);
       if (props && props.get('type') === 'task') {
-        const task = this.buildTaskFromProps(id, props);
-        if (task) tasks.push(task);
+        const quest = this.buildQuestFromProps(id, props);
+        if (quest) quests.push(quest);
       }
     }
 
-    return tasks;
+    return quests;
   }
 
-  public async getTask(id: string): Promise<Task | null> {
+  public async getQuest(id: string): Promise<Quest | null> {
     const graph = await this.getGraph();
     if (!await graph.hasNode(id)) return null;
 
     const props = await graph.getNodeProps(id);
     if (!props) return null;
 
-    return this.buildTaskFromProps(id, props);
+    return this.buildQuestFromProps(id, props);
   }
 
-  public async upsertTask(task: Task): Promise<string> {
+  public async upsertQuest(quest: Quest): Promise<string> {
     const graph = await this.getGraph();
     const patch = (await graph.createPatch()) as PatchSession;
 
-    if (!await graph.hasNode(task.id)) {
-      patch.addNode(task.id);
+    if (!await graph.hasNode(quest.id)) {
+      patch.addNode(quest.id);
     }
 
-    patch.setProperty(task.id, 'title', task.title)
-         .setProperty(task.id, 'status', task.status)
-         .setProperty(task.id, 'hours', task.hours)
-         .setProperty(task.id, 'type', task.type);
+    patch.setProperty(quest.id, 'title', quest.title)
+         .setProperty(quest.id, 'status', quest.status)
+         .setProperty(quest.id, 'hours', quest.hours)
+         .setProperty(quest.id, 'type', quest.type);
 
-    if (task.assignedTo != null) patch.setProperty(task.id, 'assigned_to', task.assignedTo);
-    if (task.claimedAt != null) patch.setProperty(task.id, 'claimed_at', task.claimedAt);
-    if (task.completedAt != null) patch.setProperty(task.id, 'completed_at', task.completedAt);
+    if (quest.assignedTo != null) patch.setProperty(quest.id, 'assigned_to', quest.assignedTo);
+    if (quest.claimedAt != null) patch.setProperty(quest.id, 'claimed_at', quest.claimedAt);
+    if (quest.completedAt != null) patch.setProperty(quest.id, 'completed_at', quest.completedAt);
 
     return await patch.commit();
   }
 
-  public async addEdge(from: string, to: string, type: string): Promise<string> {
+  public async addEdge(from: string, to: string, type: EdgeType): Promise<string> {
     const graph = await this.getGraph();
     const patch = (await graph.createPatch()) as PatchSession;
     patch.addEdge(from, to, type);

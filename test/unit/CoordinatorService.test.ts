@@ -6,9 +6,9 @@ import { RoadmapPort } from '../../src/ports/RoadmapPort.js';
 
 describe('CoordinatorService', () => {
   const mockRoadmap: RoadmapPort = {
-    getTasks: vi.fn(),
-    getTask: vi.fn(),
-    upsertTask: vi.fn().mockResolvedValue('patch-sha'),
+    getQuests: vi.fn(),
+    getQuest: vi.fn(),
+    upsertQuest: vi.fn().mockResolvedValue('patch-sha'),
     addEdge: vi.fn(),
     sync: vi.fn()
   };
@@ -17,21 +17,22 @@ describe('CoordinatorService', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(mockRoadmap.upsertTask).mockResolvedValue('patch-sha');
+    vi.mocked(mockRoadmap.upsertQuest).mockResolvedValue('patch-sha');
   });
 
   it('should orchestrate a raw markdown input', async () => {
-    const input = `- [ ] task:TST-001 New orchestrated task #5`;
+    const input = `- [ ] task:TST-001 New orchestrated quest #5`;
     await service.orchestrate(input);
 
-    expect(mockRoadmap.upsertTask).toHaveBeenCalled();
-    const calledTask = vi.mocked(mockRoadmap.upsertTask).mock.calls[0]![0];
-    expect(calledTask.id).toBe('task:TST-001');
-    expect(calledTask.hours).toBe(5);
+    expect(mockRoadmap.upsertQuest).toHaveBeenCalled();
+    const calledQuest = vi.mocked(mockRoadmap.upsertQuest).mock.calls[0]![0];
+    expect(calledQuest.id).toBe('task:TST-001');
+    expect(calledQuest.hours).toBe(5);
   });
 
-  it('should fail orchestration on invalid input', async () => {
-    const input = `- [ ] task:TST-002 Tiny`; // Title too short
-    await expect(service.orchestrate(input)).rejects.toThrow('Title too short');
+  it('should return silently when no quests are parsed', async () => {
+    const input = `not a valid task line`;
+    await service.orchestrate(input);
+    expect(mockRoadmap.upsertQuest).not.toHaveBeenCalled();
   });
 });

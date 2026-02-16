@@ -1,13 +1,14 @@
-import { Task } from '../domain/entities/Task.js';
+import { Quest } from '../domain/entities/Quest.js';
+import { EdgeType } from '../schema.js';
 
 /**
  * RoadmapPort
  * Interface for roadmap persistence and retrieval.
  */
 export interface RoadmapPort {
-  getTasks(): Promise<Task[]>;
-  getTask(id: string): Promise<Task | null>;
-  upsertTask(task: Task): Promise<string>;
-  addEdge(from: string, to: string, type: string): Promise<string>;
+  getQuests(): Promise<Quest[]>;
+  getQuest(id: string): Promise<Quest | null>;
+  upsertQuest(quest: Quest): Promise<string>;
+  addEdge(from: string, to: string, type: EdgeType): Promise<string>;
   sync(): Promise<void>;
 }
