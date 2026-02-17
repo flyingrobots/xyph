@@ -58,6 +58,20 @@ program
   .option('--intent <id>', 'Sovereign Intent node that authorizes this Quest (intent:* prefix)')
   .action(async (id: string, opts: { title: string; campaign: string; hours?: number; intent?: string }) => {
     try {
+      // Validate all inputs before any async graph I/O
+      if (!opts.intent) {
+        console.error(chalk.red(
+          `[CONSTITUTION VIOLATION] Quest ${id} requires --intent <id> (Art. IV — Genealogy of Intent).\n` +
+          `  Every Quest must trace its lineage to a sovereign human Intent.\n` +
+          `  Declare one first: xyph-actuator intent <id> --title "..." --requested-by human.<name>`
+        ));
+        process.exit(1);
+      }
+      if (!opts.intent.startsWith('intent:')) {
+        console.error(chalk.red(`[ERROR] --intent value must start with 'intent:' prefix, got: '${opts.intent}'`));
+        process.exit(1);
+      }
+
       const graph = await getGraph();
       const patch = await createPatch(graph);
 
@@ -69,20 +83,6 @@ program
 
       if (opts.campaign && opts.campaign !== 'none') {
         patch.addEdge(id, opts.campaign, 'belongs-to');
-      }
-
-      if (!opts.intent) {
-        console.error(chalk.red(
-          `[CONSTITUTION VIOLATION] Quest ${id} requires --intent <id> (Art. IV — Genealogy of Intent).\n` +
-          `  Every Quest must trace its lineage to a sovereign human Intent.\n` +
-          `  Declare one first: xyph-actuator intent <id> --title "..." --requested-by human.<name>`
-        ));
-        process.exit(1);
-      }
-
-      if (!opts.intent.startsWith('intent:')) {
-        console.error(chalk.red(`[ERROR] --intent value must start with 'intent:' prefix, got: '${opts.intent}'`));
-        process.exit(1);
       }
 
       patch.addEdge(id, opts.intent, 'authorized-by');

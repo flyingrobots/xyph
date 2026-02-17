@@ -54,6 +54,9 @@ export class GuildSealService {
    * Returns the path to an agent's private key file.
    */
   private skPath(agentId: string): string {
+    if (/[/\\]|\.\./.test(agentId)) {
+      throw new Error(`Invalid agentId: must not contain path separators or '..', got: '${agentId}'`);
+    }
     return path.join(this.trustDir, `${agentId}.sk`);
   }
 
@@ -78,9 +81,6 @@ export class GuildSealService {
    */
   public async generateKeypair(agentId: string): Promise<{ keyId: string; publicKeyHex: string }> {
     const skFile = this.skPath(agentId);
-    if (fs.existsSync(skFile)) {
-      throw new Error(`Private key already exists for agent '${agentId}' at ${skFile}`);
-    }
 
     const { randomBytes } = await import('node:crypto');
     const priv = randomBytes(32);
@@ -90,8 +90,15 @@ export class GuildSealService {
     const publicKeyHex = Buffer.from(pub).toString('hex');
     const keyId = this.keyIdForAgent(agentId);
 
-    // Write private key (gitignored)
-    fs.writeFileSync(skFile, privateKeyHex, { mode: 0o600 });
+    // Write private key atomically (O_EXCL prevents overwriting an existing key)
+    try {
+      fs.writeFileSync(skFile, privateKeyHex, { mode: 0o600, flag: 'wx' });
+    } catch (err: unknown) {
+      if ((err as NodeJS.ErrnoException).code === 'EEXIST') {
+        throw new Error(`Private key already exists for agent '${agentId}' at ${skFile}`);
+      }
+      throw err;
+    }
 
     // Register public key in keyring
     const keyringPath = path.join(this.trustDir, 'keyring.json');

@@ -41,6 +41,10 @@ export class ApprovalGate {
     'SCOPE_INCREASE_GT_5PCT',
   ]);
 
+  private static readonly VALID_STATUSES: ReadonlySet<string> = new Set([
+    'PENDING', 'APPROVED', 'REJECTED',
+  ]);
+
   constructor(props: ApprovalGateProps) {
     if (!props.id || !props.id.startsWith('approval:')) {
       throw new Error(`ApprovalGate ID must start with 'approval:' prefix, got: '${props.id}'`);
@@ -50,6 +54,15 @@ export class ApprovalGate {
     }
     if (!ApprovalGate.VALID_TRIGGERS.has(props.trigger)) {
       throw new Error(`Unknown ApprovalGate trigger: '${props.trigger}'`);
+    }
+    if (!ApprovalGate.VALID_STATUSES.has(props.status)) {
+      throw new Error(`Unknown ApprovalGate status: '${props.status}'`);
+    }
+    if (props.status === 'PENDING' && props.resolvedAt !== undefined) {
+      throw new Error('ApprovalGate resolvedAt must not be set when status is PENDING');
+    }
+    if ((props.status === 'APPROVED' || props.status === 'REJECTED') && props.resolvedAt === undefined) {
+      throw new Error(`ApprovalGate resolvedAt is required when status is '${props.status}'`);
     }
     if (!props.requestedBy || !props.requestedBy.startsWith('agent.')) {
       throw new Error(

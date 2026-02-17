@@ -111,7 +111,7 @@ async function main() {
         .addNode(campaignId)
         .setProperty(campaignId, 'title', title)
         .setProperty(campaignId, 'status', 'BACKLOG')
-        .setProperty(campaignId, 'type', 'task')
+        .setProperty(campaignId, 'type', 'campaign')
         .addEdge(campaignId, 'roadmap:ROOT', 'belongs-to');
 
       for (const { id, title: questTitle, hours } of quests) {

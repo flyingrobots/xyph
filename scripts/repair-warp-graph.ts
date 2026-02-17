@@ -63,8 +63,8 @@ async function main() {
     patch
       .addNode('campaign:TRIAGE')
       .setProperty('campaign:TRIAGE', 'title', 'Milestone 3: Triage')
-      .setProperty('campaign:TRIAGE', 'status', 'BACKLOG')
-      .setProperty('campaign:TRIAGE', 'type', 'task')
+      .setProperty('campaign:TRIAGE', 'status', 'DONE')
+      .setProperty('campaign:TRIAGE', 'type', 'campaign')
       .addEdge('campaign:TRIAGE', 'roadmap:ROOT', 'belongs-to')
       // TRG-003 was orphaned — add its missing campaign edge
       .addEdge('task:TRG-003', 'campaign:TRIAGE', 'belongs-to');
@@ -98,6 +98,8 @@ async function main() {
     },
   ];
 
+  // Deterministic timestamp: PR #2 merge commit 1f95484 (2026-02-16T02:40:39-08:00)
+  const heartbeatMergeAt = 1771238439000;
   for (const { id, sha, rationale } of heartbeatSeals) {
     const scrollId = `artifact:${id}`;
     await commitPatch(graph, `${id} sealed`, patch => {
@@ -108,7 +110,7 @@ async function main() {
         .setProperty(scrollId, 'type', 'scroll')
         .addEdge(scrollId, id, 'fulfills')
         .setProperty(id, 'status', 'DONE')
-        .setProperty(id, 'completed_at', Date.now());
+        .setProperty(id, 'completed_at', heartbeatMergeAt);
     });
   }
 
@@ -135,6 +137,8 @@ async function main() {
     },
   ];
 
+  // Deterministic timestamp: PR #4 merge commit 71eaf4e (2026-02-16T10:11:33-08:00)
+  const triageMergeAt = 1771265493000;
   for (const { id, sha, rationale } of triageSeals) {
     const scrollId = `artifact:${id}`;
     await commitPatch(graph, `${id} sealed`, patch => {
@@ -145,7 +149,7 @@ async function main() {
         .setProperty(scrollId, 'type', 'scroll')
         .addEdge(scrollId, id, 'fulfills')
         .setProperty(id, 'status', 'DONE')
-        .setProperty(id, 'completed_at', Date.now());
+        .setProperty(id, 'completed_at', triageMergeAt);
     });
   }
 
