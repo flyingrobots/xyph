@@ -4,7 +4,9 @@ import { RoadmapPort } from '../../ports/RoadmapPort.js';
 import { Quest, QuestStatus, QuestType } from '../../domain/entities/Quest.js';
 import { EdgeType } from '../../schema.js';
 
-const VALID_STATUSES: ReadonlySet<string> = new Set(['BACKLOG', 'PLANNED', 'IN_PROGRESS', 'BLOCKED', 'DONE']);
+const VALID_STATUSES: ReadonlySet<string> = new Set([
+  'INBOX', 'BACKLOG', 'PLANNED', 'IN_PROGRESS', 'BLOCKED', 'DONE', 'GRAVEYARD',
+]);
 const VALID_TYPES: ReadonlySet<string> = new Set(['task', 'scroll', 'milestone', 'campaign', 'roadmap']);
 
 export class WarpRoadmapAdapter implements RoadmapPort {

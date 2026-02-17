@@ -20,23 +20,71 @@ export class IngestService {
       if (match) {
         const [, , id, title, hours, _campaign] = match as [string, string, string, string, string?, string?];
 
-        const trimmedTitle = title.trim();
-        const idPrefix = id.split(':')[0] || '';
-        if (!['task', 'scroll', 'milestone'].includes(idPrefix) || trimmedTitle.length < 5) continue;
+                const trimmedTitle = title.trim();
 
-        const isCompleted = line.match(/^- \[([xX])\]/)?.[1] !== undefined;
+                const idPrefix = id.split(':')[0] || '';
 
-        const props: QuestProps = {
-          id,
-          title: trimmedTitle,
-          status: isCompleted ? 'DONE' : 'BACKLOG',
-          hours: hours ? parseFloat(hours) : 0,
-          type: idPrefix as QuestType
-        };
+                const isCompleted = line.match(/^- \[([xX])\]/)?.[1] !== undefined;
 
-        quests.push(new Quest(props));
-      }
-    }
+        
+
+                        const props: QuestProps = {
+
+        
+
+                          id,
+
+        
+
+                          title: trimmedTitle,
+
+        
+
+                          status: isCompleted ? 'DONE' : 'BACKLOG',
+
+        
+
+                          hours: hours ? parseFloat(hours) : 0,
+
+        
+
+                          type: idPrefix as QuestType
+
+        
+
+                        };
+
+        
+
+                
+
+        
+
+                        // We use Object.create to bypass constructor validation during ingestion
+
+        
+
+                        // so that the NormalizeService.validate phase can catch it later.
+
+        
+
+                        const quest = Object.create(Quest.prototype);
+
+        
+
+                        Object.assign(quest, props);
+
+        
+
+                        quests.push(quest);
+
+        
+
+                      }
+
+        
+
+                    }
 
     return quests;
   }

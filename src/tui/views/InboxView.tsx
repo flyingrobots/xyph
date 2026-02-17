@@ -1,0 +1,413 @@
+import React, { useState, useEffect } from 'react';
+import { Box, Text, useInput, useStdout, type Key } from 'ink';
+import type { GraphSnapshot, QuestNode } from '../../domain/models/dashboard.js';
+import type { IntakePort } from '../../ports/IntakePort.js';
+
+const DETAIL_LINES = 10;
+const CHROME_LINES = 3;
+
+type ModalState =
+  | null
+  | { kind: 'select-intent'; intentIdx: number }
+  | { kind: 'rationale'; buffer: string }
+  | { kind: 'mutating'; action: string }
+  | { kind: 'error'; message: string };
+
+type VRow =
+  | { kind: 'header'; label: string }
+  | { kind: 'quest'; quest: QuestNode; flatIdx: number };
+
+interface Props {
+  snapshot: GraphSnapshot;
+  isActive: boolean;
+  intake: IntakePort;
+  agentId: string;
+  onMutationStart: () => void;
+  onMutationEnd: () => void;
+  onRefresh: () => void;
+}
+
+function parseErrorMessage(err: unknown): { code: string | null; message: string } {
+  const raw = err instanceof Error ? err.message : String(err);
+  const match = /^\[(\w+)\]\s*(.+)/.exec(raw);
+  if (match !== null) {
+    return { code: match[1] ?? null, message: match[2] ?? raw };
+  }
+  return { code: null, message: raw };
+}
+
+export function InboxView({
+  snapshot,
+  isActive,
+  intake,
+  agentId,
+  onMutationStart,
+  onMutationEnd,
+  onRefresh,
+}: Props): React.ReactElement {
+  const { stdout } = useStdout();
+  const listHeight = Math.max(4, (stdout.rows ?? 24) - DETAIL_LINES - CHROME_LINES);
+
+  const [selectedIdx, setSelectedIdx] = useState(0);
+  const [scrollOffset, setScrollOffset] = useState(0);
+  const [modal, setModal] = useState<ModalState>(null);
+
+  const inbox = snapshot.quests.filter((q) => q.status === 'INBOX');
+  const intents = snapshot.intents;
+
+  // Group by suggestedBy
+  const suggesterOrder: string[] = [];
+  const grouped = new Map<string, QuestNode[]>();
+  for (const q of inbox) {
+    const key = q.suggestedBy ?? '(unknown suggester)';
+    if (!grouped.has(key)) {
+      suggesterOrder.push(key);
+      grouped.set(key, []);
+    }
+    grouped.get(key)?.push(q);
+  }
+
+  const vrows: VRow[] = [];
+  const flatQuests: QuestNode[] = [];
+  for (const key of suggesterOrder) {
+    vrows.push({ kind: 'header', label: key });
+    for (const q of grouped.get(key) ?? []) {
+      vrows.push({ kind: 'quest', quest: q, flatIdx: flatQuests.length });
+      flatQuests.push(q);
+    }
+  }
+
+  const totalQuests = flatQuests.length;
+
+  useEffect(() => {
+    setSelectedIdx((prev) =>
+      totalQuests === 0 ? 0 : Math.min(prev, totalQuests - 1)
+    );
+    setScrollOffset((prev) =>
+      Math.min(prev, Math.max(0, vrows.length - listHeight))
+    );
+  }, [totalQuests, vrows.length, listHeight]);
+
+  const clampedIdx = totalQuests === 0 ? 0 : Math.min(selectedIdx, totalQuests - 1);
+  const clampedOffset = Math.min(scrollOffset, Math.max(0, vrows.length - listHeight));
+
+  function moveSelection(delta: number): void {
+    if (totalQuests === 0) return;
+    const next = Math.max(0, Math.min(totalQuests - 1, clampedIdx + delta));
+    const vIdx = vrows.findIndex((r) => r.kind === 'quest' && r.flatIdx === next);
+    if (vIdx >= 0) {
+      if (vIdx < clampedOffset) {
+        setScrollOffset(vIdx);
+      } else if (vIdx >= clampedOffset + listHeight) {
+        setScrollOffset(vIdx - listHeight + 1);
+      }
+    }
+    setSelectedIdx(next);
+  }
+
+  function runPromote(questId: string, intentId: string): void {
+    const action = `promote for ${questId}`;
+    setModal({ kind: 'mutating', action });
+    onMutationStart();
+    intake.promote(questId, intentId)
+      .then(() => {
+        onRefresh();
+        setModal(null);
+      })
+      .catch((err: unknown) => {
+        const parsed = parseErrorMessage(err);
+        setModal({ kind: 'error', message: parsed.code !== null ? `[${parsed.code}] ${parsed.message}` : parsed.message });
+      })
+      .finally(() => {
+        onMutationEnd();
+      });
+  }
+
+  function runReject(questId: string, rationale: string): void {
+    const action = `reject for ${questId}`;
+    setModal({ kind: 'mutating', action });
+    onMutationStart();
+    intake.reject(questId, rationale)
+      .then(() => {
+        onRefresh();
+        setModal(null);
+      })
+      .catch((err: unknown) => {
+        const parsed = parseErrorMessage(err);
+        setModal({ kind: 'error', message: parsed.code !== null ? `[${parsed.code}] ${parsed.message}` : parsed.message });
+      })
+      .finally(() => {
+        onMutationEnd();
+      });
+  }
+
+  useInput((input: string, key: Key) => {
+    // Error modal: any key closes it
+    if (modal?.kind === 'error') {
+      setModal(null);
+      return;
+    }
+
+    // Mutating: ignore all keypresses (idempotency gate)
+    if (modal?.kind === 'mutating') {
+      return;
+    }
+
+    // Select-intent modal
+    if (modal?.kind === 'select-intent') {
+      if (key.upArrow) {
+        setModal({ kind: 'select-intent', intentIdx: Math.max(0, modal.intentIdx - 1) });
+        return;
+      }
+      if (key.downArrow) {
+        setModal({ kind: 'select-intent', intentIdx: Math.min(intents.length - 1, modal.intentIdx + 1) });
+        return;
+      }
+      if (key.return) {
+        const selectedIntent = intents[modal.intentIdx];
+        const selectedQuest = flatQuests[clampedIdx];
+        if (selectedIntent !== undefined && selectedQuest !== undefined) {
+          runPromote(selectedQuest.id, selectedIntent.id);
+        }
+        return;
+      }
+      if (key.escape) {
+        setModal(null);
+        return;
+      }
+      return;
+    }
+
+    // Rationale modal
+    if (modal?.kind === 'rationale') {
+      if (key.escape) {
+        setModal(null);
+        return;
+      }
+      if (key.return) {
+        if (modal.buffer.trim().length > 0) {
+          const selectedQuest = flatQuests[clampedIdx];
+          if (selectedQuest !== undefined) {
+            runReject(selectedQuest.id, modal.buffer.trim());
+          }
+        }
+        return;
+      }
+      if (key.backspace || key.delete) {
+        setModal({ kind: 'rationale', buffer: modal.buffer.slice(0, -1) });
+        return;
+      }
+      // Printable chars
+      if (input.length > 0 && !key.ctrl && !key.meta) {
+        setModal({ kind: 'rationale', buffer: modal.buffer + input });
+        return;
+      }
+      return;
+    }
+
+    // Normal navigation (modal === null)
+    if (key.upArrow) {
+      moveSelection(-1);
+      return;
+    }
+    if (key.downArrow) {
+      moveSelection(1);
+      return;
+    }
+
+    if (input === 'p') {
+      if (!agentId.startsWith('human.')) {
+        setModal({ kind: 'error', message: `[FORBIDDEN] requires human.* agent ID, got: '${agentId}'` });
+        return;
+      }
+      if (intents.length === 0) {
+        setModal({ kind: 'error', message: 'No sovereign intents found in snapshot' });
+        return;
+      }
+      setModal({ kind: 'select-intent', intentIdx: 0 });
+      return;
+    }
+
+    if (input === 'x') {
+      setModal({ kind: 'rationale', buffer: '' });
+      return;
+    }
+  }, { isActive });
+
+  const selectedQuest: QuestNode | null = flatQuests[clampedIdx] ?? null;
+
+  // Render modals
+  if (modal?.kind === 'select-intent') {
+    return (
+      <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1}>
+        <Text bold color="cyan">
+          Promote: {selectedQuest?.id ?? '—'} to BACKLOG
+        </Text>
+        <Text>Select Sovereign Intent (↑↓ Enter)</Text>
+        <Box flexDirection="column" marginTop={1}>
+          {intents.map((intent, i) => (
+            <Box key={intent.id}>
+              <Text color={i === modal.intentIdx ? 'cyan' : undefined}>
+                {i === modal.intentIdx ? '▶ ' : '  '}
+              </Text>
+              <Text bold={i === modal.intentIdx} color={i === modal.intentIdx ? undefined : 'gray'}>
+                {intent.id.slice(0, 24).padEnd(26)}
+              </Text>
+              <Text dimColor={i !== modal.intentIdx}>{intent.title.slice(0, 40)}</Text>
+            </Box>
+          ))}
+        </Box>
+        <Box marginTop={1}>
+          <Text dimColor>Esc to cancel</Text>
+        </Box>
+      </Box>
+    );
+  }
+
+  if (modal?.kind === 'rationale') {
+    return (
+      <Box flexDirection="column" borderStyle="round" borderColor="yellow" paddingX={1}>
+        <Text bold color="yellow">Reject: {selectedQuest?.id ?? '—'}</Text>
+        <Text>Rejection rationale:</Text>
+        <Box marginTop={1}>
+          <Text>{`> ${modal.buffer}_`}</Text>
+        </Box>
+        <Box marginTop={1}>
+          <Text dimColor>Enter to confirm · Esc to cancel</Text>
+        </Box>
+      </Box>
+    );
+  }
+
+  if (modal?.kind === 'mutating') {
+    return (
+      <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1}>
+        <Text color="cyan">Applying {modal.action}…</Text>
+      </Box>
+    );
+  }
+
+  if (modal?.kind === 'error') {
+    const parsed = parseErrorMessage(modal.message);
+    return (
+      <Box flexDirection="column" borderStyle="round" borderColor="red" paddingX={1}>
+        <Box>
+          {parsed.code !== null
+            ? <><Text color="red">[{parsed.code}]</Text><Text> {parsed.message}</Text></>
+            : <Text color="red">{modal.message}</Text>
+          }
+        </Box>
+        <Box marginTop={1}>
+          <Text dimColor>Any key to dismiss</Text>
+        </Box>
+      </Box>
+    );
+  }
+
+  if (totalQuests === 0) {
+    return (
+      <Box flexDirection="column">
+        <Text bold color="magenta">INBOX</Text>
+        <Text dimColor>No tasks awaiting triage.</Text>
+        <Text dimColor>Add one: xyph-actuator inbox task:ID --title {'<text>'} --suggested-by {'<principal>'}</Text>
+        <Box borderStyle="round" borderColor="gray" marginTop={1} paddingX={1}>
+          <Text dimColor>(no task selected)</Text>
+        </Box>
+      </Box>
+    );
+  }
+
+  const visibleRows = vrows.slice(clampedOffset, clampedOffset + listHeight);
+
+  return (
+    <Box flexDirection="column">
+      <Box flexDirection="column">
+        {visibleRows.map((row, i) => {
+          if (row.kind === 'header') {
+            return (
+              <Box key={`h-${row.label}`} marginTop={i > 0 ? 1 : 0}>
+                <Text bold color="magenta">{row.label}</Text>
+              </Box>
+            );
+          }
+          const q = row.quest;
+          const isSelected = row.flatIdx === clampedIdx;
+          const hasHistory = q.rejectionRationale !== undefined;
+          return (
+            <Box key={q.id}>
+              <Text color={isSelected ? 'cyan' : 'gray'}>{isSelected ? '▶ ' : '  '}</Text>
+              <Text bold={isSelected} color={isSelected ? undefined : 'gray'}>
+                {q.id.slice(0, 16).padEnd(18)}
+              </Text>
+              <Text bold={isSelected}>{q.title.slice(0, 40).padEnd(42)}</Text>
+              <Text dimColor>{String(q.hours).padStart(3)}h</Text>
+              {hasHistory && <Text color="yellow">  ↩ reopened</Text>}
+            </Box>
+          );
+        })}
+      </Box>
+
+      <Text dimColor>
+        {'  quest '}
+        {clampedIdx + 1}/{totalQuests}
+        {vrows.length > listHeight
+          ? `  rows ${clampedOffset + 1}–${Math.min(clampedOffset + listHeight, vrows.length)}/${vrows.length}  ↑↓`
+          : '  ↑↓'}
+        {'  p: promote  x: reject  (requires human.* XYPH_AGENT_ID)'}
+      </Text>
+
+      {selectedQuest !== null && (
+        <Box
+          flexDirection="column"
+          borderStyle="round"
+          borderColor="magenta"
+          marginTop={1}
+          paddingX={1}
+        >
+          <Box>
+            <Text bold color="magenta">{selectedQuest.id}{'  '}</Text>
+            <Text bold>{selectedQuest.title}</Text>
+          </Box>
+          <Box marginTop={1}>
+            <Text dimColor>Hours     </Text>
+            <Text>{selectedQuest.hours}h</Text>
+          </Box>
+          {selectedQuest.suggestedBy !== undefined && (
+            <Box>
+              <Text dimColor>Suggested </Text>
+              <Text color="magenta">{selectedQuest.suggestedBy}</Text>
+              {selectedQuest.suggestedAt !== undefined && (
+                <Text dimColor>  {new Date(selectedQuest.suggestedAt).toISOString()}</Text>
+              )}
+            </Box>
+          )}
+          {selectedQuest.rejectionRationale !== undefined && (
+            <Box flexDirection="column" marginTop={1}>
+              <Text color="yellow">↩ Previously rejected</Text>
+              <Box>
+                <Text dimColor>By        </Text>
+                <Text dimColor>{selectedQuest.rejectedBy ?? '—'}</Text>
+                {selectedQuest.rejectedAt !== undefined && (
+                  <Text dimColor>  {new Date(selectedQuest.rejectedAt).toISOString()}</Text>
+                )}
+              </Box>
+              <Box>
+                <Text dimColor>Rationale </Text>
+                <Text dimColor>{selectedQuest.rejectionRationale}</Text>
+              </Box>
+            </Box>
+          )}
+          {selectedQuest.reopenedBy !== undefined && (
+            <Box>
+              <Text dimColor>Reopened  </Text>
+              <Text dimColor>{selectedQuest.reopenedBy}</Text>
+              {selectedQuest.reopenedAt !== undefined && (
+                <Text dimColor>  {new Date(selectedQuest.reopenedAt).toISOString()}</Text>
+              )}
+            </Box>
+          )}
+        </Box>
+      )}
+    </Box>
+  );
+}

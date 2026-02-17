@@ -1,6 +1,8 @@
 import { RoadmapPort } from '../../ports/RoadmapPort.js';
 import { IngestService } from './IngestService.js';
 import { NormalizeService } from './NormalizeService.js';
+import { TriageService } from './TriageService.js';
+import { RebalanceService } from './RebalanceService.js';
 import { Quest } from '../entities/Quest.js';
 import chalk from 'chalk';
 
@@ -13,31 +15,51 @@ export class CoordinatorService {
     private readonly roadmap: RoadmapPort,
     private readonly agentId: string,
     private readonly ingest: IngestService,
-    private readonly normalize: NormalizeService
+    private readonly normalize: NormalizeService,
+    private readonly triage: TriageService = new TriageService(roadmap),
+    private readonly rebalance: RebalanceService = new RebalanceService()
   ) {}
 
   /**
    * Orchestrates the full pipeline from raw input to roadmap mutation.
+   * @param rawInput Raw markdown input
+   * @param contextHash BLAKE3 hash of the originating NL prompt/intent (optional)
    */
-  public async orchestrate(rawInput: string): Promise<void> {
+  public async orchestrate(rawInput: string, contextHash?: string): Promise<void> {
     console.log(chalk.magenta(`[${new Date().toISOString()}] Orchestration started by ${this.agentId}`));
 
     // Phase 1: Ingest
-    const rawQuests = this.ingest.ingestMarkdown(rawInput);
-    if (rawQuests.length === 0) {
+    let quests = this.ingest.ingestMarkdown(rawInput);
+    if (quests.length === 0) {
       console.warn(chalk.yellow(`[${this.agentId}] No quests parsed from input (${rawInput.length} chars)`));
       return;
     }
 
     // Phase 2: Normalize & Validate
-    const quests = this.normalize.normalize(rawQuests);
+    quests = this.normalize.normalize(quests);
     const validation = this.normalize.validate(quests);
 
     if (!validation.valid) {
       throw new Error(`Orchestration failed validation: ${validation.errors.join(', ')}`);
     }
 
-    // Phase 6: Emit (Simplified for now - upserting directly)
+    // Phase 3: Triage (Genealogy of Intent)
+    if (contextHash) {
+      console.log(chalk.blue(`[${this.agentId}] Linking ${quests.length} quests to origin context ${contextHash}`));
+      quests = quests.map(q => new Quest({
+        ...q,
+        originContext: contextHash
+      }));
+    }
+
+    // Phase 4: Rebalance (Constraint Checking)
+    // For now, we group all quests into a single 'default' campaign for rebalancing
+    const balance = this.rebalance.validateCampaign('campaign:default', quests);
+    if (!balance.valid) {
+      throw new Error(`Orchestration failed rebalance: ${balance.error}`);
+    }
+
+    // Phase 6: Emit
     const results: Array<{ questId: string; success: boolean; error?: string }> = [];
     for (const quest of quests) {
       try {

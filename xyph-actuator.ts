@@ -261,6 +261,191 @@ program
     }
   });
 
+// --- INTAKE COMMANDS ---
+
+program
+  .command('inbox <id>')
+  .description('Suggest a task for triage — adds to INBOX with provenance tracking')
+  .requiredOption('--title <text>', 'Task description')
+  .requiredOption('--suggested-by <principal>', 'Who is suggesting this task (human.* or agent.*)')
+  .option('--hours <number>', 'Estimated hours', parseHours)
+  .action(async (id: string, opts: { title: string; suggestedBy: string; hours?: number }) => {
+    try {
+      if (!id.startsWith('task:')) {
+        console.error(chalk.red(`[ERROR] Task ID must start with 'task:', got: '${id}'`));
+        process.exit(1);
+      }
+      if (opts.title.length < 5) {
+        console.error(chalk.red(`[ERROR] --title must be at least 5 characters`));
+        process.exit(1);
+      }
+
+      const graph = await getGraph();
+      const patch = await createPatch(graph);
+      const now = Date.now();
+
+      patch.addNode(id)
+        .setProperty(id, 'title', opts.title)
+        .setProperty(id, 'status', 'INBOX')
+        .setProperty(id, 'hours', opts.hours ?? 0)
+        .setProperty(id, 'type', 'task')
+        .setProperty(id, 'suggested_by', opts.suggestedBy)
+        .setProperty(id, 'suggested_at', now);
+
+      const sha = await patch.commit();
+      console.log(chalk.green(`[OK] Task ${id} added to INBOX.`));
+      console.log(chalk.dim(`  Suggested by: ${opts.suggestedBy}`));
+      console.log(chalk.dim(`  Patch: ${sha}`));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(chalk.red(`[ERROR] ${msg}`));
+      process.exit(1);
+    }
+  });
+
+program
+  .command('promote <id>')
+  .description('Promote an INBOX task to BACKLOG — human authority + sovereign intent required')
+  .requiredOption('--intent <id>', 'Sovereign Intent ID (intent:* prefix)')
+  .option('--campaign <id>', 'Campaign to assign (optional, assignable later)')
+  .action(async (id: string, opts: { intent: string; campaign?: string }) => {
+    try {
+      const agentId = process.env['XYPH_AGENT_ID'] ?? DEFAULT_AGENT_ID;
+      const { IntakeService } = await import('./src/domain/services/IntakeService.js');
+      const { WarpRoadmapAdapter } = await import('./src/infrastructure/adapters/WarpRoadmapAdapter.js');
+
+      const adapter = new WarpRoadmapAdapter(process.cwd(), 'xyph-roadmap', agentId);
+      const intakeService = new IntakeService(adapter);
+      await intakeService.validatePromote(id, agentId, opts.intent);
+
+      const graph = await getGraph();
+      const patch = await createPatch(graph);
+
+      // Atomic: status + authorized-by edge (+ optional campaign) in one patch
+      patch.setProperty(id, 'status', 'BACKLOG')
+           .addEdge(id, opts.intent, 'authorized-by');
+
+      if (opts.campaign !== undefined) {
+        patch.addEdge(id, opts.campaign, 'belongs-to');
+      }
+
+      const sha = await patch.commit();
+      console.log(chalk.green(`[OK] Task ${id} promoted to BACKLOG.`));
+      console.log(chalk.dim(`  Intent:   ${opts.intent}`));
+      if (opts.campaign !== undefined) console.log(chalk.dim(`  Campaign: ${opts.campaign}`));
+      console.log(chalk.dim(`  Patch: ${sha}`));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(chalk.red(`[ERROR] ${msg}`));
+      process.exit(1);
+    }
+  });
+
+program
+  .command('reject <id>')
+  .description('Reject an INBOX task to GRAVEYARD — rationale required')
+  .requiredOption('--rationale <text>', 'Reason for rejection (non-empty)')
+  .action(async (id: string, opts: { rationale: string }) => {
+    try {
+      const agentId = process.env['XYPH_AGENT_ID'] ?? DEFAULT_AGENT_ID;
+      const { IntakeService } = await import('./src/domain/services/IntakeService.js');
+      const { WarpRoadmapAdapter } = await import('./src/infrastructure/adapters/WarpRoadmapAdapter.js');
+
+      const adapter = new WarpRoadmapAdapter(process.cwd(), 'xyph-roadmap', agentId);
+      const intakeService = new IntakeService(adapter);
+      await intakeService.validateReject(id, opts.rationale);
+
+      const graph = await getGraph();
+      const patch = await createPatch(graph);
+      const now = Date.now();
+
+      patch.setProperty(id, 'status', 'GRAVEYARD')
+           .setProperty(id, 'rejected_by', agentId)
+           .setProperty(id, 'rejected_at', now)
+           .setProperty(id, 'rejection_rationale', opts.rationale);
+
+      const sha = await patch.commit();
+      console.log(chalk.green(`[OK] Task ${id} moved to GRAVEYARD.`));
+      console.log(chalk.dim(`  Rejected by: ${agentId}`));
+      console.log(chalk.dim(`  Rationale:   ${opts.rationale}`));
+      console.log(chalk.dim(`  Patch: ${sha}`));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(chalk.red(`[ERROR] ${msg}`));
+      process.exit(1);
+    }
+  });
+
+program
+  .command('reopen <id>')
+  .description('Reopen a GRAVEYARD task back to INBOX — human authority required, history preserved')
+  .action(async (id: string) => {
+    try {
+      const agentId = process.env['XYPH_AGENT_ID'] ?? DEFAULT_AGENT_ID;
+      const { IntakeService } = await import('./src/domain/services/IntakeService.js');
+      const { WarpRoadmapAdapter } = await import('./src/infrastructure/adapters/WarpRoadmapAdapter.js');
+
+      const adapter = new WarpRoadmapAdapter(process.cwd(), 'xyph-roadmap', agentId);
+      const intakeService = new IntakeService(adapter);
+      await intakeService.validateReopen(id, agentId);
+
+      const graph = await getGraph();
+      const patch = await createPatch(graph);
+      const now = Date.now();
+
+      // Preserve rejection history — only update status and append reopen provenance
+      patch.setProperty(id, 'status', 'INBOX')
+           .setProperty(id, 'reopened_by', agentId)
+           .setProperty(id, 'reopened_at', now);
+
+      const sha = await patch.commit();
+      console.log(chalk.green(`[OK] Task ${id} reopened to INBOX.`));
+      console.log(chalk.dim(`  Reopened by: ${agentId}`));
+      console.log(chalk.dim(`  Note: rejection history preserved in graph.`));
+      console.log(chalk.dim(`  Patch: ${sha}`));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(chalk.red(`[ERROR] ${msg}`));
+      process.exit(1);
+    }
+  });
+
+// --- DASHBOARD COMMANDS ---
+
+program
+  .command('status')
+  .description('Show a snapshot of the WARP graph')
+  .option('--view <name>', 'roadmap | lineage | all | inbox', 'roadmap')
+  .option('--include-graveyard', 'include GRAVEYARD tasks in output (excluded by default)')
+  .action(async (opts: { view: string; includeGraveyard?: boolean }) => {
+    try {
+      const agentId = process.env['XYPH_AGENT_ID'] ?? DEFAULT_AGENT_ID;
+      const { WarpDashboardAdapter } = await import('./src/infrastructure/adapters/WarpDashboardAdapter.js');
+      const { DashboardService } = await import('./src/domain/services/DashboardService.js');
+      const { renderRoadmap, renderLineage, renderAll, renderInbox } = await import('./src/tui/render-status.js');
+
+      const adapter = new WarpDashboardAdapter(process.cwd(), agentId);
+      const service = new DashboardService(adapter);
+      const raw = await service.getSnapshot();
+      const snapshot = service.filterSnapshot(raw, { includeGraveyard: opts.includeGraveyard ?? false });
+
+      const view = opts.view;
+      if (view === 'lineage') {
+        console.log(renderLineage(snapshot));
+      } else if (view === 'all') {
+        console.log(renderAll(snapshot));
+      } else if (view === 'inbox') {
+        console.log(renderInbox(snapshot));
+      } else {
+        console.log(renderRoadmap(snapshot));
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(chalk.red(`[ERROR] ${msg}`));
+      process.exit(1);
+    }
+  });
+
 program
   .command('audit-sovereignty')
   .description('Audit all BACKLOG quests for missing Genealogy of Intent (Constitution Art. IV)')

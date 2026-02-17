@@ -3,7 +3,14 @@
  * Pure domain representation of a unit of work in the Digital Guild.
  */
 
-export type QuestStatus = 'BACKLOG' | 'PLANNED' | 'IN_PROGRESS' | 'BLOCKED' | 'DONE';
+export type QuestStatus =
+  | 'INBOX'
+  | 'BACKLOG'
+  | 'PLANNED'
+  | 'IN_PROGRESS'
+  | 'BLOCKED'
+  | 'DONE'
+  | 'GRAVEYARD';
 export type QuestType = 'task' | 'scroll' | 'milestone' | 'campaign' | 'roadmap';
 
 export interface QuestProps {

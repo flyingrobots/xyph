@@ -2,6 +2,23 @@
 
 All notable changes to XYPH will be documented in this file.
 
+## [1.0.0-alpha.4] - 2026-02-17
+
+### Added — POWERLEVEL™ Refactor: Genealogy of Intent Activation
+
+**Full Orchestration Pipeline (PL-001)**
+- Integrated `TriageService` and `RebalanceService` into the `CoordinatorService` heartbeat and orchestration flow.
+- The `orchestrate` method now accepts an optional `contextHash` (BLAKE3) to link mutations back to their originating human intent.
+- Every quest produced in a batch now passes through the `RebalanceService` for campaign-level resource constraint checking (160h limit).
+
+**Structured Ingestion (PL-002)**
+- Refactored `IngestService` to defer entity validation to the `NormalizeService` phase.
+- Replaced "Silent Failure" (regex `continue` on invalid fields) with a permissive factory that allows the validation layer to provide structured error feedback.
+- Bypassed `Quest` constructor validation during raw ingestion using `Object.create(Quest.prototype)` to allow the full pipeline to report all violations at once.
+
+**Verification (PL-003)**
+- Added `test/unit/CoordinatorService.POWERLEVEL.test.ts`: A high-fidelity test suite covering the Golden Path (Intent Linking), failure modes (Rebalance/Validation), and stress scenarios (Swarm orchestration).
+
 ## [1.0.0-alpha.3] - 2026-02-17
 
 ### Added — Milestone 4: SOVEREIGNTY
