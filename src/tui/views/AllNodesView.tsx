@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Box, Text, useInput, useStdout, type Key } from 'ink';
 import type { GraphSnapshot } from '../../domain/models/dashboard.js';
 
-const CHROME_LINES = 2; // tab bar + scroll indicator
+const CHROME_LINES = 3; // tab bar + marginBottom + scroll indicator
 
 const STATUS_COLOR: Record<string, string> = {
   DONE: 'green',
@@ -18,6 +18,7 @@ const STATUS_COLOR: Record<string, string> = {
 type StatusColor = 'green' | 'cyan' | 'gray' | 'red' | 'yellow' | 'white';
 
 type VRow =
+  | { kind: 'spacer' }
   | { kind: 'header'; label: string }
   | { kind: 'campaign'; id: string; title: string; status: string }
   | { kind: 'intent'; id: string; title: string; requestedBy: string }
@@ -35,53 +36,61 @@ function StatusText({ status }: { status: string }): React.ReactElement {
   return <Text color={color}>{status}</Text>;
 }
 
+function buildRows(snapshot: GraphSnapshot): VRow[] {
+  const rows: VRow[] = [];
+  let first = true;
+
+  function pushSection(label: string, items: VRow[]): void {
+    if (!first) rows.push({ kind: 'spacer' });
+    first = false;
+    rows.push({ kind: 'header', label });
+    for (const item of items) rows.push(item);
+  }
+
+  if (snapshot.campaigns.length > 0) {
+    pushSection(`Campaigns / Milestones  ${snapshot.campaigns.length}`, snapshot.campaigns.map(c => ({
+      kind: 'campaign' as const, id: c.id, title: c.title, status: c.status,
+    })));
+  }
+
+  if (snapshot.intents.length > 0) {
+    pushSection(`Intents  ${snapshot.intents.length}`, snapshot.intents.map(intent => ({
+      kind: 'intent' as const, id: intent.id, title: intent.title, requestedBy: intent.requestedBy,
+    })));
+  }
+
+  if (snapshot.quests.length > 0) {
+    pushSection(`Quests  ${snapshot.quests.length}`, snapshot.quests.map(q => ({
+      kind: 'quest' as const, id: q.id, title: q.title, status: q.status, hours: q.hours, hasScroll: q.scrollId !== undefined,
+    })));
+  }
+
+  if (snapshot.scrolls.length > 0) {
+    pushSection(`Scrolls  ${snapshot.scrolls.length}`, snapshot.scrolls.map(s => ({
+      kind: 'scroll' as const, id: s.id, questId: s.questId, sealedBy: s.sealedBy, hasSeal: s.hasSeal,
+    })));
+  }
+
+  if (snapshot.approvals.length > 0) {
+    pushSection(`Approval Gates  ${snapshot.approvals.length}`, snapshot.approvals.map(a => ({
+      kind: 'approval' as const, id: a.id, status: a.status, trigger: a.trigger, approver: a.approver,
+    })));
+  }
+
+  return rows;
+}
+
 export function AllNodesView({ snapshot, isActive }: Props): React.ReactElement {
   const { stdout } = useStdout();
   const listHeight = Math.max(4, (stdout.rows ?? 24) - CHROME_LINES);
   const [scrollOffset, setScrollOffset] = useState(0);
 
-  // Build flat virtual row list
-  const vrows: VRow[] = [];
-
-  if (snapshot.campaigns.length > 0) {
-    vrows.push({ kind: 'header', label: `Campaigns / Milestones  ${snapshot.campaigns.length}` });
-    for (const c of snapshot.campaigns) {
-      vrows.push({ kind: 'campaign', id: c.id, title: c.title, status: c.status });
-    }
-  }
-
-  if (snapshot.intents.length > 0) {
-    vrows.push({ kind: 'header', label: `Intents  ${snapshot.intents.length}` });
-    for (const intent of snapshot.intents) {
-      vrows.push({ kind: 'intent', id: intent.id, title: intent.title, requestedBy: intent.requestedBy });
-    }
-  }
-
-  if (snapshot.quests.length > 0) {
-    vrows.push({ kind: 'header', label: `Quests  ${snapshot.quests.length}` });
-    for (const q of snapshot.quests) {
-      vrows.push({ kind: 'quest', id: q.id, title: q.title, status: q.status, hours: q.hours, hasScroll: q.scrollId !== undefined });
-    }
-  }
-
-  if (snapshot.scrolls.length > 0) {
-    vrows.push({ kind: 'header', label: `Scrolls  ${snapshot.scrolls.length}` });
-    for (const s of snapshot.scrolls) {
-      vrows.push({ kind: 'scroll', id: s.id, questId: s.questId, sealedBy: s.sealedBy, hasSeal: s.hasSeal });
-    }
-  }
-
-  if (snapshot.approvals.length > 0) {
-    vrows.push({ kind: 'header', label: `Approval Gates  ${snapshot.approvals.length}` });
-    for (const a of snapshot.approvals) {
-      vrows.push({ kind: 'approval', id: a.id, status: a.status, trigger: a.trigger, approver: a.approver });
-    }
-  }
-
+  const vrows = buildRows(snapshot);
   const total = snapshot.campaigns.length + snapshot.quests.length +
     snapshot.intents.length + snapshot.scrolls.length + snapshot.approvals.length;
 
-  const clampedOffset = Math.min(scrollOffset, Math.max(0, vrows.length - listHeight));
+  const maxOffset = Math.max(0, vrows.length - listHeight);
+  const clampedOffset = Math.min(scrollOffset, maxOffset);
 
   useEffect(() => {
     setScrollOffset(prev => Math.min(prev, Math.max(0, vrows.length - listHeight)));
@@ -102,9 +111,12 @@ export function AllNodesView({ snapshot, isActive }: Props): React.ReactElement 
     <Box flexDirection="column">
       <Box flexDirection="column">
         {visibleRows.map((row, i) => {
+          if (row.kind === 'spacer') {
+            return <Box key={`sp-${i}`}><Text> </Text></Box>;
+          }
           if (row.kind === 'header') {
             return (
-              <Box key={`h-${row.label}`} marginTop={i > 0 ? 1 : 0}>
+              <Box key={`h-${row.label}`}>
                 <Text bold color="green">{row.label}</Text>
               </Box>
             );

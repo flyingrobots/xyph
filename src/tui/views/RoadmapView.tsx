@@ -16,6 +16,7 @@ const STATUS_COLOR: Record<string, string> = {
 type StatusColor = 'green' | 'cyan' | 'gray' | 'red' | 'yellow' | 'white';
 
 type VRow =
+  | { kind: 'spacer' }
   | { kind: 'header'; label: string }
   | { kind: 'quest'; quest: QuestNode; flatIdx: number };
 
@@ -52,6 +53,7 @@ export function RoadmapView({ snapshot, isActive }: Props): React.ReactElement {
   const vrows: VRow[] = [];
   const flatQuests: QuestNode[] = [];
   for (const key of campaignOrder) {
+    if (vrows.length > 0) vrows.push({ kind: 'spacer' });
     vrows.push({ kind: 'header', label: campaignTitle.get(key) ?? key });
     for (const q of grouped.get(key) ?? []) {
       vrows.push({ kind: 'quest', quest: q, flatIdx: flatQuests.length });
@@ -128,9 +130,12 @@ export function RoadmapView({ snapshot, isActive }: Props): React.ReactElement {
       {/* Scrollable quest list */}
       <Box flexDirection="column">
         {visibleRows.map((row, i) => {
+          if (row.kind === 'spacer') {
+            return <Box key={`sp-${i}`}><Text> </Text></Box>;
+          }
           if (row.kind === 'header') {
             return (
-              <Box key={`h-${row.label}`} marginTop={i > 0 ? 1 : 0}>
+              <Box key={`h-${row.label}`}>
                 <Text bold color="blue">
                   {row.label}
                 </Text>

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Box, Text, useInput, useStdout, type Key } from 'ink';
 import type { GraphSnapshot } from '../../domain/models/dashboard.js';
 
-const CHROME_LINES = 2; // tab bar + scroll indicator
+const CHROME_LINES = 3; // tab bar + marginBottom + scroll indicator
 
 const STATUS_COLOR: Record<string, string> = {
   DONE: 'green',
@@ -15,6 +15,7 @@ const STATUS_COLOR: Record<string, string> = {
 type StatusColor = 'green' | 'cyan' | 'gray' | 'red' | 'yellow' | 'white';
 
 type VRow =
+  | { kind: 'spacer' }
   | { kind: 'intent-header'; id: string; title: string }
   | { kind: 'intent-meta'; requestedBy: string }
   | { kind: 'quest'; id: string; title: string; status: string; branch: string; scrollId: string | undefined; sealed: boolean }
@@ -27,12 +28,7 @@ interface Props {
   isActive: boolean;
 }
 
-export function LineageView({ snapshot, isActive }: Props): React.ReactElement {
-  const { stdout } = useStdout();
-  const listHeight = Math.max(4, (stdout.rows ?? 24) - CHROME_LINES);
-  const [scrollOffset, setScrollOffset] = useState(0);
-
-  // Build lookup maps
+function buildRows(snapshot: GraphSnapshot): VRow[] {
   const scrollByQuestId = new Map<string, string>();
   const scrollHasSeal = new Map<string, boolean>();
   for (const s of snapshot.scrolls) {
@@ -50,17 +46,19 @@ export function LineageView({ snapshot, isActive }: Props): React.ReactElement {
   }
 
   const orphans = snapshot.quests.filter((q) => q.intentId === undefined);
-
-  // Flatten tree into virtual rows
-  const vrows: VRow[] = [];
+  const rows: VRow[] = [];
+  let first = true;
 
   for (const intent of snapshot.intents) {
-    vrows.push({ kind: 'intent-header', id: intent.id, title: intent.title });
-    vrows.push({ kind: 'intent-meta', requestedBy: intent.requestedBy });
+    if (!first) rows.push({ kind: 'spacer' });
+    first = false;
+
+    rows.push({ kind: 'intent-header', id: intent.id, title: intent.title });
+    rows.push({ kind: 'intent-meta', requestedBy: intent.requestedBy });
 
     const quests = questsByIntent.get(intent.id) ?? [];
     if (quests.length === 0) {
-      vrows.push({ kind: 'quest', id: '', title: '(no quests)', status: '', branch: '└─', scrollId: undefined, sealed: false });
+      rows.push({ kind: 'quest', id: '', title: '(no quests)', status: '', branch: '└─', scrollId: undefined, sealed: false });
     } else {
       for (let i = 0; i < quests.length; i++) {
         const q = quests[i];
@@ -68,22 +66,33 @@ export function LineageView({ snapshot, isActive }: Props): React.ReactElement {
         const branch = i === quests.length - 1 ? '└─' : '├─';
         const scrollId = scrollByQuestId.get(q.id);
         const sealed = scrollHasSeal.get(q.id) ?? false;
-        vrows.push({ kind: 'quest', id: q.id, title: q.title, status: q.status, branch, scrollId, sealed });
+        rows.push({ kind: 'quest', id: q.id, title: q.title, status: q.status, branch, scrollId, sealed });
         if (scrollId !== undefined) {
-          vrows.push({ kind: 'scroll-sub', scrollId });
+          rows.push({ kind: 'scroll-sub', scrollId });
         }
       }
     }
   }
 
   if (orphans.length > 0) {
-    vrows.push({ kind: 'orphan-header' });
+    if (!first) rows.push({ kind: 'spacer' });
+    rows.push({ kind: 'orphan-header' });
     for (const q of orphans) {
-      vrows.push({ kind: 'orphan', id: q.id, title: q.title });
+      rows.push({ kind: 'orphan', id: q.id, title: q.title });
     }
   }
 
-  const clampedOffset = Math.min(scrollOffset, Math.max(0, vrows.length - listHeight));
+  return rows;
+}
+
+export function LineageView({ snapshot, isActive }: Props): React.ReactElement {
+  const { stdout } = useStdout();
+  const listHeight = Math.max(4, (stdout.rows ?? 24) - CHROME_LINES);
+  const [scrollOffset, setScrollOffset] = useState(0);
+
+  const vrows = buildRows(snapshot);
+  const maxOffset = Math.max(0, vrows.length - listHeight);
+  const clampedOffset = Math.min(scrollOffset, maxOffset);
 
   useEffect(() => {
     setScrollOffset(prev => Math.min(prev, Math.max(0, vrows.length - listHeight)));
@@ -111,9 +120,12 @@ export function LineageView({ snapshot, isActive }: Props): React.ReactElement {
     <Box flexDirection="column">
       <Box flexDirection="column">
         {visibleRows.map((row, i) => {
+          if (row.kind === 'spacer') {
+            return <Box key={`sp-${i}`}><Text> </Text></Box>;
+          }
           if (row.kind === 'intent-header') {
             return (
-              <Box key={`ih-${row.id}`} marginTop={i > 0 ? 1 : 0}>
+              <Box key={`ih-${row.id}`}>
                 <Text bold color="magenta">{'◆ ' + row.id}</Text>
                 <Text dimColor>  {row.title}</Text>
               </Box>
@@ -121,7 +133,7 @@ export function LineageView({ snapshot, isActive }: Props): React.ReactElement {
           }
           if (row.kind === 'intent-meta') {
             return (
-              <Box key={`im-${row.requestedBy}-${i}`}>
+              <Box key={`im-${i}`}>
                 <Text dimColor>  requested-by: {row.requestedBy}</Text>
               </Box>
             );
@@ -158,12 +170,11 @@ export function LineageView({ snapshot, isActive }: Props): React.ReactElement {
           }
           if (row.kind === 'orphan-header') {
             return (
-              <Box key="orphan-header" marginTop={i > 0 ? 1 : 0}>
+              <Box key="orphan-header">
                 <Text bold color="red">⚠ Orphan quests (sovereignty violation)</Text>
               </Box>
             );
           }
-          // orphan
           return (
             <Box key={`o-${row.id}`} marginLeft={2}>
               <Text dimColor>└─ {row.id}  </Text>

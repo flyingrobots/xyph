@@ -14,6 +14,7 @@ type ModalState =
   | { kind: 'error'; message: string };
 
 type VRow =
+  | { kind: 'spacer' }
   | { kind: 'header'; label: string }
   | { kind: 'quest'; quest: QuestNode; flatIdx: number };
 
@@ -70,6 +71,7 @@ export function InboxView({
   const vrows: VRow[] = [];
   const flatQuests: QuestNode[] = [];
   for (const key of suggesterOrder) {
+    if (vrows.length > 0) vrows.push({ kind: 'spacer' });
     vrows.push({ kind: 'header', label: key });
     for (const q of grouped.get(key) ?? []) {
       vrows.push({ kind: 'quest', quest: q, flatIdx: flatQuests.length });
@@ -323,9 +325,12 @@ export function InboxView({
     <Box flexDirection="column">
       <Box flexDirection="column">
         {visibleRows.map((row, i) => {
+          if (row.kind === 'spacer') {
+            return <Box key={`sp-${i}`}><Text> </Text></Box>;
+          }
           if (row.kind === 'header') {
             return (
-              <Box key={`h-${row.label}`} marginTop={i > 0 ? 1 : 0}>
+              <Box key={`h-${row.label}`}>
                 <Text bold color="magenta">{row.label}</Text>
               </Box>
             );
