@@ -191,22 +191,69 @@ program
   .requiredOption('--rationale <text>', 'Brief explanation of the solution')
   .action(async (id: string, opts: { artifact: string; rationale: string }) => {
     try {
+      const agentId = process.env['XYPH_AGENT_ID'] || DEFAULT_AGENT_ID;
+      const { GuildSealService } = await import('./src/domain/services/GuildSealService.js');
+      const sealService = new GuildSealService();
+
+      const now = Date.now();
+      const scrollPayload = {
+        artifactHash: opts.artifact,
+        questId: id,
+        rationale: opts.rationale,
+        sealedBy: agentId,
+        sealedAt: now,
+      };
+
+      const guildSeal = await sealService.sign(scrollPayload, agentId);
+
       const graph = await getGraph();
       const patch = await createPatch(graph);
-
       const scrollId = `artifact:${id}`;
 
       patch.addNode(scrollId)
         .setProperty(scrollId, 'artifact_hash', opts.artifact)
         .setProperty(scrollId, 'rationale', opts.rationale)
         .setProperty(scrollId, 'type', 'scroll')
+        .setProperty(scrollId, 'sealed_by', agentId)
+        .setProperty(scrollId, 'sealed_at', now)
+        .setProperty(scrollId, 'payload_digest', sealService.payloadDigest(scrollPayload))
         .addEdge(scrollId, id, 'fulfills');
 
+      if (guildSeal) {
+        patch.setProperty(scrollId, 'guild_seal_alg', guildSeal.alg)
+             .setProperty(scrollId, 'guild_seal_key_id', guildSeal.keyId)
+             .setProperty(scrollId, 'guild_seal_sig', guildSeal.sig);
+        console.log(chalk.dim(`  Guild Seal: ${guildSeal.keyId}`));
+      } else {
+        console.log(chalk.yellow(`  [WARN] No private key found for ${agentId} — scroll is unsigned. Run: xyph-actuator generate-key`));
+      }
+
       patch.setProperty(id, 'status', 'DONE')
-           .setProperty(id, 'completed_at', Date.now());
+           .setProperty(id, 'completed_at', now);
 
       const sha = await patch.commit();
       console.log(chalk.green(`[OK] Quest ${id} sealed. Scroll: ${scrollId}. Patch: ${sha}`));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(chalk.red(`[ERROR] ${msg}`));
+      process.exit(1);
+    }
+  });
+
+program
+  .command('generate-key')
+  .description('Generate an Ed25519 Guild Seal keypair for this agent')
+  .action(async () => {
+    try {
+      const agentId = process.env['XYPH_AGENT_ID'] || DEFAULT_AGENT_ID;
+      const { GuildSealService } = await import('./src/domain/services/GuildSealService.js');
+      const sealService = new GuildSealService();
+
+      const { keyId, publicKeyHex } = await sealService.generateKeypair(agentId);
+      console.log(chalk.green(`[OK] Keypair generated for agent ${agentId}`));
+      console.log(chalk.dim(`  Key ID:     ${keyId}`));
+      console.log(chalk.dim(`  Public key: ${publicKeyHex}`));
+      console.log(chalk.dim(`  Private key stored in trust/${agentId}.sk (gitignored)`));
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(chalk.red(`[ERROR] ${msg}`));

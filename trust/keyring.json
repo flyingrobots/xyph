@@ -10,6 +10,11 @@
       "keyId": "did:key:z6MkhTestSigner01",
       "alg": "ed25519",
       "publicKeyHex": "2577162074909c27c9c14979f2755816f649bd9ca42f140a37061bef25185375"
+    },
+    {
+      "keyId": "did:key:agent.james",
+      "alg": "ed25519",
+      "publicKeyHex": "03dee5df0ac6c7e82d002ae6c8e525017647ff12f7a11c897c32c7732d9bb992"
     }
   ]
 }
