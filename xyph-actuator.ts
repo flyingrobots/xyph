@@ -55,7 +55,8 @@ program
   .requiredOption('--title <text>', 'Quest title')
   .requiredOption('--campaign <id>', 'Parent Campaign (Milestone) ID')
   .option('--hours <number>', 'Estimated human hours (PERT)', parseHours)
-  .action(async (id: string, opts: { title: string; campaign: string; hours?: number }) => {
+  .option('--intent <id>', 'Sovereign Intent node that authorizes this Quest (intent:* prefix)')
+  .action(async (id: string, opts: { title: string; campaign: string; hours?: number; intent?: string }) => {
     try {
       const graph = await getGraph();
       const patch = await createPatch(graph);
@@ -70,8 +71,65 @@ program
         patch.addEdge(id, opts.campaign, 'belongs-to');
       }
 
+      if (opts.intent) {
+        if (!opts.intent.startsWith('intent:')) {
+          console.error(chalk.red(`[ERROR] --intent value must start with 'intent:' prefix, got: '${opts.intent}'`));
+          process.exit(1);
+        }
+        patch.addEdge(id, opts.intent, 'authorized-by');
+      }
+
       const sha = await patch.commit();
       console.log(chalk.green(`[OK] Quest ${id} initialized in campaign ${opts.campaign}. Patch: ${sha}`));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(chalk.red(`[ERROR] ${msg}`));
+      process.exit(1);
+    }
+  });
+
+// --- SOVEREIGNTY COMMANDS ---
+
+program
+  .command('intent <id>')
+  .description('Declare a sovereign human Intent — the causal root of all Quests')
+  .requiredOption('--title <text>', 'Statement of human desire (what and why)')
+  .requiredOption('--requested-by <principal>', 'Human principal ID (must start with human.)')
+  .option('--description <text>', 'Longer-form description of the intent')
+  .action(async (id: string, opts: { title: string; requestedBy: string; description?: string }) => {
+    try {
+      if (!id.startsWith('intent:')) {
+        console.error(chalk.red(`[ERROR] Intent ID must start with 'intent:' prefix, got: '${id}'`));
+        process.exit(1);
+      }
+      if (!opts.requestedBy.startsWith('human.')) {
+        console.error(chalk.red(
+          `[ERROR] --requested-by must identify a human principal (start with 'human.'), got: '${opts.requestedBy}'`
+        ));
+        process.exit(1);
+      }
+      if (opts.title.length < 5) {
+        console.error(chalk.red(`[ERROR] --title must be at least 5 characters`));
+        process.exit(1);
+      }
+
+      const graph = await getGraph();
+      const patch = await createPatch(graph);
+      const now = Date.now();
+
+      patch.addNode(id)
+        .setProperty(id, 'title', opts.title)
+        .setProperty(id, 'requested_by', opts.requestedBy)
+        .setProperty(id, 'created_at', now)
+        .setProperty(id, 'type', 'intent');
+
+      if (opts.description) {
+        patch.setProperty(id, 'description', opts.description);
+      }
+
+      const sha = await patch.commit();
+      console.log(chalk.green(`[OK] Intent ${id} declared by ${opts.requestedBy}. Patch: ${sha}`));
+      console.log(chalk.dim(`  Title: ${opts.title}`));
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(chalk.red(`[ERROR] ${msg}`));
