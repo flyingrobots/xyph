@@ -7,6 +7,8 @@ import { RoadmapView } from './views/RoadmapView.js';
 import { LineageView } from './views/LineageView.js';
 import { AllNodesView } from './views/AllNodesView.js';
 import { InboxView } from './views/InboxView.js';
+import { LandingView } from './views/LandingView.js';
+import { HelpModal } from './HelpModal.js';
 
 type ViewName = 'roadmap' | 'lineage' | 'all' | 'inbox';
 
@@ -16,14 +18,17 @@ interface Props {
   service: DashboardService;
   intake: IntakePort;
   agentId: string;
+  logoText: string;
 }
 
-export function Dashboard({ service, intake, agentId }: Props): React.ReactElement {
+export function Dashboard({ service, intake, agentId, logoText }: Props): React.ReactElement {
   const [activeView, setActiveView] = useState<ViewName>('roadmap');
   const [snapshot, setSnapshot] = useState<GraphSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isMutating, setIsMutating] = useState(false);
+  const [showLanding, setShowLanding] = useState(true);
+  const [showHelp, setShowHelp] = useState(false);
   const { exit } = useApp();
 
   const refresh = (): void => {
@@ -47,13 +52,34 @@ export function Dashboard({ service, intake, agentId }: Props): React.ReactEleme
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useInput((input: string, key: Key) => {
+    if (showLanding) {
+      if (input === 'q') {
+        exit();
+      } else {
+        setShowLanding(false);
+      }
+      return;
+    }
+
+    if (showHelp) {
+      if (key.escape || input === '?') {
+        setShowHelp(false);
+      }
+      return;
+    }
+
     if (isMutating) return;
+
     if (input === 'q') {
       exit();
       return;
     }
     if (input === 'r') {
       refresh();
+      return;
+    }
+    if (input === '?') {
+      setShowHelp(true);
       return;
     }
     if (key.tab) {
@@ -64,6 +90,12 @@ export function Dashboard({ service, intake, agentId }: Props): React.ReactEleme
       }
     }
   });
+
+  // Landing screen — shown until user presses any key
+  if (showLanding) {
+    // Pass snapshot even if still loading (LandingView handles null)
+    return <LandingView logoText={logoText} snapshot={snapshot} />;
+  }
 
   if (loading) {
     return <Text color="yellow">Loading WARP graph snapshot…</Text>;
@@ -80,7 +112,7 @@ export function Dashboard({ service, intake, agentId }: Props): React.ReactEleme
   // GRAVEYARD is excluded from all active views by default
   const filtered = service.filterSnapshot(snapshot, { includeGraveyard: false });
 
-  return (
+  const mainContent = (
     <Box flexDirection="column">
       <Box marginBottom={1}>
         {VIEWS.map((v) => (
@@ -94,17 +126,17 @@ export function Dashboard({ service, intake, agentId }: Props): React.ReactEleme
           </Box>
         ))}
         <Text dimColor>
-          {'  Tab: cycle  r: refresh  q: quit'}
+          {'  Tab: cycle  r: refresh  ?: help  q: quit'}
           {activeView === 'inbox' ? '  (inbox: p promote  x reject)' : ''}
         </Text>
       </Box>
-      {activeView === 'roadmap' && <RoadmapView snapshot={filtered} isActive={true} />}
-      {activeView === 'lineage' && <LineageView snapshot={filtered} isActive={true} />}
-      {activeView === 'all' && <AllNodesView snapshot={filtered} isActive={true} />}
+      {activeView === 'roadmap' && <RoadmapView snapshot={filtered} isActive={!showHelp} />}
+      {activeView === 'lineage' && <LineageView snapshot={filtered} isActive={!showHelp} />}
+      {activeView === 'all' && <AllNodesView snapshot={filtered} isActive={!showHelp} />}
       {activeView === 'inbox' && (
         <InboxView
           snapshot={filtered}
-          isActive={true}
+          isActive={!showHelp}
           intake={intake}
           agentId={agentId}
           onMutationStart={() => setIsMutating(true)}
@@ -114,4 +146,15 @@ export function Dashboard({ service, intake, agentId }: Props): React.ReactEleme
       )}
     </Box>
   );
+
+  if (showHelp) {
+    return (
+      <>
+        {mainContent}
+        <HelpModal onClose={() => setShowHelp(false)} />
+      </>
+    );
+  }
+
+  return mainContent;
 }

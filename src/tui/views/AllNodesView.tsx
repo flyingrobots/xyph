@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Box, Text, useInput, useStdout, type Key } from 'ink';
 import type { GraphSnapshot } from '../../domain/models/dashboard.js';
 import { Scrollbar } from '../Scrollbar.js';
+import { QuestDetailPanel } from '../QuestDetailPanel.js';
 
 const CHROME_LINES = 3; // tab bar + marginBottom + scroll indicator
 
@@ -23,7 +24,7 @@ type VRow =
   | { kind: 'header'; label: string }
   | { kind: 'campaign'; id: string; title: string; status: string }
   | { kind: 'intent'; id: string; title: string; requestedBy: string }
-  | { kind: 'quest'; id: string; title: string; status: string; hours: number; hasScroll: boolean }
+  | { kind: 'quest'; id: string; title: string; status: string; hours: number; hasScroll: boolean; questIdx: number }
   | { kind: 'scroll'; id: string; questId: string; sealedBy: string; hasSeal: boolean }
   | { kind: 'approval'; id: string; status: string; trigger: string; approver: string };
 
@@ -37,9 +38,10 @@ function StatusText({ status }: { status: string }): React.ReactElement {
   return <Text color={color}>{status}</Text>;
 }
 
-function buildRows(snapshot: GraphSnapshot): VRow[] {
+function buildRows(snapshot: GraphSnapshot): { vrows: VRow[]; questCount: number } {
   const rows: VRow[] = [];
   let first = true;
+  let questIdx = 0;
 
   function pushSection(label: string, items: VRow[]): void {
     if (!first) rows.push({ kind: 'spacer' });
@@ -61,9 +63,13 @@ function buildRows(snapshot: GraphSnapshot): VRow[] {
   }
 
   if (snapshot.quests.length > 0) {
-    pushSection(`Quests  ${snapshot.quests.length}`, snapshot.quests.map(q => ({
-      kind: 'quest' as const, id: q.id, title: q.title, status: q.status, hours: q.hours, hasScroll: q.scrollId !== undefined,
-    })));
+    pushSection(`Quests  ${snapshot.quests.length}`, snapshot.quests.map(q => {
+      const row: VRow = {
+        kind: 'quest' as const, id: q.id, title: q.title, status: q.status,
+        hours: q.hours, hasScroll: q.scrollId !== undefined, questIdx: questIdx++,
+      };
+      return row;
+    }));
   }
 
   if (snapshot.scrolls.length > 0) {
@@ -78,17 +84,30 @@ function buildRows(snapshot: GraphSnapshot): VRow[] {
     })));
   }
 
-  return rows;
+  return { vrows: rows, questCount: questIdx };
 }
 
 export function AllNodesView({ snapshot, isActive }: Props): React.ReactElement {
   const { stdout } = useStdout();
   const listHeight = Math.max(4, (stdout.rows ?? 24) - CHROME_LINES);
   const [scrollOffset, setScrollOffset] = useState(0);
+  const [selectedQuestIdx, setSelectedQuestIdx] = useState(0);
+  const [showDetail, setShowDetail] = useState(false);
 
-  const vrows = buildRows(snapshot);
+  const { vrows, questCount } = buildRows(snapshot);
   const total = snapshot.campaigns.length + snapshot.quests.length +
     snapshot.intents.length + snapshot.scrolls.length + snapshot.approvals.length;
+
+  // Find vrow indices for quest rows
+  const questVIndices = vrows
+    .map((r, i) => (r.kind === 'quest' ? i : -1))
+    .filter((i) => i >= 0);
+
+  const clampedQuestIdx =
+    questCount === 0 ? 0 : Math.min(selectedQuestIdx, questCount - 1);
+
+  // The vrow index for the selected quest
+  const selectedVIdx = questVIndices[clampedQuestIdx] ?? -1;
 
   const maxOffset = Math.max(0, vrows.length - listHeight);
   const clampedOffset = Math.min(scrollOffset, maxOffset);
@@ -97,10 +116,53 @@ export function AllNodesView({ snapshot, isActive }: Props): React.ReactElement 
     setScrollOffset(prev => Math.min(prev, Math.max(0, vrows.length - listHeight)));
   }, [vrows.length, listHeight]);
 
+  useEffect(() => {
+    setSelectedQuestIdx(prev => questCount === 0 ? 0 : Math.min(prev, questCount - 1));
+  }, [questCount]);
+
+  function moveSelection(delta: number): void {
+    if (questCount === 0) return;
+    const next = Math.max(0, Math.min(questCount - 1, clampedQuestIdx + delta));
+    const nextVIdx = questVIndices[next] ?? -1;
+    if (nextVIdx >= 0) {
+      if (nextVIdx < clampedOffset) {
+        setScrollOffset(nextVIdx);
+      } else if (nextVIdx >= clampedOffset + listHeight) {
+        setScrollOffset(nextVIdx - listHeight + 1);
+      }
+    }
+    setSelectedQuestIdx(next);
+  }
+
   useInput((_input: string, key: Key) => {
-    if (key.upArrow) setScrollOffset(prev => Math.max(0, prev - 1));
-    if (key.downArrow) setScrollOffset(prev => Math.min(Math.max(0, vrows.length - listHeight), prev + 1));
+    if (showDetail) {
+      if (key.escape) setShowDetail(false);
+      return;
+    }
+    if (key.upArrow) { moveSelection(-1); return; }
+    if (key.downArrow) { moveSelection(1); return; }
+    if (_input === ' ' && questCount > 0) {
+      setShowDetail(true);
+    }
   }, { isActive });
+
+  // Detail modal
+  if (showDetail) {
+    const selectedQuest = snapshot.quests[clampedQuestIdx] ?? null;
+    return (
+      <Box flexDirection="column" borderStyle="round" borderColor="cyan">
+        <Box paddingX={1} flexDirection="column">
+          {selectedQuest !== null
+            ? <QuestDetailPanel quest={selectedQuest} snapshot={snapshot} />
+            : <Text dimColor>(no quest selected)</Text>
+          }
+        </Box>
+        <Box paddingX={1}>
+          <Text dimColor>Esc to close</Text>
+        </Box>
+      </Box>
+    );
+  }
 
   if (total === 0) {
     return <Text dimColor>Graph is empty. Start with: xyph-actuator intent ...</Text>;
@@ -113,6 +175,7 @@ export function AllNodesView({ snapshot, isActive }: Props): React.ReactElement 
       <Box flexDirection="row">
         <Box flexDirection="column" flexGrow={1}>
         {visibleRows.map((row, i) => {
+          const absIdx = clampedOffset + i;
           if (row.kind === 'spacer') {
             return <Box key={`sp-${i}`}><Text> </Text></Box>;
           }
@@ -142,10 +205,14 @@ export function AllNodesView({ snapshot, isActive }: Props): React.ReactElement 
             );
           }
           if (row.kind === 'quest') {
+            const isSelected = absIdx === selectedVIdx;
             return (
               <Box key={row.id} marginLeft={2}>
+                <Box width={2}>
+                  <Text color="cyan">{isSelected ? '▶' : ' '}</Text>
+                </Box>
                 <Text dimColor>{row.id.slice(0, 18).padEnd(20)}</Text>
-                <Text>{row.title.slice(0, 30).padEnd(32)}</Text>
+                <Text bold={isSelected}>{row.title.slice(0, 30).padEnd(32)}</Text>
                 <StatusText status={row.status} />
                 <Text dimColor>  {row.hours}h</Text>
                 {row.hasScroll && <Text color="green">  ✓</Text>}
@@ -178,9 +245,10 @@ export function AllNodesView({ snapshot, isActive }: Props): React.ReactElement 
       </Box>
       <Text dimColor>
         {'  '}{total} nodes
+        {questCount > 0 ? `  quest ${clampedQuestIdx + 1}/${questCount}` : ''}
         {vrows.length > listHeight
-          ? `  rows ${clampedOffset + 1}–${Math.min(clampedOffset + listHeight, vrows.length)}/${vrows.length}  ↑↓`
-          : '  ↑↓'}
+          ? `  rows ${clampedOffset + 1}–${Math.min(clampedOffset + listHeight, vrows.length)}/${vrows.length}  ↑↓  Space: quest detail`
+          : '  ↑↓  Space: quest detail'}
       </Text>
     </Box>
   );

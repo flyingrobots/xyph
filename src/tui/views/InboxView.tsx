@@ -4,7 +4,6 @@ import type { GraphSnapshot, QuestNode } from '../../domain/models/dashboard.js'
 import type { IntakePort } from '../../ports/IntakePort.js';
 import { Scrollbar } from '../Scrollbar.js';
 
-const DETAIL_LINES = 10;
 const CHROME_LINES = 3;
 
 type ModalState =
@@ -48,7 +47,11 @@ export function InboxView({
   onRefresh,
 }: Props): React.ReactElement {
   const { stdout } = useStdout();
-  const listHeight = Math.max(4, (stdout.rows ?? 24) - DETAIL_LINES - CHROME_LINES);
+
+  // Proportional split: 40% list, 60% detail
+  const availableRows = (stdout.rows ?? 24) - CHROME_LINES;
+  const listHeight = Math.max(3, Math.floor(availableRows * 0.40));
+  const detailHeight = availableRows - listHeight;
 
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [scrollOffset, setScrollOffset] = useState(0);
@@ -239,7 +242,7 @@ export function InboxView({
 
   const selectedQuest: QuestNode | null = flatQuests[clampedIdx] ?? null;
 
-  // Render modals
+  // Render modals (full-view overlays)
   if (modal?.kind === 'select-intent') {
     return (
       <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1}>
@@ -324,6 +327,7 @@ export function InboxView({
 
   return (
     <Box flexDirection="column">
+      {/* List pane */}
       <Box flexDirection="row">
         <Box flexDirection="column" flexGrow={1}>
           {visibleRows.map((row, i) => {
@@ -340,17 +344,21 @@ export function InboxView({
             const q = row.quest;
             const isSelected = row.flatIdx === clampedIdx;
             const hasHistory = q.rejectionRationale !== undefined;
+            const dateStr = q.suggestedAt !== undefined
+              ? new Date(q.suggestedAt).toISOString().slice(0, 10)
+              : '          ';
             return (
               <Box key={q.id}>
                 <Box width={2}>
-                  <Text color="cyan">{isSelected ? '▶' : ''}</Text>
+                  <Text color="cyan">{isSelected ? '▶' : ' '}</Text>
                 </Box>
                 <Text bold={isSelected} color={isSelected ? undefined : 'gray'}>
                   {q.id.slice(0, 16).padEnd(18)}
                 </Text>
-                <Text bold={isSelected}>{q.title.slice(0, 40).padEnd(42)}</Text>
-                <Text dimColor>{String(q.hours).padStart(3)}h</Text>
-                {hasHistory && <Text color="yellow">  ↩ reopened</Text>}
+                <Text bold={isSelected}>{q.title.slice(0, 34).padEnd(36)}</Text>
+                <Text dimColor>{(q.suggestedBy ?? '').slice(0, 14).padEnd(16)}</Text>
+                <Text dimColor>{dateStr}</Text>
+                {hasHistory && <Text color="yellow">  ↩</Text>}
               </Box>
             );
           })}
@@ -358,6 +366,7 @@ export function InboxView({
         <Scrollbar total={vrows.length} visible={listHeight} offset={clampedOffset} />
       </Box>
 
+      {/* Scroll indicator */}
       <Text dimColor>
         {'  quest '}
         {clampedIdx + 1}/{totalQuests}
@@ -367,58 +376,63 @@ export function InboxView({
         {'  p: promote  x: reject  (requires human.* XYPH_AGENT_ID)'}
       </Text>
 
-      {selectedQuest !== null && (
-        <Box
-          flexDirection="column"
-          borderStyle="round"
-          borderColor="magenta"
-          marginTop={1}
-          paddingX={1}
-        >
-          <Box>
-            <Text bold color="magenta">{selectedQuest.id}{'  '}</Text>
-            <Text bold>{selectedQuest.title}</Text>
-          </Box>
-          <Box marginTop={1}>
-            <Text dimColor>Hours     </Text>
-            <Text>{selectedQuest.hours}h</Text>
-          </Box>
-          {selectedQuest.suggestedBy !== undefined && (
+      {/* Detail pane — always visible, proportional height */}
+      <Box
+        flexDirection="column"
+        borderStyle="round"
+        borderColor="magenta"
+        paddingX={1}
+        height={detailHeight}
+      >
+        {selectedQuest !== null ? (
+          <>
             <Box>
-              <Text dimColor>Suggested </Text>
-              <Text color="magenta">{selectedQuest.suggestedBy}</Text>
-              {selectedQuest.suggestedAt !== undefined && (
-                <Text dimColor>  {new Date(selectedQuest.suggestedAt).toISOString()}</Text>
-              )}
+              <Text bold color="magenta">{selectedQuest.id}{'  '}</Text>
+              <Text bold>{selectedQuest.title}</Text>
             </Box>
-          )}
-          {selectedQuest.rejectionRationale !== undefined && (
-            <Box flexDirection="column" marginTop={1}>
-              <Text color="yellow">↩ Previously rejected</Text>
+            <Box marginTop={1}>
+              <Text dimColor>Hours     </Text>
+              <Text>{selectedQuest.hours}h</Text>
+            </Box>
+            {selectedQuest.suggestedBy !== undefined && (
               <Box>
-                <Text dimColor>By        </Text>
-                <Text dimColor>{selectedQuest.rejectedBy ?? '—'}</Text>
-                {selectedQuest.rejectedAt !== undefined && (
-                  <Text dimColor>  {new Date(selectedQuest.rejectedAt).toISOString()}</Text>
+                <Text dimColor>Suggested </Text>
+                <Text color="magenta">{selectedQuest.suggestedBy}</Text>
+                {selectedQuest.suggestedAt !== undefined && (
+                  <Text dimColor>  {new Date(selectedQuest.suggestedAt).toISOString()}</Text>
                 )}
               </Box>
-              <Box>
-                <Text dimColor>Rationale </Text>
-                <Text dimColor>{selectedQuest.rejectionRationale}</Text>
+            )}
+            {selectedQuest.rejectionRationale !== undefined && (
+              <Box flexDirection="column" marginTop={1}>
+                <Text color="yellow">↩ Previously rejected</Text>
+                <Box>
+                  <Text dimColor>By        </Text>
+                  <Text dimColor>{selectedQuest.rejectedBy ?? '—'}</Text>
+                  {selectedQuest.rejectedAt !== undefined && (
+                    <Text dimColor>  {new Date(selectedQuest.rejectedAt).toISOString()}</Text>
+                  )}
+                </Box>
+                <Box>
+                  <Text dimColor>Rationale </Text>
+                  <Text dimColor>{selectedQuest.rejectionRationale}</Text>
+                </Box>
               </Box>
-            </Box>
-          )}
-          {selectedQuest.reopenedBy !== undefined && (
-            <Box>
-              <Text dimColor>Reopened  </Text>
-              <Text dimColor>{selectedQuest.reopenedBy}</Text>
-              {selectedQuest.reopenedAt !== undefined && (
-                <Text dimColor>  {new Date(selectedQuest.reopenedAt).toISOString()}</Text>
-              )}
-            </Box>
-          )}
-        </Box>
-      )}
+            )}
+            {selectedQuest.reopenedBy !== undefined && (
+              <Box>
+                <Text dimColor>Reopened  </Text>
+                <Text dimColor>{selectedQuest.reopenedBy}</Text>
+                {selectedQuest.reopenedAt !== undefined && (
+                  <Text dimColor>  {new Date(selectedQuest.reopenedAt).toISOString()}</Text>
+                )}
+              </Box>
+            )}
+          </>
+        ) : (
+          <Text dimColor>(no task selected)</Text>
+        )}
+      </Box>
     </Box>
   );
 }

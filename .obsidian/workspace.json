@@ -190,6 +190,17 @@
   },
   "active": "f05b377124e9e607",
   "lastOpenFiles": [
+    "dist/src/tui/HelpModal.js",
+    "dist/src/tui/views/LandingView.js",
+    "dist/src/tui/QuestDetailPanel.js",
+    "src/tui/views/LandingView.tsx",
+    "src/tui/HelpModal.tsx",
+    "src/tui/QuestDetailPanel.tsx",
+    "src/tui/logos/10.txt",
+    "src/tui/logos/9.txt",
+    "src/tui/logos/8.txt",
+    "src/tui/logos/7.txt",
+    "src/tui/logos/6.txt",
     "docs/canonical/RFC_001_AST_DRIVEN_INGEST.md"
   ]
 }

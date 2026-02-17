@@ -2,6 +2,47 @@
 
 All notable changes to XYPH will be documented in this file.
 
+## [Unreleased] — Milestone 5: WARP Dashboard TUI Overhaul
+
+### Added
+
+**Landing Screen (TUI-001)**
+- New `LandingView` component displayed on startup before the main dashboard.
+- Shows a randomly selected compact ASCII logo (logos 2, 3, 7, 8, 9, 10 — ≤15 lines each).
+- Stats panel: ASCII progress bar (`█░` per-quest completion), current active milestone, next 3 BACKLOG/PLANNED quests.
+- Footer: copyright + GitHub link. Hint: `any key to continue · q to quit`.
+- `xyph-dashboard.tsx` reads logo file at launch via `readFileSync`; falls back to `'XYPH'` on error.
+
+**Help Modal (TUI-002)**
+- New `HelpModal` component: full-screen cyan border overlay accessible from any view via `?`.
+- Contains XYPH glossary (Quest, Intent, Campaign, Scroll, Seal, Guild, WARP) and complete key bindings table.
+- Closes on `Esc` or `?`.
+
+**Quest Detail Panel (TUI-003)**
+- New reusable `QuestDetailPanel` component showing full quest metadata: ID, title, status (colored), hours, agent, campaign (with title lookup), intent (with title lookup), scroll ✓, completedAt, suggestedBy/At, rejection history, reopen history.
+- Used by RoadmapView and AllNodesView detail modals.
+
+**RoadmapView: Fold/Unfold + Detail Modal (TUI-004)**
+- Unified `selectedVIdx` navigates both campaign headers and quest rows with `↑↓`.
+- `Space` on a campaign header folds/unfolds that milestone; header shows `▶` (folded) or `▼` (expanded).
+- `Space` on a quest opens a full-screen `QuestDetailPanel` modal; `Esc` closes it.
+
+**LineageView: INBOX Bug Fix + Selection (TUI-005)**
+- Fixed: INBOX quests no longer appear in the orphan ("sovereignty violation") list — they haven't been promoted yet and genuinely lack an intent.
+- Added `selectedVIdx` state with `▶` indicator highlighting the selected quest row.
+
+**AllNodesView: Quest Selection + Detail Modal (TUI-006)**
+- `↑↓` now navigates through quest rows only (other node types are display-only).
+- `Space` on a selected quest opens a full-screen `QuestDetailPanel` modal; `Esc` closes it.
+- Status indicator text updated to include quest position and `Space: quest detail` hint.
+
+**InboxView: Gmail-Style Rework (TUI-007)**
+- Replaced fixed `DETAIL_LINES = 10` constant with proportional 40%/60% split: 40% list, 60% detail.
+- List rows enriched: `▶` indicator, ID, title, suggestedBy, date, `↩` reopened marker.
+- Detail pane always visible (no toggle needed); shows full inbox lifecycle fields.
+
+---
+
 ## [1.0.0-alpha.4] - 2026-02-17
 
 ### Added — POWERLEVEL™ Refactor: Genealogy of Intent Activation

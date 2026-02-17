@@ -46,7 +46,10 @@ function buildRows(snapshot: GraphSnapshot): VRow[] {
     }
   }
 
-  const orphans = snapshot.quests.filter((q) => q.intentId === undefined);
+  // INBOX tasks genuinely lack an intent (not yet promoted) — exclude from orphan list
+  const orphans = snapshot.quests.filter(
+    (q) => q.intentId === undefined && q.status !== 'INBOX'
+  );
   const rows: VRow[] = [];
   let first = true;
 
@@ -90,18 +93,45 @@ export function LineageView({ snapshot, isActive }: Props): React.ReactElement {
   const { stdout } = useStdout();
   const listHeight = Math.max(4, (stdout.rows ?? 24) - CHROME_LINES);
   const [scrollOffset, setScrollOffset] = useState(0);
+  const [selectedVIdx, setSelectedVIdx] = useState(0);
 
   const vrows = buildRows(snapshot);
   const maxOffset = Math.max(0, vrows.length - listHeight);
   const clampedOffset = Math.min(scrollOffset, maxOffset);
 
+  // Navigable quest row indices
+  const questIndices = vrows
+    .map((r, i) => (r.kind === 'quest' && r.id !== '' ? i : -1))
+    .filter((i) => i >= 0);
+
+  const clampedVIdx =
+    questIndices.length === 0
+      ? 0
+      : questIndices.includes(selectedVIdx)
+        ? selectedVIdx
+        : (questIndices[0] ?? 0);
+
   useEffect(() => {
     setScrollOffset(prev => Math.min(prev, Math.max(0, vrows.length - listHeight)));
   }, [vrows.length, listHeight]);
 
+  function moveSelection(delta: number): void {
+    if (questIndices.length === 0) return;
+    const curPos = questIndices.indexOf(clampedVIdx);
+    const nextPos = Math.max(0, Math.min(questIndices.length - 1, curPos + delta));
+    const nextVIdx = questIndices[nextPos] ?? 0;
+
+    if (nextVIdx < clampedOffset) {
+      setScrollOffset(nextVIdx);
+    } else if (nextVIdx >= clampedOffset + listHeight) {
+      setScrollOffset(nextVIdx - listHeight + 1);
+    }
+    setSelectedVIdx(nextVIdx);
+  }
+
   useInput((_input: string, key: Key) => {
-    if (key.upArrow) setScrollOffset(prev => Math.max(0, prev - 1));
-    if (key.downArrow) setScrollOffset(prev => Math.min(Math.max(0, vrows.length - listHeight), prev + 1));
+    if (key.upArrow) moveSelection(-1);
+    if (key.downArrow) moveSelection(1);
   }, { isActive });
 
   if (snapshot.intents.length === 0) {
@@ -122,6 +152,7 @@ export function LineageView({ snapshot, isActive }: Props): React.ReactElement {
       <Box flexDirection="row">
         <Box flexDirection="column" flexGrow={1}>
         {visibleRows.map((row, i) => {
+          const absIdx = clampedOffset + i;
           if (row.kind === 'spacer') {
             return <Box key={`sp-${i}`}><Text> </Text></Box>;
           }
@@ -148,12 +179,16 @@ export function LineageView({ snapshot, isActive }: Props): React.ReactElement {
                 </Box>
               );
             }
+            const isSelected = absIdx === clampedVIdx;
             const statusColor = (STATUS_COLOR[row.status] ?? 'white') as StatusColor;
             return (
               <Box key={`q-${row.id}`} marginLeft={2}>
+                <Box width={2}>
+                  <Text color="cyan">{isSelected ? '▶' : ' '}</Text>
+                </Box>
                 <Text dimColor>{row.branch} </Text>
                 <Text dimColor>{row.id.slice(0, 16)}  </Text>
-                <Text>{row.title.slice(0, 36)}  </Text>
+                <Text bold={isSelected}>{row.title.slice(0, 36)}  </Text>
                 <Text color={statusColor}>{'[' + row.status + ']'}</Text>
                 {row.scrollId !== undefined && (
                   <Text color={row.sealed ? 'green' : 'yellow'}>

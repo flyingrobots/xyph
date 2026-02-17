@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Box, Text, useInput, useStdout, type Key } from 'ink';
 import type { GraphSnapshot, QuestNode } from '../../domain/models/dashboard.js';
 import { Scrollbar } from '../Scrollbar.js';
+import { QuestDetailPanel } from '../QuestDetailPanel.js';
 
-const DETAIL_LINES = 8;  // lines reserved for detail panel + border
 const CHROME_LINES = 3;  // tab bar + scroll indicator + margin
 
 const STATUS_COLOR: Record<string, string> = {
@@ -18,7 +18,7 @@ type StatusColor = 'green' | 'cyan' | 'gray' | 'red' | 'yellow' | 'white';
 
 type VRow =
   | { kind: 'spacer' }
-  | { kind: 'header'; label: string }
+  | { kind: 'header'; label: string; campaignId: string }
   | { kind: 'quest'; quest: QuestNode; flatIdx: number };
 
 interface Props {
@@ -26,15 +26,10 @@ interface Props {
   isActive: boolean;
 }
 
-export function RoadmapView({ snapshot, isActive }: Props): React.ReactElement {
-  const { stdout } = useStdout();
-  const listHeight = Math.max(4, (stdout.rows ?? 24) - DETAIL_LINES - CHROME_LINES);
-
-  const [selectedIdx, setSelectedIdx] = useState(0);
-  const [scrollOffset, setScrollOffset] = useState(0);
-
-  // ── Build virtual row list ────────────────────────────────────────────────
-
+function buildRows(
+  snapshot: GraphSnapshot,
+  foldedCampaigns: Set<string>,
+): { vrows: VRow[]; flatQuests: QuestNode[] } {
   const campaignTitle = new Map<string, string>();
   for (const c of snapshot.campaigns) {
     campaignTitle.set(c.id, c.title);
@@ -53,99 +48,172 @@ export function RoadmapView({ snapshot, isActive }: Props): React.ReactElement {
 
   const vrows: VRow[] = [];
   const flatQuests: QuestNode[] = [];
+
   for (const key of campaignOrder) {
     if (vrows.length > 0) vrows.push({ kind: 'spacer' });
-    vrows.push({ kind: 'header', label: campaignTitle.get(key) ?? key });
-    for (const q of grouped.get(key) ?? []) {
-      vrows.push({ kind: 'quest', quest: q, flatIdx: flatQuests.length });
-      flatQuests.push(q);
+    vrows.push({ kind: 'header', label: campaignTitle.get(key) ?? key, campaignId: key });
+
+    if (!foldedCampaigns.has(key)) {
+      for (const q of grouped.get(key) ?? []) {
+        vrows.push({ kind: 'quest', quest: q, flatIdx: flatQuests.length });
+        flatQuests.push(q);
+      }
     }
   }
 
+  return { vrows, flatQuests };
+}
+
+export function RoadmapView({ snapshot, isActive }: Props): React.ReactElement {
+  const { stdout } = useStdout();
+  const listHeight = Math.max(4, (stdout.rows ?? 24) - CHROME_LINES);
+
+  const [foldedCampaigns, setFoldedCampaigns] = useState<Set<string>>(new Set());
+  const [showDetail, setShowDetail] = useState(false);
+  const [selectedVIdx, setSelectedVIdx] = useState(0);
+  const [scrollOffset, setScrollOffset] = useState(0);
+
+  const { vrows, flatQuests } = buildRows(snapshot, foldedCampaigns);
   const totalQuests = flatQuests.length;
 
-  // ── Clamp state when snapshot data changes ───────────────────────────────
-  // Uses functional updater to avoid stale-closure issues.
+  // Navigable indices: those that are not spacers
+  const navigableIndices = vrows
+    .map((r, i) => (r.kind !== 'spacer' ? i : -1))
+    .filter((i) => i >= 0);
+
+  // Clamp selectedVIdx to a valid navigable row
+  const clampedVIdx =
+    navigableIndices.length === 0
+      ? 0
+      : navigableIndices.includes(selectedVIdx)
+        ? selectedVIdx
+        : (navigableIndices[0] ?? 0);
+
+  const clampedOffset = Math.min(
+    scrollOffset,
+    Math.max(0, vrows.length - listHeight),
+  );
+
   useEffect(() => {
-    setSelectedIdx((prev) =>
-      totalQuests === 0 ? 0 : Math.min(prev, totalQuests - 1)
-    );
     setScrollOffset((prev) =>
       Math.min(prev, Math.max(0, vrows.length - listHeight))
     );
-  }, [totalQuests, vrows.length, listHeight]);
+  }, [vrows.length, listHeight]);
 
-  // ── Clamped rendering values (guards the one-render lag before effect fires)
-  const clampedIdx =
-    totalQuests === 0 ? 0 : Math.min(selectedIdx, totalQuests - 1);
-  const clampedOffset = Math.min(
-    scrollOffset,
-    Math.max(0, vrows.length - listHeight)
-  );
-
-  // ── Navigation ────────────────────────────────────────────────────────────
-  function moveSelection(delta: number): void {
-    if (totalQuests === 0) return;
-    const next = Math.max(0, Math.min(totalQuests - 1, clampedIdx + delta));
-    const vIdx = vrows.findIndex(
-      (r) => r.kind === 'quest' && r.flatIdx === next
-    );
-    if (vIdx >= 0) {
-      if (vIdx < clampedOffset) {
-        setScrollOffset(vIdx);
-      } else if (vIdx >= clampedOffset + listHeight) {
-        setScrollOffset(vIdx - listHeight + 1);
+  // When foldedCampaigns changes, snap selectedVIdx to nearest navigable
+  useEffect(() => {
+    setSelectedVIdx((prev) => {
+      if (navigableIndices.length === 0) return 0;
+      if (navigableIndices.includes(prev)) return prev;
+      // Find closest navigable
+      let closest = navigableIndices[0] ?? 0;
+      for (const ni of navigableIndices) {
+        if (Math.abs(ni - prev) < Math.abs(closest - prev)) closest = ni;
       }
+      return closest;
+    });
+  }, [foldedCampaigns]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function moveSelection(delta: number): void {
+    if (navigableIndices.length === 0) return;
+    const curPos = navigableIndices.indexOf(clampedVIdx);
+    const nextPos = Math.max(0, Math.min(navigableIndices.length - 1, curPos + delta));
+    const nextVIdx = navigableIndices[nextPos] ?? 0;
+
+    if (nextVIdx < clampedOffset) {
+      setScrollOffset(nextVIdx);
+    } else if (nextVIdx >= clampedOffset + listHeight) {
+      setScrollOffset(nextVIdx - listHeight + 1);
     }
-    setSelectedIdx(next);
+    setSelectedVIdx(nextVIdx);
   }
 
   useInput((_input: string, key: Key) => {
-    if (key.upArrow) moveSelection(-1);
-    if (key.downArrow) moveSelection(1);
+    if (showDetail) {
+      if (key.escape) setShowDetail(false);
+      return;
+    }
+    if (key.upArrow) { moveSelection(-1); return; }
+    if (key.downArrow) { moveSelection(1); return; }
+    if (_input === ' ') {
+      const row = vrows[clampedVIdx];
+      if (row === undefined) return;
+      if (row.kind === 'header') {
+        setFoldedCampaigns((prev) => {
+          const next = new Set(prev);
+          if (next.has(row.campaignId)) {
+            next.delete(row.campaignId);
+          } else {
+            next.add(row.campaignId);
+          }
+          return next;
+        });
+      } else if (row.kind === 'quest') {
+        setShowDetail(true);
+      }
+    }
   }, { isActive });
 
-  // ── Empty state ───────────────────────────────────────────────────────────
-  if (totalQuests === 0) {
+  // Detail modal
+  if (showDetail) {
+    const row = vrows[clampedVIdx];
+    const selectedQuest = row?.kind === 'quest' ? row.quest : null;
+    return (
+      <Box flexDirection="column" borderStyle="round" borderColor="cyan">
+        <Box paddingX={1} flexDirection="column">
+          {selectedQuest !== null
+            ? <QuestDetailPanel quest={selectedQuest} snapshot={snapshot} />
+            : <Text dimColor>(no quest selected)</Text>
+          }
+        </Box>
+        <Box paddingX={1}>
+          <Text dimColor>Esc to close</Text>
+        </Box>
+      </Box>
+    );
+  }
+
+  // Empty state
+  if (vrows.filter((r) => r.kind === 'quest').length === 0 && totalQuests === 0) {
     return (
       <Box flexDirection="column">
         <Text dimColor>No tasks in the roadmap yet.</Text>
-        <Box
-          borderStyle="round"
-          borderColor="gray"
-          marginTop={1}
-          paddingX={1}
-        >
+        <Box borderStyle="round" borderColor="gray" marginTop={1} paddingX={1}>
           <Text dimColor>(no task selected)</Text>
         </Box>
       </Box>
     );
   }
 
-  // ── Render ────────────────────────────────────────────────────────────────
-  const selectedQuest: QuestNode | null = flatQuests[clampedIdx] ?? null;
   const visibleRows = vrows.slice(clampedOffset, clampedOffset + listHeight);
 
   return (
     <Box flexDirection="column">
-      {/* Scrollable quest list + scrollbar */}
+      {/* Scrollable list + scrollbar */}
       <Box flexDirection="row">
         <Box flexDirection="column" flexGrow={1}>
           {visibleRows.map((row, i) => {
+            const absIdx = clampedOffset + i;
             if (row.kind === 'spacer') {
               return <Box key={`sp-${i}`}><Text> </Text></Box>;
             }
             if (row.kind === 'header') {
+              const isSelected = absIdx === clampedVIdx;
+              const isFolded = foldedCampaigns.has(row.campaignId);
               return (
-                <Box key={`h-${row.label}`}>
+                <Box key={`h-${row.campaignId}`}>
+                  <Box width={2}>
+                    <Text color="cyan">{isSelected ? '▶' : ' '}</Text>
+                  </Box>
                   <Text bold color="blue">
+                    {isFolded ? '▶ ' : '▼ '}
                     {row.label}
                   </Text>
                 </Box>
               );
             }
             const q = row.quest;
-            const isSelected = row.flatIdx === clampedIdx;
+            const isSelected = absIdx === clampedVIdx;
             const statusColor = (STATUS_COLOR[q.status] ?? 'white') as StatusColor;
             return (
               <Box key={q.id}>
@@ -171,73 +239,11 @@ export function RoadmapView({ snapshot, isActive }: Props): React.ReactElement {
       {/* Scroll indicator */}
       <Text dimColor>
         {'  quest '}
-        {clampedIdx + 1}/{totalQuests}
+        {totalQuests === 0 ? '0/0' : `${(vrows[clampedVIdx]?.kind === 'quest' ? (vrows[clampedVIdx] as { kind: 'quest'; quest: QuestNode; flatIdx: number }).flatIdx + 1 : '—')}/${totalQuests}`}
         {vrows.length > listHeight
-          ? `  rows ${clampedOffset + 1}–${Math.min(clampedOffset + listHeight, vrows.length)}/${vrows.length}  ↑↓`
-          : '  ↑↓'}
+          ? `  rows ${clampedOffset + 1}–${Math.min(clampedOffset + listHeight, vrows.length)}/${vrows.length}  ↑↓  Space: fold/detail`
+          : '  ↑↓  Space: fold/detail'}
       </Text>
-
-      {/* Detail panel */}
-      {selectedQuest !== null && (
-        <Box
-          flexDirection="column"
-          borderStyle="round"
-          borderColor="cyan"
-          marginTop={1}
-          paddingX={1}
-        >
-          <Box>
-            <Text bold color="cyan">
-              {selectedQuest.id}
-              {'  '}
-            </Text>
-            <Text bold>{selectedQuest.title}</Text>
-          </Box>
-          <Box marginTop={1}>
-            <Text dimColor>Status   </Text>
-            <Text color={(STATUS_COLOR[selectedQuest.status] ?? 'white') as StatusColor}>
-              {selectedQuest.status}
-            </Text>
-            <Text dimColor>   Hours  </Text>
-            <Text>{selectedQuest.hours}h</Text>
-            {selectedQuest.assignedTo !== undefined && (
-              <>
-                <Text dimColor>   Agent  </Text>
-                <Text dimColor>{selectedQuest.assignedTo}</Text>
-              </>
-            )}
-          </Box>
-          {selectedQuest.campaignId !== undefined && (
-            <Box>
-              <Text dimColor>Campaign </Text>
-              <Text dimColor>{selectedQuest.campaignId}</Text>
-            </Box>
-          )}
-          {selectedQuest.intentId !== undefined && (
-            <Box>
-              <Text dimColor>Intent   </Text>
-              <Text dimColor>{selectedQuest.intentId}</Text>
-            </Box>
-          )}
-          {selectedQuest.scrollId !== undefined && (
-            <Box>
-              <Text dimColor>Scroll   </Text>
-              <Text color="green">
-                {selectedQuest.scrollId}{'  ✓'}
-              </Text>
-            </Box>
-          )}
-          {selectedQuest.completedAt !== undefined && (
-            <Box>
-              <Text dimColor>Completed</Text>
-              <Text dimColor>
-                {'  '}
-                {new Date(selectedQuest.completedAt).toISOString()}
-              </Text>
-            </Box>
-          )}
-        </Box>
-      )}
     </Box>
   );
 }
