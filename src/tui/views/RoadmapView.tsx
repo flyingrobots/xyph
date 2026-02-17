@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Box, Text, useInput, useStdout, type Key } from 'ink';
 import type { GraphSnapshot, QuestNode } from '../../domain/models/dashboard.js';
+import { Scrollbar } from '../Scrollbar.js';
 
 const DETAIL_LINES = 8;  // lines reserved for detail panel + border
 const CHROME_LINES = 3;  // tab bar + scroll indicator + margin
@@ -127,41 +128,44 @@ export function RoadmapView({ snapshot, isActive }: Props): React.ReactElement {
 
   return (
     <Box flexDirection="column">
-      {/* Scrollable quest list */}
-      <Box flexDirection="column">
-        {visibleRows.map((row, i) => {
-          if (row.kind === 'spacer') {
-            return <Box key={`sp-${i}`}><Text> </Text></Box>;
-          }
-          if (row.kind === 'header') {
+      {/* Scrollable quest list + scrollbar */}
+      <Box flexDirection="row">
+        <Box flexDirection="column" flexGrow={1}>
+          {visibleRows.map((row, i) => {
+            if (row.kind === 'spacer') {
+              return <Box key={`sp-${i}`}><Text> </Text></Box>;
+            }
+            if (row.kind === 'header') {
+              return (
+                <Box key={`h-${row.label}`}>
+                  <Text bold color="blue">
+                    {row.label}
+                  </Text>
+                </Box>
+              );
+            }
+            const q = row.quest;
+            const isSelected = row.flatIdx === clampedIdx;
+            const statusColor = (STATUS_COLOR[q.status] ?? 'white') as StatusColor;
             return (
-              <Box key={`h-${row.label}`}>
-                <Text bold color="blue">
-                  {row.label}
+              <Box key={q.id}>
+                <Box width={2}>
+                  <Text color="cyan">{isSelected ? '▶' : ''}</Text>
+                </Box>
+                <Text bold={isSelected} color={isSelected ? undefined : 'gray'}>
+                  {q.id.slice(0, 16).padEnd(18)}
                 </Text>
+                <Text bold={isSelected}>{q.title.slice(0, 36).padEnd(38)}</Text>
+                <Text color={statusColor}>
+                  {'  ' + q.status.padEnd(12)}
+                </Text>
+                <Text dimColor>{String(q.hours).padStart(3)}h</Text>
+                {q.scrollId !== undefined && <Text color="green">  ✓</Text>}
               </Box>
             );
-          }
-          const q = row.quest;
-          const isSelected = row.flatIdx === clampedIdx;
-          const statusColor = (STATUS_COLOR[q.status] ?? 'white') as StatusColor;
-          return (
-            <Box key={q.id}>
-              <Text color={isSelected ? 'cyan' : 'gray'}>
-                {isSelected ? '▶ ' : '  '}
-              </Text>
-              <Text bold={isSelected} color={isSelected ? undefined : 'gray'}>
-                {q.id.slice(0, 16).padEnd(18)}
-              </Text>
-              <Text bold={isSelected}>{q.title.slice(0, 36).padEnd(38)}</Text>
-              <Text color={statusColor}>
-                {'  ' + q.status.padEnd(12)}
-              </Text>
-              <Text dimColor>{String(q.hours).padStart(3)}h</Text>
-              {q.scrollId !== undefined && <Text color="green">  ✓</Text>}
-            </Box>
-          );
-        })}
+          })}
+        </Box>
+        <Scrollbar total={vrows.length} visible={listHeight} offset={clampedOffset} />
       </Box>
 
       {/* Scroll indicator */}

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Box, Text, useInput, useStdout, type Key } from 'ink';
 import type { GraphSnapshot } from '../../domain/models/dashboard.js';
+import { Scrollbar } from '../Scrollbar.js';
 
 const CHROME_LINES = 3; // tab bar + marginBottom + scroll indicator
 
@@ -118,7 +119,8 @@ export function LineageView({ snapshot, isActive }: Props): React.ReactElement {
 
   return (
     <Box flexDirection="column">
-      <Box flexDirection="column">
+      <Box flexDirection="row">
+        <Box flexDirection="column" flexGrow={1}>
         {visibleRows.map((row, i) => {
           if (row.kind === 'spacer') {
             return <Box key={`sp-${i}`}><Text> </Text></Box>;
@@ -182,6 +184,8 @@ export function LineageView({ snapshot, isActive }: Props): React.ReactElement {
             </Box>
           );
         })}
+        </Box>
+        <Scrollbar total={vrows.length} visible={listHeight} offset={clampedOffset} />
       </Box>
       <Text dimColor>
         {'  '}{snapshot.intents.length} intents · {snapshot.quests.length} quests

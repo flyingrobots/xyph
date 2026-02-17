@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Box, Text, useInput, useStdout, type Key } from 'ink';
 import type { GraphSnapshot, QuestNode } from '../../domain/models/dashboard.js';
 import type { IntakePort } from '../../ports/IntakePort.js';
+import { Scrollbar } from '../Scrollbar.js';
 
 const DETAIL_LINES = 10;
 const CHROME_LINES = 3;
@@ -323,33 +324,38 @@ export function InboxView({
 
   return (
     <Box flexDirection="column">
-      <Box flexDirection="column">
-        {visibleRows.map((row, i) => {
-          if (row.kind === 'spacer') {
-            return <Box key={`sp-${i}`}><Text> </Text></Box>;
-          }
-          if (row.kind === 'header') {
+      <Box flexDirection="row">
+        <Box flexDirection="column" flexGrow={1}>
+          {visibleRows.map((row, i) => {
+            if (row.kind === 'spacer') {
+              return <Box key={`sp-${i}`}><Text> </Text></Box>;
+            }
+            if (row.kind === 'header') {
+              return (
+                <Box key={`h-${row.label}`}>
+                  <Text bold color="magenta">{row.label}</Text>
+                </Box>
+              );
+            }
+            const q = row.quest;
+            const isSelected = row.flatIdx === clampedIdx;
+            const hasHistory = q.rejectionRationale !== undefined;
             return (
-              <Box key={`h-${row.label}`}>
-                <Text bold color="magenta">{row.label}</Text>
+              <Box key={q.id}>
+                <Box width={2}>
+                  <Text color="cyan">{isSelected ? '▶' : ''}</Text>
+                </Box>
+                <Text bold={isSelected} color={isSelected ? undefined : 'gray'}>
+                  {q.id.slice(0, 16).padEnd(18)}
+                </Text>
+                <Text bold={isSelected}>{q.title.slice(0, 40).padEnd(42)}</Text>
+                <Text dimColor>{String(q.hours).padStart(3)}h</Text>
+                {hasHistory && <Text color="yellow">  ↩ reopened</Text>}
               </Box>
             );
-          }
-          const q = row.quest;
-          const isSelected = row.flatIdx === clampedIdx;
-          const hasHistory = q.rejectionRationale !== undefined;
-          return (
-            <Box key={q.id}>
-              <Text color={isSelected ? 'cyan' : 'gray'}>{isSelected ? '▶ ' : '  '}</Text>
-              <Text bold={isSelected} color={isSelected ? undefined : 'gray'}>
-                {q.id.slice(0, 16).padEnd(18)}
-              </Text>
-              <Text bold={isSelected}>{q.title.slice(0, 40).padEnd(42)}</Text>
-              <Text dimColor>{String(q.hours).padStart(3)}h</Text>
-              {hasHistory && <Text color="yellow">  ↩ reopened</Text>}
-            </Box>
-          );
-        })}
+          })}
+        </Box>
+        <Scrollbar total={vrows.length} visible={listHeight} offset={clampedOffset} />
       </Box>
 
       <Text dimColor>
