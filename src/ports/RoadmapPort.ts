@@ -10,5 +10,6 @@ export interface RoadmapPort {
   getQuest(id: string): Promise<Quest | null>;
   upsertQuest(quest: Quest): Promise<string>;
   addEdge(from: string, to: string, type: EdgeType): Promise<string>;
+  getOutgoingEdges(nodeId: string): Promise<Array<{ to: string; type: string }>>;
   sync(): Promise<void>;
 }

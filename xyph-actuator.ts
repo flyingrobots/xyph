@@ -55,7 +55,8 @@ program
   .requiredOption('--title <text>', 'Quest title')
   .requiredOption('--campaign <id>', 'Parent Campaign (Milestone) ID')
   .option('--hours <number>', 'Estimated human hours (PERT)', parseHours)
-  .action(async (id: string, opts: { title: string; campaign: string; hours?: number }) => {
+  .option('--intent <id>', 'Sovereign Intent node that authorizes this Quest (intent:* prefix)')
+  .action(async (id: string, opts: { title: string; campaign: string; hours?: number; intent?: string }) => {
     try {
       const graph = await getGraph();
       const patch = await createPatch(graph);
@@ -70,8 +71,73 @@ program
         patch.addEdge(id, opts.campaign, 'belongs-to');
       }
 
+      if (!opts.intent) {
+        console.error(chalk.red(
+          `[CONSTITUTION VIOLATION] Quest ${id} requires --intent <id> (Art. IV — Genealogy of Intent).\n` +
+          `  Every Quest must trace its lineage to a sovereign human Intent.\n` +
+          `  Declare one first: xyph-actuator intent <id> --title "..." --requested-by human.<name>`
+        ));
+        process.exit(1);
+      }
+
+      if (!opts.intent.startsWith('intent:')) {
+        console.error(chalk.red(`[ERROR] --intent value must start with 'intent:' prefix, got: '${opts.intent}'`));
+        process.exit(1);
+      }
+
+      patch.addEdge(id, opts.intent, 'authorized-by');
+
       const sha = await patch.commit();
       console.log(chalk.green(`[OK] Quest ${id} initialized in campaign ${opts.campaign}. Patch: ${sha}`));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(chalk.red(`[ERROR] ${msg}`));
+      process.exit(1);
+    }
+  });
+
+// --- SOVEREIGNTY COMMANDS ---
+
+program
+  .command('intent <id>')
+  .description('Declare a sovereign human Intent — the causal root of all Quests')
+  .requiredOption('--title <text>', 'Statement of human desire (what and why)')
+  .requiredOption('--requested-by <principal>', 'Human principal ID (must start with human.)')
+  .option('--description <text>', 'Longer-form description of the intent')
+  .action(async (id: string, opts: { title: string; requestedBy: string; description?: string }) => {
+    try {
+      if (!id.startsWith('intent:')) {
+        console.error(chalk.red(`[ERROR] Intent ID must start with 'intent:' prefix, got: '${id}'`));
+        process.exit(1);
+      }
+      if (!opts.requestedBy.startsWith('human.')) {
+        console.error(chalk.red(
+          `[ERROR] --requested-by must identify a human principal (start with 'human.'), got: '${opts.requestedBy}'`
+        ));
+        process.exit(1);
+      }
+      if (opts.title.length < 5) {
+        console.error(chalk.red(`[ERROR] --title must be at least 5 characters`));
+        process.exit(1);
+      }
+
+      const graph = await getGraph();
+      const patch = await createPatch(graph);
+      const now = Date.now();
+
+      patch.addNode(id)
+        .setProperty(id, 'title', opts.title)
+        .setProperty(id, 'requested_by', opts.requestedBy)
+        .setProperty(id, 'created_at', now)
+        .setProperty(id, 'type', 'intent');
+
+      if (opts.description) {
+        patch.setProperty(id, 'description', opts.description);
+      }
+
+      const sha = await patch.commit();
+      console.log(chalk.green(`[OK] Intent ${id} declared by ${opts.requestedBy}. Patch: ${sha}`));
+      console.log(chalk.dim(`  Title: ${opts.title}`));
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(chalk.red(`[ERROR] ${msg}`));
@@ -125,22 +191,100 @@ program
   .requiredOption('--rationale <text>', 'Brief explanation of the solution')
   .action(async (id: string, opts: { artifact: string; rationale: string }) => {
     try {
+      const agentId = process.env['XYPH_AGENT_ID'] || DEFAULT_AGENT_ID;
+      const { GuildSealService } = await import('./src/domain/services/GuildSealService.js');
+      const sealService = new GuildSealService();
+
+      const now = Date.now();
+      const scrollPayload = {
+        artifactHash: opts.artifact,
+        questId: id,
+        rationale: opts.rationale,
+        sealedBy: agentId,
+        sealedAt: now,
+      };
+
+      const guildSeal = await sealService.sign(scrollPayload, agentId);
+
       const graph = await getGraph();
       const patch = await createPatch(graph);
-
       const scrollId = `artifact:${id}`;
 
       patch.addNode(scrollId)
         .setProperty(scrollId, 'artifact_hash', opts.artifact)
         .setProperty(scrollId, 'rationale', opts.rationale)
         .setProperty(scrollId, 'type', 'scroll')
+        .setProperty(scrollId, 'sealed_by', agentId)
+        .setProperty(scrollId, 'sealed_at', now)
+        .setProperty(scrollId, 'payload_digest', sealService.payloadDigest(scrollPayload))
         .addEdge(scrollId, id, 'fulfills');
 
+      if (guildSeal) {
+        patch.setProperty(scrollId, 'guild_seal_alg', guildSeal.alg)
+             .setProperty(scrollId, 'guild_seal_key_id', guildSeal.keyId)
+             .setProperty(scrollId, 'guild_seal_sig', guildSeal.sig);
+        console.log(chalk.dim(`  Guild Seal: ${guildSeal.keyId}`));
+      } else {
+        console.log(chalk.yellow(`  [WARN] No private key found for ${agentId} — scroll is unsigned. Run: xyph-actuator generate-key`));
+      }
+
       patch.setProperty(id, 'status', 'DONE')
-           .setProperty(id, 'completed_at', Date.now());
+           .setProperty(id, 'completed_at', now);
 
       const sha = await patch.commit();
       console.log(chalk.green(`[OK] Quest ${id} sealed. Scroll: ${scrollId}. Patch: ${sha}`));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(chalk.red(`[ERROR] ${msg}`));
+      process.exit(1);
+    }
+  });
+
+program
+  .command('generate-key')
+  .description('Generate an Ed25519 Guild Seal keypair for this agent')
+  .action(async () => {
+    try {
+      const agentId = process.env['XYPH_AGENT_ID'] || DEFAULT_AGENT_ID;
+      const { GuildSealService } = await import('./src/domain/services/GuildSealService.js');
+      const sealService = new GuildSealService();
+
+      const { keyId, publicKeyHex } = await sealService.generateKeypair(agentId);
+      console.log(chalk.green(`[OK] Keypair generated for agent ${agentId}`));
+      console.log(chalk.dim(`  Key ID:     ${keyId}`));
+      console.log(chalk.dim(`  Public key: ${publicKeyHex}`));
+      console.log(chalk.dim(`  Private key stored in trust/${agentId}.sk (gitignored)`));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(chalk.red(`[ERROR] ${msg}`));
+      process.exit(1);
+    }
+  });
+
+program
+  .command('audit-sovereignty')
+  .description('Audit all BACKLOG quests for missing Genealogy of Intent (Constitution Art. IV)')
+  .action(async () => {
+    try {
+      const { WarpRoadmapAdapter } = await import('./src/infrastructure/adapters/WarpRoadmapAdapter.js');
+      const { SovereigntyService } = await import('./src/domain/services/SovereigntyService.js');
+
+      const adapter = new WarpRoadmapAdapter(process.cwd(), 'xyph-roadmap', process.env['XYPH_AGENT_ID'] ?? DEFAULT_AGENT_ID);
+      const service = new SovereigntyService(adapter);
+
+      const violations = await service.auditBacklog();
+
+      if (violations.length === 0) {
+        console.log(chalk.green('[OK] All BACKLOG quests have a valid Genealogy of Intent.'));
+      } else {
+        console.log(chalk.red(`\n[VIOLATION] ${violations.length} quest(s) lack sovereign intent ancestry:\n`));
+        for (const v of violations) {
+          console.log(chalk.red(`  ✗ ${v.questId}`));
+          console.log(chalk.dim(`    ${v.reason}`));
+        }
+        console.log(chalk.dim(`\n  Fix: xyph-actuator quest <id> --intent <intent:ID> ...`));
+        process.exit(1);
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(chalk.red(`[ERROR] ${msg}`));

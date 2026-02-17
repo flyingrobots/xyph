@@ -2,6 +2,44 @@
 
 All notable changes to XYPH will be documented in this file.
 
+## [1.0.0-alpha.3] - 2026-02-17
+
+### Added — Milestone 4: SOVEREIGNTY
+
+**Intent node type & actuator command (SOV-001)**
+- `intent:` prefix added to schema `PREFIXES`.
+- `authorized-by` edge type added to schema `EDGE_TYPES`.
+- New `Intent` domain entity: enforces `intent:` ID prefix, title ≥ 5 chars, and `requestedBy` must start with `human.` (agents cannot be sovereign roots — Constitution Art. IV).
+- `xyph-actuator intent <id> --title "..." --requested-by human.<name>` command declares a human-signed sovereign Intent node in the graph.
+- `xyph-actuator quest` gains optional `--intent <id>` flag to create an `authorized-by` edge linking a Quest to its Intent root.
+
+**Constitutional enforcement — Genealogy of Intent (SOV-002)**
+- `RoadmapPort` gains `getOutgoingEdges(nodeId)`, implemented in `WarpRoadmapAdapter` via `graph.neighbors(id, 'outgoing')`.
+- New `SovereigntyService`: `checkQuestAncestry(questId)` validates the presence of an `authorized-by` edge to an `intent:` node; `auditBacklog()` scans all BACKLOG quests and returns violations.
+- `xyph-actuator quest` now **hard-rejects** if `--intent` is absent (Constitution Art. IV — Genealogy of Intent). Exit 1 with a constitutional violation message.
+- New `xyph-actuator audit-sovereignty` command: scans all BACKLOG quests and reports violations with remediation hint.
+
+**Approval gate node type (SOV-003)**
+- `approval:` prefix added to schema `PREFIXES`.
+- `approves` edge type added to schema `EDGE_TYPES`.
+- New `ApprovalGate` entity: enforces `approval:` ID prefix, `requestedBy` must be an agent (`agent.`), `approver` must be a human (`human.`), `resolvedAt ≥ createdAt` when present, trigger must be `CRITICAL_PATH_CHANGE` or `SCOPE_INCREASE_GT_5PCT` (Constitution Art. IV.2).
+
+**Guild Seal cryptographic signing on scrolls (SOV-004)**
+- New `GuildSealService`: Ed25519 keypair generation, detached signing, and verification of Scroll payloads.
+- Canonical payload: `{ artifactHash, questId, rationale, sealedBy, sealedAt }` hashed with blake3.
+- Private keys stored in `trust/<agentId>.sk` (gitignored, mode 0600); public keys registered in `trust/keyring.json`.
+- `xyph-actuator seal` now attaches `guild_seal_alg`, `guild_seal_key_id`, `guild_seal_sig`, `sealed_by`, `sealed_at`, and `payload_digest` to every Scroll node. Warns (non-fatal) if no private key found.
+- New `xyph-actuator generate-key` command generates and registers a keypair for the active agent.
+- Keypair generated and registered for `agent.james` (`did:key:agent.james`).
+
+**Other**
+- `trust/*.sk` added to `.gitignore`.
+- Declared `intent:SOVEREIGNTY` as the root Intent for the entire project.
+- 30 new unit tests (Intent, SovereigntyService, ApprovalGate, GuildSealService). Total: 101 passing.
+
+### Breaking Changes
+- `xyph-actuator quest` now **requires** `--intent <id>`. Any quest creation without a sovereign Intent root is rejected with exit code 1.
+
 ## [1.0.0-alpha.2] - 2026-02-15
 
 ### Changed
