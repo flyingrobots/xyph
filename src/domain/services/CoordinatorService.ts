@@ -1,7 +1,6 @@
 import { RoadmapPort } from '../../ports/RoadmapPort.js';
 import { IngestService } from './IngestService.js';
 import { NormalizeService } from './NormalizeService.js';
-import { TriageService } from './TriageService.js';
 import { RebalanceService } from './RebalanceService.js';
 import { Quest } from '../entities/Quest.js';
 import chalk from 'chalk';
@@ -16,7 +15,6 @@ export class CoordinatorService {
     private readonly agentId: string,
     private readonly ingest: IngestService,
     private readonly normalize: NormalizeService,
-    private readonly triage: TriageService = new TriageService(roadmap),
     private readonly rebalance: RebalanceService = new RebalanceService()
   ) {}
 

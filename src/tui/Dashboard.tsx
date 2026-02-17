@@ -99,8 +99,8 @@ export function Dashboard({ service, intake, agentId }: Props): React.ReactEleme
         </Text>
       </Box>
       {activeView === 'roadmap' && <RoadmapView snapshot={filtered} isActive={true} />}
-      {activeView === 'lineage' && <LineageView snapshot={filtered} />}
-      {activeView === 'all' && <AllNodesView snapshot={filtered} />}
+      {activeView === 'lineage' && <LineageView snapshot={filtered} isActive={true} />}
+      {activeView === 'all' && <AllNodesView snapshot={filtered} isActive={true} />}
       {activeView === 'inbox' && (
         <InboxView
           snapshot={filtered}
