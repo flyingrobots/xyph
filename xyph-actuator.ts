@@ -71,13 +71,21 @@ program
         patch.addEdge(id, opts.campaign, 'belongs-to');
       }
 
-      if (opts.intent) {
-        if (!opts.intent.startsWith('intent:')) {
-          console.error(chalk.red(`[ERROR] --intent value must start with 'intent:' prefix, got: '${opts.intent}'`));
-          process.exit(1);
-        }
-        patch.addEdge(id, opts.intent, 'authorized-by');
+      if (!opts.intent) {
+        console.error(chalk.red(
+          `[CONSTITUTION VIOLATION] Quest ${id} requires --intent <id> (Art. IV — Genealogy of Intent).\n` +
+          `  Every Quest must trace its lineage to a sovereign human Intent.\n` +
+          `  Declare one first: xyph-actuator intent <id> --title "..." --requested-by human.<name>`
+        ));
+        process.exit(1);
       }
+
+      if (!opts.intent.startsWith('intent:')) {
+        console.error(chalk.red(`[ERROR] --intent value must start with 'intent:' prefix, got: '${opts.intent}'`));
+        process.exit(1);
+      }
+
+      patch.addEdge(id, opts.intent, 'authorized-by');
 
       const sha = await patch.commit();
       console.log(chalk.green(`[OK] Quest ${id} initialized in campaign ${opts.campaign}. Patch: ${sha}`));
@@ -199,6 +207,37 @@ program
 
       const sha = await patch.commit();
       console.log(chalk.green(`[OK] Quest ${id} sealed. Scroll: ${scrollId}. Patch: ${sha}`));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(chalk.red(`[ERROR] ${msg}`));
+      process.exit(1);
+    }
+  });
+
+program
+  .command('audit-sovereignty')
+  .description('Audit all BACKLOG quests for missing Genealogy of Intent (Constitution Art. IV)')
+  .action(async () => {
+    try {
+      const { WarpRoadmapAdapter } = await import('./src/infrastructure/adapters/WarpRoadmapAdapter.js');
+      const { SovereigntyService } = await import('./src/domain/services/SovereigntyService.js');
+
+      const adapter = new WarpRoadmapAdapter(process.cwd(), 'xyph-roadmap', process.env['XYPH_AGENT_ID'] ?? DEFAULT_AGENT_ID);
+      const service = new SovereigntyService(adapter);
+
+      const violations = await service.auditBacklog();
+
+      if (violations.length === 0) {
+        console.log(chalk.green('[OK] All BACKLOG quests have a valid Genealogy of Intent.'));
+      } else {
+        console.log(chalk.red(`\n[VIOLATION] ${violations.length} quest(s) lack sovereign intent ancestry:\n`));
+        for (const v of violations) {
+          console.log(chalk.red(`  ✗ ${v.questId}`));
+          console.log(chalk.dim(`    ${v.reason}`));
+        }
+        console.log(chalk.dim(`\n  Fix: xyph-actuator quest <id> --intent <intent:ID> ...`));
+        process.exit(1);
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(chalk.red(`[ERROR] ${msg}`));
