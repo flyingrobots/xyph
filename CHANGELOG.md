@@ -2,7 +2,7 @@
 
 All notable changes to XYPH will be documented in this file.
 
-## [Unreleased] - Milestone 5: WARP Dashboard TUI Overhaul
+## [1.0.0-alpha.5] - Milestone 5: WARP Dashboard TUI Overhaul
 
 ### Added
 
@@ -67,9 +67,11 @@ All notable changes to XYPH will be documented in this file.
 
 **Wave 8 — Final review fixes (CR-005)**
 - *Critical*: Dashboard graph cache invalidation — `WarpDashboardAdapter.invalidateCache()` clears cached graph via `WarpGraphHolder.reset()`, called on every refresh so intake mutations (promote/reject) are visible immediately. Added `invalidateCache?()` to `DashboardPort`.
-- *Major*: `GuildSealService.generateKeypair()` now uses `loadKeyring()` for validation parity with `verify()`, eliminating divergent schema checks. Orphaned `.sk` file rollback on keyring write failure prevents permanently broken state.
-- *Minor*: Static `randomBytes` import in `GuildSealService` (was dynamic `await import('node:crypto')`).
-- *Doc*: Updated `CLAUDE-XYPH-PAUSE.md` — DSH-004 (IngestService test) marked resolved; DSH-001 remains sole pre-merge blocker.
+- *Major*: `GuildSealService.generateKeypair()` now uses `loadKeyring()` for validation parity with `verify()`, eliminating divergent schema checks. Orphaned `.sk` file rollback on keyring write failure prevents permanently broken state. `verify()` now catches `loadKeyring()` errors gracefully (returns `false` instead of throwing).
+- *Major*: `LandingView` progress bar now excludes GRAVEYARD quests (was only excluding INBOX), consistent with milestone detection logic.
+- *Major*: ESLint test block now references `tsconfig.test.json` (was `tsconfig.json` which doesn't include `test/**`).
+- *Minor*: `WarpIntakeAdapter` validates `task:` prefix on `questId` in all three methods (promote/reject/reopen). `WarpRoadmapAdapter.getOutgoingEdges()` now calls `syncCoverage()/materialize()` before reading edges. InboxView status bar clarifies only promote requires `human.*`. Static `randomBytes` import in `GuildSealService`.
+- *Doc*: Updated `CLAUDE-XYPH-PAUSE.md` — DSH-004 marked resolved; DSH-001 remains sole pre-merge blocker. CHANGELOG version header updated to `1.0.0-alpha.5`.
 
 **Wave 7 — Continued review fixes (CR-004)**
 - *Medium*: Extracted shared `WarpGraphHolder` helper — eliminated triplicated `getGraph()`/`initGraph()` boilerplate across Dashboard, Intake, and Roadmap adapters (M-25).
@@ -206,7 +208,8 @@ All notable changes to XYPH will be documented in this file.
 - **Strict Linting**: Configured ESLint with `typescript-eslint` strict rules.
 - Refined Actuator `syncWith` logic to use `syncCoverage()` for reliable multi-writer convergence.
 
-[Unreleased]: https://github.com/flyingrobots/xyph/compare/v1.0.0-alpha.4...HEAD
+[Unreleased]: https://github.com/flyingrobots/xyph/compare/v1.0.0-alpha.5...HEAD
+[1.0.0-alpha.5]: https://github.com/flyingrobots/xyph/compare/v1.0.0-alpha.4...v1.0.0-alpha.5
 [1.0.0-alpha.4]: https://github.com/flyingrobots/xyph/compare/v1.0.0-alpha.3...v1.0.0-alpha.4
 [1.0.0-alpha.3]: https://github.com/flyingrobots/xyph/compare/v1.0.0-alpha.2...v1.0.0-alpha.3
 [1.0.0-alpha.2]: https://github.com/flyingrobots/xyph/compare/v1.0.0-alpha.1...v1.0.0-alpha.2

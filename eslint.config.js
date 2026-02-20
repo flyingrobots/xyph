@@ -27,7 +27,7 @@ export default tseslint.config(
     files: ['test/**/*.{ts,tsx}'],
     languageOptions: {
       parserOptions: {
-        project: './tsconfig.json',
+        project: './tsconfig.test.json',
       },
     },
     rules: {

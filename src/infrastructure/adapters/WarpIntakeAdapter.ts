@@ -12,8 +12,17 @@ export class WarpIntakeAdapter implements IntakePort {
     this.graphHolder = new WarpGraphHolder(cwd, 'xyph-roadmap', agentId);
   }
 
+  private validateQuestId(questId: string): void {
+    if (!questId.startsWith('task:')) {
+      throw new Error(
+        `[INVALID_ARG] questId must start with 'task:', got: '${questId}'`
+      );
+    }
+  }
+
   public async promote(questId: string, intentId: string, campaignId?: string): Promise<string> {
     // Boundary validation (defense-in-depth — also checked by IntakeService)
+    this.validateQuestId(questId);
     if (!this.agentId.startsWith('human.')) {
       throw new Error(
         `[FORBIDDEN] promote requires a human principal (human.*), got: '${this.agentId}'`
@@ -57,6 +66,7 @@ export class WarpIntakeAdapter implements IntakePort {
   }
 
   public async reject(questId: string, rationale: string): Promise<string> {
+    this.validateQuestId(questId);
     if (rationale.trim().length === 0) {
       throw new Error(`[MISSING_ARG] --rationale is required and must be non-empty`);
     }
@@ -88,6 +98,7 @@ export class WarpIntakeAdapter implements IntakePort {
 
   public async reopen(questId: string): Promise<string> {
     // Boundary validation (defense-in-depth — also checked by IntakeService)
+    this.validateQuestId(questId);
     if (!this.agentId.startsWith('human.')) {
       throw new Error(
         `[FORBIDDEN] reopen requires a human principal (human.*), got: '${this.agentId}'`

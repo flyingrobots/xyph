@@ -185,7 +185,13 @@ export class GuildSealService {
     if (seal.payloadDigest !== expectedDigest) return false;
 
     const keyringPath = path.join(this.trustDir, 'keyring.json');
-    const keyring = loadKeyring(keyringPath);
+    let keyring: Map<string, { keyId: string; alg: 'ed25519'; publicKeyHex: string }>;
+    try {
+      keyring = loadKeyring(keyringPath);
+    } catch {
+      // Malformed or missing keyring — verification fails gracefully
+      return false;
+    }
     const entry = keyring.get(seal.keyId);
     if (!entry) return false;
 

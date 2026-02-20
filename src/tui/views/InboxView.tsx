@@ -396,7 +396,7 @@ export function InboxView({
         {vrows.length > listHeight
           ? `  rows ${clampedOffset + 1}–${Math.min(clampedOffset + listHeight, vrows.length)}/${vrows.length}  ↑↓`
           : '  ↑↓'}
-        {'  p: promote  x: reject  (requires human.* XYPH_AGENT_ID)'}
+        {'  p: promote (human.* only)  x: reject'}
       </Text>
 
       {/* Detail pane — always visible, proportional height */}

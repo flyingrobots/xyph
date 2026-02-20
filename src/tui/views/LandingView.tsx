@@ -20,7 +20,9 @@ export function LandingView({ logoText, snapshot }: Props): ReactElement {
   if (snapshot === null) {
     statsContent = <Text dimColor>Loading WARP graph…</Text>;
   } else {
-    const allQuests = snapshot.quests.filter((q) => q.status !== 'INBOX');
+    const allQuests = snapshot.quests.filter(
+      (q) => q.status !== 'INBOX' && q.status !== 'GRAVEYARD',
+    );
     const doneCount = allQuests.filter((q) => q.status === 'DONE').length;
     const totalCount = allQuests.length;
     const pct = totalCount === 0 ? 0 : Math.round((doneCount / totalCount) * 100);
