@@ -201,12 +201,12 @@
 
 ### `eslint.config.js`
 
-- [ ] **L-02** — Files glob is `src/**/*.{ts,tsx}` — root-level entry points `xyph-actuator.ts` and `xyph-dashboard.tsx` are not linted
+- [x] **L-02** — Files glob is `src/**/*.{ts,tsx}` — root-level entry points `xyph-actuator.ts` and `xyph-dashboard.tsx` are not linted
 
 ### `package.json`
 
-- [ ] **L-03** — `ts-node` listed as devDependency but project migrated to `tsx` — dead dependency
-- [ ] **L-04** — `ajv`, `ajv-errors`, `ajv-formats` listed as devDependencies — no usage found in source or tests; likely dead
+- [x] **L-03** — `ts-node` listed as devDependency but project migrated to `tsx` — dead dependency
+- [x] **L-04** — `ajv`, `ajv-errors`, `ajv-formats` listed as devDependencies — no usage found in source or tests; likely dead
 
 ### `scripts/backlog-update.mts`
 
@@ -253,7 +253,7 @@
 ### `src/infrastructure/adapters/WarpDashboardAdapter.ts`
 
 - [ ] **L-20** — `graph.neighbors()` return cast as `NeighborEntry[]` — unsafe type assertion on library return with no runtime shape check
-- [ ] **L-21** — Missing `Number.isFinite()` guard on `hours` — `NaN`, `Infinity`, `-Infinity` propagate as valid (unlike `WarpRoadmapAdapter` which checks)
+- [x] **L-21** — Missing `Number.isFinite()` guard on `hours` — `NaN`, `Infinity`, `-Infinity` propagate as valid (unlike `WarpRoadmapAdapter` which checks)
 
 ### `src/infrastructure/adapters/WarpIntakeAdapter.ts`
 
