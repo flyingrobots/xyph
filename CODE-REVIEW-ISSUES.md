@@ -102,7 +102,7 @@
 
 ### `src/domain/services/CoordinatorService.ts`
 
-- [ ] **M-12** — `chalk` imported directly in domain service — violates hexagonal architecture; domain layer should not know about terminal color formatting; should inject a `LoggerPort`
+- [x] **M-12** — `chalk` imported directly in domain service — violates hexagonal architecture; domain layer should not know about terminal color formatting; should inject a `LoggerPort`
 - [ ] **M-13** — All quests validated against hardcoded `'campaign:default'` for rebalancing — ignores actual campaign grouping; mixed-campaign input gets incorrect aggregate hour limit
 
 ### `src/domain/services/DashboardService.ts`

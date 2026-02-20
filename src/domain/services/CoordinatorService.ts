@@ -3,7 +3,6 @@ import { IngestService } from './IngestService.js';
 import { NormalizeService } from './NormalizeService.js';
 import { RebalanceService } from './RebalanceService.js';
 import { Quest } from '../entities/Quest.js';
-import chalk from 'chalk';
 
 /**
  * CoordinatorService
@@ -24,12 +23,12 @@ export class CoordinatorService {
    * @param contextHash BLAKE3 hash of the originating NL prompt/intent (optional)
    */
   public async orchestrate(rawInput: string, contextHash?: string): Promise<void> {
-    console.log(chalk.magenta(`[${new Date().toISOString()}] Orchestration started by ${this.agentId}`));
+    console.log(`[${new Date().toISOString()}] Orchestration started by ${this.agentId}`);
 
     // Phase 1: Ingest
     let quests = this.ingest.ingestMarkdown(rawInput);
     if (quests.length === 0) {
-      console.warn(chalk.yellow(`[${this.agentId}] No quests parsed from input (${rawInput.length} chars)`));
+      console.warn(`[${this.agentId}] No quests parsed from input (${rawInput.length} chars)`);
       return;
     }
 
@@ -43,7 +42,7 @@ export class CoordinatorService {
 
     // Phase 3: Triage (Genealogy of Intent)
     if (contextHash) {
-      console.log(chalk.blue(`[${this.agentId}] Linking ${quests.length} quests to origin context ${contextHash}`));
+      console.log(`[${this.agentId}] Linking ${quests.length} quests to origin context ${contextHash}`);
       quests = quests.map(q => new Quest({
         ...q.toProps(),
         originContext: contextHash,
@@ -64,11 +63,11 @@ export class CoordinatorService {
     for (const quest of quests) {
       try {
         const sha = await this.roadmap.upsertQuest(quest);
-        console.log(chalk.green(`[OK] Quest ${quest.id} emitted to graph. Patch: ${sha}`));
+        console.log(`[OK] Quest ${quest.id} emitted to graph. Patch: ${sha}`);
         results.push({ questId: quest.id, success: true });
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
-        console.error(chalk.red(`[ERROR] Failed to upsert quest ${quest.id}: ${msg}`));
+        console.error(`[ERROR] Failed to upsert quest ${quest.id}: ${msg}`);
         results.push({ questId: quest.id, success: false, error: msg });
       }
     }
@@ -84,7 +83,7 @@ export class CoordinatorService {
    * Syncs state, runs janitorial checks, and reports health.
    */
   public async heartbeat(): Promise<void> {
-    console.log(chalk.blue(`[${new Date().toISOString()}] Heartbeat started by ${this.agentId}`));
+    console.log(`[${new Date().toISOString()}] Heartbeat started by ${this.agentId}`);
 
     try {
       // 1. Sync with the causal frontier
@@ -98,11 +97,11 @@ export class CoordinatorService {
 
       // 4. Report status
       const done = quests.filter(q => q.isDone()).length;
-      console.log(chalk.cyan(`[*] Roadmap Status: ${done}/${quests.length} quests completed.`));
+      console.log(`[*] Roadmap Status: ${done}/${quests.length} quests completed.`);
 
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error(chalk.red(`[ERROR] Heartbeat failed: ${msg}`));
+      console.error(`[ERROR] Heartbeat failed: ${msg}`);
       throw err;
     }
   }
@@ -110,7 +109,7 @@ export class CoordinatorService {
   private runJanitorialChecks(quests: Quest[]): void {
     const claimed = quests.filter(q => q.assignedTo).length;
     if (claimed > 0) {
-      console.log(chalk.yellow(`[*] Janitorial: ${claimed} quests currently claimed by agents.`));
+      console.log(`[*] Janitorial: ${claimed} quests currently claimed by agents.`);
     }
   }
 }
