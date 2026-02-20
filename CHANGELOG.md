@@ -6,6 +6,17 @@ All notable changes to XYPH will be documented in this file.
 
 ### Milestone 5: WARP Dashboard TUI Overhaul
 
+### Changed
+
+**README rewritten with progressive-disclosure walkthrough**
+- Replaced flat "Core Concepts / For Humans / For Agents" structure with a narrative walkthrough: Ada (human) and Hal (agent) build a feature together, introducing domain vocabulary (Intent, Quest, Campaign, Scroll, Guild Seal, OCP, Genealogy of Intent) inline on first use.
+- Dashboard keybindings and CLI commands moved to compact reference tables after the walkthrough.
+- Expanded Constitution section with links to all canonical specifications.
+- `CLAUDE.md` updated: replaced stale "Current Status" with actuator-based planning workflow and full command reference.
+
+**Added CONTRIBUTING.md**
+- Development workflow, quality gates, Constitution summary, and full command reference table.
+
 ### Security
 
 **minimatch ReDoS vulnerability (CVE: GHSA-3ppc-4f35-3m26)**

@@ -37,17 +37,28 @@ Our duty is to write **safe, correct code**. Shortcuts that compromise quality a
 - ❌ NEVER say CI/CD failures are acceptable or ignorable. A red build is your problem now.
 - If you encounter lint errors, test failures, or warnings — even ones that existed before your branch — fix them. You touched the codebase; you leave it better than you found it.
 
-### Current Status
-- Foundations: ✅ Canonical Corpus extracted from `chats.txt`.
-- Infrastructure: ✅ `git-warp` and `plumbing` installed.
-- Tools: ✅ `xyph-actuator.mjs` implemented (Quest, Claim, Seal).
-- Milestone: 🚧 Milestone 1: BEDROCK.
+### Project Planning via the Actuator
+XYPH plans and tracks its own development through the WARP graph. The `xyph-actuator.ts` CLI is the single source of truth for what's been done, what's next, and what's in the backlog.
+
+- **See what's next**: `npx tsx xyph-actuator.ts status --view roadmap`
+- **See everything**: `npx tsx xyph-actuator.ts status --view all`
+- **Check the inbox**: `npx tsx xyph-actuator.ts status --view inbox`
+- **Add a backlog item**: use `quest`, `inbox`, or `promote` commands
+- **Plan work**: always consult the graph first — don't plan in your head, plan through the actuator
+
+All project planning, prioritization, and progress tracking flows through the actuator. If you want to know what to work on, ask the graph. If you want to add work, write it to the graph.
 
 ### Command Reference
-- `git warp info`: Inspect the roadmap state.
-- `./xyph-actuator.mjs quest <id> --title "Title" --campaign <id>`: Initialize a Quest.
-- `./xyph-actuator.mjs claim <id>`: Volunteer for a task (OCP).
-- `./xyph-actuator.mjs seal <id> --artifact <hash> --rationale "..."`: Mark as DONE.
+- `npx tsx xyph-actuator.ts status --view <roadmap|lineage|all|inbox>`: View the roadmap state.
+- `npx tsx xyph-actuator.ts quest <id> --title "Title" --campaign <id> --intent <id>`: Initialize a Quest.
+- `npx tsx xyph-actuator.ts intent <id> --title "Title" --requested-by human.<name>`: Declare a sovereign Intent.
+- `npx tsx xyph-actuator.ts claim <id>`: Volunteer for a task (OCP).
+- `npx tsx xyph-actuator.ts seal <id> --artifact <hash> --rationale "..."`: Mark as DONE.
+- `npx tsx xyph-actuator.ts inbox <id> --title "Title" --suggested-by <principal>`: Suggest a task for triage.
+- `npx tsx xyph-actuator.ts promote <id> --intent <id>`: Promote INBOX → BACKLOG.
+- `npx tsx xyph-actuator.ts reject <id> --rationale "..."`: Reject to GRAVEYARD.
+- `npx tsx xyph-actuator.ts audit-sovereignty`: Audit quests for missing intent lineage.
+- `npx tsx xyph-actuator.ts generate-key`: Generate an Ed25519 Guild Seal keypair.
 
 ### Remember
 - You are a **Causal Agent**. Your actions are permanent, signed, and time-travelable.
