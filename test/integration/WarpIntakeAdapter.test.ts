@@ -10,9 +10,13 @@ import type { PatchSession } from '@git-stunts/git-warp';
 import Plumbing from '@git-stunts/plumbing';
 
 // NOTE: Tests share a mutable git repo (repoPath) initialized in beforeAll.
-// Most tests use dedicated seed nodes and are order-independent. The only shared-state
-// dependency is the reject success test (task:INTAKE-002 → GRAVEYARD), which runs
-// before the reject INVALID_FROM test. Promote INVALID_FROM uses task:INTAKE-ALREADY-PROMOTED.
+// Each test uses dedicated seed nodes and is order-independent:
+//   - promote success: task:INTAKE-001 (seeded INBOX)
+//   - promote FORBIDDEN: task:INTAKE-FORBIDDEN (seeded INBOX, validation-first)
+//   - promote INVALID_FROM: task:INTAKE-ALREADY-PROMOTED (seeded BACKLOG)
+//   - reject success: task:INTAKE-002 (seeded INBOX)
+//   - reject MISSING_ARG: task:INTAKE-002 (validation-first, no graph access)
+//   - reject INVALID_FROM: task:INTAKE-004 (seeded GRAVEYARD)
 describe('WarpIntakeAdapter Integration', () => {
   let repoPath: string;
   const graphName = 'xyph-roadmap';

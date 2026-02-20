@@ -51,7 +51,7 @@
 
 ### `test/integration/WarpIntakeAdapter.test.ts`
 
-- [ ] **H-10** — Tests are explicitly order-dependent ("Tests share a mutable git repo and MUST run in declaration order") — the promote test mutates `task:INTAKE-001` from INBOX to BACKLOG, and later tests depend on that side-effect; `--shuffle` or parallel runs will break
+- [x] **H-10** — Tests are explicitly order-dependent ("Tests share a mutable git repo and MUST run in declaration order") — the promote test mutates `task:INTAKE-001` from INBOX to BACKLOG, and later tests depend on that side-effect; `--shuffle` or parallel runs will break
 
 ### `test/unit/CoordinatorService.test.ts`
 
