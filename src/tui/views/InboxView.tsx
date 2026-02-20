@@ -93,6 +93,16 @@ export function InboxView({
     );
   }, [totalQuests]);
 
+  // Dismiss stale modal if the referenced quest was removed from inbox (M-34)
+  useEffect(() => {
+    if (modal === null || modal.kind === 'mutating' || modal.kind === 'error') return;
+    const questId = modal.questId;
+    const stillExists = flatQuests.some((q) => q.id === questId);
+    if (!stillExists) {
+      setModal(null);
+    }
+  }, [flatQuests, modal]);
+
   const clampedIdx = totalQuests === 0 ? 0 : Math.min(selectedIdx, totalQuests - 1);
   const clampedOffset = Math.min(scrollOffset, Math.max(0, vrows.length - listHeight));
 
@@ -163,6 +173,7 @@ export function InboxView({
         return;
       }
       if (key.downArrow) {
+        if (intents.length === 0) return;
         setModal({ ...modal, intentIdx: Math.min(intents.length - 1, modal.intentIdx + 1) });
         return;
       }

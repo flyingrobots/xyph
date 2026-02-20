@@ -160,12 +160,12 @@
 ### `src/tui/views/InboxView.tsx`
 
 - [x] **M-33** — Select-intent modal: down-arrow computes `Math.min(intents.length - 1, ...)` which yields `-1` when `intents.length === 0` (reachable if snapshot changes while modal is open)
-- [ ] **M-34** — Snapshot can change while modal is open — `modal.questId` may no longer exist in the inbox and `modal.intentIdx` may be out of bounds against the new intents array
+- [x] **M-34** — Snapshot can change while modal is open — `modal.questId` may no longer exist in the inbox and `modal.intentIdx` may be out of bounds against the new intents array
 
 ### `src/tui/views/LineageView.tsx`
 
 - [x] **M-35** — `useInput` handlers lack `return` after each `moveSelection` call — unlike AllNodesView and RoadmapView which early-return; multiple handlers can fire for a single key event
-- [ ] **M-36** — Selection fallback always snaps to `questIndices[0] ?? 0` when current selection is invalidated — should find nearest navigable index like RoadmapView does
+- [x] **M-36** — Selection fallback always snaps to `questIndices[0] ?? 0` when current selection is invalidated — should find nearest navigable index like RoadmapView does
 
 ### `test/integration/WarpIntakeAdapter.test.ts`
 
