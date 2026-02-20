@@ -101,6 +101,13 @@ export function Dashboard({ service, intake, agentId, logoText }: Props): ReactE
     }
   });
 
+  // GRAVEYARD is excluded from all active views by default
+  // NOTE: useMemo must be called before any conditional returns (Rules of Hooks)
+  const filtered = useMemo(
+    () => snapshot ? service.filterSnapshot(snapshot, { includeGraveyard: false }) : null,
+    [service, snapshot],
+  );
+
   // Landing screen — shown until user presses any key
   if (showLanding) {
     // Pass snapshot even if still loading (LandingView handles null)
@@ -115,15 +122,9 @@ export function Dashboard({ service, intake, agentId, logoText }: Props): ReactE
     return <Text color="red">Error: {error}</Text>;
   }
 
-  if (snapshot === null) {
+  if (snapshot === null || filtered === null) {
     return <Text color="red">No snapshot available.</Text>;
   }
-
-  // GRAVEYARD is excluded from all active views by default
-  const filtered = useMemo(
-    () => service.filterSnapshot(snapshot, { includeGraveyard: false }),
-    [service, snapshot],
-  );
 
   const mainContent = (
     <Box flexDirection="column">

@@ -39,7 +39,7 @@ Fix options:
 
 **DSH-003 (`link-intent` command)** would have saved a lot of manual scripting today. Every time you bootstrap a new milestone's quests, you'll need to wire `authorized-by` edges. A first-class actuator command would make that part of the natural workflow.
 
-**The `IngestService` test failure** (DSH-004) has been failing since before today. It's not blocking anything but it's noise in every test run and will confuse future contributors.
+**DSH-004** (`IngestService` test failure) — resolved in commit `b82841a`. The regex and formatting issues were fixed as part of the code review pass.
 
 ---
 
@@ -61,7 +61,7 @@ The logical next work is either:
 2. **WEAVER milestone** — `depends-on`/`blocked-by` edges, DAG cycle detection, frontier computation. This is where XYPH starts to feel like a real planning engine. WVR-001 is the entry point.
 3. **Merge PR #7** — it's open and ready, just needs a review pass
 
-I'd lean toward knocking out DSH-001 and DSH-004 before merging, since the campaign type bug is technically a data integrity issue and the test failure is just embarrassing to ship. Both are small.
+I'd lean toward knocking out DSH-001 before merging, since the campaign type bug is technically a data integrity issue. DSH-004 (IngestService test) was resolved in commit `b82841a`.
 
 ---
 

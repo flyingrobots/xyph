@@ -277,6 +277,12 @@ program
         console.error(chalk.red(`[ERROR] --title must be at least 5 characters`));
         process.exit(1);
       }
+      if (!opts.suggestedBy.startsWith('human.') && !opts.suggestedBy.startsWith('agent.')) {
+        console.error(chalk.red(
+          `[ERROR] --suggested-by must start with 'human.' or 'agent.', got: '${opts.suggestedBy}'`
+        ));
+        process.exit(1);
+      }
 
       const graph = await getGraph();
       const patch = await createPatch(graph);

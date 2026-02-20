@@ -233,7 +233,7 @@ export function InboxView({
         return;
       }
       if (intents.length === 0) {
-        setModal(null);
+        setModal({ kind: 'error', code: null, message: 'No intents available — create one first with xyph-actuator intent' });
         return;
       }
       const quest = flatQuests[clampedIdx];

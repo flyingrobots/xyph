@@ -9,9 +9,10 @@ import WarpGraph, { GitGraphAdapter } from '@git-stunts/git-warp';
 import type { PatchSession } from '@git-stunts/git-warp';
 import Plumbing from '@git-stunts/plumbing';
 
-// NOTE: Tests share a mutable git repo (repoPath) and MUST run in declaration order.
-// The promote test mutates task:INTAKE-001 from INBOX→BACKLOG, which subsequent
-// INVALID_FROM tests depend on. Do not reorder without understanding these dependencies.
+// NOTE: Tests share a mutable git repo (repoPath) initialized in beforeAll.
+// Most tests use dedicated seed nodes and are order-independent. The only shared-state
+// dependency is the reject success test (task:INTAKE-002 → GRAVEYARD), which runs
+// before the reject INVALID_FROM test. Promote INVALID_FROM uses task:INTAKE-ALREADY-PROMOTED.
 describe('WarpIntakeAdapter Integration', () => {
   let repoPath: string;
   const graphName = 'xyph-roadmap';

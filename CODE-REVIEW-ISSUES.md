@@ -45,7 +45,7 @@
 
 - [ ] **H-08** — `useEffect` dependency array includes `vrows` which is a new array reference on every render (not memoized) — effect fires every render, calling `setSelectedVIdx` each time and triggering cascading re-renders
 
-### `src/tui/views/AllNodesView.tsx`, `InboxView.tsx`, `LineageView.tsx`, `RoadmapView.tsx`
+### `src/tui/views/AllNodesView.tsx`, `InboxView.tsx`, `LineageView.tsx`, `RoadmapView.tsx` (H-09: stale closures)
 
 - [ ] **H-09** — `useInput` handlers capture stale closures of `clampedOffset` / `clampedVIdx` / `questCount` — rapid key presses within the same tick can operate on outdated state values
 
@@ -152,7 +152,7 @@
 - [ ] **M-29** — Missing `GRAVEYARD` entry — quests with this status fall through to `?? 'white'` silently with no visual distinction from normal text
 - [ ] **M-30** — Typed as `Record<string, string>` — completely open-ended; defeats `noUncheckedIndexedAccess`; should use `Partial<Record<QuestStatus | CampaignStatus, string>>` for key safety
 
-### `src/tui/views/AllNodesView.tsx`, `InboxView.tsx`, `LineageView.tsx`, `RoadmapView.tsx`
+### `src/tui/views/AllNodesView.tsx`, `InboxView.tsx`, `LineageView.tsx`, `RoadmapView.tsx` (M-31–M-35: memoization & input)
 
 - [ ] **M-31** — `buildRows()` recomputed on every render without `useMemo` — iterates all campaigns, intents, quests, scrolls, approvals each render cycle
 - [ ] **M-32** — `useEffect` scroll-clamping depends on `[vrows.length, listHeight]` but `vrows` is rebuilt every render — the effect duplicates work already done synchronously by `clampedOffset` and causes an extra render cycle
@@ -327,7 +327,7 @@
 - [ ] **N-13** — `scrollByQuestId` + `scrollSealedByQuestId` dual-map pattern iterates `snapshot.scrolls` twice — could be a single `Map<string, ScrollNode>`
 - [ ] **N-14** — Orphan quests all use `└─` tree connector — preceding orphans should use `├─` and only the last should use `└─`
 
-### `src/tui/views/AllNodesView.tsx`, `InboxView.tsx`, `LineageView.tsx`, `RoadmapView.tsx`
+### `src/tui/views/AllNodesView.tsx`, `InboxView.tsx`, `LineageView.tsx`, `RoadmapView.tsx` (N-15–N-16: keys & prop drilling)
 
 - [ ] **N-15** — Spacer row keys use loop index (`sp-${i}`) — incorrect under virtual scrolling; should use absolute index `sp-${clampedOffset + i}` to avoid React node reuse across scroll positions
 - [ ] **N-16** — Full `GraphSnapshot` passed to `QuestDetailPanel` just for campaign/intent title lookups — excessive prop drilling; could pass pre-resolved strings
@@ -343,7 +343,7 @@
 - [ ] **N-20** — `qs.length === 0` condition selects empty campaigns as "current" — a future milestone with zero quests would be chosen over an in-progress one
 - [ ] **N-21** — "Any key to continue / q to quit" hint text rendered here but `useInput` handler is in the parent — misleading if read in isolation
 
-### `src/tui/views/AllNodesView.tsx`, `InboxView.tsx`, `LineageView.tsx`, `RoadmapView.tsx`
+### `src/tui/views/AllNodesView.tsx`, `InboxView.tsx`, `LineageView.tsx`, `RoadmapView.tsx` (N-22: redundant useEffect)
 
 - [ ] **N-22** — `useEffect` scroll-clamping redundant with synchronous `clampedOffset` — causes an unnecessary extra render cycle in all four views
 

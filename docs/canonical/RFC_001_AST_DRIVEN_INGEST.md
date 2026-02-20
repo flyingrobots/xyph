@@ -6,7 +6,7 @@
 - **Target Milestone**: 6 (WEAVER)
 
 ## 1. Abstract
-Currently, the `IngestService` utilizes a line-by-line Regular Expression (Regex) to parse roadmap intent. This "String Soup" approach is position-dependent, whitespace-fragile, and inherently "hierarchy-blind." This RFC proposes a transition to an Abstract Syntax Tree (AST)-driven ingestion engine using the `unified` and `remark` ecosystems. This shift enables **Semantic Hierarchy Discovery** (automatic parent-child linking) and ensures that XYPH’s "Genealogy of Intent" is as robust as the underlying WARP graph.
+Currently, the `IngestService` utilizes a line-by-line Regular Expression (Regex) to parse roadmap intent. The "String Soup" approach is position-dependent, whitespace-fragile, and inherently "hierarchy-blind." By adopting an AST-driven ingestion engine using the `unified` and `remark` ecosystems, we enable **Semantic Hierarchy Discovery** (automatic parent-child linking) and ensure that XYPH's "Genealogy of Intent" is as robust as the underlying WARP graph.
 
 ## 2. Problem Statement: The "String Soup" Sin
 The current implementation in `IngestService.ts` relies on a "God-Regex":

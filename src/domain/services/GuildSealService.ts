@@ -88,6 +88,8 @@ export class GuildSealService {
     const keyId = this.keyIdForAgent(agentId);
 
     // Write private key atomically (O_EXCL prevents overwriting an existing key)
+    // TODO: If keyring update fails below, this .sk file becomes orphaned.
+    // Consider rolling back (deleting .sk) on keyring write failure.
     try {
       fs.writeFileSync(skFile, privateKeyHex, { mode: 0o600, flag: 'wx' });
     } catch (err: unknown) {
@@ -98,6 +100,9 @@ export class GuildSealService {
     }
 
     // Register public key in keyring
+    // TODO: Unify keyring validation with loadKeyring() to avoid divergent schema checks.
+    // generateKeypair() checks only for .keys array; verify() via loadKeyring() enforces
+    // version === "v1", keyId non-empty, alg === "ed25519", and publicKeyHex format.
     const keyringPath = path.join(this.trustDir, 'keyring.json');
     let keyring: { version: string; keys: Array<{ keyId: string; alg: string; publicKeyHex: string }> };
     try {

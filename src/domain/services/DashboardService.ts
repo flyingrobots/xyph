@@ -48,6 +48,8 @@ export class DashboardService {
   async getLineage(): Promise<LineageTree[]> {
     const snapshot = await this.repo.fetchSnapshot();
 
+    // Latest-wins: if multiple scrolls share a questId, the last one overwrites earlier entries.
+    // This is intentional — superseded artifacts are replaced by the most recent scroll.
     const scrollByQuestId = new Map<string, ScrollNode>();
     for (const scroll of snapshot.scrolls) {
       scrollByQuestId.set(scroll.questId, scroll);

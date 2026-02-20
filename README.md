@@ -1,4 +1,4 @@
-```
+```text
                                                               ██████
                                                               ██████
    ████████  ███████████████    ███████ ██████  █████████     ██████  ██████
@@ -28,7 +28,7 @@ XYPH is a Planning Compiler and Causal OS where the project roadmap is a determi
 
 ## Architecture
 
-```
+```text
 src/
 ├── domain/           # Pure domain models and entities (Quest, Intent, ApprovalGate, ...)
 ├── ports/            # Interfaces (RoadmapPort, DashboardPort, IntakePort, ...)

@@ -6,7 +6,7 @@
  *
  * 1. Declares missing intents: intent:ORACLE, intent:FORGE, intent:DASHBOARD
  * 2. Creates campaign:DASHBOARD for TUI polish quests
- * 3. Wires authorized-by edges to fix 13 existing sovereignty violations
+ * 3. Wires authorized-by edges to fix existing sovereignty violations
  * 4. Adds new backlog quests for bugs, jank, and cool ideas noticed during M5
  *
  * Run: XYPH_AGENT_ID=human.james npx tsx scripts/backlog-update.mts

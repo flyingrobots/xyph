@@ -29,7 +29,7 @@ export function LandingView({ logoText, snapshot }: Props): ReactElement {
     // Current milestone: first campaign where most quests are not DONE
     const questsByCampaign = new Map<string, typeof snapshot.quests>();
     for (const q of snapshot.quests) {
-      if (q.campaignId !== undefined) {
+      if (q.campaignId !== undefined && q.status !== 'INBOX' && q.status !== 'GRAVEYARD') {
         const arr = questsByCampaign.get(q.campaignId) ?? [];
         arr.push(q);
         questsByCampaign.set(q.campaignId, arr);

@@ -43,9 +43,6 @@ export function HelpModal(): ReactElement {
         </Box>
       </Box>
 
-      <Box marginTop={1}>
-        <Text dimColor>Esc to close</Text>
-      </Box>
     </Box>
   );
 }

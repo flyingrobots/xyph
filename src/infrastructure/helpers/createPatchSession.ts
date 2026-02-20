@@ -11,6 +11,7 @@ export function isPatchSession(obj: unknown): obj is PatchSession {
   const o = obj as Record<string, unknown>;
   return (
     typeof o['addNode'] === 'function' &&
+    typeof o['addEdge'] === 'function' &&
     typeof o['setProperty'] === 'function' &&
     typeof o['commit'] === 'function'
   );

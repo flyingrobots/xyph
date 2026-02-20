@@ -127,7 +127,10 @@ export function renderLineage(snapshot: GraphSnapshot): string {
   }
 
   // Collect orphan quests (no intentId)
-  const orphans = snapshot.quests.filter((q) => q.intentId === undefined);
+  // INBOX tasks genuinely lack an intent (not yet promoted) — exclude from orphan list
+  const orphans = snapshot.quests.filter(
+    (q) => q.intentId === undefined && q.status !== 'INBOX'
+  );
 
   for (const intent of snapshot.intents) {
     lines.push('');

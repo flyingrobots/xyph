@@ -15,6 +15,7 @@ import type {
   ScrollNode,
 } from '../../domain/models/dashboard.js';
 
+// TODO: Add runtime type guard for NeighborEntry shape if git-warp API changes
 interface NeighborEntry { label: string; nodeId: string }
 
 const VALID_CAMPAIGN_STATUSES: ReadonlySet<string> = new Set<CampaignStatus>([
