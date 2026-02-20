@@ -6,6 +6,7 @@ import type { IntakePort } from '../../ports/IntakePort.js';
 import { Scrollbar } from '../Scrollbar.js';
 
 const CHROME_LINES = 3;
+const SCROLL_MARGIN = 2;
 
 type ModalState =
   | null
@@ -104,17 +105,18 @@ export function InboxView({
   }, [flatQuests, modal]);
 
   const clampedIdx = totalQuests === 0 ? 0 : Math.min(selectedIdx, totalQuests - 1);
-  const clampedOffset = Math.min(scrollOffset, Math.max(0, vrows.length - listHeight));
+  const maxOffset = Math.max(0, vrows.length - listHeight);
+  const clampedOffset = Math.min(scrollOffset, maxOffset);
 
   function moveSelection(delta: number): void {
     if (totalQuests === 0) return;
     const next = Math.max(0, Math.min(totalQuests - 1, clampedIdx + delta));
     const vIdx = vrows.findIndex((r) => r.kind === 'quest' && r.flatIdx === next);
     if (vIdx >= 0) {
-      if (vIdx < clampedOffset) {
-        setScrollOffset(vIdx);
-      } else if (vIdx >= clampedOffset + listHeight) {
-        setScrollOffset(vIdx - listHeight + 1);
+      if (vIdx < clampedOffset + SCROLL_MARGIN) {
+        setScrollOffset(Math.max(0, vIdx - SCROLL_MARGIN));
+      } else if (vIdx >= clampedOffset + listHeight - SCROLL_MARGIN) {
+        setScrollOffset(Math.min(maxOffset, vIdx - listHeight + 1 + SCROLL_MARGIN));
       }
     }
     setSelectedIdx(next);

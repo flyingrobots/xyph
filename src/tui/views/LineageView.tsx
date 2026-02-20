@@ -6,6 +6,7 @@ import { STATUS_COLOR } from '../status-colors.js';
 import { Scrollbar } from '../Scrollbar.js';
 
 const CHROME_LINES = 3; // tab bar + marginBottom + scroll indicator
+const SCROLL_MARGIN = 2;
 
 type VRow =
   | { kind: 'spacer' }
@@ -114,10 +115,10 @@ export function LineageView({ snapshot, isActive }: Props): ReactElement {
     const nextPos = Math.max(0, Math.min(questIndices.length - 1, curPos + delta));
     const nextVIdx = questIndices[nextPos] ?? 0;
 
-    if (nextVIdx < clampedOffset) {
-      setScrollOffset(nextVIdx);
-    } else if (nextVIdx >= clampedOffset + listHeight) {
-      setScrollOffset(nextVIdx - listHeight + 1);
+    if (nextVIdx < clampedOffset + SCROLL_MARGIN) {
+      setScrollOffset(Math.max(0, nextVIdx - SCROLL_MARGIN));
+    } else if (nextVIdx >= clampedOffset + listHeight - SCROLL_MARGIN) {
+      setScrollOffset(Math.min(maxOffset, nextVIdx - listHeight + 1 + SCROLL_MARGIN));
     }
     setSelectedVIdx(nextVIdx);
   }

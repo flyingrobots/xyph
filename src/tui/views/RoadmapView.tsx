@@ -7,6 +7,7 @@ import { Scrollbar } from '../Scrollbar.js';
 import { QuestDetailPanel } from '../QuestDetailPanel.js';
 
 const CHROME_LINES = 3;  // tab bar + scroll indicator + margin
+const SCROLL_MARGIN = 2;
 
 type VRow =
   | { kind: 'spacer' }
@@ -84,10 +85,8 @@ export function RoadmapView({ snapshot, isActive }: Props): ReactElement {
         ? selectedVIdx
         : (navigableIndices[0] ?? 0);
 
-  const clampedOffset = Math.min(
-    scrollOffset,
-    Math.max(0, vrows.length - listHeight),
-  );
+  const maxOffset = Math.max(0, vrows.length - listHeight);
+  const clampedOffset = Math.min(scrollOffset, maxOffset);
 
   // When foldedCampaigns changes, snap selectedVIdx to nearest navigable
   useEffect(() => {
@@ -113,10 +112,10 @@ export function RoadmapView({ snapshot, isActive }: Props): ReactElement {
     const nextPos = Math.max(0, Math.min(navigableIndices.length - 1, curPos + delta));
     const nextVIdx = navigableIndices[nextPos] ?? 0;
 
-    if (nextVIdx < clampedOffset) {
-      setScrollOffset(nextVIdx);
-    } else if (nextVIdx >= clampedOffset + listHeight) {
-      setScrollOffset(nextVIdx - listHeight + 1);
+    if (nextVIdx < clampedOffset + SCROLL_MARGIN) {
+      setScrollOffset(Math.max(0, nextVIdx - SCROLL_MARGIN));
+    } else if (nextVIdx >= clampedOffset + listHeight - SCROLL_MARGIN) {
+      setScrollOffset(Math.min(maxOffset, nextVIdx - listHeight + 1 + SCROLL_MARGIN));
     }
     setSelectedVIdx(nextVIdx);
   }

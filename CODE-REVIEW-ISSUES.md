@@ -277,7 +277,7 @@
 
 ### `src/tui/views/AllNodesView.tsx`
 
-- [ ] **L-30** — `moveSelection` has no scroll margin — selection can sit at the very last visible row with no context below; UX nit consistent across all views
+- [x] **L-30** — `moveSelection` has no scroll margin — selection can sit at the very last visible row with no context below; UX nit consistent across all views
 
 ---
 
