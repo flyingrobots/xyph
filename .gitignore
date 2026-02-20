@@ -4,3 +4,7 @@ node_modules/
 dist/
 test/private.key
 trust/*.sk
+.obsidian/
+.env
+coverage/
+*.tsbuildinfo

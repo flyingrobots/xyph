@@ -16,12 +16,12 @@
  * Artifact hashes use the format git:<sha> referencing the implementing commit.
  */
 
-import WarpGraph, { GitGraphAdapter } from '@git-stunts/git-warp';
-import type { PatchSession } from '@git-stunts/git-warp';
+import WarpGraph, { GitGraphAdapter, PatchSession } from '@git-stunts/git-warp';
 import Plumbing from '@git-stunts/plumbing';
 import chalk from 'chalk';
+import { createPatchSession } from '../src/infrastructure/helpers/createPatchSession.js';
 
-const WRITER_ID = process.env['XYPH_AGENT_ID'] ?? 'agent.james';
+const WRITER_ID = process.env['XYPH_AGENT_ID'] ?? 'human.james';
 
 const plumbing = Plumbing.createDefault({ cwd: process.cwd() });
 const persistence = new GitGraphAdapter({ plumbing });
@@ -43,7 +43,7 @@ async function commitPatch(
   label: string,
   fn: (patch: PatchSession) => void,
 ): Promise<void> {
-  const patch = (await graph.createPatch()) as PatchSession;
+  const patch = await createPatchSession(graph);
   fn(patch);
   const sha = await patch.commit();
   console.log(chalk.green(`[OK] ${label} → patch ${sha}`));
@@ -63,8 +63,11 @@ async function main() {
     patch
       .addNode('campaign:TRIAGE')
       .setProperty('campaign:TRIAGE', 'title', 'Milestone 3: Triage')
-      .setProperty('campaign:TRIAGE', 'status', 'BACKLOG')
-      .setProperty('campaign:TRIAGE', 'type', 'task')
+      .setProperty('campaign:TRIAGE', 'status', 'DONE')
+      .setProperty('campaign:TRIAGE', 'type', 'campaign')
+      // KNOWN ISSUE (L-08): roadmap:ROOT is graveyarded — this edge may cause
+      // campaign:TRIAGE to be hidden or orphaned in dashboard views. A future repair
+      // script should re-parent to a live root node if one is established.
       .addEdge('campaign:TRIAGE', 'roadmap:ROOT', 'belongs-to')
       // TRG-003 was orphaned — add its missing campaign edge
       .addEdge('task:TRG-003', 'campaign:TRIAGE', 'belongs-to');
@@ -98,6 +101,8 @@ async function main() {
     },
   ];
 
+  // Deterministic timestamp: PR #2 merge commit 1f95484 (2026-02-16T02:40:39-08:00)
+  const heartbeatMergeAt = 1771238439000;
   for (const { id, sha, rationale } of heartbeatSeals) {
     const scrollId = `artifact:${id}`;
     await commitPatch(graph, `${id} sealed`, patch => {
@@ -108,7 +113,7 @@ async function main() {
         .setProperty(scrollId, 'type', 'scroll')
         .addEdge(scrollId, id, 'fulfills')
         .setProperty(id, 'status', 'DONE')
-        .setProperty(id, 'completed_at', Date.now());
+        .setProperty(id, 'completed_at', heartbeatMergeAt);
     });
   }
 
@@ -135,6 +140,8 @@ async function main() {
     },
   ];
 
+  // Deterministic timestamp: PR #4 merge commit 71eaf4e (2026-02-16T10:11:33-08:00)
+  const triageMergeAt = 1771265493000;
   for (const { id, sha, rationale } of triageSeals) {
     const scrollId = `artifact:${id}`;
     await commitPatch(graph, `${id} sealed`, patch => {
@@ -145,7 +152,7 @@ async function main() {
         .setProperty(scrollId, 'type', 'scroll')
         .addEdge(scrollId, id, 'fulfills')
         .setProperty(id, 'status', 'DONE')
-        .setProperty(id, 'completed_at', Date.now());
+        .setProperty(id, 'completed_at', triageMergeAt);
     });
   }
 

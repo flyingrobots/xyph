@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { CoordinatorService } from '../../src/domain/services/CoordinatorService.js';
 import { IngestService } from '../../src/domain/services/IngestService.js';
 import { NormalizeService } from '../../src/domain/services/NormalizeService.js';
+import { RebalanceService } from '../../src/domain/services/RebalanceService.js';
 import { RoadmapPort } from '../../src/ports/RoadmapPort.js';
 
 describe('CoordinatorService', () => {
@@ -9,15 +10,17 @@ describe('CoordinatorService', () => {
     getQuests: vi.fn(),
     getQuest: vi.fn(),
     upsertQuest: vi.fn().mockResolvedValue('patch-sha'),
-    addEdge: vi.fn(),
+    addEdge: vi.fn().mockResolvedValue('edge-sha'),
+    getOutgoingEdges: vi.fn().mockResolvedValue([]),
     sync: vi.fn()
   };
 
-  const service = new CoordinatorService(mockRoadmap, 'agent.test', new IngestService(), new NormalizeService());
+  let service: CoordinatorService;
 
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(mockRoadmap.upsertQuest).mockResolvedValue('patch-sha');
+    service = new CoordinatorService(mockRoadmap, 'agent.test', new IngestService(), new NormalizeService(), new RebalanceService());
   });
 
   it('should orchestrate a raw markdown input', async () => {

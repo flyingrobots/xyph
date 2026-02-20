@@ -2,6 +2,7 @@ import { WarpRoadmapAdapter } from './infrastructure/adapters/WarpRoadmapAdapter
 import { CoordinatorService } from './domain/services/CoordinatorService.js';
 import { IngestService } from './domain/services/IngestService.js';
 import { NormalizeService } from './domain/services/NormalizeService.js';
+import { RebalanceService } from './domain/services/RebalanceService.js';
 import chalk from 'chalk';
 
 /**
@@ -11,7 +12,7 @@ import chalk from 'chalk';
 
 const REPO_PATH = process.cwd();
 const GRAPH_NAME = 'xyph-roadmap';
-const AGENT_ID = process.env['XYPH_AGENT_ID'] || 'agent.coordinator';
+const AGENT_ID = process.env['XYPH_AGENT_ID'] ?? 'agent.coordinator';
 const MIN_INTERVAL_MS = 1000;
 const DEFAULT_INTERVAL_MS = 60000;
 const MAX_CONSECUTIVE_FAILURES = 10;
@@ -33,34 +34,48 @@ async function main(): Promise<void> {
   console.log(chalk.bold.green('XYPH Coordinator Daemon starting...'));
 
   const roadmap = new WarpRoadmapAdapter(REPO_PATH, GRAPH_NAME, AGENT_ID);
-  const coordinator = new CoordinatorService(roadmap, AGENT_ID, new IngestService(), new NormalizeService());
+  const coordinator = new CoordinatorService(roadmap, AGENT_ID, new IngestService(), new NormalizeService(), new RebalanceService());
 
-  // Initial heartbeat
+  // Initial heartbeat — fatal on failure (daemon should not start if graph is unreachable).
+  // Periodic failures are tolerated up to MAX_CONSECUTIVE_FAILURES before exiting.
   await coordinator.heartbeat();
 
   // Schedule loop
   console.log(chalk.gray(`[*] Heartbeat interval set to ${INTERVAL_MS}ms`));
 
   let consecutiveFailures = 0;
+  let heartbeatTimer: ReturnType<typeof setTimeout> | null = null;
 
-  const intervalId = setInterval(() => {
-    coordinator.heartbeat()
-      .then(() => { consecutiveFailures = 0; })
-      .catch(err => {
-        consecutiveFailures++;
-        console.error(chalk.red(`[CRITICAL] Heartbeat failure ${consecutiveFailures}/${MAX_CONSECUTIVE_FAILURES}:`), err);
-        if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-          console.error(chalk.red('[FATAL] Max consecutive failures reached, exiting.'));
-          clearInterval(intervalId);
-          process.exit(1);
-        }
-      });
-  }, INTERVAL_MS);
+  function scheduleHeartbeat(): void {
+    heartbeatTimer = setTimeout(() => {
+      coordinator.heartbeat()
+        .then(() => { consecutiveFailures = 0; })
+        .catch(err => {
+          consecutiveFailures++;
+          console.error(chalk.red(`[CRITICAL] Heartbeat failure ${consecutiveFailures}/${MAX_CONSECUTIVE_FAILURES}:`), err);
+          if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+            console.error(chalk.red('[FATAL] Max consecutive failures reached, exiting.'));
+            process.exit(1);
+          }
+        })
+        .finally(() => {
+          scheduleHeartbeat();
+        });
+    }, INTERVAL_MS);
+  }
 
+  scheduleHeartbeat();
+
+  let shuttingDown = false;
   function shutdown(): void {
+    if (shuttingDown) return;
+    shuttingDown = true;
     console.log(chalk.yellow('\n[*] Shutting down coordinator daemon...'));
-    clearInterval(intervalId);
-    process.exit(0);
+    if (heartbeatTimer !== null) {
+      clearTimeout(heartbeatTimer);
+    }
+    // Allow any in-flight heartbeat to settle before exiting
+    setTimeout(() => process.exit(0), 500);
   }
 
   process.on('SIGINT', shutdown);

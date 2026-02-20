@@ -6,10 +6,10 @@ export default tseslint.config(
   ...tseslint.configs.strict,
   ...tseslint.configs.stylistic,
   {
-    ignores: ['dist/**', 'build/**', 'scripts/**', 'test/**'],
+    ignores: ['dist/**', 'build/**', 'scripts/**'],
   },
   {
-    files: ['src/**/*.ts'],
+    files: ['src/**/*.{ts,tsx}', 'xyph-actuator.ts', 'xyph-dashboard.tsx'],
     languageOptions: {
       parserOptions: {
         project: './tsconfig.json',
@@ -21,6 +21,19 @@ export default tseslint.config(
       '@typescript-eslint/explicit-function-return-type': 'error',
       '@typescript-eslint/consistent-type-definitions': ['error', 'interface'],
       'no-console': 'off', // CLI tools need console
+    },
+  },
+  {
+    files: ['test/**/*.{ts,tsx}'],
+    languageOptions: {
+      parserOptions: {
+        project: './tsconfig.test.json',
+      },
+    },
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'off',
+      '@typescript-eslint/explicit-function-return-type': 'off',
+      'no-console': 'off',
     },
   }
 );

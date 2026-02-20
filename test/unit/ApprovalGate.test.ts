@@ -73,6 +73,26 @@ describe('ApprovalGate Entity', () => {
       .toThrow("must identify a human principal");
   });
 
+  it('should reject an unknown status', () => {
+    expect(() => new ApprovalGate({ ...validProps, status: 'MAYBE' as any }))
+      .toThrow('Unknown ApprovalGate status');
+  });
+
+  it('should reject a PENDING gate with a resolvedAt set', () => {
+    expect(() => new ApprovalGate({ ...validProps, status: 'PENDING', resolvedAt: 1_700_000_001_000 }))
+      .toThrow('resolvedAt must not be set when status is PENDING');
+  });
+
+  it('should reject an APPROVED gate without resolvedAt', () => {
+    expect(() => new ApprovalGate({ ...validProps, status: 'APPROVED' }))
+      .toThrow("resolvedAt is required when status is 'APPROVED'");
+  });
+
+  it('should reject a REJECTED gate without resolvedAt', () => {
+    expect(() => new ApprovalGate({ ...validProps, status: 'REJECTED' }))
+      .toThrow("resolvedAt is required when status is 'REJECTED'");
+  });
+
   it('should reject a non-positive createdAt', () => {
     expect(() => new ApprovalGate({ ...validProps, createdAt: 0 }))
       .toThrow('positive timestamp');
@@ -84,5 +104,20 @@ describe('ApprovalGate Entity', () => {
       status: 'APPROVED',
       resolvedAt: validProps.createdAt - 1,
     })).toThrow('resolvedAt must be >= createdAt');
+  });
+
+  it('should accept resolvedAt === createdAt (instantaneous resolution)', () => {
+    const gate = new ApprovalGate({
+      ...validProps,
+      status: 'APPROVED',
+      resolvedAt: validProps.createdAt,
+    });
+    expect(gate.isApproved()).toBe(true);
+    expect(gate.resolvedAt).toBe(validProps.createdAt);
+  });
+
+  it('should reject negative createdAt', () => {
+    expect(() => new ApprovalGate({ ...validProps, createdAt: -1 }))
+      .toThrow('positive timestamp');
   });
 });

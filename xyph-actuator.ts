@@ -1,9 +1,9 @@
 #!/usr/bin/env -S npx tsx
 import WarpGraph, { GitGraphAdapter } from '@git-stunts/git-warp';
-import type { PatchSession } from '@git-stunts/git-warp';
 import Plumbing from '@git-stunts/plumbing';
 import { program, InvalidArgumentError } from 'commander';
 import chalk from 'chalk';
+import { createPatchSession } from './src/infrastructure/helpers/createPatchSession.js';
 
 /**
  * XYPH Actuator - The "Hands" of the Causal Agent.
@@ -15,7 +15,7 @@ const plumbing = Plumbing.createDefault({ cwd: process.cwd() });
 const persistence = new GitGraphAdapter({ plumbing });
 
 async function getGraph(): Promise<WarpGraph> {
-  const writerId = process.env['XYPH_AGENT_ID'] || DEFAULT_AGENT_ID;
+  const writerId = process.env['XYPH_AGENT_ID'] ?? DEFAULT_AGENT_ID;
   // Every agent identifies as a unique writer in the XYPH roadmap
   const graph = await WarpGraph.open({
     persistence,
@@ -31,9 +31,7 @@ async function getGraph(): Promise<WarpGraph> {
   return graph;
 }
 
-async function createPatch(graph: WarpGraph): Promise<PatchSession> {
-  return (await graph.createPatch()) as PatchSession;
-}
+const createPatch = createPatchSession;
 
 function parseHours(val: string): number {
   const parsed = parseFloat(val);
@@ -53,11 +51,29 @@ program
   .command('quest <id>')
   .description('Initialize a new Quest (Task) node')
   .requiredOption('--title <text>', 'Quest title')
-  .requiredOption('--campaign <id>', 'Parent Campaign (Milestone) ID')
+  .requiredOption('--campaign <id>', 'Parent Campaign (Milestone) ID (use "none" to skip)')
   .option('--hours <number>', 'Estimated human hours (PERT)', parseHours)
   .option('--intent <id>', 'Sovereign Intent node that authorizes this Quest (intent:* prefix)')
   .action(async (id: string, opts: { title: string; campaign: string; hours?: number; intent?: string }) => {
     try {
+      // Validate all inputs before any async graph I/O
+      if (!id.startsWith('task:')) {
+        console.error(chalk.red(`[ERROR] Quest ID must start with 'task:' prefix, got: '${id}'`));
+        process.exit(1);
+      }
+      if (!opts.intent) {
+        console.error(chalk.red(
+          `[CONSTITUTION VIOLATION] Quest ${id} requires --intent <id> (Art. IV — Genealogy of Intent).\n` +
+          `  Every Quest must trace its lineage to a sovereign human Intent.\n` +
+          `  Declare one first: xyph-actuator intent <id> --title "..." --requested-by human.<name>`
+        ));
+        process.exit(1);
+      }
+      if (!opts.intent.startsWith('intent:')) {
+        console.error(chalk.red(`[ERROR] --intent value must start with 'intent:' prefix, got: '${opts.intent}'`));
+        process.exit(1);
+      }
+
       const graph = await getGraph();
       const patch = await createPatch(graph);
 
@@ -67,28 +83,15 @@ program
         .setProperty(id, 'hours', opts.hours ?? 0)
         .setProperty(id, 'type', 'task');
 
-      if (opts.campaign && opts.campaign !== 'none') {
+      if (opts.campaign !== 'none') {
         patch.addEdge(id, opts.campaign, 'belongs-to');
-      }
-
-      if (!opts.intent) {
-        console.error(chalk.red(
-          `[CONSTITUTION VIOLATION] Quest ${id} requires --intent <id> (Art. IV — Genealogy of Intent).\n` +
-          `  Every Quest must trace its lineage to a sovereign human Intent.\n` +
-          `  Declare one first: xyph-actuator intent <id> --title "..." --requested-by human.<name>`
-        ));
-        process.exit(1);
-      }
-
-      if (!opts.intent.startsWith('intent:')) {
-        console.error(chalk.red(`[ERROR] --intent value must start with 'intent:' prefix, got: '${opts.intent}'`));
-        process.exit(1);
       }
 
       patch.addEdge(id, opts.intent, 'authorized-by');
 
       const sha = await patch.commit();
-      console.log(chalk.green(`[OK] Quest ${id} initialized in campaign ${opts.campaign}. Patch: ${sha}`));
+      const campaignNote = opts.campaign === 'none' ? '(no campaign)' : `in campaign ${opts.campaign}`;
+      console.log(chalk.green(`[OK] Quest ${id} initialized ${campaignNote}. Patch: ${sha}`));
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(chalk.red(`[ERROR] ${msg}`));
@@ -152,7 +155,7 @@ program
   .description('Volunteer for a Quest (Optimistic Claiming Protocol)')
   .action(async (id: string) => {
     try {
-      const agentId = process.env['XYPH_AGENT_ID'] || DEFAULT_AGENT_ID;
+      const agentId = process.env['XYPH_AGENT_ID'] ?? DEFAULT_AGENT_ID;
       const graph = await getGraph();
 
       console.log(chalk.yellow(`[*] Attempting to claim ${id} as ${agentId}...`));
@@ -191,7 +194,7 @@ program
   .requiredOption('--rationale <text>', 'Brief explanation of the solution')
   .action(async (id: string, opts: { artifact: string; rationale: string }) => {
     try {
-      const agentId = process.env['XYPH_AGENT_ID'] || DEFAULT_AGENT_ID;
+      const agentId = process.env['XYPH_AGENT_ID'] ?? DEFAULT_AGENT_ID;
       const { GuildSealService } = await import('./src/domain/services/GuildSealService.js');
       const sealService = new GuildSealService();
 
@@ -245,7 +248,7 @@ program
   .description('Generate an Ed25519 Guild Seal keypair for this agent')
   .action(async () => {
     try {
-      const agentId = process.env['XYPH_AGENT_ID'] || DEFAULT_AGENT_ID;
+      const agentId = process.env['XYPH_AGENT_ID'] ?? DEFAULT_AGENT_ID;
       const { GuildSealService } = await import('./src/domain/services/GuildSealService.js');
       const sealService = new GuildSealService();
 
@@ -254,6 +257,164 @@ program
       console.log(chalk.dim(`  Key ID:     ${keyId}`));
       console.log(chalk.dim(`  Public key: ${publicKeyHex}`));
       console.log(chalk.dim(`  Private key stored in trust/${agentId}.sk (gitignored)`));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(chalk.red(`[ERROR] ${msg}`));
+      process.exit(1);
+    }
+  });
+
+// --- INTAKE COMMANDS ---
+
+program
+  .command('inbox <id>')
+  .description('Suggest a task for triage — adds to INBOX with provenance tracking')
+  .requiredOption('--title <text>', 'Task description')
+  .requiredOption('--suggested-by <principal>', 'Who is suggesting this task (human.* or agent.*)')
+  .option('--hours <number>', 'Estimated hours', parseHours)
+  .action(async (id: string, opts: { title: string; suggestedBy: string; hours?: number }) => {
+    try {
+      if (!id.startsWith('task:')) {
+        console.error(chalk.red(`[ERROR] Task ID must start with 'task:', got: '${id}'`));
+        process.exit(1);
+      }
+      if (opts.title.length < 5) {
+        console.error(chalk.red(`[ERROR] --title must be at least 5 characters`));
+        process.exit(1);
+      }
+      if (!opts.suggestedBy.startsWith('human.') && !opts.suggestedBy.startsWith('agent.')) {
+        console.error(chalk.red(
+          `[ERROR] --suggested-by must start with 'human.' or 'agent.', got: '${opts.suggestedBy}'`
+        ));
+        process.exit(1);
+      }
+
+      const graph = await getGraph();
+      const patch = await createPatch(graph);
+      const now = Date.now();
+
+      patch.addNode(id)
+        .setProperty(id, 'title', opts.title)
+        .setProperty(id, 'status', 'INBOX')
+        .setProperty(id, 'hours', opts.hours ?? 0)
+        .setProperty(id, 'type', 'task')
+        .setProperty(id, 'suggested_by', opts.suggestedBy)
+        .setProperty(id, 'suggested_at', now);
+
+      const sha = await patch.commit();
+      console.log(chalk.green(`[OK] Task ${id} added to INBOX.`));
+      console.log(chalk.dim(`  Suggested by: ${opts.suggestedBy}`));
+      console.log(chalk.dim(`  Patch: ${sha}`));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(chalk.red(`[ERROR] ${msg}`));
+      process.exit(1);
+    }
+  });
+
+program
+  .command('promote <id>')
+  .description('Promote an INBOX task to BACKLOG — human authority + sovereign intent required')
+  .requiredOption('--intent <id>', 'Sovereign Intent ID (intent:* prefix)')
+  .option('--campaign <id>', 'Campaign to assign (optional, assignable later)')
+  .action(async (id: string, opts: { intent: string; campaign?: string }) => {
+    try {
+      const agentId = process.env['XYPH_AGENT_ID'] ?? DEFAULT_AGENT_ID;
+      const { WarpIntakeAdapter } = await import('./src/infrastructure/adapters/WarpIntakeAdapter.js');
+
+      const intake = new WarpIntakeAdapter(process.cwd(), agentId);
+      const sha = await intake.promote(id, opts.intent, opts.campaign);
+
+      console.log(chalk.green(`[OK] Task ${id} promoted to BACKLOG.`));
+      console.log(chalk.dim(`  Intent:   ${opts.intent}`));
+      if (opts.campaign !== undefined) console.log(chalk.dim(`  Campaign: ${opts.campaign}`));
+      console.log(chalk.dim(`  Patch: ${sha}`));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(chalk.red(`[ERROR] ${msg}`));
+      process.exit(1);
+    }
+  });
+
+program
+  .command('reject <id>')
+  .description('Reject an INBOX task to GRAVEYARD — rationale required')
+  .requiredOption('--rationale <text>', 'Reason for rejection (non-empty)')
+  .action(async (id: string, opts: { rationale: string }) => {
+    try {
+      const agentId = process.env['XYPH_AGENT_ID'] ?? DEFAULT_AGENT_ID;
+      const { WarpIntakeAdapter } = await import('./src/infrastructure/adapters/WarpIntakeAdapter.js');
+
+      const intake = new WarpIntakeAdapter(process.cwd(), agentId);
+      const sha = await intake.reject(id, opts.rationale);
+
+      console.log(chalk.green(`[OK] Task ${id} moved to GRAVEYARD.`));
+      console.log(chalk.dim(`  Rejected by: ${agentId}`));
+      console.log(chalk.dim(`  Rationale:   ${opts.rationale}`));
+      console.log(chalk.dim(`  Patch: ${sha}`));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(chalk.red(`[ERROR] ${msg}`));
+      process.exit(1);
+    }
+  });
+
+program
+  .command('reopen <id>')
+  .description('Reopen a GRAVEYARD task back to INBOX — human authority required, history preserved')
+  .action(async (id: string) => {
+    try {
+      const agentId = process.env['XYPH_AGENT_ID'] ?? DEFAULT_AGENT_ID;
+      const { WarpIntakeAdapter } = await import('./src/infrastructure/adapters/WarpIntakeAdapter.js');
+
+      const intake = new WarpIntakeAdapter(process.cwd(), agentId);
+      const sha = await intake.reopen(id);
+
+      console.log(chalk.green(`[OK] Task ${id} reopened to INBOX.`));
+      console.log(chalk.dim(`  Reopened by: ${agentId}`));
+      console.log(chalk.dim(`  Note: rejection history preserved in graph.`));
+      console.log(chalk.dim(`  Patch: ${sha}`));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(chalk.red(`[ERROR] ${msg}`));
+      process.exit(1);
+    }
+  });
+
+// --- DASHBOARD COMMANDS ---
+
+program
+  .command('status')
+  .description('Show a snapshot of the WARP graph')
+  .option('--view <name>', 'roadmap | lineage | all | inbox', 'roadmap')
+  .option('--include-graveyard', 'include GRAVEYARD tasks in output (excluded by default)')
+  .action(async (opts: { view: string; includeGraveyard?: boolean }) => {
+    try {
+      const agentId = process.env['XYPH_AGENT_ID'] ?? DEFAULT_AGENT_ID;
+      const { WarpDashboardAdapter } = await import('./src/infrastructure/adapters/WarpDashboardAdapter.js');
+      const { DashboardService } = await import('./src/domain/services/DashboardService.js');
+      const { renderRoadmap, renderLineage, renderAll, renderInbox } = await import('./src/tui/render-status.js');
+
+      const adapter = new WarpDashboardAdapter(process.cwd(), agentId);
+      const service = new DashboardService(adapter);
+      const raw = await service.getSnapshot();
+      const snapshot = service.filterSnapshot(raw, { includeGraveyard: opts.includeGraveyard ?? false });
+
+      const view = opts.view;
+      const validViews = ['roadmap', 'lineage', 'all', 'inbox'];
+      if (!validViews.includes(view)) {
+        console.error(chalk.red(`[ERROR] Unknown --view '${view}'. Valid options: ${validViews.join(', ')}`));
+        process.exit(1);
+      }
+      if (view === 'lineage') {
+        console.log(renderLineage(snapshot));
+      } else if (view === 'all') {
+        console.log(renderAll(snapshot));
+      } else if (view === 'inbox') {
+        console.log(renderInbox(snapshot));
+      } else {
+        console.log(renderRoadmap(snapshot));
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(chalk.red(`[ERROR] ${msg}`));
@@ -292,4 +453,4 @@ program
     }
   });
 
-program.parse(process.argv);
+await program.parseAsync(process.argv);

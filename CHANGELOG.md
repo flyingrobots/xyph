@@ -2,6 +2,120 @@
 
 All notable changes to XYPH will be documented in this file.
 
+## [1.0.0-alpha.5] - Milestone 5: WARP Dashboard TUI Overhaul
+
+### Added
+
+**Landing Screen (TUI-001)**
+- New `LandingView` component displayed on startup before the main dashboard.
+- Shows a randomly selected compact ASCII logo (logos 2, 3, 7, 8, 9, 10 — ≤15 lines each).
+- Stats panel: ASCII progress bar (`█░` per-quest completion), current active milestone, next 3 BACKLOG/PLANNED quests.
+- Footer: copyright + GitHub link. Hint: `any key to continue · q to quit`.
+- `xyph-dashboard.tsx` reads logo file at launch via `readFileSync`; falls back to `'XYPH'` on error.
+
+**Help Modal (TUI-002)**
+- New `HelpModal` component: full-screen cyan border overlay accessible from any view via `?`.
+- Contains XYPH glossary (Quest, Intent, Campaign, Scroll, Seal, Guild, WARP) and complete key bindings table.
+- Closes on `Esc` or `?`.
+
+**Quest Detail Panel (TUI-003)**
+- New reusable `QuestDetailPanel` component showing full quest metadata: ID, title, status (colored), hours, agent, campaign (with title lookup), intent (with title lookup), scroll ✓, completedAt, suggestedBy/At, rejection history, reopen history.
+- Used by RoadmapView and AllNodesView detail modals.
+
+**RoadmapView: Fold/Unfold + Detail Modal (TUI-004)**
+- Unified `selectedVIdx` navigates both campaign headers and quest rows with `↑↓`.
+- `Space` on a campaign header folds/unfolds that milestone; header shows `▶` (folded) or `▼` (expanded).
+- `Space` on a quest opens a full-screen `QuestDetailPanel` modal; `Esc` closes it.
+
+**AllNodesView: Quest Selection + Detail Modal (TUI-006)**
+- `↑↓` now navigates through quest rows only (other node types are display-only).
+- `Space` on a selected quest opens a full-screen `QuestDetailPanel` modal; `Esc` closes it.
+- Status indicator text updated to include quest position and `Space: quest detail` hint.
+
+**InboxView: Gmail-Style Rework (TUI-007)**
+- Replaced fixed `DETAIL_LINES = 10` constant with proportional 40%/60% split: 40% list, 60% detail.
+- List rows enriched: `▶` indicator, ID, title, suggestedBy, date, `↩` reopened marker.
+- Detail pane always visible (no toggle needed); shows full inbox lifecycle fields.
+
+### Fixed
+
+**LineageView: INBOX Bug Fix + Selection (TUI-005)**
+- INBOX quests no longer appear in the orphan ("sovereignty violation") list — they haven't been promoted yet and genuinely lack an intent.
+- Added `selectedVIdx` state with `▶` indicator highlighting the selected quest row.
+
+**Code Review — 68 issues resolved (CR-001)**
+- *Critical*: `IngestService` rewritten — `task:` prefix guard, `new Quest()` in try/catch (skips invalid lines), clean formatting.
+- *Critical*: `package-lock.json` synced to `alpha.4`.
+- *High*: Eliminated actuator TOCTOU — `promote`/`reject`/`reopen` now call `WarpIntakeAdapter` directly instead of dual-graph validate-then-write.
+- *High*: Added `reopen()` to `IntakePort` + `WarpIntakeAdapter`; all intake methods now return commit SHA.
+- *High*: `syncCoverage() + materialize()` added at top of `WarpIntakeAdapter` and `WarpDashboardAdapter` operations.
+- *High*: Cached `graphPromise` cleared on rejection in both WARP adapters.
+- *High*: ESLint + lint script now covers `.tsx` files.
+- *High*: `AllNodesView` quest detail modal now uses correct `flatQuests` array (was indexing into `snapshot.quests`).
+- *High*: `Dashboard.tsx` `refresh` wrapped in `useCallback` — removed `eslint-disable` comment.
+- *High*: `RoadmapView` `navigableIndices` moved into `useEffect` body with proper deps — removed `eslint-disable`.
+- *High*: `xyph-dashboard.tsx` logo index fallback `?? 3`.
+- *Medium*: `Quest.toProps()` method; `CoordinatorService` Phase 3 uses it instead of `...q` spread.
+- *Medium*: `RebalanceService` is now a required constructor param (no hidden default).
+- *Medium*: `WarpDashboardAdapter` skips scrolls with empty `questId`; caches `getNodeProps` across passes.
+- *Medium*: `InboxView` — modal state captures `questId` at open time; `detailHeight` clamped; empty-inbox guard on `p`/`x`; arrow keys guarded in rationale modal; error state stored as parsed code+message.
+- *Medium*: Shared `status-colors.ts` module — all views import from one source (includes INBOX).
+- *Medium*: Typed `QuestNode.status` as `QuestStatus`, added `CampaignStatus` and `ApprovalGateStatus` types.
+- *Medium*: `graveyard-ghosts.mts` skips `patch.commit()` when no mutations.
+- *Low/Nit*: `??` instead of `||` for env reads; positive agentId regex; `asciiBar` fill clamped; `Scrollbar` thumbStart clamped; PageUp/PageDown in all scrollable views; trailing newlines on logo files; docs fixes (CHANGELOG formatting, README spacing, RFC milestone/author, model name).
+- Tests: `getOutgoingEdges` added to mocks; service construction in `beforeEach`; test names corrected; mock extraction type-narrowed; ordering dependency documented.
+
+**Wave 8 — Final review fixes (CR-005)**
+- *Critical*: Dashboard graph cache invalidation — `WarpDashboardAdapter.invalidateCache()` clears cached graph via `WarpGraphHolder.reset()`, called on every refresh so intake mutations (promote/reject) are visible immediately. Added `invalidateCache?()` to `DashboardPort`.
+- *Major*: `GuildSealService.generateKeypair()` now uses `loadKeyring()` for validation parity with `verify()`, eliminating divergent schema checks. Orphaned `.sk` file rollback on keyring write failure prevents permanently broken state. `verify()` now catches `loadKeyring()` errors gracefully (returns `false` instead of throwing).
+- *Major*: `LandingView` progress bar now excludes GRAVEYARD quests (was only excluding INBOX), consistent with milestone detection logic.
+- *Major*: ESLint test block now references `tsconfig.test.json` (was `tsconfig.json` which doesn't include `test/**`).
+- *Minor*: `WarpIntakeAdapter` validates `task:` prefix on `questId` in all three methods (promote/reject/reopen). `WarpRoadmapAdapter.getOutgoingEdges()` now calls `syncCoverage()/materialize()` before reading edges. InboxView status bar clarifies only promote requires `human.*`. Static `randomBytes` import in `GuildSealService`.
+- *Fix*: Restored `ajv`, `ajv-formats`, `ajv-errors` to `package.json` — incorrectly removed in CR-003 (L-03/L-04) but still required by `validatePatchOps.ts`. CI `verify-patch-ops` now passes.
+- *Doc*: Updated `CLAUDE-XYPH-PAUSE.md` — DSH-004 marked resolved; DSH-001 remains sole pre-merge blocker. CHANGELOG version header updated to `1.0.0-alpha.5`.
+
+**Wave 7 — Continued review fixes (CR-004)**
+- *Medium*: Extracted shared `WarpGraphHolder` helper — eliminated triplicated `getGraph()`/`initGraph()` boilerplate across Dashboard, Intake, and Roadmap adapters (M-25).
+- *Low*: Added runtime `isNeighborEntry` / `toNeighborEntries` type guard — replaced unsafe `as NeighborEntry[]` casts in all adapters with validated filtering (L-20). 10 new unit tests.
+- *Nit*: `QuestDetailPanel` no longer receives full `GraphSnapshot` — callers pre-resolve campaign/intent titles (N-16).
+- *Low*: Added 2-line scroll margin to `moveSelection` in all 4 scrollable views — selection no longer sits at the very edge of the visible area (L-30).
+- *Documented design decisions*: campaign-aware rebalancing deferred to Milestone 6 (M-13); `isHumanPrincipal` convention-based, not security boundary (M-19); `isActive` input-focus architecture documented (M-26); view remount on tab switch acknowledged as Ink limitation (M-27); `campaign:TRIAGE` → graveyarded `roadmap:ROOT` edge documented (L-08); agent-only `requestedBy` per Constitution Art. IV.2 (L-14); instant resolution intentionally allowed (L-15); `trustDir` CWD dependency documented in JSDoc (L-18); private key memory handling is a JS limitation (L-19); `upsertQuest` can't unset properties, needs tombstone convention (L-24); hint text location clarified (N-21). N-02, N-03, N-04 were already addressed in CR-002.
+- All 113 code review issues resolved; `CODE-REVIEW-ISSUES.md` tracking file removed. 186 tests passing.
+
+**Wave 6 — 26 additional issues resolved (CR-003)**
+- *High*: Documented order-independent integration test design (H-10); each test now uses dedicated seed nodes.
+- *Medium*: Removed `chalk` from domain-layer `CoordinatorService` (M-12); validated `task:` prefix on `quest` CLI command (M-43); verified first quest upserted in partial-failure test (M-39); added modal staleness guard in `InboxView` (M-34); nearest-neighbor selection fallback in `LineageView` (M-36).
+- *Low*: ESLint now covers root-level entry points (L-02); removed dead dependencies `ts-node`, `ajv`, `ajv-errors`, `ajv-formats` (L-03, L-04); explicit type narrowing in `graveyard-ghosts.mts` (L-06); documented asymmetric heartbeat behavior (L-11); graceful daemon shutdown with 500ms drain (L-12); `filterSnapshot` now removes scrolls referencing GRAVEYARD quests (L-17); documented zero-hour quests as intentional (L-16); negative hours clamped to 0 in `WarpRoadmapAdapter` (L-25); `promote()` verifies intentId/campaignId exist before creating edges (L-22); error state bypasses landing screen (L-27).
+- *Nit*: Documented `--campaign "none"` escape hatch (N-24); clarified `noUncheckedIndexedAccess` guard comment (N-26).
+- 176 tests passing (was 172 pre-review).
+
+**NIT Remediation — 27 items resolved (CR-002)**
+- *Config*: Removed redundant `@typescript-eslint/eslint-plugin` and `@typescript-eslint/parser` devDependencies (bundled by `typescript-eslint` v8+). Removed 8 redundant strict sub-options from `tsconfig.json` (implied by `"strict": true`).
+- *Type safety*: `ApprovalNode.trigger` typed as `ApprovalGateTrigger` (was `string`); `STATUS_COLOR` typed as `Record<string, StatusColor>` — removed all `as StatusColor` casts. `WarpDashboardAdapter` now validates trigger values.
+- *GuildSealService*: Renamed `canonicalPayload` → `serializePayload`; replaced `scroll as unknown as Json` double-cast with explicit field mapping.
+- *render-status.ts*: Merged dual scroll maps into single iteration; fixed orphan tree connectors (`├─`/`└─`).
+- *TUI views*: Spacer row keys use absolute index; removed redundant scroll-clamping `useEffect` in all 4 views; `LandingView` nextUp refactored to `.slice(1).map()`; fixed campaign selection removing empty-campaign false positive; `InboxView` agentId truncated in error; `onMutationEnd()` called before `setModal(null)`.
+- *Entry points*: Removed dead truthiness check on required `--campaign`; renamed `__filename`/`__dirname` to `currentFilePath`/`currentDir`; added `noUncheckedIndexedAccess` comment on logo fallback.
+- *Docs*: CHANGELOG comparison links; README Milestone 6 cross-reference and Omega footnote; RFC_001 `milestone:` → `campaign:` taxonomy fix and Section 8 clarification; removed model attribution from pause notes.
+- *Tests*: Mock `addEdge` returns `Promise<string>`; `DashboardService` test uses direct snapshot access instead of mock internals; added ApprovalGate boundary tests (instantaneous resolution, negative createdAt); removed duplicate IntakeService test.
+
+## [1.0.0-alpha.4] - 2026-02-17
+
+### Added — POWERLEVEL™ Refactor: Genealogy of Intent Activation
+
+**Full Orchestration Pipeline (PL-001)**
+- Integrated `TriageService` and `RebalanceService` into the `CoordinatorService` heartbeat and orchestration flow.
+- The `orchestrate` method now accepts an optional `contextHash` (BLAKE3) to link mutations back to their originating human intent.
+- Every quest produced in a batch now passes through the `RebalanceService` for campaign-level resource constraint checking (160h limit).
+
+**Structured Ingestion (PL-002)**
+- Refactored `IngestService` to defer entity validation to the `NormalizeService` phase.
+- Replaced "Silent Failure" (regex `continue` on invalid fields) with a permissive factory that allows the validation layer to provide structured error feedback.
+- Bypassed `Quest` constructor validation during raw ingestion using `Object.create(Quest.prototype)` to allow the full pipeline to report all violations at once.
+
+**Verification (PL-003)**
+- Added `test/unit/CoordinatorService.POWERLEVEL.test.ts`: A high-fidelity test suite covering the Golden Path (Intent Linking), failure modes (Rebalance/Validation), and stress scenarios (Swarm orchestration).
+
 ## [1.0.0-alpha.3] - 2026-02-17
 
 ### Added — Milestone 4: SOVEREIGNTY
@@ -94,3 +208,10 @@ All notable changes to XYPH will be documented in this file.
 - **Dockerized Testing**: Integrated Vitest with a `node:22-slim` Docker environment for isolated verification.
 - **Strict Linting**: Configured ESLint with `typescript-eslint` strict rules.
 - Refined Actuator `syncWith` logic to use `syncCoverage()` for reliable multi-writer convergence.
+
+[Unreleased]: https://github.com/flyingrobots/xyph/compare/v1.0.0-alpha.5...HEAD
+[1.0.0-alpha.5]: https://github.com/flyingrobots/xyph/compare/v1.0.0-alpha.4...v1.0.0-alpha.5
+[1.0.0-alpha.4]: https://github.com/flyingrobots/xyph/compare/v1.0.0-alpha.3...v1.0.0-alpha.4
+[1.0.0-alpha.3]: https://github.com/flyingrobots/xyph/compare/v1.0.0-alpha.2...v1.0.0-alpha.3
+[1.0.0-alpha.2]: https://github.com/flyingrobots/xyph/compare/v1.0.0-alpha.1...v1.0.0-alpha.2
+[1.0.0-alpha.1]: https://github.com/flyingrobots/xyph/releases/tag/v1.0.0-alpha.1

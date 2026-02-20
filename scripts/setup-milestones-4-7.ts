@@ -8,12 +8,12 @@
  * FORGE       — Review → Emit → Apply with Guild Seals
  */
 
-import WarpGraph, { GitGraphAdapter } from '@git-stunts/git-warp';
-import type { PatchSession } from '@git-stunts/git-warp';
+import WarpGraph, { GitGraphAdapter, PatchSession } from '@git-stunts/git-warp';
 import Plumbing from '@git-stunts/plumbing';
 import chalk from 'chalk';
+import { createPatchSession } from '../src/infrastructure/helpers/createPatchSession.js';
 
-const WRITER_ID = process.env['XYPH_AGENT_ID'] ?? 'agent.james';
+const WRITER_ID = process.env['XYPH_AGENT_ID'] ?? 'human.james';
 
 const plumbing = Plumbing.createDefault({ cwd: process.cwd() });
 const persistence = new GitGraphAdapter({ plumbing });
@@ -35,7 +35,7 @@ async function commitPatch(
   label: string,
   fn: (patch: PatchSession) => void,
 ): Promise<void> {
-  const patch = (await graph.createPatch()) as PatchSession;
+  const patch = await createPatchSession(graph);
   fn(patch);
   const sha = await patch.commit();
   console.log(chalk.green(`  [OK] ${label} → ${sha.slice(0, 12)}`));
@@ -111,7 +111,7 @@ async function main() {
         .addNode(campaignId)
         .setProperty(campaignId, 'title', title)
         .setProperty(campaignId, 'status', 'BACKLOG')
-        .setProperty(campaignId, 'type', 'task')
+        .setProperty(campaignId, 'type', 'campaign')
         .addEdge(campaignId, 'roadmap:ROOT', 'belongs-to');
 
       for (const { id, title: questTitle, hours } of quests) {
@@ -143,7 +143,8 @@ async function main() {
     }
   }
 
-  console.log(chalk.bold.green('\nRoadmap extended. 4 campaigns, 18 quests registered.\n'));
+  const totalQuests = milestones.reduce((sum, m) => sum + m.quests.length, 0);
+  console.log(chalk.bold.green(`\nRoadmap extended. ${milestones.length} campaigns, ${totalQuests} quests registered.\n`));
 }
 
 main().catch(err => {

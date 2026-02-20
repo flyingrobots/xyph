@@ -3,8 +3,20 @@
  * Pure domain representation of a unit of work in the Digital Guild.
  */
 
-export type QuestStatus = 'BACKLOG' | 'PLANNED' | 'IN_PROGRESS' | 'BLOCKED' | 'DONE';
-export type QuestType = 'task' | 'scroll' | 'milestone' | 'campaign' | 'roadmap';
+export type QuestStatus =
+  | 'INBOX'
+  | 'BACKLOG'
+  | 'PLANNED'
+  | 'IN_PROGRESS'
+  | 'BLOCKED'
+  | 'DONE'
+  | 'GRAVEYARD';
+
+export const VALID_STATUSES: ReadonlySet<string> = new Set<QuestStatus>([
+  'INBOX', 'BACKLOG', 'PLANNED', 'IN_PROGRESS', 'BLOCKED', 'DONE', 'GRAVEYARD',
+]);
+
+export type QuestType = 'task';
 
 export interface QuestProps {
   id: string;
@@ -36,6 +48,10 @@ export class Quest {
     if (typeof props.title !== 'string' || props.title.length < 5) {
       throw new Error(`Quest title must be at least 5 characters, got: '${props.title}'`);
     }
+    if (!VALID_STATUSES.has(props.status)) {
+      throw new Error(`Quest status must be one of ${[...VALID_STATUSES].join(', ')}, got: '${props.status}'`);
+    }
+    // Zero hours is valid: coordination tasks, meta-quests, and unestimated work items
     if (!Number.isFinite(props.hours) || props.hours < 0) {
       throw new Error(`Quest hours must be a finite non-negative number, got: ${props.hours}`);
     }
@@ -49,6 +65,20 @@ export class Quest {
     this.completedAt = props.completedAt;
     this.type = props.type;
     this.originContext = props.originContext;
+  }
+
+  public toProps(): QuestProps {
+    return {
+      id: this.id,
+      title: this.title,
+      status: this.status,
+      hours: this.hours,
+      assignedTo: this.assignedTo,
+      claimedAt: this.claimedAt,
+      completedAt: this.completedAt,
+      type: this.type,
+      originContext: this.originContext,
+    };
   }
 
   public isDone(): boolean {
