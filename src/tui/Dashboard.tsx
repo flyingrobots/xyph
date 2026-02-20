@@ -108,9 +108,8 @@ export function Dashboard({ service, intake, agentId, logoText }: Props): ReactE
     [service, snapshot],
   );
 
-  // Landing screen — shown until user presses any key
-  if (showLanding) {
-    // Pass snapshot even if still loading (LandingView handles null)
+  // Landing screen — shown until user presses any key (unless error occurred)
+  if (showLanding && error === null) {
     return <LandingView logoText={logoText} snapshot={snapshot} />;
   }
 

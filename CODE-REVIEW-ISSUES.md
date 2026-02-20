@@ -257,7 +257,7 @@
 
 ### `src/infrastructure/adapters/WarpIntakeAdapter.ts`
 
-- [ ] **L-22** — `promote()` doesn't verify `intentId` / `campaignId` exist in graph before creating edges — potential dangling references
+- [x] **L-22** — `promote()` doesn't verify `intentId` / `campaignId` exist in graph before creating edges — potential dangling references
 
 ### `src/infrastructure/adapters/WarpRoadmapAdapter.ts`
 
@@ -268,7 +268,7 @@
 ### `src/tui/Dashboard.tsx`
 
 - [x] **L-26** — `service.filterSnapshot(...)` called on every render without `useMemo` — creates new object reference each time, triggering unnecessary child re-renders
-- [ ] **L-27** — Error state hidden behind landing screen — if graph fails to load, user won't see it until they dismiss the landing with a keypress
+- [x] **L-27** — Error state hidden behind landing screen — if graph fails to load, user won't see it until they dismiss the landing with a keypress
 - [x] **L-28** — Tab only cycles forward — no Shift+Tab support for reverse view cycling
 
 ### `src/tui/HelpModal.tsx`
@@ -295,7 +295,7 @@
 ### `docs/canonical/RFC_001_AST_DRIVEN_INGEST.md`
 
 - [ ] **N-04** — Section 8 conflates AstIngestService introduction and IngestService deprecation in the same milestone — ambiguous timeline
-- [ ] **N-05** — Example uses `milestone:M1` but project uses `campaign:` prefix for milestones — inconsistent with established taxonomy
+- [x] **N-05** — Example uses `milestone:M1` but project uses `campaign:` prefix for milestones — inconsistent with established taxonomy
 
 ### `CLAUDE-XYPH-PAUSE.md`
 

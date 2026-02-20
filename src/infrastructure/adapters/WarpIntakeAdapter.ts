@@ -63,6 +63,14 @@ export class WarpIntakeAdapter implements IntakePort {
       );
     }
 
+    // Verify edge targets exist before creating dangling references
+    if (!await graph.hasNode(intentId)) {
+      throw new Error(`[NOT_FOUND] Intent ${intentId} not found in the graph`);
+    }
+    if (campaignId !== undefined && !await graph.hasNode(campaignId)) {
+      throw new Error(`[NOT_FOUND] Campaign ${campaignId} not found in the graph`);
+    }
+
     const patch = await createPatchSession(graph);
     patch.setProperty(questId, 'status', 'BACKLOG').addEdge(questId, intentId, 'authorized-by');
     if (campaignId !== undefined) {
