@@ -94,9 +94,12 @@ export class DashboardService {
     opts: { includeGraveyard: boolean }
   ): GraphSnapshot {
     if (opts.includeGraveyard) return snapshot;
+    const quests = snapshot.quests.filter((q) => q.status !== 'GRAVEYARD');
+    const questIds = new Set(quests.map((q) => q.id));
     return {
       ...snapshot,
-      quests: snapshot.quests.filter((q) => q.status !== 'GRAVEYARD'),
+      quests,
+      scrolls: snapshot.scrolls.filter((s) => questIds.has(s.questId)),
     };
   }
 }

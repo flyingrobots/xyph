@@ -139,17 +139,24 @@ describe('DashboardService', () => {
   });
 
   describe('filterSnapshot', () => {
-    it('excludes GRAVEYARD quests by default', () => {
+    it('excludes GRAVEYARD quests and their scrolls by default', () => {
       const snapshotWithGraveyard: GraphSnapshot = {
         ...baseSnapshot,
         quests: [
           ...baseSnapshot.quests,
           { id: 'task:GRV-001', title: 'Graveyarded quest', status: 'GRAVEYARD' as const, hours: 1 },
         ],
+        scrolls: [
+          ...baseSnapshot.scrolls,
+          { id: 'artifact:task:GRV-001', questId: 'task:GRV-001', artifactHash: 'dead', sealedBy: 'agent.x', sealedAt: 0, hasSeal: false },
+        ],
       };
       const svc = new DashboardService(makePort(snapshotWithGraveyard));
       const filtered = svc.filterSnapshot(snapshotWithGraveyard, { includeGraveyard: false });
       expect(filtered.quests.map(q => q.id)).not.toContain('task:GRV-001');
+      expect(filtered.scrolls.map(s => s.questId)).not.toContain('task:GRV-001');
+      // Non-graveyard scrolls preserved
+      expect(filtered.scrolls.map(s => s.questId)).toContain('task:BDR-001');
     });
 
     it('includes GRAVEYARD quests when includeGraveyard is true', () => {

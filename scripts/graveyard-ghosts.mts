@@ -37,7 +37,7 @@ for (const { id, rationale } of GHOSTS) {
     console.log(chalk.yellow(`  [SKIP] ${id} — node not found`));
     continue;
   }
-  const current = props.get('status');
+  const current: unknown = props.get('status');
   if (current === 'GRAVEYARD') {
     console.log(chalk.dim(`  [SKIP] ${id} — already GRAVEYARD`));
     continue;

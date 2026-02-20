@@ -214,7 +214,7 @@
 
 ### `scripts/graveyard-ghosts.mts`
 
-- [ ] **L-06** — `props.get('status')` returns `unknown`, compared directly to string `'GRAVEYARD'` — works at runtime but no explicit type narrowing
+- [x] **L-06** — `props.get('status')` returns `unknown`, compared directly to string `'GRAVEYARD'` — works at runtime but no explicit type narrowing
 
 ### `scripts/repair-warp-graph.ts`
 
@@ -228,7 +228,7 @@
 
 ### `src/coordinator-daemon.ts`
 
-- [ ] **L-11** — Initial `heartbeat()` is fatal (exits on failure) but periodic failures are tolerated up to `MAX_CONSECUTIVE_FAILURES` — asymmetric behavior is undocumented
+- [x] **L-11** — Initial `heartbeat()` is fatal (exits on failure) but periodic failures are tolerated up to `MAX_CONSECUTIVE_FAILURES` — asymmetric behavior is undocumented
 - [ ] **L-12** — `shutdown` calls `process.exit(0)` synchronously — in-flight heartbeat Promise abandoned; could leave graph mid-write
 - [x] **L-13** — `AGENT_ID` uses `||` operator — empty string `XYPH_AGENT_ID=""` silently falls back to default; should use `??`
 
@@ -243,7 +243,7 @@
 
 ### `src/domain/services/DashboardService.ts`
 
-- [ ] **L-17** — `filterSnapshot` filters quests but leaves `scrolls`, `intents`, and `approvals` referencing removed GRAVEYARD quests — dangling references in filtered snapshot
+- [x] **L-17** — `filterSnapshot` filters quests but leaves `scrolls`, `intents`, and `approvals` referencing removed GRAVEYARD quests — dangling references in filtered snapshot
 
 ### `src/domain/services/GuildSealService.ts`
 

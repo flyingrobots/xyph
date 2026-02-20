@@ -36,7 +36,8 @@ async function main(): Promise<void> {
   const roadmap = new WarpRoadmapAdapter(REPO_PATH, GRAPH_NAME, AGENT_ID);
   const coordinator = new CoordinatorService(roadmap, AGENT_ID, new IngestService(), new NormalizeService(), new RebalanceService());
 
-  // Initial heartbeat
+  // Initial heartbeat — fatal on failure (daemon should not start if graph is unreachable).
+  // Periodic failures are tolerated up to MAX_CONSECUTIVE_FAILURES before exiting.
   await coordinator.heartbeat();
 
   // Schedule loop
