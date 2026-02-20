@@ -1,5 +1,5 @@
 import { OrchestrationState, AuditRecord, OrchestrationArtifact } from '../entities/Orchestration.js';
-import { canonicalize, prefixedBlake3 } from '../../validation/crypto.js';
+import { canonicalize, prefixedBlake3, type Json } from '../../validation/crypto.js';
 
 export interface FSMContext {
   runId: string;
@@ -16,61 +16,59 @@ export interface TransitionResult {
   audit: AuditRecord;
 }
 
+function computeDigest(data: Record<string, Json>): string {
+  const canonical = canonicalize(data);
+  return prefixedBlake3(canonical);
+}
+
+function transitionToNormalize(
+  inputArtifact: OrchestrationArtifact,
+  context: FSMContext,
+  decisionSummary: string,
+  durationMs: number
+): TransitionResult {
+  const nextState: OrchestrationState = 'NORMALIZE';
+  const now = context.clock ? context.clock() : new Date().toISOString();
+
+  const outputArtifact: OrchestrationArtifact = {
+    schemaVersion: 'v1.0',
+    runId: context.runId,
+    state: nextState,
+    createdAt: now,
+    inputDigest: inputArtifact.outputDigest,
+    outputDigest: computeDigest({ state: nextState, runId: context.runId })
+  };
+
+  const audit: AuditRecord = {
+    schemaVersion: 'v1.0',
+    eventId: `AEVT-${now.slice(0, 10).replace(/-/g, '')}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
+    runId: context.runId,
+    sequence: 1,
+    timestamp: outputArtifact.createdAt,
+    fromState: 'INGEST',
+    toState: nextState,
+    actor: {
+      type: context.actorType ?? 'agent',
+      id: context.actorId
+    },
+    inputDigest: inputArtifact.outputDigest,
+    outputDigest: outputArtifact.outputDigest,
+    durationMs,
+    decisionSummary,
+    status: 'OK',
+    policyPackRef: context.policyPackRef,
+    configRef: context.configRef
+  };
+
+  return { nextState, artifact: outputArtifact, audit };
+}
+
 /**
  * OrchestrationFSM
  * Pure logic for driving the Planning Compiler state machine.
+ * Exported as an object to preserve the `OrchestrationFSM.method()` call pattern.
  */
-export class OrchestrationFSM {
-  /**
-   * Computes a deterministic digest of an object.
-   */
-  public static computeDigest(data: Record<string, unknown>): string {
-    const canonical = canonicalize(data as any);
-    return prefixedBlake3(canonical);
-  }
-
-  /**
-   * Transition: INGEST -> NORMALIZE
-   */
-  public static transitionToNormalize(
-    inputArtifact: OrchestrationArtifact,
-    context: FSMContext,
-    decisionSummary: string,
-    durationMs: number
-  ): TransitionResult {
-    const nextState: OrchestrationState = 'NORMALIZE';
-    const now = context.clock ? context.clock() : new Date().toISOString();
-
-    const outputArtifact: OrchestrationArtifact = {
-      schemaVersion: 'v1.0',
-      runId: context.runId,
-      state: nextState,
-      createdAt: now,
-      inputDigest: inputArtifact.outputDigest,
-      outputDigest: this.computeDigest({ state: nextState, runId: context.runId }) // Placeholder
-    };
-
-    const audit: AuditRecord = {
-      schemaVersion: 'v1.0',
-      eventId: `AEVT-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
-      runId: context.runId,
-      sequence: 1,
-      timestamp: outputArtifact.createdAt,
-      fromState: 'INGEST',
-      toState: nextState,
-      actor: {
-        type: context.actorType ?? 'agent',
-        id: context.actorId
-      },
-      inputDigest: inputArtifact.outputDigest,
-      outputDigest: outputArtifact.outputDigest,
-      durationMs,
-      decisionSummary,
-      status: 'OK',
-      policyPackRef: context.policyPackRef,
-      configRef: context.configRef
-    };
-
-    return { nextState, artifact: outputArtifact, audit };
-  }
-}
+export const OrchestrationFSM = {
+  computeDigest,
+  transitionToNormalize,
+} as const;

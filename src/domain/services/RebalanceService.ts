@@ -14,7 +14,7 @@ export interface RebalanceResult {
 export class RebalanceService {
   private readonly maxHoursPerCampaign: number;
 
-  constructor(maxHoursPerCampaign: number = 160) {
+  constructor(maxHoursPerCampaign = 160) {
     this.maxHoursPerCampaign = maxHoursPerCampaign;
   }
 

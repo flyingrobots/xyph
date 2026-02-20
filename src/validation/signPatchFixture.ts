@@ -1,14 +1,14 @@
-import { randomBytes, createHash } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import * as ed from "@noble/ed25519";
 import {
+  sha512,
   canonicalize,
   prefixedBlake3,
   buildUnsignedPayloadForDigest
 } from "./crypto.js";
 
 // Polyfill sha512 for @noble/ed25519 (v3 requires manual hash setup)
-const sha512 = (msg: Uint8Array) => new Uint8Array(createHash("sha512").update(msg).digest());
-(ed as any).hashes.sha512 = sha512;
+ed.hashes.sha512 = sha512;
 
 type Json = null | boolean | number | string | Json[] | { [k: string]: Json };
 
@@ -55,7 +55,7 @@ export async function signPatch(patch: UnsignedPatch, privateKeyHex: string, key
   };
 }
 
-export async function generateTestKeypair() {
+export async function generateTestKeypair(): Promise<{ privateKeyHex: string; publicKeyHex: string }> {
   const priv = randomBytes(32);
   const pub = await ed.getPublicKey(priv);
   return {

@@ -111,7 +111,7 @@ export class WarpRoadmapAdapter implements RoadmapPort {
     return await patch.commit();
   }
 
-  public async getOutgoingEdges(nodeId: string): Promise<Array<{ to: string; type: string }>> {
+  public async getOutgoingEdges(nodeId: string): Promise<{ to: string; type: string }[]> {
     const graph = await this.graphHolder.getGraph();
     await graph.syncCoverage();
     await graph.materialize();

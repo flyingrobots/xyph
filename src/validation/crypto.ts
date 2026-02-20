@@ -5,10 +5,10 @@ import { blake3 } from "@noble/hashes/blake3.js";
 import * as ed from "@noble/ed25519";
 import { bytesToHex } from "@noble/hashes/utils.js";
 
-const sha512 = (msg: Uint8Array) => new Uint8Array(createHash("sha512").update(msg).digest());
+export const sha512 = (msg: Uint8Array): Uint8Array => new Uint8Array(createHash("sha512").update(msg).digest());
 
 // Polyfill sha512 for @noble/ed25519 (v3 requires manual hash setup)
-(ed as any).hashes.sha512 = sha512;
+ed.hashes.sha512 = sha512;
 
 export type Json = null | boolean | number | string | Json[] | { [k: string]: Json };
 
@@ -37,7 +37,10 @@ export function canonicalize(value: Json): string {
   }
   const obj = value as Record<string, Json>;
   const keys = Object.keys(obj).sort();
-  const entries = keys.map((k) => `${JSON.stringify(k)}:${canonicalize(obj[k]!)}`);
+  const entries = keys.map((k) => {
+    const v = obj[k] as Json; // safe: k comes from Object.keys(obj)
+    return `${JSON.stringify(k)}:${canonicalize(v)}`;
+  });
   return `{${entries.join(",")}}`;
 }
 
@@ -71,13 +74,13 @@ export function loadKeyring(keyringPath = path.resolve(process.cwd(), "trust/key
   const raw = fs.readFileSync(keyringPath, "utf8");
   const parsed = JSON.parse(raw) as unknown;
 
-  if (!isPlainObject(parsed) || (parsed as any).version !== "v1" || !Array.isArray((parsed as any).keys)) {
+  if (!isPlainObject(parsed) || parsed['version'] !== "v1" || !Array.isArray(parsed['keys'])) {
     throw new Error("Invalid keyring.json structure");
   }
 
   const map = new Map<string, KeyringEntry>();
 
-  for (const k of (parsed as any).keys as unknown[]) {
+  for (const k of parsed['keys'] as unknown[]) {
     if (!isPlainObject(k)) throw new Error("Invalid key entry in keyring");
     const keyId = String(k['keyId'] ?? "");
     const alg = String(k['alg'] ?? "");
