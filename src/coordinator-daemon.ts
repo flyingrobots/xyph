@@ -12,7 +12,7 @@ import chalk from 'chalk';
 
 const REPO_PATH = process.cwd();
 const GRAPH_NAME = 'xyph-roadmap';
-const AGENT_ID = process.env['XYPH_AGENT_ID'] || 'agent.coordinator';
+const AGENT_ID = process.env['XYPH_AGENT_ID'] ?? 'agent.coordinator';
 const MIN_INTERVAL_MS = 1000;
 const DEFAULT_INTERVAL_MS = 60000;
 const MAX_CONSECUTIVE_FAILURES = 10;
@@ -43,24 +43,33 @@ async function main(): Promise<void> {
   console.log(chalk.gray(`[*] Heartbeat interval set to ${INTERVAL_MS}ms`));
 
   let consecutiveFailures = 0;
+  let heartbeatTimer: ReturnType<typeof setTimeout> | null = null;
 
-  const intervalId = setInterval(() => {
-    coordinator.heartbeat()
-      .then(() => { consecutiveFailures = 0; })
-      .catch(err => {
-        consecutiveFailures++;
-        console.error(chalk.red(`[CRITICAL] Heartbeat failure ${consecutiveFailures}/${MAX_CONSECUTIVE_FAILURES}:`), err);
-        if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-          console.error(chalk.red('[FATAL] Max consecutive failures reached, exiting.'));
-          clearInterval(intervalId);
-          process.exit(1);
-        }
-      });
-  }, INTERVAL_MS);
+  function scheduleHeartbeat(): void {
+    heartbeatTimer = setTimeout(() => {
+      coordinator.heartbeat()
+        .then(() => { consecutiveFailures = 0; })
+        .catch(err => {
+          consecutiveFailures++;
+          console.error(chalk.red(`[CRITICAL] Heartbeat failure ${consecutiveFailures}/${MAX_CONSECUTIVE_FAILURES}:`), err);
+          if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+            console.error(chalk.red('[FATAL] Max consecutive failures reached, exiting.'));
+            process.exit(1);
+          }
+        })
+        .finally(() => {
+          scheduleHeartbeat();
+        });
+    }, INTERVAL_MS);
+  }
+
+  scheduleHeartbeat();
 
   function shutdown(): void {
     console.log(chalk.yellow('\n[*] Shutting down coordinator daemon...'));
-    clearInterval(intervalId);
+    if (heartbeatTimer !== null) {
+      clearTimeout(heartbeatTimer);
+    }
     process.exit(0);
   }
 

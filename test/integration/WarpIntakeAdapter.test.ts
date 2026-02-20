@@ -93,6 +93,24 @@ describe('WarpIntakeAdapter Integration', () => {
       .setProperty('task:INTAKE-004', 'hours', 1)
       .setProperty('task:INTAKE-004', 'type', 'task');
     await p5.commit();
+
+    // Seed: dedicated INBOX quest for FORBIDDEN authority test (order-independent)
+    const p6 = await createPatch(graph);
+    p6.addNode('task:INTAKE-FORBIDDEN')
+      .setProperty('task:INTAKE-FORBIDDEN', 'title', 'Forbidden authority test task')
+      .setProperty('task:INTAKE-FORBIDDEN', 'status', 'INBOX')
+      .setProperty('task:INTAKE-FORBIDDEN', 'hours', 1)
+      .setProperty('task:INTAKE-FORBIDDEN', 'type', 'task');
+    await p6.commit();
+
+    // Seed: dedicated BACKLOG quest for "promote fails: not INBOX" test (order-independent)
+    const p7 = await createPatch(graph);
+    p7.addNode('task:INTAKE-ALREADY-PROMOTED')
+      .setProperty('task:INTAKE-ALREADY-PROMOTED', 'title', 'Already promoted task for order-independent test')
+      .setProperty('task:INTAKE-ALREADY-PROMOTED', 'status', 'BACKLOG')
+      .setProperty('task:INTAKE-ALREADY-PROMOTED', 'hours', 1)
+      .setProperty('task:INTAKE-ALREADY-PROMOTED', 'type', 'task');
+    await p7.commit();
   });
 
   afterAll(() => {
@@ -121,7 +139,7 @@ describe('WarpIntakeAdapter Integration', () => {
   it('promote fails: non-human agentId → [FORBIDDEN]', async () => {
     const adapter = new WarpIntakeAdapter(repoPath, agentAgentId);
     // Throws before graph access (agentId check is first)
-    await expect(adapter.promote('task:INTAKE-001', 'intent:sovereign-test')).rejects.toThrow('[FORBIDDEN]');
+    await expect(adapter.promote('task:INTAKE-FORBIDDEN', 'intent:sovereign-test')).rejects.toThrow('[FORBIDDEN]');
   });
 
   it('promote fails: malformed intentId (not intent:*) → [MISSING_ARG]', async () => {
@@ -132,7 +150,7 @@ describe('WarpIntakeAdapter Integration', () => {
 
   it('promote fails: task not in INBOX → [INVALID_FROM]', async () => {
     const adapter = new WarpIntakeAdapter(repoPath, humanAgentId);
-    await expect(adapter.promote('task:INTAKE-003', 'intent:sovereign-test')).rejects.toThrow('[INVALID_FROM]');
+    await expect(adapter.promote('task:INTAKE-ALREADY-PROMOTED', 'intent:sovereign-test')).rejects.toThrow('[INVALID_FROM]');
   });
 
   // ── reject: success ─────────────────────────────────────────────────────────

@@ -1,8 +1,8 @@
 import type { ReactElement } from 'react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Box, Text, useInput, useStdout, type Key } from 'ink';
 import type { GraphSnapshot, QuestNode } from '../../domain/models/dashboard.js';
-import { STATUS_COLOR, type StatusColor } from '../status-colors.js';
+import { STATUS_COLOR } from '../status-colors.js';
 import { Scrollbar } from '../Scrollbar.js';
 import { QuestDetailPanel } from '../QuestDetailPanel.js';
 
@@ -65,7 +65,10 @@ export function RoadmapView({ snapshot, isActive }: Props): ReactElement {
   const [selectedVIdx, setSelectedVIdx] = useState(0);
   const [scrollOffset, setScrollOffset] = useState(0);
 
-  const { vrows, flatQuests } = buildRows(snapshot, foldedCampaigns);
+  const { vrows, flatQuests } = useMemo(
+    () => buildRows(snapshot, foldedCampaigns),
+    [snapshot, foldedCampaigns],
+  );
   const totalQuests = flatQuests.length;
 
   // Navigable indices: those that are not spacers
@@ -86,12 +89,6 @@ export function RoadmapView({ snapshot, isActive }: Props): ReactElement {
     Math.max(0, vrows.length - listHeight),
   );
 
-  useEffect(() => {
-    setScrollOffset((prev) =>
-      Math.min(prev, Math.max(0, vrows.length - listHeight))
-    );
-  }, [vrows.length, listHeight]);
-
   // When foldedCampaigns changes, snap selectedVIdx to nearest navigable
   useEffect(() => {
     const navIndices = vrows
@@ -108,7 +105,7 @@ export function RoadmapView({ snapshot, isActive }: Props): ReactElement {
       }
       return closest;
     });
-  }, [foldedCampaigns, snapshot, vrows]);
+  }, [vrows]);
 
   function moveSelection(delta: number): void {
     if (navigableIndices.length === 0) return;
@@ -199,7 +196,7 @@ export function RoadmapView({ snapshot, isActive }: Props): ReactElement {
           {visibleRows.map((row, i) => {
             const absIdx = clampedOffset + i;
             if (row.kind === 'spacer') {
-              return <Box key={`sp-${i}`}><Text> </Text></Box>;
+              return <Box key={`sp-${clampedOffset + i}`}><Text> </Text></Box>;
             }
             if (row.kind === 'header') {
               const isSelected = absIdx === clampedVIdx;
@@ -218,7 +215,7 @@ export function RoadmapView({ snapshot, isActive }: Props): ReactElement {
             }
             const q = row.quest;
             const isSelected = absIdx === clampedVIdx;
-            const statusColor = (STATUS_COLOR[q.status] ?? 'white') as StatusColor;
+            const statusColor = STATUS_COLOR[q.status] ?? 'white';
             return (
               <Box key={q.id}>
                 <Box width={2}>

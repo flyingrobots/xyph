@@ -12,9 +12,9 @@
  * Run: XYPH_AGENT_ID=human.james npx tsx scripts/backlog-update.mts
  */
 import WarpGraph, { GitGraphAdapter } from '@git-stunts/git-warp';
-import type { PatchSession } from '@git-stunts/git-warp';
 import Plumbing from '@git-stunts/plumbing';
 import chalk from 'chalk';
+import { createPatchSession } from '../src/infrastructure/helpers/createPatchSession.js';
 
 const agentId = process.env['XYPH_AGENT_ID'] ?? 'human.james';
 const now = Date.now();
@@ -30,8 +30,8 @@ const graph = await WarpGraph.open({
 await graph.syncCoverage();
 await graph.materialize();
 
-async function commit(label: string, fn: (patch: PatchSession) => void): Promise<void> {
-  const patch = (await graph.createPatch()) as PatchSession;
+async function commit(label: string, fn: (patch: import('@git-stunts/git-warp').PatchSession) => void): Promise<void> {
+  const patch = await createPatchSession(graph);
   fn(patch);
   const sha = await patch.commit();
   await graph.materialize();
@@ -40,42 +40,50 @@ async function commit(label: string, fn: (patch: PatchSession) => void): Promise
 
 // ─── 1. Declare missing intents ───────────────────────────────────────────────
 
-await commit('intent:ORACLE declared', (p) => {
-  p.addNode('intent:ORACLE')
-   .setProperty('intent:ORACLE', 'type', 'intent')
-   .setProperty('intent:ORACLE', 'title', 'Build ORACLE: intent classification, policy engine, and merge phase')
-   .setProperty('intent:ORACLE', 'requested_by', 'human.james')
-   .setProperty('intent:ORACLE', 'created_at', now);
-});
+if (!await graph.hasNode('intent:ORACLE')) {
+  await commit('intent:ORACLE declared', (p) => {
+    p.addNode('intent:ORACLE')
+     .setProperty('intent:ORACLE', 'type', 'intent')
+     .setProperty('intent:ORACLE', 'title', 'Build ORACLE: intent classification, policy engine, and merge phase')
+     .setProperty('intent:ORACLE', 'requested_by', 'human.james')
+     .setProperty('intent:ORACLE', 'created_at', now);
+  });
+} else { console.log(chalk.dim('  [SKIP] intent:ORACLE already exists')); }
 
-await commit('intent:FORGE declared', (p) => {
-  p.addNode('intent:FORGE')
-   .setProperty('intent:FORGE', 'type', 'intent')
-   .setProperty('intent:FORGE', 'title', 'Build FORGE: emit, apply, and end-to-end pipeline integration')
-   .setProperty('intent:FORGE', 'requested_by', 'human.james')
-   .setProperty('intent:FORGE', 'created_at', now);
-});
+if (!await graph.hasNode('intent:FORGE')) {
+  await commit('intent:FORGE declared', (p) => {
+    p.addNode('intent:FORGE')
+     .setProperty('intent:FORGE', 'type', 'intent')
+     .setProperty('intent:FORGE', 'title', 'Build FORGE: emit, apply, and end-to-end pipeline integration')
+     .setProperty('intent:FORGE', 'requested_by', 'human.james')
+     .setProperty('intent:FORGE', 'created_at', now);
+  });
+} else { console.log(chalk.dim('  [SKIP] intent:FORGE already exists')); }
 
-await commit('intent:DASHBOARD declared', (p) => {
-  p.addNode('intent:DASHBOARD')
-   .setProperty('intent:DASHBOARD', 'type', 'intent')
-   .setProperty('intent:DASHBOARD', 'title', 'Build the WARP Dashboard: interactive TUI for graph navigation, triage, and observability')
-   .setProperty('intent:DASHBOARD', 'requested_by', 'human.james')
-   .setProperty('intent:DASHBOARD', 'created_at', now);
-});
+if (!await graph.hasNode('intent:DASHBOARD')) {
+  await commit('intent:DASHBOARD declared', (p) => {
+    p.addNode('intent:DASHBOARD')
+     .setProperty('intent:DASHBOARD', 'type', 'intent')
+     .setProperty('intent:DASHBOARD', 'title', 'Build the WARP Dashboard: interactive TUI for graph navigation, triage, and observability')
+     .setProperty('intent:DASHBOARD', 'requested_by', 'human.james')
+     .setProperty('intent:DASHBOARD', 'created_at', now);
+  });
+} else { console.log(chalk.dim('  [SKIP] intent:DASHBOARD already exists')); }
 
 // ─── 2. Create campaign:DASHBOARD ─────────────────────────────────────────────
 
-await commit('campaign:DASHBOARD created', (p) => {
-  p.addNode('campaign:DASHBOARD')
-   .setProperty('campaign:DASHBOARD', 'type', 'campaign')
-   .setProperty('campaign:DASHBOARD', 'title', 'Milestone 5: WARP Dashboard')
-   .setProperty('campaign:DASHBOARD', 'status', 'IN_PROGRESS');
-});
+if (!await graph.hasNode('campaign:DASHBOARD')) {
+  await commit('campaign:DASHBOARD created', (p) => {
+    p.addNode('campaign:DASHBOARD')
+     .setProperty('campaign:DASHBOARD', 'type', 'campaign')
+     .setProperty('campaign:DASHBOARD', 'title', 'Milestone 5: WARP Dashboard')
+     .setProperty('campaign:DASHBOARD', 'status', 'IN_PROGRESS');
+  });
+} else { console.log(chalk.dim('  [SKIP] campaign:DASHBOARD already exists')); }
 
 // ─── 3. Fix sovereignty violations — wire authorized-by edges ─────────────────
 
-const weaverQuests = ['task:WVR-001','task:WVR-002','task:WVR-003','task:WVR-004','task:WVR-005','task:WVR-006'];
+const weaverQuests = ['task:WVR-001','task:WVR-002','task:WVR-003','task:WVR-004','task:WVR-005'];
 const oracleQuests = ['task:ORC-001','task:ORC-002','task:ORC-003','task:ORC-004'];
 const forgeQuests  = ['task:FRG-001','task:FRG-002','task:FRG-003','task:FRG-004'];
 
@@ -186,5 +194,5 @@ await commit(`Add ${newQuests.length} new backlog quests`, (p) => {
 console.log(chalk.bold('\nDone! Summary:'));
 console.log('  3 new intents declared (ORACLE, FORGE, DASHBOARD)');
 console.log('  1 new campaign created (campaign:DASHBOARD)');
-console.log('  13 sovereignty violations fixed (authorized-by edges wired)');
+console.log(`  ${weaverQuests.length + oracleQuests.length + forgeQuests.length} sovereignty violations fixed (authorized-by edges wired)`);
 console.log(`  ${newQuests.length} new backlog quests added (DSH-001 – DSH-010)`);

@@ -1,7 +1,9 @@
 import WarpGraph, { GitGraphAdapter } from '@git-stunts/git-warp';
 import Plumbing from '@git-stunts/plumbing';
 import type { DashboardPort } from '../../ports/DashboardPort.js';
+import { VALID_STATUSES as VALID_QUEST_STATUSES } from '../../domain/entities/Quest.js';
 import type { QuestStatus } from '../../domain/entities/Quest.js';
+import type { ApprovalGateTrigger } from '../../domain/entities/ApprovalGate.js';
 import type {
   ApprovalGateStatus,
   ApprovalNode,
@@ -14,6 +16,18 @@ import type {
 } from '../../domain/models/dashboard.js';
 
 interface NeighborEntry { label: string; nodeId: string }
+
+const VALID_CAMPAIGN_STATUSES: ReadonlySet<string> = new Set<CampaignStatus>([
+  'BACKLOG', 'IN_PROGRESS', 'DONE', 'UNKNOWN',
+]);
+
+const VALID_APPROVAL_STATUSES: ReadonlySet<string> = new Set<ApprovalGateStatus>([
+  'PENDING', 'APPROVED', 'REJECTED',
+]);
+
+const VALID_APPROVAL_TRIGGERS: ReadonlySet<string> = new Set<ApprovalGateTrigger>([
+  'CRITICAL_PATH_CHANGE', 'SCOPE_INCREASE_GT_5PCT',
+]);
 
 /**
  * Driven adapter: reads the WARP graph and produces a GraphSnapshot.
@@ -79,11 +93,14 @@ export class WarpDashboardAdapter implements DashboardPort {
         (id.startsWith('campaign:') || id.startsWith('milestone:'))
       ) {
         const title = props.get('title');
-        const status = props.get('status');
+        const rawStatus = props.get('status');
+        const campaignStatus = (typeof rawStatus === 'string' && VALID_CAMPAIGN_STATUSES.has(rawStatus))
+          ? rawStatus as CampaignStatus
+          : 'UNKNOWN' as CampaignStatus;
         campaigns.push({
           id,
           title: typeof title === 'string' ? title : id,
-          status: (typeof status === 'string' ? status : 'UNKNOWN') as CampaignStatus,
+          status: campaignStatus,
         });
       } else if (type === 'task' && id.startsWith('task:')) {
         rawQuestIds.push(id);
@@ -107,11 +124,13 @@ export class WarpDashboardAdapter implements DashboardPort {
         const requestedBy = props.get('requested_by');
         if (
           typeof status === 'string' &&
+          VALID_APPROVAL_STATUSES.has(status) &&
           typeof trigger === 'string' &&
+          VALID_APPROVAL_TRIGGERS.has(trigger) &&
           typeof approver === 'string' &&
           typeof requestedBy === 'string'
         ) {
-          approvals.push({ id, status: status as ApprovalGateStatus, trigger, approver, requestedBy });
+          approvals.push({ id, status: status as ApprovalGateStatus, trigger: trigger as ApprovalGateTrigger, approver, requestedBy });
         }
       }
     }
@@ -126,6 +145,7 @@ export class WarpDashboardAdapter implements DashboardPort {
       const rawStatus = props.get('status');
       const hours = props.get('hours');
       if (typeof title !== 'string' || typeof rawStatus !== 'string') continue;
+      if (!VALID_QUEST_STATUSES.has(rawStatus)) continue;
       const status = rawStatus as QuestStatus;
 
       const neighbors = (await graph.neighbors(
@@ -158,7 +178,7 @@ export class WarpDashboardAdapter implements DashboardPort {
         id,
         title,
         status,
-        hours: typeof hours === 'number' ? hours : 0,
+        hours: typeof hours === 'number' && Number.isFinite(hours) && hours >= 0 ? hours : 0,
         campaignId,
         intentId,
         assignedTo: typeof assignedTo === 'string' ? assignedTo : undefined,
@@ -208,9 +228,12 @@ export class WarpDashboardAdapter implements DashboardPort {
       scrolls.push({ id, questId, artifactHash, sealedBy, sealedAt, hasSeal });
     }
 
-    // Annotate quests with their scroll IDs
+    // Annotate quests with their scroll IDs (single scroll per quest is the intended invariant)
     const scrollByQuestId = new Map<string, string>();
     for (const scroll of scrolls) {
+      if (scrollByQuestId.has(scroll.questId)) {
+        console.warn(`[WARN] Duplicate scroll for quest ${scroll.questId}: ${scroll.id} supersedes ${scrollByQuestId.get(scroll.questId)}`);
+      }
       scrollByQuestId.set(scroll.questId, scroll.id);
     }
     for (const quest of quests) {

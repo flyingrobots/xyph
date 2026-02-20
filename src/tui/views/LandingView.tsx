@@ -40,7 +40,7 @@ export function LandingView({ logoText, snapshot }: Props): ReactElement {
     for (const c of snapshot.campaigns) {
       const qs = questsByCampaign.get(c.id) ?? [];
       const notDone = qs.filter((q) => q.status !== 'DONE').length;
-      if (notDone > 0 || qs.length === 0) {
+      if (notDone > 0) {
         currentMilestone = `${c.id}  ${c.title}`;
         break;
       }
@@ -77,22 +77,14 @@ export function LandingView({ logoText, snapshot }: Props): ReactElement {
               <Text>{first.title.slice(0, 30).padEnd(32)}</Text>
               <Text color="gray">{'[' + first.status + ']'}</Text>
             </Box>
-            {nextUp[1] !== undefined && (
-              <Box>
+            {nextUp.slice(1).map((item) => (
+              <Box key={item.id}>
                 <Text dimColor>{'           '}</Text>
-                <Text dimColor>{nextUp[1].id.slice(0, 14).padEnd(16)}</Text>
-                <Text>{nextUp[1].title.slice(0, 30).padEnd(32)}</Text>
-                <Text color="gray">{'[' + nextUp[1].status + ']'}</Text>
+                <Text dimColor>{item.id.slice(0, 14).padEnd(16)}</Text>
+                <Text>{item.title.slice(0, 30).padEnd(32)}</Text>
+                <Text color="gray">{'[' + item.status + ']'}</Text>
               </Box>
-            )}
-            {nextUp[2] !== undefined && (
-              <Box>
-                <Text dimColor>{'           '}</Text>
-                <Text dimColor>{nextUp[2].id.slice(0, 14).padEnd(16)}</Text>
-                <Text>{nextUp[2].title.slice(0, 30).padEnd(32)}</Text>
-                <Text color="gray">{'[' + nextUp[2].status + ']'}</Text>
-              </Box>
-            )}
+            ))}
           </Box>
         )}
         <Text dimColor>{'─'.repeat(41)}</Text>

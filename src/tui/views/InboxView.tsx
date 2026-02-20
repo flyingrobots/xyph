@@ -1,5 +1,5 @@
 import type { ReactElement } from 'react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Box, Text, useInput, useStdout, type Key } from 'ink';
 import type { GraphSnapshot, QuestNode } from '../../domain/models/dashboard.js';
 import type { IntakePort } from '../../ports/IntakePort.js';
@@ -58,31 +58,32 @@ export function InboxView({
   const [scrollOffset, setScrollOffset] = useState(0);
   const [modal, setModal] = useState<ModalState>(null);
 
-  const inbox = snapshot.quests.filter((q) => q.status === 'INBOX');
   const intents = snapshot.intents;
 
-  // Group by suggestedBy
-  const suggesterOrder: string[] = [];
-  const grouped = new Map<string, QuestNode[]>();
-  for (const q of inbox) {
-    const key = q.suggestedBy ?? '(unknown suggester)';
-    if (!grouped.has(key)) {
-      suggesterOrder.push(key);
-      grouped.set(key, []);
+  const { vrows, flatQuests } = useMemo(() => {
+    const inbox = snapshot.quests.filter((q) => q.status === 'INBOX');
+    const suggesterOrder: string[] = [];
+    const grouped = new Map<string, QuestNode[]>();
+    for (const q of inbox) {
+      const key = q.suggestedBy ?? '(unknown suggester)';
+      if (!grouped.has(key)) {
+        suggesterOrder.push(key);
+        grouped.set(key, []);
+      }
+      grouped.get(key)?.push(q);
     }
-    grouped.get(key)?.push(q);
-  }
-
-  const vrows: VRow[] = [];
-  const flatQuests: QuestNode[] = [];
-  for (const key of suggesterOrder) {
-    if (vrows.length > 0) vrows.push({ kind: 'spacer' });
-    vrows.push({ kind: 'header', label: key });
-    for (const q of grouped.get(key) ?? []) {
-      vrows.push({ kind: 'quest', quest: q, flatIdx: flatQuests.length });
-      flatQuests.push(q);
+    const rows: VRow[] = [];
+    const quests: QuestNode[] = [];
+    for (const key of suggesterOrder) {
+      if (rows.length > 0) rows.push({ kind: 'spacer' });
+      rows.push({ kind: 'header', label: key });
+      for (const q of grouped.get(key) ?? []) {
+        rows.push({ kind: 'quest', quest: q, flatIdx: quests.length });
+        quests.push(q);
+      }
     }
-  }
+    return { vrows: rows, flatQuests: quests };
+  }, [snapshot]);
 
   const totalQuests = flatQuests.length;
 
@@ -90,10 +91,7 @@ export function InboxView({
     setSelectedIdx((prev) =>
       totalQuests === 0 ? 0 : Math.min(prev, totalQuests - 1)
     );
-    setScrollOffset((prev) =>
-      Math.min(prev, Math.max(0, vrows.length - listHeight))
-    );
-  }, [totalQuests, vrows.length, listHeight]);
+  }, [totalQuests]);
 
   const clampedIdx = totalQuests === 0 ? 0 : Math.min(selectedIdx, totalQuests - 1);
   const clampedOffset = Math.min(scrollOffset, Math.max(0, vrows.length - listHeight));
@@ -119,14 +117,13 @@ export function InboxView({
     intake.promote(questId, intentId)
       .then(() => {
         onRefresh();
+        onMutationEnd();
         setModal(null);
       })
       .catch((err: unknown) => {
+        onMutationEnd();
         const parsed = parseErrorMessage(err);
         setModal({ kind: 'error', code: parsed.code, message: parsed.message });
-      })
-      .finally(() => {
-        onMutationEnd();
       });
   }
 
@@ -137,14 +134,13 @@ export function InboxView({
     intake.reject(questId, rationale)
       .then(() => {
         onRefresh();
+        onMutationEnd();
         setModal(null);
       })
       .catch((err: unknown) => {
+        onMutationEnd();
         const parsed = parseErrorMessage(err);
         setModal({ kind: 'error', code: parsed.code, message: parsed.message });
-      })
-      .finally(() => {
-        onMutationEnd();
       });
   }
 
@@ -233,11 +229,11 @@ export function InboxView({
     if (input === 'p') {
       if (totalQuests === 0) return;
       if (!agentId.startsWith('human.')) {
-        setModal({ kind: 'error', code: 'FORBIDDEN', message: `requires human.* agent ID, got: '${agentId}'` });
+        setModal({ kind: 'error', code: 'FORBIDDEN', message: `requires human.* agent ID, got: '${agentId.slice(0, 40)}'` });
         return;
       }
       if (intents.length === 0) {
-        setModal({ kind: 'error', code: null, message: 'No sovereign intents found in snapshot' });
+        setModal(null);
         return;
       }
       const quest = flatQuests[clampedIdx];
@@ -346,7 +342,7 @@ export function InboxView({
         <Box flexDirection="column" flexGrow={1}>
           {visibleRows.map((row, i) => {
             if (row.kind === 'spacer') {
-              return <Box key={`sp-${i}`}><Text> </Text></Box>;
+              return <Box key={`sp-${clampedOffset + i}`}><Text> </Text></Box>;
             }
             if (row.kind === 'header') {
               return (

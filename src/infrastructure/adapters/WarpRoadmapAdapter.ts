@@ -1,13 +1,15 @@
-import WarpGraph, { GitGraphAdapter, PatchSession } from '@git-stunts/git-warp';
+import WarpGraph, { GitGraphAdapter } from '@git-stunts/git-warp';
 import Plumbing from '@git-stunts/plumbing';
 import { RoadmapPort } from '../../ports/RoadmapPort.js';
 import { Quest, QuestStatus, QuestType } from '../../domain/entities/Quest.js';
 import { EdgeType } from '../../schema.js';
+import { createPatchSession } from '../helpers/createPatchSession.js';
 
 const VALID_STATUSES: ReadonlySet<string> = new Set([
   'INBOX', 'BACKLOG', 'PLANNED', 'IN_PROGRESS', 'BLOCKED', 'DONE', 'GRAVEYARD',
 ]);
-const VALID_TYPES: ReadonlySet<string> = new Set(['task', 'scroll', 'milestone', 'campaign', 'roadmap']);
+// Only 'task' nodes are valid Quests; other types (scroll, campaign, etc.) are not Quest entities
+const VALID_TYPES: ReadonlySet<string> = new Set(['task']);
 
 export class WarpRoadmapAdapter implements RoadmapPort {
   private graphPromise: Promise<WarpGraph> | null = null;
@@ -20,7 +22,10 @@ export class WarpRoadmapAdapter implements RoadmapPort {
 
   private async getGraph(): Promise<WarpGraph> {
     if (!this.graphPromise) {
-      this.graphPromise = this.initGraph();
+      this.graphPromise = this.initGraph().catch((err) => {
+        this.graphPromise = null;
+        throw err;
+      });
     }
     return this.graphPromise;
   }
@@ -72,6 +77,8 @@ export class WarpRoadmapAdapter implements RoadmapPort {
 
   public async getQuests(): Promise<Quest[]> {
     const graph = await this.getGraph();
+    await graph.syncCoverage();
+    await graph.materialize();
     const nodeIds = await graph.getNodes();
     const quests: Quest[] = [];
 
@@ -88,6 +95,8 @@ export class WarpRoadmapAdapter implements RoadmapPort {
 
   public async getQuest(id: string): Promise<Quest | null> {
     const graph = await this.getGraph();
+    await graph.syncCoverage();
+    await graph.materialize();
     if (!await graph.hasNode(id)) return null;
 
     const props = await graph.getNodeProps(id);
@@ -98,7 +107,7 @@ export class WarpRoadmapAdapter implements RoadmapPort {
 
   public async upsertQuest(quest: Quest): Promise<string> {
     const graph = await this.getGraph();
-    const patch = (await graph.createPatch()) as PatchSession;
+    const patch = await createPatchSession(graph);
 
     if (!await graph.hasNode(quest.id)) {
       patch.addNode(quest.id);
@@ -119,7 +128,7 @@ export class WarpRoadmapAdapter implements RoadmapPort {
 
   public async addEdge(from: string, to: string, type: EdgeType): Promise<string> {
     const graph = await this.getGraph();
-    const patch = (await graph.createPatch()) as PatchSession;
+    const patch = await createPatchSession(graph);
     patch.addEdge(from, to, type);
     return await patch.commit();
   }

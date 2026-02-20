@@ -1,4 +1,4 @@
-import { Quest, QuestProps, QuestType } from '../entities/Quest.js';
+import { Quest, QuestProps } from '../entities/Quest.js';
 
 /**
  * IngestService
@@ -19,7 +19,11 @@ export class IngestService {
 
       if (!match) continue;
 
-      const [, checkbox, id, title, hours] = match as [string, string, string, string, string?, string?];
+      const checkbox = match[1];
+      const id = match[2];
+      const title = match[3];
+      const hours = match[4];
+      if (checkbox === undefined || id === undefined || title === undefined) continue;
 
       const idPrefix = id.split(':')[0] ?? '';
       if (idPrefix !== 'task') continue;
@@ -31,8 +35,8 @@ export class IngestService {
         id,
         title: trimmedTitle,
         status: isCompleted ? 'DONE' : 'BACKLOG',
-        hours: hours ? parseFloat(hours) : 0,
-        type: idPrefix as QuestType,
+        hours: hours !== undefined ? parseFloat(hours) : 0,
+        type: 'task',
       };
 
       try {

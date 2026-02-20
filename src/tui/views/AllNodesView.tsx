@@ -1,8 +1,8 @@
 import type { ReactElement } from 'react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Box, Text, useInput, useStdout, type Key } from 'ink';
 import type { GraphSnapshot, QuestNode } from '../../domain/models/dashboard.js';
-import { STATUS_COLOR, type StatusColor } from '../status-colors.js';
+import { STATUS_COLOR } from '../status-colors.js';
 import { Scrollbar } from '../Scrollbar.js';
 import { QuestDetailPanel } from '../QuestDetailPanel.js';
 
@@ -23,7 +23,7 @@ interface Props {
 }
 
 function StatusText({ status }: { status: string }): ReactElement {
-  const color = (STATUS_COLOR[status] ?? 'white') as StatusColor;
+  const color = STATUS_COLOR[status] ?? 'white';
   return <Text color={color}>{status}</Text>;
 }
 
@@ -85,7 +85,7 @@ export function AllNodesView({ snapshot, isActive }: Props): ReactElement {
   const [selectedQuestIdx, setSelectedQuestIdx] = useState(0);
   const [showDetail, setShowDetail] = useState(false);
 
-  const { vrows, flatQuests, questCount } = buildRows(snapshot);
+  const { vrows, flatQuests, questCount } = useMemo(() => buildRows(snapshot), [snapshot]);
   const total = snapshot.campaigns.length + snapshot.quests.length +
     snapshot.intents.length + snapshot.scrolls.length + snapshot.approvals.length;
 
@@ -102,10 +102,6 @@ export function AllNodesView({ snapshot, isActive }: Props): ReactElement {
 
   const maxOffset = Math.max(0, vrows.length - listHeight);
   const clampedOffset = Math.min(scrollOffset, maxOffset);
-
-  useEffect(() => {
-    setScrollOffset(prev => Math.min(prev, Math.max(0, vrows.length - listHeight)));
-  }, [vrows.length, listHeight]);
 
   useEffect(() => {
     setSelectedQuestIdx(prev => questCount === 0 ? 0 : Math.min(prev, questCount - 1));
@@ -170,7 +166,7 @@ export function AllNodesView({ snapshot, isActive }: Props): ReactElement {
         {visibleRows.map((row, i) => {
           const absIdx = clampedOffset + i;
           if (row.kind === 'spacer') {
-            return <Box key={`sp-${i}`}><Text> </Text></Box>;
+            return <Box key={`sp-${clampedOffset + i}`}><Text> </Text></Box>;
           }
           if (row.kind === 'header') {
             return (

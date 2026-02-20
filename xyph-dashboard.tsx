@@ -26,13 +26,13 @@ const DEFAULT_AGENT_ID = 'agent.prime';
 const agentId = process.env['XYPH_AGENT_ID'] ?? DEFAULT_AGENT_ID;
 const cwd = process.cwd();
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+const currentFilePath = fileURLToPath(import.meta.url);
+const currentDir = dirname(currentFilePath);
 
 // Pick a random compact logo (≤15 lines): 2, 3, 7, 8, 9, 10
 const COMPACT_LOGOS = [2, 3, 7, 8, 9, 10];
-const logoNum = COMPACT_LOGOS[Math.floor(Math.random() * COMPACT_LOGOS.length)] ?? 3;
-const logoPath = join(__dirname, 'src', 'tui', 'logos', `${logoNum}.txt`);
+const logoNum = COMPACT_LOGOS[Math.floor(Math.random() * COMPACT_LOGOS.length)] ?? 3; // fallback satisfies noUncheckedIndexedAccess
+const logoPath = join(currentDir, 'src', 'tui', 'logos', `${logoNum}.txt`);
 let logoText: string;
 try {
   logoText = readFileSync(logoPath, 'utf8');

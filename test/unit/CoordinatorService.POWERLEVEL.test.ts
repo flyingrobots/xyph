@@ -11,7 +11,7 @@ describe('CoordinatorService [POWERLEVEL™]', () => {
     getQuests: vi.fn(),
     getQuest: vi.fn(),
     upsertQuest: vi.fn().mockResolvedValue('patch-sha'),
-    addEdge: vi.fn(),
+    addEdge: vi.fn().mockResolvedValue('edge-sha'),
     getOutgoingEdges: vi.fn().mockResolvedValue([]),
     sync: vi.fn()
   };
@@ -93,6 +93,9 @@ describe('CoordinatorService [POWERLEVEL™]', () => {
 
       await expect(service.orchestrate(input))
         .rejects.toThrow(/Orchestration completed with 1 upsert failure\(s\)/);
+
+      // Both quests should have been attempted
+      expect(mockRoadmap.upsertQuest).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -109,6 +112,12 @@ describe('CoordinatorService [POWERLEVEL™]', () => {
       const input = `- [ ] task:LIM-001 Max Limit Quest #160`;
       await service.orchestrate(input);
       expect(mockRoadmap.upsertQuest).toHaveBeenCalled();
+    });
+
+    it('should fail at 161 hours (One Over Boundary)', async () => {
+      const input = `- [ ] task:OVER-001 Just Over Limit #161`;
+      await expect(service.orchestrate(input)).rejects.toThrow(/Orchestration failed rebalance/);
+      expect(mockRoadmap.upsertQuest).not.toHaveBeenCalled();
     });
 
     it('should handle quests with zero hours', async () => {

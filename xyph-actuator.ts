@@ -1,9 +1,9 @@
 #!/usr/bin/env -S npx tsx
 import WarpGraph, { GitGraphAdapter } from '@git-stunts/git-warp';
-import type { PatchSession } from '@git-stunts/git-warp';
 import Plumbing from '@git-stunts/plumbing';
 import { program, InvalidArgumentError } from 'commander';
 import chalk from 'chalk';
+import { createPatchSession } from './src/infrastructure/helpers/createPatchSession.js';
 
 /**
  * XYPH Actuator - The "Hands" of the Causal Agent.
@@ -31,9 +31,7 @@ async function getGraph(): Promise<WarpGraph> {
   return graph;
 }
 
-async function createPatch(graph: WarpGraph): Promise<PatchSession> {
-  return (await graph.createPatch()) as PatchSession;
-}
+const createPatch = createPatchSession;
 
 function parseHours(val: string): number {
   const parsed = parseFloat(val);
@@ -81,7 +79,7 @@ program
         .setProperty(id, 'hours', opts.hours ?? 0)
         .setProperty(id, 'type', 'task');
 
-      if (opts.campaign && opts.campaign !== 'none') {
+      if (opts.campaign !== 'none') {
         patch.addEdge(id, opts.campaign, 'belongs-to');
       }
 
@@ -444,4 +442,4 @@ program
     }
   });
 
-program.parse(process.argv);
+await program.parseAsync(process.argv);

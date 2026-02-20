@@ -4,9 +4,9 @@
  * Run as: XYPH_AGENT_ID=human.james npx tsx scripts/graveyard-ghosts.mts
  */
 import WarpGraph, { GitGraphAdapter } from '@git-stunts/git-warp';
-import type { PatchSession } from '@git-stunts/git-warp';
 import Plumbing from '@git-stunts/plumbing';
 import chalk from 'chalk';
+import { createPatchSession } from '../src/infrastructure/helpers/createPatchSession.js';
 
 const agentId = process.env['XYPH_AGENT_ID'] ?? 'human.james';
 const now = Date.now();
@@ -30,9 +30,7 @@ const graph = await WarpGraph.open({
 await graph.syncCoverage();
 await graph.materialize();
 
-const patch = (await graph.createPatch()) as PatchSession;
-
-let mutated = false;
+const toMutate: Array<{ id: string; rationale: string }> = [];
 for (const { id, rationale } of GHOSTS) {
   const props = await graph.getNodeProps(id);
   if (!props) {
@@ -44,19 +42,22 @@ for (const { id, rationale } of GHOSTS) {
     console.log(chalk.dim(`  [SKIP] ${id} — already GRAVEYARD`));
     continue;
   }
-  patch
-    .setProperty(id, 'status', 'GRAVEYARD')
-    .setProperty(id, 'rejected_by', agentId)
-    .setProperty(id, 'rejected_at', now)
-    .setProperty(id, 'rejection_rationale', rationale);
-  mutated = true;
+  toMutate.push({ id, rationale });
   console.log(chalk.cyan(`  [MARK] ${id}`));
   console.log(chalk.dim(`         ${rationale}`));
 }
 
-if (!mutated) {
+if (toMutate.length === 0) {
   console.log(chalk.dim('\nNo mutations needed — all ghosts already in GRAVEYARD or not found.'));
 } else {
+  const patch = await createPatchSession(graph);
+  for (const { id, rationale } of toMutate) {
+    patch
+      .setProperty(id, 'status', 'GRAVEYARD')
+      .setProperty(id, 'rejected_by', agentId)
+      .setProperty(id, 'rejected_at', now)
+      .setProperty(id, 'rejection_rationale', rationale);
+  }
   const sha = await patch.commit();
   console.log(chalk.green(`\n[OK] Patch committed: ${sha}`));
   console.log(chalk.dim('Ghost nodes moved to GRAVEYARD — they will be filtered from all dashboard views.'));

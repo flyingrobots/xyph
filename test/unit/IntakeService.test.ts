@@ -53,6 +53,10 @@ describe('TRANSITION_TABLE', () => {
 });
 
 describe('IntakeService', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   describe('isHumanPrincipal', () => {
     it('returns true for human.* principals', () => {
       const svc = new IntakeService(makePort());
@@ -140,12 +144,6 @@ describe('IntakeService', () => {
       await expect(svc.validateReject('task:TST-001', 'Out of scope')).resolves.toBeUndefined();
     });
 
-    it('resolves for agent actor (reject does not require human)', async () => {
-      // validateReject doesn't check actor — that's intentional
-      const port = makePort(makeQuest('INBOX'));
-      const svc = new IntakeService(port);
-      await expect(svc.validateReject('task:TST-001', 'Not aligned')).resolves.toBeUndefined();
-    });
   });
 
   describe('validateReopen', () => {

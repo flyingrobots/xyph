@@ -5,7 +5,7 @@ import type { GraphSnapshot } from '../../src/domain/models/dashboard.js';
 
 const baseSnapshot: GraphSnapshot = {
   campaigns: [
-    { id: 'campaign:M1', title: 'Milestone 1 — BEDROCK', status: 'ACTIVE' as const },
+    { id: 'campaign:M1', title: 'Milestone 1 — BEDROCK', status: 'IN_PROGRESS' as const },
     { id: 'campaign:M2', title: 'Milestone 2 — HEARTBEAT', status: 'BACKLOG' as const },
   ],
   quests: [
@@ -111,10 +111,7 @@ describe('DashboardService', () => {
 
     it('uses the CampaignNode object as the map key', async () => {
       const roadmap = await svc.getRoadmap();
-      const mockResult = vi.mocked(port.fetchSnapshot).mock.results[0];
-      if (mockResult === undefined || mockResult.type !== 'return') throw new Error('unexpected mock state');
-      const snapshot = await mockResult.value as GraphSnapshot;
-      const m1 = snapshot.campaigns[0]!;
+      const m1 = baseSnapshot.campaigns[0]!;
       const quests = roadmap.get(m1);
       expect(quests).toBeDefined();
       expect(quests?.map((q) => q.id)).toContain('task:BDR-001');
@@ -138,6 +135,34 @@ describe('DashboardService', () => {
     it('calls fetchSnapshot exactly once', async () => {
       await svc.getRoadmap();
       expect(port.fetchSnapshot).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe('filterSnapshot', () => {
+    it('excludes GRAVEYARD quests by default', () => {
+      const snapshotWithGraveyard: GraphSnapshot = {
+        ...baseSnapshot,
+        quests: [
+          ...baseSnapshot.quests,
+          { id: 'task:GRV-001', title: 'Graveyarded quest', status: 'GRAVEYARD' as const, hours: 1 },
+        ],
+      };
+      const svc = new DashboardService(makePort(snapshotWithGraveyard));
+      const filtered = svc.filterSnapshot(snapshotWithGraveyard, { includeGraveyard: false });
+      expect(filtered.quests.map(q => q.id)).not.toContain('task:GRV-001');
+    });
+
+    it('includes GRAVEYARD quests when includeGraveyard is true', () => {
+      const snapshotWithGraveyard: GraphSnapshot = {
+        ...baseSnapshot,
+        quests: [
+          ...baseSnapshot.quests,
+          { id: 'task:GRV-001', title: 'Graveyarded quest', status: 'GRAVEYARD' as const, hours: 1 },
+        ],
+      };
+      const svc = new DashboardService(makePort(snapshotWithGraveyard));
+      const filtered = svc.filterSnapshot(snapshotWithGraveyard, { includeGraveyard: true });
+      expect(filtered.quests.map(q => q.id)).toContain('task:GRV-001');
     });
   });
 

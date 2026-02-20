@@ -16,12 +16,12 @@
  * Artifact hashes use the format git:<sha> referencing the implementing commit.
  */
 
-import WarpGraph, { GitGraphAdapter } from '@git-stunts/git-warp';
-import type { PatchSession } from '@git-stunts/git-warp';
+import WarpGraph, { GitGraphAdapter, PatchSession } from '@git-stunts/git-warp';
 import Plumbing from '@git-stunts/plumbing';
 import chalk from 'chalk';
+import { createPatchSession } from '../src/infrastructure/helpers/createPatchSession.js';
 
-const WRITER_ID = process.env['XYPH_AGENT_ID'] ?? 'agent.james';
+const WRITER_ID = process.env['XYPH_AGENT_ID'] ?? 'human.james';
 
 const plumbing = Plumbing.createDefault({ cwd: process.cwd() });
 const persistence = new GitGraphAdapter({ plumbing });
@@ -43,7 +43,7 @@ async function commitPatch(
   label: string,
   fn: (patch: PatchSession) => void,
 ): Promise<void> {
-  const patch = (await graph.createPatch()) as PatchSession;
+  const patch = await createPatchSession(graph);
   fn(patch);
   const sha = await patch.commit();
   console.log(chalk.green(`[OK] ${label} → patch ${sha}`));

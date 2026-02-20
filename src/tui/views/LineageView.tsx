@@ -1,8 +1,8 @@
 import type { ReactElement } from 'react';
-import { useState, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { Box, Text, useInput, useStdout, type Key } from 'ink';
 import type { GraphSnapshot } from '../../domain/models/dashboard.js';
-import { STATUS_COLOR, type StatusColor } from '../status-colors.js';
+import { STATUS_COLOR } from '../status-colors.js';
 import { Scrollbar } from '../Scrollbar.js';
 
 const CHROME_LINES = 3; // tab bar + marginBottom + scroll indicator
@@ -88,7 +88,7 @@ export function LineageView({ snapshot, isActive }: Props): ReactElement {
   const [scrollOffset, setScrollOffset] = useState(0);
   const [selectedVIdx, setSelectedVIdx] = useState(0);
 
-  const vrows = buildRows(snapshot);
+  const vrows = useMemo(() => buildRows(snapshot), [snapshot]);
   const maxOffset = Math.max(0, vrows.length - listHeight);
   const clampedOffset = Math.min(scrollOffset, maxOffset);
 
@@ -103,10 +103,6 @@ export function LineageView({ snapshot, isActive }: Props): ReactElement {
       : questIndices.includes(selectedVIdx)
         ? selectedVIdx
         : (questIndices[0] ?? 0);
-
-  useEffect(() => {
-    setScrollOffset(prev => Math.min(prev, Math.max(0, vrows.length - listHeight)));
-  }, [vrows.length, listHeight]);
 
   function moveSelection(delta: number): void {
     if (questIndices.length === 0) return;
@@ -123,10 +119,10 @@ export function LineageView({ snapshot, isActive }: Props): ReactElement {
   }
 
   useInput((_input: string, key: Key) => {
-    if (key.upArrow) moveSelection(-1);
-    if (key.downArrow) moveSelection(1);
-    if (key.pageUp) moveSelection(-listHeight);
-    if (key.pageDown) moveSelection(listHeight);
+    if (key.upArrow) { moveSelection(-1); return; }
+    if (key.downArrow) { moveSelection(1); return; }
+    if (key.pageUp) { moveSelection(-listHeight); return; }
+    if (key.pageDown) { moveSelection(listHeight); return; }
   }, { isActive });
 
   if (snapshot.intents.length === 0) {
@@ -149,7 +145,7 @@ export function LineageView({ snapshot, isActive }: Props): ReactElement {
         {visibleRows.map((row, i) => {
           const absIdx = clampedOffset + i;
           if (row.kind === 'spacer') {
-            return <Box key={`sp-${i}`}><Text> </Text></Box>;
+            return <Box key={`sp-${clampedOffset + i}`}><Text> </Text></Box>;
           }
           if (row.kind === 'intent-header') {
             return (
@@ -175,7 +171,7 @@ export function LineageView({ snapshot, isActive }: Props): ReactElement {
           }
           if (row.kind === 'quest') {
             const isSelected = absIdx === clampedVIdx;
-            const statusColor = (STATUS_COLOR[row.status] ?? 'white') as StatusColor;
+            const statusColor = STATUS_COLOR[row.status] ?? 'white';
             return (
               <Box key={`q-${row.id}`} marginLeft={2}>
                 <Box width={2}>

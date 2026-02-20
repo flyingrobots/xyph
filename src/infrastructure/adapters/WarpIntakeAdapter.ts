@@ -1,6 +1,7 @@
-import WarpGraph, { GitGraphAdapter, PatchSession } from '@git-stunts/git-warp';
+import WarpGraph, { GitGraphAdapter } from '@git-stunts/git-warp';
 import Plumbing from '@git-stunts/plumbing';
 import type { IntakePort } from '../../ports/IntakePort.js';
+import { createPatchSession } from '../helpers/createPatchSession.js';
 
 export class WarpIntakeAdapter implements IntakePort {
   private graphPromise: Promise<WarpGraph> | null = null;
@@ -62,7 +63,7 @@ export class WarpIntakeAdapter implements IntakePort {
       );
     }
 
-    const patch = (await graph.createPatch()) as PatchSession;
+    const patch = await createPatchSession(graph);
     patch.setProperty(questId, 'status', 'BACKLOG').addEdge(questId, intentId, 'authorized-by');
     if (campaignId !== undefined) {
       patch.addEdge(questId, campaignId, 'belongs-to');
@@ -91,7 +92,7 @@ export class WarpIntakeAdapter implements IntakePort {
     }
 
     const now = Date.now();
-    const patch = (await graph.createPatch()) as PatchSession;
+    const patch = await createPatchSession(graph);
     patch
       .setProperty(questId, 'status', 'GRAVEYARD')
       .setProperty(questId, 'rejected_by', this.agentId)
@@ -124,7 +125,7 @@ export class WarpIntakeAdapter implements IntakePort {
     }
 
     const now = Date.now();
-    const patch = (await graph.createPatch()) as PatchSession;
+    const patch = await createPatchSession(graph);
     patch
       .setProperty(questId, 'status', 'INBOX')
       .setProperty(questId, 'reopened_by', this.agentId)

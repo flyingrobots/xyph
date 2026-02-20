@@ -11,7 +11,12 @@ export type QuestStatus =
   | 'BLOCKED'
   | 'DONE'
   | 'GRAVEYARD';
-export type QuestType = 'task' | 'scroll' | 'milestone' | 'campaign' | 'roadmap';
+
+export const VALID_STATUSES: ReadonlySet<string> = new Set<QuestStatus>([
+  'INBOX', 'BACKLOG', 'PLANNED', 'IN_PROGRESS', 'BLOCKED', 'DONE', 'GRAVEYARD',
+]);
+
+export type QuestType = 'task';
 
 export interface QuestProps {
   id: string;
@@ -42,6 +47,9 @@ export class Quest {
     }
     if (typeof props.title !== 'string' || props.title.length < 5) {
       throw new Error(`Quest title must be at least 5 characters, got: '${props.title}'`);
+    }
+    if (!VALID_STATUSES.has(props.status)) {
+      throw new Error(`Quest status must be one of ${[...VALID_STATUSES].join(', ')}, got: '${props.status}'`);
     }
     if (!Number.isFinite(props.hours) || props.hours < 0) {
       throw new Error(`Quest hours must be a finite non-negative number, got: ${props.hours}`);

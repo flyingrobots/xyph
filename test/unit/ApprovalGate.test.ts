@@ -105,4 +105,19 @@ describe('ApprovalGate Entity', () => {
       resolvedAt: validProps.createdAt - 1,
     })).toThrow('resolvedAt must be >= createdAt');
   });
+
+  it('should accept resolvedAt === createdAt (instantaneous resolution)', () => {
+    const gate = new ApprovalGate({
+      ...validProps,
+      status: 'APPROVED',
+      resolvedAt: validProps.createdAt,
+    });
+    expect(gate.isApproved()).toBe(true);
+    expect(gate.resolvedAt).toBe(validProps.createdAt);
+  });
+
+  it('should reject negative createdAt', () => {
+    expect(() => new ApprovalGate({ ...validProps, createdAt: -1 }))
+      .toThrow('positive timestamp');
+  });
 });

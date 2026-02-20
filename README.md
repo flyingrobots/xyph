@@ -124,7 +124,7 @@ export XYPH_AGENT_ID="agent.yourname"
 | 4 | SOVEREIGNTY — cryptographic guild seals, approval gates, genealogy of intent | ✅ DONE |
 | 4+ | POWERLEVEL™ — full orchestration pipeline refactor | ✅ DONE |
 | 5 | WARP Dashboard TUI — interactive graph browser | 🚧 IN PROGRESS |
-| 6 | WEAVER — DAG scheduling + dependency graph | ⬜ PLANNED |
+| 6 | WEAVER — DAG scheduling + dependency graph ([RFC_001](docs/canonical/RFC_001_AST_DRIVEN_INGEST.md)) | ⬜ PLANNED |
 | 7 | ORACLE — intent classification + policy engine | ⬜ PLANNED |
 | 8 | FORGE — emit + apply phases | ⬜ PLANNED |
 
@@ -138,4 +138,6 @@ Every mutation must obey the [CONSTITUTION.md](docs/canonical/CONSTITUTION.md). 
 
 ---
 
-Built with Ω by [FLYING ROBOTS](https://github.com/flyingrobots)
+Built with Ω¹ by [FLYING ROBOTS](https://github.com/flyingrobots)
+
+<sub>¹ Ω (Omega) — the final convergence point of the WARP graph; symbolizes deterministic state resolution.</sub>

@@ -10,16 +10,17 @@ describe('CoordinatorService', () => {
     getQuests: vi.fn(),
     getQuest: vi.fn(),
     upsertQuest: vi.fn().mockResolvedValue('patch-sha'),
-    addEdge: vi.fn(),
+    addEdge: vi.fn().mockResolvedValue('edge-sha'),
     getOutgoingEdges: vi.fn().mockResolvedValue([]),
     sync: vi.fn()
   };
 
-  const service = new CoordinatorService(mockRoadmap, 'agent.test', new IngestService(), new NormalizeService(), new RebalanceService());
+  let service: CoordinatorService;
 
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(mockRoadmap.upsertQuest).mockResolvedValue('patch-sha');
+    service = new CoordinatorService(mockRoadmap, 'agent.test', new IngestService(), new NormalizeService(), new RebalanceService());
   });
 
   it('should orchestrate a raw markdown input', async () => {

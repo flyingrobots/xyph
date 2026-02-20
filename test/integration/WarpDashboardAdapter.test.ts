@@ -45,7 +45,7 @@ describe('WarpDashboardAdapter Integration', () => {
     const p1 = await createPatch(graph);
     p1.addNode('campaign:DASH-M1')
       .setProperty('campaign:DASH-M1', 'title', 'Dashboard Milestone')
-      .setProperty('campaign:DASH-M1', 'status', 'ACTIVE')
+      .setProperty('campaign:DASH-M1', 'status', 'IN_PROGRESS')
       .setProperty('campaign:DASH-M1', 'type', 'campaign');
     await p1.commit();
 

@@ -1,15 +1,11 @@
 import type { ReactElement } from 'react';
 import { Box, Text } from 'ink';
 
-interface Props {
-  onClose: () => void;
-}
-
 /**
  * HelpModal is a pure display component.
  * Keyboard handling (Escape to close) is managed by Dashboard.
  */
-export function HelpModal(_props: Props): ReactElement {
+export function HelpModal(): ReactElement {
   return (
     <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1}>
       <Text bold color="cyan">XYPH Help</Text>

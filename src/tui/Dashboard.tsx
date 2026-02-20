@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import type { ReactElement } from 'react';
 import { Box, Text, useInput, useApp, type Key } from 'ink';
 import type { DashboardService } from '../domain/services/DashboardService.js';
@@ -32,18 +32,24 @@ export function Dashboard({ service, intake, agentId, logoText }: Props): ReactE
   const [showHelp, setShowHelp] = useState(false);
   const { exit } = useApp();
 
+  const requestCounter = useRef(0);
+
   const refresh = useCallback((): void => {
     setLoading(true);
+    const thisRequest = ++requestCounter.current;
     service
       .getSnapshot()
       .then((s) => {
+        if (requestCounter.current !== thisRequest) return; // stale response
         setSnapshot(s);
         setError(null);
       })
       .catch((err: unknown) => {
+        if (requestCounter.current !== thisRequest) return; // stale response
         setError(err instanceof Error ? err.message : String(err));
       })
       .finally(() => {
+        if (requestCounter.current !== thisRequest) return; // stale response
         setLoading(false);
       });
   }, [service]);
@@ -85,9 +91,12 @@ export function Dashboard({ service, intake, agentId, logoText }: Props): ReactE
     }
     if (key.tab) {
       const idx = VIEWS.indexOf(activeView);
-      const next = VIEWS[(idx + 1) % VIEWS.length];
-      if (next !== undefined) {
-        setActiveView(next);
+      if (key.shift) {
+        const prev = VIEWS[(idx - 1 + VIEWS.length) % VIEWS.length];
+        if (prev !== undefined) setActiveView(prev);
+      } else {
+        const next = VIEWS[(idx + 1) % VIEWS.length];
+        if (next !== undefined) setActiveView(next);
       }
     }
   });
@@ -111,7 +120,10 @@ export function Dashboard({ service, intake, agentId, logoText }: Props): ReactE
   }
 
   // GRAVEYARD is excluded from all active views by default
-  const filtered = service.filterSnapshot(snapshot, { includeGraveyard: false });
+  const filtered = useMemo(
+    () => service.filterSnapshot(snapshot, { includeGraveyard: false }),
+    [service, snapshot],
+  );
 
   const mainContent = (
     <Box flexDirection="column">
@@ -152,7 +164,7 @@ export function Dashboard({ service, intake, agentId, logoText }: Props): ReactE
     return (
       <>
         {mainContent}
-        <HelpModal onClose={() => setShowHelp(false)} />
+        <HelpModal />
       </>
     );
   }

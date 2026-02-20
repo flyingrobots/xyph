@@ -41,14 +41,14 @@ The new engine will maintain a **Context Stack** during the tree walk. A `# Head
 
 **Example Input:**
 ```markdown
-# milestone:M1 Bedrock
+# campaign:M1 Bedrock
 - [ ] task:BDK-001 Kernel #10
   - [ ] task:BDK-001a Memory Mgmt #5
 ```
 
 **Resulting Graph Mutations:**
-1. `upsertQuest(milestone:M1)`
-2. `upsertQuest(task:BDK-001)` + `addEdge(task:BDK-001, milestone:M1, belongs-to)`
+1. `upsertQuest(campaign:M1)`
+2. `upsertQuest(task:BDK-001)` + `addEdge(task:BDK-001, campaign:M1, belongs-to)`
 3. `upsertQuest(task:BDK-001a)` + `addEdge(task:BDK-001a, task:BDK-001, depends-on)`
 
 ### 4.2 Dependency Justification: `unified` / `remark`
@@ -84,10 +84,10 @@ The new engine will maintain a **Context Stack** during the tree walk. A `# Head
 3. **YAML Frontmatter-only**: Every task must be a YAML block. (Rejected: too verbose for quick roadmap drafting).
 
 ## 8. Implementation Strategy
-1. Introduce `src/domain/services/AstIngestService.ts`.
+1. Introduce `src/domain/services/AstIngestService.ts` alongside the existing `IngestService`.
 2. Port the existing `IngestService` tests to the new service to ensure parity.
-3. Update `CoordinatorService` to use the new engine.
-4. Deprecate the line-based `IngestService.ts` in Milestone 6.
+3. Update `CoordinatorService` to use `AstIngestService`.
+4. Once `AstIngestService` passes all parity tests, deprecate and remove the line-based `IngestService`.
 
 ## 9. Conclusion
 Transitioning to an AST-driven model is not just a refactor—it is the **Heirloom Upgrade** for XYPH. It elevates the Markdown roadmap from a "text file" to a **Structured Database of Intent**, providing the architectural rigor required for autonomous agentic orchestration.

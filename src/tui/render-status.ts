@@ -112,13 +112,9 @@ export function renderLineage(snapshot: GraphSnapshot): string {
     return lines.join('\n');
   }
 
-  const scrollByQuestId = new Map<string, string>();
+  const scrollByQuestId = new Map<string, { id: string; hasSeal: boolean }>();
   for (const s of snapshot.scrolls) {
-    scrollByQuestId.set(s.questId, s.id);
-  }
-  const scrollSealedByQuestId = new Map<string, boolean>();
-  for (const s of snapshot.scrolls) {
-    scrollSealedByQuestId.set(s.questId, s.hasSeal);
+    scrollByQuestId.set(s.questId, { id: s.id, hasSeal: s.hasSeal });
   }
 
   const questsByIntent = new Map<string, typeof snapshot.quests>();
@@ -152,19 +148,19 @@ export function renderLineage(snapshot: GraphSnapshot): string {
       if (!q) continue;
       const isLast = i === quests.length - 1;
       const branch = isLast ? '└─' : '├─';
-      const scrollId = scrollByQuestId.get(q.id);
-      const scrollMark = scrollId !== undefined
-        ? (scrollSealedByQuestId.get(q.id) ? chalk.green(' ✓') : chalk.yellow(' ○'))
+      const scrollEntry = scrollByQuestId.get(q.id);
+      const scrollMark = scrollEntry !== undefined
+        ? (scrollEntry.hasSeal ? chalk.green(' ✓') : chalk.yellow(' ○'))
         : '';
 
       lines.push(
         `     ${branch} ${chalk.dim(q.id)}  ${q.title.slice(0, 38)}  [${colorStatus(q.status)}]${scrollMark}`
       );
 
-      if (scrollId !== undefined) {
+      if (scrollEntry !== undefined) {
         const indent = isLast ? '   ' : '│  ';
         lines.push(
-          `     ${indent}  ${chalk.dim('scroll:')} ${chalk.dim(scrollId)}`
+          `     ${indent}  ${chalk.dim('scroll:')} ${chalk.dim(scrollEntry.id)}`
         );
       }
     }
@@ -173,8 +169,11 @@ export function renderLineage(snapshot: GraphSnapshot): string {
   if (orphans.length > 0) {
     lines.push('');
     lines.push(chalk.bold.red('  ⚠ Orphan quests (no intent — Constitution violation)'));
-    for (const q of orphans) {
-      lines.push(`     └─ ${chalk.dim(q.id)}  ${q.title.slice(0, 38)}  [${colorStatus(q.status)}]`);
+    for (let i = 0; i < orphans.length; i++) {
+      const q = orphans[i];
+      if (!q) continue;
+      const branch = i === orphans.length - 1 ? '└─' : '├─';
+      lines.push(`     ${branch} ${chalk.dim(q.id)}  ${q.title.slice(0, 38)}  [${colorStatus(q.status)}]`);
     }
   }
 

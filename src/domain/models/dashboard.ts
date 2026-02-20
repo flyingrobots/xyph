@@ -4,9 +4,11 @@
  */
 
 import type { QuestStatus } from '../entities/Quest.js';
+import type { ApprovalGateStatus, ApprovalGateTrigger } from '../entities/ApprovalGate.js';
 
-export type CampaignStatus = 'ACTIVE' | 'BACKLOG' | 'IN_PROGRESS' | 'DONE' | 'UNKNOWN';
-export type ApprovalGateStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+export type { ApprovalGateStatus };
+
+export type CampaignStatus = 'BACKLOG' | 'IN_PROGRESS' | 'DONE' | 'UNKNOWN';
 
 export interface CampaignNode {
   id: string;
@@ -55,7 +57,7 @@ export interface ScrollNode {
 export interface ApprovalNode {
   id: string;
   status: ApprovalGateStatus;
-  trigger: string;
+  trigger: ApprovalGateTrigger;
   approver: string;
   requestedBy: string;
 }

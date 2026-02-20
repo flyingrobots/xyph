@@ -1,7 +1,7 @@
 import type { ReactElement } from 'react';
 import { Box, Text } from 'ink';
 import type { GraphSnapshot, QuestNode } from '../domain/models/dashboard.js';
-import { STATUS_COLOR, type StatusColor } from './status-colors.js';
+import { STATUS_COLOR } from './status-colors.js';
 
 interface Props {
   quest: QuestNode;
@@ -9,7 +9,7 @@ interface Props {
 }
 
 export function QuestDetailPanel({ quest, snapshot }: Props): ReactElement {
-  const statusColor = (STATUS_COLOR[quest.status] ?? 'white') as StatusColor;
+  const statusColor = STATUS_COLOR[quest.status] ?? 'white';
 
   const campaignTitle = quest.campaignId !== undefined
     ? (snapshot.campaigns.find((c) => c.id === quest.campaignId)?.title ?? quest.campaignId)

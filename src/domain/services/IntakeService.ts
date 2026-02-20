@@ -34,6 +34,10 @@ export const TRANSITION_TABLE: readonly TransitionRule[] = [
 export class IntakeService {
   constructor(private readonly roadmap: RoadmapPort) {}
 
+  /**
+   * Defense-in-depth only — checks the `human.` prefix convention.
+   * True cryptographic identity verification is future work (Guild Seal PKI).
+   */
   isHumanPrincipal(actorId: string): boolean {
     return actorId.startsWith('human.');
   }
