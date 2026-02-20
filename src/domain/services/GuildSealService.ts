@@ -111,7 +111,7 @@ export class GuildSealService {
 
       if (!existingKeys.has(keyId)) {
         // Reconstruct the JSON structure from the validated Map + the new entry
-        const keys: Array<{ keyId: string; alg: string; publicKeyHex: string }> = [];
+        const keys: { keyId: string; alg: string; publicKeyHex: string }[] = [];
         for (const entry of existingKeys.values()) {
           keys.push({ keyId: entry.keyId, alg: entry.alg, publicKeyHex: entry.publicKeyHex });
         }

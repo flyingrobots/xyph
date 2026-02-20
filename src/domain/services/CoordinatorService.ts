@@ -61,7 +61,7 @@ export class CoordinatorService {
     }
 
     // Phase 5: Emit
-    const results: Array<{ questId: string; success: boolean; error?: string }> = [];
+    const results: { questId: string; success: boolean; error?: string }[] = [];
     for (const quest of quests) {
       try {
         const sha = await this.roadmap.upsertQuest(quest);

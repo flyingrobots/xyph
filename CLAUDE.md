@@ -32,6 +32,11 @@ Never push code that doesn't pass both checks. CI failures waste time and break 
 
 Our duty is to write **safe, correct code**. Shortcuts that compromise quality are not acceptable.
 
+**Own every failure you see:**
+- ❌ NEVER dismiss errors as "pre-existing" and move on. If you see something broken, fix it.
+- ❌ NEVER say CI/CD failures are acceptable or ignorable. A red build is your problem now.
+- If you encounter lint errors, test failures, or warnings — even ones that existed before your branch — fix them. You touched the codebase; you leave it better than you found it.
+
 ### Current Status
 - Foundations: ✅ Canonical Corpus extracted from `chats.txt`.
 - Infrastructure: ✅ `git-warp` and `plumbing` installed.

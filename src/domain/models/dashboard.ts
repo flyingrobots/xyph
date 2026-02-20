@@ -73,8 +73,8 @@ export interface GraphSnapshot {
 
 export interface LineageTree {
   intent: IntentNode;
-  quests: Array<{
+  quests: {
     quest: QuestNode;
     scroll?: ScrollNode;
-  }>;
+  }[];
 }

@@ -98,7 +98,7 @@ export function LineageView({ snapshot, isActive }: Props): ReactElement {
     .map((r, i) => (r.kind === 'quest' ? i : -1))
     .filter((i) => i >= 0);
 
-  const clampedVIdx = (() => {
+  const clampedVIdx = ((): number => {
     if (questIndices.length === 0) return 0;
     if (questIndices.includes(selectedVIdx)) return selectedVIdx;
     // Find closest navigable index (nearest-neighbor fallback)

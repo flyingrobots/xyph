@@ -1,4 +1,3 @@
-/* eslint-disable no-console */
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -6,8 +5,12 @@ import AjvModule, { type ErrorObject, type ValidateFunction } from "ajv";
 // AJV uses CJS `module.exports = Ajv` with `exports.default = Ajv`.
 // Under NodeNext resolution, the default import is the module namespace.
 const Ajv = AjvModule.default ?? AjvModule;
-import addFormats from "ajv-formats";
-import ajvErrors from "ajv-errors";
+import addFormatsModule from "ajv-formats";
+import ajvErrorsModule from "ajv-errors";
+// CJS interop: default import may be module namespace under NodeNext (same pattern as Ajv above)
+type AjvPlugin = (ajv: InstanceType<typeof Ajv>) => void;
+const addFormats = ((addFormatsModule as { default?: AjvPlugin }).default ?? addFormatsModule) as AjvPlugin;
+const ajvErrors = ((ajvErrorsModule as { default?: AjvPlugin }).default ?? ajvErrorsModule) as AjvPlugin;
 import {
   canonicalize,
   prefixedBlake3,
@@ -113,8 +116,8 @@ function buildAjv(): InstanceType<typeof Ajv> {
     validateFormats: true
   });
 
-  (addFormats as any)(ajv);
-  (ajvErrors as any)(ajv);
+  addFormats(ajv);
+  ajvErrors(ajv);
   return ajv;
 }
 
@@ -231,10 +234,12 @@ async function validateInvariants(patch: PatchOps, keyringPath: string): Promise
 
   // 4) Canonical sort check
   for (let i = 1; i < ops.length; i += 1) {
-    if (opSortCompare(ops[i - 1]!, ops[i]!) > 0) {
+    const prev = ops[i - 1];
+    const curr = ops[i];
+    if (prev && curr && opSortCompare(prev, curr) > 0) {
       errs.push({
         code: InvariantCode.INV_004_SORT_ORDER,
-        message: `operations not in canonical order at index ${i - 1} (${ops[i - 1]!.opId}) and ${i} (${ops[i]!.opId})`
+        message: `operations not in canonical order at index ${i - 1} (${prev.opId}) and ${i} (${curr.opId})`
       });
       break;
     }
@@ -243,8 +248,9 @@ async function validateInvariants(patch: PatchOps, keyringPath: string): Promise
   // 2 + 3) Reverse mapping + inverse checks
   const minLen = Math.min(ops.length, rb.length);
   for (let i = 0; i < minLen; i += 1) {
-    const op = ops[(ops.length - 1) - i]!;
-    const r = rb[i]!;
+    const op = ops[(ops.length - 1) - i];
+    const r = rb[i];
+    if (!op || !r) continue;
 
     if (r.revertsOpId !== op.opId) {
       errs.push({
@@ -379,7 +385,7 @@ const isMain = process.argv[1] && (
 );
 
 if (isMain) {
-  (async () => {
+  (async (): Promise<void> => {
     const filePath = process.argv[2];
     if (!filePath) {
       console.error("Usage: validatePatchOps <patch-json-file>");

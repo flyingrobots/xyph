@@ -4,6 +4,24 @@ All notable changes to XYPH will be documented in this file.
 
 ## [1.0.0-alpha.5] - Milestone 5: WARP Dashboard TUI Overhaul
 
+### Security
+
+**minimatch ReDoS vulnerability (CVE: GHSA-3ppc-4f35-3m26)**
+- Added npm `overrides` to force all transitive `minimatch` instances to `>=10.2.1`, patching a Regular Expression Denial of Service (ReDoS) vulnerability where patterns with many consecutive `*` wildcards cause exponential backtracking (`O(4^N)`).
+- All six affected instances (via eslint, eslint-plugin-import, @eslint/config-array, @eslint/eslintrc, @typescript-eslint/typescript-estree, glob) now resolve to `minimatch@10.2.2`.
+
+### Fixed
+
+**Lint compliance — 28 errors resolved**
+- Replaced `Array<T>` with `T[]` syntax across 5 files (dashboard.ts, CoordinatorService.ts, GuildSealService.ts, WarpRoadmapAdapter.ts, RoadmapPort.ts).
+- Converted `OrchestrationFSM` from static-only class to exported const object with standalone functions (`no-extraneous-class`).
+- Removed `as any` casts: ed25519 `hashes.sha512` polyfill now uses typed API directly; `loadKeyring` uses proper `Record<string, unknown>` narrowing instead of `as any`; ajv-formats/ajv-errors use typed CJS interop pattern.
+- Replaced non-null assertions (`!`) with proper guards in `validatePatchOps.ts` array access and `crypto.ts` canonicalize.
+- Added missing return types on 4 functions (crypto.ts `sha512`, signPatchFixture.ts `sha512`/`generateTestKeypair`, validatePatchOps.ts CLI IIFE).
+- Removed redundant type annotation (`no-inferrable-types`) in RebalanceService constructor.
+- Removed stale `eslint-disable no-console` directive from validatePatchOps.ts.
+- Added "own every failure" policy to CLAUDE.md — agents must fix broken things they encounter, never dismiss errors as pre-existing.
+
 ### Added
 
 **Landing Screen (TUI-001)**
