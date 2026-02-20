@@ -1,5 +1,3 @@
-import WarpGraph, { GitGraphAdapter } from '@git-stunts/git-warp';
-import Plumbing from '@git-stunts/plumbing';
 import type { DashboardPort } from '../../ports/DashboardPort.js';
 import { VALID_STATUSES as VALID_QUEST_STATUSES } from '../../domain/entities/Quest.js';
 import type { QuestStatus } from '../../domain/entities/Quest.js';
@@ -14,9 +12,8 @@ import type {
   QuestNode,
   ScrollNode,
 } from '../../domain/models/dashboard.js';
-
-// TODO: Add runtime type guard for NeighborEntry shape if git-warp API changes
-interface NeighborEntry { label: string; nodeId: string }
+import { WarpGraphHolder } from '../helpers/WarpGraphHolder.js';
+import { toNeighborEntries } from '../helpers/isNeighborEntry.js';
 
 const VALID_CAMPAIGN_STATUSES: ReadonlySet<string> = new Set<CampaignStatus>([
   'BACKLOG', 'IN_PROGRESS', 'DONE', 'UNKNOWN',
@@ -35,39 +32,14 @@ const VALID_APPROVAL_TRIGGERS: ReadonlySet<string> = new Set<ApprovalGateTrigger
  * Mirrors the pattern established in WarpRoadmapAdapter.
  */
 export class WarpDashboardAdapter implements DashboardPort {
-  private graphPromise: Promise<WarpGraph> | null = null;
+  private readonly graphHolder: WarpGraphHolder;
 
-  constructor(
-    private readonly cwd: string,
-    private readonly agentId: string
-  ) {}
-
-  private async getGraph(): Promise<WarpGraph> {
-    if (!this.graphPromise) {
-      this.graphPromise = this.initGraph().catch((err) => {
-        this.graphPromise = null;
-        throw err;
-      });
-    }
-    return this.graphPromise;
-  }
-
-  private async initGraph(): Promise<WarpGraph> {
-    const plumbing = Plumbing.createDefault({ cwd: this.cwd });
-    const persistence = new GitGraphAdapter({ plumbing });
-    const graph = await WarpGraph.open({
-      persistence,
-      graphName: 'xyph-roadmap',
-      writerId: this.agentId,
-      autoMaterialize: true,
-    });
-    await graph.syncCoverage();
-    await graph.materialize();
-    return graph;
+  constructor(cwd: string, agentId: string) {
+    this.graphHolder = new WarpGraphHolder(cwd, 'xyph-roadmap', agentId);
   }
 
   public async fetchSnapshot(): Promise<GraphSnapshot> {
-    const graph = await this.getGraph();
+    const graph = await this.graphHolder.getGraph();
     await graph.syncCoverage();
     await graph.materialize();
     const nodeIds = await graph.getNodes();
@@ -149,10 +121,7 @@ export class WarpDashboardAdapter implements DashboardPort {
       if (!VALID_QUEST_STATUSES.has(rawStatus)) continue;
       const status = rawStatus as QuestStatus;
 
-      const neighbors = (await graph.neighbors(
-        id,
-        'outgoing'
-      )) as NeighborEntry[];
+      const neighbors = toNeighborEntries(await graph.neighbors(id, 'outgoing'));
 
       let campaignId: string | undefined;
       let intentId: string | undefined;
@@ -212,10 +181,7 @@ export class WarpDashboardAdapter implements DashboardPort {
       }
 
       const hasSeal = props.has('guild_seal_sig');
-      const neighbors = (await graph.neighbors(
-        id,
-        'outgoing'
-      )) as NeighborEntry[];
+      const neighbors = toNeighborEntries(await graph.neighbors(id, 'outgoing'));
 
       let questId = '';
       for (const n of neighbors) {

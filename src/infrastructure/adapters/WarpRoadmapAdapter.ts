@@ -1,9 +1,9 @@
-import WarpGraph, { GitGraphAdapter } from '@git-stunts/git-warp';
-import Plumbing from '@git-stunts/plumbing';
 import { RoadmapPort } from '../../ports/RoadmapPort.js';
 import { Quest, QuestStatus, QuestType } from '../../domain/entities/Quest.js';
 import { EdgeType } from '../../schema.js';
 import { createPatchSession } from '../helpers/createPatchSession.js';
+import { WarpGraphHolder } from '../helpers/WarpGraphHolder.js';
+import { toNeighborEntries } from '../helpers/isNeighborEntry.js';
 
 const VALID_STATUSES: ReadonlySet<string> = new Set([
   'INBOX', 'BACKLOG', 'PLANNED', 'IN_PROGRESS', 'BLOCKED', 'DONE', 'GRAVEYARD',
@@ -12,36 +12,10 @@ const VALID_STATUSES: ReadonlySet<string> = new Set([
 const VALID_TYPES: ReadonlySet<string> = new Set(['task']);
 
 export class WarpRoadmapAdapter implements RoadmapPort {
-  private graphPromise: Promise<WarpGraph> | null = null;
+  private readonly graphHolder: WarpGraphHolder;
 
-  constructor(
-    private readonly repoPath: string,
-    private readonly graphName: string,
-    private readonly writerId: string
-  ) {}
-
-  private async getGraph(): Promise<WarpGraph> {
-    if (!this.graphPromise) {
-      this.graphPromise = this.initGraph().catch((err) => {
-        this.graphPromise = null;
-        throw err;
-      });
-    }
-    return this.graphPromise;
-  }
-
-  private async initGraph(): Promise<WarpGraph> {
-    const plumbing = Plumbing.createDefault({ cwd: this.repoPath });
-    const persistence = new GitGraphAdapter({ plumbing });
-    const graph = await WarpGraph.open({
-      persistence,
-      graphName: this.graphName,
-      writerId: this.writerId,
-      autoMaterialize: true,
-    });
-    await graph.syncCoverage();
-    await graph.materialize();
-    return graph;
+  constructor(repoPath: string, graphName: string, writerId: string) {
+    this.graphHolder = new WarpGraphHolder(repoPath, graphName, writerId);
   }
 
   private buildQuestFromProps(id: string, props: Map<string, unknown>): Quest | null {
@@ -76,7 +50,7 @@ export class WarpRoadmapAdapter implements RoadmapPort {
   }
 
   public async getQuests(): Promise<Quest[]> {
-    const graph = await this.getGraph();
+    const graph = await this.graphHolder.getGraph();
     await graph.syncCoverage();
     await graph.materialize();
     const nodeIds = await graph.getNodes();
@@ -94,7 +68,7 @@ export class WarpRoadmapAdapter implements RoadmapPort {
   }
 
   public async getQuest(id: string): Promise<Quest | null> {
-    const graph = await this.getGraph();
+    const graph = await this.graphHolder.getGraph();
     await graph.syncCoverage();
     await graph.materialize();
     if (!await graph.hasNode(id)) return null;
@@ -106,7 +80,7 @@ export class WarpRoadmapAdapter implements RoadmapPort {
   }
 
   public async upsertQuest(quest: Quest): Promise<string> {
-    const graph = await this.getGraph();
+    const graph = await this.graphHolder.getGraph();
     const patch = await createPatchSession(graph);
 
     if (!await graph.hasNode(quest.id)) {
@@ -127,20 +101,20 @@ export class WarpRoadmapAdapter implements RoadmapPort {
   }
 
   public async addEdge(from: string, to: string, type: EdgeType): Promise<string> {
-    const graph = await this.getGraph();
+    const graph = await this.graphHolder.getGraph();
     const patch = await createPatchSession(graph);
     patch.addEdge(from, to, type);
     return await patch.commit();
   }
 
   public async getOutgoingEdges(nodeId: string): Promise<Array<{ to: string; type: string }>> {
-    const graph = await this.getGraph();
-    const neighbors = await graph.neighbors(nodeId, 'outgoing') as Array<{ label: string; nodeId: string }>;
+    const graph = await this.graphHolder.getGraph();
+    const neighbors = toNeighborEntries(await graph.neighbors(nodeId, 'outgoing'));
     return neighbors.map(n => ({ to: n.nodeId, type: n.label }));
   }
 
   public async sync(): Promise<void> {
-    const graph = await this.getGraph();
+    const graph = await this.graphHolder.getGraph();
     await graph.syncCoverage();
     await graph.materialize();
   }

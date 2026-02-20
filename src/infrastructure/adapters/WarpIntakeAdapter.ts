@@ -1,38 +1,15 @@
-import WarpGraph, { GitGraphAdapter } from '@git-stunts/git-warp';
-import Plumbing from '@git-stunts/plumbing';
 import type { IntakePort } from '../../ports/IntakePort.js';
 import { createPatchSession } from '../helpers/createPatchSession.js';
+import { WarpGraphHolder } from '../helpers/WarpGraphHolder.js';
 
 export class WarpIntakeAdapter implements IntakePort {
-  private graphPromise: Promise<WarpGraph> | null = null;
+  private readonly graphHolder: WarpGraphHolder;
 
   constructor(
-    private readonly cwd: string,
-    private readonly agentId: string
-  ) {}
-
-  private async getGraph(): Promise<WarpGraph> {
-    if (!this.graphPromise) {
-      this.graphPromise = this.initGraph().catch((err) => {
-        this.graphPromise = null;
-        throw err;
-      });
-    }
-    return this.graphPromise;
-  }
-
-  private async initGraph(): Promise<WarpGraph> {
-    const plumbing = Plumbing.createDefault({ cwd: this.cwd });
-    const persistence = new GitGraphAdapter({ plumbing });
-    const graph = await WarpGraph.open({
-      persistence,
-      graphName: 'xyph-roadmap',
-      writerId: this.agentId,
-      autoMaterialize: true,
-    });
-    await graph.syncCoverage();
-    await graph.materialize();
-    return graph;
+    cwd: string,
+    private readonly agentId: string,
+  ) {
+    this.graphHolder = new WarpGraphHolder(cwd, 'xyph-roadmap', agentId);
   }
 
   public async promote(questId: string, intentId: string, campaignId?: string): Promise<string> {
@@ -48,7 +25,7 @@ export class WarpIntakeAdapter implements IntakePort {
       );
     }
 
-    const graph = await this.getGraph();
+    const graph = await this.graphHolder.getGraph();
     await graph.syncCoverage();
     await graph.materialize();
 
@@ -84,7 +61,7 @@ export class WarpIntakeAdapter implements IntakePort {
       throw new Error(`[MISSING_ARG] --rationale is required and must be non-empty`);
     }
 
-    const graph = await this.getGraph();
+    const graph = await this.graphHolder.getGraph();
     await graph.syncCoverage();
     await graph.materialize();
 
@@ -117,7 +94,7 @@ export class WarpIntakeAdapter implements IntakePort {
       );
     }
 
-    const graph = await this.getGraph();
+    const graph = await this.graphHolder.getGraph();
     await graph.syncCoverage();
     await graph.materialize();
 

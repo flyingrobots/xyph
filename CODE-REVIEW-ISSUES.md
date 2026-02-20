@@ -136,7 +136,7 @@
 
 ### `src/infrastructure/adapters/` (all three adapters)
 
-- [ ] **M-25** — Near-identical `getGraph()` / `initGraph()` boilerplate duplicated across Dashboard, Intake, and Roadmap adapters — any bug fix (like the missing `.catch` in H-06) must be applied three times independently
+- [x] **M-25** — Near-identical `getGraph()` / `initGraph()` boilerplate duplicated across Dashboard, Intake, and Roadmap adapters — any bug fix (like the missing `.catch` in H-06) must be applied three times independently
 
 ### `src/tui/Dashboard.tsx`
 
@@ -252,7 +252,7 @@
 
 ### `src/infrastructure/adapters/WarpDashboardAdapter.ts`
 
-- [ ] **L-20** — `graph.neighbors()` return cast as `NeighborEntry[]` — unsafe type assertion on library return with no runtime shape check
+- [x] **L-20** — `graph.neighbors()` return cast as `NeighborEntry[]` — unsafe type assertion on library return with no runtime shape check
 - [x] **L-21** — Missing `Number.isFinite()` guard on `hours` — `NaN`, `Infinity`, `-Infinity` propagate as valid (unlike `WarpRoadmapAdapter` which checks)
 
 ### `src/infrastructure/adapters/WarpIntakeAdapter.ts`
