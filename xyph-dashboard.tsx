@@ -31,7 +31,8 @@ const currentDir = dirname(currentFilePath);
 
 // Pick a random compact logo (≤15 lines): 2, 3, 7, 8, 9, 10
 const COMPACT_LOGOS = [2, 3, 7, 8, 9, 10];
-const logoNum = COMPACT_LOGOS[Math.floor(Math.random() * COMPACT_LOGOS.length)] ?? 3; // fallback satisfies noUncheckedIndexedAccess
+// Index is always in bounds for non-empty COMPACT_LOGOS; ?? 3 is a noUncheckedIndexedAccess guard
+const logoNum = COMPACT_LOGOS[Math.floor(Math.random() * COMPACT_LOGOS.length)] ?? 3;
 const logoPath = join(currentDir, 'src', 'tui', 'logos', `${logoNum}.txt`);
 let logoText: string;
 try {

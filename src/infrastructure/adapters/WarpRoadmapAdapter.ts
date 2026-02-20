@@ -55,7 +55,7 @@ export class WarpRoadmapAdapter implements RoadmapPort {
     if (typeof type !== 'string' || !VALID_TYPES.has(type)) return null;
     if (!id.startsWith('task:')) return null;
 
-    const parsedHours = typeof hours === 'number' && Number.isFinite(hours) ? hours : 0;
+    const parsedHours = typeof hours === 'number' && Number.isFinite(hours) && hours >= 0 ? hours : 0;
 
     const assignedTo = props.get('assigned_to');
     const claimedAt = props.get('claimed_at');

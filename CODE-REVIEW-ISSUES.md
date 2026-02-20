@@ -239,7 +239,7 @@
 
 ### `src/domain/entities/Quest.ts`
 
-- [ ] **L-16** — `hours` validation allows `0` (`hours < 0` rejects only negatives) — zero-hour quests may be semantically invalid; if intentional, should be documented
+- [x] **L-16** — `hours` validation allows `0` (`hours < 0` rejects only negatives) — zero-hour quests may be semantically invalid; if intentional, should be documented
 
 ### `src/domain/services/DashboardService.ts`
 
@@ -263,11 +263,11 @@
 
 - [x] **L-23** — `VALID_TYPES` includes `'scroll'`, `'milestone'`, `'campaign'`, `'roadmap'` — all unreachable due to `id.startsWith('task:')` prefix check; dead set entries
 - [ ] **L-24** — `upsertQuest` uses `!= null` checks for optional properties — cannot unset a previously written property (e.g., unclaiming a quest leaves stale `assigned_to`)
-- [ ] **L-25** — `buildQuestFromProps` passes negative hours from graph data to `Quest` constructor which throws — should pre-clamp to 0 or return null for invalid data
+- [x] **L-25** — `buildQuestFromProps` passes negative hours from graph data to `Quest` constructor which throws — should pre-clamp to 0 or return null for invalid data
 
 ### `src/tui/Dashboard.tsx`
 
-- [ ] **L-26** — `service.filterSnapshot(...)` called on every render without `useMemo` — creates new object reference each time, triggering unnecessary child re-renders
+- [x] **L-26** — `service.filterSnapshot(...)` called on every render without `useMemo` — creates new object reference each time, triggering unnecessary child re-renders
 - [ ] **L-27** — Error state hidden behind landing screen — if graph fails to load, user won't see it until they dismiss the landing with a keypress
 - [x] **L-28** — Tab only cycles forward — no Shift+Tab support for reverse view cycling
 
@@ -355,7 +355,7 @@
 ### `xyph-dashboard.tsx`
 
 - [x] **N-25** — `__filename` / `__dirname` use CJS naming in ESM module — non-idiomatic; prefer `currentFilePath` / `currentDir` or add comment explaining the polyfill
-- [ ] **N-26** — `?? 3` fallback on `COMPACT_LOGOS[Math.floor(Math.random() * COMPACT_LOGOS.length)]` is dead code — index is always in bounds for a non-empty constant array; satisfies `noUncheckedIndexedAccess` but is dishonest about intent
+- [x] **N-26** — `?? 3` fallback on `COMPACT_LOGOS[Math.floor(Math.random() * COMPACT_LOGOS.length)]` is dead code — index is always in bounds for a non-empty constant array; satisfies `noUncheckedIndexedAccess` but is dishonest about intent
 
 ### Test files (cross-cutting)
 

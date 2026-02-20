@@ -51,6 +51,7 @@ export class Quest {
     if (!VALID_STATUSES.has(props.status)) {
       throw new Error(`Quest status must be one of ${[...VALID_STATUSES].join(', ')}, got: '${props.status}'`);
     }
+    // Zero hours is valid: coordination tasks, meta-quests, and unestimated work items
     if (!Number.isFinite(props.hours) || props.hours < 0) {
       throw new Error(`Quest hours must be a finite non-negative number, got: ${props.hours}`);
     }
