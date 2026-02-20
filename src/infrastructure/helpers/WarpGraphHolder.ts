@@ -29,6 +29,15 @@ export class WarpGraphHolder {
     return this.graphPromise;
   }
 
+  /**
+   * Clears the cached graph promise, forcing a fresh initialization on the next
+   * getGraph() call. Use after external mutations (e.g., intake promote/reject)
+   * to ensure the next read sees the latest graph state.
+   */
+  public reset(): void {
+    this.graphPromise = null;
+  }
+
   private async initGraph(): Promise<WarpGraph> {
     const plumbing = Plumbing.createDefault({ cwd: this.cwd });
     const persistence = new GitGraphAdapter({ plumbing });

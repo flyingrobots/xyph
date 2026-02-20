@@ -38,6 +38,10 @@ export class WarpDashboardAdapter implements DashboardPort {
     this.graphHolder = new WarpGraphHolder(cwd, 'xyph-roadmap', agentId);
   }
 
+  public invalidateCache(): void {
+    this.graphHolder.reset();
+  }
+
   public async fetchSnapshot(): Promise<GraphSnapshot> {
     const graph = await this.graphHolder.getGraph();
     await graph.syncCoverage();

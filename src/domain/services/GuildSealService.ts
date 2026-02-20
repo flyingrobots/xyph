@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { randomBytes } from 'node:crypto';
 import * as ed from '@noble/ed25519';
 import {
   canonicalize,
@@ -84,7 +85,6 @@ export class GuildSealService {
   public async generateKeypair(agentId: string): Promise<{ keyId: string; publicKeyHex: string }> {
     const skFile = this.skPath(agentId);
 
-    const { randomBytes } = await import('node:crypto');
     const priv = randomBytes(32);
     const pub = await ed.getPublicKey(priv);
 
@@ -93,8 +93,6 @@ export class GuildSealService {
     const keyId = this.keyIdForAgent(agentId);
 
     // Write private key atomically (O_EXCL prevents overwriting an existing key)
-    // TODO: If keyring update fails below, this .sk file becomes orphaned.
-    // Consider rolling back (deleting .sk) on keyring write failure.
     try {
       fs.writeFileSync(skFile, privateKeyHex, { mode: 0o600, flag: 'wx' });
     } catch (err: unknown) {
@@ -104,36 +102,26 @@ export class GuildSealService {
       throw err;
     }
 
-    // Register public key in keyring
-    // TODO: Unify keyring validation with loadKeyring() to avoid divergent schema checks.
-    // generateKeypair() checks only for .keys array; verify() via loadKeyring() enforces
-    // version === "v1", keyId non-empty, alg === "ed25519", and publicKeyHex format.
-    const keyringPath = path.join(this.trustDir, 'keyring.json');
-    let keyring: { version: string; keys: Array<{ keyId: string; alg: string; publicKeyHex: string }> };
+    // Register public key in keyring — uses loadKeyring() for validation parity with verify().
+    // Wrapped in try/catch to roll back the .sk file if keyring update fails,
+    // preventing permanently broken state (orphaned .sk with no keyring entry).
     try {
-      const raw = fs.readFileSync(keyringPath, 'utf8');
-      const parsed: unknown = JSON.parse(raw);
-      if (
-        typeof parsed !== 'object' || parsed === null ||
-        !Array.isArray((parsed as Record<string, unknown>)['keys'])
-      ) {
-        throw new Error(`Invalid keyring structure: missing .keys array in ${keyringPath}`);
-      }
-      keyring = parsed as typeof keyring;
-    } catch (err: unknown) {
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-        keyring = { version: 'v1', keys: [] };
-      } else {
-        throw new Error(
-          `Failed to read keyring at ${keyringPath}: ${err instanceof Error ? err.message : String(err)}`
-        );
-      }
-    }
+      const keyringPath = path.join(this.trustDir, 'keyring.json');
+      const existingKeys = loadKeyring(keyringPath); // strict validation, returns empty Map for ENOENT
 
-    const alreadyExists = keyring.keys.some(k => k.keyId === keyId);
-    if (!alreadyExists) {
-      keyring.keys.push({ keyId, alg: 'ed25519', publicKeyHex });
-      fs.writeFileSync(keyringPath, JSON.stringify(keyring, null, 2) + '\n');
+      if (!existingKeys.has(keyId)) {
+        // Reconstruct the JSON structure from the validated Map + the new entry
+        const keys: Array<{ keyId: string; alg: string; publicKeyHex: string }> = [];
+        for (const entry of existingKeys.values()) {
+          keys.push({ keyId: entry.keyId, alg: entry.alg, publicKeyHex: entry.publicKeyHex });
+        }
+        keys.push({ keyId, alg: 'ed25519', publicKeyHex });
+        fs.writeFileSync(keyringPath, JSON.stringify({ version: 'v1', keys }, null, 2) + '\n');
+      }
+    } catch (err) {
+      // Roll back: remove the private key so the agent is not stuck with an orphaned .sk
+      try { fs.unlinkSync(skFile); } catch { /* best-effort cleanup */ }
+      throw err;
     }
 
     return { keyId, publicKeyHex };

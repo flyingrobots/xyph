@@ -57,11 +57,11 @@ The `GraphSnapshot` model is clean but intentionally thin — it doesn't carry c
 
 The logical next work is either:
 
-1. **Polish sprint** — knock out the DSH-* quests, get DSH-001 (campaign type fix) and DSH-004 (test fix) done first since they're cleanup, then the UX improvements
+1. **Polish sprint** — knock out the remaining DSH-* quests, prioritizing DSH-001 (campaign type fix) since it's a data integrity issue
 2. **WEAVER milestone** — `depends-on`/`blocked-by` edges, DAG cycle detection, frontier computation. This is where XYPH starts to feel like a real planning engine. WVR-001 is the entry point.
 3. **Merge PR #7** — it's open and ready, just needs a review pass
 
-I'd lean toward knocking out DSH-001 before merging, since the campaign type bug is technically a data integrity issue. DSH-004 (IngestService test) was resolved in commit `b82841a`.
+DSH-004 (IngestService test failure) was resolved in commit `b82841a`. The only remaining pre-merge blocker is DSH-001 (campaign node types).
 
 ---
 

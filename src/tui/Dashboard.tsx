@@ -35,6 +35,8 @@ export function Dashboard({ service, intake, agentId, logoText }: Props): ReactE
   const requestCounter = useRef(0);
 
   const refresh = useCallback((): void => {
+    // Invalidate cached graph so we pick up mutations from the intake adapter
+    service.invalidateCache();
     setLoading(true);
     const thisRequest = ++requestCounter.current;
     service

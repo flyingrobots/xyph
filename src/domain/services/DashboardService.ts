@@ -79,6 +79,14 @@ export class DashboardService {
     });
   }
 
+  /**
+   * Clears any cached graph state in the underlying adapter so the next
+   * fetch picks up mutations made by other adapters (e.g., intake promote/reject).
+   */
+  invalidateCache(): void {
+    this.repo.invalidateCache?.();
+  }
+
   /** Returns the full raw snapshot for All Nodes view. */
   async getSnapshot(): Promise<GraphSnapshot> {
     return this.repo.fetchSnapshot();
