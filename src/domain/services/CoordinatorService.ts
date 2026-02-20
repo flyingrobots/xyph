@@ -15,7 +15,7 @@ export class CoordinatorService {
     private readonly agentId: string,
     private readonly ingest: IngestService,
     private readonly normalize: NormalizeService,
-    private readonly rebalance: RebalanceService = new RebalanceService()
+    private readonly rebalance: RebalanceService
   ) {}
 
   /**
@@ -45,8 +45,8 @@ export class CoordinatorService {
     if (contextHash) {
       console.log(chalk.blue(`[${this.agentId}] Linking ${quests.length} quests to origin context ${contextHash}`));
       quests = quests.map(q => new Quest({
-        ...q,
-        originContext: contextHash
+        ...q.toProps(),
+        originContext: contextHash,
       }));
     }
 
@@ -57,7 +57,7 @@ export class CoordinatorService {
       throw new Error(`Orchestration failed rebalance: ${balance.error}`);
     }
 
-    // Phase 6: Emit
+    // Phase 5: Emit
     const results: Array<{ questId: string; success: boolean; error?: string }> = [];
     for (const quest of quests) {
       try {

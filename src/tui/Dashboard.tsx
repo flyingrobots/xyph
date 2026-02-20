@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import type { ReactElement } from 'react';
 import { Box, Text, useInput, useApp, type Key } from 'ink';
 import type { DashboardService } from '../domain/services/DashboardService.js';
 import type { GraphSnapshot } from '../domain/models/dashboard.js';
@@ -21,7 +22,7 @@ interface Props {
   logoText: string;
 }
 
-export function Dashboard({ service, intake, agentId, logoText }: Props): React.ReactElement {
+export function Dashboard({ service, intake, agentId, logoText }: Props): ReactElement {
   const [activeView, setActiveView] = useState<ViewName>('roadmap');
   const [snapshot, setSnapshot] = useState<GraphSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
@@ -31,7 +32,7 @@ export function Dashboard({ service, intake, agentId, logoText }: Props): React.
   const [showHelp, setShowHelp] = useState(false);
   const { exit } = useApp();
 
-  const refresh = (): void => {
+  const refresh = useCallback((): void => {
     setLoading(true);
     service
       .getSnapshot()
@@ -45,11 +46,11 @@ export function Dashboard({ service, intake, agentId, logoText }: Props): React.
       .finally(() => {
         setLoading(false);
       });
-  };
+  }, [service]);
 
   useEffect(() => {
     refresh();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [refresh]);
 
   useInput((input: string, key: Key) => {
     if (showLanding) {

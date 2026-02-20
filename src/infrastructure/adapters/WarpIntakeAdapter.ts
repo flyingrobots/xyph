@@ -12,7 +12,10 @@ export class WarpIntakeAdapter implements IntakePort {
 
   private async getGraph(): Promise<WarpGraph> {
     if (!this.graphPromise) {
-      this.graphPromise = this.initGraph();
+      this.graphPromise = this.initGraph().catch((err) => {
+        this.graphPromise = null;
+        throw err;
+      });
     }
     return this.graphPromise;
   }
@@ -31,11 +34,9 @@ export class WarpIntakeAdapter implements IntakePort {
     return graph;
   }
 
-  public async promote(questId: string, intentId: string, campaignId?: string): Promise<void> {
-    const graph = await this.getGraph();
-
-    // Inline validation against the same graph handle
-    if (this.agentId.startsWith('human.') === false) {
+  public async promote(questId: string, intentId: string, campaignId?: string): Promise<string> {
+    // Boundary validation (defense-in-depth — also checked by IntakeService)
+    if (!this.agentId.startsWith('human.')) {
       throw new Error(
         `[FORBIDDEN] promote requires a human principal (human.*), got: '${this.agentId}'`
       );
@@ -45,6 +46,11 @@ export class WarpIntakeAdapter implements IntakePort {
         `[MISSING_ARG] --intent must start with 'intent:', got: '${intentId}'`
       );
     }
+
+    const graph = await this.getGraph();
+    await graph.syncCoverage();
+    await graph.materialize();
+
     const props = await graph.getNodeProps(questId);
     if (props === null) {
       throw new Error(`[NOT_FOUND] Quest ${questId} not found in the graph`);
@@ -61,15 +67,18 @@ export class WarpIntakeAdapter implements IntakePort {
     if (campaignId !== undefined) {
       patch.addEdge(questId, campaignId, 'belongs-to');
     }
-    await patch.commit();
+    return patch.commit();
   }
 
-  public async reject(questId: string, rationale: string): Promise<void> {
-    const graph = await this.getGraph();
-
+  public async reject(questId: string, rationale: string): Promise<string> {
     if (rationale.trim().length === 0) {
       throw new Error(`[MISSING_ARG] --rationale is required and must be non-empty`);
     }
+
+    const graph = await this.getGraph();
+    await graph.syncCoverage();
+    await graph.materialize();
+
     const props = await graph.getNodeProps(questId);
     if (props === null) {
       throw new Error(`[NOT_FOUND] Quest ${questId} not found in the graph`);
@@ -88,6 +97,38 @@ export class WarpIntakeAdapter implements IntakePort {
       .setProperty(questId, 'rejected_by', this.agentId)
       .setProperty(questId, 'rejected_at', now)
       .setProperty(questId, 'rejection_rationale', rationale.trim());
-    await patch.commit();
+    return patch.commit();
+  }
+
+  public async reopen(questId: string): Promise<string> {
+    // Boundary validation (defense-in-depth — also checked by IntakeService)
+    if (!this.agentId.startsWith('human.')) {
+      throw new Error(
+        `[FORBIDDEN] reopen requires a human principal (human.*), got: '${this.agentId}'`
+      );
+    }
+
+    const graph = await this.getGraph();
+    await graph.syncCoverage();
+    await graph.materialize();
+
+    const props = await graph.getNodeProps(questId);
+    if (props === null) {
+      throw new Error(`[NOT_FOUND] Quest ${questId} not found in the graph`);
+    }
+    const status = props.get('status');
+    if (status !== 'GRAVEYARD') {
+      throw new Error(
+        `[INVALID_FROM] reopen requires status GRAVEYARD, quest ${questId} is ${String(status)}`
+      );
+    }
+
+    const now = Date.now();
+    const patch = (await graph.createPatch()) as PatchSession;
+    patch
+      .setProperty(questId, 'status', 'INBOX')
+      .setProperty(questId, 'reopened_by', this.agentId)
+      .setProperty(questId, 'reopened_at', now);
+    return patch.commit();
   }
 }

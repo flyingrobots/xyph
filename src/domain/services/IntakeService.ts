@@ -23,6 +23,14 @@ export const TRANSITION_TABLE: readonly TransitionRule[] = [
   { from: 'GRAVEYARD', to: 'INBOX', requiresHuman: true, command: 'reopen' },
 ];
 
+/**
+ * IntakeService validates intake transitions against the graph.
+ *
+ * It is a pure domain service — it reads graph state via RoadmapPort but
+ * does NOT write mutations. The driving adapter (WarpIntakeAdapter or
+ * xyph-actuator) calls validate*() first, then issues its own patch.
+ * This separation keeps domain logic free of infrastructure concerns.
+ */
 export class IntakeService {
   constructor(private readonly roadmap: RoadmapPort) {}
 

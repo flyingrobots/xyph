@@ -1,9 +1,9 @@
 # RFC 001: AST-Driven Ingest & Semantic Hierarchy
 
 - **Status**: PROPOSED
-- **Author**: James Ross (LLM Agent)
+- **Author**: agent.claude (drafted for human.james)
 - **Date**: 2026-02-17
-- **Target Milestone**: 5 (HEIRLOOM)
+- **Target Milestone**: 6 (WEAVER)
 
 ## 1. Abstract
 Currently, the `IngestService` utilizes a line-by-line Regular Expression (Regex) to parse roadmap intent. This "String Soup" approach is position-dependent, whitespace-fragile, and inherently "hierarchy-blind." This RFC proposes a transition to an Abstract Syntax Tree (AST)-driven ingestion engine using the `unified` and `remark` ecosystems. This shift enables **Semantic Hierarchy Discovery** (automatic parent-child linking) and ensures that XYPH’s "Genealogy of Intent" is as robust as the underlying WARP graph.
@@ -55,7 +55,7 @@ The new engine will maintain a **Context Stack** during the tree walk. A `# Head
 - **Why?**: These are the industry standard for AST manipulation in the Node.js ecosystem. They are modular, well-tested, and support pluggable transformations.
 - **Justification**: While adding `remark-parse` adds weight to `node_modules`, it removes the need for maintaining custom, fragile parsing logic in-house. It ensures XYPH is compatible with standard Markdown (CommonMark/GFM).
 
-## 5. Market Comparison: How others do it
+## 5. Market Comparison: How Others Do It
 
 | Feature | XYPH (Proposed) | LangGraph (Checkpointers) | GitHub Issues (Tasklists) |
 | :--- | :--- | :--- | :--- |
@@ -87,7 +87,7 @@ The new engine will maintain a **Context Stack** during the tree walk. A `# Head
 1. Introduce `src/domain/services/AstIngestService.ts`.
 2. Port the existing `IngestService` tests to the new service to ensure parity.
 3. Update `CoordinatorService` to use the new engine.
-4. Deprecate the line-based `IngestService.ts` in Milestone 5.
+4. Deprecate the line-based `IngestService.ts` in Milestone 6.
 
 ## 9. Conclusion
 Transitioning to an AST-driven model is not just a refactor—it is the **Heirloom Upgrade** for XYPH. It elevates the Markdown roadmap from a "text file" to a **Structured Database of Intent**, providing the architectural rigor required for autonomous agentic orchestration.

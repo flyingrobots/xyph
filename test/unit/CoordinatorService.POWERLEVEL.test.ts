@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { CoordinatorService } from '../../src/domain/services/CoordinatorService.js';
 import { IngestService } from '../../src/domain/services/IngestService.js';
 import { NormalizeService } from '../../src/domain/services/NormalizeService.js';
+import { RebalanceService } from '../../src/domain/services/RebalanceService.js';
 import { RoadmapPort } from '../../src/ports/RoadmapPort.js';
 import { Quest } from '../../src/domain/entities/Quest.js';
 
@@ -11,20 +12,23 @@ describe('CoordinatorService [POWERLEVEL™]', () => {
     getQuest: vi.fn(),
     upsertQuest: vi.fn().mockResolvedValue('patch-sha'),
     addEdge: vi.fn(),
+    getOutgoingEdges: vi.fn().mockResolvedValue([]),
     sync: vi.fn()
   };
 
   const agentId = 'agent.test';
-  const service = new CoordinatorService(
-    mockRoadmap,
-    agentId,
-    new IngestService(),
-    new NormalizeService()
-  );
+  let service: CoordinatorService;
 
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(mockRoadmap.upsertQuest).mockResolvedValue('patch-sha');
+    service = new CoordinatorService(
+      mockRoadmap,
+      agentId,
+      new IngestService(),
+      new NormalizeService(),
+      new RebalanceService()
+    );
   });
 
   describe('Golden Path: Genealogy of Intent', () => {
@@ -69,11 +73,11 @@ describe('CoordinatorService [POWERLEVEL™]', () => {
       expect(mockRoadmap.upsertQuest).not.toHaveBeenCalled();
     });
 
-    it('should fail when individual quest validation fails (too short title)', async () => {
-      const input = `- [ ] task:BAD-1 No #1`; // Title "No" is < 5 chars
-      
-      await expect(service.orchestrate(input))
-        .rejects.toThrow(/Orchestration failed validation/);
+    it('should skip quests with invalid titles (too short) and return early with 0 upserts', async () => {
+      const input = `- [ ] task:BAD-1 No #1`; // Title "No" is < 5 chars — skipped by IngestService
+
+      await service.orchestrate(input);
+      expect(mockRoadmap.upsertQuest).not.toHaveBeenCalled();
     });
 
     it('should aggregate errors if upsertQuest fails for some items', async () => {

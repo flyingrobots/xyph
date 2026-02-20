@@ -30,10 +30,10 @@ XYPH is a Planning Compiler and Causal OS where the project roadmap is a determi
 
 ```
 src/
-├── domain/           # Pure domain models and entities (Quest, Intent, ApprovalGate, …)
-├── ports/            # Interfaces (RoadmapPort, DashboardPort, IntakePort, …)
+├── domain/           # Pure domain models and entities (Quest, Intent, ApprovalGate, ...)
+├── ports/            # Interfaces (RoadmapPort, DashboardPort, IntakePort, ...)
 ├── infrastructure/
-│   └── adapters/     # git-warp adapters (WarpRoadmapAdapter, WarpDashboardAdapter, …)
+│   └── adapters/     # git-warp adapters (WarpRoadmapAdapter, WarpDashboardAdapter, ...)
 └── tui/              # Ink-based interactive dashboard
     ├── Dashboard.tsx         # Root component (landing, help, tab routing)
     ├── HelpModal.tsx         # ? key help overlay
@@ -47,7 +47,8 @@ src/
         ├── AllNodesView.tsx  # Full graph node browser
         └── InboxView.tsx     # Triage inbox (Gmail-style)
 
-xyph-actuator.ts    # CLI for graph mutations (quest, intent, seal, …)
+# Root entry points
+xyph-actuator.ts    # CLI for graph mutations (quest, intent, seal, ...)
 xyph-dashboard.tsx  # Interactive TUI entry point
 ```
 
@@ -136,4 +137,5 @@ Every mutation must obey the [CONSTITUTION.md](docs/canonical/CONSTITUTION.md). 
 - **Art. IV.2** — Critical path changes require an ApprovalGate signed by a human
 
 ---
+
 Built with Ω by [FLYING ROBOTS](https://github.com/flyingrobots)

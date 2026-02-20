@@ -2,7 +2,7 @@
 
 All notable changes to XYPH will be documented in this file.
 
-## [Unreleased] — Milestone 5: WARP Dashboard TUI Overhaul
+## [Unreleased] - Milestone 5: WARP Dashboard TUI Overhaul
 
 ### Added
 
@@ -27,10 +27,6 @@ All notable changes to XYPH will be documented in this file.
 - `Space` on a campaign header folds/unfolds that milestone; header shows `▶` (folded) or `▼` (expanded).
 - `Space` on a quest opens a full-screen `QuestDetailPanel` modal; `Esc` closes it.
 
-**LineageView: INBOX Bug Fix + Selection (TUI-005)**
-- Fixed: INBOX quests no longer appear in the orphan ("sovereignty violation") list — they haven't been promoted yet and genuinely lack an intent.
-- Added `selectedVIdx` state with `▶` indicator highlighting the selected quest row.
-
 **AllNodesView: Quest Selection + Detail Modal (TUI-006)**
 - `↑↓` now navigates through quest rows only (other node types are display-only).
 - `Space` on a selected quest opens a full-screen `QuestDetailPanel` modal; `Esc` closes it.
@@ -41,7 +37,33 @@ All notable changes to XYPH will be documented in this file.
 - List rows enriched: `▶` indicator, ID, title, suggestedBy, date, `↩` reopened marker.
 - Detail pane always visible (no toggle needed); shows full inbox lifecycle fields.
 
----
+### Fixed
+
+**LineageView: INBOX Bug Fix + Selection (TUI-005)**
+- INBOX quests no longer appear in the orphan ("sovereignty violation") list — they haven't been promoted yet and genuinely lack an intent.
+- Added `selectedVIdx` state with `▶` indicator highlighting the selected quest row.
+
+**Code Review — 68 issues resolved (CR-001)**
+- *Critical*: `IngestService` rewritten — `task:` prefix guard, `new Quest()` in try/catch (skips invalid lines), clean formatting.
+- *Critical*: `package-lock.json` synced to `alpha.4`.
+- *High*: Eliminated actuator TOCTOU — `promote`/`reject`/`reopen` now call `WarpIntakeAdapter` directly instead of dual-graph validate-then-write.
+- *High*: Added `reopen()` to `IntakePort` + `WarpIntakeAdapter`; all intake methods now return commit SHA.
+- *High*: `syncCoverage() + materialize()` added at top of `WarpIntakeAdapter` and `WarpDashboardAdapter` operations.
+- *High*: Cached `graphPromise` cleared on rejection in both WARP adapters.
+- *High*: ESLint + lint script now covers `.tsx` files.
+- *High*: `AllNodesView` quest detail modal now uses correct `flatQuests` array (was indexing into `snapshot.quests`).
+- *High*: `Dashboard.tsx` `refresh` wrapped in `useCallback` — removed `eslint-disable` comment.
+- *High*: `RoadmapView` `navigableIndices` moved into `useEffect` body with proper deps — removed `eslint-disable`.
+- *High*: `xyph-dashboard.tsx` logo index fallback `?? 3`.
+- *Medium*: `Quest.toProps()` method; `CoordinatorService` Phase 3 uses it instead of `...q` spread.
+- *Medium*: `RebalanceService` is now a required constructor param (no hidden default).
+- *Medium*: `WarpDashboardAdapter` skips scrolls with empty `questId`; caches `getNodeProps` across passes.
+- *Medium*: `InboxView` — modal state captures `questId` at open time; `detailHeight` clamped; empty-inbox guard on `p`/`x`; arrow keys guarded in rationale modal; error state stored as parsed code+message.
+- *Medium*: Shared `status-colors.ts` module — all views import from one source (includes INBOX).
+- *Medium*: Typed `QuestNode.status` as `QuestStatus`, added `CampaignStatus` and `ApprovalGateStatus` types.
+- *Medium*: `graveyard-ghosts.mts` skips `patch.commit()` when no mutations.
+- *Low/Nit*: `??` instead of `||` for env reads; positive agentId regex; `asciiBar` fill clamped; `Scrollbar` thumbStart clamped; PageUp/PageDown in all scrollable views; trailing newlines on logo files; docs fixes (CHANGELOG formatting, README spacing, RFC milestone/author, model name).
+- Tests: `getOutgoingEdges` added to mocks; service construction in `beforeEach`; test names corrected; mock extraction type-narrowed; ordering dependency documented.
 
 ## [1.0.0-alpha.4] - 2026-02-17
 

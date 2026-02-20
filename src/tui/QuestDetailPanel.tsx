@@ -1,24 +1,14 @@
-import React from 'react';
+import type { ReactElement } from 'react';
 import { Box, Text } from 'ink';
 import type { GraphSnapshot, QuestNode } from '../domain/models/dashboard.js';
-
-const STATUS_COLOR: Record<string, string> = {
-  DONE: 'green',
-  IN_PROGRESS: 'cyan',
-  BACKLOG: 'gray',
-  BLOCKED: 'red',
-  PLANNED: 'yellow',
-  INBOX: 'magenta',
-};
-
-type StatusColor = 'green' | 'cyan' | 'gray' | 'red' | 'yellow' | 'magenta' | 'white';
+import { STATUS_COLOR, type StatusColor } from './status-colors.js';
 
 interface Props {
   quest: QuestNode;
   snapshot: GraphSnapshot;
 }
 
-export function QuestDetailPanel({ quest, snapshot }: Props): React.ReactElement {
+export function QuestDetailPanel({ quest, snapshot }: Props): ReactElement {
   const statusColor = (STATUS_COLOR[quest.status] ?? 'white') as StatusColor;
 
   const campaignTitle = quest.campaignId !== undefined

@@ -3,16 +3,21 @@
  * No external dependencies — only TypeScript shapes.
  */
 
+import type { QuestStatus } from '../entities/Quest.js';
+
+export type CampaignStatus = 'ACTIVE' | 'BACKLOG' | 'IN_PROGRESS' | 'DONE' | 'UNKNOWN';
+export type ApprovalGateStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+
 export interface CampaignNode {
   id: string;
   title: string;
-  status: string;
+  status: CampaignStatus;
 }
 
 export interface QuestNode {
   id: string;
   title: string;
-  status: string;
+  status: QuestStatus;
   hours: number;
   campaignId?: string;
   intentId?: string;
@@ -49,7 +54,7 @@ export interface ScrollNode {
 
 export interface ApprovalNode {
   id: string;
-  status: string;
+  status: ApprovalGateStatus;
   trigger: string;
   approver: string;
   requestedBy: string;

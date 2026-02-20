@@ -54,8 +54,8 @@ export class GuildSealService {
    * Returns the path to an agent's private key file.
    */
   private skPath(agentId: string): string {
-    if (/[/\\]|\.\./.test(agentId)) {
-      throw new Error(`Invalid agentId: must not contain path separators or '..', got: '${agentId}'`);
+    if (!/^[a-zA-Z0-9._-]+$/.test(agentId)) {
+      throw new Error(`Invalid agentId: must match /^[a-zA-Z0-9._-]+$/, got: '${agentId}'`);
     }
     return path.join(this.trustDir, `${agentId}.sk`);
   }

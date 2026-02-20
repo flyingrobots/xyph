@@ -32,6 +32,7 @@ await graph.materialize();
 
 const patch = (await graph.createPatch()) as PatchSession;
 
+let mutated = false;
 for (const { id, rationale } of GHOSTS) {
   const props = await graph.getNodeProps(id);
   if (!props) {
@@ -48,10 +49,15 @@ for (const { id, rationale } of GHOSTS) {
     .setProperty(id, 'rejected_by', agentId)
     .setProperty(id, 'rejected_at', now)
     .setProperty(id, 'rejection_rationale', rationale);
+  mutated = true;
   console.log(chalk.cyan(`  [MARK] ${id}`));
   console.log(chalk.dim(`         ${rationale}`));
 }
 
-const sha = await patch.commit();
-console.log(chalk.green(`\n[OK] Patch committed: ${sha}`));
-console.log(chalk.dim('Ghost nodes moved to GRAVEYARD — they will be filtered from all dashboard views.'));
+if (!mutated) {
+  console.log(chalk.dim('\nNo mutations needed — all ghosts already in GRAVEYARD or not found.'));
+} else {
+  const sha = await patch.commit();
+  console.log(chalk.green(`\n[OK] Patch committed: ${sha}`));
+  console.log(chalk.dim('Ghost nodes moved to GRAVEYARD — they will be filtered from all dashboard views.'));
+}

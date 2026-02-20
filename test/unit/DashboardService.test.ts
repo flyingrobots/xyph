@@ -5,14 +5,14 @@ import type { GraphSnapshot } from '../../src/domain/models/dashboard.js';
 
 const baseSnapshot: GraphSnapshot = {
   campaigns: [
-    { id: 'campaign:M1', title: 'Milestone 1 — BEDROCK', status: 'ACTIVE' },
-    { id: 'campaign:M2', title: 'Milestone 2 — HEARTBEAT', status: 'BACKLOG' },
+    { id: 'campaign:M1', title: 'Milestone 1 — BEDROCK', status: 'ACTIVE' as const },
+    { id: 'campaign:M2', title: 'Milestone 2 — HEARTBEAT', status: 'BACKLOG' as const },
   ],
   quests: [
     {
       id: 'task:BDR-001',
       title: 'Build the actuator',
-      status: 'DONE',
+      status: 'DONE' as const,
       hours: 4,
       campaignId: 'campaign:M1',
       intentId: 'intent:I-001',
@@ -21,7 +21,7 @@ const baseSnapshot: GraphSnapshot = {
     {
       id: 'task:BDR-002',
       title: 'Write the dashboard',
-      status: 'IN_PROGRESS',
+      status: 'IN_PROGRESS' as const,
       hours: 8,
       campaignId: 'campaign:M1',
       intentId: 'intent:I-001',
@@ -29,7 +29,7 @@ const baseSnapshot: GraphSnapshot = {
     {
       id: 'task:HRB-001',
       title: 'Heartbeat task one',
-      status: 'BACKLOG',
+      status: 'BACKLOG' as const,
       hours: 2,
       campaignId: 'campaign:M2',
       intentId: 'intent:I-002',
@@ -37,7 +37,7 @@ const baseSnapshot: GraphSnapshot = {
     {
       id: 'task:ORF-001',
       title: 'Orphan no campaign',
-      status: 'BACKLOG',
+      status: 'BACKLOG' as const,
       hours: 1,
       // no campaignId, no intentId — sovereignty violation
     },
@@ -69,7 +69,7 @@ const baseSnapshot: GraphSnapshot = {
   approvals: [
     {
       id: 'approval:AP-001',
-      status: 'PENDING',
+      status: 'PENDING' as const,
       trigger: 'CRITICAL_PATH_CHANGE',
       approver: 'human.james',
       requestedBy: 'agent.prime',
@@ -111,7 +111,9 @@ describe('DashboardService', () => {
 
     it('uses the CampaignNode object as the map key', async () => {
       const roadmap = await svc.getRoadmap();
-      const snapshot = await (port.fetchSnapshot as ReturnType<typeof vi.fn>).mock.results[0]?.value as GraphSnapshot;
+      const mockResult = vi.mocked(port.fetchSnapshot).mock.results[0];
+      if (mockResult === undefined || mockResult.type !== 'return') throw new Error('unexpected mock state');
+      const snapshot = await mockResult.value as GraphSnapshot;
       const m1 = snapshot.campaigns[0]!;
       const quests = roadmap.get(m1);
       expect(quests).toBeDefined();
@@ -183,7 +185,7 @@ describe('DashboardService', () => {
       expect(allQuestIds).not.toContain('task:ORF-001');
     });
 
-    it('returns empty quests array for intents with no matching quests', async () => {
+    it('attaches the single matching quest to intent:I-002', async () => {
       const trees = await svc.getLineage();
       const i2Tree = trees.find((t) => t.intent.id === 'intent:I-002');
       expect(i2Tree?.quests).toHaveLength(1);

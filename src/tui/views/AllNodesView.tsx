@@ -1,23 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import type { ReactElement } from 'react';
+import { useState, useEffect } from 'react';
 import { Box, Text, useInput, useStdout, type Key } from 'ink';
-import type { GraphSnapshot } from '../../domain/models/dashboard.js';
+import type { GraphSnapshot, QuestNode } from '../../domain/models/dashboard.js';
+import { STATUS_COLOR, type StatusColor } from '../status-colors.js';
 import { Scrollbar } from '../Scrollbar.js';
 import { QuestDetailPanel } from '../QuestDetailPanel.js';
 
 const CHROME_LINES = 3; // tab bar + marginBottom + scroll indicator
-
-const STATUS_COLOR: Record<string, string> = {
-  DONE: 'green',
-  IN_PROGRESS: 'cyan',
-  BACKLOG: 'gray',
-  BLOCKED: 'red',
-  PLANNED: 'yellow',
-  PENDING: 'yellow',
-  APPROVED: 'green',
-  REJECTED: 'red',
-};
-
-type StatusColor = 'green' | 'cyan' | 'gray' | 'red' | 'yellow' | 'white';
 
 type VRow =
   | { kind: 'spacer' }
@@ -33,13 +22,14 @@ interface Props {
   isActive: boolean;
 }
 
-function StatusText({ status }: { status: string }): React.ReactElement {
+function StatusText({ status }: { status: string }): ReactElement {
   const color = (STATUS_COLOR[status] ?? 'white') as StatusColor;
   return <Text color={color}>{status}</Text>;
 }
 
-function buildRows(snapshot: GraphSnapshot): { vrows: VRow[]; questCount: number } {
+function buildRows(snapshot: GraphSnapshot): { vrows: VRow[]; flatQuests: QuestNode[]; questCount: number } {
   const rows: VRow[] = [];
+  const flatQuests: QuestNode[] = [];
   let first = true;
   let questIdx = 0;
 
@@ -68,6 +58,7 @@ function buildRows(snapshot: GraphSnapshot): { vrows: VRow[]; questCount: number
         kind: 'quest' as const, id: q.id, title: q.title, status: q.status,
         hours: q.hours, hasScroll: q.scrollId !== undefined, questIdx: questIdx++,
       };
+      flatQuests.push(q);
       return row;
     }));
   }
@@ -84,17 +75,17 @@ function buildRows(snapshot: GraphSnapshot): { vrows: VRow[]; questCount: number
     })));
   }
 
-  return { vrows: rows, questCount: questIdx };
+  return { vrows: rows, flatQuests, questCount: questIdx };
 }
 
-export function AllNodesView({ snapshot, isActive }: Props): React.ReactElement {
+export function AllNodesView({ snapshot, isActive }: Props): ReactElement {
   const { stdout } = useStdout();
   const listHeight = Math.max(4, (stdout.rows ?? 24) - CHROME_LINES);
   const [scrollOffset, setScrollOffset] = useState(0);
   const [selectedQuestIdx, setSelectedQuestIdx] = useState(0);
   const [showDetail, setShowDetail] = useState(false);
 
-  const { vrows, questCount } = buildRows(snapshot);
+  const { vrows, flatQuests, questCount } = buildRows(snapshot);
   const total = snapshot.campaigns.length + snapshot.quests.length +
     snapshot.intents.length + snapshot.scrolls.length + snapshot.approvals.length;
 
@@ -134,21 +125,23 @@ export function AllNodesView({ snapshot, isActive }: Props): React.ReactElement 
     setSelectedQuestIdx(next);
   }
 
-  useInput((_input: string, key: Key) => {
+  useInput((input: string, key: Key) => {
     if (showDetail) {
       if (key.escape) setShowDetail(false);
       return;
     }
     if (key.upArrow) { moveSelection(-1); return; }
     if (key.downArrow) { moveSelection(1); return; }
-    if (_input === ' ' && questCount > 0) {
+    if (key.pageUp) { moveSelection(-listHeight); return; }
+    if (key.pageDown) { moveSelection(listHeight); return; }
+    if (input === ' ' && questCount > 0) {
       setShowDetail(true);
     }
   }, { isActive });
 
-  // Detail modal
+  // Detail modal — use flatQuests for correct lookup
   if (showDetail) {
-    const selectedQuest = snapshot.quests[clampedQuestIdx] ?? null;
+    const selectedQuest = flatQuests[clampedQuestIdx] ?? null;
     return (
       <Box flexDirection="column" borderStyle="round" borderColor="cyan">
         <Box paddingX={1} flexDirection="column">

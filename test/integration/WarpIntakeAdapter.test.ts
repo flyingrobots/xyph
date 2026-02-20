@@ -9,6 +9,9 @@ import WarpGraph, { GitGraphAdapter } from '@git-stunts/git-warp';
 import type { PatchSession } from '@git-stunts/git-warp';
 import Plumbing from '@git-stunts/plumbing';
 
+// NOTE: Tests share a mutable git repo (repoPath) and MUST run in declaration order.
+// The promote test mutates task:INTAKE-001 from INBOX→BACKLOG, which subsequent
+// INVALID_FROM tests depend on. Do not reorder without understanding these dependencies.
 describe('WarpIntakeAdapter Integration', () => {
   let repoPath: string;
   const graphName = 'xyph-roadmap';

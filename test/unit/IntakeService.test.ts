@@ -23,7 +23,7 @@ describe('TRANSITION_TABLE', () => {
     expect(TRANSITION_TABLE).toHaveLength(3);
   });
 
-  it('only promote requires human authority', () => {
+  it('promote and reopen require human authority', () => {
     const requiresHuman = TRANSITION_TABLE.filter((r) => r.requiresHuman);
     const commands = requiresHuman.map((r) => r.command);
     expect(commands).toContain('promote');

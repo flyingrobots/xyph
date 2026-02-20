@@ -1,16 +1,19 @@
 import WarpGraph, { GitGraphAdapter } from '@git-stunts/git-warp';
 import Plumbing from '@git-stunts/plumbing';
 import type { DashboardPort } from '../../ports/DashboardPort.js';
+import type { QuestStatus } from '../../domain/entities/Quest.js';
 import type {
+  ApprovalGateStatus,
   ApprovalNode,
   CampaignNode,
+  CampaignStatus,
   GraphSnapshot,
   IntentNode,
   QuestNode,
   ScrollNode,
 } from '../../domain/models/dashboard.js';
 
-type NeighborEntry = { label: string; nodeId: string };
+interface NeighborEntry { label: string; nodeId: string }
 
 /**
  * Driven adapter: reads the WARP graph and produces a GraphSnapshot.
@@ -26,7 +29,10 @@ export class WarpDashboardAdapter implements DashboardPort {
 
   private async getGraph(): Promise<WarpGraph> {
     if (!this.graphPromise) {
-      this.graphPromise = this.initGraph();
+      this.graphPromise = this.initGraph().catch((err) => {
+        this.graphPromise = null;
+        throw err;
+      });
     }
     return this.graphPromise;
   }
@@ -47,6 +53,8 @@ export class WarpDashboardAdapter implements DashboardPort {
 
   public async fetchSnapshot(): Promise<GraphSnapshot> {
     const graph = await this.getGraph();
+    await graph.syncCoverage();
+    await graph.materialize();
     const nodeIds = await graph.getNodes();
 
     const campaigns: CampaignNode[] = [];
@@ -55,10 +63,14 @@ export class WarpDashboardAdapter implements DashboardPort {
     const intents: IntentNode[] = [];
     const approvals: ApprovalNode[] = [];
 
+    // Cache node props from first pass to avoid redundant getNodeProps calls
+    const propsCache = new Map<string, Map<string, unknown>>();
+
     // First pass: classify all nodes by type
     for (const id of nodeIds) {
       const props = await graph.getNodeProps(id);
       if (!props) continue;
+      propsCache.set(id, props);
 
       const type = props.get('type');
 
@@ -71,7 +83,7 @@ export class WarpDashboardAdapter implements DashboardPort {
         campaigns.push({
           id,
           title: typeof title === 'string' ? title : id,
-          status: typeof status === 'string' ? status : 'UNKNOWN',
+          status: (typeof status === 'string' ? status : 'UNKNOWN') as CampaignStatus,
         });
       } else if (type === 'task' && id.startsWith('task:')) {
         rawQuestIds.push(id);
@@ -99,21 +111,22 @@ export class WarpDashboardAdapter implements DashboardPort {
           typeof approver === 'string' &&
           typeof requestedBy === 'string'
         ) {
-          approvals.push({ id, status, trigger, approver, requestedBy });
+          approvals.push({ id, status: status as ApprovalGateStatus, trigger, approver, requestedBy });
         }
       }
     }
 
-    // Second pass: build quests with edge resolution
+    // Second pass: build quests with edge resolution (reuses cached props)
     const quests: QuestNode[] = [];
     for (const id of rawQuestIds) {
-      const props = await graph.getNodeProps(id);
+      const props = propsCache.get(id);
       if (!props) continue;
 
       const title = props.get('title');
-      const status = props.get('status');
+      const rawStatus = props.get('status');
       const hours = props.get('hours');
-      if (typeof title !== 'string' || typeof status !== 'string') continue;
+      if (typeof title !== 'string' || typeof rawStatus !== 'string') continue;
+      const status = rawStatus as QuestStatus;
 
       const neighbors = (await graph.neighbors(
         id,
@@ -160,10 +173,10 @@ export class WarpDashboardAdapter implements DashboardPort {
       });
     }
 
-    // Third pass: build scrolls with edge resolution
+    // Third pass: build scrolls with edge resolution (reuses cached props)
     const scrolls: ScrollNode[] = [];
     for (const id of rawScrollIds) {
-      const props = await graph.getNodeProps(id);
+      const props = propsCache.get(id);
       if (!props) continue;
 
       const artifactHash = props.get('artifact_hash');
@@ -191,6 +204,7 @@ export class WarpDashboardAdapter implements DashboardPort {
         }
       }
 
+      if (questId === '') continue; // No fulfills edge — skip orphan scroll
       scrolls.push({ id, questId, artifactHash, sealedBy, sealedAt, hasSeal });
     }
 

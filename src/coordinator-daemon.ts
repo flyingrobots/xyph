@@ -2,6 +2,7 @@ import { WarpRoadmapAdapter } from './infrastructure/adapters/WarpRoadmapAdapter
 import { CoordinatorService } from './domain/services/CoordinatorService.js';
 import { IngestService } from './domain/services/IngestService.js';
 import { NormalizeService } from './domain/services/NormalizeService.js';
+import { RebalanceService } from './domain/services/RebalanceService.js';
 import chalk from 'chalk';
 
 /**
@@ -33,7 +34,7 @@ async function main(): Promise<void> {
   console.log(chalk.bold.green('XYPH Coordinator Daemon starting...'));
 
   const roadmap = new WarpRoadmapAdapter(REPO_PATH, GRAPH_NAME, AGENT_ID);
-  const coordinator = new CoordinatorService(roadmap, AGENT_ID, new IngestService(), new NormalizeService());
+  const coordinator = new CoordinatorService(roadmap, AGENT_ID, new IngestService(), new NormalizeService(), new RebalanceService());
 
   // Initial heartbeat
   await coordinator.heartbeat();

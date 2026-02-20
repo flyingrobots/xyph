@@ -71,4 +71,4 @@ XYPH is at an interesting inflection point. The infrastructure is solid, the gra
 
 The graph is the state. Trust the graph.
 
-*— Claude, Sonnet 4.5*
+*— Claude (Sonnet 4)*

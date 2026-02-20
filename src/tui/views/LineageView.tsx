@@ -1,19 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import type { ReactElement } from 'react';
+import { useState, useEffect } from 'react';
 import { Box, Text, useInput, useStdout, type Key } from 'ink';
 import type { GraphSnapshot } from '../../domain/models/dashboard.js';
+import { STATUS_COLOR, type StatusColor } from '../status-colors.js';
 import { Scrollbar } from '../Scrollbar.js';
 
 const CHROME_LINES = 3; // tab bar + marginBottom + scroll indicator
-
-const STATUS_COLOR: Record<string, string> = {
-  DONE: 'green',
-  IN_PROGRESS: 'cyan',
-  BACKLOG: 'gray',
-  BLOCKED: 'red',
-  PLANNED: 'yellow',
-};
-
-type StatusColor = 'green' | 'cyan' | 'gray' | 'red' | 'yellow' | 'white';
 
 type VRow =
   | { kind: 'spacer' }
@@ -21,6 +13,7 @@ type VRow =
   | { kind: 'intent-meta'; requestedBy: string }
   | { kind: 'quest'; id: string; title: string; status: string; branch: string; scrollId: string | undefined; sealed: boolean }
   | { kind: 'scroll-sub'; scrollId: string }
+  | { kind: 'no-quests'; branch: string }
   | { kind: 'orphan-header' }
   | { kind: 'orphan'; id: string; title: string };
 
@@ -62,7 +55,7 @@ function buildRows(snapshot: GraphSnapshot): VRow[] {
 
     const quests = questsByIntent.get(intent.id) ?? [];
     if (quests.length === 0) {
-      rows.push({ kind: 'quest', id: '', title: '(no quests)', status: '', branch: '└─', scrollId: undefined, sealed: false });
+      rows.push({ kind: 'no-quests', branch: '└─' });
     } else {
       for (let i = 0; i < quests.length; i++) {
         const q = quests[i];
@@ -89,7 +82,7 @@ function buildRows(snapshot: GraphSnapshot): VRow[] {
   return rows;
 }
 
-export function LineageView({ snapshot, isActive }: Props): React.ReactElement {
+export function LineageView({ snapshot, isActive }: Props): ReactElement {
   const { stdout } = useStdout();
   const listHeight = Math.max(4, (stdout.rows ?? 24) - CHROME_LINES);
   const [scrollOffset, setScrollOffset] = useState(0);
@@ -99,9 +92,9 @@ export function LineageView({ snapshot, isActive }: Props): React.ReactElement {
   const maxOffset = Math.max(0, vrows.length - listHeight);
   const clampedOffset = Math.min(scrollOffset, maxOffset);
 
-  // Navigable quest row indices
+  // Navigable quest row indices (only real quests, not no-quests placeholders)
   const questIndices = vrows
-    .map((r, i) => (r.kind === 'quest' && r.id !== '' ? i : -1))
+    .map((r, i) => (r.kind === 'quest' ? i : -1))
     .filter((i) => i >= 0);
 
   const clampedVIdx =
@@ -132,6 +125,8 @@ export function LineageView({ snapshot, isActive }: Props): React.ReactElement {
   useInput((_input: string, key: Key) => {
     if (key.upArrow) moveSelection(-1);
     if (key.downArrow) moveSelection(1);
+    if (key.pageUp) moveSelection(-listHeight);
+    if (key.pageDown) moveSelection(listHeight);
   }, { isActive });
 
   if (snapshot.intents.length === 0) {
@@ -171,14 +166,14 @@ export function LineageView({ snapshot, isActive }: Props): React.ReactElement {
               </Box>
             );
           }
+          if (row.kind === 'no-quests') {
+            return (
+              <Box key={`nq-${i}`} marginLeft={2}>
+                <Text dimColor>{row.branch} (no quests)</Text>
+              </Box>
+            );
+          }
           if (row.kind === 'quest') {
-            if (row.id === '') {
-              return (
-                <Box key={`q-empty-${i}`} marginLeft={2}>
-                  <Text dimColor>{row.branch} {row.title}</Text>
-                </Box>
-              );
-            }
             const isSelected = absIdx === clampedVIdx;
             const statusColor = (STATUS_COLOR[row.status] ?? 'white') as StatusColor;
             return (

@@ -31,7 +31,7 @@ const __dirname = dirname(__filename);
 
 // Pick a random compact logo (≤15 lines): 2, 3, 7, 8, 9, 10
 const COMPACT_LOGOS = [2, 3, 7, 8, 9, 10];
-const logoNum = COMPACT_LOGOS[Math.floor(Math.random() * COMPACT_LOGOS.length)];
+const logoNum = COMPACT_LOGOS[Math.floor(Math.random() * COMPACT_LOGOS.length)] ?? 3;
 const logoPath = join(__dirname, 'src', 'tui', 'logos', `${logoNum}.txt`);
 let logoText: string;
 try {

@@ -1,15 +1,15 @@
-import React from 'react';
-import { Box, Text, useInput, type Key } from 'ink';
+import type { ReactElement } from 'react';
+import { Box, Text } from 'ink';
 
 interface Props {
   onClose: () => void;
 }
 
-export function HelpModal({ onClose }: Props): React.ReactElement {
-  useInput((_input: string, key: Key) => {
-    if (key.escape) onClose();
-  });
-
+/**
+ * HelpModal is a pure display component.
+ * Keyboard handling (Escape to close) is managed by Dashboard.
+ */
+export function HelpModal(_props: Props): ReactElement {
   return (
     <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1}>
       <Text bold color="cyan">XYPH Help</Text>
@@ -36,6 +36,7 @@ export function HelpModal({ onClose }: Props): React.ReactElement {
           </Box>
           <Box flexDirection="column">
             <Text>{'  ↑↓        '}<Text dimColor>navigate</Text></Text>
+            <Text>{'  PgUp/PgDn '}<Text dimColor>page navigate</Text></Text>
             <Text>{'  Space     '}<Text dimColor>fold milestone / task detail</Text></Text>
             <Text>{'  p         '}<Text dimColor>promote (inbox, human.* only)</Text></Text>
             <Text>{'  x         '}<Text dimColor>reject (inbox)</Text></Text>

@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import type { ReactElement } from 'react';
+import { useState, useEffect } from 'react';
 import { Box, Text, useInput, useStdout, type Key } from 'ink';
 import type { GraphSnapshot, QuestNode } from '../../domain/models/dashboard.js';
 import type { IntakePort } from '../../ports/IntakePort.js';
@@ -8,10 +9,10 @@ const CHROME_LINES = 3;
 
 type ModalState =
   | null
-  | { kind: 'select-intent'; intentIdx: number }
-  | { kind: 'rationale'; buffer: string }
+  | { kind: 'select-intent'; intentIdx: number; questId: string }
+  | { kind: 'rationale'; buffer: string; questId: string }
   | { kind: 'mutating'; action: string }
-  | { kind: 'error'; message: string };
+  | { kind: 'error'; code: string | null; message: string };
 
 type VRow =
   | { kind: 'spacer' }
@@ -45,13 +46,13 @@ export function InboxView({
   onMutationStart,
   onMutationEnd,
   onRefresh,
-}: Props): React.ReactElement {
+}: Props): ReactElement {
   const { stdout } = useStdout();
 
   // Proportional split: 40% list, 60% detail
   const availableRows = (stdout.rows ?? 24) - CHROME_LINES;
   const listHeight = Math.max(3, Math.floor(availableRows * 0.40));
-  const detailHeight = availableRows - listHeight;
+  const detailHeight = Math.max(0, availableRows - listHeight);
 
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [scrollOffset, setScrollOffset] = useState(0);
@@ -122,7 +123,7 @@ export function InboxView({
       })
       .catch((err: unknown) => {
         const parsed = parseErrorMessage(err);
-        setModal({ kind: 'error', message: parsed.code !== null ? `[${parsed.code}] ${parsed.message}` : parsed.message });
+        setModal({ kind: 'error', code: parsed.code, message: parsed.message });
       })
       .finally(() => {
         onMutationEnd();
@@ -140,7 +141,7 @@ export function InboxView({
       })
       .catch((err: unknown) => {
         const parsed = parseErrorMessage(err);
-        setModal({ kind: 'error', message: parsed.code !== null ? `[${parsed.code}] ${parsed.message}` : parsed.message });
+        setModal({ kind: 'error', code: parsed.code, message: parsed.message });
       })
       .finally(() => {
         onMutationEnd();
@@ -162,18 +163,17 @@ export function InboxView({
     // Select-intent modal
     if (modal?.kind === 'select-intent') {
       if (key.upArrow) {
-        setModal({ kind: 'select-intent', intentIdx: Math.max(0, modal.intentIdx - 1) });
+        setModal({ ...modal, intentIdx: Math.max(0, modal.intentIdx - 1) });
         return;
       }
       if (key.downArrow) {
-        setModal({ kind: 'select-intent', intentIdx: Math.min(intents.length - 1, modal.intentIdx + 1) });
+        setModal({ ...modal, intentIdx: Math.min(intents.length - 1, modal.intentIdx + 1) });
         return;
       }
       if (key.return) {
         const selectedIntent = intents[modal.intentIdx];
-        const selectedQuest = flatQuests[clampedIdx];
-        if (selectedIntent !== undefined && selectedQuest !== undefined) {
-          runPromote(selectedQuest.id, selectedIntent.id);
+        if (selectedIntent !== undefined) {
+          runPromote(modal.questId, selectedIntent.id);
         }
         return;
       }
@@ -192,20 +192,21 @@ export function InboxView({
       }
       if (key.return) {
         if (modal.buffer.trim().length > 0) {
-          const selectedQuest = flatQuests[clampedIdx];
-          if (selectedQuest !== undefined) {
-            runReject(selectedQuest.id, modal.buffer.trim());
-          }
+          runReject(modal.questId, modal.buffer.trim());
         }
         return;
       }
       if (key.backspace || key.delete) {
-        setModal({ kind: 'rationale', buffer: modal.buffer.slice(0, -1) });
+        setModal({ ...modal, buffer: modal.buffer.slice(0, -1) });
+        return;
+      }
+      // Guard arrow keys and tab before printable char handler
+      if (key.upArrow || key.downArrow || key.leftArrow || key.rightArrow || key.tab) {
         return;
       }
       // Printable chars
       if (input.length > 0 && !key.ctrl && !key.meta) {
-        setModal({ kind: 'rationale', buffer: modal.buffer + input });
+        setModal({ ...modal, buffer: modal.buffer + input });
         return;
       }
       return;
@@ -220,22 +221,36 @@ export function InboxView({
       moveSelection(1);
       return;
     }
+    if (key.pageUp) {
+      moveSelection(-listHeight);
+      return;
+    }
+    if (key.pageDown) {
+      moveSelection(listHeight);
+      return;
+    }
 
     if (input === 'p') {
+      if (totalQuests === 0) return;
       if (!agentId.startsWith('human.')) {
-        setModal({ kind: 'error', message: `[FORBIDDEN] requires human.* agent ID, got: '${agentId}'` });
+        setModal({ kind: 'error', code: 'FORBIDDEN', message: `requires human.* agent ID, got: '${agentId}'` });
         return;
       }
       if (intents.length === 0) {
-        setModal({ kind: 'error', message: 'No sovereign intents found in snapshot' });
+        setModal({ kind: 'error', code: null, message: 'No sovereign intents found in snapshot' });
         return;
       }
-      setModal({ kind: 'select-intent', intentIdx: 0 });
+      const quest = flatQuests[clampedIdx];
+      if (quest === undefined) return;
+      setModal({ kind: 'select-intent', intentIdx: 0, questId: quest.id });
       return;
     }
 
     if (input === 'x') {
-      setModal({ kind: 'rationale', buffer: '' });
+      if (totalQuests === 0) return;
+      const quest = flatQuests[clampedIdx];
+      if (quest === undefined) return;
+      setModal({ kind: 'rationale', buffer: '', questId: quest.id });
       return;
     }
   }, { isActive });
@@ -247,7 +262,7 @@ export function InboxView({
     return (
       <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1}>
         <Text bold color="cyan">
-          Promote: {selectedQuest?.id ?? '—'} to BACKLOG
+          Promote: {modal.questId} to BACKLOG
         </Text>
         <Text>Select Sovereign Intent (↑↓ Enter)</Text>
         <Box flexDirection="column" marginTop={1}>
@@ -273,7 +288,7 @@ export function InboxView({
   if (modal?.kind === 'rationale') {
     return (
       <Box flexDirection="column" borderStyle="round" borderColor="yellow" paddingX={1}>
-        <Text bold color="yellow">Reject: {selectedQuest?.id ?? '—'}</Text>
+        <Text bold color="yellow">Reject: {modal.questId}</Text>
         <Text>Rejection rationale:</Text>
         <Box marginTop={1}>
           <Text>{`> ${modal.buffer}_`}</Text>
@@ -294,12 +309,11 @@ export function InboxView({
   }
 
   if (modal?.kind === 'error') {
-    const parsed = parseErrorMessage(modal.message);
     return (
       <Box flexDirection="column" borderStyle="round" borderColor="red" paddingX={1}>
         <Box>
-          {parsed.code !== null
-            ? <><Text color="red">[{parsed.code}]</Text><Text> {parsed.message}</Text></>
+          {modal.code !== null
+            ? <><Text color="red">[{modal.code}]</Text><Text> {modal.message}</Text></>
             : <Text color="red">{modal.message}</Text>
           }
         </Box>

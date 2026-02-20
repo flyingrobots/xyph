@@ -1,6 +1,8 @@
 #!/usr/bin/env -S npx tsx
 /**
  * Backlog update script — run once as human.james.
+ * WARNING: This script is NOT idempotent. Running it twice will attempt to
+ * re-add nodes that already exist, which may fail or create duplicates.
  *
  * 1. Declares missing intents: intent:ORACLE, intent:FORGE, intent:DASHBOARD
  * 2. Creates campaign:DASHBOARD for TUI polish quests
@@ -175,6 +177,7 @@ await commit(`Add ${newQuests.length} new backlog quests`, (p) => {
      .setProperty(q.id, 'title', q.title)
      .setProperty(q.id, 'status', 'BACKLOG')
      .setProperty(q.id, 'hours', q.hours)
+     .setProperty(q.id, 'created_at', now)
      .addEdge(q.id, q.campaign, 'belongs-to')
      .addEdge(q.id, q.intent, 'authorized-by');
   }

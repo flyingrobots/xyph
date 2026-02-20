@@ -17,74 +17,32 @@ export class IngestService {
     for (const line of lines) {
       const match = line.match(/^- \[([ xX])\]\s+([a-z]+:[A-Z0-9-]+)\s+(.+?)(?:\s+#(\d+(?:\.\d+)?))?(?:\s+@([a-z]+:[A-Z0-9-]+))?$/);
 
-      if (match) {
-        const [, , id, title, hours, _campaign] = match as [string, string, string, string, string?, string?];
+      if (!match) continue;
 
-                const trimmedTitle = title.trim();
+      const [, checkbox, id, title, hours] = match as [string, string, string, string, string?, string?];
 
-                const idPrefix = id.split(':')[0] || '';
+      const idPrefix = id.split(':')[0] ?? '';
+      if (idPrefix !== 'task') continue;
 
-                const isCompleted = line.match(/^- \[([xX])\]/)?.[1] !== undefined;
+      const trimmedTitle = title.trim();
+      const isCompleted = checkbox !== ' ';
 
-        
+      const props: QuestProps = {
+        id,
+        title: trimmedTitle,
+        status: isCompleted ? 'DONE' : 'BACKLOG',
+        hours: hours ? parseFloat(hours) : 0,
+        type: idPrefix as QuestType,
+      };
 
-                        const props: QuestProps = {
-
-        
-
-                          id,
-
-        
-
-                          title: trimmedTitle,
-
-        
-
-                          status: isCompleted ? 'DONE' : 'BACKLOG',
-
-        
-
-                          hours: hours ? parseFloat(hours) : 0,
-
-        
-
-                          type: idPrefix as QuestType
-
-        
-
-                        };
-
-        
-
-                
-
-        
-
-                        // We use Object.create to bypass constructor validation during ingestion
-
-        
-
-                        // so that the NormalizeService.validate phase can catch it later.
-
-        
-
-                        const quest = Object.create(Quest.prototype);
-
-        
-
-                        Object.assign(quest, props);
-
-        
-
-                        quests.push(quest);
-
-        
-
-                      }
-
-        
-
-                    }
+      try {
+        quests.push(new Quest(props));
+      } catch {
+        // Skip lines that fail Quest validation (e.g. title < 5 chars).
+        // The NormalizeService.validate phase handles structured error reporting.
+        continue;
+      }
+    }
 
     return quests;
   }

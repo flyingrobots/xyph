@@ -58,6 +58,20 @@ export class Quest {
     this.originContext = props.originContext;
   }
 
+  public toProps(): QuestProps {
+    return {
+      id: this.id,
+      title: this.title,
+      status: this.status,
+      hours: this.hours,
+      assignedTo: this.assignedTo,
+      claimedAt: this.claimedAt,
+      completedAt: this.completedAt,
+      type: this.type,
+      originContext: this.originContext,
+    };
+  }
+
   public isDone(): boolean {
     return this.status === 'DONE';
   }

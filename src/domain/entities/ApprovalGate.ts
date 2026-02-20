@@ -52,6 +52,8 @@ export class ApprovalGate {
     if (!props.patchRef || props.patchRef.trim().length === 0) {
       throw new Error('ApprovalGate patchRef cannot be empty');
     }
+    // Defense-in-depth: TypeScript ensures trigger is ApprovalGateTrigger at compile time,
+    // but we validate at runtime too since data may come from the WARP graph (untyped).
     if (!ApprovalGate.VALID_TRIGGERS.has(props.trigger)) {
       throw new Error(`Unknown ApprovalGate trigger: '${props.trigger}'`);
     }

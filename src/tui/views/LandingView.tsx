@@ -1,4 +1,4 @@
-import React from 'react';
+import type { ReactElement } from 'react';
 import { Box, Text } from 'ink';
 import type { GraphSnapshot } from '../../domain/models/dashboard.js';
 
@@ -8,14 +8,14 @@ interface Props {
 }
 
 function asciiBar(pct: number, width: number): string {
-  const filled = Math.round((pct / 100) * width);
+  const filled = Math.min(width, Math.max(0, Math.round((pct / 100) * width)));
   return '█'.repeat(filled) + '░'.repeat(width - filled);
 }
 
-export function LandingView({ logoText, snapshot }: Props): React.ReactElement {
+export function LandingView({ logoText, snapshot }: Props): ReactElement {
   const logoLines = logoText.split('\n');
 
-  let statsContent: React.ReactElement;
+  let statsContent: ReactElement;
 
   if (snapshot === null) {
     statsContent = <Text dimColor>Loading WARP graph…</Text>;
@@ -51,6 +51,8 @@ export function LandingView({ logoText, snapshot }: Props): React.ReactElement {
       .filter((q) => q.status === 'BACKLOG' || q.status === 'PLANNED')
       .slice(0, 3);
 
+    const first = nextUp[0];
+
     statsContent = (
       <Box flexDirection="column">
         <Text dimColor>{'─'.repeat(41)}</Text>
@@ -67,13 +69,13 @@ export function LandingView({ logoText, snapshot }: Props): React.ReactElement {
             <Text color="yellow">{currentMilestone}</Text>
           </Box>
         )}
-        {nextUp.length > 0 && (
+        {first !== undefined && (
           <Box flexDirection="column">
             <Box>
               <Text dimColor>Next up    </Text>
-              <Text dimColor>{nextUp[0]?.id.slice(0, 14).padEnd(16)}</Text>
-              <Text>{nextUp[0]?.title.slice(0, 30).padEnd(32)}</Text>
-              <Text color="gray">{'[' + (nextUp[0]?.status ?? '') + ']'}</Text>
+              <Text dimColor>{first.id.slice(0, 14).padEnd(16)}</Text>
+              <Text>{first.title.slice(0, 30).padEnd(32)}</Text>
+              <Text color="gray">{'[' + first.status + ']'}</Text>
             </Box>
             {nextUp[1] !== undefined && (
               <Box>

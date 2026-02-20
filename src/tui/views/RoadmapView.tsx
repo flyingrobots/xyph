@@ -1,20 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import type { ReactElement } from 'react';
+import { useState, useEffect } from 'react';
 import { Box, Text, useInput, useStdout, type Key } from 'ink';
 import type { GraphSnapshot, QuestNode } from '../../domain/models/dashboard.js';
+import { STATUS_COLOR, type StatusColor } from '../status-colors.js';
 import { Scrollbar } from '../Scrollbar.js';
 import { QuestDetailPanel } from '../QuestDetailPanel.js';
 
 const CHROME_LINES = 3;  // tab bar + scroll indicator + margin
-
-const STATUS_COLOR: Record<string, string> = {
-  DONE: 'green',
-  IN_PROGRESS: 'cyan',
-  BACKLOG: 'gray',
-  BLOCKED: 'red',
-  PLANNED: 'yellow',
-};
-
-type StatusColor = 'green' | 'cyan' | 'gray' | 'red' | 'yellow' | 'white';
 
 type VRow =
   | { kind: 'spacer' }
@@ -64,7 +56,7 @@ function buildRows(
   return { vrows, flatQuests };
 }
 
-export function RoadmapView({ snapshot, isActive }: Props): React.ReactElement {
+export function RoadmapView({ snapshot, isActive }: Props): ReactElement {
   const { stdout } = useStdout();
   const listHeight = Math.max(4, (stdout.rows ?? 24) - CHROME_LINES);
 
@@ -102,17 +94,21 @@ export function RoadmapView({ snapshot, isActive }: Props): React.ReactElement {
 
   // When foldedCampaigns changes, snap selectedVIdx to nearest navigable
   useEffect(() => {
+    const navIndices = vrows
+      .map((r, i) => (r.kind !== 'spacer' ? i : -1))
+      .filter((i) => i >= 0);
+
     setSelectedVIdx((prev) => {
-      if (navigableIndices.length === 0) return 0;
-      if (navigableIndices.includes(prev)) return prev;
+      if (navIndices.length === 0) return 0;
+      if (navIndices.includes(prev)) return prev;
       // Find closest navigable
-      let closest = navigableIndices[0] ?? 0;
-      for (const ni of navigableIndices) {
+      let closest = navIndices[0] ?? 0;
+      for (const ni of navIndices) {
         if (Math.abs(ni - prev) < Math.abs(closest - prev)) closest = ni;
       }
       return closest;
     });
-  }, [foldedCampaigns]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [foldedCampaigns, snapshot, vrows]);
 
   function moveSelection(delta: number): void {
     if (navigableIndices.length === 0) return;
@@ -128,14 +124,16 @@ export function RoadmapView({ snapshot, isActive }: Props): React.ReactElement {
     setSelectedVIdx(nextVIdx);
   }
 
-  useInput((_input: string, key: Key) => {
+  useInput((input: string, key: Key) => {
     if (showDetail) {
       if (key.escape) setShowDetail(false);
       return;
     }
     if (key.upArrow) { moveSelection(-1); return; }
     if (key.downArrow) { moveSelection(1); return; }
-    if (_input === ' ') {
+    if (key.pageUp) { moveSelection(-listHeight); return; }
+    if (key.pageDown) { moveSelection(listHeight); return; }
+    if (input === ' ') {
       const row = vrows[clampedVIdx];
       if (row === undefined) return;
       if (row.kind === 'header') {
@@ -174,7 +172,7 @@ export function RoadmapView({ snapshot, isActive }: Props): React.ReactElement {
   }
 
   // Empty state
-  if (vrows.filter((r) => r.kind === 'quest').length === 0 && totalQuests === 0) {
+  if (totalQuests === 0) {
     return (
       <Box flexDirection="column">
         <Text dimColor>No tasks in the roadmap yet.</Text>
@@ -186,6 +184,12 @@ export function RoadmapView({ snapshot, isActive }: Props): React.ReactElement {
   }
 
   const visibleRows = vrows.slice(clampedOffset, clampedOffset + listHeight);
+
+  // Extract flatIdx from clamped row for scroll indicator
+  const clampedRow = vrows[clampedVIdx];
+  const questIndicator = clampedRow?.kind === 'quest'
+    ? String(clampedRow.flatIdx + 1)
+    : '—';
 
   return (
     <Box flexDirection="column">
@@ -239,7 +243,7 @@ export function RoadmapView({ snapshot, isActive }: Props): React.ReactElement {
       {/* Scroll indicator */}
       <Text dimColor>
         {'  quest '}
-        {totalQuests === 0 ? '0/0' : `${(vrows[clampedVIdx]?.kind === 'quest' ? (vrows[clampedVIdx] as { kind: 'quest'; quest: QuestNode; flatIdx: number }).flatIdx + 1 : '—')}/${totalQuests}`}
+        {totalQuests === 0 ? '0/0' : `${questIndicator}/${totalQuests}`}
         {vrows.length > listHeight
           ? `  rows ${clampedOffset + 1}–${Math.min(clampedOffset + listHeight, vrows.length)}/${vrows.length}  ↑↓  Space: fold/detail`
           : '  ↑↓  Space: fold/detail'}

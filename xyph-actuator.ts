@@ -15,7 +15,7 @@ const plumbing = Plumbing.createDefault({ cwd: process.cwd() });
 const persistence = new GitGraphAdapter({ plumbing });
 
 async function getGraph(): Promise<WarpGraph> {
-  const writerId = process.env['XYPH_AGENT_ID'] || DEFAULT_AGENT_ID;
+  const writerId = process.env['XYPH_AGENT_ID'] ?? DEFAULT_AGENT_ID;
   // Every agent identifies as a unique writer in the XYPH roadmap
   const graph = await WarpGraph.open({
     persistence,
@@ -152,7 +152,7 @@ program
   .description('Volunteer for a Quest (Optimistic Claiming Protocol)')
   .action(async (id: string) => {
     try {
-      const agentId = process.env['XYPH_AGENT_ID'] || DEFAULT_AGENT_ID;
+      const agentId = process.env['XYPH_AGENT_ID'] ?? DEFAULT_AGENT_ID;
       const graph = await getGraph();
 
       console.log(chalk.yellow(`[*] Attempting to claim ${id} as ${agentId}...`));
@@ -191,7 +191,7 @@ program
   .requiredOption('--rationale <text>', 'Brief explanation of the solution')
   .action(async (id: string, opts: { artifact: string; rationale: string }) => {
     try {
-      const agentId = process.env['XYPH_AGENT_ID'] || DEFAULT_AGENT_ID;
+      const agentId = process.env['XYPH_AGENT_ID'] ?? DEFAULT_AGENT_ID;
       const { GuildSealService } = await import('./src/domain/services/GuildSealService.js');
       const sealService = new GuildSealService();
 
@@ -245,7 +245,7 @@ program
   .description('Generate an Ed25519 Guild Seal keypair for this agent')
   .action(async () => {
     try {
-      const agentId = process.env['XYPH_AGENT_ID'] || DEFAULT_AGENT_ID;
+      const agentId = process.env['XYPH_AGENT_ID'] ?? DEFAULT_AGENT_ID;
       const { GuildSealService } = await import('./src/domain/services/GuildSealService.js');
       const sealService = new GuildSealService();
 
@@ -311,25 +311,11 @@ program
   .action(async (id: string, opts: { intent: string; campaign?: string }) => {
     try {
       const agentId = process.env['XYPH_AGENT_ID'] ?? DEFAULT_AGENT_ID;
-      const { IntakeService } = await import('./src/domain/services/IntakeService.js');
-      const { WarpRoadmapAdapter } = await import('./src/infrastructure/adapters/WarpRoadmapAdapter.js');
+      const { WarpIntakeAdapter } = await import('./src/infrastructure/adapters/WarpIntakeAdapter.js');
 
-      const adapter = new WarpRoadmapAdapter(process.cwd(), 'xyph-roadmap', agentId);
-      const intakeService = new IntakeService(adapter);
-      await intakeService.validatePromote(id, agentId, opts.intent);
+      const intake = new WarpIntakeAdapter(process.cwd(), agentId);
+      const sha = await intake.promote(id, opts.intent, opts.campaign);
 
-      const graph = await getGraph();
-      const patch = await createPatch(graph);
-
-      // Atomic: status + authorized-by edge (+ optional campaign) in one patch
-      patch.setProperty(id, 'status', 'BACKLOG')
-           .addEdge(id, opts.intent, 'authorized-by');
-
-      if (opts.campaign !== undefined) {
-        patch.addEdge(id, opts.campaign, 'belongs-to');
-      }
-
-      const sha = await patch.commit();
       console.log(chalk.green(`[OK] Task ${id} promoted to BACKLOG.`));
       console.log(chalk.dim(`  Intent:   ${opts.intent}`));
       if (opts.campaign !== undefined) console.log(chalk.dim(`  Campaign: ${opts.campaign}`));
@@ -348,23 +334,11 @@ program
   .action(async (id: string, opts: { rationale: string }) => {
     try {
       const agentId = process.env['XYPH_AGENT_ID'] ?? DEFAULT_AGENT_ID;
-      const { IntakeService } = await import('./src/domain/services/IntakeService.js');
-      const { WarpRoadmapAdapter } = await import('./src/infrastructure/adapters/WarpRoadmapAdapter.js');
+      const { WarpIntakeAdapter } = await import('./src/infrastructure/adapters/WarpIntakeAdapter.js');
 
-      const adapter = new WarpRoadmapAdapter(process.cwd(), 'xyph-roadmap', agentId);
-      const intakeService = new IntakeService(adapter);
-      await intakeService.validateReject(id, opts.rationale);
+      const intake = new WarpIntakeAdapter(process.cwd(), agentId);
+      const sha = await intake.reject(id, opts.rationale);
 
-      const graph = await getGraph();
-      const patch = await createPatch(graph);
-      const now = Date.now();
-
-      patch.setProperty(id, 'status', 'GRAVEYARD')
-           .setProperty(id, 'rejected_by', agentId)
-           .setProperty(id, 'rejected_at', now)
-           .setProperty(id, 'rejection_rationale', opts.rationale);
-
-      const sha = await patch.commit();
       console.log(chalk.green(`[OK] Task ${id} moved to GRAVEYARD.`));
       console.log(chalk.dim(`  Rejected by: ${agentId}`));
       console.log(chalk.dim(`  Rationale:   ${opts.rationale}`));
@@ -382,23 +356,11 @@ program
   .action(async (id: string) => {
     try {
       const agentId = process.env['XYPH_AGENT_ID'] ?? DEFAULT_AGENT_ID;
-      const { IntakeService } = await import('./src/domain/services/IntakeService.js');
-      const { WarpRoadmapAdapter } = await import('./src/infrastructure/adapters/WarpRoadmapAdapter.js');
+      const { WarpIntakeAdapter } = await import('./src/infrastructure/adapters/WarpIntakeAdapter.js');
 
-      const adapter = new WarpRoadmapAdapter(process.cwd(), 'xyph-roadmap', agentId);
-      const intakeService = new IntakeService(adapter);
-      await intakeService.validateReopen(id, agentId);
+      const intake = new WarpIntakeAdapter(process.cwd(), agentId);
+      const sha = await intake.reopen(id);
 
-      const graph = await getGraph();
-      const patch = await createPatch(graph);
-      const now = Date.now();
-
-      // Preserve rejection history — only update status and append reopen provenance
-      patch.setProperty(id, 'status', 'INBOX')
-           .setProperty(id, 'reopened_by', agentId)
-           .setProperty(id, 'reopened_at', now);
-
-      const sha = await patch.commit();
       console.log(chalk.green(`[OK] Task ${id} reopened to INBOX.`));
       console.log(chalk.dim(`  Reopened by: ${agentId}`));
       console.log(chalk.dim(`  Note: rejection history preserved in graph.`));
@@ -430,6 +392,11 @@ program
       const snapshot = service.filterSnapshot(raw, { includeGraveyard: opts.includeGraveyard ?? false });
 
       const view = opts.view;
+      const validViews = ['roadmap', 'lineage', 'all', 'inbox'];
+      if (!validViews.includes(view)) {
+        console.error(chalk.red(`[ERROR] Unknown --view '${view}'. Valid options: ${validViews.join(', ')}`));
+        process.exit(1);
+      }
       if (view === 'lineage') {
         console.log(renderLineage(snapshot));
       } else if (view === 'all') {

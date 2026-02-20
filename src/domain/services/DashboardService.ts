@@ -12,7 +12,8 @@ export class DashboardService {
 
   /**
    * Returns quests grouped by their parent CampaignNode (or null if uncampaigned).
-   * Map key is the CampaignNode object reference from the snapshot.
+   * Map key is the CampaignNode object reference from the snapshot —
+   * callers must use the same object identity (not a fresh lookup) to retrieve entries.
    */
   async getRoadmap(): Promise<Map<CampaignNode | null, QuestNode[]>> {
     const snapshot = await this.repo.fetchSnapshot();
