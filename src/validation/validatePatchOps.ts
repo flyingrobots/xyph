@@ -8,7 +8,7 @@ const Ajv = AjvModule.default ?? AjvModule;
 import addFormatsModule from "ajv-formats";
 import ajvErrorsModule from "ajv-errors";
 // CJS interop: default import may be module namespace under NodeNext (same pattern as Ajv above)
-type AjvPlugin = (ajv: InstanceType<typeof Ajv>) => void;
+type AjvPlugin = (ajv: InstanceType<typeof Ajv>, options?: Record<string, unknown>) => InstanceType<typeof Ajv>;
 const addFormats = ((addFormatsModule as { default?: AjvPlugin }).default ?? addFormatsModule) as AjvPlugin;
 const ajvErrors = ((ajvErrorsModule as { default?: AjvPlugin }).default ?? ajvErrorsModule) as AjvPlugin;
 import {

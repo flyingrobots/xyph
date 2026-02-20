@@ -16,8 +16,8 @@ export interface TransitionResult {
   audit: AuditRecord;
 }
 
-function computeDigest(data: Record<string, unknown>): string {
-  const canonical = canonicalize(data as Json);
+function computeDigest(data: Record<string, Json>): string {
+  const canonical = canonicalize(data);
   return prefixedBlake3(canonical);
 }
 
@@ -41,7 +41,7 @@ function transitionToNormalize(
 
   const audit: AuditRecord = {
     schemaVersion: 'v1.0',
-    eventId: `AEVT-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
+    eventId: `AEVT-${now.slice(0, 10).replace(/-/g, '')}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
     runId: context.runId,
     sequence: 1,
     timestamp: outputArtifact.createdAt,
