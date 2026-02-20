@@ -229,7 +229,7 @@
 ### `src/coordinator-daemon.ts`
 
 - [x] **L-11** — Initial `heartbeat()` is fatal (exits on failure) but periodic failures are tolerated up to `MAX_CONSECUTIVE_FAILURES` — asymmetric behavior is undocumented
-- [ ] **L-12** — `shutdown` calls `process.exit(0)` synchronously — in-flight heartbeat Promise abandoned; could leave graph mid-write
+- [x] **L-12** — `shutdown` calls `process.exit(0)` synchronously — in-flight heartbeat Promise abandoned; could leave graph mid-write
 - [x] **L-13** — `AGENT_ID` uses `||` operator — empty string `XYPH_AGENT_ID=""` silently falls back to default; should use `??`
 
 ### `src/domain/entities/ApprovalGate.ts`
@@ -350,7 +350,7 @@
 ### `xyph-actuator.ts`
 
 - [x] **N-23** — `program.parse(process.argv)` should be `program.parseAsync(process.argv)` — async action handler rejections may produce `UnhandledPromiseRejection` instead of clean error output
-- [ ] **N-24** — `--campaign` guard and dead truthiness check on a `.requiredOption()` — `'none'` escape hatch is undocumented; success message says "initialized in campaign none" contradicting the skip behavior
+- [x] **N-24** — `--campaign` guard and dead truthiness check on a `.requiredOption()` — `'none'` escape hatch is undocumented; success message says "initialized in campaign none" contradicting the skip behavior
 
 ### `xyph-dashboard.tsx`
 

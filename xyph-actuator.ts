@@ -51,7 +51,7 @@ program
   .command('quest <id>')
   .description('Initialize a new Quest (Task) node')
   .requiredOption('--title <text>', 'Quest title')
-  .requiredOption('--campaign <id>', 'Parent Campaign (Milestone) ID')
+  .requiredOption('--campaign <id>', 'Parent Campaign (Milestone) ID (use "none" to skip)')
   .option('--hours <number>', 'Estimated human hours (PERT)', parseHours)
   .option('--intent <id>', 'Sovereign Intent node that authorizes this Quest (intent:* prefix)')
   .action(async (id: string, opts: { title: string; campaign: string; hours?: number; intent?: string }) => {
@@ -90,7 +90,8 @@ program
       patch.addEdge(id, opts.intent, 'authorized-by');
 
       const sha = await patch.commit();
-      console.log(chalk.green(`[OK] Quest ${id} initialized in campaign ${opts.campaign}. Patch: ${sha}`));
+      const campaignNote = opts.campaign === 'none' ? '(no campaign)' : `in campaign ${opts.campaign}`;
+      console.log(chalk.green(`[OK] Quest ${id} initialized ${campaignNote}. Patch: ${sha}`));
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(chalk.red(`[ERROR] ${msg}`));

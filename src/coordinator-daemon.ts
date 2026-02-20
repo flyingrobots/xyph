@@ -66,12 +66,16 @@ async function main(): Promise<void> {
 
   scheduleHeartbeat();
 
+  let shuttingDown = false;
   function shutdown(): void {
+    if (shuttingDown) return;
+    shuttingDown = true;
     console.log(chalk.yellow('\n[*] Shutting down coordinator daemon...'));
     if (heartbeatTimer !== null) {
       clearTimeout(heartbeatTimer);
     }
-    process.exit(0);
+    // Allow any in-flight heartbeat to settle before exiting
+    setTimeout(() => process.exit(0), 500);
   }
 
   process.on('SIGINT', shutdown);
