@@ -7,7 +7,7 @@ All notable changes to XYPH will be documented in this file.
 ### Security
 
 **minimatch ReDoS vulnerability (CVE: GHSA-3ppc-4f35-3m26)**
-- Added npm `overrides` to force all transitive `minimatch` instances to `>=10.2.1`, patching a Regular Expression Denial of Service (ReDoS) vulnerability where patterns with many consecutive `*` wildcards cause exponential backtracking (`O(4^N)`).
+- Added npm `overrides` to force all transitive `minimatch` instances to `^10.2.1`, patching a Regular Expression Denial of Service (ReDoS) vulnerability where patterns with many consecutive `*` wildcards cause exponential backtracking (`O(4^N)`).
 - All six affected instances (via eslint, eslint-plugin-import, @eslint/config-array, @eslint/eslintrc, @typescript-eslint/typescript-estree, glob) now resolve to `minimatch@10.2.2`.
 
 ### Fixed
@@ -21,6 +21,13 @@ All notable changes to XYPH will be documented in this file.
 - Removed redundant type annotation (`no-inferrable-types`) in RebalanceService constructor.
 - Removed stale `eslint-disable no-console` directive from validatePatchOps.ts.
 - Added "own every failure" policy to CLAUDE.md — agents must fix broken things they encounter, never dismiss errors as pre-existing.
+
+**Code review — 5 CodeRabbit findings resolved**
+- *Bug*: `OrchestrationFSM.transitionToNormalize` `eventId` now uses injected `context.clock` (`now`) instead of `new Date()`, fixing non-deterministic date fragments under frozen-time test scenarios.
+- *Nit*: minimatch override tightened from `>=10.2.1` to `^10.2.1` — prevents accidental major version jumps.
+- *Nit*: `AjvPlugin` type widened to accept optional options arg and return `Ajv` instance (matches actual ajv-formats/ajv-errors Plugin signature).
+- *Nit*: `sha512` polyfill exported from `crypto.ts` and imported in `signPatchFixture.ts` — eliminates copy-paste duplication and redundant `createHash` import.
+- *Nit*: `computeDigest` parameter narrowed from `Record<string, unknown>` to `Record<string, Json>` — removes unsafe `as Json` cast, surfacing type constraint at call site.
 
 ### Added
 
