@@ -2,7 +2,9 @@
 
 All notable changes to XYPH will be documented in this file.
 
-## [1.0.0-alpha.5] - Milestone 5: WARP Dashboard TUI Overhaul
+## [1.0.0-alpha.5] - 2026-02-20
+
+### Milestone 5: WARP Dashboard TUI Overhaul
 
 ### Security
 
