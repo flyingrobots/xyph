@@ -43,6 +43,11 @@ export interface GuildSeal {
 }
 
 export class GuildSealService {
+  /**
+   * @param trustDir Absolute path to the trust directory containing keyring.json
+   *   and agent private keys. Defaults to `<cwd>/trust` — callers in non-standard
+   *   CWD contexts should pass an explicit absolute path (L-18).
+   */
   constructor(
     private readonly trustDir: string = path.resolve(process.cwd(), 'trust')
   ) {}
@@ -160,6 +165,9 @@ export class GuildSealService {
     const skFile = this.skPath(agentId);
     if (!fs.existsSync(skFile)) return null;
 
+    // KNOWN LIMITATION (L-19): Private key material stays in memory as a JS string
+    // until garbage collected. Node.js strings are immutable and cannot be zeroed.
+    // For production use, consider a native crypto module with secure memory handling.
     const privateKeyHex = fs.readFileSync(skFile, 'utf8').trim();
     const canonical = this.serializePayload(scroll);
     const digest = prefixedBlake3(canonical);

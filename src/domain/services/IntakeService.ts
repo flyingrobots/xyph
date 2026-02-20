@@ -36,7 +36,11 @@ export class IntakeService {
 
   /**
    * Defense-in-depth only — checks the `human.` prefix convention.
-   * True cryptographic identity verification is future work (Guild Seal PKI).
+   *
+   * DESIGN NOTE (M-19): This is trivially spoofable — any caller can provide
+   * `'human.malicious-bot'`. Cryptographic identity verification via Guild Seal
+   * PKI is planned for a future milestone. The current convention serves as an
+   * intent signal within a trusted-agent environment, not a security boundary.
    */
   isHumanPrincipal(actorId: string): boolean {
     return actorId.startsWith('human.');

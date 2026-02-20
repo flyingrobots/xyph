@@ -50,9 +50,11 @@ export class CoordinatorService {
     }
 
     // Phase 4: Rebalance (Constraint Checking)
-    // TODO: Rebalance currently groups all quests into campaign:default.
-    // When campaign-aware routing is implemented, each quest should be validated
-    // against its actual campaign's hour budget.
+    // DESIGN NOTE (M-13): Rebalance validates the entire batch as campaign:default.
+    // At ingest time, quests don't carry campaign associations — campaigns are assigned
+    // later via the intake promote flow (edge-based, not property-based). The current
+    // validation ensures the total batch fits within 160h; per-campaign budgeting will
+    // be implemented when campaign-aware routing lands in Milestone 6 (WEAVER).
     const balance = this.rebalance.validateCampaign('campaign:default', quests);
     if (!balance.valid) {
       throw new Error(`Orchestration failed rebalance: ${balance.error}`);

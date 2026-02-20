@@ -113,7 +113,7 @@ export function LandingView({ logoText, snapshot }: Props): ReactElement {
         <Text dimColor>Copyright © 2026 Flying Robots {'<https://github.com/flyingrobots>'}</Text>
       </Box>
 
-      {/* Hint */}
+      {/* Hint — the actual key handler lives in Dashboard.tsx (N-21: display here, logic in parent) */}
       <Box marginTop={1}>
         <Text dimColor>any key to continue</Text>
         <Text dimColor>  ·  </Text>

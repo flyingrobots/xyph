@@ -65,6 +65,9 @@ async function main() {
       .setProperty('campaign:TRIAGE', 'title', 'Milestone 3: Triage')
       .setProperty('campaign:TRIAGE', 'status', 'DONE')
       .setProperty('campaign:TRIAGE', 'type', 'campaign')
+      // KNOWN ISSUE (L-08): roadmap:ROOT is graveyarded — this edge may cause
+      // campaign:TRIAGE to be hidden or orphaned in dashboard views. A future repair
+      // script should re-parent to a live root node if one is established.
       .addEdge('campaign:TRIAGE', 'roadmap:ROOT', 'belongs-to')
       // TRG-003 was orphaned — add its missing campaign edge
       .addEdge('task:TRG-003', 'campaign:TRIAGE', 'belongs-to');

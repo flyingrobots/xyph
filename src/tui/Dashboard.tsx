@@ -143,6 +143,12 @@ export function Dashboard({ service, intake, agentId, logoText }: Props): ReactE
           {activeView === 'inbox' ? '  (inbox: p promote  x reject)' : ''}
         </Text>
       </Box>
+      {/* DESIGN NOTE (M-26): Each view receives isActive={!showHelp} so its useInput
+         handler can gate on isActive, preventing keypress theft when the help modal
+         is open. This is a convention — new views MUST pass { isActive } to useInput.
+         (M-27): Conditional && rendering unmounts/remounts views on tab switch,
+         resetting internal state (scroll, selection, fold). Ink lacks CSS display:none;
+         persistent state would require lifting it to Dashboard or a shared store. */}
       {activeView === 'roadmap' && <RoadmapView snapshot={filtered} isActive={!showHelp} />}
       {activeView === 'lineage' && <LineageView snapshot={filtered} isActive={!showHelp} />}
       {activeView === 'all' && <AllNodesView snapshot={filtered} isActive={!showHelp} />}

@@ -92,6 +92,10 @@ export class WarpRoadmapAdapter implements RoadmapPort {
          .setProperty(quest.id, 'hours', quest.hours)
          .setProperty(quest.id, 'type', quest.type);
 
+    // DESIGN NOTE (L-24): These != null guards mean we can only SET optional properties,
+    // never UNSET them. E.g., unclaiming a quest can't clear `assigned_to` — it stays
+    // stale. The WARP graph's setProperty API doesn't support deletion; a future
+    // "tombstone" or "null-value" convention would be needed to support unsetting.
     if (quest.assignedTo != null) patch.setProperty(quest.id, 'assigned_to', quest.assignedTo);
     if (quest.claimedAt != null) patch.setProperty(quest.id, 'claimed_at', quest.claimedAt);
     if (quest.completedAt != null) patch.setProperty(quest.id, 'completed_at', quest.completedAt);

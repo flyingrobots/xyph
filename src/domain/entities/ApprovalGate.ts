@@ -66,6 +66,9 @@ export class ApprovalGate {
     if ((props.status === 'APPROVED' || props.status === 'REJECTED') && props.resolvedAt === undefined) {
       throw new Error(`ApprovalGate resolvedAt is required when status is '${props.status}'`);
     }
+    // DESIGN NOTE (L-14): Only agents can request approval gates. Per Constitution
+    // Art. IV.2, agents propose changes and humans approve them. If the system evolves
+    // to allow human-initiated gates, relax this to also accept 'human.' prefix.
     if (!props.requestedBy || !props.requestedBy.startsWith('agent.')) {
       throw new Error(
         `ApprovalGate requestedBy must identify an agent (start with 'agent.'), got: '${props.requestedBy}'`
@@ -79,6 +82,9 @@ export class ApprovalGate {
     if (!Number.isFinite(props.createdAt) || props.createdAt <= 0) {
       throw new Error(`ApprovalGate createdAt must be a positive timestamp, got: ${props.createdAt}`);
     }
+    // DESIGN NOTE (L-15): resolvedAt === createdAt (instant resolution) is intentionally
+    // allowed. Automated test environments and pre-approved workflows may resolve gates
+    // within the same tick. A test in ApprovalGate.test.ts covers this boundary.
     if (props.resolvedAt !== undefined && (!Number.isFinite(props.resolvedAt) || props.resolvedAt < props.createdAt)) {
       throw new Error('ApprovalGate resolvedAt must be >= createdAt');
     }

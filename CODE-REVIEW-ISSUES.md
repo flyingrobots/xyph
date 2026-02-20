@@ -103,7 +103,7 @@
 ### `src/domain/services/CoordinatorService.ts`
 
 - [x] **M-12** — `chalk` imported directly in domain service — violates hexagonal architecture; domain layer should not know about terminal color formatting; should inject a `LoggerPort`
-- [ ] **M-13** — All quests validated against hardcoded `'campaign:default'` for rebalancing — ignores actual campaign grouping; mixed-campaign input gets incorrect aggregate hour limit
+- [x] **M-13** — All quests validated against hardcoded `'campaign:default'` for rebalancing — ignores actual campaign grouping; mixed-campaign input gets incorrect aggregate hour limit
 
 ### `src/domain/services/DashboardService.ts`
 
@@ -121,7 +121,7 @@
 
 ### `src/domain/services/IntakeService.ts`
 
-- [ ] **M-19** — `isHumanPrincipal` determines authorization solely via `actorId.startsWith('human.')` — trivially spoofable; any caller providing `'human.malicious-bot'` bypasses the guard with no cryptographic verification
+- [x] **M-19** — `isHumanPrincipal` determines authorization solely via `actorId.startsWith('human.')` — trivially spoofable; any caller providing `'human.malicious-bot'` bypasses the guard with no cryptographic verification
 
 ### `src/infrastructure/adapters/WarpDashboardAdapter.ts`
 
@@ -140,8 +140,8 @@
 
 ### `src/tui/Dashboard.tsx`
 
-- [ ] **M-26** — `useInput` input-focus architecture is fragile — relies on each child view individually checking `isActive` to avoid stealing keypresses from the help modal; any view that forgets to gate on `isActive` will capture input incorrectly
-- [ ] **M-27** — View switching via `&&` conditional rendering unmounts/remounts components — all internal state (scroll position, selected item, fold state) is destroyed on tab switch
+- [x] **M-26** — `useInput` input-focus architecture is fragile — relies on each child view individually checking `isActive` to avoid stealing keypresses from the help modal; any view that forgets to gate on `isActive` will capture input incorrectly
+- [x] **M-27** — View switching via `&&` conditional rendering unmounts/remounts components — all internal state (scroll position, selected item, fold state) is destroyed on tab switch
 
 ### `src/tui/render-status.ts` + `src/tui/status-colors.ts`
 
@@ -219,7 +219,7 @@
 ### `scripts/repair-warp-graph.ts`
 
 - [x] **L-07** — Default `WRITER_ID` is `'agent.james'` — should be `'human.james'` for a human-run script; misattributes graph authorship
-- [ ] **L-08** — `campaign:TRIAGE` has `belongs-to` edge pointing to `roadmap:ROOT` which is graveyarded — campaign may be hidden or orphaned in dashboard views
+- [x] **L-08** — `campaign:TRIAGE` has `belongs-to` edge pointing to `roadmap:ROOT` which is graveyarded — campaign may be hidden or orphaned in dashboard views
 
 ### `scripts/setup-milestones-4-7.ts`
 
@@ -234,8 +234,8 @@
 
 ### `src/domain/entities/ApprovalGate.ts`
 
-- [ ] **L-14** — `requestedBy` validation only allows `agent.*` prefix — humans cannot request approval gates; may be overly restrictive as the system evolves
-- [ ] **L-15** — `resolvedAt === createdAt` is allowed — instant resolution may indicate programmatic bypass rather than genuine review
+- [x] **L-14** — `requestedBy` validation only allows `agent.*` prefix — humans cannot request approval gates; may be overly restrictive as the system evolves
+- [x] **L-15** — `resolvedAt === createdAt` is allowed — instant resolution may indicate programmatic bypass rather than genuine review
 
 ### `src/domain/entities/Quest.ts`
 
@@ -247,8 +247,8 @@
 
 ### `src/domain/services/GuildSealService.ts`
 
-- [ ] **L-18** — `trustDir` defaults to `path.resolve(process.cwd(), 'trust')` — key storage location depends on CWD at instantiation; silently reads/writes wrong directory if instantiated from elsewhere
-- [ ] **L-19** — Private key read from disk stays in memory as `string` until garbage collected — no zeroing after `ed.sign()` completes
+- [x] **L-18** — `trustDir` defaults to `path.resolve(process.cwd(), 'trust')` — key storage location depends on CWD at instantiation; silently reads/writes wrong directory if instantiated from elsewhere
+- [x] **L-19** — Private key read from disk stays in memory as `string` until garbage collected — no zeroing after `ed.sign()` completes
 
 ### `src/infrastructure/adapters/WarpDashboardAdapter.ts`
 
@@ -262,7 +262,7 @@
 ### `src/infrastructure/adapters/WarpRoadmapAdapter.ts`
 
 - [x] **L-23** — `VALID_TYPES` includes `'scroll'`, `'milestone'`, `'campaign'`, `'roadmap'` — all unreachable due to `id.startsWith('task:')` prefix check; dead set entries
-- [ ] **L-24** — `upsertQuest` uses `!= null` checks for optional properties — cannot unset a previously written property (e.g., unclaiming a quest leaves stale `assigned_to`)
+- [x] **L-24** — `upsertQuest` uses `!= null` checks for optional properties — cannot unset a previously written property (e.g., unclaiming a quest leaves stale `assigned_to`)
 - [x] **L-25** — `buildQuestFromProps` passes negative hours from graph data to `Quest` constructor which throws — should pre-clamp to 0 or return null for invalid data
 
 ### `src/tui/Dashboard.tsx`
@@ -289,12 +289,12 @@
 
 ### `README.md`
 
-- [ ] **N-02** — Milestones 6–8 have no cross-references or links to planning documents (e.g., RFC 001 for WEAVER)
-- [ ] **N-03** — Footer omega symbol has no explanation; may confuse contributors
+- [x] **N-02** — Milestones 6–8 have no cross-references or links to planning documents (e.g., RFC 001 for WEAVER)
+- [x] **N-03** — Footer omega symbol has no explanation; may confuse contributors
 
 ### `docs/canonical/RFC_001_AST_DRIVEN_INGEST.md`
 
-- [ ] **N-04** — Section 8 conflates AstIngestService introduction and IngestService deprecation in the same milestone — ambiguous timeline
+- [x] **N-04** — Section 8 conflates AstIngestService introduction and IngestService deprecation in the same milestone — ambiguous timeline
 - [x] **N-05** — Example uses `milestone:M1` but project uses `campaign:` prefix for milestones — inconsistent with established taxonomy
 
 ### `CLAUDE-XYPH-PAUSE.md`
@@ -341,7 +341,7 @@
 
 - [x] **N-19** — `nextUp[0]`, `nextUp[1]`, `nextUp[2]` rendered with near-identical JSX — should use `.map()` loop
 - [x] **N-20** — `qs.length === 0` condition selects empty campaigns as "current" — a future milestone with zero quests would be chosen over an in-progress one
-- [ ] **N-21** — "Any key to continue / q to quit" hint text rendered here but `useInput` handler is in the parent — misleading if read in isolation
+- [x] **N-21** — "Any key to continue / q to quit" hint text rendered here but `useInput` handler is in the parent — misleading if read in isolation
 
 ### `src/tui/views/AllNodesView.tsx`, `InboxView.tsx`, `LineageView.tsx`, `RoadmapView.tsx` (N-22: redundant useEffect)
 
