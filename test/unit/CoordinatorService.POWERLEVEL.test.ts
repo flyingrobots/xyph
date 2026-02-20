@@ -96,6 +96,11 @@ describe('CoordinatorService [POWERLEVEL™]', () => {
 
       // Both quests should have been attempted
       expect(mockRoadmap.upsertQuest).toHaveBeenCalledTimes(2);
+
+      // First quest should have been upserted successfully before the failure
+      const firstQuest = vi.mocked(mockRoadmap.upsertQuest).mock.calls[0]![0] as Quest;
+      expect(firstQuest.id).toBe('task:OK-001');
+      expect(firstQuest.title).toBe('Good Quest');
     });
   });
 

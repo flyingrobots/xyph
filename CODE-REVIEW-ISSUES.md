@@ -174,12 +174,12 @@
 ### `test/unit/CoordinatorService.POWERLEVEL.test.ts`
 
 - [x] **M-38** — No test for exact rebalance boundary (161h) — only 200h and 160h are tested; cannot detect off-by-one between `>` and `>=` in `RebalanceService`
-- [ ] **M-39** — Partial-failure test asserts thrown error message but never verifies the first quest (`task:OK-001`) was actually upserted — `upsertQuest` call count not checked
+- [x] **M-39** — Partial-failure test asserts thrown error message but never verifies the first quest (`task:OK-001`) was actually upserted — `upsertQuest` call count not checked
 
 ### `test/unit/DashboardService.test.ts`
 
 - [x] **M-40** — `filterSnapshot` public method has zero test coverage — two behaviors (pass-through with `includeGraveyard: true`, filter with `false`) are never tested
-- [ ] **M-41** — "Reuses graph instance" test only checks array lengths are equal — doesn't verify `WarpGraph.open` was called once or that the same instance was returned
+- [x] **M-41** — "Reuses graph instance" test only checks array lengths are equal — doesn't verify `WarpGraph.open` was called once or that the same instance was returned
 
 ### `test/unit/IntakeService.test.ts`
 
