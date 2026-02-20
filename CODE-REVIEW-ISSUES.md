@@ -111,7 +111,7 @@
 
 ### `src/domain/services/GuildSealService.ts`
 
-- [ ] **M-15** — Duplicate `sha512` polyfill `(ed as any).hashes.sha512 = sha512` — same assignment in `crypto.ts` line 11; maintenance hazard if polyfill logic changes
+- [x] **M-15** — Duplicate `sha512` polyfill `(ed as any).hashes.sha512 = sha512` — same assignment in `crypto.ts` line 11; maintenance hazard if polyfill logic changes
 
 ### `src/domain/services/IngestService.ts`
 
@@ -187,7 +187,7 @@
 
 ### `xyph-actuator.ts`
 
-- [ ] **M-43** — `quest` command doesn't validate `task:` prefix on the `id` argument (but `inbox` command does) — allows malformed node IDs into the graph
+- [x] **M-43** — `quest` command doesn't validate `task:` prefix on the `id` argument (but `inbox` command does) — allows malformed node IDs into the graph
 - [x] **M-44** — `--suggested-by` accepts arbitrary strings — no `human.*` / `agent.*` prefix validation; path traversal strings or garbage values written directly to graph provenance
 - [x] **M-45** — `promote --intent` doesn't validate `intent:` prefix at CLI boundary — relies on adapter-layer exception with a less user-friendly error message
 
@@ -349,7 +349,7 @@
 
 ### `xyph-actuator.ts`
 
-- [ ] **N-23** — `program.parse(process.argv)` should be `program.parseAsync(process.argv)` — async action handler rejections may produce `UnhandledPromiseRejection` instead of clean error output
+- [x] **N-23** — `program.parse(process.argv)` should be `program.parseAsync(process.argv)` — async action handler rejections may produce `UnhandledPromiseRejection` instead of clean error output
 - [ ] **N-24** — `--campaign` guard and dead truthiness check on a `.requiredOption()` — `'none'` escape hatch is undocumented; success message says "initialized in campaign none" contradicting the skip behavior
 
 ### `xyph-dashboard.tsx`

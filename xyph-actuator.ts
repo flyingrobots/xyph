@@ -57,6 +57,10 @@ program
   .action(async (id: string, opts: { title: string; campaign: string; hours?: number; intent?: string }) => {
     try {
       // Validate all inputs before any async graph I/O
+      if (!id.startsWith('task:')) {
+        console.error(chalk.red(`[ERROR] Quest ID must start with 'task:' prefix, got: '${id}'`));
+        process.exit(1);
+      }
       if (!opts.intent) {
         console.error(chalk.red(
           `[CONSTITUTION VIOLATION] Quest ${id} requires --intent <id> (Art. IV — Genealogy of Intent).\n` +
