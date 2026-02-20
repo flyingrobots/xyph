@@ -157,7 +157,11 @@ export function RoadmapView({ snapshot, isActive }: Props): ReactElement {
       <Box flexDirection="column" borderStyle="round" borderColor="cyan">
         <Box paddingX={1} flexDirection="column">
           {selectedQuest !== null
-            ? <QuestDetailPanel quest={selectedQuest} snapshot={snapshot} />
+            ? <QuestDetailPanel
+                quest={selectedQuest}
+                campaignTitle={selectedQuest.campaignId !== undefined ? (snapshot.campaigns.find(c => c.id === selectedQuest.campaignId)?.title ?? selectedQuest.campaignId) : undefined}
+                intentTitle={selectedQuest.intentId !== undefined ? (snapshot.intents.find(i => i.id === selectedQuest.intentId)?.title ?? selectedQuest.intentId) : undefined}
+              />
             : <Text dimColor>(no quest selected)</Text>
           }
         </Box>

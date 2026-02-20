@@ -1,23 +1,16 @@
 import type { ReactElement } from 'react';
 import { Box, Text } from 'ink';
-import type { GraphSnapshot, QuestNode } from '../domain/models/dashboard.js';
+import type { QuestNode } from '../domain/models/dashboard.js';
 import { STATUS_COLOR } from './status-colors.js';
 
 interface Props {
   quest: QuestNode;
-  snapshot: GraphSnapshot;
+  campaignTitle?: string;
+  intentTitle?: string;
 }
 
-export function QuestDetailPanel({ quest, snapshot }: Props): ReactElement {
+export function QuestDetailPanel({ quest, campaignTitle, intentTitle }: Props): ReactElement {
   const statusColor = STATUS_COLOR[quest.status] ?? 'white';
-
-  const campaignTitle = quest.campaignId !== undefined
-    ? (snapshot.campaigns.find((c) => c.id === quest.campaignId)?.title ?? quest.campaignId)
-    : undefined;
-
-  const intentTitle = quest.intentId !== undefined
-    ? (snapshot.intents.find((i) => i.id === quest.intentId)?.title ?? quest.intentId)
-    : undefined;
 
   return (
     <Box flexDirection="column">

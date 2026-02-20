@@ -330,7 +330,7 @@
 ### `src/tui/views/AllNodesView.tsx`, `InboxView.tsx`, `LineageView.tsx`, `RoadmapView.tsx` (N-15–N-16: keys & prop drilling)
 
 - [x] **N-15** — Spacer row keys use loop index (`sp-${i}`) — incorrect under virtual scrolling; should use absolute index `sp-${clampedOffset + i}` to avoid React node reuse across scroll positions
-- [ ] **N-16** — Full `GraphSnapshot` passed to `QuestDetailPanel` just for campaign/intent title lookups — excessive prop drilling; could pass pre-resolved strings
+- [x] **N-16** — Full `GraphSnapshot` passed to `QuestDetailPanel` just for campaign/intent title lookups — excessive prop drilling; could pass pre-resolved strings
 
 ### `src/tui/views/InboxView.tsx`
 

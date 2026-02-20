@@ -68,6 +68,7 @@ All notable changes to XYPH will be documented in this file.
 **Wave 7 — Continued review fixes (CR-004)**
 - *Medium*: Extracted shared `WarpGraphHolder` helper — eliminated triplicated `getGraph()`/`initGraph()` boilerplate across Dashboard, Intake, and Roadmap adapters (M-25).
 - *Low*: Added runtime `isNeighborEntry` / `toNeighborEntries` type guard — replaced unsafe `as NeighborEntry[]` casts in all adapters with validated filtering (L-20). 10 new unit tests.
+- *Nit*: `QuestDetailPanel` no longer receives full `GraphSnapshot` — callers pre-resolve campaign/intent titles (N-16).
 
 **Wave 6 — 26 additional issues resolved (CR-003)**
 - *High*: Documented order-independent integration test design (H-10); each test now uses dedicated seed nodes.
