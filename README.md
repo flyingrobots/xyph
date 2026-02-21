@@ -22,7 +22,7 @@
 
 ## What Is XYPH?
 
-**XYPH** is a *planning compiler* where the project roadmap is a living, deterministic graph. Humans and agents collaborate by reading and writing to that graph. No server, no database, just Git.
+**XYPH** is a _planning compiler_ where the project roadmap is a living, deterministic graph. Humans and agents collaborate by reading and writing to that graph. No server, no database, just Git.
 
 ## How XYPH Works (Part I)
 
@@ -34,7 +34,7 @@ XYPH solves the **Agentic Coordination Problem**: how do autonomous agents and h
 | WARP graph (intermediate representation) | AST / IR |
 | Verified artifacts (code, docs, deployments) | Machine code |
 
-Humans decide *what* to build and *why*. Agents figure out *how* and do the work. Nobody sends messages to coordinate; instead, everyone reads and writes to the shared graph. This pattern is called **stigmergy** — coordination through the environment itself.
+Humans decide _what_ to build and _why_. Agents figure out _how_ and do the work. Nobody sends messages to coordinate; instead, everyone reads and writes to the shared graph. This pattern is called **stigmergy** — coordination through the environment itself.
 
 Everything lives in a single [**WARP graph**](https://github.com/git-stunts/git-warp) — a multi-writer CRDT graph database stored in Git. Conflicts are resolved deterministically via **Last-Writer-Wins** using Lamport timestamps. Multiple entities can work with XYPH simultaneously, deterministically, and without fear of merge conflicts.
 
@@ -77,7 +77,7 @@ Now you're all set. Let's see how we might use XYPH in our everyday workflows.
 
 #### 1. Ada Declares an Intent
 
-Every piece of work in XYPH must trace back to a human decision. Ada starts by declaring an **Intent** — a statement of *why* something should exist. Intents are the sovereign roots of all work; agents cannot create them.
+Every piece of work in XYPH must trace back to a human decision. Ada starts by declaring an **Intent** — a statement of _why_ something should exist. Intents are the sovereign roots of all work; agents cannot create them.
 
 ```bash
 export XYPH_AGENT_ID=human.ada
@@ -162,7 +162,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the full development workflow.
 
 #### 6. Hal Seals the Quest
 
-When the work is done, Hal **seals** the quest. This marks it DONE and produces a **Scroll** — a cryptographic artifact that records *what* was built, *who* built it, and *why* it was authorized:
+When the work is done, Hal **seals** the quest. This marks it DONE and produces a **Scroll** — a cryptographic artifact that records _what_ was built, _who_ built it, and _why_ it was authorized:
 
 ```bash
 npx tsx xyph-actuator.ts seal task:notif-001 \
@@ -236,7 +236,7 @@ XYPH uses a **Digital Guild** metaphor to structure collaboration:
 
 - **Quests** — individual units of work (like tickets or tasks)
 - **Campaigns** — named collections of quests (like milestones or epics)
-- **Intents** — sovereign declarations of *why* work should exist (humans only)
+- **Intents** — sovereign declarations of _why_ work should exist (humans only)
 - **Scrolls** — content-addressed artifacts produced when a quest is sealed
 - **Guild Seals** — Ed25519 cryptographic signatures proving who did the work
 - **Genealogy of Intent** — the chain from scroll → quest → campaign → intent → human, ensuring every artifact traces back to a human decision
