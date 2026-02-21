@@ -41,6 +41,13 @@ All notable changes to XYPH will be documented in this file.
 
 ### Changed
 
+**README aligned with canonical documentation**
+- Replaced "Causal Operating System for Agentic Orchestration" tagline with "The Planning Compiler for Agentic Coordination" per VISION_NORTH_STAR.md.
+- Rewrote "How XYPH Works (Part I)" — removed informal GitHub comparison, added the Planning Compiler paradigm (Source → IR → Target) and Agentic Coordination Problem framing. Added LWW conflict resolution mention.
+- Added "How XYPH Works (Part II)" sections: Digital Guild Model (Quests, Campaigns, Intents, Scrolls, Guild Seals, Genealogy of Intent), Planning Pipeline (Mermaid state diagram with fail-closed/ROLLED_BACK paths), and Policy Engine (MUST/SHOULD/COULD three-tier table).
+- Constitution section expanded from 2 articles to all 4: Law of Determinism (Art. I), Law of DAG Integrity (Art. II), Law of Provenance (Art. III), Law of Human Sovereignty (Art. IV).
+- Canonical Docs listing expanded from 5 to all 21 documents, organized into 6 categories (Vision & Governance, Architecture & Pipeline, Data & Schema, Security & Audit, Quality & Policy, RFCs).
+
 **README rewritten with progressive-disclosure walkthrough**
 - Replaced flat "Core Concepts / For Humans / For Agents" structure with a narrative walkthrough: Ada (human) and Hal (agent) build a feature together, introducing domain vocabulary (Intent, Quest, Campaign, Scroll, Guild Seal, OCP, Genealogy of Intent) inline on first use.
 - Dashboard keybindings and CLI commands moved to compact reference tables after the walkthrough.

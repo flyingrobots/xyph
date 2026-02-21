@@ -1,20 +1,24 @@
-```text
-                                                              ██████
-                                                              ██████
-   ████████  ███████████████    ███████ ██████  █████████     ██████  ██████
-     ██████ ███████   ██████    ██████  █████  ████   █████   █████ █████████
-      █████ █████      ██████  ██████   ████ ████     ██████  ████  █  ███████
-        ████████       ██████ ██████    ████ ███     ███████  ████ █   ███████
-      ███████████       █████ █████     ████████    ███████   ██████   ███████
-     ██████ ███████      ██████████     ██████████████████    ██████   ███████
-   ████████  ███████      ████████      ██████ ██████████     ██████   ███████
-                           ██████       ██████
-                          ██████        ██████
-                         ██████         ██████
+```rust
+                         .,'        ,-·-.          ,'´¨;           .,                      .·¨'`;        ,.·´¨;\
+     ,.,           ,'´  ;\        ';   ';\      ,'´  ,':\'     ,·´    '` ·.'               ';   ;'\       ';   ;::\
+     \`, '`·.    ,·' ,·´\::'\       ;   ';:\   .'   ,'´::'\'     \`; `·;·.   `·,           ;   ;::'\      ,'   ;::';
+      \:';  '`·,'´,·´::::'\:;'       '\   ';::;'´  ,'´::::;'       ;   ,'\::`·,   \'         ;  ;::_';,. ,.'   ;:::';°
+       `';'\    ,':::::;·´            \  '·:'  ,'´:::::;' '      ;   ,'::'\:::';   ';      .'     ,. -·~-·,   ;:::'; '
+         ,·´,   \:;·´    '            '·,   ,'::::::;'´        ;   ;:::;'·:.'  ,·'\'     ';   ;'\::::::::;  '/::::;
+     .·´ ,·´:\   '\                    ,'  /::::::;'  '       ';  ';: -· '´. ·'´:::'\'     ;  ';:;\;::-··;  ;::::;
+  ,·´  .;:::::'\   ';    '            ,´  ';\::::;'  '         ;  ,-·:'´:\:::::::;·'      ':,.·´\;'    ;' ,' :::/  '
+ ;    '.·'\::::;'   ,'\'               \`*ª'´\\::/'           ,'  ';::::::'\;:·'´           \:::::\    \·.'::::;
+ ;·-'´:::::\·´ \·:´:::\               '\:::::\';  '          \·.,·\;-· '´  '                \;:·´     \:\::';
+  \::::;:·'     '\;:·'´                  `*ª'´'               \::\:\                                  `·\;'
+   `*'´           '                       '                   `'·;·'                                     '
 ```
 
 # XYPH ([/ˌzɪf/](https://ipa-reader.com/?text=%CB%8Cz%C9%AAf))
-**The Causal Operating System for Agentic Orchestration**
+**The Planning Compiler for Agentic Coordination**
+
+<p align="center">
+  <img src="demo.gif" alt="XYPH TUI Dashboard Demo" width="700" />
+</p>
 
 ## What Is XYPH?
 
@@ -22,15 +26,19 @@
 
 ## How XYPH Works (Part I)
 
-XYPH is a powerful development tool that is part GitHub Issues, part GitHub Projects, part interactive documentation library, part AI orchestration framework.
+XYPH solves the **Agentic Coordination Problem**: how do autonomous agents and humans collaborate on complex work without devolving into chaos? The answer is a **Planning Compiler** — a deterministic pipeline that transforms human intent into verified artifacts, the same way a software compiler transforms source code into executables.
+
+| Planning Compiler | Software Compiler |
+|---|---|
+| Human intent, natural-language specs | Source code |
+| WARP graph (intermediate representation) | AST / IR |
+| Verified artifacts (code, docs, deployments) | Machine code |
 
 Humans decide *what* to build and *why*. Agents figure out *how* and do the work. Nobody sends messages to coordinate; instead, everyone reads and writes to the shared graph. This pattern is called **stigmergy** — coordination through the environment itself.
 
-Everything lives in a single [**WARP graph**](https://github.com/flyingrobots/aion) (specifically, [git-warp](https://github.com/git-stunts/git-warp)) — a multi-writer CRDT graph database stored in Git. That means that multiple entities can work with XYPH simultaneously, deterministically, and without fear of merge conflicts.
+Everything lives in a single [**WARP graph**](https://github.com/git-stunts/git-warp) — a multi-writer CRDT graph database stored in Git. Conflicts are resolved deterministically via **Last-Writer-Wins** using Lamport timestamps. Multiple entities can work with XYPH simultaneously, deterministically, and without fear of merge conflicts.
 
-Thanks to the foundation provided by git-warp, XYPH is offline-first, distributed, decentralized, and lives in your Git repo, with the rest of your project.
-
-Although XYPH lives in a Git repo, it’s invisible to normal Git workflows and tools, and never interacts with any Git worktrees. This means that XYPH is offline-first, distributed, works anywhere that Git can push or pull, and is built on top of the most widely-used, battle-hardened, distributed software on Earth: Git.
+XYPH is offline-first, distributed, decentralized, and lives in your Git repo alongside the rest of your project. It's invisible to normal Git workflows and tools — it never interacts with any Git worktrees. It works anywhere that Git can push or pull, built on top of the most widely-used, battle-hardened, distributed version control system on Earth.
 
 ## How To Use XYPH
 
@@ -55,9 +63,7 @@ export XYPH_AGENT_ID=human.ada    # Ada is a human
 export XYPH_AGENT_ID=agent.hal    # Hal is an agent
 ```
 
-> [!todo]
-> - Explain precedence for identity resolution
-> - Explain whoami command
+If `XYPH_AGENT_ID` is not set, it defaults to `agent.prime`.
 
 Verify everything is working:
 
@@ -72,9 +78,6 @@ Now you're all set. Let's see how we might use XYPH in our everyday workflows.
 #### 1. Ada Declares an Intent
 
 Every piece of work in XYPH must trace back to a human decision. Ada starts by declaring an **Intent** — a statement of *why* something should exist. Intents are the sovereign roots of all work; agents cannot create them.
-
-> [!todo]
-> Modernize all examples to use the new `xyph` CLI.
 
 ```bash
 export XYPH_AGENT_ID=human.ada
@@ -227,11 +230,65 @@ All commands run via `npx tsx xyph-actuator.ts <command>`.
 
 ## How XYPH Works (Part II)
 
+### The Digital Guild Model
+
+XYPH uses a **Digital Guild** metaphor to structure collaboration:
+
+- **Quests** — individual units of work (like tickets or tasks)
+- **Campaigns** — named collections of quests (like milestones or epics)
+- **Intents** — sovereign declarations of *why* work should exist (humans only)
+- **Scrolls** — content-addressed artifacts produced when a quest is sealed
+- **Guild Seals** — Ed25519 cryptographic signatures proving who did the work
+- **Genealogy of Intent** — the chain from scroll → quest → campaign → intent → human, ensuring every artifact traces back to a human decision
+
+### The Planning Pipeline
+
+The planning compiler processes work through a deterministic state machine:
+
+```mermaid
+stateDiagram-v2
+    direction LR
+    [*] --> INGEST
+    INGEST --> NORMALIZE
+    NORMALIZE --> CLASSIFY
+    CLASSIFY --> VALIDATE
+    VALIDATE --> MERGE
+    MERGE --> REBALANCE
+    REBALANCE --> SCHEDULE
+    SCHEDULE --> REVIEW
+    REVIEW --> EMIT
+    EMIT --> APPLY
+    APPLY --> DONE
+    APPLY --> ROLLED_BACK
+    INGEST --> FAILED
+    NORMALIZE --> FAILED
+    CLASSIFY --> FAILED
+    VALIDATE --> FAILED
+    MERGE --> FAILED
+    REBALANCE --> FAILED
+    SCHEDULE --> FAILED
+    REVIEW --> FAILED
+    EMIT --> FAILED
+    APPLY --> FAILED
+```
+
+Every state transition emits a typed artifact and an immutable audit record. The pipeline is **fail-closed** — if any phase fails, execution halts. Only the APPLY phase can mutate the graph, and it enforces **all-or-nothing atomicity** with automatic rollback.
+
+### The Policy Engine
+
+Every mutation is evaluated against a three-tier rule system:
+
+| Level | Behavior | Example |
+|---|---|---|
+| **MUST** | Hard reject on violation | Schema compliance, no dependency cycles, story format |
+| **SHOULD** | Warning + penalty score | Batch size ≤ 40 hours, test coverage ≥ 2 failure modes |
+| **COULD** | Optimization hint | Complexity/time match, priority distribution |
+
 ### Architecture
 
 XYPH is built using hexagonal architecture patterns. Domain models remain pure, while ports and adapters act as interfaces with the outside world.
 
-The XYPH binary, `xyph`, is a terminal command that exposes three layers of commands, and an interactive TUI dashboard. The commands that `xyph` provides fall into three access categories: **read-only**, **authorized mutations**, and **sovereign** commands.
+XYPH exposes two entry points: the `xyph-actuator.ts` CLI for graph mutations, and the `xyph-dashboard.tsx` interactive TUI. Both are executable directly (via shebang) or through `npx tsx`. The CLI commands fall into three access categories: **read-only**, **authorized mutations**, and **sovereign** commands.
 
 ```text
 src/
@@ -244,7 +301,11 @@ src/
     ├── HelpModal.tsx         # ? key help overlay
     ├── QuestDetailPanel.tsx  # Reusable quest detail panel
     ├── Scrollbar.tsx
-    ├── logos/                # ASCII art logos (1–10.txt)
+    ├── logos/                # ASCII art logos organized by family and size
+    │   ├── xyph/             #   XYPH wordmarks (small, medium, large)
+    │   ├── flyingRobotsWide/ #   Wide FLYING ROBOTS banners
+    │   ├── flyingRobotsTall/ #   Tall FLYING ROBOTS banners
+    │   └── byFlyingRobots/   #   "by FLYING ROBOTS" taglines
     └── views/
         ├── LandingView.tsx   # Startup screen with WARP stats
         ├── RoadmapView.tsx   # Campaign/quest tree with fold/unfold
@@ -273,26 +334,75 @@ xyph-dashboard.tsx  # Interactive TUI entry point
 
 ## Constitution
 
-Every mutation must obey the [CONSTITUTION.md](docs/canonical/CONSTITUTION.md). Key articles:
+Every mutation must obey the [CONSTITUTION.md](docs/canonical/CONSTITUTION.md):
 
-- **Art. II** — No cycles in the dependency graph (hard reject)
-- **Art. IV** — Every quest must have a Genealogy of Intent (sovereign `intent:` root)
-- **Art. IV.2** — Critical path changes require an ApprovalGate signed by a human
+- **Art. I — Law of Determinism** — Same input always produces same output; no silent state
+- **Art. II — Law of DAG Integrity** — No cycles in the dependency graph; every task reachable from a milestone; dependencies must complete before dependents start
+- **Art. III — Law of Provenance** — Every mutation is signed; every decision carries a rationale (≥ 10 chars) and confidence score; every patch has an inverse for rollback
+- **Art. IV — Law of Human Sovereignty** — Humans can override any agent decision; every quest must have a Genealogy of Intent; critical path changes require an ApprovalGate signed by a human
 
 ### Canonical Docs
 
 The `docs/canonical/` directory contains the foundational specifications:
 
-- [ARCHITECTURE.md](docs/canonical/ARCHITECTURE.md) — System architecture
+**Vision & Governance**
+- [VISION_NORTH_STAR.md](docs/canonical/VISION_NORTH_STAR.md) — Project vision and the Digital Guild model
+- [CONSTITUTION.md](docs/canonical/CONSTITUTION.md) — Fundamental laws (determinism, DAG integrity, provenance, sovereignty)
+- [CHANGE_CONTROL.md](docs/canonical/CHANGE_CONTROL.md) — Process for amending canonical docs
+
+**Architecture & Pipeline**
+- [ARCHITECTURE.md](docs/canonical/ARCHITECTURE.md) — Module structure and dependency rules
+- [ORCHESTRATION_SPEC.md](docs/canonical/ORCHESTRATION_SPEC.md) — Planning pipeline state machine
+- [SCHEDULING_AND_DAG.md](docs/canonical/SCHEDULING_AND_DAG.md) — DAG scheduling primitives (critical path, anti-chains, lanes)
+- [ROADMAP_PROTOCOL.md](docs/canonical/ROADMAP_PROTOCOL.md) — Task and milestone lifecycle states
+
+**Data & Schema**
 - [GRAPH_SCHEMA.md](docs/canonical/GRAPH_SCHEMA.md) — Node and edge type definitions
-- [ORCHESTRATION_SPEC.md](docs/canonical/ORCHESTRATION_SPEC.md) — Planning pipeline phases
-- [SECURITY_AND_TRUST.md](docs/canonical/SECURITY_AND_TRUST.md) — Cryptographic trust model
-- [VISION_NORTH_STAR.md](docs/canonical/VISION_NORTH_STAR.md) — Project vision
+- [DATA_CONTRACTS.md](docs/canonical/DATA_CONTRACTS.md) — Canonical data structures (Task, PlanPatch)
+- [PATCH_OPS_INVARIANTS.md](docs/canonical/PATCH_OPS_INVARIANTS.md) — Patch operation invariants
+- [PATCH_OPS_SCHEMA.json](docs/canonical/PATCH_OPS_SCHEMA.json) — PlanPatch JSON Schema
+- [APPLY_TRANSACTION_SPEC.md](docs/canonical/APPLY_TRANSACTION_SPEC.md) — Atomic mutation gate
+
+**Security & Audit**
+- [SECURITY_AND_TRUST.md](docs/canonical/SECURITY_AND_TRUST.md) — Cryptographic identity and trust model
+- [AUDIT_AND_PROVENANCE.md](docs/canonical/AUDIT_AND_PROVENANCE.md) — Provenance tracking requirements
+- [AUDIT_EVENT_SCHEMA.json](docs/canonical/AUDIT_EVENT_SCHEMA.json) — Audit record JSON Schema
+
+**Quality & Policy**
+- [POLICY_ENGINE.md](docs/canonical/POLICY_ENGINE.md) — Three-tier rule evaluation (MUST/SHOULD/COULD)
+- [AGENT_CHARTER.md](docs/canonical/AGENT_CHARTER.md) — Agent role boundaries and capabilities
+- [REVIEW_RUBRIC.md](docs/canonical/REVIEW_RUBRIC.md) — Quality gate criteria
+- [TEST_STRATEGY.md](docs/canonical/TEST_STRATEGY.md) — Testing coverage requirements
+- [OPERATIONS_RUNBOOK.md](docs/canonical/OPERATIONS_RUNBOOK.md) — Operational troubleshooting
+
+**RFCs**
+- [RFC_001_AST_DRIVEN_INGEST.md](docs/canonical/RFC_001_AST_DRIVEN_INGEST.md) — AST-based ingest proposal (Milestone 6)
+
+---
+
+## LICENSE
+
+Apache 2.0 • Copyright © 2026 James Ross
 
 ---
 
 <p align="center">
 Built with Ω¹ by <a href="https://github.com/flyingrobots">FLYING ROBOTS</a>
 </p>
+
+```rust
+.-:::::':::   .-:.     ::-.::::::.    :::.  .,-:::::/
+;;;'''' ;;;    ';;.   ;;;;';;;`;;;;,  `;;;,;;-'````'
+[[[,,== [[[      '[[,[[['  [[[  [[[[[. '[[[[[   [[[[[[/
+`$$$"`` $$'        c$$"    $$$  $$$ "Y$c$$"$$c.    "$$
+ 888   o88oo,.__ ,8P"`     888  888    Y88 `Y8bo,,,o88o
+ "MM,  """"YUMMMmM"        MMM  MMM     YM   `'YMUP"YMM
+:::::::..       ...     :::::::.      ...   :::::::::::: .::::::.
+;;;;``;;;;   .;;;;;;;.   ;;;'';;'  .;;;;;;;.;;;;;;;;'''';;;`    `
+ [[[,/[[['  ,[[     \[[, [[[__[[\.,[[     \[[,   [[     '[==/[[[[,
+ $$$$$$c    $$$,     $$$ $$""""Y$$$$$,     $$$   $$       '''    $
+ 888b "88bo,"888,_ _,88P_88o,,od8P"888,_ _,88P   88,     88b    dP
+ MMMM   "W"   "YMMMMMP" ""YUMMMP"   "YMMMMMP"    MMM      "YMmMY"
+```
 
 <sub>¹ Ω (Omega) — the final convergence point of the WARP graph; symbolizes deterministic state resolution.</sub>
