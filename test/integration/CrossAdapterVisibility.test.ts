@@ -180,14 +180,7 @@ describe('Cross-Adapter Visibility (Dashboard sees Intake mutations)', () => {
     // Second fetch — should short-circuit via hasFrontierChanged() = false
     const second = await dashboard.fetchSnapshot();
 
-    // Same data (we can't assert reference identity since the cache returns
-    // the same object, but we verify structural equality)
-    expect(second.quests.length).toBe(first.quests.length);
-    expect(second.campaigns.length).toBe(first.campaigns.length);
-    expect(second.intents.length).toBe(first.intents.length);
-    expect(second.graphMeta?.maxTick).toBe(first.graphMeta?.maxTick);
-
-    // Verify they ARE the same object reference (cache hit, not rebuild)
+    // Cache hit: second fetch returns the same object reference (no rebuild)
     expect(second).toBe(first);
   });
 });
