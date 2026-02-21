@@ -5,7 +5,7 @@ import type { GraphSnapshot, QuestNode } from '../../domain/models/dashboard.js'
 import type { IntakePort } from '../../ports/IntakePort.js';
 import { Scrollbar } from '../Scrollbar.js';
 
-const CHROME_LINES = 3;
+const DEFAULT_CHROME_LINES = 4;
 const SCROLL_MARGIN = 2;
 
 type ModalState =
@@ -28,6 +28,7 @@ interface Props {
   onMutationStart: () => void;
   onMutationEnd: () => void;
   onRefresh: () => void;
+  chromeLines?: number;
 }
 
 function parseErrorMessage(err: unknown): { code: string | null; message: string } {
@@ -47,11 +48,13 @@ export function InboxView({
   onMutationStart,
   onMutationEnd,
   onRefresh,
+  chromeLines,
 }: Props): ReactElement {
   const { stdout } = useStdout();
+  const chrome = chromeLines ?? DEFAULT_CHROME_LINES;
 
   // Proportional split: 40% list, 60% detail
-  const availableRows = (stdout.rows ?? 24) - CHROME_LINES;
+  const availableRows = (stdout.rows ?? 24) - chrome;
   const listHeight = Math.max(3, Math.floor(availableRows * 0.40));
   const detailHeight = Math.max(0, availableRows - listHeight);
 

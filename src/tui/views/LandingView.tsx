@@ -96,13 +96,13 @@ export function LandingView({ logoText, snapshot }: Props): ReactElement {
 
   return (
     <Box flexDirection="column" alignItems="center">
-      {/* Logo */}
-      <Box flexDirection="column" alignItems="center">
-        {logoLines.map((line, i) => (
-          <Box key={i} justifyContent="center">
-            <Text color="cyan">{line}</Text>
-          </Box>
-        ))}
+      {/* Logo — center as a single block to preserve internal alignment */}
+      <Box justifyContent="center">
+        <Box flexDirection="column">
+          {logoLines.map((line, i) => (
+            <Text key={i} color="cyan">{line}</Text>
+          ))}
+        </Box>
       </Box>
 
       {/* Stats panel */}

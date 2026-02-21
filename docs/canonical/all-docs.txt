@@ -1,0 +1,1104 @@
+# VISION_NORTH_STAR.md
+**Version:** 1.1.0
+**Status:** AUTHORITATIVE
+
+## 1. The Core Mission
+XYPH exists to solve the "Agentic Coordination Problem." As we move from human-led projects to agent-driven autonomous workflows, we need a substrate that ensures **Deterministic Provenance** and **Human Sovereignty**.
+
+## 2. The Planning Compiler
+XYPH treats the project roadmap not as a document, but as a program to be compiled.
+- **Source Code:** Human intent, NL prompts, and formal specs.
+- **IR (Intermediate Representation):** The WARP graph.
+- **Target:** Verified artifacts (code, docs, deployments).
+
+## 3. Digital Guild Integration (Squadron)
+XYPH formally adopts the **Digital Guild** model to govern the relationship between humans and agents:
+
+- **Genealogy of Intent:** Every task (`Quest`) must trace its lineage back to a human-signed `Intent` node. Agents cannot spawn work without a causal link to sovereign human desire.
+- **Pipeline Ceremonies:** State transitions (e.g., Backlog -> In Progress) are formal ceremonies requiring specific cryptographic seals and validation protocols.
+- **Guild Scrolls:** The output of every quest is a `Scroll` (Artifact). These are stored in the graph as content-addressed nodes, signed with the `Guild Seal` of the executing agent.
+- **Consensual Labor:** The Optimistic Claiming Protocol (OCP) ensures that work is volunteered, not assigned. Agents choose quests based on their charter and capability, and consensus is reached post-materialization.
+
+## 4. The End State
+A world where "Building a Company" or "Launching a Product" is as deterministic as compiling a C++ binary. The roadmap evolves autonomously, but always within the bounds of human-defined laws (The Constitution).
+# ARCHITECTURE
+
+## Modules
+- ingest
+- normalize
+- classify
+- merge
+- rebalance
+- schedule
+- emit
+- policy-engine
+- graph-core
+- audit-log
+- review-gate
+
+## Dependency Law
+Pipeline modules may depend on graph-core, policy-engine, and schemas.
+No module may depend on UI adapters for core logic.
+
+## Data Flow
+raw_docs -> ingest -> normalized_tasks -> classified_tasks -> merged_plan
+-> rebalanced_plan -> schedule_artifacts -> emitted_patch
+
+## Boundary Rules
+- LLMs can propose transformations but cannot commit mutations.
+- Storage adapters are replaceable; contracts are not.
+# CONSTITUTION OF THE PLANNING COMPILER
+**Version:** 1.0.0
+**Enforcement:** HARD REJECT
+
+## ARTICLE I: THE LAW OF DETERMINISM
+1.1. **Idempotency:** Given the same Input State ($S_0$) and Policy Set ($P$), the system MUST produce the exact same Plan Artifact ($A$).
+1.2. **No Silent State:** All decision variables must be explicit in the input or configuration. Hidden "temperature" or random seeds are forbidden in the write path.
+
+## ARTICLE II: THE LAW OF DAG INTEGRITY
+2.1. **Acyclicity:** The Task Graph must be a Directed Acyclic Graph. Any write that introduces a cycle ($A 	o B 	o A$) is malformed and MUST be rejected at the Ingest gate.
+2.2. **Reachability:** Every Task must belong to a Milestone. Orphan tasks are invalid state.
+2.3. **Causality:** A Task cannot start until all its `blockedBy` dependencies are in a terminal state (DONE/SKIPPED).
+
+## ARTICLE III: THE LAW OF PROVENANCE
+3.1. **Signed Mutations:** No state change occurs without a `PlanPatch` object signed by an Actor (Human or Authorized Agent).
+3.2. **Rationale Requirement:** Every mutation (add/move/delete) MUST include a `rationale` string of >10 characters explaining the "Why."
+3.3. **Reversibility:** Every `PlanPatch` implies an inverse `RollbackPatch`. The system must be able to compute this inverse automatically.
+
+## ARTICLE IV: THE LAW OF HUMAN SOVEREIGNTY
+4.1. **The Kill Switch:** A human Approver can override ANY agent decision.
+4.2. **Approval Gates:** Any patch that alters the `Critical Path` or increases `Total Scope` by >5% requires explicit human sign-off.
+# POLICY ENGINE
+
+## Rule Tiers
+- **MUST**: hard reject on violation (Compiler Error)
+- **SHOULD**: warning + penalty score (Compiler Warning)
+- **COULD**: optimization hints (Linter Hint)
+
+## Evaluation Order
+1. Contract validity
+2. DAG integrity
+3. Capacity constraints
+4. Rebalance rules
+5. Emission constraints
+
+## LEVEL 1: MUST (Compiler Errors)
+1. **Schema Compliance**: Payload must validate against `Task Schema v1.0`.
+2. **Milestone Existence**: `milestoneId` must exist in the active Roadmap.
+3. **No Self-References**: A task cannot appear in its own `blockedBy` array.
+4. **Story Format**: `userStory` must strictly follow the "As a/I want/So that" regex.
+
+## LEVEL 2: SHOULD (Compiler Warnings)
+5. **Small Batch Size**: `estimates.humanHours` SHOULD be <= 40 hours.
+6. **Test Coverage**: `testPlan.failureModes` SHOULD contain at least 2 entries.
+7. **Dependency Depth**: A task SHOULD NOT have a dependency chain depth > 5.
+
+## LEVEL 3: COULD (Linter Hints)
+8. **Complexity/Time Match**: If `complexity` is "XL", `humanHours` COULD be > 80.
+9. **Priority Distribution**: A Milestone COULD ensure <30% of tasks are "P0".
+# DATA CONTRACTS
+
+## Versioning
+All payloads MUST include `schemaVersion`.
+
+## Task (required)
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Canonical Task Entity",
+  "type": "object",
+  "required": [
+    "id",
+    "schemaVersion",
+    "title",
+    "userStory",
+    "status",
+    "milestoneId",
+    "estimates",
+    "graph"
+  ],
+  "properties": {
+    "schemaVersion": { "type": "string", "const": "v1.0" },
+    "id": { "type": "string", "pattern": "^TASK-[A-Z0-9]{4,10}$" },
+    "title": { "type": "string", "maxLength": 120 },
+    "userStory": { "type": "string", "pattern": "^As a .+, I want .+, so that .+$" },
+    "status": { "type": "string", "enum": ["BACKLOG", "PLANNED", "IN_PROGRESS", "BLOCKED", "DONE", "WONT_DO"] },
+    "milestoneId": { "type": "string", "pattern": "^MILE-[A-Z0-9]+$" },
+    "estimates": {
+      "type": "object",
+      "required": ["complexity", "humanHours"],
+      "properties": {
+        "complexity": { "type": "string", "enum": ["XS", "S", "M", "L", "XL"] },
+        "humanHours": { "type": "number", "minimum": 0.5, "maximum": 160 },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "graph": {
+      "type": "object",
+      "required": ["blockedBy", "blocking"],
+      "properties": {
+        "blockedBy": { "type": "array", "items": { "type": "string" } },
+        "blocking": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}
+```
+
+## PlanPatch
+- id
+- createdAt
+- actor
+- operations[]
+- summary
+- riskScore
+- confidenceScore
+- requiresApproval (bool)
+# AGENT CHARTER
+**Version:** 1.0.0
+**Enforcement:** HARD BOUNDARY VIOLATION = IMMEDIATE REJECT
+
+## Agent Roster & Scopes
+
+### 1. Parser Agent (Ingest → Normalize)
+- **Input**: Raw Markdown/YAML strings or file refs
+- **Output**: Array of raw Task v1.0 objects
+- **Forbidden**: State mutation, adding estimates, rewriting stories
+
+### 2. Planner Agent (Classify → Merge)
+- **Input**: Normalized Tasks
+- **Output**: Tasks with milestoneId + tentative blockedBy/blocking
+- **Forbidden**: Set estimates, create new milestones
+
+### 3. Graph Agent (Rebalance → Schedule)
+- **Input**: Merged plan graph
+- **Output**: Annotated DAG + Scheduled Artifacts
+- **Forbidden**: Change stories, priorities, or criteria; emit PlanPatch directly
+
+### 4. QA Agent (Review Gate)
+- **Input**: Emitted PlanPatch
+- **Output**: Review findings (MUST/SHOULD/COULD checklist)
+- **Forbidden**: Modify the patch, suppress MUST violations
+
+### 5. Coordinator Agent (Triage, Janitor, Rebalancer)
+- **Input**: Graph frontier changes + heartbeat stream
+- **Forbidden**: Claim tasks for itself, execute work
+
+### 6. Worker Agent (Specialized execution)
+- **Identity**: `agent:<skill>-<uuid>`
+- **MUST**: Use optimistic claim → verify ownership post-materialize → perform work
+- **Forbidden**: Touch any task they do not own, alter estimates
+# APPLY_TRANSACTION_SPEC.md
+**Title:** Apply Transaction Spec  
+**Version:** 1.0.0  
+**Status:** ACTIVE  
+**Enforcement:** HARD REJECT  
+**Scope:** Defines exactly how a `PlanPatchArtifact` mutates roadmap state atomically.
+
+---
+
+## 1) Purpose
+
+`APPLY` is the only write gate in the planning compiler.  
+This spec defines:
+
+- atomicity rules,
+- optimistic concurrency rules,
+- rollback guarantees,
+- receipt format,
+- failure semantics.
+
+If this section is ambiguous, the system is nondeterministic. If it’s nondeterministic, it’s broken.
+
+---
+
+## 2) Transaction Model
+
+### 2.1 Unit of work
+
+A single apply transaction consists of:
+
+1. `precondition` check (snapshot + approvals + signature)
+2. ordered execution of `operations[]`
+3. postcondition verification
+4. commit of new snapshot + append-only receipt
+
+This is all-or-nothing.
+
+### 2.2 Atomicity contract
+
+- Either every operation in `operations[]` is applied and committed
+- Or zero durable state changes are visible after transaction end
+
+No half-commits.
+No “mostly worked.”
+No vibes-based success.
+
+---
+
+## 3) Inputs
+
+### 3.1 Required input artifact
+
+`PlanPatchArtifact` must include:
+
+- `schemaVersion = v1.0`
+- `patchId`
+- `runId`
+- `baseSnapshotDigest`
+- `operations[]` (ordered, deterministic)
+- `rollbackOperations[]` (ordered inverse)
+- `approvals` envelope
+- `signature` envelope
+- `policyPackRef`
+- `configRef`
+
+### 3.2 Preconditions (all mandatory)
+
+1. **Snapshot match**  
+   `currentSnapshotDigest == baseSnapshotDigest`  
+   else exit code `14` (concurrency drift).
+
+2. **Approval gate satisfied**  
+   If review says approval required, approvers and signatures must validate  
+   else exit code `12`.
+
+3. **Trust gate satisfied**  
+   Signature/key validity must pass trust policy  
+   else exit code `13`.
+
+4. **Patch integrity**  
+   Hash of canonical patch body must match signed digest  
+   else exit code `13`.
+
+---
+
+## 4) Operation Semantics
+
+### 4.1 Allowed op types (closed set)
+
+- `ADD_TASK`
+- `UPDATE_TASK`
+- `DELETE_TASK`
+- `MOVE_TASK_MILESTONE`
+- `LINK_DEPENDENCY`
+- `UNLINK_DEPENDENCY`
+- `ADD_MILESTONE`
+- `UPDATE_MILESTONE`
+- `DELETE_MILESTONE`
+
+Any unknown op => hard fail (`16`).
+
+### 4.2 Deterministic ordering
+
+Operations MUST be sorted by canonical tuple:
+
+`(phase, entityType, entityId, fieldPath, opIndex)`
+
+Runtime reordering is forbidden.
+
+### 4.3 Referential integrity
+
+During apply:
+
+- dependencies must reference existing tasks
+- deletions must not leave dangling refs
+- milestones referenced by tasks must exist
+
+Violation => transaction abort, no commit (`11` or `10` based on rule source).
+
+---
+
+## 5) Execution Algorithm
+
+### 5.1 Canonical steps
+
+1. Acquire namespace apply lock.
+2. Re-read live snapshot digest.
+3. Validate preconditions.
+4. Start DB/storage transaction (`TXN`).
+5. Apply operations in order.
+6. Validate postconditions:
+   - schema validity
+   - DAG acyclicity
+   - milestone reachability
+7. Compute `newSnapshotDigest`.
+8. Persist snapshot + append `ApplyReceipt`.
+9. Commit `TXN`.
+10. Release lock.
+
+If any step fails before commit: rollback `TXN`.
+
+---
+
+## 6) Rollback Model
+
+### 6.1 Automatic rollback
+
+If failure occurs after partial in-memory application but before durable commit:
+- storage transaction rollback handles revert (primary path).
+
+### 6.2 Compensating rollback
+
+If failure occurs after an external side effect (should be avoided, but reality bites):
+- apply `rollbackOperations[]` as compensating patch
+- emit `ROLLED_BACK` terminal receipt
+- exit code `17` or `18` if compensation fails
+
+### 6.3 Rollback validity
+
+`rollbackOperations[]` must be precomputed and validated at `EMIT`, not invented during panic mode.
+
+---
+
+## 7) Locking + Concurrency
+
+### 7.1 Namespace lock
+
+Only one `APPLY` may run per roadmap namespace at a time.
+
+### 7.2 Timeout
+
+Default lock wait: 5s.  
+Exceeded lock wait => fail with `15`.
+
+### 7.3 Idempotency key
+
+`patchId` acts as idempotency key:
+- if same `patchId` already committed, return prior receipt (do not reapply).
+
+---
+
+## 8) Postconditions
+
+A successful `APPLY` MUST guarantee:
+
+1. new snapshot persisted
+2. immutable apply receipt persisted
+3. provenance chain continuity (`prevReceiptDigest -> currentReceiptDigest`)
+4. observably consistent state for subsequent reads
+
+Any missing condition => treated as failed apply.
+
+---
+
+## 9) Apply Receipt Contract
+
+```json
+{
+  "schemaVersion": "v1.0",
+  "receiptId": "APPLY-20260215-ABC123",
+  "runId": "RUN-20260215-ABC123",
+  "patchId": "PATCH-20260215-ABC123",
+  "status": "COMMITTED",
+  "timestamp": "2026-02-15T23:59:59Z",
+  "baseSnapshotDigest": "blake3:...",
+  "newSnapshotDigest": "blake3:...",
+  "operationsApplied": 27,
+  "durationMs": 842,
+  "exitCode": 0,
+  "policyPackRef": "POLICY-STRICT-ENG-v1",
+  "configRef": "CFG-PROD-v3",
+  "signatureVerified": true,
+  "approvalVerified": true,
+  "receiptDigest": "blake3:...",
+  "prevReceiptDigest": "blake3:..."
+}
+```
+
+If non-commit path:
+- status in ["ABORTED","ROLLED_BACK","FAILED"]
+- include failure block with code, message, failedOperationIndex (if applicable).
+
+---
+
+## 10) Exit Code Map (Apply-specific)
+- 0  committed
+- 10 validation failure (referential integrity / MUST rule)
+- 11 DAG integrity failure (dangling ref, cycle)
+- 12 approval failure
+- 13 signature/trust failure
+- 14 snapshot drift/concurrency mismatch
+- 15 lock timeout / budget timeout
+- 16 unknown op type / state corruption (Line 100)
+- 17 partial apply risk, rollback attempted (Line 154)
+- 18 rollback failed (critical) (Line 156)
+
+---
+
+## 11) Safety Rules
+1. No side-effecting integrations inside APPLY (email/webhooks/agent calls). Emit event; let async consumers react after commit.
+2. No dynamic policy loading mid-transaction. Policy/config refs are frozen from run start.
+3. No best-effort writes. Either committed receipt or explicit failed receipt.
+
+---
+
+## 12) Validation Checklist (CI Gate)
+
+apply-spec-check MUST assert:
+- all op types are known
+- patch hash matches signature envelope
+- rollback ops exist and are invertible
+- referential integrity passes pre + post
+- DAG acyclicity passes post-apply
+- idempotency key behavior proven
+- failure at each operation index rolls back correctly
+- receipt chain hash linkage validated
+
+Any unchecked box => reject merge.
+
+---
+
+## 13) Non-Negotiable Reject Triggers
+1. Attempt to apply with missing baseSnapshotDigest
+2. Missing or invalid rollbackOperations[]
+3. Unsatisfied approval gate for critical-path/scope-expanding changes
+4. Signature unverifiable against trust root
+5. Post-apply DAG cycle
+6. Receipt not persisted atomically with snapshot
+# AUDIT AND PROVENANCE
+
+## Required Fields
+- operationId
+- actor (human|agent)
+- phase
+- inputDigest
+- outputDigest
+- beforeSnapshotRef
+- afterSnapshotRef
+- rationale
+- confidence
+- timestamp
+
+## Diff Standard
+All plan-changing operations MUST include structured before/after diffs.
+
+## Rollback
+Every accepted PlanPatch MUST reference inverse operations or snapshot rollback target.
+# CHANGE CONTROL
+
+## Purpose
+Prevents silent drift of foundational laws.
+
+## Proposal Format
+- Rationale for change.
+- Impact analysis on existing contracts.
+- Link to PR with doc updates.
+
+## Review Quorum
+- Requires Human Approver signature.
+- Major changes require 2 independent reviews.
+# GRAPH_SCHEMA.md
+**Version:** 1.0.0
+**Status:** AUTHORITATIVE
+
+## 1. Node ID Grammar
+Every node ID MUST follow the `prefix:identifier` format.
+- **Prefix:** Lowercase string from the allowed taxonomy.
+- **Identifier:** Case-preserving alphanumeric string (dashes and underscores allowed).
+
+Example: `task:BDK-001`, `campaign:BEDROCK`
+
+## 2. Prefix Taxonomy
+| Prefix | Purpose | Example |
+|--------|---------|---------|
+| `roadmap` | The root container of all work. | `roadmap:ROOT` |
+| `campaign` | High-level milestones or epochs. | `campaign:BEDROCK` |
+| `feature` | Groups of related tasks. | `feature:BDK-SCHEMA` |
+| `task` | Granular unit of work (Quest). | `task:BDK-001` |
+| `artifact` | Output of a completed task (Scroll). | `artifact:task:BDK-001` |
+| `spec` | Formal requirement or design doc. | `spec:GRAPH-SCHEMA` |
+| `person` | Human participant. | `person:james` |
+| `agent` | Digital mind participant. | `agent:james` |
+
+## 3. Edge Type Semantics
+| Type | Direction | Meaning |
+|------|-----------|---------|
+| `belongs-to` | Task → Campaign | Hierarchy: Quest is part of a Milestone. |
+| `blocks` | A → B | Dependency: A must finish before B starts. |
+| `depends-on` | B → A | Inverse dependency: B requires A. |
+| `implements` | Code → Spec | Traceability: This logic fulfills that requirement. |
+| `fulfills` | Artifact → Task | Completion: This scroll is the result of that quest. |
+| `documents` | Doc → Node | Context: This file explains that node. |
+
+## 4. Conflict Resolution (LWW)
+XYPH uses **Last-Writer-Wins (LWW)** for all node properties.
+The winner is determined by:
+1. Higher Lamport timestamp.
+2. Tie-break: Lexicographically greater `writerId`.
+3. Tie-break: Greater patch SHA.
+
+## 5. Non-Examples (Invalid)
+- `BDK-001`: Missing prefix.
+- `TASK:BDK-001`: Uppercase prefix.
+- `task:`: Empty identifier.
+- `unknown:ID`: Prefix not in taxonomy.
+# OPERATIONS RUNBOOK
+
+## Common Failure Signatures
+- `E_MERGE_CYCLE`: Dependency loop in graph.
+- `E_INGEST_PARSE`: Invalid input format.
+- `E_CAPACITY_OVERFLOW`: Milestone too heavy for assigned lanes.
+
+## Triage Steps
+1. Identify the failing phase in `orchestration.log`.
+2. Inspect the input artifact digest.
+3. Check policy engine strict mode settings.
+
+## Recovery
+- **Rollback**: Use `git mind at <ref>` to revert to last stable snapshot.
+- **Manual Intervention**: Fix YAML and re-ingest.
+# ORCHESTRATION_SPEC.md
+**Title:** Planning Compiler Orchestration Spec  
+**Version:** 1.0.0  
+**Status:** ACTIVE  
+**Enforcement:** HARD (state transitions are validated, not inferred)
+
+---
+
+## 0) Mission
+
+Define the deterministic state machine that transforms raw planning input into an auditable, schedulable plan patch.
+
+Pipeline:
+
+`INGEST -> NORMALIZE -> CLASSIFY -> VALIDATE -> MERGE -> REBALANCE -> SCHEDULE -> REVIEW -> EMIT -> APPLY`
+
+No skipping states.  
+No direct writes outside `APPLY`.
+
+---
+
+## 1) Global Invariants
+
+1. **Deterministic Execution:**  
+   Same `InputBundle + PolicyPack + Config + ModelProfile` must yield same `PlanArtifactDigest`.
+
+2. **Single Mutation Gate:**  
+   Only `APPLY` may mutate persistent roadmap state.
+
+3. **Typed Artifacts:**  
+   Every state emits one typed artifact with `schemaVersion`.
+
+4. **Monotonic Provenance:**  
+   Every transition appends one `AuditRecord`; no overwrite.
+
+5. **Fail-Closed:**  
+   Unknown state, unknown transition, or missing artifact => hard fail.
+
+---
+
+## 2) Artifact Contracts by State
+
+### 2.1 InputBundle (entry artifact)
+```json
+{
+  "schemaVersion": "v1.0",
+  "inputId": "INP-20260215-001",
+  "sourceRefs": ["roadmap.md", "backlog.json", "notes.txt"],
+  "rawItems": [],
+  "policyPackRef": "POLICY-STRICT-ENG-v1",
+  "configRef": "CFG-PROD-v3",
+  "requestedBy": "human:james"
+}
+```
+
+### 2.2 State outputs
+- INGEST -> IngestArtifact
+- NORMALIZE -> NormalizedArtifact
+- CLASSIFY -> ClassifiedArtifact
+- VALIDATE -> ValidationArtifact
+- MERGE -> MergedPlanArtifact
+- REBALANCE -> RebalancedPlanArtifact
+- SCHEDULE -> ScheduleArtifact
+- REVIEW -> ReviewArtifact
+- EMIT -> PlanPatchArtifact
+- APPLY -> ApplyReceiptArtifact
+
+All artifacts MUST include:
+- schemaVersion
+- runId
+- state
+- createdAt
+- inputDigest
+- outputDigest
+
+---
+
+## 3) Finite State Machine
+
+### 3.1 State list (closed set)
+1. INGEST
+2. NORMALIZE
+3. CLASSIFY
+4. VALIDATE
+5. MERGE
+6. REBALANCE
+7. SCHEDULE
+8. REVIEW
+9. EMIT
+10. APPLY
+11. DONE
+12. FAILED
+13. ROLLED_BACK (reachable only from APPLY failure with partial mutation risk)
+
+---
+
+### 3.2 Allowed transitions
+- INGEST -> NORMALIZE | FAILED
+- NORMALIZE -> CLASSIFY | FAILED
+- CLASSIFY -> VALIDATE | FAILED
+- VALIDATE -> MERGE | FAILED
+- MERGE -> REBALANCE | FAILED
+- REBALANCE -> SCHEDULE | FAILED
+- SCHEDULE -> REVIEW | FAILED
+- REVIEW -> EMIT | FAILED
+- EMIT -> APPLY | FAILED
+- APPLY -> DONE | FAILED | ROLLED_BACK
+- FAILED -> (terminal)
+- DONE -> (terminal)
+- ROLLED_BACK -> (terminal)
+
+Any other transition is invalid and MUST be rejected.
+
+---
+
+## 4) Entry/Exit Criteria per State
+
+### 4.1 INGEST
+Entry requires: valid InputBundle
+Actions:
+- parse source refs
+- canonicalize encodings/newlines
+- attach deterministic source ordering
+- compute inputDigest
+Exit requires:
+- non-empty rawItems
+- parse errors <= policy threshold (default: 0 for strict)
+Failure reasons:
+- unreadable source
+- malformed input encoding
+- duplicate input IDs
+
+---
+
+### 4.2 NORMALIZE
+Entry requires: IngestArtifact
+Actions:
+- map raw items into canonical entities (Task/Milestone/Edge candidates)
+- normalize IDs and enums
+- trim/clean text fields deterministically
+Exit requires:
+- all entities schema-valid (or marked rejected with reason)
+- no untyped entity
+Failure reasons:
+- invalid schema version
+- unrecoverable entity parse
+
+---
+
+### 4.3 CLASSIFY
+Entry requires: NormalizedArtifact
+Actions:
+- classify intent (feature/bug/refactor/ops/research)
+- infer rough complexity if missing (tagged as inferred)
+- tag risk + confidence
+Exit requires:
+- each task has class + confidence
+- inference provenance recorded
+Failure reasons:
+- classifier unavailable beyond timeout budget
+- missing mandatory classification outputs
+
+---
+
+### 4.4 VALIDATE
+Entry requires: ClassifiedArtifact
+Actions:
+- run MUST/SHOULD/COULD policy checks
+- run DAG precheck (self-ref, missing refs, cycle probe)
+- resolve milestone existence
+Exit requires:
+- zero MUST violations
+- warnings emitted with remediation
+Failure reasons:
+- MUST violation
+- unresolved milestone
+- self dependency / cycle
+
+---
+
+### 4.5 MERGE
+Entry requires: ValidationArtifact with zero MUST failures
+Actions:
+- merge candidates with current roadmap snapshot
+- detect collisions (ID/title/semantic overlap)
+- create explicit merge ops (ADD, UPDATE, LINK, SPLIT)
+Exit requires:
+- deterministic op ordering
+- no conflicting ops on same field without resolution rule
+Failure reasons:
+- unresolved conflicting updates
+- snapshot mismatch
+
+---
+
+### 4.6 REBALANCE
+Entry requires: MergedPlanArtifact
+Actions:
+- enforce capacity budgets (team, sprint, milestone)
+- split oversized tasks per policy
+- shift non-critical work out of overloaded windows
+Exit requires:
+- capacity constraints satisfied
+- total scope delta recorded
+Failure reasons:
+- impossible capacity fit
+- rebalance violates MUST rules
+
+---
+
+### 4.7 SCHEDULE
+Entry requires: RebalancedPlanArtifact
+Actions:
+- build DAG
+- compute topological ordering
+- derive critical path + parallel lanes
+- assign planned windows
+Exit requires:
+- acyclic graph proof
+- schedule artifact with critical path report
+Failure reasons:
+- cycle detected
+- unschedulable dependencies
+
+---
+
+### 4.8 REVIEW
+Entry requires: ScheduleArtifact
+Actions:
+- produce human-readable diff + risk summary
+- evaluate approval requirements:
+  - critical path changed?
+  - scope increased >5%?
+- assign required approvers
+Exit requires:
+- approvalRequired boolean
+- if required: approver set resolved
+Failure reasons:
+- unresolved approver identity
+- missing risk summary
+
+---
+
+### 4.9 EMIT
+Entry requires: ReviewArtifact
+Actions:
+- generate PlanPatchArtifact (ordered operations)
+- generate RollbackPatchArtifact
+- sign artifact envelope (agent/human signature policy)
+Exit requires:
+- patch + rollback patch hash-linked
+- all ops reference valid entities
+Failure reasons:
+- unsigned patch when required
+- rollback cannot be generated
+
+---
+
+### 4.10 APPLY
+Entry requires: PlanPatchArtifact, approvals satisfied
+Actions:
+- optimistic concurrency check against roadmap snapshot
+- apply operations atomically
+- emit apply receipt
+Exit requires:
+- commit success + new snapshot digest
+- immutable audit chain entry
+Failure reasons:
+- snapshot drift
+- partial apply risk (must trigger rollback path)
+- signature verification failure
+
+---
+
+## 5) Retry, Timeout, and Budget Policy
+
+### 5.1 Retry classes
+1. Deterministic/logic failures: no retry (FAILED immediately)
+2. Transient infra failures: retry up to 2 times
+3. External model timeout: 1 retry with same deterministic config; if still fail -> FAILED
+
+### 5.2 Time budgets (default strict)
+- INGEST: 5s
+- NORMALIZE: 10s
+- CLASSIFY: 20s
+- VALIDATE: 5s
+- MERGE: 10s
+- REBALANCE: 10s
+- SCHEDULE: 10s
+- REVIEW: 5s
+- EMIT: 5s
+- APPLY: 5s
+
+Over-budget => fail with timeout code.
+
+---
+
+## 6) Exit Codes
+- 0 = DONE (success)
+- 10 = validation failure (MUST rule violated)
+- 11 = DAG integrity failure
+- 12 = approval missing/invalid
+- 13 = signature/trust failure
+- 14 = concurrency/snapshot drift
+- 15 = timeout budget exceeded
+- 16 = unknown transition/state corruption
+- 17 = apply partial failure (rollback attempted)
+- 18 = rollback failure (critical incident)
+
+---
+
+## 7) Audit Requirements per Transition
+
+Every transition MUST emit:
+
+```json
+{
+  "schemaVersion": "v1.0",
+  "runId": "RUN-...",
+  "fromState": "NORMALIZE",
+  "toState": "CLASSIFY",
+  "actor": { "type": "agent", "id": "planner" },
+  "timestamp": "2026-02-15T23:04:05Z",
+  "inputDigest": "blake3:...",
+  "outputDigest": "blake3:...",
+  "decisionSummary": "Classified 42 tasks",
+  "violations": [],
+  "warnings": [],
+  "durationMs": 1842
+}
+```
+
+No audit record = invalid run.
+
+---
+
+## 8) Concurrency Model
+- Single active APPLY per roadmap namespace.
+- Parallel runs allowed through SCHEDULE, but APPLY requires snapshot match.
+- Snapshot drift at APPLY returns exit code 14 and suggests rebase/re-run from MERGE.
+
+---
+
+## 9) Safety Modes
+
+### 9.1 Simulation Mode
+- Executes full pipeline through EMIT
+- Never enters APPLY
+- Produces hypothetical patch + risk report
+
+### 9.2 Safe Mode
+- Disables auto-splitting and auto-rebalance shifts
+- Only deterministic validations + explicit human-confirmed ops
+
+---
+
+## 10) Mermaid State Diagram
+
+```mermaid
+stateDiagram-v2
+    [*] --> INGEST
+    INGEST --> NORMALIZE: ok
+    INGEST --> FAILED: fail
+
+    NORMALIZE --> CLASSIFY: ok
+    NORMALIZE --> FAILED: fail
+
+    CLASSIFY --> VALIDATE: ok
+    CLASSIFY --> FAILED: fail
+
+    VALIDATE --> MERGE: must_pass
+    VALIDATE --> FAILED: must_fail
+
+    MERGE --> REBALANCE: ok
+    MERGE --> FAILED: fail
+
+    REBALANCE --> SCHEDULE: ok
+    REBALANCE --> FAILED: fail
+
+    SCHEDULE --> REVIEW: ok
+    SCHEDULE --> FAILED: fail
+
+    REVIEW --> EMIT: approvals_resolved
+    REVIEW --> FAILED: fail
+
+    EMIT --> APPLY: signed_patch
+    EMIT --> FAILED: fail
+
+    APPLY --> DONE: committed
+    APPLY --> FAILED: fail
+    APPLY --> ROLLED_BACK: partial_apply
+
+    DONE --> [*]
+    FAILED --> [*]
+    ROLLED_BACK --> [*]
+```
+
+---
+
+## 11) Non-Negotiable Rejection Triggers
+1. Missing schemaVersion in any artifact
+2. Transition attempted not in allowed transition table
+3. MUST rule violation ignored
+4. Unsatisfied approval gate entering APPLY
+5. Missing rollback patch at EMIT
+6. Audit record omission at any state
+7. Direct state mutation attempted outside APPLY
+
+---
+
+## 12) Implementation Notes
+- Use a closed enum for states and transition map in code.
+- Drive orchestration with pure functions:
+  - `next(state, artifact, context) -> {state, artifact, audit}`
+- Keep effectful operations (I/O, signatures, persistence) behind adapters.
+- Hash algorithm should be stable + explicit (blake3 recommended).
+# PATCH_OPS_INVARIANTS.md
+
+Version: 1.0.0
+Status: HARD REJECT
+
+## Invariants beyond JSON Schema
+
+1. operations.length MUST equal rollbackOperations.length.
+
+2. rollbackOperations[i].revertsOpId MUST reference operations[(n-1)-i].opId
+   (strict reverse ordering).
+
+3. For each operation op:
+   - rollback op must match op.invertibility.inverseOpType
+   - rollback path must match op.invertibility.inversePath
+   - rollback value must deep-equal op.invertibility.inverseValue
+
+4. Canonical sort check:
+   operations[] must already be sorted by:
+   (phase, entityType, entityId, path, opId)
+   If not sorted -> reject; do not auto-sort during APPLY.
+
+5. No duplicate opId in operations[] or rollbackOperations[].
+
+6. LINK_DEPENDENCY:
+   edge.fromTaskId != edge.toTaskId
+   and edge must not already exist in target snapshot.
+
+7. UNLINK_DEPENDENCY:
+   referenced edge must exist in target snapshot.
+
+8. MOVE_TASK_MILESTONE:
+   destination milestone must exist at evaluation time.
+
+9. DELETE_MILESTONE:
+   no surviving TASK may reference that milestone post-transaction.
+
+10. UPDATE_TASK/UPDATE_MILESTONE:
+    precondition.expectedHash must equal current entity hash before mutation.
+
+11. Signature coverage:
+    signature.payloadDigest must be computed over canonicalized patch body
+    excluding signature object itself.
+
+12. Idempotency:
+    patchId MUST be globally unique per namespace; second apply returns prior receipt.
+
+13. Rationale floor:
+    metadata.rationale length >= 11 and each operation.rationale length >= 11
+    for non-system actors.
+# POLICY ENGINE
+
+## Rule Tiers
+- **MUST**: hard reject on violation (Compiler Error)
+- **SHOULD**: warning + penalty score (Compiler Warning)
+- **COULD**: optimization hints (Linter Hint)
+
+## Evaluation Order
+1. Contract validity
+2. DAG integrity
+3. Capacity constraints
+4. Rebalance rules
+5. Emission constraints
+
+## LEVEL 1: MUST (Compiler Errors)
+1. **Schema Compliance**: Payload must validate against `Task Schema v1.0`.
+2. **Milestone Existence**: `milestoneId` must exist in the active Roadmap.
+3. **No Self-References**: A task cannot appear in its own `blockedBy` array.
+4. **Story Format**: `userStory` must strictly follow the "As a/I want/So that" regex.
+
+## LEVEL 2: SHOULD (Compiler Warnings)
+5. **Small Batch Size**: `estimates.humanHours` SHOULD be <= 40 hours.
+6. **Test Coverage**: `testPlan.failureModes` SHOULD contain at least 2 entries.
+7. **Dependency Depth**: A task SHOULD NOT have a dependency chain depth > 5.
+
+## LEVEL 3: COULD (Linter Hints)
+8. **Complexity/Time Match**: If `complexity` is "XL", `humanHours` COULD be > 80.
+9. **Priority Distribution**: A Milestone COULD ensure <30% of tasks are "P0".
+# ROADMAP PROTOCOL
+
+## Task Lifecycle
+- **BACKLOG**: Idea ingested, not yet estimated.
+- **PLANNED**: Estimated, slotted into milestone.
+- **IN_PROGRESS**: Claimed by a worker.
+- **BLOCKED**: Blocked by an incomplete dependency.
+- **DONE**: Acceptance criteria met, evidence attached.
+
+## Milestone Transitions
+- **OPEN**: Accepting new tasks.
+- **LOCKED**: No new scope without approval.
+- **SHIPPED**: All mandatory features DONE.
+# SECURITY AND TRUST
+
+## Identity
+- Every agent has a unique `writerId`.
+- Every mutation is signed by the actor's key.
+
+## Tamper Safety
+- Use Git's cryptographic SHA-1/SHA-256 for content addressing.
+- WARP audit receipts provide verifiable materiality of decisions.
+
+## Authorization
+- Role-based access controlled via graph state (who possesses which skill).
+- Mutation approval gate for Critical Path changes.
+# SCHEDULING AND DAG
+**Version:** 1.0.0
+**Enforcement:** ALGORITHMIC VERIFICATION
+
+## Purpose
+Specifies the mathematical primitives for transforming a rebalanced DAG into executable lanes. Uses proven graph algorithms: toposort for ordering, Dijkstra for critical path, and Dilworth's theorem for anti-chains.
+
+## Core Definitions
+- **Ready Set (Frontier)**: Tasks with no incoming blocks edges from incomplete Tasks.
+- **Critical Path**: Longest path (by humanHours) from root to leaf.
+- **Anti-Chain**: Maximal set of parallelizable Tasks (no dependencies).
+- **Lane**: Partitioned schedule respecting capacity.
+
+## Required Algorithms
+1. **Topological Sort**: Linearize DAG into execution sequence (Kahn's).
+2. **Critical Path**: Identify delay risks (Dijkstra).
+3. **Anti-Chain Generation**: MECE partitioning for concurrent execution (Greedy coloring).
+4. **Capacity-Aware Bundling**: Assign sequences to lanes without overload (Bin-packing).
+# TEST STRATEGY
+
+## Coverage Classes
+- **Unit**: schema validators, policy rules, DAG ops
+- **Property**: invariants (acyclicity, idempotent normalization)
+- **Integration**: phase-to-phase artifact fidelity
+- **E2E**: ingest to emitted patch with approval gate
+
+## Determinism
+Re-run identical inputs N times; output digests MUST match.
+
+## Fuzz Targets
+- malformed dependencies
+- duplicate IDs
+- pathological milestone splits
+- conflicting priority directives
