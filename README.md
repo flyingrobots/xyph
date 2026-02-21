@@ -17,13 +17,7 @@
 # XYPH ([/ˌzɪf/](https://ipa-reader.com/?text=%CB%8Cz%C9%AAf))
 **The Causal Operating System for Agentic Orchestration**
 
-### **What** 
-
-### **is**
-
-###  **XYPH, actually?**
-
-  
+## What is XYPH, actually?
 
 **XYPH is a Git-native “causal control plane” for building software with humans + agents.**
 
@@ -54,172 +48,13 @@ What makes it distinct (the “nobody else does this” list):
 
   
 
-If your current pitch is “part Issues, part Projects, part docs, part orchestration”… yeah — because you’re describing the _shadows on the wall_, not the monster.
-
----
-
-## **Direct competitors (closest match)**
-
-  
-
-**Blunt truth:** _XYPH has very few true direct competitors_ because the “git-native CRDT roadmap + provenance + agents as writers” combo is rare.
-
-  
-
-Closest _direct-ish_ competitors are **Git-native / event-sourced workflow systems** and **structured automation/orchestration engines**—but they usually miss either the **planning UX**, the **multi-writer CRDT merge**, or the **human sovereignty + provenance model**.
-
-  
-
-So instead of “direct competitors,” think **neighboring species**.
-
----
-
-## **Neighbor families (where buyers will compare you)**
-
-  
-
-### **1) Issue trackers & PM suites**
-
-  
-
-**GitHub Issues/Projects, Jira, Linear, Azure DevOps, YouTrack, Asana**
-
-- Overlap: tasks, status, assignment, milestones, workflows.
-    
-- XYPH difference: those tools are **centralized databases with UI-first state**. XYPH is **a deterministic graph substrate** where UI/CLI are just projections, and “time travel” is native because history is first-class. 
-    
-
-  
-
-**Positioning:** “Jira is a spreadsheet with permissions. XYPH is a causal ledger.”
-
-  
-
-### **2) Documentation & knowledge systems**
-
-  
-
-**Notion, Confluence, Obsidian, Dendron**
-
-- Overlap: structured knowledge, linking, narrative/intent capture.
-    
-- XYPH difference: docs tools store **content**; XYPH stores **decisions + causality + execution receipts** (and can generate docs as a view).
-    
-
-  
-
-**Positioning:** “Notion remembers _what you wrote_. XYPH remembers _why reality looks like this_.”
-
-  
-
-### **3) Workflow orchestration (data/infra/job schedulers)**
-
-  
-
-**Temporal, Airflow, Dagster, Prefect, Luigi, Argo**
-
-- Overlap: DAGs, dependencies, scheduling, execution tracking.
-    
-- XYPH difference: those orchestrate **runtime execution of jobs**. XYPH orchestrates **work itself** (humans + agents), where “execution” includes design decisions, approvals, and provenance.
-    
-
-  
-
-**Positioning:** “Temporal is an OS for workflows. XYPH is an OS for intention → work → proof.”
-
-  
-
-### **4) Agent orchestration frameworks**
-
-  
-
-**LangChain, LlamaIndex, AutoGen, CrewAI, Semantic Kernel**
-
-- Overlap: coordinating agents/tools.
-    
-- XYPH difference: most of these are **in-process orchestration libraries** (prompt graphs). XYPH is a **shared, durable, multi-writer substrate** that agents collaborate through—even across machines, offline, asynchronously—without a coordinator.
-    
-
-  
-
-**Positioning:** “Those orchestrate conversations. XYPH orchestrates commitments.”
-
-  
-
-### **5) GitOps / Infrastructure-as-Code ecosystems**
-
-  
-
-**Terraform + GitOps (ArgoCD/Flux), GitHub Actions**
-
-- Overlap: “Git as source of truth,” auditability, declarative workflows.
-    
-- XYPH difference: GitOps manages **infrastructure state**; XYPH manages **project state + causality** as a graph, not files.
-    
-
-  
-
-**Positioning:** “GitOps is declarative infra. XYPH is declarative intent.”
-
-  
-
-### **6) CRDT collaboration tech**
-
-  
-
-**Automerge, Yjs, CRDT-based note apps**
-
-- Overlap: conflict-free collaboration.
-    
-- XYPH difference: CRDTs usually back docs; XYPH backs **a typed operational graph** with provenance, trust, and audit hooks—stored in git, not a sync server. 
-    
-
----
-
-## **How I’d describe XYPH in one sentence (usable on a homepage)**
-
-  
-
-Pick one depending on audience:
-
-1. **For builders:**
-    
-    **“XYPH is a Git-native planning OS: a deterministic roadmap graph where humans set intent and agents execute—with auditable, time-travelable provenance.”** 
-    
-2. **For skeptics:**
-    
-    **“It’s Jira + agent automation, rebuilt on git commits and cryptographic identity so you can prove who changed what, when, and why.”**   
-    
-3. **For the “this feels new” crowd:**
-    
-    **“A stigmergic collaboration substrate: humans and agents coordinate by writing to a shared causal graph, not by messaging.”**
-    
-
----
-
-## **The “killer differentiator” you should lean into**
-
-  
-
-**Time travel + holographic provenance** for project state.
-
-Most tools can tell you “current status.” XYPH can tell you **the causal story**—and eventually down to “why does this property have this value?” because the underlying storage model is literally built for provenance and audit. 
-
-  
-
-That’s not a feature. That’s a category.
-
-  
-
-If you want, I can also give you a **competitor matrix** (neighbors vs XYPH) with 5–7 axes that make XYPH obviously different in 10 seconds (the only acceptable attention span).
-
 ## What Is XYPH?
 
 **XYPH** is a *planning compiler* where the project roadmap is a living, deterministic graph. Humans and agents collaborate by reading and writing to that graph. No server, no database, just Git. 
 
 ## How XYPH Works (Part I)
 
-XYPH is a powerful development tool that is part GitHub Issues, part GitHub Projects, part interacative documentation library, part AI orchestration framework.
+XYPH is a powerful development tool that is part GitHub Issues, part GitHub Projects, part interactive documentation library, part AI orchestration framework.
 
 Humans decide *what* to build and *why*. Agents figure out *how* and do the work. Nobody sends messages to coordinate; instead, everyone reads and writes to the shared graph. This pattern is called **stigmergy** — coordination through the environment itself.
 
@@ -229,7 +64,7 @@ Thanks to the foundation provided by git-warp, XYPH is offline-first, distribute
 
 
 
-Although XYPH lives in a Git repo, its invisible to normal Git workflows and tools, and never interacts with any Git worktrees. This means that XYPH is offline-first, distributed, works anywhere that Git can push or pull, and is built on top of the most widely-used, battle-hardened, distributed software on Earth: Git.
+Although XYPH lives in a Git repo, it’s invisible to normal Git workflows and tools, and never interacts with any Git worktrees. This means that XYPH is offline-first, distributed, works anywhere that Git can push or pull, and is built on top of the most widely-used, battle-hardened, distributed software on Earth: Git.
 
 ## How To Use XYPH
 
@@ -264,7 +99,7 @@ Verify everything is working:
 npx tsx xyph-actuator.ts status --view roadmap
 ```
 
-Now you're all set. Let's see how we might use XPHY in our everyday workflows.
+Now you're all set. Let's see how we might use XYPH in our everyday workflows.
 
 ### Walkthrough: Building a Feature Together
 
@@ -491,7 +326,7 @@ The `docs/canonical/` directory contains the foundational specifications:
 ---
 
 <p align="center">
-Built with Ω¹ by [FLYING ROBOTS](https://github.com/flyingrobots)
+Built with Ω¹ by <a href="https://github.com/flyingrobots">FLYING ROBOTS</a>
 </p>
 
 <sub>¹ Ω (Omega) — the final convergence point of the WARP graph; symbolizes deterministic state resolution.</sub>
