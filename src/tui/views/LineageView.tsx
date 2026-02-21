@@ -5,8 +5,10 @@ import type { GraphSnapshot } from '../../domain/models/dashboard.js';
 import { STATUS_COLOR } from '../status-colors.js';
 import { Scrollbar } from '../Scrollbar.js';
 
-const CHROME_LINES = 3; // tab bar + marginBottom + scroll indicator
+const DEFAULT_CHROME_LINES = 4;
 const SCROLL_MARGIN = 2;
+
+const trunc = (s: string, n: number): string => s.length > n ? s.slice(0, n - 1) + '…' : s;
 
 type VRow =
   | { kind: 'spacer' }
@@ -21,6 +23,7 @@ type VRow =
 interface Props {
   snapshot: GraphSnapshot;
   isActive: boolean;
+  chromeLines?: number;
 }
 
 function buildRows(snapshot: GraphSnapshot): VRow[] {
@@ -83,9 +86,10 @@ function buildRows(snapshot: GraphSnapshot): VRow[] {
   return rows;
 }
 
-export function LineageView({ snapshot, isActive }: Props): ReactElement {
+export function LineageView({ snapshot, isActive, chromeLines }: Props): ReactElement {
   const { stdout } = useStdout();
-  const listHeight = Math.max(4, (stdout.rows ?? 24) - CHROME_LINES);
+  const chrome = chromeLines ?? DEFAULT_CHROME_LINES;
+  const listHeight = Math.max(4, (stdout.rows ?? 24) - chrome);
   const [scrollOffset, setScrollOffset] = useState(0);
   const [selectedVIdx, setSelectedVIdx] = useState(0);
 
@@ -155,8 +159,8 @@ export function LineageView({ snapshot, isActive }: Props): ReactElement {
           if (row.kind === 'intent-header') {
             return (
               <Box key={`ih-${row.id}`}>
-                <Text bold color="magenta">{'◆ ' + row.id}</Text>
-                <Text dimColor>  {row.title}</Text>
+                <Text bold color="magenta">{'◆ ' + trunc(row.id, 30)}</Text>
+                <Text dimColor>  {trunc(row.title, 38)}</Text>
               </Box>
             );
           }
@@ -183,8 +187,8 @@ export function LineageView({ snapshot, isActive }: Props): ReactElement {
                   <Text color="cyan">{isSelected ? '▶' : ' '}</Text>
                 </Box>
                 <Text dimColor>{row.branch} </Text>
-                <Text dimColor>{row.id.slice(0, 16)}  </Text>
-                <Text bold={isSelected}>{row.title.slice(0, 36)}  </Text>
+                <Text dimColor>{trunc(row.id, 16)}  </Text>
+                <Text bold={isSelected}>{trunc(row.title, 36)}  </Text>
                 <Text color={statusColor}>{'[' + row.status + ']'}</Text>
                 {row.scrollId !== undefined && (
                   <Text color={row.sealed ? 'green' : 'yellow'}>
@@ -197,7 +201,7 @@ export function LineageView({ snapshot, isActive }: Props): ReactElement {
           if (row.kind === 'scroll-sub') {
             return (
               <Box key={`s-${row.scrollId}`} marginLeft={5}>
-                <Text dimColor>scroll: {row.scrollId}</Text>
+                <Text dimColor>scroll: {trunc(row.scrollId, 50)}</Text>
               </Box>
             );
           }
@@ -210,8 +214,8 @@ export function LineageView({ snapshot, isActive }: Props): ReactElement {
           }
           return (
             <Box key={`o-${row.id}`} marginLeft={2}>
-              <Text dimColor>└─ {row.id}  </Text>
-              <Text>{row.title.slice(0, 38)}</Text>
+              <Text dimColor>└─ {trunc(row.id, 24)}  </Text>
+              <Text>{trunc(row.title, 38)}</Text>
             </Box>
           );
         })}

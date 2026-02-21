@@ -4,43 +4,7 @@ All notable changes to XYPH will be documented in this file.
 
 ## [1.0.0-alpha.5] - 2026-02-20
 
-### Milestone 5: WARP Dashboard TUI Overhaul
-
-### Changed
-
-**README rewritten with progressive-disclosure walkthrough**
-- Replaced flat "Core Concepts / For Humans / For Agents" structure with a narrative walkthrough: Ada (human) and Hal (agent) build a feature together, introducing domain vocabulary (Intent, Quest, Campaign, Scroll, Guild Seal, OCP, Genealogy of Intent) inline on first use.
-- Dashboard keybindings and CLI commands moved to compact reference tables after the walkthrough.
-- Expanded Constitution section with links to all canonical specifications.
-- `CLAUDE.md` updated: replaced stale "Current Status" with actuator-based planning workflow and full command reference.
-
-**Added CONTRIBUTING.md**
-- Development workflow, quality gates, Constitution summary, and full command reference table.
-
-### Security
-
-**minimatch ReDoS vulnerability (CVE: GHSA-3ppc-4f35-3m26)**
-- Added npm `overrides` to force all transitive `minimatch` instances to `^10.2.1`, patching a Regular Expression Denial of Service (ReDoS) vulnerability where patterns with many consecutive `*` wildcards cause exponential backtracking (`O(4^N)`).
-- All six affected instances (via eslint, eslint-plugin-import, @eslint/config-array, @eslint/eslintrc, @typescript-eslint/typescript-estree, glob) now resolve to `minimatch@10.2.2`.
-
-### Fixed
-
-**Lint compliance — 28 errors resolved**
-- Replaced `Array<T>` with `T[]` syntax across 5 files (dashboard.ts, CoordinatorService.ts, GuildSealService.ts, WarpRoadmapAdapter.ts, RoadmapPort.ts).
-- Converted `OrchestrationFSM` from static-only class to exported const object with standalone functions (`no-extraneous-class`).
-- Removed `as any` casts: ed25519 `hashes.sha512` polyfill now uses typed API directly; `loadKeyring` uses proper `Record<string, unknown>` narrowing instead of `as any`; ajv-formats/ajv-errors use typed CJS interop pattern.
-- Replaced non-null assertions (`!`) with proper guards in `validatePatchOps.ts` array access and `crypto.ts` canonicalize.
-- Added missing return types on 4 functions (crypto.ts `sha512`, signPatchFixture.ts `sha512`/`generateTestKeypair`, validatePatchOps.ts CLI IIFE).
-- Removed redundant type annotation (`no-inferrable-types`) in RebalanceService constructor.
-- Removed stale `eslint-disable no-console` directive from validatePatchOps.ts.
-- Added "own every failure" policy to CLAUDE.md — agents must fix broken things they encounter, never dismiss errors as pre-existing.
-
-**Code review — 5 CodeRabbit findings resolved**
-- *Bug*: `OrchestrationFSM.transitionToNormalize` `eventId` now uses injected `context.clock` (`now`) instead of `new Date()`, fixing non-deterministic date fragments under frozen-time test scenarios.
-- *Nit*: minimatch override tightened from `>=10.2.1` to `^10.2.1` — prevents accidental major version jumps.
-- *Nit*: `AjvPlugin` type widened to accept optional options arg and return `Ajv` instance (matches actual ajv-formats/ajv-errors Plugin signature).
-- *Nit*: `sha512` polyfill exported from `crypto.ts` and imported in `signPatchFixture.ts` — eliminates copy-paste duplication and redundant `createHash` import.
-- *Nit*: `computeDigest` parameter narrowed from `Record<string, unknown>` to `Record<string, Json>` — removes unsafe `as Json` cast, surfacing type constraint at call site.
+**Milestone 5: WARP Dashboard TUI Overhaul**
 
 ### Added
 
@@ -75,11 +39,70 @@ All notable changes to XYPH will be documented in this file.
 - List rows enriched: `▶` indicator, ID, title, suggestedBy, date, `↩` reopened marker.
 - Detail pane always visible (no toggle needed); shows full inbox lifecycle fields.
 
+**Logo Loader + XYPH Wordmark (TUI-008)**
+- New `src/tui/logo-loader.ts` utility module: `selectLogoSize()` picks small/medium/large based on terminal dimensions; `loadRandomLogo()` reads `.txt` files from the reorganized `logos/{family}/{size}/` directory structure, trims leading and trailing blank lines, and falls back to plain `'XYPH'` on error.
+- Dimension-aware logo selection: logos are filtered by actual width/height against terminal constraints before random pick. If nothing in the preferred size fits, cascades down (large → medium → small) automatically.
+- XYPH wordmark rendered in the upper-right corner of the dashboard header (dimmed). Hidden on narrow terminals (< 50 cols).
+- All four views (`RoadmapView`, `LineageView`, `AllNodesView`, `InboxView`) accept an optional `chromeLines` prop computed from actual header height, replacing the hardcoded `CHROME_LINES = 4` constant.
+
 ### Fixed
 
 **LineageView: INBOX Bug Fix + Selection (TUI-005)**
 - INBOX quests no longer appear in the orphan ("sovereignty violation") list — they haven't been promoted yet and genuinely lack an intent.
 - Added `selectedVIdx` state with `▶` indicator highlighting the selected quest row.
+
+**TUI layout stability (TUI-009)**
+- Landing page logo centered as a single block instead of per-line centering — multi-width ASCII art lines no longer scatter horizontally.
+- Dashboard header uses `alignItems="flex-start"` and splits tab labels / hint text onto separate rows — wordmark position is now stable across all views.
+- LineageView intent-header, scroll-sub, and orphan rows now truncate long text to prevent terminal line wrapping that pushed the header off-screen.
+- Quest detail modal (RoadmapView, AllNodesView) renders inside a fixed-height wrapper matching the normal list height — opening/closing the modal no longer causes layout shifts.
+
+**Lint compliance — 28 errors resolved**
+- Replaced `Array<T>` with `T[]` syntax across 5 files (dashboard.ts, CoordinatorService.ts, GuildSealService.ts, WarpRoadmapAdapter.ts, RoadmapPort.ts).
+- Converted `OrchestrationFSM` from static-only class to exported const object with standalone functions (`no-extraneous-class`).
+- Removed `as any` casts: ed25519 `hashes.sha512` polyfill now uses typed API directly; `loadKeyring` uses proper `Record<string, unknown>` narrowing instead of `as any`; ajv-formats/ajv-errors use typed CJS interop pattern.
+- Replaced non-null assertions (`!`) with proper guards in `validatePatchOps.ts` array access and `crypto.ts` canonicalize.
+- Added missing return types on 4 functions (crypto.ts `sha512`, signPatchFixture.ts `sha512`/`generateTestKeypair`, validatePatchOps.ts CLI IIFE).
+- Removed redundant type annotation (`no-inferrable-types`) in RebalanceService constructor.
+- Removed stale `eslint-disable no-console` directive from validatePatchOps.ts.
+- Added "own every failure" policy to CLAUDE.md — agents must fix broken things they encounter, never dismiss errors as pre-existing.
+
+**Code review — 5 CodeRabbit findings resolved**
+- *Bug*: `OrchestrationFSM.transitionToNormalize` `eventId` now uses injected `context.clock` (`now`) instead of `new Date()`, fixing non-deterministic date fragments under frozen-time test scenarios.
+- *Nit*: minimatch override tightened from `>=10.2.1` to `^10.2.1` — prevents accidental major version jumps.
+- *Nit*: `AjvPlugin` type widened to accept optional options arg and return `Ajv` instance (matches actual ajv-formats/ajv-errors Plugin signature).
+- *Nit*: `sha512` polyfill exported from `crypto.ts` and imported in `signPatchFixture.ts` — eliminates copy-paste duplication and redundant `createHash` import.
+- *Nit*: `computeDigest` parameter narrowed from `Record<string, unknown>` to `Record<string, Json>` — removes unsafe `as Json` cast, surfacing type constraint at call site.
+
+### Changed
+
+**README aligned with canonical documentation**
+- Replaced "Causal Operating System for Agentic Orchestration" tagline with "The Planning Compiler for Agentic Coordination" per VISION_NORTH_STAR.md.
+- Rewrote "How XYPH Works (Part I)" — removed informal GitHub comparison, added the Planning Compiler paradigm (Source → IR → Target) and Agentic Coordination Problem framing. Added LWW conflict resolution mention.
+- Added "How XYPH Works (Part II)" sections: Digital Guild Model (Quests, Campaigns, Intents, Scrolls, Guild Seals, Genealogy of Intent), Planning Pipeline (Mermaid state diagram with fail-closed/ROLLED_BACK paths), and Policy Engine (MUST/SHOULD/COULD three-tier table).
+- Constitution section expanded from 2 articles to all 4: Law of Determinism (Art. I), Law of DAG Integrity (Art. II), Law of Provenance (Art. III), Law of Human Sovereignty (Art. IV).
+- Canonical Docs listing expanded from 5 to all 21 documents, organized into 6 categories (Vision & Governance, Architecture & Pipeline, Data & Schema, Security & Audit, Quality & Policy, RFCs).
+
+**README rewritten with progressive-disclosure walkthrough**
+- Replaced flat "Core Concepts / For Humans / For Agents" structure with a narrative walkthrough: Ada (human) and Hal (agent) build a feature together, introducing domain vocabulary (Intent, Quest, Campaign, Scroll, Guild Seal, OCP, Genealogy of Intent) inline on first use.
+- Dashboard keybindings and CLI commands moved to compact reference tables after the walkthrough.
+- Expanded Constitution section with links to all canonical specifications.
+- `CLAUDE.md` updated: replaced stale "Current Status" with actuator-based planning workflow and full command reference.
+
+**Added CONTRIBUTING.md**
+- Development workflow, quality gates, Constitution summary, and full command reference table.
+
+### Security
+
+**minimatch ReDoS vulnerability (CVE: GHSA-3ppc-4f35-3m26)**
+- Added npm `overrides` to force all transitive `minimatch` instances to `^10.2.1`, patching a Regular Expression Denial of Service (ReDoS) vulnerability where patterns with many consecutive `*` wildcards cause exponential backtracking (`O(4^N)`).
+- All six affected instances (via eslint, eslint-plugin-import, @eslint/config-array, @eslint/eslintrc, @typescript-eslint/typescript-estree, glob) now resolve to `minimatch@10.2.2`.
+
+**ajv ReDoS vulnerability (GHSA-2g4f-4pwh-qvx6)**
+- Bumped transitive `ajv` (via `@eslint/eslintrc`, `eslint`) to patched versions via `npm audit fix`.
+
+**Dependency upgrade**
+- Upgraded `@git-stunts/git-warp` from `11.3.3` to `11.5.0`.
 
 **Code Review — 68 issues resolved (CR-001)**
 - *Critical*: `IngestService` rewritten — `task:` prefix guard, `new Quest()` in try/catch (skips invalid lines), clean formatting.

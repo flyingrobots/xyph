@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import type { ReactElement } from 'react';
-import { Box, Text, useInput, useApp, type Key } from 'ink';
+import { Box, Text, useInput, useApp, useStdout, type Key } from 'ink';
 import type { DashboardService } from '../domain/services/DashboardService.js';
-import type { GraphSnapshot } from '../domain/models/dashboard.js';
+import type { GraphSnapshot, GraphMeta } from '../domain/models/dashboard.js';
 import type { IntakePort } from '../ports/IntakePort.js';
 import { RoadmapView } from './views/RoadmapView.js';
 import { LineageView } from './views/LineageView.js';
@@ -10,6 +10,7 @@ import { AllNodesView } from './views/AllNodesView.js';
 import { InboxView } from './views/InboxView.js';
 import { LandingView } from './views/LandingView.js';
 import { HelpModal } from './HelpModal.js';
+import { StatusLine } from './StatusLine.js';
 
 type ViewName = 'roadmap' | 'lineage' | 'all' | 'inbox';
 
@@ -20,9 +21,11 @@ interface Props {
   intake: IntakePort;
   agentId: string;
   logoText: string;
+  wordmarkText: string;
+  wordmarkLines: number;
 }
 
-export function Dashboard({ service, intake, agentId, logoText }: Props): ReactElement {
+export function Dashboard({ service, intake, agentId, logoText, wordmarkText, wordmarkLines }: Props): ReactElement {
   const [activeView, setActiveView] = useState<ViewName>('roadmap');
   const [snapshot, setSnapshot] = useState<GraphSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
@@ -31,19 +34,22 @@ export function Dashboard({ service, intake, agentId, logoText }: Props): ReactE
   const [showLanding, setShowLanding] = useState(true);
   const [showHelp, setShowHelp] = useState(false);
   const { exit } = useApp();
+  const { stdout } = useStdout();
 
   const requestCounter = useRef(0);
+  const prevMeta = useRef<GraphMeta | undefined>(undefined);
 
-  const refresh = useCallback((): void => {
-    // Invalidate cached graph so we pick up mutations from the intake adapter
-    service.invalidateCache();
-    setLoading(true);
+  const refresh = useCallback((showLoading = false): void => {
+    if (showLoading) setLoading(true);
     const thisRequest = ++requestCounter.current;
     service
       .getSnapshot()
       .then((s) => {
         if (requestCounter.current !== thisRequest) return; // stale response
-        setSnapshot(s);
+        setSnapshot((prev) => {
+          prevMeta.current = prev?.graphMeta;
+          return s;
+        });
         setError(null);
       })
       .catch((err: unknown) => {
@@ -57,7 +63,7 @@ export function Dashboard({ service, intake, agentId, logoText }: Props): ReactE
   }, [service]);
 
   useEffect(() => {
-    refresh();
+    refresh(true);
   }, [refresh]);
 
   useInput((input: string, key: Key) => {
@@ -103,12 +109,12 @@ export function Dashboard({ service, intake, agentId, logoText }: Props): ReactE
     }
   });
 
-  // GRAVEYARD is excluded from all active views by default
-  // NOTE: useMemo must be called before any conditional returns (Rules of Hooks)
+  // NOTE: All useMemo/useEffect calls must be above early returns (Rules of Hooks)
   const filtered = useMemo(
     () => snapshot ? service.filterSnapshot(snapshot, { includeGraveyard: false }) : null,
     [service, snapshot],
   );
+  const wordmarkLinesArray = useMemo(() => wordmarkText.split('\n'), [wordmarkText]);
 
   // Landing screen — shown until user presses any key (unless error occurred)
   if (showLanding && error === null) {
@@ -127,23 +133,41 @@ export function Dashboard({ service, intake, agentId, logoText }: Props): ReactE
     return <Text color="red">No snapshot available.</Text>;
   }
 
+  const cols = stdout.columns ?? 80;
+  const showWordmark = cols >= 50;
+  // Chrome: header row height (max of 2-line tab column or wordmark) + margins + indicators
+  const tabColumnHeight = 2; // tab labels row + hints row
+  const headerHeight = showWordmark ? Math.max(tabColumnHeight, wordmarkLines) : tabColumnHeight;
+  const chromeLines = headerHeight + 1 /* marginBottom */ + 1 /* scroll indicator */ + 1 /* status line */;
+
   const mainContent = (
     <Box flexDirection="column">
-      <Box marginBottom={1}>
-        {VIEWS.map((v) => (
-          <Box key={v} marginRight={2}>
-            <Text
-              bold={v === activeView}
-              color={v === activeView ? 'cyan' : 'gray'}
-            >
-              {v === activeView ? `[${v}]` : v}
-            </Text>
+      <Box flexDirection="row" alignItems="flex-start" marginBottom={1}>
+        <Box flexGrow={1} flexDirection="column">
+          <Box>
+            {VIEWS.map((v) => (
+              <Box key={v} marginRight={2}>
+                <Text
+                  bold={v === activeView}
+                  color={v === activeView ? 'cyan' : 'gray'}
+                >
+                  {v === activeView ? `[${v}]` : v}
+                </Text>
+              </Box>
+            ))}
           </Box>
-        ))}
-        <Text dimColor>
-          {'  Tab: cycle  r: refresh  ?: help  q: quit'}
-          {activeView === 'inbox' ? '  (inbox: p promote  x reject)' : ''}
-        </Text>
+          <Text dimColor>
+            {'Tab: cycle  r: refresh  ?: help  q: quit'}
+            {activeView === 'inbox' ? '  p: promote  x: reject' : ''}
+          </Text>
+        </Box>
+        {showWordmark && (
+          <Box flexDirection="column">
+            {wordmarkLinesArray.map((line, i) => (
+              <Text key={i} dimColor>{line}</Text>
+            ))}
+          </Box>
+        )}
       </Box>
       {/* DESIGN NOTE (M-26): Each view receives isActive={!showHelp} so its useInput
          handler can gate on isActive, preventing keypress theft when the help modal
@@ -151,9 +175,9 @@ export function Dashboard({ service, intake, agentId, logoText }: Props): ReactE
          (M-27): Conditional && rendering unmounts/remounts views on tab switch,
          resetting internal state (scroll, selection, fold). Ink lacks CSS display:none;
          persistent state would require lifting it to Dashboard or a shared store. */}
-      {activeView === 'roadmap' && <RoadmapView snapshot={filtered} isActive={!showHelp} />}
-      {activeView === 'lineage' && <LineageView snapshot={filtered} isActive={!showHelp} />}
-      {activeView === 'all' && <AllNodesView snapshot={filtered} isActive={!showHelp} />}
+      {activeView === 'roadmap' && <RoadmapView snapshot={filtered} isActive={!showHelp} chromeLines={chromeLines} />}
+      {activeView === 'lineage' && <LineageView snapshot={filtered} isActive={!showHelp} chromeLines={chromeLines} />}
+      {activeView === 'all' && <AllNodesView snapshot={filtered} isActive={!showHelp} chromeLines={chromeLines} />}
       {activeView === 'inbox' && (
         <InboxView
           snapshot={filtered}
@@ -163,8 +187,10 @@ export function Dashboard({ service, intake, agentId, logoText }: Props): ReactE
           onMutationStart={() => setIsMutating(true)}
           onMutationEnd={() => setIsMutating(false)}
           onRefresh={refresh}
+          chromeLines={chromeLines}
         />
       )}
+      <StatusLine graphMeta={filtered.graphMeta} prevGraphMeta={prevMeta.current} />
     </Box>
   );
 
