@@ -31,10 +31,13 @@ export function selectLogoSize(cols: number, rows: number): LogoSize {
   return 'large';
 }
 
-/** Parse a single .txt file into a LogoResult, trimming trailing blank lines. */
+/** Parse a single .txt file into a LogoResult, trimming leading and trailing blank lines. */
 function parseLogoFile(filePath: string): LogoResult {
   const raw = readFileSync(filePath, 'utf8');
   const allLines = raw.split('\n');
+  while (allLines.length > 0 && (allLines[0]?.trim() ?? '') === '') {
+    allLines.shift();
+  }
   while (allLines.length > 0 && (allLines[allLines.length - 1]?.trim() ?? '') === '') {
     allLines.pop();
   }
