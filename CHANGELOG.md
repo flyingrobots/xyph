@@ -56,6 +56,12 @@ All notable changes to XYPH will be documented in this file.
 - Added npm `overrides` to force all transitive `minimatch` instances to `^10.2.1`, patching a Regular Expression Denial of Service (ReDoS) vulnerability where patterns with many consecutive `*` wildcards cause exponential backtracking (`O(4^N)`).
 - All six affected instances (via eslint, eslint-plugin-import, @eslint/config-array, @eslint/eslintrc, @typescript-eslint/typescript-estree, glob) now resolve to `minimatch@10.2.2`.
 
+**ajv ReDoS vulnerability (GHSA-2g4f-4pwh-qvx6)**
+- Bumped transitive `ajv` (via `@eslint/eslintrc`, `eslint`) to patched versions via `npm audit fix`.
+
+**Dependency upgrade**
+- Upgraded `@git-stunts/git-warp` from `11.3.3` to `11.5.0`.
+
 ### Added
 
 **Landing Screen (TUI-001)**
