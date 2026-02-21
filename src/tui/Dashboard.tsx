@@ -135,7 +135,7 @@ export function Dashboard({ service, intake, agentId, logoText, wordmarkText, wo
 
   const cols = stdout.columns ?? 80;
   const showWordmark = cols >= 50;
-  const wordmarkLinesArray = wordmarkText.split('\n');
+  const wordmarkLinesArray = useMemo(() => wordmarkText.split('\n'), [wordmarkText]);
   // Chrome: header row height (max of 2-line tab column or wordmark) + marginBottom(1) + scroll indicator(1) + status line(1)
   const tabColumnHeight = 2; // tab labels row + hints row
   const headerHeight = showWordmark ? Math.max(tabColumnHeight, wordmarkLines) : tabColumnHeight;

@@ -234,7 +234,7 @@ export class WarpDashboardAdapter implements DashboardPort {
       ? (state.observedFrontier.get(graph.writerId) ?? 0)
       : 0;
     const writerCount = state ? state.observedFrontier.size : 0;
-    const tipSha = (frontier.get(graph.writerId) ?? '').slice(0, 7);
+    const tipSha = (frontier.get(graph.writerId) ?? '').slice(0, 7) || '-------';
     const graphMeta: GraphMeta = { maxTick, myTick, writerCount, tipSha };
 
     const snap: GraphSnapshot = { campaigns, quests, intents, scrolls, approvals, asOf: Date.now(), graphMeta };

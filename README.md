@@ -13,44 +13,12 @@
                          ██████         ██████
 ```
 
-
 # XYPH ([/ˌzɪf/](https://ipa-reader.com/?text=%CB%8Cz%C9%AAf))
 **The Causal Operating System for Agentic Orchestration**
 
-## What is XYPH, actually?
-
-**XYPH is a Git-native “causal control plane” for building software with humans + agents.**
-
-Not a ticket system. Not “agent orchestration” in the LangChain sense. It’s **a deterministic, multi-writer roadmap graph** where the _plan_ is the system of record and **every change is a mergeable, auditable mutation** stored in git (via a CRDT-backed graph database). 
-
-  
-
-A clean definition that actually fits:
-
-  
-
-> **XYPH is an offline-first planning compiler whose roadmap is a deterministic CRDT graph in git, enabling stigmergic collaboration (humans + agents) with cryptographic provenance and time-travelable project state.** 
-
-  
-
-What makes it distinct (the “nobody else does this” list):
-
-- **Git is the database.** No server, no “sync service,” no central authority—just refs, commits, and deterministic convergence. 
-    
-- **Multi-writer by design.** Agents and humans are just writers; concurrent edits converge deterministically (CRDT semantics), which is fundamentally different from most PM tools’ lock/transaction model. 
-    
-- **Provenance isn’t “activity logs.”** It’s **causal history** you can slice, time-travel, diff, and audit (because every mutation is a git commit). 
-    
-- **Trust is cryptographic, not vibes.** The trust system is explicitly moving toward **Ed25519 identity-backed trust records and enforcement modes**, which is way beyond “who has access to the Jira project.” 
-    
-- **Stigmergy as the coordination primitive.** Nobody “messages” to coordinate; they coordinate through the shared environment (the graph).
-    
-
-  
-
 ## What Is XYPH?
 
-**XYPH** is a *planning compiler* where the project roadmap is a living, deterministic graph. Humans and agents collaborate by reading and writing to that graph. No server, no database, just Git. 
+**XYPH** is a *planning compiler* where the project roadmap is a living, deterministic graph. Humans and agents collaborate by reading and writing to that graph. No server, no database, just Git.
 
 ## How XYPH Works (Part I)
 
@@ -58,11 +26,9 @@ XYPH is a powerful development tool that is part GitHub Issues, part GitHub Proj
 
 Humans decide *what* to build and *why*. Agents figure out *how* and do the work. Nobody sends messages to coordinate; instead, everyone reads and writes to the shared graph. This pattern is called **stigmergy** — coordination through the environment itself.
 
-Everything lives in a single [**WARP graph**](https://github.com/flyingrobots/aion) (specifically, [git-warp](https://github.com/git-stunts/git-warp)) — a multi-writer CRDT graph database stored in Git. That means that multiple entities can work with XYPH simultaneously, deterministically, and without fear of merge conflicts. 
+Everything lives in a single [**WARP graph**](https://github.com/flyingrobots/aion) (specifically, [git-warp](https://github.com/git-stunts/git-warp)) — a multi-writer CRDT graph database stored in Git. That means that multiple entities can work with XYPH simultaneously, deterministically, and without fear of merge conflicts.
 
 Thanks to the foundation provided by git-warp, XYPH is offline-first, distributed, decentralized, and lives in your Git repo, with the rest of your project.
-
-
 
 Although XYPH lives in a Git repo, it’s invisible to normal Git workflows and tools, and never interacts with any Git worktrees. This means that XYPH is offline-first, distributed, works anywhere that Git can push or pull, and is built on top of the most widely-used, battle-hardened, distributed software on Earth: Git.
 

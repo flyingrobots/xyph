@@ -4,12 +4,12 @@ All notable changes to XYPH will be documented in this file.
 
 ## [1.0.0-alpha.5] - 2026-02-20
 
-### Milestone 5: WARP Dashboard TUI Overhaul
+**Milestone 5: WARP Dashboard TUI Overhaul**
 
 ### Added
 
 **Logo Loader + XYPH Wordmark (TUI-008)**
-- New `src/tui/logo-loader.ts` utility module: `selectLogoSize()` picks small/medium/large based on terminal dimensions; `loadRandomLogo()` reads `.txt` files from the reorganized `logos/{family}/{size}/` directory structure, trims trailing blank lines, and falls back to plain `'XYPH'` on error.
+- New `src/tui/logo-loader.ts` utility module: `selectLogoSize()` picks small/medium/large based on terminal dimensions; `loadRandomLogo()` reads `.txt` files from the reorganized `logos/{family}/{size}/` directory structure, trims leading and trailing blank lines, and falls back to plain `'XYPH'` on error.
 - Dimension-aware logo selection: logos are filtered by actual width/height against terminal constraints before random pick. If nothing in the preferred size fits, cascades down (large → medium → small) automatically.
 - XYPH wordmark rendered in the upper-right corner of the dashboard header (dimmed). Hidden on narrow terminals (< 50 cols).
 - All four views (`RoadmapView`, `LineageView`, `AllNodesView`, `InboxView`) accept an optional `chromeLines` prop computed from actual header height, replacing the hardcoded `CHROME_LINES = 4` constant.
@@ -21,25 +21,6 @@ All notable changes to XYPH will be documented in this file.
 - Dashboard header uses `alignItems="flex-start"` and splits tab labels / hint text onto separate rows — wordmark position is now stable across all views.
 - LineageView intent-header, scroll-sub, and orphan rows now truncate long text to prevent terminal line wrapping that pushed the header off-screen.
 - Quest detail modal (RoadmapView, AllNodesView) renders inside a fixed-height wrapper matching the normal list height — opening/closing the modal no longer causes layout shifts.
-
-### Changed
-
-**README rewritten with progressive-disclosure walkthrough**
-- Replaced flat "Core Concepts / For Humans / For Agents" structure with a narrative walkthrough: Ada (human) and Hal (agent) build a feature together, introducing domain vocabulary (Intent, Quest, Campaign, Scroll, Guild Seal, OCP, Genealogy of Intent) inline on first use.
-- Dashboard keybindings and CLI commands moved to compact reference tables after the walkthrough.
-- Expanded Constitution section with links to all canonical specifications.
-- `CLAUDE.md` updated: replaced stale "Current Status" with actuator-based planning workflow and full command reference.
-
-**Added CONTRIBUTING.md**
-- Development workflow, quality gates, Constitution summary, and full command reference table.
-
-### Security
-
-**minimatch ReDoS vulnerability (CVE: GHSA-3ppc-4f35-3m26)**
-- Added npm `overrides` to force all transitive `minimatch` instances to `^10.2.1`, patching a Regular Expression Denial of Service (ReDoS) vulnerability where patterns with many consecutive `*` wildcards cause exponential backtracking (`O(4^N)`).
-- All six affected instances (via eslint, eslint-plugin-import, @eslint/config-array, @eslint/eslintrc, @typescript-eslint/typescript-estree, glob) now resolve to `minimatch@10.2.2`.
-
-### Fixed
 
 **Lint compliance — 28 errors resolved**
 - Replaced `Array<T>` with `T[]` syntax across 5 files (dashboard.ts, CoordinatorService.ts, GuildSealService.ts, WarpRoadmapAdapter.ts, RoadmapPort.ts).
@@ -57,6 +38,23 @@ All notable changes to XYPH will be documented in this file.
 - *Nit*: `AjvPlugin` type widened to accept optional options arg and return `Ajv` instance (matches actual ajv-formats/ajv-errors Plugin signature).
 - *Nit*: `sha512` polyfill exported from `crypto.ts` and imported in `signPatchFixture.ts` — eliminates copy-paste duplication and redundant `createHash` import.
 - *Nit*: `computeDigest` parameter narrowed from `Record<string, unknown>` to `Record<string, Json>` — removes unsafe `as Json` cast, surfacing type constraint at call site.
+
+### Changed
+
+**README rewritten with progressive-disclosure walkthrough**
+- Replaced flat "Core Concepts / For Humans / For Agents" structure with a narrative walkthrough: Ada (human) and Hal (agent) build a feature together, introducing domain vocabulary (Intent, Quest, Campaign, Scroll, Guild Seal, OCP, Genealogy of Intent) inline on first use.
+- Dashboard keybindings and CLI commands moved to compact reference tables after the walkthrough.
+- Expanded Constitution section with links to all canonical specifications.
+- `CLAUDE.md` updated: replaced stale "Current Status" with actuator-based planning workflow and full command reference.
+
+**Added CONTRIBUTING.md**
+- Development workflow, quality gates, Constitution summary, and full command reference table.
+
+### Security
+
+**minimatch ReDoS vulnerability (CVE: GHSA-3ppc-4f35-3m26)**
+- Added npm `overrides` to force all transitive `minimatch` instances to `^10.2.1`, patching a Regular Expression Denial of Service (ReDoS) vulnerability where patterns with many consecutive `*` wildcards cause exponential backtracking (`O(4^N)`).
+- All six affected instances (via eslint, eslint-plugin-import, @eslint/config-array, @eslint/eslintrc, @typescript-eslint/typescript-estree, glob) now resolve to `minimatch@10.2.2`.
 
 ### Added
 
