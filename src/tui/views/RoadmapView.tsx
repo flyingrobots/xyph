@@ -6,7 +6,7 @@ import { STATUS_COLOR } from '../status-colors.js';
 import { Scrollbar } from '../Scrollbar.js';
 import { QuestDetailPanel } from '../QuestDetailPanel.js';
 
-const CHROME_LINES = 3;  // tab bar + scroll indicator + margin
+const DEFAULT_CHROME_LINES = 4;
 const SCROLL_MARGIN = 2;
 
 type VRow =
@@ -17,6 +17,7 @@ type VRow =
 interface Props {
   snapshot: GraphSnapshot;
   isActive: boolean;
+  chromeLines?: number;
 }
 
 function buildRows(
@@ -57,9 +58,10 @@ function buildRows(
   return { vrows, flatQuests };
 }
 
-export function RoadmapView({ snapshot, isActive }: Props): ReactElement {
+export function RoadmapView({ snapshot, isActive, chromeLines }: Props): ReactElement {
   const { stdout } = useStdout();
-  const listHeight = Math.max(4, (stdout.rows ?? 24) - CHROME_LINES);
+  const chrome = chromeLines ?? DEFAULT_CHROME_LINES;
+  const listHeight = Math.max(4, (stdout.rows ?? 24) - chrome);
 
   const [foldedCampaigns, setFoldedCampaigns] = useState<Set<string>>(new Set());
   const [showDetail, setShowDetail] = useState(false);
@@ -148,24 +150,26 @@ export function RoadmapView({ snapshot, isActive }: Props): ReactElement {
     }
   }, { isActive });
 
-  // Detail modal
+  // Detail modal — fixed height matches normal list + scroll indicator to prevent layout shift
   if (showDetail) {
     const row = vrows[clampedVIdx];
     const selectedQuest = row?.kind === 'quest' ? row.quest : null;
     return (
-      <Box flexDirection="column" borderStyle="round" borderColor="cyan">
-        <Box paddingX={1} flexDirection="column">
-          {selectedQuest !== null
-            ? <QuestDetailPanel
-                quest={selectedQuest}
-                campaignTitle={selectedQuest.campaignId !== undefined ? (snapshot.campaigns.find(c => c.id === selectedQuest.campaignId)?.title ?? selectedQuest.campaignId) : undefined}
-                intentTitle={selectedQuest.intentId !== undefined ? (snapshot.intents.find(i => i.id === selectedQuest.intentId)?.title ?? selectedQuest.intentId) : undefined}
-              />
-            : <Text dimColor>(no quest selected)</Text>
-          }
-        </Box>
-        <Box paddingX={1}>
-          <Text dimColor>Esc to close</Text>
+      <Box flexDirection="column" height={listHeight + 1}>
+        <Box flexDirection="column" borderStyle="round" borderColor="cyan" flexGrow={1}>
+          <Box paddingX={1} flexDirection="column">
+            {selectedQuest !== null
+              ? <QuestDetailPanel
+                  quest={selectedQuest}
+                  campaignTitle={selectedQuest.campaignId !== undefined ? (snapshot.campaigns.find(c => c.id === selectedQuest.campaignId)?.title ?? selectedQuest.campaignId) : undefined}
+                  intentTitle={selectedQuest.intentId !== undefined ? (snapshot.intents.find(i => i.id === selectedQuest.intentId)?.title ?? selectedQuest.intentId) : undefined}
+                />
+              : <Text dimColor>(no quest selected)</Text>
+            }
+          </Box>
+          <Box paddingX={1}>
+            <Text dimColor>Esc to close</Text>
+          </Box>
         </Box>
       </Box>
     );

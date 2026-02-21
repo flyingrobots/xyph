@@ -5,7 +5,7 @@ import type { GraphSnapshot } from '../../domain/models/dashboard.js';
 import { STATUS_COLOR } from '../status-colors.js';
 import { Scrollbar } from '../Scrollbar.js';
 
-const CHROME_LINES = 3; // tab bar + marginBottom + scroll indicator
+const DEFAULT_CHROME_LINES = 4;
 const SCROLL_MARGIN = 2;
 
 type VRow =
@@ -21,6 +21,7 @@ type VRow =
 interface Props {
   snapshot: GraphSnapshot;
   isActive: boolean;
+  chromeLines?: number;
 }
 
 function buildRows(snapshot: GraphSnapshot): VRow[] {
@@ -83,9 +84,10 @@ function buildRows(snapshot: GraphSnapshot): VRow[] {
   return rows;
 }
 
-export function LineageView({ snapshot, isActive }: Props): ReactElement {
+export function LineageView({ snapshot, isActive, chromeLines }: Props): ReactElement {
   const { stdout } = useStdout();
-  const listHeight = Math.max(4, (stdout.rows ?? 24) - CHROME_LINES);
+  const chrome = chromeLines ?? DEFAULT_CHROME_LINES;
+  const listHeight = Math.max(4, (stdout.rows ?? 24) - chrome);
   const [scrollOffset, setScrollOffset] = useState(0);
   const [selectedVIdx, setSelectedVIdx] = useState(0);
 
@@ -155,8 +157,8 @@ export function LineageView({ snapshot, isActive }: Props): ReactElement {
           if (row.kind === 'intent-header') {
             return (
               <Box key={`ih-${row.id}`}>
-                <Text bold color="magenta">{'◆ ' + row.id}</Text>
-                <Text dimColor>  {row.title}</Text>
+                <Text bold color="magenta">{'◆ ' + row.id.slice(0, 30)}</Text>
+                <Text dimColor>  {row.title.slice(0, 38)}</Text>
               </Box>
             );
           }
@@ -197,7 +199,7 @@ export function LineageView({ snapshot, isActive }: Props): ReactElement {
           if (row.kind === 'scroll-sub') {
             return (
               <Box key={`s-${row.scrollId}`} marginLeft={5}>
-                <Text dimColor>scroll: {row.scrollId}</Text>
+                <Text dimColor>scroll: {row.scrollId.slice(0, 50)}</Text>
               </Box>
             );
           }
@@ -210,7 +212,7 @@ export function LineageView({ snapshot, isActive }: Props): ReactElement {
           }
           return (
             <Box key={`o-${row.id}`} marginLeft={2}>
-              <Text dimColor>└─ {row.id}  </Text>
+              <Text dimColor>└─ {row.id.slice(0, 24)}  </Text>
               <Text>{row.title.slice(0, 38)}</Text>
             </Box>
           );

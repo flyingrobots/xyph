@@ -7,6 +7,7 @@ import type {
   ApprovalNode,
   CampaignNode,
   CampaignStatus,
+  GraphMeta,
   GraphSnapshot,
   IntentNode,
   QuestNode,
@@ -33,6 +34,7 @@ const VALID_APPROVAL_TRIGGERS: ReadonlySet<string> = new Set<ApprovalGateTrigger
  */
 export class WarpDashboardAdapter implements DashboardPort {
   private readonly graphHolder: WarpGraphHolder;
+  private cachedSnapshot: GraphSnapshot | null = null;
 
   constructor(cwd: string, agentId: string) {
     this.graphHolder = new WarpGraphHolder(cwd, 'xyph-roadmap', agentId);
@@ -40,11 +42,19 @@ export class WarpDashboardAdapter implements DashboardPort {
 
   public invalidateCache(): void {
     this.graphHolder.reset();
+    this.cachedSnapshot = null;
   }
 
   public async fetchSnapshot(): Promise<GraphSnapshot> {
     const graph = await this.graphHolder.getGraph();
     await graph.syncCoverage();
+
+    // Short-circuit: if no writer tips changed since last materialize,
+    // the graph is identical — return cached snapshot immediately.
+    if (this.cachedSnapshot !== null && !(await graph.hasFrontierChanged())) {
+      return this.cachedSnapshot;
+    }
+
     await graph.materialize();
     const nodeIds = await graph.getNodes();
 
@@ -214,6 +224,21 @@ export class WarpDashboardAdapter implements DashboardPort {
       }
     }
 
-    return { campaigns, quests, intents, scrolls, approvals, asOf: Date.now() };
+    // Build graph meta from materialized state + frontier
+    const state = await graph.getStateSnapshot();
+    const frontier = await graph.getFrontier();
+    const maxTick = state
+      ? Math.max(0, ...state.observedFrontier.values())
+      : 0;
+    const myTick = state
+      ? (state.observedFrontier.get(graph.writerId) ?? 0)
+      : 0;
+    const writerCount = state ? state.observedFrontier.size : 0;
+    const tipSha = (frontier.get(graph.writerId) ?? '').slice(0, 7);
+    const graphMeta: GraphMeta = { maxTick, myTick, writerCount, tipSha };
+
+    const snap: GraphSnapshot = { campaigns, quests, intents, scrolls, approvals, asOf: Date.now(), graphMeta };
+    this.cachedSnapshot = snap;
+    return snap;
   }
 }

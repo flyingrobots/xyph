@@ -62,6 +62,13 @@ export interface ApprovalNode {
   requestedBy: string;
 }
 
+export interface GraphMeta {
+  maxTick: number;       // max(observedFrontier.values()) — global high-water mark
+  myTick: number;        // observedFrontier.get(writerId) ?? 0
+  writerCount: number;   // observedFrontier.size
+  tipSha: string;        // short SHA (7 chars) of our writer's tip from getFrontier()
+}
+
 export interface GraphSnapshot {
   campaigns: CampaignNode[];
   quests: QuestNode[];
@@ -69,6 +76,7 @@ export interface GraphSnapshot {
   scrolls: ScrollNode[];
   approvals: ApprovalNode[];
   asOf: number;
+  graphMeta?: GraphMeta;
 }
 
 export interface LineageTree {

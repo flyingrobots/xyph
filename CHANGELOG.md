@@ -6,6 +6,22 @@ All notable changes to XYPH will be documented in this file.
 
 ### Milestone 5: WARP Dashboard TUI Overhaul
 
+### Added
+
+**Logo Loader + XYPH Wordmark (TUI-008)**
+- New `src/tui/logo-loader.ts` utility module: `selectLogoSize()` picks small/medium/large based on terminal dimensions; `loadRandomLogo()` reads `.txt` files from the reorganized `logos/{family}/{size}/` directory structure, trims trailing blank lines, and falls back to plain `'XYPH'` on error.
+- Dimension-aware logo selection: logos are filtered by actual width/height against terminal constraints before random pick. If nothing in the preferred size fits, cascades down (large → medium → small) automatically.
+- XYPH wordmark rendered in the upper-right corner of the dashboard header (dimmed). Hidden on narrow terminals (< 50 cols).
+- All four views (`RoadmapView`, `LineageView`, `AllNodesView`, `InboxView`) accept an optional `chromeLines` prop computed from actual header height, replacing the hardcoded `CHROME_LINES = 4` constant.
+
+### Fixed
+
+**TUI layout stability (TUI-009)**
+- Landing page logo centered as a single block instead of per-line centering — multi-width ASCII art lines no longer scatter horizontally.
+- Dashboard header uses `alignItems="flex-start"` and splits tab labels / hint text onto separate rows — wordmark position is now stable across all views.
+- LineageView intent-header, scroll-sub, and orphan rows now truncate long text to prevent terminal line wrapping that pushed the header off-screen.
+- Quest detail modal (RoadmapView, AllNodesView) renders inside a fixed-height wrapper matching the normal list height — opening/closing the modal no longer causes layout shifts.
+
 ### Changed
 
 **README rewritten with progressive-disclosure walkthrough**
