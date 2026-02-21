@@ -8,6 +8,8 @@ import { Scrollbar } from '../Scrollbar.js';
 const DEFAULT_CHROME_LINES = 4;
 const SCROLL_MARGIN = 2;
 
+const trunc = (s: string, n: number): string => s.length > n ? s.slice(0, n - 1) + '…' : s;
+
 type VRow =
   | { kind: 'spacer' }
   | { kind: 'intent-header'; id: string; title: string }
@@ -157,8 +159,8 @@ export function LineageView({ snapshot, isActive, chromeLines }: Props): ReactEl
           if (row.kind === 'intent-header') {
             return (
               <Box key={`ih-${row.id}`}>
-                <Text bold color="magenta">{'◆ ' + row.id.slice(0, 30)}</Text>
-                <Text dimColor>  {row.title.slice(0, 38)}</Text>
+                <Text bold color="magenta">{'◆ ' + trunc(row.id, 30)}</Text>
+                <Text dimColor>  {trunc(row.title, 38)}</Text>
               </Box>
             );
           }
@@ -185,8 +187,8 @@ export function LineageView({ snapshot, isActive, chromeLines }: Props): ReactEl
                   <Text color="cyan">{isSelected ? '▶' : ' '}</Text>
                 </Box>
                 <Text dimColor>{row.branch} </Text>
-                <Text dimColor>{row.id.slice(0, 16)}  </Text>
-                <Text bold={isSelected}>{row.title.slice(0, 36)}  </Text>
+                <Text dimColor>{trunc(row.id, 16)}  </Text>
+                <Text bold={isSelected}>{trunc(row.title, 36)}  </Text>
                 <Text color={statusColor}>{'[' + row.status + ']'}</Text>
                 {row.scrollId !== undefined && (
                   <Text color={row.sealed ? 'green' : 'yellow'}>
@@ -199,7 +201,7 @@ export function LineageView({ snapshot, isActive, chromeLines }: Props): ReactEl
           if (row.kind === 'scroll-sub') {
             return (
               <Box key={`s-${row.scrollId}`} marginLeft={5}>
-                <Text dimColor>scroll: {row.scrollId.slice(0, 50)}</Text>
+                <Text dimColor>scroll: {trunc(row.scrollId, 50)}</Text>
               </Box>
             );
           }
@@ -212,8 +214,8 @@ export function LineageView({ snapshot, isActive, chromeLines }: Props): ReactEl
           }
           return (
             <Box key={`o-${row.id}`} marginLeft={2}>
-              <Text dimColor>└─ {row.id.slice(0, 24)}  </Text>
-              <Text>{row.title.slice(0, 38)}</Text>
+              <Text dimColor>└─ {trunc(row.id, 24)}  </Text>
+              <Text>{trunc(row.title, 38)}</Text>
             </Box>
           );
         })}

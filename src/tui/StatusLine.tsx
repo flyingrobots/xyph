@@ -12,7 +12,8 @@ export function StatusLine({ graphMeta, prevGraphMeta }: Props): ReactElement {
   const cols = stdout.columns ?? 80;
 
   if (graphMeta === undefined) {
-    const empty = '/// WARP [--] ' + '/'.repeat(Math.max(0, cols - 14));
+    const prefix = '/// WARP [--] ';
+    const empty = prefix + '/'.repeat(Math.max(0, cols - prefix.length));
     return <Text dimColor>{empty}</Text>;
   }
 
