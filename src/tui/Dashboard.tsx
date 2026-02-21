@@ -135,10 +135,10 @@ export function Dashboard({ service, intake, agentId, logoText, wordmarkText, wo
 
   const cols = stdout.columns ?? 80;
   const showWordmark = cols >= 50;
-  // Chrome: header row height (max of 2-line tab column or wordmark) + marginBottom(1) + scroll indicator(1) + status line(1)
+  // Chrome: header row height (max of 2-line tab column or wordmark) + margins + indicators
   const tabColumnHeight = 2; // tab labels row + hints row
   const headerHeight = showWordmark ? Math.max(tabColumnHeight, wordmarkLines) : tabColumnHeight;
-  const chromeLines = headerHeight + 1 + 2; // +1 marginBottom, +1 scroll indicator, +1 status line
+  const chromeLines = headerHeight + 1 /* marginBottom */ + 1 /* scroll indicator */ + 1 /* status line */;
 
   const mainContent = (
     <Box flexDirection="column">

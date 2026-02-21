@@ -56,11 +56,15 @@ function loadCandidates(dir: string, constraints?: LogoConstraints): LogoResult[
     const fileNames = readdirSync(dir).filter((f) => f.endsWith('.txt'));
     const results: LogoResult[] = [];
     for (const name of fileNames) {
-      const logo = parseLogoFile(join(dir, name));
-      if (constraints && (logo.width > constraints.maxWidth || logo.lines > constraints.maxHeight)) {
-        continue;
+      try {
+        const logo = parseLogoFile(join(dir, name));
+        if (constraints && (logo.width > constraints.maxWidth || logo.lines > constraints.maxHeight)) {
+          continue;
+        }
+        results.push(logo);
+      } catch {
+        // skip unreadable file — other candidates may still load
       }
-      results.push(logo);
     }
     return results;
   } catch {

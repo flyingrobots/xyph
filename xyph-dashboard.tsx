@@ -37,7 +37,7 @@ const splash = loadRandomLogo(logosDir, 'xyph', selectLogoSize(cols, rows), {
   maxWidth: cols - 4,   // breathing room for centering
   maxHeight: rows - 12, // room for stats panel + footer
 });
-const wordmark = loadRandomLogo(logosDir, 'xyph', 'small');
+const wordmark = loadRandomLogo(logosDir, 'xyph', 'small', { maxWidth: 30, maxHeight: 4 });
 
 const adapter = new WarpDashboardAdapter(cwd, agentId);
 const service = new DashboardService(adapter);
