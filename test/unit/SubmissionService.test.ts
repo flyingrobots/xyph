@@ -12,13 +12,13 @@ import type { QuestStatus } from '../../src/domain/entities/Quest.js';
 
 function makeReadModel(overrides: Partial<SubmissionReadModel> = {}): SubmissionReadModel {
   return {
-    getQuestStatus: vi.fn<[string], Promise<QuestStatus | null>>().mockResolvedValue('IN_PROGRESS'),
-    getSubmissionQuestId: vi.fn<[string], Promise<string | null>>().mockResolvedValue('task:TST-001'),
-    getOpenSubmissionsForQuest: vi.fn<[string], Promise<string[]>>().mockResolvedValue([]),
-    getPatchsetRefs: vi.fn<[string], Promise<PatchsetRef[]>>().mockResolvedValue([]),
-    getSubmissionForPatchset: vi.fn<[string], Promise<string | null>>().mockResolvedValue('submission:S1'),
-    getReviewsForPatchset: vi.fn<[string], Promise<ReviewRef[]>>().mockResolvedValue([]),
-    getDecisionsForSubmission: vi.fn<[string], Promise<DecisionProps[]>>().mockResolvedValue([]),
+    getQuestStatus: vi.fn().mockResolvedValue('IN_PROGRESS'),
+    getSubmissionQuestId: vi.fn().mockResolvedValue('task:TST-001'),
+    getOpenSubmissionsForQuest: vi.fn().mockResolvedValue([]),
+    getPatchsetRefs: vi.fn().mockResolvedValue([]),
+    getSubmissionForPatchset: vi.fn().mockResolvedValue('submission:S1'),
+    getReviewsForPatchset: vi.fn().mockResolvedValue([]),
+    getDecisionsForSubmission: vi.fn().mockResolvedValue([]),
     ...overrides,
   };
 }
@@ -233,8 +233,8 @@ describe('SubmissionService.validateMerge', () => {
     };
     const patchsets: PatchsetRef[] = [
       { id: 'patchset:S1:A', authoredAt: 100 },
-      { id: 'patchset:S1:B', authoredAt: 200, supersedes: 'patchset:S1:A' },
-      { id: 'patchset:S1:C', authoredAt: 300, supersedes: 'patchset:S1:A' },
+      { id: 'patchset:S1:B', authoredAt: 200, supersedesId: 'patchset:S1:A' },
+      { id: 'patchset:S1:C', authoredAt: 300, supersedesId: 'patchset:S1:A' },
     ];
     const svc = new SubmissionService(
       makeReadModel({
@@ -256,8 +256,8 @@ describe('SubmissionService.validateMerge', () => {
     };
     const patchsets: PatchsetRef[] = [
       { id: 'patchset:S1:A', authoredAt: 100 },
-      { id: 'patchset:S1:B', authoredAt: 200, supersedes: 'patchset:S1:A' },
-      { id: 'patchset:S1:C', authoredAt: 300, supersedes: 'patchset:S1:A' },
+      { id: 'patchset:S1:B', authoredAt: 200, supersedesId: 'patchset:S1:A' },
+      { id: 'patchset:S1:C', authoredAt: 300, supersedesId: 'patchset:S1:A' },
     ];
     const svc = new SubmissionService(
       makeReadModel({

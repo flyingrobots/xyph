@@ -359,7 +359,8 @@ program
   .description('Add a new patchset to an existing submission, superseding the current tip')
   .requiredOption('--description <text>', 'Description of the revision (min 10 chars)')
   .option('--workspace <ref>', 'Workspace reference (default: current git branch)')
-  .action(async (submissionId: string, opts: { description: string; workspace?: string }) => {
+  .option('--base <ref>', 'Base branch (default: main)', 'main')
+  .action(async (submissionId: string, opts: { description: string; workspace?: string; base: string }) => {
     try {
       const agentId = process.env['XYPH_AGENT_ID'] ?? DEFAULT_AGENT_ID;
       const { WarpSubmissionAdapter } = await import('./src/infrastructure/adapters/WarpSubmissionAdapter.js');
@@ -390,7 +391,7 @@ program
       let commitShas: string[] | undefined;
       try {
         headRef = await workspace.getHeadCommit(workspaceRef);
-        commitShas = await workspace.getCommitsSince('main');
+        commitShas = await workspace.getCommitsSince(opts.base);
       } catch {
         // Non-fatal
       }
@@ -403,6 +404,7 @@ program
         supersedesPatchsetId: tip.id,
         patchset: {
           workspaceRef,
+          baseRef: opts.base,
           headRef,
           commitShas,
           description: opts.description,
@@ -482,10 +484,8 @@ program
       const service = new SubmissionService(adapter);
       const { tipPatchsetId } = await service.validateMerge(submissionId, agentId, opts.patchset);
 
-      // Get workspace ref from the tip patchset for git settlement
-      const graph = await getGraph();
-      const tipProps = await graph.getNodeProps(tipPatchsetId);
-      const workspaceRef = tipProps?.get('workspace_ref');
+      // Get workspace ref from the tip patchset via the adapter (no second graph instance)
+      const workspaceRef = await adapter.getPatchsetWorkspaceRef(tipPatchsetId);
       if (typeof workspaceRef !== 'string') {
         console.error(chalk.red(`[ERROR] Could not resolve workspace ref from patchset ${tipPatchsetId}`));
         process.exit(1);
@@ -516,44 +516,52 @@ program
       // Auto-seal: create scroll + sign with GuildSealService + set quest DONE
       const questId = await adapter.getSubmissionQuestId(submissionId);
       if (questId) {
-        const now = Date.now();
-        const sealService = new GuildSealService();
-        const scrollPayload = {
-          artifactHash: mergeCommit ?? 'unknown',
-          questId,
-          rationale: opts.rationale,
-          sealedBy: agentId,
-          sealedAt: now,
-        };
-        const guildSeal = await sealService.sign(scrollPayload, agentId);
+        // Check if quest is already DONE (avoid duplicate sealing)
+        const questStatus = await adapter.getQuestStatus(questId);
+        if (questStatus === 'DONE') {
+          console.log(chalk.yellow(`[WARN] Quest ${questId} is already DONE — skipping auto-seal.`));
+        } else {
+          const now = Date.now();
+          const sealService = new GuildSealService();
+          const scrollPayload = {
+            artifactHash: mergeCommit ?? 'unknown',
+            questId,
+            rationale: opts.rationale,
+            sealedBy: agentId,
+            sealedAt: now,
+          };
+          const guildSeal = await sealService.sign(scrollPayload, agentId);
 
-        const scrollId = `artifact:${questId}`;
-        const patch = await createPatch(graph);
-        patch
-          .addNode(scrollId)
-          .setProperty(scrollId, 'artifact_hash', mergeCommit ?? 'unknown')
-          .setProperty(scrollId, 'rationale', opts.rationale)
-          .setProperty(scrollId, 'type', 'scroll')
-          .setProperty(scrollId, 'sealed_by', agentId)
-          .setProperty(scrollId, 'sealed_at', now)
-          .setProperty(scrollId, 'payload_digest', sealService.payloadDigest(scrollPayload))
-          .addEdge(scrollId, questId, 'fulfills');
-
-        if (guildSeal) {
+          // Fresh graph instance to see all prior patches (including the decide() above)
+          const sealGraph = await getGraph();
+          const scrollId = `artifact:${questId}`;
+          const patch = await createPatch(sealGraph);
           patch
-            .setProperty(scrollId, 'guild_seal_alg', guildSeal.alg)
-            .setProperty(scrollId, 'guild_seal_key_id', guildSeal.keyId)
-            .setProperty(scrollId, 'guild_seal_sig', guildSeal.sig);
-        }
+            .addNode(scrollId)
+            .setProperty(scrollId, 'artifact_hash', mergeCommit ?? 'unknown')
+            .setProperty(scrollId, 'rationale', opts.rationale)
+            .setProperty(scrollId, 'type', 'scroll')
+            .setProperty(scrollId, 'sealed_by', agentId)
+            .setProperty(scrollId, 'sealed_at', now)
+            .setProperty(scrollId, 'payload_digest', sealService.payloadDigest(scrollPayload))
+            .addEdge(scrollId, questId, 'fulfills');
 
-        patch
-          .setProperty(questId, 'status', 'DONE')
-          .setProperty(questId, 'completed_at', now);
-        await patch.commit();
+          if (guildSeal) {
+            patch
+              .setProperty(scrollId, 'guild_seal_alg', guildSeal.alg)
+              .setProperty(scrollId, 'guild_seal_key_id', guildSeal.keyId)
+              .setProperty(scrollId, 'guild_seal_sig', guildSeal.sig);
+          }
 
-        console.log(chalk.green(`[OK] Quest ${questId} auto-sealed via merge.`));
-        if (guildSeal) {
-          console.log(chalk.dim(`  Guild Seal: ${guildSeal.keyId}`));
+          patch
+            .setProperty(questId, 'status', 'DONE')
+            .setProperty(questId, 'completed_at', now);
+          await patch.commit();
+
+          console.log(chalk.green(`[OK] Quest ${questId} auto-sealed via merge.`));
+          if (guildSeal) {
+            console.log(chalk.dim(`  Guild Seal: ${guildSeal.keyId}`));
+          }
         }
       }
 

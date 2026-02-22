@@ -423,6 +423,7 @@ export class WarpDashboardAdapter implements DashboardPort {
     // Build submission nodes with computed status
     const submissions: SubmissionNode[] = [];
     const submissionByQuest = new Map<string, string>();
+    const submittedAtByQuest = new Map<string, number>();
     for (const id of rawSubmissionIds) {
       const props = propsCache.get(id);
       if (!props) continue;
@@ -463,10 +464,11 @@ export class WarpDashboardAdapter implements DashboardPort {
         submittedAt,
       });
 
-      // Track latest submission per quest for QuestNode annotation
-      const existingSub = submissionByQuest.get(questId);
-      if (!existingSub || submittedAt > (submissions.find((s) => s.id === existingSub)?.submittedAt ?? 0)) {
+      // Track latest submission per quest for QuestNode annotation (O(1) lookup)
+      const existingAt = submittedAtByQuest.get(questId) ?? 0;
+      if (submittedAt > existingAt) {
         submissionByQuest.set(questId, id);
+        submittedAtByQuest.set(questId, submittedAt);
       }
     }
 

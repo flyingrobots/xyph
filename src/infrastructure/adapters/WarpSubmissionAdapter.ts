@@ -6,6 +6,7 @@ import type { SubmissionReadModel } from '../../domain/services/SubmissionServic
 import type { QuestStatus } from '../../domain/entities/Quest.js';
 import { VALID_STATUSES as VALID_QUEST_STATUSES } from '../../domain/entities/Quest.js';
 import type { PatchsetRef, ReviewRef, DecisionProps } from '../../domain/entities/Submission.js';
+import type WarpGraph from '@git-stunts/git-warp';
 
 /**
  * WarpSubmissionAdapter — graph-only persistence for the submission lifecycle.
@@ -235,8 +236,8 @@ export class WarpSubmissionAdapter implements SubmissionPort, SubmissionReadMode
       const props = await graph.getNodeProps(n.nodeId);
       if (!props || props.get('type') !== 'submission') continue;
 
-      // Check if this submission has a terminal decision
-      const decisions = await this.getDecisionsForSubmission(n.nodeId);
+      // Check if this submission has a terminal decision (reuse already-materialized graph)
+      const decisions = await this._getDecisionsFromGraph(graph, n.nodeId);
       const isTerminal = decisions.some((d) => d.kind === 'merge' || d.kind === 'close');
       if (!isTerminal) {
         open.push(n.nodeId);
@@ -291,6 +292,17 @@ export class WarpSubmissionAdapter implements SubmissionPort, SubmissionReadMode
     return null;
   }
 
+  public async getPatchsetWorkspaceRef(patchsetId: string): Promise<string | null> {
+    const graph = await this.graphHolder.getGraph();
+    await graph.syncCoverage();
+    await graph.materialize();
+
+    const props = await graph.getNodeProps(patchsetId);
+    if (!props) return null;
+    const workspaceRef = props.get('workspace_ref');
+    return typeof workspaceRef === 'string' ? workspaceRef : null;
+  }
+
   public async getReviewsForPatchset(patchsetId: string): Promise<ReviewRef[]> {
     const graph = await this.graphHolder.getGraph();
     await graph.syncCoverage();
@@ -330,7 +342,17 @@ export class WarpSubmissionAdapter implements SubmissionPort, SubmissionReadMode
     const graph = await this.graphHolder.getGraph();
     await graph.syncCoverage();
     await graph.materialize();
+    return this._getDecisionsFromGraph(graph, submissionId);
+  }
 
+  // =========================================================================
+  // Internal helpers
+  // =========================================================================
+
+  private async _getDecisionsFromGraph(
+    graph: WarpGraph,
+    submissionId: string,
+  ): Promise<DecisionProps[]> {
     // Traverse incoming 'decides' edges from the submission to find decision nodes
     const decisionNeighbors = toNeighborEntries(
       await graph.neighbors(submissionId, 'incoming', 'decides'),

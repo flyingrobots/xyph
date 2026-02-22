@@ -423,8 +423,10 @@ export function renderSubmissions(snapshot: GraphSnapshot): string {
 
   lines.push(t.toString());
 
-  // Show recent reviews
-  const recentReviews = snapshot.reviews.slice(-10);
+  // Show recent reviews (sorted by most recent first)
+  const recentReviews = [...snapshot.reviews]
+    .sort((a, b) => b.reviewedAt - a.reviewedAt)
+    .slice(0, 10);
   if (recentReviews.length > 0) {
     lines.push('');
     lines.push(chalk.bold('  Recent Reviews'));

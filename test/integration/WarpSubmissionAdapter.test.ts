@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { WarpSubmissionAdapter } from '../../src/infrastructure/adapters/WarpSubmissionAdapter.js';
 import { execSync } from 'node:child_process';
 import os from 'node:os';
@@ -70,6 +70,10 @@ describe('WarpSubmissionAdapter Integration', () => {
       .setProperty('task:SUB-002', 'assigned_to', 'human.tester')
       .addEdge('task:SUB-002', 'intent:test-intent', 'authorized-by');
     await p2.commit();
+  });
+
+  afterAll(() => {
+    fs.rmSync(repoPath, { recursive: true, force: true });
   });
 
   // -----------------------------------------------------------------------
