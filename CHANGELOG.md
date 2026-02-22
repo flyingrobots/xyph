@@ -4,6 +4,20 @@ All notable changes to XYPH will be documented in this file.
 
 ## [Unreleased]
 
+**Backlog Reconciliation & Roadmap Triage**
+
+### Added
+- New `intent:CLI-FOUNDATION` — sovereign intent for CLI tooling (identity, packaging, time-travel, ergonomics).
+- New `campaign:CLITOOL` (Milestone 10: CLI Tooling) — 20 quests promoted from inbox.
+
+### Changed
+- VISION_NORTH_STAR.md upgraded from v1.1.0 to v1.2.0: added history-first computing, stigmergic workflows, Git-as-settlement layering, expanded planning compiler and end state sections.
+- Deleted `VISION_NORTH_STAR_v1.2_draft.md` (promoted to authoritative).
+- README milestones table: Milestone 6 (SUBMISSION) marked DONE, Milestone 10 (CLI TOOLING) added.
+- Full inbox triage: 31 items processed — 1 rejected (SUB-ENTITY-001, fixed in PR #10), 20 promoted to `campaign:CLITOOL`, 10 promoted to `campaign:DASHBOARD`.
+
+---
+
 **Milestone 6: Native WARP Graph Submission & Review Workflow**
 
 ### Added
