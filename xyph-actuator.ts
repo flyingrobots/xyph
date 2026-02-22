@@ -497,6 +497,10 @@ program
       const alreadyMerged = await workspace.isMerged(workspaceRef, opts.into);
       if (alreadyMerged) {
         mergeCommit = await workspace.getHeadCommit(opts.into);
+        if (!mergeCommit) {
+          console.error(chalk.red(`[ERROR] Could not resolve HEAD of ${opts.into}`));
+          process.exit(1);
+        }
         console.log(chalk.dim(`  Branch ${workspaceRef} already merged into ${opts.into}`));
       } else {
         mergeCommit = await workspace.merge(workspaceRef, opts.into);

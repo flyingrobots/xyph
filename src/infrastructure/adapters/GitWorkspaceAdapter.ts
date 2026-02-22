@@ -44,7 +44,7 @@ export class GitWorkspaceAdapter implements WorkspacePort {
     try {
       this.git(['checkout', into]);
       try {
-        this.git(['merge', '--no-ff', ref]);
+        this.git(['merge', '--no-ff', '--no-edit', ref]);
       } catch (mergeErr) {
         try {
           this.git(['merge', '--abort']);
