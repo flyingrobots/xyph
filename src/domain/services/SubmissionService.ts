@@ -204,11 +204,17 @@ export class SubmissionService {
       );
     }
 
+    const patchsetRefs = await this.read.getPatchsetRefs(submissionId);
+
     if (explicitPatchsetId) {
+      const belongs = patchsetRefs.some((p) => p.id === explicitPatchsetId);
+      if (!belongs) {
+        throw new Error(
+          `[NOT_FOUND] Patchset ${explicitPatchsetId} does not belong to submission ${submissionId}`
+        );
+      }
       return { tipPatchsetId: explicitPatchsetId };
     }
-
-    const patchsetRefs = await this.read.getPatchsetRefs(submissionId);
     const { tip, headsCount } = computeTipPatchset(patchsetRefs);
 
     if (!tip) {

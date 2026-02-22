@@ -272,6 +272,27 @@ describe('SubmissionService.validateMerge', () => {
     );
     expect(result.tipPatchsetId).toBe('patchset:S1:B');
   });
+
+  it('throws [NOT_FOUND] when explicit patchset does not belong to the submission', async () => {
+    const approveReview: ReviewRef = {
+      id: 'r1',
+      verdict: 'approve',
+      reviewedBy: 'human.alice',
+      reviewedAt: 200,
+    };
+    const patchsets: PatchsetRef[] = [
+      { id: 'patchset:S1:A', authoredAt: 100 },
+    ];
+    const svc = new SubmissionService(
+      makeReadModel({
+        getPatchsetRefs: vi.fn().mockResolvedValue(patchsets),
+        getReviewsForPatchset: vi.fn().mockResolvedValue([approveReview]),
+      }),
+    );
+    await expect(
+      svc.validateMerge('submission:S1', 'human.james', 'patchset:OTHER:X'),
+    ).rejects.toThrow('[NOT_FOUND]');
+  });
 });
 
 // ---------------------------------------------------------------------------
