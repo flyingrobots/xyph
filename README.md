@@ -160,9 +160,52 @@ npm run build && npm test
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the full development workflow.
 
-#### 6. Hal Seals the Quest
+#### 6. Hal Submits for Review
 
-When the work is done, Hal **seals** the quest. This marks it DONE and produces a **Scroll** — a cryptographic artifact that records _what_ was built, _who_ built it, and _why_ it was authorized:
+When the work is ready, Hal **submits** it for review. This creates a submission envelope and a patchset that captures the current branch state:
+
+```bash
+npx tsx xyph-actuator.ts submit task:notif-001 \
+  --description "WebSocket event bus with reconnection and heartbeat"
+```
+
+The submission is linked to the quest in the graph. Git workspace info (branch, head commit, commit list) is captured automatically.
+
+#### 7. Ada Reviews the Submission
+
+Ada reviews the patchset and can approve, request changes, or leave a comment:
+
+```bash
+export XYPH_AGENT_ID=human.ada
+
+npx tsx xyph-actuator.ts review patchset:abc123 \
+  --verdict approve \
+  --comment "Clean implementation, LGTM"
+```
+
+If Ada requests changes, Hal can **revise** (push a new patchset that supersedes the old one):
+
+```bash
+export XYPH_AGENT_ID=agent.hal
+
+npx tsx xyph-actuator.ts revise submission:xyz789 \
+  --description "Added error handling per review feedback"
+```
+
+#### 8. Ada Merges
+
+Once approved, Ada merges — this performs git settlement and auto-seals the quest with a Guild-signed Scroll:
+
+```bash
+export XYPH_AGENT_ID=human.ada
+
+npx tsx xyph-actuator.ts merge submission:xyz789 \
+  --rationale "All reviews approved, tests passing"
+```
+
+The merge command: validates APPROVED status, performs `git merge --no-ff`, creates a merge decision node, and auto-seals the quest (scroll + GuildSeal + DONE) — all in one step.
+
+For solo work without review, Hal can still **seal** directly:
 
 ```bash
 npx tsx xyph-actuator.ts seal task:notif-001 \
@@ -170,9 +213,9 @@ npx tsx xyph-actuator.ts seal task:notif-001 \
   --rationale "WebSocket bus implemented and tested"
 ```
 
-The scroll is signed with Hal's Guild Seal and linked to the quest in the graph.
+Both paths (merge and seal) independently lead to quest DONE.
 
-#### 7. Ada Checks the Result
+#### 9. Ada Checks the Result
 
 Ada opens the dashboard to see the full picture:
 
@@ -180,7 +223,13 @@ Ada opens the dashboard to see the full picture:
 XYPH_AGENT_ID=human.ada ./xyph-dashboard.tsx
 ```
 
-She can see the campaign, its quests, who claimed them, and the sealed scrolls — all traceable back to her original intent. The lineage view (`status --view lineage`) shows the complete Genealogy of Intent from scroll → quest → campaign → intent → human.
+She can see the campaign, its quests, who claimed them, and the sealed scrolls — all traceable back to her original intent. The submissions view shows computed review status:
+
+```bash
+npx tsx xyph-actuator.ts status --view submissions
+```
+
+The lineage view (`status --view lineage`) shows the complete Genealogy of Intent from scroll → quest → campaign → intent → human.
 
 She can also audit that every quest has a valid chain:
 
@@ -216,7 +265,7 @@ All commands run via `npx tsx xyph-actuator.ts <command>`.
 
 | Command                                                  | What it does                                           |
 | -------------------------------------------------------- | ------------------------------------------------------ |
-| `status --view <roadmap\|lineage\|all\|inbox>`           | View the graph (`--include-graveyard` to see rejected) |
+| `status --view <roadmap\|lineage\|all\|inbox\|submissions>` | View the graph (`--include-graveyard` to see rejected) |
 | `intent <id> --title "..." --requested-by human.<name>`  | Declare a sovereign intent                             |
 | `quest <id> --title "..." --campaign <id> --intent <id>` | Create a quest                                         |
 | `inbox <id> --title "..." --suggested-by <principal>`    | Suggest a task for triage                              |
@@ -224,7 +273,12 @@ All commands run via `npx tsx xyph-actuator.ts <command>`.
 | `reject <id> --rationale "..."`                          | Reject to graveyard                                    |
 | `reopen <id>`                                            | Reopen a rejected task                                 |
 | `claim <id>`                                             | Volunteer for a quest (OCP)                            |
-| `seal <id> --artifact <hash> --rationale "..."`          | Mark done; produces a guild-sealed scroll              |
+| `submit <quest-id> --description "..."`                  | Submit quest for review (creates submission + patchset)|
+| `revise <submission-id> --description "..."`             | Push a new patchset superseding current tip            |
+| `review <patchset-id> --verdict <v> --comment "..."`     | Review: approve, request-changes, or comment           |
+| `merge <submission-id> --rationale "..."`                | Merge (git settlement + auto-seal quest)               |
+| `close <submission-id> --rationale "..."`                | Close submission without merging                       |
+| `seal <id> --artifact <hash> --rationale "..."`          | Mark done directly (solo work, no review needed)       |
 | `generate-key`                                           | Generate an Ed25519 Guild Seal keypair                 |
 | `audit-sovereignty`                                      | Verify all quests have a Genealogy of Intent           |
 
@@ -237,7 +291,9 @@ XYPH uses a **Digital Guild** metaphor to structure collaboration:
 - **Quests** — individual units of work (like tickets or tasks)
 - **Campaigns** — named collections of quests (like milestones or epics)
 - **Intents** — sovereign declarations of _why_ work should exist (humans only)
-- **Scrolls** — content-addressed artifacts produced when a quest is sealed
+- **Submissions** — review envelopes linking a quest to one or more patchsets, reviews, and a terminal decision
+- **Patchsets** — immutable "what I'm proposing" payloads, chained via supersedes edges
+- **Scrolls** — content-addressed artifacts produced when a quest is sealed (via merge or direct seal)
 - **Guild Seals** — Ed25519 cryptographic signatures proving who did the work
 - **Genealogy of Intent** — the chain from scroll → quest → campaign → intent → human, ensuring every artifact traces back to a human decision
 
@@ -292,10 +348,10 @@ XYPH exposes two entry points: the `xyph-actuator.ts` CLI for graph mutations, a
 
 ```text
 src/
-├── domain/           # Pure domain models (Quest, Intent, ApprovalGate, ...)
-├── ports/            # Interfaces (RoadmapPort, DashboardPort, IntakePort, ...)
+├── domain/           # Pure domain models (Quest, Intent, Submission, ApprovalGate, ...)
+├── ports/            # Interfaces (RoadmapPort, DashboardPort, SubmissionPort, WorkspacePort, ...)
 ├── infrastructure/
-│   └── adapters/     # git-warp adapters (WarpRoadmapAdapter, WarpDashboardAdapter, ...)
+│   └── adapters/     # git-warp adapters (WarpSubmissionAdapter, GitWorkspaceAdapter, ...)
 └── tui/              # Ink-based interactive dashboard
     ├── Dashboard.tsx         # Root component (landing, help, tab routing)
     ├── HelpModal.tsx         # ? key help overlay
@@ -327,10 +383,11 @@ xyph-dashboard.tsx  # Interactive TUI entry point
 | 3 | TRIAGE — rebalancer + origin context | ✅ DONE |
 | 4 | SOVEREIGNTY — cryptographic guild seals, approval gates, genealogy of intent | ✅ DONE |
 | 4+ | POWERLEVEL™ — full orchestration pipeline refactor | ✅ DONE |
-| 5 | WARP Dashboard TUI — interactive graph browser | 🚧 IN PROGRESS |
-| 6 | WEAVER — DAG scheduling + dependency graph ([RFC_001](docs/canonical/RFC_001_AST_DRIVEN_INGEST.md)) | ⬜ PLANNED |
-| 7 | ORACLE — intent classification + policy engine | ⬜ PLANNED |
-| 8 | FORGE — emit + apply phases | ⬜ PLANNED |
+| 5 | WARP Dashboard TUI — interactive graph browser | ✅ DONE |
+| 6 | SUBMISSION — native review workflow (submit, revise, review, merge) | 🚧 IN PROGRESS |
+| 7 | WEAVER — DAG scheduling + dependency graph ([RFC_001](docs/canonical/RFC_001_AST_DRIVEN_INGEST.md)) | ⬜ PLANNED |
+| 8 | ORACLE — intent classification + policy engine | ⬜ PLANNED |
+| 9 | FORGE — emit + apply phases | ⬜ PLANNED |
 
 ## Constitution
 
@@ -376,7 +433,7 @@ The `docs/canonical/` directory contains the foundational specifications:
 - [OPERATIONS_RUNBOOK.md](docs/canonical/OPERATIONS_RUNBOOK.md) — Operational troubleshooting
 
 **RFCs**
-- [RFC_001_AST_DRIVEN_INGEST.md](docs/canonical/RFC_001_AST_DRIVEN_INGEST.md) — AST-based ingest proposal (Milestone 6)
+- [RFC_001_AST_DRIVEN_INGEST.md](docs/canonical/RFC_001_AST_DRIVEN_INGEST.md) — AST-based ingest proposal (Milestone 7)
 
 ---
 

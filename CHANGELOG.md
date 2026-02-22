@@ -2,6 +2,58 @@
 
 All notable changes to XYPH will be documented in this file.
 
+## [Unreleased]
+
+**Milestone 6: Native WARP Graph Submission & Review Workflow**
+
+### Added
+
+**Submission lifecycle (SUB-001)**
+- New graph node types: `submission:`, `patchset:`, `review:` prefixes added to schema.
+- New edge types: `submits`, `has-patchset`, `supersedes`, `reviews`, `decides`.
+- `Submission` and `Patchset` domain entities with constructor validation (`src/domain/entities/Submission.ts`).
+- Three pure computed functions: `computeTipPatchset()` (head selection from supersedes chain, fork detection), `computeEffectiveVerdicts()` (latest-per-reviewer, comment exclusion), `computeStatus()` (5-state derivation: OPEN → CHANGES_REQUESTED → APPROVED → MERGED | CLOSED).
+- `SubmissionService` domain validation service with `validateSubmit`, `validateRevise`, `validateReview`, `validateMerge`, `validateClose`. Error codes: `[FORBIDDEN]`, `[INVALID_FROM]`, `[NOT_FOUND]`, `[MISSING_ARG]`, `[CONFLICT]`, `[AMBIGUOUS_TIP]`.
+
+**Ports & adapters (SUB-002)**
+- `SubmissionPort` interface: `submit()`, `revise()`, `review()`, `decide()` — graph-only persistence, caller-generated IDs.
+- `WorkspacePort` interface: `getWorkspaceRef()`, `getCommitsSince()`, `getHeadCommit()`, `isMerged()`, `merge()` — VCS abstraction (Git today, JIT tomorrow).
+- `WarpSubmissionAdapter`: implements both `SubmissionPort` (write) and `SubmissionReadModel` (read) against the WARP graph.
+- `GitWorkspaceAdapter`: implements `WorkspacePort` using local git plumbing.
+
+**CLI commands (SUB-003)**
+- `xyph submit <quest-id> --description "..."` — creates submission + first patchset, auto-fills workspace/head/commits from git.
+- `xyph revise <submission-id> --description "..."` — adds new patchset superseding current tip.
+- `xyph review <patchset-id> --verdict approve|request-changes|comment --comment "..."` — posts a review.
+- `xyph merge <submission-id> --rationale "..."` — validates APPROVED status, performs git settlement, creates merge decision, auto-seals quest (scroll + GuildSeal + DONE).
+- `xyph close <submission-id> --rationale "..."` — creates close decision without merging.
+
+**Dashboard (SUB-004)**
+- `SubmissionNode`, `ReviewNode`, `DecisionNode` view models added to `dashboard.ts`.
+- `QuestNode` gains optional `submissionId` field.
+- `WarpDashboardAdapter` classifies submission/patchset/review/decision nodes and computes status using domain functions.
+- New `renderSubmissions()` renderer; wired as `--view submissions`.
+- Submission status colors: OPEN (cyan), CHANGES_REQUESTED (yellow), APPROVED (green), MERGED (green), CLOSED (dim).
+
+**Integration safeguards (SUB-005)**
+- `seal` command now warns if a non-terminal submission exists for the quest, suggesting `merge` instead.
+- `seal` and `merge` are independent paths to quest DONE — both remain valid.
+
+### Changed
+
+**Submission workflow jank fixes (6 items)**
+- `WarpSubmissionAdapter`: replaced O(n) full-graph scans with `graph.neighbors(nodeId, 'incoming', edgeLabel)` edge traversal in `getOpenSubmissionsForQuest`, `getPatchsetRefs`, `getReviewsForPatchset`, `getDecisionsForSubmission`.
+- `WarpDashboardAdapter`: extracted 170-line fourth pass (submission/review/decision assembly) into private `buildSubmissionData()` helper, reducing `fetchSnapshot()` from ~390 to ~240 lines.
+- `GitWorkspaceAdapter.merge()`: saves current branch before checkout, restores in `finally` block to avoid silently switching the user's working branch.
+- `generateId()`: zero-padded base36 timestamp to 9 chars (17-char fixed-length IDs), now lexicographically sortable by creation time.
+- `PatchsetRef.supersedes` renamed to `supersedesId` across all files for clarity.
+- Added comments documenting the `decision:` prefix collision guard (shared between old concept/decision nodes and new submission decisions; `type === 'decision'` discriminator already handles it).
+
+**Tests — 63 new tests (249 total)**
+- `test/unit/Submission.test.ts` — 29 tests: entity constructors, `computeTipPatchset` (linear chain, forked heads, tie-breaking), `computeEffectiveVerdicts` (latest-per-reviewer, comment exclusion), `computeStatus` (all 5 rules, custom thresholds).
+- `test/unit/SubmissionService.test.ts` — 24 tests: all validate* methods with error code coverage.
+- `test/integration/WarpSubmissionAdapter.test.ts` — 6 tests: submit, revise, review, decide(close), full lifecycle (submit → request-changes → revise → approve → merge), getOpenSubmissionsForQuest terminal exclusion.
+
 ## [1.0.0-alpha.5] - 2026-02-20
 
 **Milestone 5: WARP Dashboard TUI Overhaul**

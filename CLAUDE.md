@@ -49,11 +49,16 @@ XYPH plans and tracks its own development through the WARP graph. The `xyph-actu
 All project planning, prioritization, and progress tracking flows through the actuator. If you want to know what to work on, ask the graph. If you want to add work, write it to the graph.
 
 ### Command Reference
-- `npx tsx xyph-actuator.ts status --view <roadmap|lineage|all|inbox>`: View the roadmap state.
+- `npx tsx xyph-actuator.ts status --view <roadmap|lineage|all|inbox|submissions>`: View the roadmap state.
 - `npx tsx xyph-actuator.ts quest <id> --title "Title" --campaign <id> --intent <id>`: Initialize a Quest.
 - `npx tsx xyph-actuator.ts intent <id> --title "Title" --requested-by human.<name>`: Declare a sovereign Intent.
 - `npx tsx xyph-actuator.ts claim <id>`: Volunteer for a task (OCP).
-- `npx tsx xyph-actuator.ts seal <id> --artifact <hash> --rationale "..."`: Mark as DONE.
+- `npx tsx xyph-actuator.ts submit <quest-id> --description "..."`: Submit quest for review (creates submission + patchset).
+- `npx tsx xyph-actuator.ts revise <submission-id> --description "..."`: Push a new patchset superseding current tip.
+- `npx tsx xyph-actuator.ts review <patchset-id> --verdict approve|request-changes|comment --comment "..."`: Review a patchset.
+- `npx tsx xyph-actuator.ts merge <submission-id> --rationale "..."`: Merge (git settlement + auto-seal quest).
+- `npx tsx xyph-actuator.ts close <submission-id> --rationale "..."`: Close submission without merging.
+- `npx tsx xyph-actuator.ts seal <id> --artifact <hash> --rationale "..."`: Mark as DONE directly (solo work).
 - `npx tsx xyph-actuator.ts inbox <id> --title "Title" --suggested-by <principal>`: Suggest a task for triage.
 - `npx tsx xyph-actuator.ts promote <id> --intent <id>`: Promote INBOX → BACKLOG.
 - `npx tsx xyph-actuator.ts reject <id> --rationale "..."`: Reject to GRAVEYARD.

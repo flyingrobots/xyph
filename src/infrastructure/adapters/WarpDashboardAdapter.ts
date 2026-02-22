@@ -7,12 +7,26 @@ import type {
   ApprovalNode,
   CampaignNode,
   CampaignStatus,
+  DecisionNode,
   GraphMeta,
   GraphSnapshot,
   IntentNode,
   QuestNode,
+  ReviewNode,
   ScrollNode,
+  SubmissionNode,
 } from '../../domain/models/dashboard.js';
+import {
+  computeStatus,
+  computeTipPatchset,
+  computeEffectiveVerdicts,
+  type PatchsetRef,
+  type ReviewRef,
+  type DecisionProps,
+  type ReviewVerdict,
+  type DecisionKind,
+} from '../../domain/entities/Submission.js';
+import type WarpGraph from '@git-stunts/git-warp';
 import { WarpGraphHolder } from '../helpers/WarpGraphHolder.js';
 import { toNeighborEntries } from '../helpers/isNeighborEntry.js';
 
@@ -63,6 +77,10 @@ export class WarpDashboardAdapter implements DashboardPort {
     const rawScrollIds: string[] = [];
     const intents: IntentNode[] = [];
     const approvals: ApprovalNode[] = [];
+    const rawSubmissionIds: string[] = [];
+    const rawPatchsetIds: string[] = [];
+    const rawReviewIds: string[] = [];
+    const rawDecisionIds: string[] = [];
 
     // Cache node props from first pass to avoid redundant getNodeProps calls
     const propsCache = new Map<string, Map<string, unknown>>();
@@ -119,6 +137,16 @@ export class WarpDashboardAdapter implements DashboardPort {
         ) {
           approvals.push({ id, status: status as ApprovalGateStatus, trigger: trigger as ApprovalGateTrigger, approver, requestedBy });
         }
+      } else if (type === 'submission' && id.startsWith('submission:')) {
+        rawSubmissionIds.push(id);
+      } else if (type === 'patchset' && id.startsWith('patchset:')) {
+        rawPatchsetIds.push(id);
+      } else if (type === 'review' && id.startsWith('review:')) {
+        rawReviewIds.push(id);
+      } else if (type === 'decision' && id.startsWith('decision:')) {
+        // Note: 'decision:' prefix is shared with old concept/decision nodes.
+        // The type === 'decision' guard above prevents misclassification.
+        rawDecisionIds.push(id);
       }
     }
 
@@ -224,6 +252,19 @@ export class WarpDashboardAdapter implements DashboardPort {
       }
     }
 
+    // Fourth pass: build submission/review/decision models
+    const { submissions, reviews, decisions, submissionByQuest } = await this.buildSubmissionData(
+      rawSubmissionIds, rawPatchsetIds, rawReviewIds, rawDecisionIds, propsCache, graph,
+    );
+
+    // Annotate quests with their active submission ID
+    for (const quest of quests) {
+      const subId = submissionByQuest.get(quest.id);
+      if (subId !== undefined) {
+        quest.submissionId = subId;
+      }
+    }
+
     // Build graph meta from materialized state + frontier
     const state = await graph.getStateSnapshot();
     const frontier = await graph.getFrontier();
@@ -239,8 +280,198 @@ export class WarpDashboardAdapter implements DashboardPort {
       : '-------';
     const graphMeta: GraphMeta = { maxTick, myTick, writerCount, tipSha };
 
-    const snap: GraphSnapshot = { campaigns, quests, intents, scrolls, approvals, asOf: Date.now(), graphMeta };
+    const snap: GraphSnapshot = { campaigns, quests, intents, scrolls, approvals, submissions, reviews, decisions, asOf: Date.now(), graphMeta };
     this.cachedSnapshot = snap;
     return snap;
+  }
+
+  /**
+   * Builds submission, review, and decision view models from classified node IDs.
+   * Extracts the "fourth pass" of fetchSnapshot into a cohesive helper.
+   */
+  private async buildSubmissionData(
+    rawSubmissionIds: string[],
+    rawPatchsetIds: string[],
+    rawReviewIds: string[],
+    rawDecisionIds: string[],
+    propsCache: Map<string, Map<string, unknown>>,
+    graph: WarpGraph,
+  ): Promise<{
+    submissions: SubmissionNode[];
+    reviews: ReviewNode[];
+    decisions: DecisionNode[];
+    submissionByQuest: Map<string, string>;
+  }> {
+    // Pre-compute patchset → submission mapping
+    const patchsetsBySubmission = new Map<string, PatchsetRef[]>();
+    for (const id of rawPatchsetIds) {
+      const props = propsCache.get(id);
+      if (!props) continue;
+      const authoredAt = props.get('authored_at');
+      if (typeof authoredAt !== 'number') continue;
+
+      const neighbors = toNeighborEntries(await graph.neighbors(id, 'outgoing'));
+      let submissionId: string | undefined;
+      let supersedesId: string | undefined;
+      for (const n of neighbors) {
+        if (n.label === 'has-patchset' && n.nodeId.startsWith('submission:')) {
+          submissionId = n.nodeId;
+        }
+        if (n.label === 'supersedes') {
+          supersedesId = n.nodeId;
+        }
+      }
+      if (!submissionId) continue;
+      const existing = patchsetsBySubmission.get(submissionId) ?? [];
+      existing.push({ id, authoredAt, supersedesId });
+      patchsetsBySubmission.set(submissionId, existing);
+    }
+
+    // Pre-compute reviews per patchset
+    const reviewsByPatchset = new Map<string, ReviewRef[]>();
+    const reviews: ReviewNode[] = [];
+    for (const id of rawReviewIds) {
+      const props = propsCache.get(id);
+      if (!props) continue;
+      const verdict = props.get('verdict');
+      const comment = props.get('comment');
+      const reviewedBy = props.get('reviewed_by');
+      const reviewedAt = props.get('reviewed_at');
+      if (
+        typeof verdict !== 'string' ||
+        typeof comment !== 'string' ||
+        typeof reviewedBy !== 'string' ||
+        typeof reviewedAt !== 'number'
+      ) continue;
+      const validVerdicts = ['approve', 'request-changes', 'comment'] as const;
+      if (!validVerdicts.includes(verdict as typeof validVerdicts[number])) continue;
+
+      const neighbors = toNeighborEntries(await graph.neighbors(id, 'outgoing'));
+      let patchsetId: string | undefined;
+      for (const n of neighbors) {
+        if (n.label === 'reviews' && n.nodeId.startsWith('patchset:')) {
+          patchsetId = n.nodeId;
+          break;
+        }
+      }
+      if (!patchsetId) continue;
+
+      const ref: ReviewRef = { id, verdict: verdict as ReviewVerdict, reviewedBy, reviewedAt };
+      const existing = reviewsByPatchset.get(patchsetId) ?? [];
+      existing.push(ref);
+      reviewsByPatchset.set(patchsetId, existing);
+
+      reviews.push({ id, patchsetId, verdict: verdict as ReviewVerdict, comment, reviewedBy, reviewedAt });
+    }
+
+    // Pre-compute decisions per submission
+    const decisionsBySubmission = new Map<string, DecisionProps[]>();
+    const decisions: DecisionNode[] = [];
+    for (const id of rawDecisionIds) {
+      const props = propsCache.get(id);
+      if (!props) continue;
+      const kind = props.get('kind');
+      const decidedBy = props.get('decided_by');
+      const decidedAt = props.get('decided_at');
+      const rationale = props.get('rationale');
+      if (
+        typeof kind !== 'string' ||
+        typeof decidedBy !== 'string' ||
+        typeof decidedAt !== 'number' ||
+        typeof rationale !== 'string'
+      ) continue;
+      if (kind !== 'merge' && kind !== 'close') continue;
+
+      const neighbors = toNeighborEntries(await graph.neighbors(id, 'outgoing'));
+      let submissionId: string | undefined;
+      for (const n of neighbors) {
+        // 'decision:' prefix is shared with old concept/decision nodes;
+        // the type === 'decision' first-pass classification ensures only
+        // submission decisions reach this point.
+        if (n.label === 'decides' && n.nodeId.startsWith('submission:')) {
+          submissionId = n.nodeId;
+          break;
+        }
+      }
+      if (!submissionId) continue;
+
+      const mergeCommit = props.get('merge_commit');
+      const decisionProps: DecisionProps = {
+        id,
+        submissionId,
+        kind: kind as DecisionKind,
+        decidedBy,
+        decidedAt,
+        rationale,
+        mergeCommit: typeof mergeCommit === 'string' ? mergeCommit : undefined,
+      };
+      const existing = decisionsBySubmission.get(submissionId) ?? [];
+      existing.push(decisionProps);
+      decisionsBySubmission.set(submissionId, existing);
+
+      decisions.push({
+        id,
+        submissionId,
+        kind: kind as DecisionKind,
+        decidedBy,
+        rationale,
+        mergeCommit: typeof mergeCommit === 'string' ? mergeCommit : undefined,
+        decidedAt,
+      });
+    }
+
+    // Build submission nodes with computed status
+    const submissions: SubmissionNode[] = [];
+    const submissionByQuest = new Map<string, string>();
+    const submittedAtByQuest = new Map<string, number>();
+    for (const id of rawSubmissionIds) {
+      const props = propsCache.get(id);
+      if (!props) continue;
+      const questId = props.get('quest_id');
+      const submittedBy = props.get('submitted_by');
+      const submittedAt = props.get('submitted_at');
+      if (
+        typeof questId !== 'string' ||
+        typeof submittedBy !== 'string' ||
+        typeof submittedAt !== 'number'
+      ) continue;
+
+      const patchsetRefs = patchsetsBySubmission.get(id) ?? [];
+      const { tip, headsCount } = computeTipPatchset(patchsetRefs);
+
+      let effectiveVerdicts = new Map<string, ReviewVerdict>();
+      if (tip) {
+        const tipReviews = reviewsByPatchset.get(tip.id) ?? [];
+        effectiveVerdicts = computeEffectiveVerdicts(tipReviews);
+      }
+
+      const subDecisions = decisionsBySubmission.get(id) ?? [];
+      const status = computeStatus({ decisions: subDecisions, effectiveVerdicts });
+
+      let approvalCount = 0;
+      for (const v of effectiveVerdicts.values()) {
+        if (v === 'approve') approvalCount++;
+      }
+
+      submissions.push({
+        id,
+        questId,
+        status,
+        tipPatchsetId: tip?.id,
+        headsCount,
+        approvalCount,
+        submittedBy,
+        submittedAt,
+      });
+
+      // Track latest submission per quest for QuestNode annotation (O(1) lookup)
+      const existingAt = submittedAtByQuest.get(questId) ?? 0;
+      if (submittedAt > existingAt) {
+        submissionByQuest.set(questId, id);
+        submittedAtByQuest.set(questId, submittedAt);
+      }
+    }
+
+    return { submissions, reviews, decisions, submissionByQuest };
   }
 }

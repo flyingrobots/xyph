@@ -39,8 +39,11 @@ All planning, prioritization, and progress tracking flows through the actuator. 
 1. **Check the graph** to find work or add new tasks.
 2. **Claim a quest** with `xyph-actuator.ts claim <id>`.
 3. **Do the work** on a feature branch.
-4. **Seal the quest** with `xyph-actuator.ts seal <id> --artifact <hash> --rationale "..."`.
-5. **Open a PR** against `main`.
+4. **Submit for review** with `xyph-actuator.ts submit <quest-id> --description "..."`.
+5. **Get reviewed** — reviewers use `xyph-actuator.ts review <patchset-id> --verdict approve --comment "..."`.
+6. **Merge** with `xyph-actuator.ts merge <submission-id> --rationale "..."` (auto-seals quest).
+
+For solo work without review, you can still **seal directly** with `xyph-actuator.ts seal <id> --artifact <hash> --rationale "..."`.
 
 ## Quality Gates
 
@@ -70,11 +73,16 @@ Every mutation must obey the [CONSTITUTION.md](docs/canonical/CONSTITUTION.md). 
 
 | Command | Description |
 |---------|-------------|
-| `status --view <roadmap\|lineage\|all\|inbox>` | View the roadmap state |
+| `status --view <roadmap\|lineage\|all\|inbox\|submissions>` | View the roadmap state |
 | `quest <id> --title "..." --campaign <id> --intent <id>` | Initialize a Quest |
 | `intent <id> --title "..." --requested-by human.<name>` | Declare a sovereign Intent |
 | `claim <id>` | Volunteer for a task (OCP) |
-| `seal <id> --artifact <hash> --rationale "..."` | Mark as DONE with a Guild-signed Scroll |
+| `submit <quest-id> --description "..."` | Submit quest for review |
+| `revise <submission-id> --description "..."` | Push new patchset superseding tip |
+| `review <patchset-id> --verdict <v> --comment "..."` | Review: approve, request-changes, comment |
+| `merge <submission-id> --rationale "..."` | Merge (git settlement + auto-seal) |
+| `close <submission-id> --rationale "..."` | Close submission without merging |
+| `seal <id> --artifact <hash> --rationale "..."` | Mark as DONE directly (solo work) |
 | `inbox <id> --title "..." --suggested-by <principal>` | Suggest a task for triage |
 | `promote <id> --intent <id>` | Promote INBOX to BACKLOG |
 | `reject <id> --rationale "..."` | Reject to GRAVEYARD |

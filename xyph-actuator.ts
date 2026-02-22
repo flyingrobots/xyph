@@ -1,4 +1,5 @@
 #!/usr/bin/env -S npx tsx
+import { randomUUID } from 'node:crypto';
 import WarpGraph, { GitGraphAdapter } from '@git-stunts/git-warp';
 import Plumbing from '@git-stunts/plumbing';
 import { program, InvalidArgumentError } from 'commander';
@@ -198,6 +199,21 @@ program
       const { GuildSealService } = await import('./src/domain/services/GuildSealService.js');
       const sealService = new GuildSealService();
 
+      // Guard: warn if a non-terminal submission exists for this quest
+      try {
+        const { WarpSubmissionAdapter } = await import('./src/infrastructure/adapters/WarpSubmissionAdapter.js');
+        const subAdapter = new WarpSubmissionAdapter(process.cwd(), agentId);
+        const openSubs = await subAdapter.getOpenSubmissionsForQuest(id);
+        if (openSubs.length > 0) {
+          console.log(chalk.yellow(
+            `  [WARN] Quest ${id} has an open submission: ${openSubs[0]}\n` +
+            `  Consider using 'xyph merge' instead of 'xyph seal' to settle via the review workflow.`
+          ));
+        }
+      } catch {
+        // Non-fatal: if submission lookup fails, seal still proceeds
+      }
+
       const now = Date.now();
       const scrollPayload = {
         artifactHash: opts.artifact,
@@ -257,6 +273,338 @@ program
       console.log(chalk.dim(`  Key ID:     ${keyId}`));
       console.log(chalk.dim(`  Public key: ${publicKeyHex}`));
       console.log(chalk.dim(`  Private key stored in trust/${agentId}.sk (gitignored)`));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(chalk.red(`[ERROR] ${msg}`));
+      process.exit(1);
+    }
+  });
+
+// --- SUBMISSION & REVIEW COMMANDS ---
+
+/**
+ * Generates a short unique ID for graph nodes.
+ * Format: 9-char zero-padded base36 timestamp + 8-char hex random suffix (17 chars total).
+ * Lexicographically sortable by creation time (covers until year 5188).
+ */
+function generateId(): string {
+  const ts = Date.now().toString(36).padStart(9, '0');
+  const rand = randomUUID().replace(/-/g, '').slice(0, 8);
+  return `${ts}${rand}`;
+}
+
+program
+  .command('submit <quest-id>')
+  .description('Submit a quest for review — creates submission + first patchset')
+  .requiredOption('--description <text>', 'Description of the changes (min 10 chars)')
+  .option('--base <ref>', 'Base branch (default: main)', 'main')
+  .option('--workspace <ref>', 'Workspace reference (default: current git branch)')
+  .action(async (questId: string, opts: { description: string; base: string; workspace?: string }) => {
+    try {
+      const agentId = process.env['XYPH_AGENT_ID'] ?? DEFAULT_AGENT_ID;
+      const { WarpSubmissionAdapter } = await import('./src/infrastructure/adapters/WarpSubmissionAdapter.js');
+      const { SubmissionService } = await import('./src/domain/services/SubmissionService.js');
+      const { GitWorkspaceAdapter } = await import('./src/infrastructure/adapters/GitWorkspaceAdapter.js');
+
+      if (opts.description.length < 10) {
+        console.error(chalk.red('[ERROR] --description must be at least 10 characters'));
+        process.exit(1);
+      }
+
+      const adapter = new WarpSubmissionAdapter(process.cwd(), agentId);
+      const service = new SubmissionService(adapter);
+      await service.validateSubmit(questId, agentId);
+
+      const workspace = new GitWorkspaceAdapter(process.cwd());
+      const workspaceRef = opts.workspace ?? await workspace.getWorkspaceRef();
+      let headRef: string | undefined;
+      let commitShas: string[] | undefined;
+      try {
+        headRef = await workspace.getHeadCommit(workspaceRef);
+        commitShas = await workspace.getCommitsSince(opts.base);
+      } catch {
+        // Non-fatal: workspace info is optional
+      }
+
+      const submissionId = `submission:${generateId()}`;
+      const patchsetId = `patchset:${generateId()}`;
+
+      const { patchSha } = await adapter.submit({
+        questId,
+        submissionId,
+        patchsetId,
+        patchset: {
+          workspaceRef,
+          baseRef: opts.base,
+          headRef,
+          commitShas,
+          description: opts.description,
+        },
+      });
+
+      console.log(chalk.green(`[OK] Submission ${submissionId} created.`));
+      console.log(chalk.dim(`  Patchset:  ${patchsetId}`));
+      console.log(chalk.dim(`  Quest:     ${questId}`));
+      console.log(chalk.dim(`  Workspace: ${workspaceRef}`));
+      console.log(chalk.dim(`  Patch:     ${patchSha}`));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(chalk.red(`[ERROR] ${msg}`));
+      process.exit(1);
+    }
+  });
+
+program
+  .command('revise <submission-id>')
+  .description('Add a new patchset to an existing submission, superseding the current tip')
+  .requiredOption('--description <text>', 'Description of the revision (min 10 chars)')
+  .option('--workspace <ref>', 'Workspace reference (default: current git branch)')
+  .option('--base <ref>', 'Base branch (default: main)', 'main')
+  .action(async (submissionId: string, opts: { description: string; workspace?: string; base: string }) => {
+    try {
+      const agentId = process.env['XYPH_AGENT_ID'] ?? DEFAULT_AGENT_ID;
+      const { WarpSubmissionAdapter } = await import('./src/infrastructure/adapters/WarpSubmissionAdapter.js');
+      const { SubmissionService } = await import('./src/domain/services/SubmissionService.js');
+      const { GitWorkspaceAdapter } = await import('./src/infrastructure/adapters/GitWorkspaceAdapter.js');
+      const { computeTipPatchset } = await import('./src/domain/entities/Submission.js');
+
+      if (opts.description.length < 10) {
+        console.error(chalk.red('[ERROR] --description must be at least 10 characters'));
+        process.exit(1);
+      }
+
+      const adapter = new WarpSubmissionAdapter(process.cwd(), agentId);
+      const service = new SubmissionService(adapter);
+      await service.validateRevise(submissionId, agentId);
+
+      // Find the current tip to supersede
+      const patchsetRefs = await adapter.getPatchsetRefs(submissionId);
+      const { tip } = computeTipPatchset(patchsetRefs);
+      if (!tip) {
+        console.error(chalk.red(`[ERROR] No existing patchsets found for ${submissionId}`));
+        process.exit(1);
+      }
+
+      const workspace = new GitWorkspaceAdapter(process.cwd());
+      const workspaceRef = opts.workspace ?? await workspace.getWorkspaceRef();
+      let headRef: string | undefined;
+      let commitShas: string[] | undefined;
+      try {
+        headRef = await workspace.getHeadCommit(workspaceRef);
+        commitShas = await workspace.getCommitsSince(opts.base);
+      } catch {
+        // Non-fatal
+      }
+
+      const patchsetId = `patchset:${generateId()}`;
+
+      const { patchSha } = await adapter.revise({
+        submissionId,
+        patchsetId,
+        supersedesPatchsetId: tip.id,
+        patchset: {
+          workspaceRef,
+          baseRef: opts.base,
+          headRef,
+          commitShas,
+          description: opts.description,
+        },
+      });
+
+      console.log(chalk.green(`[OK] Revision ${patchsetId} created.`));
+      console.log(chalk.dim(`  Supersedes: ${tip.id}`));
+      console.log(chalk.dim(`  Workspace:  ${workspaceRef}`));
+      console.log(chalk.dim(`  Patch:      ${patchSha}`));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(chalk.red(`[ERROR] ${msg}`));
+      process.exit(1);
+    }
+  });
+
+program
+  .command('review <patchset-id>')
+  .description('Review a patchset — approve, request changes, or comment')
+  .requiredOption('--verdict <type>', 'approve | request-changes | comment')
+  .requiredOption('--comment <text>', 'Review feedback')
+  .action(async (patchsetId: string, opts: { verdict: string; comment: string }) => {
+    try {
+      const agentId = process.env['XYPH_AGENT_ID'] ?? DEFAULT_AGENT_ID;
+      const { WarpSubmissionAdapter } = await import('./src/infrastructure/adapters/WarpSubmissionAdapter.js');
+      const { SubmissionService } = await import('./src/domain/services/SubmissionService.js');
+
+      const validVerdicts = ['approve', 'request-changes', 'comment'] as const;
+      if (!validVerdicts.includes(opts.verdict as typeof validVerdicts[number])) {
+        console.error(chalk.red(
+          `[ERROR] --verdict must be one of: ${validVerdicts.join(', ')}. Got: '${opts.verdict}'`
+        ));
+        process.exit(1);
+      }
+
+      const adapter = new WarpSubmissionAdapter(process.cwd(), agentId);
+      const service = new SubmissionService(adapter);
+      await service.validateReview(patchsetId, agentId);
+
+      const reviewId = `review:${generateId()}`;
+      const verdict = opts.verdict as 'approve' | 'request-changes' | 'comment';
+
+      const { patchSha } = await adapter.review({
+        patchsetId,
+        reviewId,
+        verdict,
+        comment: opts.comment,
+      });
+
+      console.log(chalk.green(`[OK] Review ${reviewId} posted.`));
+      console.log(chalk.dim(`  Verdict:  ${verdict}`));
+      console.log(chalk.dim(`  Patchset: ${patchsetId}`));
+      console.log(chalk.dim(`  Patch:    ${patchSha}`));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(chalk.red(`[ERROR] ${msg}`));
+      process.exit(1);
+    }
+  });
+
+program
+  .command('merge <submission-id>')
+  .description('Merge a submission — settles the workspace and auto-seals the quest')
+  .requiredOption('--rationale <text>', 'Merge rationale')
+  .option('--into <ref>', 'Target branch', 'main')
+  .option('--patchset <id>', 'Explicit patchset ID (required when multiple heads exist)')
+  .action(async (submissionId: string, opts: { rationale: string; into: string; patchset?: string }) => {
+    try {
+      const agentId = process.env['XYPH_AGENT_ID'] ?? DEFAULT_AGENT_ID;
+      const { WarpSubmissionAdapter } = await import('./src/infrastructure/adapters/WarpSubmissionAdapter.js');
+      const { SubmissionService } = await import('./src/domain/services/SubmissionService.js');
+      const { GitWorkspaceAdapter } = await import('./src/infrastructure/adapters/GitWorkspaceAdapter.js');
+      const { GuildSealService } = await import('./src/domain/services/GuildSealService.js');
+
+      const adapter = new WarpSubmissionAdapter(process.cwd(), agentId);
+      const service = new SubmissionService(adapter);
+      const { tipPatchsetId } = await service.validateMerge(submissionId, agentId, opts.patchset);
+
+      // Get workspace ref from the tip patchset via the adapter (no second graph instance)
+      const workspaceRef = await adapter.getPatchsetWorkspaceRef(tipPatchsetId);
+      if (typeof workspaceRef !== 'string') {
+        console.error(chalk.red(`[ERROR] Could not resolve workspace ref from patchset ${tipPatchsetId}`));
+        process.exit(1);
+      }
+
+      // Git settlement
+      const workspace = new GitWorkspaceAdapter(process.cwd());
+      let mergeCommit: string | undefined;
+      const alreadyMerged = await workspace.isMerged(workspaceRef, opts.into);
+      if (alreadyMerged) {
+        mergeCommit = await workspace.getHeadCommit(opts.into);
+        if (!mergeCommit) {
+          console.error(chalk.red(`[ERROR] Could not resolve HEAD of ${opts.into}`));
+          process.exit(1);
+        }
+        console.log(chalk.dim(`  Branch ${workspaceRef} already merged into ${opts.into}`));
+      } else {
+        mergeCommit = await workspace.merge(workspaceRef, opts.into);
+        console.log(chalk.dim(`  Merged ${workspaceRef} into ${opts.into}: ${mergeCommit.slice(0, 7)}`));
+      }
+
+      // Create merge decision
+      const decisionId = `decision:${generateId()}`;
+      const { patchSha } = await adapter.decide({
+        submissionId,
+        decisionId,
+        kind: 'merge',
+        rationale: opts.rationale,
+        mergeCommit,
+      });
+
+      // Auto-seal: create scroll + sign with GuildSealService + set quest DONE
+      const questId = await adapter.getSubmissionQuestId(submissionId);
+      if (questId) {
+        // Check if quest is already DONE (avoid duplicate sealing)
+        const questStatus = await adapter.getQuestStatus(questId);
+        if (questStatus === 'DONE') {
+          console.log(chalk.yellow(`[WARN] Quest ${questId} is already DONE — skipping auto-seal.`));
+        } else {
+          const now = Date.now();
+          const sealService = new GuildSealService();
+          const scrollPayload = {
+            artifactHash: mergeCommit ?? 'unknown',
+            questId,
+            rationale: opts.rationale,
+            sealedBy: agentId,
+            sealedAt: now,
+          };
+          const guildSeal = await sealService.sign(scrollPayload, agentId);
+
+          // Fresh graph instance to see all prior patches (including the decide() above)
+          const sealGraph = await getGraph();
+          const scrollId = `artifact:${questId}`;
+          const patch = await createPatch(sealGraph);
+          patch
+            .addNode(scrollId)
+            .setProperty(scrollId, 'artifact_hash', mergeCommit ?? 'unknown')
+            .setProperty(scrollId, 'rationale', opts.rationale)
+            .setProperty(scrollId, 'type', 'scroll')
+            .setProperty(scrollId, 'sealed_by', agentId)
+            .setProperty(scrollId, 'sealed_at', now)
+            .setProperty(scrollId, 'payload_digest', sealService.payloadDigest(scrollPayload))
+            .addEdge(scrollId, questId, 'fulfills');
+
+          if (guildSeal) {
+            patch
+              .setProperty(scrollId, 'guild_seal_alg', guildSeal.alg)
+              .setProperty(scrollId, 'guild_seal_key_id', guildSeal.keyId)
+              .setProperty(scrollId, 'guild_seal_sig', guildSeal.sig);
+          }
+
+          patch
+            .setProperty(questId, 'status', 'DONE')
+            .setProperty(questId, 'completed_at', now);
+          await patch.commit();
+
+          console.log(chalk.green(`[OK] Quest ${questId} auto-sealed via merge.`));
+          if (guildSeal) {
+            console.log(chalk.dim(`  Guild Seal: ${guildSeal.keyId}`));
+          }
+        }
+      }
+
+      console.log(chalk.green(`[OK] Submission ${submissionId} merged.`));
+      console.log(chalk.dim(`  Decision: ${decisionId}`));
+      console.log(chalk.dim(`  Patch:    ${patchSha}`));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(chalk.red(`[ERROR] ${msg}`));
+      process.exit(1);
+    }
+  });
+
+program
+  .command('close <submission-id>')
+  .description('Close a submission without merging')
+  .requiredOption('--rationale <text>', 'Reason for closing')
+  .action(async (submissionId: string, opts: { rationale: string }) => {
+    try {
+      const agentId = process.env['XYPH_AGENT_ID'] ?? DEFAULT_AGENT_ID;
+      const { WarpSubmissionAdapter } = await import('./src/infrastructure/adapters/WarpSubmissionAdapter.js');
+      const { SubmissionService } = await import('./src/domain/services/SubmissionService.js');
+
+      const adapter = new WarpSubmissionAdapter(process.cwd(), agentId);
+      const service = new SubmissionService(adapter);
+      await service.validateClose(submissionId, agentId);
+
+      const decisionId = `decision:${generateId()}`;
+      const { patchSha } = await adapter.decide({
+        submissionId,
+        decisionId,
+        kind: 'close',
+        rationale: opts.rationale,
+      });
+
+      console.log(chalk.green(`[OK] Submission ${submissionId} closed.`));
+      console.log(chalk.dim(`  Decision:  ${decisionId}`));
+      console.log(chalk.dim(`  Rationale: ${opts.rationale}`));
+      console.log(chalk.dim(`  Patch:     ${patchSha}`));
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(chalk.red(`[ERROR] ${msg}`));
@@ -386,14 +734,14 @@ program
 program
   .command('status')
   .description('Show a snapshot of the WARP graph')
-  .option('--view <name>', 'roadmap | lineage | all | inbox', 'roadmap')
+  .option('--view <name>', 'roadmap | lineage | all | inbox | submissions', 'roadmap')
   .option('--include-graveyard', 'include GRAVEYARD tasks in output (excluded by default)')
   .action(async (opts: { view: string; includeGraveyard?: boolean }) => {
     try {
       const agentId = process.env['XYPH_AGENT_ID'] ?? DEFAULT_AGENT_ID;
       const { WarpDashboardAdapter } = await import('./src/infrastructure/adapters/WarpDashboardAdapter.js');
       const { DashboardService } = await import('./src/domain/services/DashboardService.js');
-      const { renderRoadmap, renderLineage, renderAll, renderInbox } = await import('./src/tui/render-status.js');
+      const { renderRoadmap, renderLineage, renderAll, renderInbox, renderSubmissions } = await import('./src/tui/render-status.js');
 
       const adapter = new WarpDashboardAdapter(process.cwd(), agentId);
       const service = new DashboardService(adapter);
@@ -401,7 +749,7 @@ program
       const snapshot = service.filterSnapshot(raw, { includeGraveyard: opts.includeGraveyard ?? false });
 
       const view = opts.view;
-      const validViews = ['roadmap', 'lineage', 'all', 'inbox'];
+      const validViews = ['roadmap', 'lineage', 'all', 'inbox', 'submissions'];
       if (!validViews.includes(view)) {
         console.error(chalk.red(`[ERROR] Unknown --view '${view}'. Valid options: ${validViews.join(', ')}`));
         process.exit(1);
@@ -412,6 +760,8 @@ program
         console.log(renderAll(snapshot));
       } else if (view === 'inbox') {
         console.log(renderInbox(snapshot));
+      } else if (view === 'submissions') {
+        console.log(renderSubmissions(snapshot));
       } else {
         console.log(renderRoadmap(snapshot));
       }
