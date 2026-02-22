@@ -1,5 +1,5 @@
 import { RoadmapPort } from '../../ports/RoadmapPort.js';
-import chalk from 'chalk';
+import { getTheme, styled } from '../../tui/theme/index.js';
 
 /**
  * SovereigntyService
@@ -65,7 +65,7 @@ export class SovereigntyService {
 
     if (violations.length > 0) {
       console.log(
-        chalk.yellow(`[Sovereignty] ${violations.length} quest(s) violate Genealogy of Intent (Constitution Art. IV).`)
+        styled(getTheme().theme.semantic.warning, `[Sovereignty] ${violations.length} quest(s) violate Genealogy of Intent (Constitution Art. IV).`)
       );
     }
 

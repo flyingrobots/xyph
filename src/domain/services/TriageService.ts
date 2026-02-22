@@ -1,6 +1,6 @@
 import { Quest } from '../entities/Quest.js';
 import { RoadmapPort } from '../../ports/RoadmapPort.js';
-import chalk from 'chalk';
+import { getTheme, styled } from '../../tui/theme/index.js';
 
 /**
  * TriageService
@@ -18,7 +18,7 @@ export class TriageService {
    * @param contextHash BLAKE3 hash of the originating NL prompt/intent
    */
   public async linkIntent(taskId: string, contextHash: string): Promise<void> {
-    console.log(chalk.cyan(`[Triage] Linking quest ${taskId} to intent ${contextHash}`));
+    console.log(styled(getTheme().theme.semantic.info, `[Triage] Linking quest ${taskId} to intent ${contextHash}`));
 
     const quest = await this.roadmap.getQuest(taskId);
     if (!quest) {
@@ -43,7 +43,7 @@ export class TriageService {
       .map(q => q.id);
 
     if (missing.length > 0) {
-      console.log(chalk.yellow(`[Triage] Audit: ${missing.length} quests missing origin context.`));
+      console.log(styled(getTheme().theme.semantic.warning, `[Triage] Audit: ${missing.length} quests missing origin context.`));
     }
 
     return missing;

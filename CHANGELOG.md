@@ -4,6 +4,57 @@ All notable changes to XYPH will be documented in this file.
 
 ## [Unreleased]
 
+**Theme Token System — Full Visual Layer Migration**
+
+### Added
+
+**Theme module (`src/tui/theme/`)**
+- New `tokens.ts`: `RGB`, `GradientStop`, `TextModifier`, `TokenValue`, `InkColor`, `StatusKey`, `Theme` type definitions. All colors stored as `#RRGGBB` hex strings for deterministic cross-terminal rendering.
+- New `presets.ts`: `CYAN_MAGENTA` theme (matches all prior hardcoded values exactly) and `TEAL_ORANGE_PINK` theme (new candidate palette from gradient experiment). Helper `tv()` for concise token definition.
+- New `gradient.ts`: `lerp3()` N-stop linear interpolation extracted from `scripts/bar-demo.ts`.
+- New `resolve.ts`: `isNoColor()` (per no-color.org spec), `getTheme()` singleton with `XYPH_THEME` env var selection, `resolveTheme()` for React context, `_resetThemeForTesting()`.
+- New `chalk-adapter.ts`: `chalkFromToken()`, `styled()`, `styledStatus()` — chalk from theme tokens with NO_COLOR support (hex skipped, modifiers preserved).
+- New `ink-adapter.tsx`: `ThemeProvider` React context component, `useTheme()` hook with singleton fallback for incremental migration.
+- New `index.ts`: barrel re-exports.
+- Theme selection via `XYPH_THEME` env var (e.g., `XYPH_THEME=teal-orange-pink`).
+- NO_COLOR respected: `ink()` returns `undefined` → Ink renders default terminal color; `chalkFromToken()` skips `.hex()` → only modifiers apply.
+
+**Tests — 44 new tests (338 total, up from 249)**
+- `gradient.test.ts` — 9 tests: boundary values, mid-stop interpolation, single-stop and empty-stop edge cases.
+- `presets.test.ts` — 13 tests: all status keys defined in both presets, hex format validation, gradient stop ordering.
+- `resolve.test.ts` — 11 tests: theme selection, NO_COLOR detection, singleton caching, unknown theme fallback with warning.
+- `chalk-adapter.test.ts` — 11 tests: styled output, status rendering, modifier application, NO_COLOR mode.
+
+### Changed
+
+**TUI components — color literals → theme tokens (10 files)**
+- `Scrollbar.tsx`: `cyan/gray` → `ui.scrollThumb/scrollTrack`.
+- `HelpModal.tsx`: `cyan` border → `border.primary`, `yellow` headings → `semantic.warning`.
+- `QuestDetailPanel.tsx`: dropped `STATUS_COLOR` import, uses `inkStatus()` and semantic tokens.
+- `Dashboard.tsx`: `cyan/gray` tabs → `ui.cursor/semantic.muted`, `yellow/red` states → semantic tokens.
+- `LandingView.tsx`: `green` progress → `semantic.success`, `cyan` logo → `ui.logo`, `yellow` milestone → `semantic.warning`.
+- `RoadmapView.tsx`: `cyan` cursor → `ui.cursor`, `blue` campaign headers → `ui.sectionHeader`, status lookups via `inkStatus()`.
+- `LineageView.tsx`: `magenta` intent headers → `ui.intentHeader`, `cyan` cursor → `ui.cursor`.
+- `AllNodesView.tsx`: `green` section headers → `semantic.success`, `cyan` cursor → `ui.cursor`.
+- `InboxView.tsx`: `magenta` headers → `ui.intentHeader`, `cyan/yellow/red` modal borders → `border.*`.
+- `xyph-dashboard.tsx`: wraps `<Dashboard>` in `<ThemeProvider>`.
+
+**CLI consumers — chalk → theme tokens (6 files)**
+- `xyph-actuator.ts`: all 91 `chalk.*` calls replaced with `styled(getTheme().theme.semantic.*, ...)`.
+- `render-status.ts`: eliminated both local `STATUS_COLOR` maps; all `chalk.*` calls → `styled()`/`styledStatus()`.
+- `coordinator-daemon.ts`: 10 `chalk.*` calls → `styled()`.
+- `inspect-graph.ts`: 7 `chalk.*` calls → `styled()`.
+- `TriageService.ts`: `chalk.cyan` → `styled(semantic.info, ...)` — also fixes hexagonal architecture violation (domain layer no longer imports chalk directly).
+- `SovereigntyService.ts`: `chalk.yellow` → `styled(semantic.warning, ...)` — same hexagonal fix.
+
+**Gradient integration**
+- `scripts/bar-demo.ts`: imports `lerp3` from `src/tui/theme/gradient.js` and gradient presets from `src/tui/theme/presets.js`; removed local duplicate definitions.
+
+### Removed
+- `src/tui/status-colors.ts` — replaced by `theme.status.*` tokens. Both the TUI `StatusColor` map and the CLI `STATUS_COLOR` function map are now unified in the theme presets.
+
+---
+
 **Backlog Reconciliation & Roadmap Triage**
 
 ### Added

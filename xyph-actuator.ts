@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import WarpGraph, { GitGraphAdapter } from '@git-stunts/git-warp';
 import Plumbing from '@git-stunts/plumbing';
 import { program, InvalidArgumentError } from 'commander';
-import chalk from 'chalk';
+import { getTheme, styled } from './src/tui/theme/index.js';
 import { createPatchSession } from './src/infrastructure/helpers/createPatchSession.js';
 
 /**
@@ -59,11 +59,11 @@ program
     try {
       // Validate all inputs before any async graph I/O
       if (!id.startsWith('task:')) {
-        console.error(chalk.red(`[ERROR] Quest ID must start with 'task:' prefix, got: '${id}'`));
+        console.error(styled(getTheme().theme.semantic.error,`[ERROR] Quest ID must start with 'task:' prefix, got: '${id}'`));
         process.exit(1);
       }
       if (!opts.intent) {
-        console.error(chalk.red(
+        console.error(styled(getTheme().theme.semantic.error,
           `[CONSTITUTION VIOLATION] Quest ${id} requires --intent <id> (Art. IV — Genealogy of Intent).\n` +
           `  Every Quest must trace its lineage to a sovereign human Intent.\n` +
           `  Declare one first: xyph-actuator intent <id> --title "..." --requested-by human.<name>`
@@ -71,7 +71,7 @@ program
         process.exit(1);
       }
       if (!opts.intent.startsWith('intent:')) {
-        console.error(chalk.red(`[ERROR] --intent value must start with 'intent:' prefix, got: '${opts.intent}'`));
+        console.error(styled(getTheme().theme.semantic.error,`[ERROR] --intent value must start with 'intent:' prefix, got: '${opts.intent}'`));
         process.exit(1);
       }
 
@@ -92,10 +92,10 @@ program
 
       const sha = await patch.commit();
       const campaignNote = opts.campaign === 'none' ? '(no campaign)' : `in campaign ${opts.campaign}`;
-      console.log(chalk.green(`[OK] Quest ${id} initialized ${campaignNote}. Patch: ${sha}`));
+      console.log(styled(getTheme().theme.semantic.success,`[OK] Quest ${id} initialized ${campaignNote}. Patch: ${sha}`));
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error(chalk.red(`[ERROR] ${msg}`));
+      console.error(styled(getTheme().theme.semantic.error,`[ERROR] ${msg}`));
       process.exit(1);
     }
   });
@@ -111,17 +111,17 @@ program
   .action(async (id: string, opts: { title: string; requestedBy: string; description?: string }) => {
     try {
       if (!id.startsWith('intent:')) {
-        console.error(chalk.red(`[ERROR] Intent ID must start with 'intent:' prefix, got: '${id}'`));
+        console.error(styled(getTheme().theme.semantic.error,`[ERROR] Intent ID must start with 'intent:' prefix, got: '${id}'`));
         process.exit(1);
       }
       if (!opts.requestedBy.startsWith('human.')) {
-        console.error(chalk.red(
+        console.error(styled(getTheme().theme.semantic.error,
           `[ERROR] --requested-by must identify a human principal (start with 'human.'), got: '${opts.requestedBy}'`
         ));
         process.exit(1);
       }
       if (opts.title.length < 5) {
-        console.error(chalk.red(`[ERROR] --title must be at least 5 characters`));
+        console.error(styled(getTheme().theme.semantic.error,`[ERROR] --title must be at least 5 characters`));
         process.exit(1);
       }
 
@@ -140,11 +140,11 @@ program
       }
 
       const sha = await patch.commit();
-      console.log(chalk.green(`[OK] Intent ${id} declared by ${opts.requestedBy}. Patch: ${sha}`));
-      console.log(chalk.dim(`  Title: ${opts.title}`));
+      console.log(styled(getTheme().theme.semantic.success,`[OK] Intent ${id} declared by ${opts.requestedBy}. Patch: ${sha}`));
+      console.log(styled(getTheme().theme.semantic.muted,`  Title: ${opts.title}`));
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error(chalk.red(`[ERROR] ${msg}`));
+      console.error(styled(getTheme().theme.semantic.error,`[ERROR] ${msg}`));
       process.exit(1);
     }
   });
@@ -159,7 +159,7 @@ program
       const agentId = process.env['XYPH_AGENT_ID'] ?? DEFAULT_AGENT_ID;
       const graph = await getGraph();
 
-      console.log(chalk.yellow(`[*] Attempting to claim ${id} as ${agentId}...`));
+      console.log(styled(getTheme().theme.semantic.warning,`[*] Attempting to claim ${id} as ${agentId}...`));
 
       const patch = await createPatch(graph);
       patch.setProperty(id, 'assigned_to', agentId)
@@ -173,15 +173,15 @@ program
       const props = await graph.getNodeProps(id);
 
       if (props && props.get('assigned_to') === agentId) {
-        console.log(chalk.green(`[OK] Claim confirmed. ${id} is yours.`));
+        console.log(styled(getTheme().theme.semantic.success,`[OK] Claim confirmed. ${id} is yours.`));
       } else {
         const winner = props ? props.get('assigned_to') : 'unknown';
-        console.log(chalk.red(`[FAIL] Lost race condition for ${id}. Current owner: ${winner}`));
+        console.log(styled(getTheme().theme.semantic.error,`[FAIL] Lost race condition for ${id}. Current owner: ${winner}`));
         process.exit(1);
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error(chalk.red(`[ERROR] ${msg}`));
+      console.error(styled(getTheme().theme.semantic.error,`[ERROR] ${msg}`));
       process.exit(1);
     }
   });
@@ -205,7 +205,7 @@ program
         const subAdapter = new WarpSubmissionAdapter(process.cwd(), agentId);
         const openSubs = await subAdapter.getOpenSubmissionsForQuest(id);
         if (openSubs.length > 0) {
-          console.log(chalk.yellow(
+          console.log(styled(getTheme().theme.semantic.warning,
             `  [WARN] Quest ${id} has an open submission: ${openSubs[0]}\n` +
             `  Consider using 'xyph merge' instead of 'xyph seal' to settle via the review workflow.`
           ));
@@ -242,19 +242,19 @@ program
         patch.setProperty(scrollId, 'guild_seal_alg', guildSeal.alg)
              .setProperty(scrollId, 'guild_seal_key_id', guildSeal.keyId)
              .setProperty(scrollId, 'guild_seal_sig', guildSeal.sig);
-        console.log(chalk.dim(`  Guild Seal: ${guildSeal.keyId}`));
+        console.log(styled(getTheme().theme.semantic.muted,`  Guild Seal: ${guildSeal.keyId}`));
       } else {
-        console.log(chalk.yellow(`  [WARN] No private key found for ${agentId} — scroll is unsigned. Run: xyph-actuator generate-key`));
+        console.log(styled(getTheme().theme.semantic.warning,`  [WARN] No private key found for ${agentId} — scroll is unsigned. Run: xyph-actuator generate-key`));
       }
 
       patch.setProperty(id, 'status', 'DONE')
            .setProperty(id, 'completed_at', now);
 
       const sha = await patch.commit();
-      console.log(chalk.green(`[OK] Quest ${id} sealed. Scroll: ${scrollId}. Patch: ${sha}`));
+      console.log(styled(getTheme().theme.semantic.success,`[OK] Quest ${id} sealed. Scroll: ${scrollId}. Patch: ${sha}`));
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error(chalk.red(`[ERROR] ${msg}`));
+      console.error(styled(getTheme().theme.semantic.error,`[ERROR] ${msg}`));
       process.exit(1);
     }
   });
@@ -269,13 +269,13 @@ program
       const sealService = new GuildSealService();
 
       const { keyId, publicKeyHex } = await sealService.generateKeypair(agentId);
-      console.log(chalk.green(`[OK] Keypair generated for agent ${agentId}`));
-      console.log(chalk.dim(`  Key ID:     ${keyId}`));
-      console.log(chalk.dim(`  Public key: ${publicKeyHex}`));
-      console.log(chalk.dim(`  Private key stored in trust/${agentId}.sk (gitignored)`));
+      console.log(styled(getTheme().theme.semantic.success,`[OK] Keypair generated for agent ${agentId}`));
+      console.log(styled(getTheme().theme.semantic.muted,`  Key ID:     ${keyId}`));
+      console.log(styled(getTheme().theme.semantic.muted,`  Public key: ${publicKeyHex}`));
+      console.log(styled(getTheme().theme.semantic.muted,`  Private key stored in trust/${agentId}.sk (gitignored)`));
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error(chalk.red(`[ERROR] ${msg}`));
+      console.error(styled(getTheme().theme.semantic.error,`[ERROR] ${msg}`));
       process.exit(1);
     }
   });
@@ -307,7 +307,7 @@ program
       const { GitWorkspaceAdapter } = await import('./src/infrastructure/adapters/GitWorkspaceAdapter.js');
 
       if (opts.description.length < 10) {
-        console.error(chalk.red('[ERROR] --description must be at least 10 characters'));
+        console.error(styled(getTheme().theme.semantic.error,'[ERROR] --description must be at least 10 characters'));
         process.exit(1);
       }
 
@@ -342,14 +342,14 @@ program
         },
       });
 
-      console.log(chalk.green(`[OK] Submission ${submissionId} created.`));
-      console.log(chalk.dim(`  Patchset:  ${patchsetId}`));
-      console.log(chalk.dim(`  Quest:     ${questId}`));
-      console.log(chalk.dim(`  Workspace: ${workspaceRef}`));
-      console.log(chalk.dim(`  Patch:     ${patchSha}`));
+      console.log(styled(getTheme().theme.semantic.success,`[OK] Submission ${submissionId} created.`));
+      console.log(styled(getTheme().theme.semantic.muted,`  Patchset:  ${patchsetId}`));
+      console.log(styled(getTheme().theme.semantic.muted,`  Quest:     ${questId}`));
+      console.log(styled(getTheme().theme.semantic.muted,`  Workspace: ${workspaceRef}`));
+      console.log(styled(getTheme().theme.semantic.muted,`  Patch:     ${patchSha}`));
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error(chalk.red(`[ERROR] ${msg}`));
+      console.error(styled(getTheme().theme.semantic.error,`[ERROR] ${msg}`));
       process.exit(1);
     }
   });
@@ -369,7 +369,7 @@ program
       const { computeTipPatchset } = await import('./src/domain/entities/Submission.js');
 
       if (opts.description.length < 10) {
-        console.error(chalk.red('[ERROR] --description must be at least 10 characters'));
+        console.error(styled(getTheme().theme.semantic.error,'[ERROR] --description must be at least 10 characters'));
         process.exit(1);
       }
 
@@ -381,7 +381,7 @@ program
       const patchsetRefs = await adapter.getPatchsetRefs(submissionId);
       const { tip } = computeTipPatchset(patchsetRefs);
       if (!tip) {
-        console.error(chalk.red(`[ERROR] No existing patchsets found for ${submissionId}`));
+        console.error(styled(getTheme().theme.semantic.error,`[ERROR] No existing patchsets found for ${submissionId}`));
         process.exit(1);
       }
 
@@ -411,13 +411,13 @@ program
         },
       });
 
-      console.log(chalk.green(`[OK] Revision ${patchsetId} created.`));
-      console.log(chalk.dim(`  Supersedes: ${tip.id}`));
-      console.log(chalk.dim(`  Workspace:  ${workspaceRef}`));
-      console.log(chalk.dim(`  Patch:      ${patchSha}`));
+      console.log(styled(getTheme().theme.semantic.success,`[OK] Revision ${patchsetId} created.`));
+      console.log(styled(getTheme().theme.semantic.muted,`  Supersedes: ${tip.id}`));
+      console.log(styled(getTheme().theme.semantic.muted,`  Workspace:  ${workspaceRef}`));
+      console.log(styled(getTheme().theme.semantic.muted,`  Patch:      ${patchSha}`));
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error(chalk.red(`[ERROR] ${msg}`));
+      console.error(styled(getTheme().theme.semantic.error,`[ERROR] ${msg}`));
       process.exit(1);
     }
   });
@@ -435,7 +435,7 @@ program
 
       const validVerdicts = ['approve', 'request-changes', 'comment'] as const;
       if (!validVerdicts.includes(opts.verdict as typeof validVerdicts[number])) {
-        console.error(chalk.red(
+        console.error(styled(getTheme().theme.semantic.error,
           `[ERROR] --verdict must be one of: ${validVerdicts.join(', ')}. Got: '${opts.verdict}'`
         ));
         process.exit(1);
@@ -455,13 +455,13 @@ program
         comment: opts.comment,
       });
 
-      console.log(chalk.green(`[OK] Review ${reviewId} posted.`));
-      console.log(chalk.dim(`  Verdict:  ${verdict}`));
-      console.log(chalk.dim(`  Patchset: ${patchsetId}`));
-      console.log(chalk.dim(`  Patch:    ${patchSha}`));
+      console.log(styled(getTheme().theme.semantic.success,`[OK] Review ${reviewId} posted.`));
+      console.log(styled(getTheme().theme.semantic.muted,`  Verdict:  ${verdict}`));
+      console.log(styled(getTheme().theme.semantic.muted,`  Patchset: ${patchsetId}`));
+      console.log(styled(getTheme().theme.semantic.muted,`  Patch:    ${patchSha}`));
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error(chalk.red(`[ERROR] ${msg}`));
+      console.error(styled(getTheme().theme.semantic.error,`[ERROR] ${msg}`));
       process.exit(1);
     }
   });
@@ -487,7 +487,7 @@ program
       // Get workspace ref from the tip patchset via the adapter (no second graph instance)
       const workspaceRef = await adapter.getPatchsetWorkspaceRef(tipPatchsetId);
       if (typeof workspaceRef !== 'string') {
-        console.error(chalk.red(`[ERROR] Could not resolve workspace ref from patchset ${tipPatchsetId}`));
+        console.error(styled(getTheme().theme.semantic.error,`[ERROR] Could not resolve workspace ref from patchset ${tipPatchsetId}`));
         process.exit(1);
       }
 
@@ -498,13 +498,13 @@ program
       if (alreadyMerged) {
         mergeCommit = await workspace.getHeadCommit(opts.into);
         if (!mergeCommit) {
-          console.error(chalk.red(`[ERROR] Could not resolve HEAD of ${opts.into}`));
+          console.error(styled(getTheme().theme.semantic.error,`[ERROR] Could not resolve HEAD of ${opts.into}`));
           process.exit(1);
         }
-        console.log(chalk.dim(`  Branch ${workspaceRef} already merged into ${opts.into}`));
+        console.log(styled(getTheme().theme.semantic.muted,`  Branch ${workspaceRef} already merged into ${opts.into}`));
       } else {
         mergeCommit = await workspace.merge(workspaceRef, opts.into);
-        console.log(chalk.dim(`  Merged ${workspaceRef} into ${opts.into}: ${mergeCommit.slice(0, 7)}`));
+        console.log(styled(getTheme().theme.semantic.muted,`  Merged ${workspaceRef} into ${opts.into}: ${mergeCommit.slice(0, 7)}`));
       }
 
       // Create merge decision
@@ -523,7 +523,7 @@ program
         // Check if quest is already DONE (avoid duplicate sealing)
         const questStatus = await adapter.getQuestStatus(questId);
         if (questStatus === 'DONE') {
-          console.log(chalk.yellow(`[WARN] Quest ${questId} is already DONE — skipping auto-seal.`));
+          console.log(styled(getTheme().theme.semantic.warning,`[WARN] Quest ${questId} is already DONE — skipping auto-seal.`));
         } else {
           const now = Date.now();
           const sealService = new GuildSealService();
@@ -562,19 +562,19 @@ program
             .setProperty(questId, 'completed_at', now);
           await patch.commit();
 
-          console.log(chalk.green(`[OK] Quest ${questId} auto-sealed via merge.`));
+          console.log(styled(getTheme().theme.semantic.success,`[OK] Quest ${questId} auto-sealed via merge.`));
           if (guildSeal) {
-            console.log(chalk.dim(`  Guild Seal: ${guildSeal.keyId}`));
+            console.log(styled(getTheme().theme.semantic.muted,`  Guild Seal: ${guildSeal.keyId}`));
           }
         }
       }
 
-      console.log(chalk.green(`[OK] Submission ${submissionId} merged.`));
-      console.log(chalk.dim(`  Decision: ${decisionId}`));
-      console.log(chalk.dim(`  Patch:    ${patchSha}`));
+      console.log(styled(getTheme().theme.semantic.success,`[OK] Submission ${submissionId} merged.`));
+      console.log(styled(getTheme().theme.semantic.muted,`  Decision: ${decisionId}`));
+      console.log(styled(getTheme().theme.semantic.muted,`  Patch:    ${patchSha}`));
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error(chalk.red(`[ERROR] ${msg}`));
+      console.error(styled(getTheme().theme.semantic.error,`[ERROR] ${msg}`));
       process.exit(1);
     }
   });
@@ -601,13 +601,13 @@ program
         rationale: opts.rationale,
       });
 
-      console.log(chalk.green(`[OK] Submission ${submissionId} closed.`));
-      console.log(chalk.dim(`  Decision:  ${decisionId}`));
-      console.log(chalk.dim(`  Rationale: ${opts.rationale}`));
-      console.log(chalk.dim(`  Patch:     ${patchSha}`));
+      console.log(styled(getTheme().theme.semantic.success,`[OK] Submission ${submissionId} closed.`));
+      console.log(styled(getTheme().theme.semantic.muted,`  Decision:  ${decisionId}`));
+      console.log(styled(getTheme().theme.semantic.muted,`  Rationale: ${opts.rationale}`));
+      console.log(styled(getTheme().theme.semantic.muted,`  Patch:     ${patchSha}`));
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error(chalk.red(`[ERROR] ${msg}`));
+      console.error(styled(getTheme().theme.semantic.error,`[ERROR] ${msg}`));
       process.exit(1);
     }
   });
@@ -623,15 +623,15 @@ program
   .action(async (id: string, opts: { title: string; suggestedBy: string; hours?: number }) => {
     try {
       if (!id.startsWith('task:')) {
-        console.error(chalk.red(`[ERROR] Task ID must start with 'task:', got: '${id}'`));
+        console.error(styled(getTheme().theme.semantic.error,`[ERROR] Task ID must start with 'task:', got: '${id}'`));
         process.exit(1);
       }
       if (opts.title.length < 5) {
-        console.error(chalk.red(`[ERROR] --title must be at least 5 characters`));
+        console.error(styled(getTheme().theme.semantic.error,`[ERROR] --title must be at least 5 characters`));
         process.exit(1);
       }
       if (!opts.suggestedBy.startsWith('human.') && !opts.suggestedBy.startsWith('agent.')) {
-        console.error(chalk.red(
+        console.error(styled(getTheme().theme.semantic.error,
           `[ERROR] --suggested-by must start with 'human.' or 'agent.', got: '${opts.suggestedBy}'`
         ));
         process.exit(1);
@@ -650,12 +650,12 @@ program
         .setProperty(id, 'suggested_at', now);
 
       const sha = await patch.commit();
-      console.log(chalk.green(`[OK] Task ${id} added to INBOX.`));
-      console.log(chalk.dim(`  Suggested by: ${opts.suggestedBy}`));
-      console.log(chalk.dim(`  Patch: ${sha}`));
+      console.log(styled(getTheme().theme.semantic.success,`[OK] Task ${id} added to INBOX.`));
+      console.log(styled(getTheme().theme.semantic.muted,`  Suggested by: ${opts.suggestedBy}`));
+      console.log(styled(getTheme().theme.semantic.muted,`  Patch: ${sha}`));
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error(chalk.red(`[ERROR] ${msg}`));
+      console.error(styled(getTheme().theme.semantic.error,`[ERROR] ${msg}`));
       process.exit(1);
     }
   });
@@ -673,13 +673,13 @@ program
       const intake = new WarpIntakeAdapter(process.cwd(), agentId);
       const sha = await intake.promote(id, opts.intent, opts.campaign);
 
-      console.log(chalk.green(`[OK] Task ${id} promoted to BACKLOG.`));
-      console.log(chalk.dim(`  Intent:   ${opts.intent}`));
-      if (opts.campaign !== undefined) console.log(chalk.dim(`  Campaign: ${opts.campaign}`));
-      console.log(chalk.dim(`  Patch: ${sha}`));
+      console.log(styled(getTheme().theme.semantic.success,`[OK] Task ${id} promoted to BACKLOG.`));
+      console.log(styled(getTheme().theme.semantic.muted,`  Intent:   ${opts.intent}`));
+      if (opts.campaign !== undefined) console.log(styled(getTheme().theme.semantic.muted,`  Campaign: ${opts.campaign}`));
+      console.log(styled(getTheme().theme.semantic.muted,`  Patch: ${sha}`));
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error(chalk.red(`[ERROR] ${msg}`));
+      console.error(styled(getTheme().theme.semantic.error,`[ERROR] ${msg}`));
       process.exit(1);
     }
   });
@@ -696,13 +696,13 @@ program
       const intake = new WarpIntakeAdapter(process.cwd(), agentId);
       const sha = await intake.reject(id, opts.rationale);
 
-      console.log(chalk.green(`[OK] Task ${id} moved to GRAVEYARD.`));
-      console.log(chalk.dim(`  Rejected by: ${agentId}`));
-      console.log(chalk.dim(`  Rationale:   ${opts.rationale}`));
-      console.log(chalk.dim(`  Patch: ${sha}`));
+      console.log(styled(getTheme().theme.semantic.success,`[OK] Task ${id} moved to GRAVEYARD.`));
+      console.log(styled(getTheme().theme.semantic.muted,`  Rejected by: ${agentId}`));
+      console.log(styled(getTheme().theme.semantic.muted,`  Rationale:   ${opts.rationale}`));
+      console.log(styled(getTheme().theme.semantic.muted,`  Patch: ${sha}`));
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error(chalk.red(`[ERROR] ${msg}`));
+      console.error(styled(getTheme().theme.semantic.error,`[ERROR] ${msg}`));
       process.exit(1);
     }
   });
@@ -718,13 +718,13 @@ program
       const intake = new WarpIntakeAdapter(process.cwd(), agentId);
       const sha = await intake.reopen(id);
 
-      console.log(chalk.green(`[OK] Task ${id} reopened to INBOX.`));
-      console.log(chalk.dim(`  Reopened by: ${agentId}`));
-      console.log(chalk.dim(`  Note: rejection history preserved in graph.`));
-      console.log(chalk.dim(`  Patch: ${sha}`));
+      console.log(styled(getTheme().theme.semantic.success,`[OK] Task ${id} reopened to INBOX.`));
+      console.log(styled(getTheme().theme.semantic.muted,`  Reopened by: ${agentId}`));
+      console.log(styled(getTheme().theme.semantic.muted,`  Note: rejection history preserved in graph.`));
+      console.log(styled(getTheme().theme.semantic.muted,`  Patch: ${sha}`));
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error(chalk.red(`[ERROR] ${msg}`));
+      console.error(styled(getTheme().theme.semantic.error,`[ERROR] ${msg}`));
       process.exit(1);
     }
   });
@@ -751,7 +751,7 @@ program
       const view = opts.view;
       const validViews = ['roadmap', 'lineage', 'all', 'inbox', 'submissions'];
       if (!validViews.includes(view)) {
-        console.error(chalk.red(`[ERROR] Unknown --view '${view}'. Valid options: ${validViews.join(', ')}`));
+        console.error(styled(getTheme().theme.semantic.error,`[ERROR] Unknown --view '${view}'. Valid options: ${validViews.join(', ')}`));
         process.exit(1);
       }
       if (view === 'lineage') {
@@ -767,7 +767,7 @@ program
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error(chalk.red(`[ERROR] ${msg}`));
+      console.error(styled(getTheme().theme.semantic.error,`[ERROR] ${msg}`));
       process.exit(1);
     }
   });
@@ -786,19 +786,19 @@ program
       const violations = await service.auditBacklog();
 
       if (violations.length === 0) {
-        console.log(chalk.green('[OK] All BACKLOG quests have a valid Genealogy of Intent.'));
+        console.log(styled(getTheme().theme.semantic.success,'[OK] All BACKLOG quests have a valid Genealogy of Intent.'));
       } else {
-        console.log(chalk.red(`\n[VIOLATION] ${violations.length} quest(s) lack sovereign intent ancestry:\n`));
+        console.log(styled(getTheme().theme.semantic.error,`\n[VIOLATION] ${violations.length} quest(s) lack sovereign intent ancestry:\n`));
         for (const v of violations) {
-          console.log(chalk.red(`  ✗ ${v.questId}`));
-          console.log(chalk.dim(`    ${v.reason}`));
+          console.log(styled(getTheme().theme.semantic.error,`  ✗ ${v.questId}`));
+          console.log(styled(getTheme().theme.semantic.muted,`    ${v.reason}`));
         }
-        console.log(chalk.dim(`\n  Fix: xyph-actuator quest <id> --intent <intent:ID> ...`));
+        console.log(styled(getTheme().theme.semantic.muted,`\n  Fix: xyph-actuator quest <id> --intent <intent:ID> ...`));
         process.exit(1);
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error(chalk.red(`[ERROR] ${msg}`));
+      console.error(styled(getTheme().theme.semantic.error,`[ERROR] ${msg}`));
       process.exit(1);
     }
   });

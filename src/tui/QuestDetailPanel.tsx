@@ -1,7 +1,7 @@
 import type { ReactElement } from 'react';
 import { Box, Text } from 'ink';
 import type { QuestNode } from '../domain/models/dashboard.js';
-import { STATUS_COLOR } from './status-colors.js';
+import { useTheme } from './theme/index.js';
 
 interface Props {
   quest: QuestNode;
@@ -10,17 +10,17 @@ interface Props {
 }
 
 export function QuestDetailPanel({ quest, campaignTitle, intentTitle }: Props): ReactElement {
-  const statusColor = STATUS_COLOR[quest.status] ?? 'white';
+  const t = useTheme();
 
   return (
     <Box flexDirection="column">
       <Box>
-        <Text bold color="cyan">{quest.id}{'  '}</Text>
+        <Text bold color={t.ink(t.theme.ui.cursor)}>{quest.id}{'  '}</Text>
         <Text bold>{quest.title}</Text>
       </Box>
       <Box marginTop={1}>
         <Text dimColor>Status   </Text>
-        <Text color={statusColor}>{quest.status}</Text>
+        <Text color={t.inkStatus(quest.status)}>{quest.status}</Text>
         <Text dimColor>   Hours  </Text>
         <Text>{quest.hours}h</Text>
         {quest.assignedTo !== undefined && (
@@ -51,7 +51,7 @@ export function QuestDetailPanel({ quest, campaignTitle, intentTitle }: Props): 
       {quest.scrollId !== undefined && (
         <Box>
           <Text dimColor>Scroll   </Text>
-          <Text color="green">{quest.scrollId}{'  ✓'}</Text>
+          <Text color={t.ink(t.theme.semantic.success)}>{quest.scrollId}{'  ✓'}</Text>
         </Box>
       )}
       {quest.completedAt !== undefined && (
@@ -63,7 +63,7 @@ export function QuestDetailPanel({ quest, campaignTitle, intentTitle }: Props): 
       {quest.suggestedBy !== undefined && (
         <Box>
           <Text dimColor>Suggested</Text>
-          <Text color="magenta">{'  '}{quest.suggestedBy}</Text>
+          <Text color={t.ink(t.theme.semantic.accent)}>{'  '}{quest.suggestedBy}</Text>
           {quest.suggestedAt !== undefined && (
             <Text dimColor>  {new Date(quest.suggestedAt).toISOString()}</Text>
           )}
@@ -71,7 +71,7 @@ export function QuestDetailPanel({ quest, campaignTitle, intentTitle }: Props): 
       )}
       {quest.rejectionRationale !== undefined && (
         <Box flexDirection="column" marginTop={1}>
-          <Text color="yellow">↩ Previously rejected</Text>
+          <Text color={t.ink(t.theme.semantic.warning)}>↩ Previously rejected</Text>
           <Box>
             <Text dimColor>By        </Text>
             <Text dimColor>{quest.rejectedBy ?? '—'}</Text>

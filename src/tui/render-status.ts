@@ -1,34 +1,17 @@
-import chalk from 'chalk';
 import Table from 'cli-table3';
 import boxen, { type Options as BoxenOptions } from 'boxen';
 import type { GraphSnapshot } from '../domain/models/dashboard.js';
-
-const STATUS_COLOR: Record<string, (s: string) => string> = {
-  DONE: (s) => chalk.green(s),
-  IN_PROGRESS: (s) => chalk.cyan(s),
-  BACKLOG: (s) => chalk.dim(s),
-  BLOCKED: (s) => chalk.red(s),
-  PLANNED: (s) => chalk.yellow(s),
-  PENDING: (s) => chalk.yellow(s),
-  APPROVED: (s) => chalk.green(s),
-  REJECTED: (s) => chalk.red(s),
-  INBOX: (s) => chalk.magenta(s),
-  GRAVEYARD: (s) => chalk.strikethrough(chalk.dim(s)),
-  OPEN: (s) => chalk.cyan(s),
-  CHANGES_REQUESTED: (s) => chalk.yellow(s),
-  MERGED: (s) => chalk.green(s),
-  CLOSED: (s) => chalk.dim(s),
-};
+import { getTheme, styled, styledStatus } from './theme/index.js';
 
 function colorStatus(status: string): string {
-  const fn = STATUS_COLOR[status];
-  return fn ? fn(status) : status;
+  return styledStatus(status);
 }
 
-function snapshotHeader(label: string, detail: string, borderColor: BoxenOptions['borderColor']): string {
+function snapshotHeader(label: string, detail: string, borderToken: 'primary' | 'secondary' | 'success' | 'warning' | 'error' | 'muted'): string {
+  const t = getTheme();
   return boxen(
-    chalk.bold(label) + chalk.dim(`  ${detail}`),
-    { padding: { top: 0, bottom: 0, left: 1, right: 1 }, borderStyle: 'single', borderColor }
+    styled(t.theme.semantic.primary, label) + styled(t.theme.semantic.muted, `  ${detail}`),
+    { padding: { top: 0, bottom: 0, left: 1, right: 1 }, borderStyle: 'single', borderColor: t.hex(t.theme.border[borderToken]) as BoxenOptions['borderColor'] }
   );
 }
 
@@ -36,16 +19,17 @@ function snapshotHeader(label: string, detail: string, borderColor: BoxenOptions
  * Renders quests grouped by campaign — the Roadmap view.
  */
 export function renderRoadmap(snapshot: GraphSnapshot): string {
+  const t = getTheme();
   const lines: string[] = [];
 
   lines.push(snapshotHeader(
     'XYPH Roadmap',
     `snapshot at ${new Date(snapshot.asOf).toISOString()}`,
-    'cyan'
+    'primary'
   ));
 
   if (snapshot.quests.length === 0) {
-    lines.push(chalk.dim('\n  No quests yet.'));
+    lines.push(styled(t.theme.semantic.muted, '\n  No quests yet.'));
     return lines.join('\n');
   }
 
@@ -66,15 +50,15 @@ export function renderRoadmap(snapshot: GraphSnapshot): string {
   for (const [key, quests] of grouped) {
     const heading = campaignTitle.get(key) ?? key;
     lines.push('');
-    lines.push(chalk.bold.blue(`  ${heading}`));
+    lines.push(styled(t.theme.ui.sectionHeader, `  ${heading}`));
 
     const table = new Table({
       head: [
-        chalk.white('Quest'),
-        chalk.white('Title'),
-        chalk.white('Status'),
-        chalk.white('h'),
-        chalk.white('Assigned'),
+        styled(t.theme.ui.tableHeader, 'Quest'),
+        styled(t.theme.ui.tableHeader, 'Title'),
+        styled(t.theme.ui.tableHeader, 'Status'),
+        styled(t.theme.ui.tableHeader, 'h'),
+        styled(t.theme.ui.tableHeader, 'Assigned'),
       ],
       style: { head: [], border: [] },
       colWidths: [22, 44, 13, 5, 16],
@@ -82,7 +66,7 @@ export function renderRoadmap(snapshot: GraphSnapshot): string {
 
     for (const q of quests) {
       table.push([
-        chalk.dim(q.id.slice(0, 20)),
+        styled(t.theme.semantic.muted, q.id.slice(0, 20)),
         q.title.slice(0, 42),
         colorStatus(q.status),
         String(q.hours),
@@ -100,16 +84,17 @@ export function renderRoadmap(snapshot: GraphSnapshot): string {
  * Renders the intent → quest → scroll lineage tree.
  */
 export function renderLineage(snapshot: GraphSnapshot): string {
+  const t = getTheme();
   const lines: string[] = [];
 
   lines.push(snapshotHeader(
     'Genealogy of Intent',
     `${snapshot.intents.length} intent(s)  ${snapshot.quests.length} quest(s)`,
-    'magenta'
+    'secondary'
   ));
 
   if (snapshot.intents.length === 0) {
-    lines.push(chalk.dim(
+    lines.push(styled(t.theme.semantic.muted,
       '\n  No intents declared yet.\n' +
       '  xyph-actuator intent <id> --title "..." --requested-by human.<name>'
     ));
@@ -139,14 +124,14 @@ export function renderLineage(snapshot: GraphSnapshot): string {
   for (const intent of snapshot.intents) {
     lines.push('');
     lines.push(
-      chalk.bold.magenta(`  ◆ ${intent.id}`) +
-      chalk.dim(`  ${intent.title}`)
+      styled(t.theme.ui.intentHeader, `  ◆ ${intent.id}`) +
+      styled(t.theme.semantic.muted, `  ${intent.title}`)
     );
-    lines.push(chalk.dim(`     requested-by: ${intent.requestedBy}`));
+    lines.push(styled(t.theme.semantic.muted, `     requested-by: ${intent.requestedBy}`));
 
     const quests = questsByIntent.get(intent.id) ?? [];
     if (quests.length === 0) {
-      lines.push(chalk.dim('     └─ (no quests)'));
+      lines.push(styled(t.theme.semantic.muted, '     └─ (no quests)'));
       continue;
     }
 
@@ -157,17 +142,17 @@ export function renderLineage(snapshot: GraphSnapshot): string {
       const branch = isLast ? '└─' : '├─';
       const scrollEntry = scrollByQuestId.get(q.id);
       const scrollMark = scrollEntry !== undefined
-        ? (scrollEntry.hasSeal ? chalk.green(' ✓') : chalk.yellow(' ○'))
+        ? (scrollEntry.hasSeal ? styled(t.theme.semantic.success, ' ✓') : styled(t.theme.semantic.warning, ' ○'))
         : '';
 
       lines.push(
-        `     ${branch} ${chalk.dim(q.id)}  ${q.title.slice(0, 38)}  [${colorStatus(q.status)}]${scrollMark}`
+        `     ${branch} ${styled(t.theme.semantic.muted, q.id)}  ${q.title.slice(0, 38)}  [${colorStatus(q.status)}]${scrollMark}`
       );
 
       if (scrollEntry !== undefined) {
         const indent = isLast ? '   ' : '│  ';
         lines.push(
-          `     ${indent}  ${chalk.dim('scroll:')} ${chalk.dim(scrollEntry.id)}`
+          `     ${indent}  ${styled(t.theme.semantic.muted, 'scroll:')} ${styled(t.theme.semantic.muted, scrollEntry.id)}`
         );
       }
     }
@@ -175,12 +160,12 @@ export function renderLineage(snapshot: GraphSnapshot): string {
 
   if (orphans.length > 0) {
     lines.push('');
-    lines.push(chalk.bold.red('  ⚠ Orphan quests (no intent — Constitution violation)'));
+    lines.push(styled(t.theme.semantic.error, '  ⚠ Orphan quests (no intent — Constitution violation)'));
     for (let i = 0; i < orphans.length; i++) {
       const q = orphans[i];
       if (!q) continue;
       const branch = i === orphans.length - 1 ? '└─' : '├─';
-      lines.push(`     ${branch} ${chalk.dim(q.id)}  ${q.title.slice(0, 38)}  [${colorStatus(q.status)}]`);
+      lines.push(`     ${branch} ${styled(t.theme.semantic.muted, q.id)}  ${q.title.slice(0, 38)}  [${colorStatus(q.status)}]`);
     }
   }
 
@@ -191,6 +176,7 @@ export function renderLineage(snapshot: GraphSnapshot): string {
  * Renders all nodes in separate tables — the All Nodes view.
  */
 export function renderAll(snapshot: GraphSnapshot): string {
+  const t = getTheme();
   const lines: string[] = [];
   const total =
     snapshot.campaigns.length +
@@ -199,113 +185,113 @@ export function renderAll(snapshot: GraphSnapshot): string {
     snapshot.scrolls.length +
     snapshot.approvals.length;
 
-  lines.push(snapshotHeader('All WARP Nodes', `${total} node(s) total`, 'green'));
+  lines.push(snapshotHeader('All WARP Nodes', `${total} node(s) total`, 'success'));
 
   if (snapshot.campaigns.length > 0) {
     lines.push('');
-    lines.push(chalk.bold('  Campaigns / Milestones'));
-    const t = new Table({
-      head: [chalk.white('ID'), chalk.white('Title'), chalk.white('Status')],
+    lines.push(styled(t.theme.semantic.primary, '  Campaigns / Milestones'));
+    const tbl = new Table({
+      head: [styled(t.theme.ui.tableHeader, 'ID'), styled(t.theme.ui.tableHeader, 'Title'), styled(t.theme.ui.tableHeader, 'Status')],
       style: { head: [], border: [] },
     });
     for (const c of snapshot.campaigns) {
-      t.push([chalk.dim(c.id), c.title, colorStatus(c.status)]);
+      tbl.push([styled(t.theme.semantic.muted, c.id), c.title, colorStatus(c.status)]);
     }
-    lines.push(t.toString());
+    lines.push(tbl.toString());
   }
 
   if (snapshot.intents.length > 0) {
     lines.push('');
-    lines.push(chalk.bold('  Intents'));
-    const t = new Table({
+    lines.push(styled(t.theme.semantic.primary, '  Intents'));
+    const tbl = new Table({
       head: [
-        chalk.white('ID'),
-        chalk.white('Title'),
-        chalk.white('Requested By'),
-        chalk.white('Created'),
+        styled(t.theme.ui.tableHeader, 'ID'),
+        styled(t.theme.ui.tableHeader, 'Title'),
+        styled(t.theme.ui.tableHeader, 'Requested By'),
+        styled(t.theme.ui.tableHeader, 'Created'),
       ],
       style: { head: [], border: [] },
     });
     for (const intent of snapshot.intents) {
-      t.push([
-        chalk.dim(intent.id),
+      tbl.push([
+        styled(t.theme.semantic.muted, intent.id),
         intent.title.slice(0, 40),
         intent.requestedBy,
         new Date(intent.createdAt).toLocaleDateString(),
       ]);
     }
-    lines.push(t.toString());
+    lines.push(tbl.toString());
   }
 
   if (snapshot.quests.length > 0) {
     lines.push('');
-    lines.push(chalk.bold('  Quests'));
-    const t = new Table({
+    lines.push(styled(t.theme.semantic.primary, '  Quests'));
+    const tbl = new Table({
       head: [
-        chalk.white('ID'),
-        chalk.white('Title'),
-        chalk.white('Status'),
-        chalk.white('h'),
-        chalk.white('Campaign'),
-        chalk.white('Scroll'),
+        styled(t.theme.ui.tableHeader, 'ID'),
+        styled(t.theme.ui.tableHeader, 'Title'),
+        styled(t.theme.ui.tableHeader, 'Status'),
+        styled(t.theme.ui.tableHeader, 'h'),
+        styled(t.theme.ui.tableHeader, 'Campaign'),
+        styled(t.theme.ui.tableHeader, 'Scroll'),
       ],
       style: { head: [], border: [] },
     });
     for (const q of snapshot.quests) {
-      t.push([
-        chalk.dim(q.id),
+      tbl.push([
+        styled(t.theme.semantic.muted, q.id),
         q.title.slice(0, 35),
         colorStatus(q.status),
         String(q.hours),
         q.campaignId ?? '—',
-        q.scrollId ? chalk.green('✓') : '—',
+        q.scrollId ? styled(t.theme.semantic.success, '✓') : '—',
       ]);
     }
-    lines.push(t.toString());
+    lines.push(tbl.toString());
   }
 
   if (snapshot.scrolls.length > 0) {
     lines.push('');
-    lines.push(chalk.bold('  Scrolls'));
-    const t = new Table({
+    lines.push(styled(t.theme.semantic.primary, '  Scrolls'));
+    const tbl = new Table({
       head: [
-        chalk.white('ID'),
-        chalk.white('Quest'),
-        chalk.white('Sealed By'),
-        chalk.white('Date'),
-        chalk.white('Guild Seal'),
+        styled(t.theme.ui.tableHeader, 'ID'),
+        styled(t.theme.ui.tableHeader, 'Quest'),
+        styled(t.theme.ui.tableHeader, 'Sealed By'),
+        styled(t.theme.ui.tableHeader, 'Date'),
+        styled(t.theme.ui.tableHeader, 'Guild Seal'),
       ],
       style: { head: [], border: [] },
     });
     for (const s of snapshot.scrolls) {
-      t.push([
-        chalk.dim(s.id),
+      tbl.push([
+        styled(t.theme.semantic.muted, s.id),
         s.questId,
         s.sealedBy,
         new Date(s.sealedAt).toLocaleDateString(),
-        s.hasSeal ? chalk.green('⊕') : chalk.yellow('○'),
+        s.hasSeal ? styled(t.theme.semantic.success, '⊕') : styled(t.theme.semantic.warning, '○'),
       ]);
     }
-    lines.push(t.toString());
+    lines.push(tbl.toString());
   }
 
   if (snapshot.approvals.length > 0) {
     lines.push('');
-    lines.push(chalk.bold('  Approval Gates'));
-    const t = new Table({
+    lines.push(styled(t.theme.semantic.primary, '  Approval Gates'));
+    const tbl = new Table({
       head: [
-        chalk.white('ID'),
-        chalk.white('Status'),
-        chalk.white('Trigger'),
-        chalk.white('Approver'),
-        chalk.white('Requester'),
+        styled(t.theme.ui.tableHeader, 'ID'),
+        styled(t.theme.ui.tableHeader, 'Status'),
+        styled(t.theme.ui.tableHeader, 'Trigger'),
+        styled(t.theme.ui.tableHeader, 'Approver'),
+        styled(t.theme.ui.tableHeader, 'Requester'),
       ],
       style: { head: [], border: [] },
     });
     for (const a of snapshot.approvals) {
-      t.push([chalk.dim(a.id), colorStatus(a.status), a.trigger, a.approver, a.requestedBy]);
+      tbl.push([styled(t.theme.semantic.muted, a.id), colorStatus(a.status), a.trigger, a.approver, a.requestedBy]);
     }
-    lines.push(t.toString());
+    lines.push(tbl.toString());
   }
 
   return lines.join('\n');
@@ -316,17 +302,18 @@ export function renderAll(snapshot: GraphSnapshot): string {
  * GRAVEYARD tasks are never shown here; use renderAll with --include-graveyard for those.
  */
 export function renderInbox(snapshot: GraphSnapshot): string {
+  const t = getTheme();
   const lines: string[] = [];
   const inbox = snapshot.quests.filter((q) => q.status === 'INBOX');
 
   lines.push(snapshotHeader(
     'Intake INBOX',
     `${inbox.length} task(s) awaiting triage`,
-    'magenta'
+    'secondary'
   ));
 
   if (inbox.length === 0) {
-    lines.push(chalk.dim(
+    lines.push(styled(t.theme.semantic.muted,
       '\n  No tasks in INBOX.\n' +
       '  Add one: xyph-actuator inbox task:ID --title "..." --suggested-by <principal>'
     ));
@@ -343,15 +330,15 @@ export function renderInbox(snapshot: GraphSnapshot): string {
 
   for (const [suggester, quests] of bySuggester) {
     lines.push('');
-    lines.push(chalk.bold.magenta(`  ${suggester}`));
+    lines.push(styled(t.theme.ui.intentHeader, `  ${suggester}`));
 
-    const t = new Table({
+    const tbl = new Table({
       head: [
-        chalk.white('ID'),
-        chalk.white('Title'),
-        chalk.white('h'),
-        chalk.white('Suggested'),
-        chalk.white('Prev rejection'),
+        styled(t.theme.ui.tableHeader, 'ID'),
+        styled(t.theme.ui.tableHeader, 'Title'),
+        styled(t.theme.ui.tableHeader, 'h'),
+        styled(t.theme.ui.tableHeader, 'Suggested'),
+        styled(t.theme.ui.tableHeader, 'Prev rejection'),
       ],
       style: { head: [], border: [] },
     });
@@ -361,13 +348,13 @@ export function renderInbox(snapshot: GraphSnapshot): string {
         ? new Date(q.suggestedAt).toLocaleDateString()
         : '—';
       const prevRej = q.rejectionRationale !== undefined
-        ? chalk.dim(q.rejectionRationale.slice(0, 24) + (q.rejectionRationale.length > 24 ? '…' : ''))
+        ? styled(t.theme.semantic.muted, q.rejectionRationale.slice(0, 24) + (q.rejectionRationale.length > 24 ? '…' : ''))
         : '—';
 
-      t.push([chalk.dim(q.id), q.title.slice(0, 38), String(q.hours), suggestedAt, prevRej]);
+      tbl.push([styled(t.theme.semantic.muted, q.id), q.title.slice(0, 38), String(q.hours), suggestedAt, prevRej]);
     }
 
-    lines.push(t.toString());
+    lines.push(tbl.toString());
   }
 
   return lines.join('\n');
@@ -377,42 +364,43 @@ export function renderInbox(snapshot: GraphSnapshot): string {
  * Renders submissions with their computed status — the Submissions view.
  */
 export function renderSubmissions(snapshot: GraphSnapshot): string {
+  const t = getTheme();
   const lines: string[] = [];
   const subs = snapshot.submissions;
 
   lines.push(snapshotHeader(
     'Submissions',
     `${subs.length} submission(s)`,
-    'yellow'
+    'warning'
   ));
 
   if (subs.length === 0) {
-    lines.push(chalk.dim(
+    lines.push(styled(t.theme.semantic.muted,
       '\n  No submissions yet.\n' +
       '  Create one: xyph-actuator submit <quest-id> --description "..."'
     ));
     return lines.join('\n');
   }
 
-  const t = new Table({
+  const tbl = new Table({
     head: [
-      chalk.white('Submission'),
-      chalk.white('Quest'),
-      chalk.white('Status'),
-      chalk.white('Approvals'),
-      chalk.white('Heads'),
-      chalk.white('Submitted By'),
-      chalk.white('Date'),
+      styled(t.theme.ui.tableHeader, 'Submission'),
+      styled(t.theme.ui.tableHeader, 'Quest'),
+      styled(t.theme.ui.tableHeader, 'Status'),
+      styled(t.theme.ui.tableHeader, 'Approvals'),
+      styled(t.theme.ui.tableHeader, 'Heads'),
+      styled(t.theme.ui.tableHeader, 'Submitted By'),
+      styled(t.theme.ui.tableHeader, 'Date'),
     ],
     style: { head: [], border: [] },
     colWidths: [28, 20, 20, 10, 7, 16, 12],
   });
 
   for (const sub of subs) {
-    const headsWarning = sub.headsCount > 1 ? chalk.yellow(`${sub.headsCount} ⚠`) : String(sub.headsCount);
-    t.push([
-      chalk.dim(sub.id.slice(0, 26)),
-      chalk.dim(sub.questId.slice(0, 18)),
+    const headsWarning = sub.headsCount > 1 ? styled(t.theme.semantic.warning, `${sub.headsCount} ⚠`) : String(sub.headsCount);
+    tbl.push([
+      styled(t.theme.semantic.muted, sub.id.slice(0, 26)),
+      styled(t.theme.semantic.muted, sub.questId.slice(0, 18)),
       colorStatus(sub.status),
       String(sub.approvalCount),
       headsWarning,
@@ -421,7 +409,7 @@ export function renderSubmissions(snapshot: GraphSnapshot): string {
     ]);
   }
 
-  lines.push(t.toString());
+  lines.push(tbl.toString());
 
   // Show recent reviews (sorted by most recent first)
   const recentReviews = [...snapshot.reviews]
@@ -429,22 +417,22 @@ export function renderSubmissions(snapshot: GraphSnapshot): string {
     .slice(0, 10);
   if (recentReviews.length > 0) {
     lines.push('');
-    lines.push(chalk.bold('  Recent Reviews'));
+    lines.push(styled(t.theme.semantic.primary, '  Recent Reviews'));
     const rt = new Table({
       head: [
-        chalk.white('Review'),
-        chalk.white('Patchset'),
-        chalk.white('Verdict'),
-        chalk.white('By'),
-        chalk.white('Comment'),
+        styled(t.theme.ui.tableHeader, 'Review'),
+        styled(t.theme.ui.tableHeader, 'Patchset'),
+        styled(t.theme.ui.tableHeader, 'Verdict'),
+        styled(t.theme.ui.tableHeader, 'By'),
+        styled(t.theme.ui.tableHeader, 'Comment'),
       ],
       style: { head: [], border: [] },
       colWidths: [28, 28, 18, 16, 30],
     });
     for (const r of recentReviews) {
       rt.push([
-        chalk.dim(r.id.slice(0, 26)),
-        chalk.dim(r.patchsetId.slice(0, 26)),
+        styled(t.theme.semantic.muted, r.id.slice(0, 26)),
+        styled(t.theme.semantic.muted, r.patchsetId.slice(0, 26)),
         colorStatus(r.verdict === 'approve' ? 'APPROVED' : r.verdict === 'request-changes' ? 'CHANGES_REQUESTED' : 'PENDING'),
         r.reviewedBy,
         r.comment.slice(0, 28),
@@ -456,22 +444,22 @@ export function renderSubmissions(snapshot: GraphSnapshot): string {
   // Show decisions
   if (snapshot.decisions.length > 0) {
     lines.push('');
-    lines.push(chalk.bold('  Decisions'));
+    lines.push(styled(t.theme.semantic.primary, '  Decisions'));
     const dt = new Table({
       head: [
-        chalk.white('Decision'),
-        chalk.white('Submission'),
-        chalk.white('Kind'),
-        chalk.white('By'),
-        chalk.white('Rationale'),
+        styled(t.theme.ui.tableHeader, 'Decision'),
+        styled(t.theme.ui.tableHeader, 'Submission'),
+        styled(t.theme.ui.tableHeader, 'Kind'),
+        styled(t.theme.ui.tableHeader, 'By'),
+        styled(t.theme.ui.tableHeader, 'Rationale'),
       ],
       style: { head: [], border: [] },
       colWidths: [28, 28, 8, 16, 30],
     });
     for (const d of snapshot.decisions) {
       dt.push([
-        chalk.dim(d.id.slice(0, 26)),
-        chalk.dim(d.submissionId.slice(0, 26)),
+        styled(t.theme.semantic.muted, d.id.slice(0, 26)),
+        styled(t.theme.semantic.muted, d.submissionId.slice(0, 26)),
         colorStatus(d.kind === 'merge' ? 'MERGED' : 'CLOSED'),
         d.decidedBy,
         d.rationale.slice(0, 28),

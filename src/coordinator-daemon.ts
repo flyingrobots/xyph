@@ -3,7 +3,7 @@ import { CoordinatorService } from './domain/services/CoordinatorService.js';
 import { IngestService } from './domain/services/IngestService.js';
 import { NormalizeService } from './domain/services/NormalizeService.js';
 import { RebalanceService } from './domain/services/RebalanceService.js';
-import chalk from 'chalk';
+import { getTheme, styled } from './tui/theme/index.js';
 
 /**
  * Coordinator Daemon
@@ -22,7 +22,7 @@ function parseInterval(): number {
   if (raw === undefined) return DEFAULT_INTERVAL_MS;
   const parsed = parseInt(raw, 10);
   if (!Number.isFinite(parsed) || parsed < MIN_INTERVAL_MS) {
-    console.warn(chalk.yellow(`[WARN] Invalid XYPH_INTERVAL_MS="${raw}", using default ${DEFAULT_INTERVAL_MS}ms`));
+    console.warn(styled(getTheme().theme.semantic.warning, `[WARN] Invalid XYPH_INTERVAL_MS="${raw}", using default ${DEFAULT_INTERVAL_MS}ms`));
     return DEFAULT_INTERVAL_MS;
   }
   return parsed;
@@ -31,7 +31,8 @@ function parseInterval(): number {
 const INTERVAL_MS = parseInterval();
 
 async function main(): Promise<void> {
-  console.log(chalk.bold.green('XYPH Coordinator Daemon starting...'));
+  const t = getTheme().theme;
+  console.log(styled({ hex: t.semantic.success.hex, modifiers: ['bold'] }, 'XYPH Coordinator Daemon starting...'));
 
   const roadmap = new WarpRoadmapAdapter(REPO_PATH, GRAPH_NAME, AGENT_ID);
   const coordinator = new CoordinatorService(roadmap, AGENT_ID, new IngestService(), new NormalizeService(), new RebalanceService());
@@ -41,7 +42,7 @@ async function main(): Promise<void> {
   await coordinator.heartbeat();
 
   // Schedule loop
-  console.log(chalk.gray(`[*] Heartbeat interval set to ${INTERVAL_MS}ms`));
+  console.log(styled(t.semantic.muted, `[*] Heartbeat interval set to ${INTERVAL_MS}ms`));
 
   let consecutiveFailures = 0;
   let heartbeatTimer: ReturnType<typeof setTimeout> | null = null;
@@ -52,9 +53,9 @@ async function main(): Promise<void> {
         .then(() => { consecutiveFailures = 0; })
         .catch(err => {
           consecutiveFailures++;
-          console.error(chalk.red(`[CRITICAL] Heartbeat failure ${consecutiveFailures}/${MAX_CONSECUTIVE_FAILURES}:`), err);
+          console.error(styled(t.semantic.error, `[CRITICAL] Heartbeat failure ${consecutiveFailures}/${MAX_CONSECUTIVE_FAILURES}:`), err);
           if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-            console.error(chalk.red('[FATAL] Max consecutive failures reached, exiting.'));
+            console.error(styled(t.semantic.error, '[FATAL] Max consecutive failures reached, exiting.'));
             process.exit(1);
           }
         })
@@ -70,7 +71,7 @@ async function main(): Promise<void> {
   function shutdown(): void {
     if (shuttingDown) return;
     shuttingDown = true;
-    console.log(chalk.yellow('\n[*] Shutting down coordinator daemon...'));
+    console.log(styled(t.semantic.warning, '\n[*] Shutting down coordinator daemon...'));
     if (heartbeatTimer !== null) {
       clearTimeout(heartbeatTimer);
     }
@@ -83,6 +84,6 @@ async function main(): Promise<void> {
 }
 
 main().catch(err => {
-  console.error(chalk.red('[FATAL] Daemon failed to start:'), err);
+  console.error(styled(getTheme().theme.semantic.error, '[FATAL] Daemon failed to start:'), err);
   process.exit(1);
 });

@@ -2,7 +2,7 @@ import type { ReactElement } from 'react';
 import { useState, useMemo } from 'react';
 import { Box, Text, useInput, useStdout, type Key } from 'ink';
 import type { GraphSnapshot } from '../../domain/models/dashboard.js';
-import { STATUS_COLOR } from '../status-colors.js';
+import { useTheme } from '../theme/index.js';
 import { Scrollbar } from '../Scrollbar.js';
 
 const DEFAULT_CHROME_LINES = 4;
@@ -87,6 +87,7 @@ function buildRows(snapshot: GraphSnapshot): VRow[] {
 }
 
 export function LineageView({ snapshot, isActive, chromeLines }: Props): ReactElement {
+  const t = useTheme();
   const { stdout } = useStdout();
   const chrome = chromeLines ?? DEFAULT_CHROME_LINES;
   const listHeight = Math.max(4, (stdout.rows ?? 24) - chrome);
@@ -137,7 +138,7 @@ export function LineageView({ snapshot, isActive, chromeLines }: Props): ReactEl
   if (snapshot.intents.length === 0) {
     return (
       <Box flexDirection="column">
-        <Text bold color="magenta">Genealogy of Intent</Text>
+        <Text bold color={t.ink(t.theme.ui.intentHeader)}>Genealogy of Intent</Text>
         <Text dimColor>
           No intents declared yet. Use: xyph-actuator intent {'<id>'} --title {'"..."'} --requested-by human.{'<name>'}
         </Text>
@@ -159,7 +160,7 @@ export function LineageView({ snapshot, isActive, chromeLines }: Props): ReactEl
           if (row.kind === 'intent-header') {
             return (
               <Box key={`ih-${row.id}`}>
-                <Text bold color="magenta">{'◆ ' + trunc(row.id, 30)}</Text>
+                <Text bold color={t.ink(t.theme.ui.intentHeader)}>{'◆ ' + trunc(row.id, 30)}</Text>
                 <Text dimColor>  {trunc(row.title, 38)}</Text>
               </Box>
             );
@@ -180,18 +181,17 @@ export function LineageView({ snapshot, isActive, chromeLines }: Props): ReactEl
           }
           if (row.kind === 'quest') {
             const isSelected = absIdx === clampedVIdx;
-            const statusColor = STATUS_COLOR[row.status] ?? 'white';
             return (
               <Box key={`q-${row.id}`} marginLeft={2}>
                 <Box width={2}>
-                  <Text color="cyan">{isSelected ? '▶' : ' '}</Text>
+                  <Text color={t.ink(t.theme.ui.cursor)}>{isSelected ? '▶' : ' '}</Text>
                 </Box>
                 <Text dimColor>{row.branch} </Text>
                 <Text dimColor>{trunc(row.id, 16)}  </Text>
                 <Text bold={isSelected}>{trunc(row.title, 36)}  </Text>
-                <Text color={statusColor}>{'[' + row.status + ']'}</Text>
+                <Text color={t.inkStatus(row.status)}>{'[' + row.status + ']'}</Text>
                 {row.scrollId !== undefined && (
-                  <Text color={row.sealed ? 'green' : 'yellow'}>
+                  <Text color={row.sealed ? t.ink(t.theme.semantic.success) : t.ink(t.theme.semantic.warning)}>
                     {row.sealed ? '  ✓' : '  ○'}
                   </Text>
                 )}
@@ -208,7 +208,7 @@ export function LineageView({ snapshot, isActive, chromeLines }: Props): ReactEl
           if (row.kind === 'orphan-header') {
             return (
               <Box key="orphan-header">
-                <Text bold color="red">⚠ Orphan quests (sovereignty violation)</Text>
+                <Text bold color={t.ink(t.theme.semantic.error)}>⚠ Orphan quests (sovereignty violation)</Text>
               </Box>
             );
           }

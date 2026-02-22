@@ -1,5 +1,6 @@
 import type { ReactElement } from 'react';
 import { Box, Text } from 'ink';
+import { useTheme } from './theme/index.js';
 
 /**
  * Props for the vertical scrollbar.
@@ -13,10 +14,12 @@ interface Props {
 }
 
 /**
- * Vertical scrollbar — renders a single column of █/░ characters.
+ * Vertical scrollbar — renders a single column of characters.
  * Returns null when all rows fit and scrolling is not needed.
  */
 export function Scrollbar({ total, visible, offset }: Props): ReactElement | null {
+  const t = useTheme();
+
   if (total <= visible) return null;
 
   const thumbSize = Math.max(1, Math.round(visible * visible / total));
@@ -31,7 +34,7 @@ export function Scrollbar({ total, visible, offset }: Props): ReactElement | nul
       {Array.from({ length: visible }, (_, i) => {
         const inThumb = i >= thumbStart && i < thumbStart + thumbSize;
         return (
-          <Text key={i} color={inThumb ? 'cyan' : 'gray'}>
+          <Text key={i} color={inThumb ? t.ink(t.theme.ui.scrollThumb) : t.ink(t.theme.ui.scrollTrack)}>
             {inThumb ? '█' : '░'}
           </Text>
         );

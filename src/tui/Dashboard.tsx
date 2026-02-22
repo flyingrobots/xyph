@@ -11,6 +11,7 @@ import { InboxView } from './views/InboxView.js';
 import { LandingView } from './views/LandingView.js';
 import { HelpModal } from './HelpModal.js';
 import { StatusLine } from './StatusLine.js';
+import { useTheme } from './theme/index.js';
 
 type ViewName = 'roadmap' | 'lineage' | 'all' | 'inbox';
 
@@ -26,6 +27,7 @@ interface Props {
 }
 
 export function Dashboard({ service, intake, agentId, logoText, wordmarkText, wordmarkLines }: Props): ReactElement {
+  const t = useTheme();
   const [activeView, setActiveView] = useState<ViewName>('roadmap');
   const [snapshot, setSnapshot] = useState<GraphSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
@@ -122,15 +124,15 @@ export function Dashboard({ service, intake, agentId, logoText, wordmarkText, wo
   }
 
   if (loading) {
-    return <Text color="yellow">Loading WARP graph snapshot…</Text>;
+    return <Text color={t.ink(t.theme.semantic.warning)}>Loading WARP graph snapshot…</Text>;
   }
 
   if (error !== null) {
-    return <Text color="red">Error: {error}</Text>;
+    return <Text color={t.ink(t.theme.semantic.error)}>Error: {error}</Text>;
   }
 
   if (snapshot === null || filtered === null) {
-    return <Text color="red">No snapshot available.</Text>;
+    return <Text color={t.ink(t.theme.semantic.error)}>No snapshot available.</Text>;
   }
 
   const cols = stdout.columns ?? 80;
@@ -149,7 +151,7 @@ export function Dashboard({ service, intake, agentId, logoText, wordmarkText, wo
               <Box key={v} marginRight={2}>
                 <Text
                   bold={v === activeView}
-                  color={v === activeView ? 'cyan' : 'gray'}
+                  color={v === activeView ? t.ink(t.theme.ui.cursor) : t.ink(t.theme.semantic.muted)}
                 >
                   {v === activeView ? `[${v}]` : v}
                 </Text>

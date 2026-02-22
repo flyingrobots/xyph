@@ -20,6 +20,7 @@ import { WarpDashboardAdapter } from './src/infrastructure/adapters/WarpDashboar
 import { WarpIntakeAdapter } from './src/infrastructure/adapters/WarpIntakeAdapter.js';
 import { DashboardService } from './src/domain/services/DashboardService.js';
 import { Dashboard } from './src/tui/Dashboard.js';
+import { ThemeProvider } from './src/tui/theme/index.js';
 import { loadRandomLogo, selectLogoSize } from './src/tui/logo-loader.js';
 
 const DEFAULT_AGENT_ID = 'agent.prime';
@@ -44,12 +45,14 @@ const service = new DashboardService(adapter);
 const intake = new WarpIntakeAdapter(cwd, agentId);
 
 render(
-  <Dashboard
-    service={service}
-    intake={intake}
-    agentId={agentId}
-    logoText={splash.text}
-    wordmarkText={wordmark.text}
-    wordmarkLines={wordmark.lines}
-  />,
+  <ThemeProvider>
+    <Dashboard
+      service={service}
+      intake={intake}
+      agentId={agentId}
+      logoText={splash.text}
+      wordmarkText={wordmark.text}
+      wordmarkLines={wordmark.lines}
+    />
+  </ThemeProvider>,
 );

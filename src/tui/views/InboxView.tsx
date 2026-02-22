@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { Box, Text, useInput, useStdout, type Key } from 'ink';
 import type { GraphSnapshot, QuestNode } from '../../domain/models/dashboard.js';
 import type { IntakePort } from '../../ports/IntakePort.js';
+import { useTheme } from '../theme/index.js';
 import { Scrollbar } from '../Scrollbar.js';
 
 const DEFAULT_CHROME_LINES = 4;
@@ -50,6 +51,7 @@ export function InboxView({
   onRefresh,
   chromeLines,
 }: Props): ReactElement {
+  const t = useTheme();
   const { stdout } = useStdout();
   const chrome = chromeLines ?? DEFAULT_CHROME_LINES;
 
@@ -272,18 +274,18 @@ export function InboxView({
   // Render modals (full-view overlays)
   if (modal?.kind === 'select-intent') {
     return (
-      <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1}>
-        <Text bold color="cyan">
+      <Box flexDirection="column" borderStyle="round" borderColor={t.ink(t.theme.border.primary)} paddingX={1}>
+        <Text bold color={t.ink(t.theme.ui.cursor)}>
           Promote: {modal.questId} to BACKLOG
         </Text>
         <Text>Select Sovereign Intent (↑↓ Enter)</Text>
         <Box flexDirection="column" marginTop={1}>
           {intents.map((intent, i) => (
             <Box key={intent.id}>
-              <Text color={i === modal.intentIdx ? 'cyan' : undefined}>
+              <Text color={i === modal.intentIdx ? t.ink(t.theme.ui.cursor) : undefined}>
                 {i === modal.intentIdx ? '▶ ' : '  '}
               </Text>
-              <Text bold={i === modal.intentIdx} color={i === modal.intentIdx ? undefined : 'gray'}>
+              <Text bold={i === modal.intentIdx} color={i === modal.intentIdx ? undefined : t.ink(t.theme.semantic.muted)}>
                 {intent.id.slice(0, 24).padEnd(26)}
               </Text>
               <Text dimColor={i !== modal.intentIdx}>{intent.title.slice(0, 40)}</Text>
@@ -299,8 +301,8 @@ export function InboxView({
 
   if (modal?.kind === 'rationale') {
     return (
-      <Box flexDirection="column" borderStyle="round" borderColor="yellow" paddingX={1}>
-        <Text bold color="yellow">Reject: {modal.questId}</Text>
+      <Box flexDirection="column" borderStyle="round" borderColor={t.ink(t.theme.border.warning)} paddingX={1}>
+        <Text bold color={t.ink(t.theme.semantic.warning)}>Reject: {modal.questId}</Text>
         <Text>Rejection rationale:</Text>
         <Box marginTop={1}>
           <Text>{`> ${modal.buffer}_`}</Text>
@@ -314,19 +316,19 @@ export function InboxView({
 
   if (modal?.kind === 'mutating') {
     return (
-      <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1}>
-        <Text color="cyan">Applying {modal.action}…</Text>
+      <Box flexDirection="column" borderStyle="round" borderColor={t.ink(t.theme.border.primary)} paddingX={1}>
+        <Text color={t.ink(t.theme.ui.cursor)}>Applying {modal.action}…</Text>
       </Box>
     );
   }
 
   if (modal?.kind === 'error') {
     return (
-      <Box flexDirection="column" borderStyle="round" borderColor="red" paddingX={1}>
+      <Box flexDirection="column" borderStyle="round" borderColor={t.ink(t.theme.border.error)} paddingX={1}>
         <Box>
           {modal.code !== null
-            ? <><Text color="red">[{modal.code}]</Text><Text> {modal.message}</Text></>
-            : <Text color="red">{modal.message}</Text>
+            ? <><Text color={t.ink(t.theme.semantic.error)}>[{modal.code}]</Text><Text> {modal.message}</Text></>
+            : <Text color={t.ink(t.theme.semantic.error)}>{modal.message}</Text>
           }
         </Box>
         <Box marginTop={1}>
@@ -339,10 +341,10 @@ export function InboxView({
   if (totalQuests === 0) {
     return (
       <Box flexDirection="column">
-        <Text bold color="magenta">INBOX</Text>
+        <Text bold color={t.ink(t.theme.ui.intentHeader)}>INBOX</Text>
         <Text dimColor>No tasks awaiting triage.</Text>
         <Text dimColor>Add one: xyph-actuator inbox task:ID --title {'<text>'} --suggested-by {'<principal>'}</Text>
-        <Box borderStyle="round" borderColor="gray" marginTop={1} paddingX={1}>
+        <Box borderStyle="round" borderColor={t.ink(t.theme.border.muted)} marginTop={1} paddingX={1}>
           <Text dimColor>(no task selected)</Text>
         </Box>
       </Box>
@@ -363,7 +365,7 @@ export function InboxView({
             if (row.kind === 'header') {
               return (
                 <Box key={`h-${row.label}`}>
-                  <Text bold color="magenta">{row.label}</Text>
+                  <Text bold color={t.ink(t.theme.ui.intentHeader)}>{row.label}</Text>
                 </Box>
               );
             }
@@ -376,15 +378,15 @@ export function InboxView({
             return (
               <Box key={q.id}>
                 <Box width={2}>
-                  <Text color="cyan">{isSelected ? '▶' : ' '}</Text>
+                  <Text color={t.ink(t.theme.ui.cursor)}>{isSelected ? '▶' : ' '}</Text>
                 </Box>
-                <Text bold={isSelected} color={isSelected ? undefined : 'gray'}>
+                <Text bold={isSelected} color={isSelected ? undefined : t.ink(t.theme.semantic.muted)}>
                   {q.id.slice(0, 16).padEnd(18)}
                 </Text>
                 <Text bold={isSelected}>{q.title.slice(0, 34).padEnd(36)}</Text>
                 <Text dimColor>{(q.suggestedBy ?? '').slice(0, 14).padEnd(16)}</Text>
                 <Text dimColor>{dateStr}</Text>
-                {hasHistory && <Text color="yellow">  ↩</Text>}
+                {hasHistory && <Text color={t.ink(t.theme.semantic.warning)}>  ↩</Text>}
               </Box>
             );
           })}
@@ -406,14 +408,14 @@ export function InboxView({
       <Box
         flexDirection="column"
         borderStyle="round"
-        borderColor="magenta"
+        borderColor={t.ink(t.theme.border.secondary)}
         paddingX={1}
         height={detailHeight}
       >
         {selectedQuest !== null ? (
           <>
             <Box>
-              <Text bold color="magenta">{selectedQuest.id}{'  '}</Text>
+              <Text bold color={t.ink(t.theme.ui.intentHeader)}>{selectedQuest.id}{'  '}</Text>
               <Text bold>{selectedQuest.title}</Text>
             </Box>
             <Box marginTop={1}>
@@ -423,7 +425,7 @@ export function InboxView({
             {selectedQuest.suggestedBy !== undefined && (
               <Box>
                 <Text dimColor>Suggested </Text>
-                <Text color="magenta">{selectedQuest.suggestedBy}</Text>
+                <Text color={t.ink(t.theme.semantic.accent)}>{selectedQuest.suggestedBy}</Text>
                 {selectedQuest.suggestedAt !== undefined && (
                   <Text dimColor>  {new Date(selectedQuest.suggestedAt).toISOString()}</Text>
                 )}
@@ -431,7 +433,7 @@ export function InboxView({
             )}
             {selectedQuest.rejectionRationale !== undefined && (
               <Box flexDirection="column" marginTop={1}>
-                <Text color="yellow">↩ Previously rejected</Text>
+                <Text color={t.ink(t.theme.semantic.warning)}>↩ Previously rejected</Text>
                 <Box>
                   <Text dimColor>By        </Text>
                   <Text dimColor>{selectedQuest.rejectedBy ?? '—'}</Text>

@@ -1,17 +1,20 @@
 import type { ReactElement } from 'react';
 import { Box, Text } from 'ink';
+import { useTheme } from './theme/index.js';
 
 /**
  * HelpModal is a pure display component.
  * Keyboard handling (Escape to close) is managed by Dashboard.
  */
 export function HelpModal(): ReactElement {
+  const t = useTheme();
+
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1}>
-      <Text bold color="cyan">XYPH Help</Text>
+    <Box flexDirection="column" borderStyle="round" borderColor={t.ink(t.theme.border.primary)} paddingX={1}>
+      <Text bold color={t.ink(t.theme.ui.cursor)}>XYPH Help</Text>
 
       <Box marginTop={1} flexDirection="column">
-        <Text bold color="yellow">Glossary</Text>
+        <Text bold color={t.ink(t.theme.semantic.warning)}>Glossary</Text>
         <Text dimColor>  Quest      — a unit of work with status, hours, and an owner</Text>
         <Text dimColor>  Intent     — a sovereign directive that authorizes quests</Text>
         <Text dimColor>  Campaign   — a milestone grouping related quests</Text>
@@ -22,7 +25,7 @@ export function HelpModal(): ReactElement {
       </Box>
 
       <Box marginTop={1} flexDirection="column">
-        <Text bold color="yellow">Key Bindings</Text>
+        <Text bold color={t.ink(t.theme.semantic.warning)}>Key Bindings</Text>
         <Box flexDirection="row" marginTop={1}>
           <Box flexDirection="column" width={30}>
             <Text>{'  Tab       '}<Text dimColor>cycle views</Text></Text>
