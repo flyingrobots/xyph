@@ -8,7 +8,7 @@
 
 XYPH's aesthetic is **clean, gradient-rich, and border-defined**. Every output should be unmistakably XYPH — whether it's a `boxen` frame in the terminal or an Ink panel in the dashboard.
 
-The **Digital Guild** vocabulary is the thematic foundation. We don't have "tasks" and "milestones" — we have **Quests**, **Campaigns**, **Scrolls**, **Seals**, and **Intents**. The visual language reinforces this identity: progress bars shimmer with the brand gradient, sealed quests carry a `⊕`, and the WARP graph is always the single source of truth.
+The **Digital Guild** vocabulary is the thematic foundation. We don't have "tasks" and "milestones" — we have **Quests**, **Campaigns**, **Scrolls**, **Seals**, and **Intents**. The visual language reinforces this identity: progress bars shimmer with the brand gradient, sealed quests carry a `⊕`, and the graph is always the single source of truth.
 
 **Principles:**
 - Gradient over flat color — the cyan→magenta sweep is our signature.
@@ -323,7 +323,7 @@ Vertical scrollbar rendered as a single column in the right margin:
 Footer bar spanning full terminal width:
 
 ```
-/// WARP [tick: 47 (a1b2c3d) ← 46 (e4f5g6h) | me: 12 | writers: 3] /////////////
+/// XYPH [tick: 47 (a1b2c3d) ← 46 (e4f5g6h) | me: 12 | writers: 3] /////////////
 ```
 
 Always dim. Padded with `/` to fill the terminal width.

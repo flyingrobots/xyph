@@ -102,7 +102,7 @@ export class WarpDashboardAdapter implements DashboardPort {
           const [id, props] = result.value;
           if (props) propsCache.set(id, props);
         } else {
-          console.warn(`[WARN] Failed to fetch node props: ${result.reason}`);
+          console.warn(`[WARN] Failed to fetch node props: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`);
         }
       }
     }
@@ -174,14 +174,19 @@ export class WarpDashboardAdapter implements DashboardPort {
     const neighborsNeeded = [...rawQuestIds, ...rawScrollIds, ...rawPatchsetIds, ...rawReviewIds, ...rawDecisionIds];
     const neighborsCache = new Map<string, NeighborEntry[]>();
     {
-      const entries = await Promise.all(
+      const results = await Promise.allSettled(
         neighborsNeeded.map(async (id) => {
           const raw = await graph.neighbors(id, 'outgoing');
           return [id, toNeighborEntries(raw)] as const;
         }),
       );
-      for (const [id, neighbors] of entries) {
-        neighborsCache.set(id, neighbors);
+      for (const result of results) {
+        if (result.status === 'fulfilled') {
+          const [id, neighbors] = result.value;
+          neighborsCache.set(id, neighbors);
+        } else {
+          console.warn(`[WARN] Failed to fetch neighbors: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`);
+        }
       }
     }
 
