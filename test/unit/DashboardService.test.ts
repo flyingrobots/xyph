@@ -75,6 +75,9 @@ const baseSnapshot: GraphSnapshot = {
       requestedBy: 'agent.prime',
     },
   ],
+  submissions: [],
+  reviews: [],
+  decisions: [],
   asOf: 1700200000000,
 };
 

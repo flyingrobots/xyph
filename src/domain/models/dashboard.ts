@@ -5,6 +5,7 @@
 
 import type { QuestStatus } from '../entities/Quest.js';
 import type { ApprovalGateStatus, ApprovalGateTrigger } from '../entities/ApprovalGate.js';
+import type { SubmissionStatus, ReviewVerdict, DecisionKind } from '../entities/Submission.js';
 
 export type { ApprovalGateStatus };
 
@@ -24,6 +25,7 @@ export interface QuestNode {
   campaignId?: string;
   intentId?: string;
   scrollId?: string;
+  submissionId?: string;
   assignedTo?: string;
   completedAt?: number;
   // INBOX lifecycle provenance (set once at intake, never erased)
@@ -62,6 +64,36 @@ export interface ApprovalNode {
   requestedBy: string;
 }
 
+export interface SubmissionNode {
+  id: string;
+  questId: string;
+  status: SubmissionStatus;
+  tipPatchsetId?: string;
+  headsCount: number;
+  approvalCount: number;
+  submittedBy: string;
+  submittedAt: number;
+}
+
+export interface ReviewNode {
+  id: string;
+  patchsetId: string;
+  verdict: ReviewVerdict;
+  comment: string;
+  reviewedBy: string;
+  reviewedAt: number;
+}
+
+export interface DecisionNode {
+  id: string;
+  submissionId: string;
+  kind: DecisionKind;
+  decidedBy: string;
+  rationale: string;
+  mergeCommit?: string;
+  decidedAt: number;
+}
+
 export interface GraphMeta {
   maxTick: number;       // max(observedFrontier.values()) — global high-water mark
   myTick: number;        // observedFrontier.get(writerId) ?? 0
@@ -75,6 +107,9 @@ export interface GraphSnapshot {
   intents: IntentNode[];
   scrolls: ScrollNode[];
   approvals: ApprovalNode[];
+  submissions: SubmissionNode[];
+  reviews: ReviewNode[];
+  decisions: DecisionNode[];
   asOf: number;
   graphMeta?: GraphMeta;
 }

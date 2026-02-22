@@ -14,6 +14,10 @@ const STATUS_COLOR: Record<string, (s: string) => string> = {
   REJECTED: (s) => chalk.red(s),
   INBOX: (s) => chalk.magenta(s),
   GRAVEYARD: (s) => chalk.strikethrough(chalk.dim(s)),
+  OPEN: (s) => chalk.cyan(s),
+  CHANGES_REQUESTED: (s) => chalk.yellow(s),
+  MERGED: (s) => chalk.green(s),
+  CLOSED: (s) => chalk.dim(s),
 };
 
 function colorStatus(status: string): string {
@@ -364,6 +368,114 @@ export function renderInbox(snapshot: GraphSnapshot): string {
     }
 
     lines.push(t.toString());
+  }
+
+  return lines.join('\n');
+}
+
+/**
+ * Renders submissions with their computed status — the Submissions view.
+ */
+export function renderSubmissions(snapshot: GraphSnapshot): string {
+  const lines: string[] = [];
+  const subs = snapshot.submissions;
+
+  lines.push(snapshotHeader(
+    'Submissions',
+    `${subs.length} submission(s)`,
+    'yellow'
+  ));
+
+  if (subs.length === 0) {
+    lines.push(chalk.dim(
+      '\n  No submissions yet.\n' +
+      '  Create one: xyph-actuator submit <quest-id> --description "..."'
+    ));
+    return lines.join('\n');
+  }
+
+  const t = new Table({
+    head: [
+      chalk.white('Submission'),
+      chalk.white('Quest'),
+      chalk.white('Status'),
+      chalk.white('Approvals'),
+      chalk.white('Heads'),
+      chalk.white('Submitted By'),
+      chalk.white('Date'),
+    ],
+    style: { head: [], border: [] },
+    colWidths: [28, 20, 20, 10, 7, 16, 12],
+  });
+
+  for (const sub of subs) {
+    const headsWarning = sub.headsCount > 1 ? chalk.yellow(`${sub.headsCount} ⚠`) : String(sub.headsCount);
+    t.push([
+      chalk.dim(sub.id.slice(0, 26)),
+      chalk.dim(sub.questId.slice(0, 18)),
+      colorStatus(sub.status),
+      String(sub.approvalCount),
+      headsWarning,
+      sub.submittedBy,
+      new Date(sub.submittedAt).toLocaleDateString(),
+    ]);
+  }
+
+  lines.push(t.toString());
+
+  // Show recent reviews
+  const recentReviews = snapshot.reviews.slice(-10);
+  if (recentReviews.length > 0) {
+    lines.push('');
+    lines.push(chalk.bold('  Recent Reviews'));
+    const rt = new Table({
+      head: [
+        chalk.white('Review'),
+        chalk.white('Patchset'),
+        chalk.white('Verdict'),
+        chalk.white('By'),
+        chalk.white('Comment'),
+      ],
+      style: { head: [], border: [] },
+      colWidths: [28, 28, 18, 16, 30],
+    });
+    for (const r of recentReviews) {
+      rt.push([
+        chalk.dim(r.id.slice(0, 26)),
+        chalk.dim(r.patchsetId.slice(0, 26)),
+        colorStatus(r.verdict === 'approve' ? 'APPROVED' : r.verdict === 'request-changes' ? 'CHANGES_REQUESTED' : 'PENDING'),
+        r.reviewedBy,
+        r.comment.slice(0, 28),
+      ]);
+    }
+    lines.push(rt.toString());
+  }
+
+  // Show decisions
+  if (snapshot.decisions.length > 0) {
+    lines.push('');
+    lines.push(chalk.bold('  Decisions'));
+    const dt = new Table({
+      head: [
+        chalk.white('Decision'),
+        chalk.white('Submission'),
+        chalk.white('Kind'),
+        chalk.white('By'),
+        chalk.white('Rationale'),
+      ],
+      style: { head: [], border: [] },
+      colWidths: [28, 28, 8, 16, 30],
+    });
+    for (const d of snapshot.decisions) {
+      dt.push([
+        chalk.dim(d.id.slice(0, 26)),
+        chalk.dim(d.submissionId.slice(0, 26)),
+        colorStatus(d.kind === 'merge' ? 'MERGED' : 'CLOSED'),
+        d.decidedBy,
+        d.rationale.slice(0, 28),
+      ]);
+    }
+    lines.push(dt.toString());
   }
 
   return lines.join('\n');
