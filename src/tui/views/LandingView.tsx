@@ -6,6 +6,7 @@ import { useTheme } from '../theme/index.js';
 interface Props {
   logoText: string;
   snapshot: GraphSnapshot | null;
+  loadLog?: string[];
 }
 
 function asciiBar(pct: number, width: number): string {
@@ -13,14 +14,24 @@ function asciiBar(pct: number, width: number): string {
   return '█'.repeat(filled) + '░'.repeat(width - filled);
 }
 
-export function LandingView({ logoText, snapshot }: Props): ReactElement {
+export function LandingView({ logoText, snapshot, loadLog }: Props): ReactElement {
   const t = useTheme();
   const logoLines = logoText.split('\n');
 
   let statsContent: ReactElement;
 
   if (snapshot === null) {
-    statsContent = <Text dimColor>Loading WARP graph…</Text>;
+    const lines = loadLog ?? [];
+    statsContent = (
+      <Box flexDirection="column">
+        <Text dimColor>{'─'.repeat(41)}</Text>
+        <Text bold color={t.ink(t.theme.semantic.warning)}>Loading Project Graph…</Text>
+        {lines.map((line, i) => (
+          <Text key={i} dimColor>  {line}</Text>
+        ))}
+        <Text dimColor>{'─'.repeat(41)}</Text>
+      </Box>
+    );
   } else {
     const allQuests = snapshot.quests.filter(
       (q) => q.status !== 'INBOX' && q.status !== 'GRAVEYARD',
@@ -60,7 +71,7 @@ export function LandingView({ logoText, snapshot }: Props): ReactElement {
     statsContent = (
       <Box flexDirection="column">
         <Text dimColor>{'─'.repeat(41)}</Text>
-        <Text bold color={t.ink(t.theme.ui.cursor)}>WARP GRAPH STATUS</Text>
+        <Text bold color={t.ink(t.theme.ui.cursor)}>XYPH GRAPH STATUS</Text>
         <Box>
           <Text dimColor>Progress  </Text>
           <Text color={t.ink(t.theme.semantic.success)}>[{bar}]</Text>

@@ -124,6 +124,7 @@ export function RoadmapView({ snapshot, isActive, chromeLines }: Props): ReactEl
   }
 
   useInput((input: string, key: Key) => {
+    if (key.tab) return; // handled by Dashboard for view switching
     if (showDetail) {
       if (key.escape) setShowDetail(false);
       return;

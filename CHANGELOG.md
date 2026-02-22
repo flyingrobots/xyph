@@ -2,6 +2,33 @@
 
 All notable changes to XYPH will be documented in this file.
 
+## [1.0.0-alpha.6] — TUI Polish: Performance, Copywriting, Tab Fix
+
+**Dashboard Performance & UX Improvements**
+
+### Changed
+
+**Performance — parallel graph snapshot loading**
+- `WarpDashboardAdapter.fetchSnapshot()`: batch-fetch all node props via `Promise.all` instead of sequential awaits (142 nodes).
+- Pre-fetch all outgoing `neighbors()` calls in a single parallel batch, eliminating sequential I/O across 4 passes.
+- `buildSubmissionData()` converted from async to synchronous — uses pre-fetched neighbors cache instead of live graph queries.
+
+**Loading UI — activity log on landing screen**
+- `DashboardPort.fetchSnapshot()` now accepts optional `onProgress` callback for phase-level progress reporting.
+- `LandingView` displays a live activity log (last 10 lines) during graph loading, replacing the static "Loading…" message.
+
+**Copywriting — brand consistency**
+- "WARP GRAPH STATUS" → "XYPH GRAPH STATUS" on the landing screen.
+- "Loading WARP graph snapshot…" → "Loading project graph snapshot…".
+
+### Fixed
+
+**Tab cycling — defensive key guards**
+- Added explicit `return` after `key.tab` handler in `Dashboard.tsx` to prevent fall-through.
+- All 4 view components (`RoadmapView`, `LineageView`, `AllNodesView`, `InboxView`) now explicitly ignore `key.tab` at the top of their `useInput` handlers, ensuring Tab keypresses are cleanly handled only by Dashboard's view-switching logic.
+
+---
+
 ## [Unreleased]
 
 **Theme Token System — Full Visual Layer Migration**

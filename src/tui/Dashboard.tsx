@@ -35,6 +35,7 @@ export function Dashboard({ service, intake, agentId, logoText, wordmarkText, wo
   const [isMutating, setIsMutating] = useState(false);
   const [showLanding, setShowLanding] = useState(true);
   const [showHelp, setShowHelp] = useState(false);
+  const [loadLog, setLoadLog] = useState<string[]>([]);
   const { exit } = useApp();
   const { stdout } = useStdout();
 
@@ -44,8 +45,13 @@ export function Dashboard({ service, intake, agentId, logoText, wordmarkText, wo
   const refresh = useCallback((showLoading = false): void => {
     if (showLoading) setLoading(true);
     const thisRequest = ++requestCounter.current;
+    const onProgress = showLoading
+      ? (msg: string) => {
+          setLoadLog((prev) => [...prev.slice(-9), msg]);
+        }
+      : undefined;
     service
-      .getSnapshot()
+      .getSnapshot(onProgress)
       .then((s) => {
         if (requestCounter.current !== thisRequest) return; // stale response
         setSnapshot((prev) => {
@@ -108,6 +114,7 @@ export function Dashboard({ service, intake, agentId, logoText, wordmarkText, wo
         const next = VIEWS[(idx + 1) % VIEWS.length];
         if (next !== undefined) setActiveView(next);
       }
+      return;
     }
   });
 
@@ -120,11 +127,11 @@ export function Dashboard({ service, intake, agentId, logoText, wordmarkText, wo
 
   // Landing screen — shown until user presses any key (unless error occurred)
   if (showLanding && error === null) {
-    return <LandingView logoText={logoText} snapshot={snapshot} />;
+    return <LandingView logoText={logoText} snapshot={snapshot} loadLog={loadLog} />;
   }
 
   if (loading) {
-    return <Text color={t.ink(t.theme.semantic.warning)}>Loading WARP graph snapshot…</Text>;
+    return <Text color={t.ink(t.theme.semantic.warning)}>Loading project graph snapshot…</Text>;
   }
 
   if (error !== null) {

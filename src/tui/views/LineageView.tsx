@@ -129,6 +129,7 @@ export function LineageView({ snapshot, isActive, chromeLines }: Props): ReactEl
   }
 
   useInput((_input: string, key: Key) => {
+    if (key.tab) return; // handled by Dashboard for view switching
     if (key.upArrow) { moveSelection(-1); return; }
     if (key.downArrow) { moveSelection(1); return; }
     if (key.pageUp) { moveSelection(-listHeight); return; }

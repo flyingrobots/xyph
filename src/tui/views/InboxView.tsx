@@ -227,6 +227,8 @@ export function InboxView({
     }
 
     // Normal navigation (modal === null)
+    // Tab is handled by Dashboard for view switching — ignore here
+    if (key.tab) return;
     if (key.upArrow) {
       moveSelection(-1);
       return;

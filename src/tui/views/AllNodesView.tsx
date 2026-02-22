@@ -126,6 +126,7 @@ export function AllNodesView({ snapshot, isActive, chromeLines }: Props): ReactE
   }
 
   useInput((input: string, key: Key) => {
+    if (key.tab) return; // handled by Dashboard for view switching
     if (showDetail) {
       if (key.escape) setShowDetail(false);
       return;

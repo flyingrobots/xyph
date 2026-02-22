@@ -88,8 +88,8 @@ export class DashboardService {
   }
 
   /** Returns the full raw snapshot for All Nodes view. */
-  async getSnapshot(): Promise<GraphSnapshot> {
-    return this.repo.fetchSnapshot();
+  async getSnapshot(onProgress?: (msg: string) => void): Promise<GraphSnapshot> {
+    return this.repo.fetchSnapshot(onProgress);
   }
 
   /**
