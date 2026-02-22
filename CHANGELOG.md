@@ -27,16 +27,25 @@ All notable changes to XYPH will be documented in this file.
 - Added explicit `return` after `key.tab` handler in `Dashboard.tsx` to prevent fall-through.
 - All 4 view components (`RoadmapView`, `LineageView`, `AllNodesView`, `InboxView`) now explicitly ignore `key.tab` at the top of their `useInput` handlers, ensuring Tab keypresses are cleanly handled only by Dashboard's view-switching logic.
 
-**Code review — 10 issues resolved**
+**Code review — 31 issues resolved across 3 rounds**
 - *High*: Removed `getTheme`/`styled` TUI imports from domain-layer `TriageService` and `SovereigntyService` — domain services now use plain `console.log`/`console.warn` (hexagonal architecture fix).
 - *High*: Changed `'Opening WARP graph…'` → `'Opening project graph…'` in `WarpDashboardAdapter` progress log (brand consistency).
+- *High*: `WarpDashboardAdapter` batch prop fetch changed from `Promise.all` → `Promise.allSettled` for partial-failure resilience.
+- *High*: `WarpDashboardAdapter` batch neighbor fetch changed from `Promise.all` → `Promise.allSettled` (mirrors props pattern).
 - *Medium*: Added missing space after comma in 91 `styled()` calls in `xyph-actuator.ts`.
-- *Medium*: Removed redundant `syncCoverage()` + `materialize()` from `WarpGraphHolder.initGraph()` — `autoMaterialize: true` handles initial load, `fetchSnapshot()` handles subsequent syncs.
-- *Low*: Moved `import { vi } from 'vitest'` from bottom to top of `resolve.test.ts`.
+- *Medium*: Removed redundant `syncCoverage()` + `materialize()` from `WarpGraphHolder.initGraph()`.
+- *Medium*: `TriageService.linkIntent()` log moved after null guard to avoid misleading entries.
+- *Medium*: StatusLine prefix `/// WARP` → `/// XYPH`; remaining WARP branding in STYLE_GUIDE updated.
+- *Low*: `ThemeProvider` now uses `useMemo` for stable context value (prevents unnecessary re-renders).
+- *Low*: Exhaustive `never` check added to `chalkFromToken` `TextModifier` switch.
+- *Low*: NaN guard added to `gradient.ts` for duplicate stop positions.
+- *Low*: `WarpDashboardAdapter` uses `NeighborEntry` type instead of inline shape.
+- *Low*: `result.reason` safely stringified in batch warning logs.
+- *Low*: Test hygiene — `warnSpy` wrapped in `try/finally`, hardcoded hex replaced with token lookup, `vi.unstubAllEnvs()` for env restoration, `satisfies` assertion on status keys, status keys derived from theme.
 - *Low*: `Dashboard.tsx` now clears `loadLog` state when snapshot loads.
-- *Low*: Replaced inline token construction `{ hex, modifiers: ['bold'] }` with `chalkFromToken().bold()` in `coordinator-daemon.ts`.
-- *Low*: Re-indented `scripts/bar-demo.ts` from 4-space to 2-space (project convention).
-- *Low*: CHANGELOG structure — merged `[Unreleased]` sections into `[1.0.0-alpha.6] - 2026-02-22`, added comparison link.
+- *Low*: Replaced inline token construction in `coordinator-daemon.ts`.
+- *Low*: Re-indented `scripts/bar-demo.ts` (project convention).
+- *Low*: CHANGELOG structure — merged `[Unreleased]` into `[1.0.0-alpha.6]`, added comparison link.
 
 ---
 
