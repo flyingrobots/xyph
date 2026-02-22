@@ -27,7 +27,7 @@ import {
   type DecisionKind,
 } from '../../domain/entities/Submission.js';
 import { WarpGraphHolder } from '../helpers/WarpGraphHolder.js';
-import { toNeighborEntries } from '../helpers/isNeighborEntry.js';
+import { toNeighborEntries, type NeighborEntry } from '../helpers/isNeighborEntry.js';
 
 const VALID_CAMPAIGN_STATUSES: ReadonlySet<string> = new Set<CampaignStatus>([
   'BACKLOG', 'IN_PROGRESS', 'DONE', 'UNKNOWN',
@@ -91,14 +91,19 @@ export class WarpDashboardAdapter implements DashboardPort {
     // Batch-fetch all node props in parallel to avoid sequential await overhead
     const propsCache = new Map<string, Map<string, unknown>>();
     {
-      const entries = await Promise.all(
+      const results = await Promise.allSettled(
         nodeIds.map(async (id) => {
           const props = await graph.getNodeProps(id);
           return [id, props] as const;
         }),
       );
-      for (const [id, props] of entries) {
-        if (props) propsCache.set(id, props);
+      for (const result of results) {
+        if (result.status === 'fulfilled') {
+          const [id, props] = result.value;
+          if (props) propsCache.set(id, props);
+        } else {
+          console.warn(`[WARN] Failed to fetch node props: ${result.reason}`);
+        }
       }
     }
 
@@ -167,7 +172,7 @@ export class WarpDashboardAdapter implements DashboardPort {
     // Batch-fetch all outgoing neighbors in parallel for nodes that need edge resolution
     log('Resolving edges…');
     const neighborsNeeded = [...rawQuestIds, ...rawScrollIds, ...rawPatchsetIds, ...rawReviewIds, ...rawDecisionIds];
-    const neighborsCache = new Map<string, Array<{ label: string; nodeId: string }>>();
+    const neighborsCache = new Map<string, NeighborEntry[]>();
     {
       const entries = await Promise.all(
         neighborsNeeded.map(async (id) => {
@@ -329,7 +334,7 @@ export class WarpDashboardAdapter implements DashboardPort {
     rawReviewIds: string[],
     rawDecisionIds: string[],
     propsCache: Map<string, Map<string, unknown>>,
-    neighborsCache: Map<string, Array<{ label: string; nodeId: string }>>,
+    neighborsCache: Map<string, NeighborEntry[]>,
   ): {
     submissions: SubmissionNode[];
     reviews: ReviewNode[];

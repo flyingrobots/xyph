@@ -2,11 +2,11 @@ import { describe, it, expect } from 'vitest';
 import { PRESETS, CYAN_MAGENTA, TEAL_ORANGE_PINK } from '../presets.js';
 import type { StatusKey, Theme } from '../tokens.js';
 
-const ALL_STATUS_KEYS: StatusKey[] = [
+const ALL_STATUS_KEYS = [
   'DONE', 'IN_PROGRESS', 'BACKLOG', 'BLOCKED', 'PLANNED',
   'INBOX', 'GRAVEYARD', 'PENDING', 'APPROVED', 'REJECTED',
   'UNKNOWN', 'OPEN', 'CHANGES_REQUESTED', 'MERGED', 'CLOSED',
-];
+] as const satisfies readonly StatusKey[];
 
 const HEX_RE = /^#[0-9a-fA-F]{6}$/;
 

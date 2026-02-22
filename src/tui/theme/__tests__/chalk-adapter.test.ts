@@ -1,11 +1,9 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { styled, styledStatus, chalkFromToken } from '../chalk-adapter.js';
-import { _resetThemeForTesting } from '../resolve.js';
+import { getTheme, _resetThemeForTesting } from '../resolve.js';
 import type { TokenValue } from '../tokens.js';
 
 describe('chalk-adapter', () => {
-  const origEnv = { ...process.env };
-
   beforeEach(() => {
     _resetThemeForTesting();
     delete process.env['NO_COLOR'];
@@ -13,7 +11,7 @@ describe('chalk-adapter', () => {
   });
 
   afterEach(() => {
-    process.env = { ...origEnv };
+    vi.unstubAllEnvs();
     _resetThemeForTesting();
   });
 
@@ -55,11 +53,9 @@ describe('chalk-adapter', () => {
     });
 
     it('renders all status keys without error', () => {
-      const keys = [
-        'DONE', 'IN_PROGRESS', 'BACKLOG', 'BLOCKED', 'PLANNED',
-        'INBOX', 'GRAVEYARD', 'PENDING', 'APPROVED', 'REJECTED',
-        'UNKNOWN', 'OPEN', 'CHANGES_REQUESTED', 'MERGED', 'CLOSED',
-      ];
+      const t = getTheme();
+      const keys = Object.keys(t.theme.status);
+      expect(keys.length).toBeGreaterThan(0);
       for (const key of keys) {
         const result = styledStatus(key);
         expect(result).toContain(key);

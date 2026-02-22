@@ -1,4 +1,4 @@
-import { createContext, useContext } from 'react';
+import { createContext, useContext, useMemo } from 'react';
 import type { ReactElement, ReactNode } from 'react';
 import type { ResolvedTheme } from './resolve.js';
 import { getTheme, resolveTheme } from './resolve.js';
@@ -13,7 +13,10 @@ interface ThemeProviderProps {
 
 /** Provides the resolved theme to all Ink children via React context. */
 export function ThemeProvider({ children, themeName }: ThemeProviderProps): ReactElement {
-  const resolved = themeName !== undefined ? resolveTheme(themeName) : getTheme();
+  const resolved = useMemo(
+    () => themeName !== undefined ? resolveTheme(themeName) : getTheme(),
+    [themeName],
+  );
   return (
     <ThemeContext.Provider value={resolved}>
       {children}

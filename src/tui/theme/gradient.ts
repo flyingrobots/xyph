@@ -16,6 +16,7 @@ export function lerp3(stops: GradientStop[], t: number): RGB {
     const a = stops[s]!;
     const b = stops[s + 1]!;
     if (t >= a.pos && t <= b.pos) {
+      if (a.pos === b.pos) return a.color;
       const local = (t - a.pos) / (b.pos - a.pos);
       return [
         Math.round(a.color[0] + (b.color[0] - a.color[0]) * local),

@@ -19,6 +19,10 @@ export function chalkFromToken(token: TokenValue): ChalkInstance {
         case 'dim':           c = c.dim; break;
         case 'strikethrough': c = c.strikethrough; break;
         case 'inverse':       c = c.inverse; break;
+        default: {
+          const _exhaustive: never = mod;
+          void _exhaustive;
+        }
       }
     }
   }

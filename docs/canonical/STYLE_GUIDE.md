@@ -47,7 +47,7 @@ b = 255                     // constant
 
 ### 3.1 Status Colors
 
-Defined in `src/tui/status-colors.ts`. Used by both TUI (Ink `color` prop) and CLI (chalk).
+Defined in `src/tui/theme/tokens.ts` (status field). Consumed via `t.inkStatus(status)` in TUI and `styled(token, text)` / chalk in CLI.
 
 | Status             | Color     | Hex/Note                    |
 |--------------------|-----------|-----------------------------|
@@ -241,7 +241,7 @@ CLI headers use boxen with a bold label and dim detail line:
 
 ```
 ┌──────────────────────────────────────────┐
-│ WARP Status — Roadmap                    │
+│ XYPH Status — Roadmap                    │
 │ 12 quests · 3 campaigns · tick 47        │
 └──────────────────────────────────────────┘
 ```

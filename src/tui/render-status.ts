@@ -185,7 +185,7 @@ export function renderAll(snapshot: GraphSnapshot): string {
     snapshot.scrolls.length +
     snapshot.approvals.length;
 
-  lines.push(snapshotHeader('All WARP Nodes', `${total} node(s) total`, 'success'));
+  lines.push(snapshotHeader('All XYPH Nodes', `${total} node(s) total`, 'success'));
 
   if (snapshot.campaigns.length > 0) {
     lines.push('');

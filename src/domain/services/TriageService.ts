@@ -17,12 +17,12 @@ export class TriageService {
    * @param contextHash BLAKE3 hash of the originating NL prompt/intent
    */
   public async linkIntent(taskId: string, contextHash: string): Promise<void> {
-    console.log(`[Triage] Linking quest ${taskId} to intent ${contextHash}`);
-
     const quest = await this.roadmap.getQuest(taskId);
     if (!quest) {
       throw new Error(`Quest ${taskId} not found for triage`);
     }
+
+    console.log(`[Triage] Linking quest ${taskId} to intent ${contextHash}`);
 
     const enrichedQuest = new Quest({
       ...quest,

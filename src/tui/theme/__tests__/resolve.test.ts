@@ -2,14 +2,12 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { getTheme, isNoColor, _resetThemeForTesting } from '../resolve.js';
 
 describe('resolve', () => {
-  const origEnv = { ...process.env };
-
   beforeEach(() => {
     _resetThemeForTesting();
   });
 
   afterEach(() => {
-    process.env = { ...origEnv };
+    vi.unstubAllEnvs();
     _resetThemeForTesting();
   });
 
@@ -32,10 +30,13 @@ describe('resolve', () => {
     process.env['XYPH_THEME'] = 'nonexistent-theme';
     delete process.env['NO_COLOR'];
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const t = getTheme();
-    expect(t.theme.name).toBe('cyan-magenta');
-    expect(warnSpy).toHaveBeenCalledOnce();
-    warnSpy.mockRestore();
+    try {
+      const t = getTheme();
+      expect(t.theme.name).toBe('cyan-magenta');
+      expect(warnSpy).toHaveBeenCalledOnce();
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 
   it('caches the theme singleton', () => {
@@ -76,7 +77,7 @@ describe('resolve', () => {
     it('ink() returns hex when NO_COLOR is unset', () => {
       delete process.env['NO_COLOR'];
       const t = getTheme();
-      expect(t.ink(t.theme.semantic.success)).toBe('#00ff00');
+      expect(t.ink(t.theme.semantic.success)).toBe(t.theme.semantic.success.hex);
     });
 
     it('inkStatus() returns undefined when NO_COLOR is set', () => {

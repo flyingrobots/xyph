@@ -21,7 +21,7 @@ XYPH rejects "state-first" thinking. State is a projection; history is the artif
 - "Branches" are an implementation detail of legacy tooling; **Shadow Working Sets (SWS)** are the native unit of isolation.
 - Counterfactuals are first-class: forks are kept, indexed, and queryable.
 
-## 3. The Planning Compiler (and its Expansion)
+## 3. The Planning Compiler & Execution Engine
 XYPH treats the roadmap not as a document, but as a program to be compiled.
 
 - **Source Code:** Human intent, NL prompts, and formal specs.
@@ -35,7 +35,7 @@ XYPH may use Git today, but Git is not "the product."
 
 - **Settlement / Object Store (Today):** Git CAS as a ubiquitous, battle-tested content-addressed store.
 - **Causal Substrate:** WARP graph + multi-writer convergence.
-- **Runtime:** JIT (SWS, promotion, collapse, receipts).
+- **Runtime:** JIT — Just-In-Time graph execution (SWS, promotion, collapse, receipts).
 - **Experience Layer:** XYPH CLI/TUI and observer views (status, diff, slice, provenance).
 
 Swapping the settlement layer is allowed long-term; the invariants are not.
