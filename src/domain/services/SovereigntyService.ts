@@ -1,5 +1,4 @@
 import { RoadmapPort } from '../../ports/RoadmapPort.js';
-import chalk from 'chalk';
 
 /**
  * SovereigntyService
@@ -64,9 +63,7 @@ export class SovereigntyService {
     }
 
     if (violations.length > 0) {
-      console.log(
-        chalk.yellow(`[Sovereignty] ${violations.length} quest(s) violate Genealogy of Intent (Constitution Art. IV).`)
-      );
+      console.warn(`[Sovereignty] ${violations.length} quest(s) violate Genealogy of Intent (Constitution Art. IV).`);
     }
 
     return violations;

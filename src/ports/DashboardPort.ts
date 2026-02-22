@@ -1,7 +1,7 @@
 import type { GraphSnapshot } from '../domain/models/dashboard.js';
 
 export interface DashboardPort {
-  fetchSnapshot(): Promise<GraphSnapshot>;
+  fetchSnapshot(onProgress?: (msg: string) => void): Promise<GraphSnapshot>;
   /** Clears any cached graph state so the next fetch sees fresh data. */
   invalidateCache?(): void;
 }

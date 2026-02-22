@@ -384,10 +384,11 @@ xyph-dashboard.tsx  # Interactive TUI entry point
 | 4 | SOVEREIGNTY — cryptographic guild seals, approval gates, genealogy of intent | ✅ DONE |
 | 4+ | POWERLEVEL™ — full orchestration pipeline refactor | ✅ DONE |
 | 5 | WARP Dashboard TUI — interactive graph browser | ✅ DONE |
-| 6 | SUBMISSION — native review workflow (submit, revise, review, merge) | 🚧 IN PROGRESS |
+| 6 | SUBMISSION — native review workflow (submit, revise, review, merge) | ✅ DONE |
 | 7 | WEAVER — DAG scheduling + dependency graph ([RFC_001](docs/canonical/RFC_001_AST_DRIVEN_INGEST.md)) | ⬜ PLANNED |
 | 8 | ORACLE — intent classification + policy engine | ⬜ PLANNED |
 | 9 | FORGE — emit + apply phases | ⬜ PLANNED |
+| 10 | CLI TOOLING — identity, packaging, time-travel, ergonomics | ⬜ PLANNED |
 
 ## Constitution
 

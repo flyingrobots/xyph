@@ -1,10 +1,12 @@
 import type { ReactElement } from 'react';
 import { Box, Text } from 'ink';
 import type { GraphSnapshot } from '../../domain/models/dashboard.js';
+import { useTheme } from '../theme/index.js';
 
 interface Props {
   logoText: string;
   snapshot: GraphSnapshot | null;
+  loadLog?: string[];
 }
 
 function asciiBar(pct: number, width: number): string {
@@ -12,13 +14,24 @@ function asciiBar(pct: number, width: number): string {
   return '█'.repeat(filled) + '░'.repeat(width - filled);
 }
 
-export function LandingView({ logoText, snapshot }: Props): ReactElement {
+export function LandingView({ logoText, snapshot, loadLog }: Props): ReactElement {
+  const t = useTheme();
   const logoLines = logoText.split('\n');
 
   let statsContent: ReactElement;
 
   if (snapshot === null) {
-    statsContent = <Text dimColor>Loading WARP graph…</Text>;
+    const lines = loadLog ?? [];
+    statsContent = (
+      <Box flexDirection="column">
+        <Text dimColor>{'─'.repeat(41)}</Text>
+        <Text bold color={t.ink(t.theme.semantic.warning)}>Loading Project Graph…</Text>
+        {lines.map((line, i) => (
+          <Text key={i} dimColor>  {line}</Text>
+        ))}
+        <Text dimColor>{'─'.repeat(41)}</Text>
+      </Box>
+    );
   } else {
     const allQuests = snapshot.quests.filter(
       (q) => q.status !== 'INBOX' && q.status !== 'GRAVEYARD',
@@ -58,17 +71,17 @@ export function LandingView({ logoText, snapshot }: Props): ReactElement {
     statsContent = (
       <Box flexDirection="column">
         <Text dimColor>{'─'.repeat(41)}</Text>
-        <Text bold color="cyan">WARP GRAPH STATUS</Text>
+        <Text bold color={t.ink(t.theme.ui.cursor)}>XYPH GRAPH STATUS</Text>
         <Box>
           <Text dimColor>Progress  </Text>
-          <Text color="green">[{bar}]</Text>
+          <Text color={t.ink(t.theme.semantic.success)}>[{bar}]</Text>
           <Text>  {String(pct).padStart(3)}%</Text>
           <Text dimColor>  ({doneCount}/{totalCount} quests)</Text>
         </Box>
         {currentMilestone !== undefined && (
           <Box>
             <Text dimColor>Milestone  </Text>
-            <Text color="yellow">{currentMilestone}</Text>
+            <Text color={t.ink(t.theme.semantic.warning)}>{currentMilestone}</Text>
           </Box>
         )}
         {first !== undefined && (
@@ -77,14 +90,14 @@ export function LandingView({ logoText, snapshot }: Props): ReactElement {
               <Text dimColor>Next up    </Text>
               <Text dimColor>{first.id.slice(0, 14).padEnd(16)}</Text>
               <Text>{first.title.slice(0, 30).padEnd(32)}</Text>
-              <Text color="gray">{'[' + first.status + ']'}</Text>
+              <Text color={t.ink(t.theme.semantic.muted)}>{'[' + first.status + ']'}</Text>
             </Box>
             {nextUp.slice(1).map((item) => (
               <Box key={item.id}>
                 <Text dimColor>{'           '}</Text>
                 <Text dimColor>{item.id.slice(0, 14).padEnd(16)}</Text>
                 <Text>{item.title.slice(0, 30).padEnd(32)}</Text>
-                <Text color="gray">{'[' + item.status + ']'}</Text>
+                <Text color={t.ink(t.theme.semantic.muted)}>{'[' + item.status + ']'}</Text>
               </Box>
             ))}
           </Box>
@@ -100,7 +113,7 @@ export function LandingView({ logoText, snapshot }: Props): ReactElement {
       <Box justifyContent="center">
         <Box flexDirection="column">
           {logoLines.map((line, i) => (
-            <Text key={i} color="cyan">{line}</Text>
+            <Text key={i} color={t.ink(t.theme.ui.logo)}>{line}</Text>
           ))}
         </Box>
       </Box>

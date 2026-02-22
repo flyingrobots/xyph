@@ -2,7 +2,117 @@
 
 All notable changes to XYPH will be documented in this file.
 
-## [Unreleased]
+## [1.0.0-alpha.6] - 2026-02-22
+
+**Dashboard Performance & UX Improvements**
+
+### Changed
+
+**Performance — parallel graph snapshot loading**
+- `WarpDashboardAdapter.fetchSnapshot()`: batch-fetch all node props via `Promise.all` instead of sequential awaits (142 nodes).
+- Pre-fetch all outgoing `neighbors()` calls in a single parallel batch, eliminating sequential I/O across 4 passes.
+- `buildSubmissionData()` converted from async to synchronous — uses pre-fetched neighbors cache instead of live graph queries.
+
+**Loading UI — activity log on landing screen**
+- `DashboardPort.fetchSnapshot()` now accepts optional `onProgress` callback for phase-level progress reporting.
+- `LandingView` displays a live activity log (last 10 lines) during graph loading, replacing the static "Loading…" message.
+
+**Copywriting — brand consistency**
+- "WARP GRAPH STATUS" → "XYPH GRAPH STATUS" on the landing screen.
+- "Loading WARP graph snapshot…" → "Loading project graph snapshot…".
+
+### Fixed
+
+**Tab cycling — defensive key guards**
+- Added explicit `return` after `key.tab` handler in `Dashboard.tsx` to prevent fall-through.
+- All 4 view components (`RoadmapView`, `LineageView`, `AllNodesView`, `InboxView`) now explicitly ignore `key.tab` at the top of their `useInput` handlers, ensuring Tab keypresses are cleanly handled only by Dashboard's view-switching logic.
+
+**Code review — 31 issues resolved across 3 rounds**
+- *High*: Removed `getTheme`/`styled` TUI imports from domain-layer `TriageService` and `SovereigntyService` — domain services now use plain `console.log`/`console.warn` (hexagonal architecture fix).
+- *High*: Changed `'Opening WARP graph…'` → `'Opening project graph…'` in `WarpDashboardAdapter` progress log (brand consistency).
+- *High*: `WarpDashboardAdapter` batch prop fetch changed from `Promise.all` → `Promise.allSettled` for partial-failure resilience.
+- *High*: `WarpDashboardAdapter` batch neighbor fetch changed from `Promise.all` → `Promise.allSettled` (mirrors props pattern).
+- *Medium*: Added missing space after comma in 91 `styled()` calls in `xyph-actuator.ts`.
+- *Medium*: Removed redundant `syncCoverage()` + `materialize()` from `WarpGraphHolder.initGraph()`.
+- *Medium*: `TriageService.linkIntent()` log moved after null guard to avoid misleading entries.
+- *Medium*: StatusLine prefix `/// WARP` → `/// XYPH`; remaining WARP branding in STYLE_GUIDE updated.
+- *Low*: `ThemeProvider` now uses `useMemo` for stable context value (prevents unnecessary re-renders).
+- *Low*: Exhaustive `never` check added to `chalkFromToken` `TextModifier` switch.
+- *Low*: NaN guard added to `gradient.ts` for duplicate stop positions.
+- *Low*: `WarpDashboardAdapter` uses `NeighborEntry` type instead of inline shape.
+- *Low*: `result.reason` safely stringified in batch warning logs.
+- *Low*: Test hygiene — `warnSpy` wrapped in `try/finally`, hardcoded hex replaced with token lookup, `vi.unstubAllEnvs()` for env restoration, `satisfies` assertion on status keys, status keys derived from theme.
+- *Low*: `Dashboard.tsx` now clears `loadLog` state when snapshot loads.
+- *Low*: Replaced inline token construction in `coordinator-daemon.ts`.
+- *Low*: Re-indented `scripts/bar-demo.ts` (project convention).
+- *Low*: CHANGELOG structure — merged `[Unreleased]` into `[1.0.0-alpha.6]`, added comparison link.
+
+---
+
+**Theme Token System — Full Visual Layer Migration**
+
+### Added
+
+**Theme module (`src/tui/theme/`)**
+- New `tokens.ts`: `RGB`, `GradientStop`, `TextModifier`, `TokenValue`, `InkColor`, `StatusKey`, `Theme` type definitions. All colors stored as `#RRGGBB` hex strings for deterministic cross-terminal rendering.
+- New `presets.ts`: `CYAN_MAGENTA` theme (matches all prior hardcoded values exactly) and `TEAL_ORANGE_PINK` theme (new candidate palette from gradient experiment). Helper `tv()` for concise token definition.
+- New `gradient.ts`: `lerp3()` N-stop linear interpolation extracted from `scripts/bar-demo.ts`.
+- New `resolve.ts`: `isNoColor()` (per no-color.org spec), `getTheme()` singleton with `XYPH_THEME` env var selection, `resolveTheme()` for React context, `_resetThemeForTesting()`.
+- New `chalk-adapter.ts`: `chalkFromToken()`, `styled()`, `styledStatus()` — chalk from theme tokens with NO_COLOR support (hex skipped, modifiers preserved).
+- New `ink-adapter.tsx`: `ThemeProvider` React context component, `useTheme()` hook with singleton fallback for incremental migration.
+- New `index.ts`: barrel re-exports.
+- Theme selection via `XYPH_THEME` env var (e.g., `XYPH_THEME=teal-orange-pink`).
+- NO_COLOR respected: `ink()` returns `undefined` → Ink renders default terminal color; `chalkFromToken()` skips `.hex()` → only modifiers apply.
+
+**Tests — 44 new tests (338 total, up from 249)**
+- `gradient.test.ts` — 9 tests: boundary values, mid-stop interpolation, single-stop and empty-stop edge cases.
+- `presets.test.ts` — 13 tests: all status keys defined in both presets, hex format validation, gradient stop ordering.
+- `resolve.test.ts` — 11 tests: theme selection, NO_COLOR detection, singleton caching, unknown theme fallback with warning.
+- `chalk-adapter.test.ts` — 11 tests: styled output, status rendering, modifier application, NO_COLOR mode.
+
+### Changed
+
+**TUI components — color literals → theme tokens (10 files)**
+- `Scrollbar.tsx`: `cyan/gray` → `ui.scrollThumb/scrollTrack`.
+- `HelpModal.tsx`: `cyan` border → `border.primary`, `yellow` headings → `semantic.warning`.
+- `QuestDetailPanel.tsx`: dropped `STATUS_COLOR` import, uses `inkStatus()` and semantic tokens.
+- `Dashboard.tsx`: `cyan/gray` tabs → `ui.cursor/semantic.muted`, `yellow/red` states → semantic tokens.
+- `LandingView.tsx`: `green` progress → `semantic.success`, `cyan` logo → `ui.logo`, `yellow` milestone → `semantic.warning`.
+- `RoadmapView.tsx`: `cyan` cursor → `ui.cursor`, `blue` campaign headers → `ui.sectionHeader`, status lookups via `inkStatus()`.
+- `LineageView.tsx`: `magenta` intent headers → `ui.intentHeader`, `cyan` cursor → `ui.cursor`.
+- `AllNodesView.tsx`: `green` section headers → `semantic.success`, `cyan` cursor → `ui.cursor`.
+- `InboxView.tsx`: `magenta` headers → `ui.intentHeader`, `cyan/yellow/red` modal borders → `border.*`.
+- `xyph-dashboard.tsx`: wraps `<Dashboard>` in `<ThemeProvider>`.
+
+**CLI consumers — chalk → theme tokens (6 files)**
+- `xyph-actuator.ts`: all 91 `chalk.*` calls replaced with `styled(getTheme().theme.semantic.*, ...)`.
+- `render-status.ts`: eliminated both local `STATUS_COLOR` maps; all `chalk.*` calls → `styled()`/`styledStatus()`.
+- `coordinator-daemon.ts`: 10 `chalk.*` calls → `styled()`.
+- `inspect-graph.ts`: 7 `chalk.*` calls → `styled()`.
+- `TriageService.ts`: `chalk.cyan` → `styled(semantic.info, ...)` — also fixes hexagonal architecture violation (domain layer no longer imports chalk directly).
+- `SovereigntyService.ts`: `chalk.yellow` → `styled(semantic.warning, ...)` — same hexagonal fix.
+
+**Gradient integration**
+- `scripts/bar-demo.ts`: imports `lerp3` from `src/tui/theme/gradient.js` and gradient presets from `src/tui/theme/presets.js`; removed local duplicate definitions.
+
+### Removed
+- `src/tui/status-colors.ts` — replaced by `theme.status.*` tokens. Both the TUI `StatusColor` map and the CLI `STATUS_COLOR` function map are now unified in the theme presets.
+
+---
+
+**Backlog Reconciliation & Roadmap Triage**
+
+### Added
+- New `intent:CLI-FOUNDATION` — sovereign intent for CLI tooling (identity, packaging, time-travel, ergonomics).
+- New `campaign:CLITOOL` (Milestone 10: CLI Tooling) — 20 quests promoted from inbox.
+
+### Changed
+- VISION_NORTH_STAR.md upgraded from v1.1.0 to v1.2.0: added history-first computing, stigmergic workflows, Git-as-settlement layering, expanded planning compiler and end state sections.
+- Deleted `VISION_NORTH_STAR_v1.2_draft.md` (promoted to authoritative).
+- README milestones table: Milestone 6 (SUBMISSION) marked DONE, Milestone 10 (CLI TOOLING) added.
+- Full inbox triage: 31 items processed — 1 rejected (SUB-ENTITY-001, fixed in PR #10), 20 promoted to `campaign:CLITOOL`, 10 promoted to `campaign:DASHBOARD`.
+
+---
 
 **Milestone 6: Native WARP Graph Submission & Review Workflow**
 
@@ -322,7 +432,8 @@ All notable changes to XYPH will be documented in this file.
 - **Strict Linting**: Configured ESLint with `typescript-eslint` strict rules.
 - Refined Actuator `syncWith` logic to use `syncCoverage()` for reliable multi-writer convergence.
 
-[Unreleased]: https://github.com/flyingrobots/xyph/compare/v1.0.0-alpha.5...HEAD
+[Unreleased]: https://github.com/flyingrobots/xyph/compare/v1.0.0-alpha.6...HEAD
+[1.0.0-alpha.6]: https://github.com/flyingrobots/xyph/compare/v1.0.0-alpha.5...v1.0.0-alpha.6
 [1.0.0-alpha.5]: https://github.com/flyingrobots/xyph/compare/v1.0.0-alpha.4...v1.0.0-alpha.5
 [1.0.0-alpha.4]: https://github.com/flyingrobots/xyph/compare/v1.0.0-alpha.3...v1.0.0-alpha.4
 [1.0.0-alpha.3]: https://github.com/flyingrobots/xyph/compare/v1.0.0-alpha.2...v1.0.0-alpha.3

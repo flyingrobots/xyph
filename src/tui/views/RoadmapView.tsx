@@ -2,7 +2,7 @@ import type { ReactElement } from 'react';
 import { useState, useEffect, useMemo } from 'react';
 import { Box, Text, useInput, useStdout, type Key } from 'ink';
 import type { GraphSnapshot, QuestNode } from '../../domain/models/dashboard.js';
-import { STATUS_COLOR } from '../status-colors.js';
+import { useTheme } from '../theme/index.js';
 import { Scrollbar } from '../Scrollbar.js';
 import { QuestDetailPanel } from '../QuestDetailPanel.js';
 
@@ -59,6 +59,7 @@ function buildRows(
 }
 
 export function RoadmapView({ snapshot, isActive, chromeLines }: Props): ReactElement {
+  const t = useTheme();
   const { stdout } = useStdout();
   const chrome = chromeLines ?? DEFAULT_CHROME_LINES;
   const listHeight = Math.max(4, (stdout.rows ?? 24) - chrome);
@@ -123,6 +124,7 @@ export function RoadmapView({ snapshot, isActive, chromeLines }: Props): ReactEl
   }
 
   useInput((input: string, key: Key) => {
+    if (key.tab) return; // handled by Dashboard for view switching
     if (showDetail) {
       if (key.escape) setShowDetail(false);
       return;
@@ -156,7 +158,7 @@ export function RoadmapView({ snapshot, isActive, chromeLines }: Props): ReactEl
     const selectedQuest = row?.kind === 'quest' ? row.quest : null;
     return (
       <Box flexDirection="column" height={listHeight + 1}>
-        <Box flexDirection="column" borderStyle="round" borderColor="cyan" flexGrow={1}>
+        <Box flexDirection="column" borderStyle="round" borderColor={t.ink(t.theme.border.primary)} flexGrow={1}>
           <Box paddingX={1} flexDirection="column">
             {selectedQuest !== null
               ? <QuestDetailPanel
@@ -180,7 +182,7 @@ export function RoadmapView({ snapshot, isActive, chromeLines }: Props): ReactEl
     return (
       <Box flexDirection="column">
         <Text dimColor>No tasks in the roadmap yet.</Text>
-        <Box borderStyle="round" borderColor="gray" marginTop={1} paddingX={1}>
+        <Box borderStyle="round" borderColor={t.ink(t.theme.border.muted)} marginTop={1} paddingX={1}>
           <Text dimColor>(no task selected)</Text>
         </Box>
       </Box>
@@ -211,9 +213,9 @@ export function RoadmapView({ snapshot, isActive, chromeLines }: Props): ReactEl
               return (
                 <Box key={`h-${row.campaignId}`}>
                   <Box width={2}>
-                    <Text color="cyan">{isSelected ? '▶' : ' '}</Text>
+                    <Text color={t.ink(t.theme.ui.cursor)}>{isSelected ? '▶' : ' '}</Text>
                   </Box>
-                  <Text bold color="blue">
+                  <Text bold color={t.ink(t.theme.ui.sectionHeader)}>
                     {isFolded ? '▶ ' : '▼ '}
                     {row.label}
                   </Text>
@@ -222,21 +224,20 @@ export function RoadmapView({ snapshot, isActive, chromeLines }: Props): ReactEl
             }
             const q = row.quest;
             const isSelected = absIdx === clampedVIdx;
-            const statusColor = STATUS_COLOR[q.status] ?? 'white';
             return (
               <Box key={q.id}>
                 <Box width={2}>
-                  <Text color="cyan">{isSelected ? '▶' : ''}</Text>
+                  <Text color={t.ink(t.theme.ui.cursor)}>{isSelected ? '▶' : ''}</Text>
                 </Box>
-                <Text bold={isSelected} color={isSelected ? undefined : 'gray'}>
+                <Text bold={isSelected} color={isSelected ? undefined : t.ink(t.theme.semantic.muted)}>
                   {q.id.slice(0, 16).padEnd(18)}
                 </Text>
                 <Text bold={isSelected}>{q.title.slice(0, 36).padEnd(38)}</Text>
-                <Text color={statusColor}>
+                <Text color={t.inkStatus(q.status)}>
                   {'  ' + q.status.padEnd(12)}
                 </Text>
                 <Text dimColor>{String(q.hours).padStart(3)}h</Text>
-                {q.scrollId !== undefined && <Text color="green">  ✓</Text>}
+                {q.scrollId !== undefined && <Text color={t.ink(t.theme.semantic.success)}>  ✓</Text>}
               </Box>
             );
           })}

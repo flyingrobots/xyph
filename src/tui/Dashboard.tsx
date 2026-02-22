@@ -11,6 +11,7 @@ import { InboxView } from './views/InboxView.js';
 import { LandingView } from './views/LandingView.js';
 import { HelpModal } from './HelpModal.js';
 import { StatusLine } from './StatusLine.js';
+import { useTheme } from './theme/index.js';
 
 type ViewName = 'roadmap' | 'lineage' | 'all' | 'inbox';
 
@@ -26,6 +27,7 @@ interface Props {
 }
 
 export function Dashboard({ service, intake, agentId, logoText, wordmarkText, wordmarkLines }: Props): ReactElement {
+  const t = useTheme();
   const [activeView, setActiveView] = useState<ViewName>('roadmap');
   const [snapshot, setSnapshot] = useState<GraphSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
@@ -33,6 +35,7 @@ export function Dashboard({ service, intake, agentId, logoText, wordmarkText, wo
   const [isMutating, setIsMutating] = useState(false);
   const [showLanding, setShowLanding] = useState(true);
   const [showHelp, setShowHelp] = useState(false);
+  const [loadLog, setLoadLog] = useState<string[]>([]);
   const { exit } = useApp();
   const { stdout } = useStdout();
 
@@ -42,14 +45,20 @@ export function Dashboard({ service, intake, agentId, logoText, wordmarkText, wo
   const refresh = useCallback((showLoading = false): void => {
     if (showLoading) setLoading(true);
     const thisRequest = ++requestCounter.current;
+    const onProgress = showLoading
+      ? (msg: string) => {
+          setLoadLog((prev) => [...prev.slice(-9), msg]);
+        }
+      : undefined;
     service
-      .getSnapshot()
+      .getSnapshot(onProgress)
       .then((s) => {
         if (requestCounter.current !== thisRequest) return; // stale response
         setSnapshot((prev) => {
           prevMeta.current = prev?.graphMeta;
           return s;
         });
+        setLoadLog([]);
         setError(null);
       })
       .catch((err: unknown) => {
@@ -106,6 +115,7 @@ export function Dashboard({ service, intake, agentId, logoText, wordmarkText, wo
         const next = VIEWS[(idx + 1) % VIEWS.length];
         if (next !== undefined) setActiveView(next);
       }
+      return;
     }
   });
 
@@ -118,19 +128,19 @@ export function Dashboard({ service, intake, agentId, logoText, wordmarkText, wo
 
   // Landing screen — shown until user presses any key (unless error occurred)
   if (showLanding && error === null) {
-    return <LandingView logoText={logoText} snapshot={snapshot} />;
+    return <LandingView logoText={logoText} snapshot={snapshot} loadLog={loadLog} />;
   }
 
   if (loading) {
-    return <Text color="yellow">Loading WARP graph snapshot…</Text>;
+    return <Text color={t.ink(t.theme.semantic.warning)}>Loading project graph snapshot…</Text>;
   }
 
   if (error !== null) {
-    return <Text color="red">Error: {error}</Text>;
+    return <Text color={t.ink(t.theme.semantic.error)}>Error: {error}</Text>;
   }
 
   if (snapshot === null || filtered === null) {
-    return <Text color="red">No snapshot available.</Text>;
+    return <Text color={t.ink(t.theme.semantic.error)}>No snapshot available.</Text>;
   }
 
   const cols = stdout.columns ?? 80;
@@ -149,7 +159,7 @@ export function Dashboard({ service, intake, agentId, logoText, wordmarkText, wo
               <Box key={v} marginRight={2}>
                 <Text
                   bold={v === activeView}
-                  color={v === activeView ? 'cyan' : 'gray'}
+                  color={v === activeView ? t.ink(t.theme.ui.cursor) : t.ink(t.theme.semantic.muted)}
                 >
                   {v === activeView ? `[${v}]` : v}
                 </Text>

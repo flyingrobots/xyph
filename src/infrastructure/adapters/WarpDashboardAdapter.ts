@@ -26,9 +26,8 @@ import {
   type ReviewVerdict,
   type DecisionKind,
 } from '../../domain/entities/Submission.js';
-import type WarpGraph from '@git-stunts/git-warp';
 import { WarpGraphHolder } from '../helpers/WarpGraphHolder.js';
-import { toNeighborEntries } from '../helpers/isNeighborEntry.js';
+import { toNeighborEntries, type NeighborEntry } from '../helpers/isNeighborEntry.js';
 
 const VALID_CAMPAIGN_STATUSES: ReadonlySet<string> = new Set<CampaignStatus>([
   'BACKLOG', 'IN_PROGRESS', 'DONE', 'UNKNOWN',
@@ -59,18 +58,25 @@ export class WarpDashboardAdapter implements DashboardPort {
     this.cachedSnapshot = null;
   }
 
-  public async fetchSnapshot(): Promise<GraphSnapshot> {
+  public async fetchSnapshot(onProgress?: (msg: string) => void): Promise<GraphSnapshot> {
+    const log = onProgress ?? (() => {});
+    log('Opening project graph…');
     const graph = await this.graphHolder.getGraph();
+
+    log('Syncing coverage…');
     await graph.syncCoverage();
 
     // Short-circuit: if no writer tips changed since last materialize,
     // the graph is identical — return cached snapshot immediately.
     if (this.cachedSnapshot !== null && !(await graph.hasFrontierChanged())) {
+      log('No changes detected — using cached snapshot');
       return this.cachedSnapshot;
     }
 
+    log('Materializing graph…');
     await graph.materialize();
     const nodeIds = await graph.getNodes();
+    log(`Classifying ${nodeIds.length} nodes…`);
 
     const campaigns: CampaignNode[] = [];
     const rawQuestIds: string[] = [];
@@ -82,14 +88,27 @@ export class WarpDashboardAdapter implements DashboardPort {
     const rawReviewIds: string[] = [];
     const rawDecisionIds: string[] = [];
 
-    // Cache node props from first pass to avoid redundant getNodeProps calls
+    // Batch-fetch all node props in parallel to avoid sequential await overhead
     const propsCache = new Map<string, Map<string, unknown>>();
+    {
+      const results = await Promise.allSettled(
+        nodeIds.map(async (id) => {
+          const props = await graph.getNodeProps(id);
+          return [id, props] as const;
+        }),
+      );
+      for (const result of results) {
+        if (result.status === 'fulfilled') {
+          const [id, props] = result.value;
+          if (props) propsCache.set(id, props);
+        } else {
+          console.warn(`[WARN] Failed to fetch node props: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`);
+        }
+      }
+    }
 
     // First pass: classify all nodes by type
-    for (const id of nodeIds) {
-      const props = await graph.getNodeProps(id);
-      if (!props) continue;
-      propsCache.set(id, props);
+    for (const [id, props] of propsCache) {
 
       const type = props.get('type');
 
@@ -150,7 +169,29 @@ export class WarpDashboardAdapter implements DashboardPort {
       }
     }
 
-    // Second pass: build quests with edge resolution (reuses cached props)
+    // Batch-fetch all outgoing neighbors in parallel for nodes that need edge resolution
+    log('Resolving edges…');
+    const neighborsNeeded = [...rawQuestIds, ...rawScrollIds, ...rawPatchsetIds, ...rawReviewIds, ...rawDecisionIds];
+    const neighborsCache = new Map<string, NeighborEntry[]>();
+    {
+      const results = await Promise.allSettled(
+        neighborsNeeded.map(async (id) => {
+          const raw = await graph.neighbors(id, 'outgoing');
+          return [id, toNeighborEntries(raw)] as const;
+        }),
+      );
+      for (const result of results) {
+        if (result.status === 'fulfilled') {
+          const [id, neighbors] = result.value;
+          neighborsCache.set(id, neighbors);
+        } else {
+          console.warn(`[WARN] Failed to fetch neighbors: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`);
+        }
+      }
+    }
+
+    // Second pass: build quests with edge resolution (reuses cached props + neighbors)
+    log('Building quest models…');
     const quests: QuestNode[] = [];
     for (const id of rawQuestIds) {
       const props = propsCache.get(id);
@@ -163,7 +204,7 @@ export class WarpDashboardAdapter implements DashboardPort {
       if (!VALID_QUEST_STATUSES.has(rawStatus)) continue;
       const status = rawStatus as QuestStatus;
 
-      const neighbors = toNeighborEntries(await graph.neighbors(id, 'outgoing'));
+      const neighbors = neighborsCache.get(id) ?? [];
 
       let campaignId: string | undefined;
       let intentId: string | undefined;
@@ -223,7 +264,7 @@ export class WarpDashboardAdapter implements DashboardPort {
       }
 
       const hasSeal = props.has('guild_seal_sig');
-      const neighbors = toNeighborEntries(await graph.neighbors(id, 'outgoing'));
+      const neighbors = neighborsCache.get(id) ?? [];
 
       let questId = '';
       for (const n of neighbors) {
@@ -253,8 +294,9 @@ export class WarpDashboardAdapter implements DashboardPort {
     }
 
     // Fourth pass: build submission/review/decision models
-    const { submissions, reviews, decisions, submissionByQuest } = await this.buildSubmissionData(
-      rawSubmissionIds, rawPatchsetIds, rawReviewIds, rawDecisionIds, propsCache, graph,
+    log('Building submission models…');
+    const { submissions, reviews, decisions, submissionByQuest } = this.buildSubmissionData(
+      rawSubmissionIds, rawPatchsetIds, rawReviewIds, rawDecisionIds, propsCache, neighborsCache,
     );
 
     // Annotate quests with their active submission ID
@@ -266,6 +308,7 @@ export class WarpDashboardAdapter implements DashboardPort {
     }
 
     // Build graph meta from materialized state + frontier
+    log('Reading graph metadata…');
     const state = await graph.getStateSnapshot();
     const frontier = await graph.getFrontier();
     const maxTick = state
@@ -280,6 +323,7 @@ export class WarpDashboardAdapter implements DashboardPort {
       : '-------';
     const graphMeta: GraphMeta = { maxTick, myTick, writerCount, tipSha };
 
+    log(`Snapshot ready — ${quests.length} quests, ${campaigns.length} campaigns`);
     const snap: GraphSnapshot = { campaigns, quests, intents, scrolls, approvals, submissions, reviews, decisions, asOf: Date.now(), graphMeta };
     this.cachedSnapshot = snap;
     return snap;
@@ -289,19 +333,19 @@ export class WarpDashboardAdapter implements DashboardPort {
    * Builds submission, review, and decision view models from classified node IDs.
    * Extracts the "fourth pass" of fetchSnapshot into a cohesive helper.
    */
-  private async buildSubmissionData(
+  private buildSubmissionData(
     rawSubmissionIds: string[],
     rawPatchsetIds: string[],
     rawReviewIds: string[],
     rawDecisionIds: string[],
     propsCache: Map<string, Map<string, unknown>>,
-    graph: WarpGraph,
-  ): Promise<{
+    neighborsCache: Map<string, NeighborEntry[]>,
+  ): {
     submissions: SubmissionNode[];
     reviews: ReviewNode[];
     decisions: DecisionNode[];
     submissionByQuest: Map<string, string>;
-  }> {
+  } {
     // Pre-compute patchset → submission mapping
     const patchsetsBySubmission = new Map<string, PatchsetRef[]>();
     for (const id of rawPatchsetIds) {
@@ -310,7 +354,7 @@ export class WarpDashboardAdapter implements DashboardPort {
       const authoredAt = props.get('authored_at');
       if (typeof authoredAt !== 'number') continue;
 
-      const neighbors = toNeighborEntries(await graph.neighbors(id, 'outgoing'));
+      const neighbors = neighborsCache.get(id) ?? [];
       let submissionId: string | undefined;
       let supersedesId: string | undefined;
       for (const n of neighbors) {
@@ -346,7 +390,7 @@ export class WarpDashboardAdapter implements DashboardPort {
       const validVerdicts = ['approve', 'request-changes', 'comment'] as const;
       if (!validVerdicts.includes(verdict as typeof validVerdicts[number])) continue;
 
-      const neighbors = toNeighborEntries(await graph.neighbors(id, 'outgoing'));
+      const neighbors = neighborsCache.get(id) ?? [];
       let patchsetId: string | undefined;
       for (const n of neighbors) {
         if (n.label === 'reviews' && n.nodeId.startsWith('patchset:')) {
@@ -382,7 +426,7 @@ export class WarpDashboardAdapter implements DashboardPort {
       ) continue;
       if (kind !== 'merge' && kind !== 'close') continue;
 
-      const neighbors = toNeighborEntries(await graph.neighbors(id, 'outgoing'));
+      const neighbors = neighborsCache.get(id) ?? [];
       let submissionId: string | undefined;
       for (const n of neighbors) {
         // 'decision:' prefix is shared with old concept/decision nodes;

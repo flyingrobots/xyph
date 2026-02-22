@@ -48,8 +48,6 @@ export class WarpGraphHolder {
       autoMaterialize: true,
       checkpointPolicy: { every: 50 },
     });
-    await graph.syncCoverage();
-    await graph.materialize();
     return graph;
   }
 }

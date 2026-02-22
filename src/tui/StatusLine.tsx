@@ -12,12 +12,12 @@ export function StatusLine({ graphMeta, prevGraphMeta }: Props): ReactElement {
   const cols = stdout.columns ?? 80;
 
   if (graphMeta === undefined) {
-    const prefix = '/// WARP [--] ';
+    const prefix = '/// XYPH [--] ';
     const empty = prefix + '/'.repeat(Math.max(0, cols - prefix.length));
     return <Text dimColor>{empty}</Text>;
   }
 
-  let tag = `/// WARP [tick: ${graphMeta.maxTick} (${graphMeta.tipSha})`;
+  let tag = `/// XYPH [tick: ${graphMeta.maxTick} (${graphMeta.tipSha})`;
 
   if (
     prevGraphMeta !== undefined &&

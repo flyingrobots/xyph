@@ -2,7 +2,7 @@ import type { ReactElement } from 'react';
 import { useState, useEffect, useMemo } from 'react';
 import { Box, Text, useInput, useStdout, type Key } from 'ink';
 import type { GraphSnapshot, QuestNode } from '../../domain/models/dashboard.js';
-import { STATUS_COLOR } from '../status-colors.js';
+import { useTheme } from '../theme/index.js';
 import { Scrollbar } from '../Scrollbar.js';
 import { QuestDetailPanel } from '../QuestDetailPanel.js';
 
@@ -25,8 +25,8 @@ interface Props {
 }
 
 function StatusText({ status }: { status: string }): ReactElement {
-  const color = STATUS_COLOR[status] ?? 'white';
-  return <Text color={color}>{status}</Text>;
+  const t = useTheme();
+  return <Text color={t.inkStatus(status)}>{status}</Text>;
 }
 
 function buildRows(snapshot: GraphSnapshot): { vrows: VRow[]; flatQuests: QuestNode[]; questCount: number } {
@@ -81,6 +81,7 @@ function buildRows(snapshot: GraphSnapshot): { vrows: VRow[]; flatQuests: QuestN
 }
 
 export function AllNodesView({ snapshot, isActive, chromeLines }: Props): ReactElement {
+  const t = useTheme();
   const { stdout } = useStdout();
   const chrome = chromeLines ?? DEFAULT_CHROME_LINES;
   const listHeight = Math.max(4, (stdout.rows ?? 24) - chrome);
@@ -125,6 +126,7 @@ export function AllNodesView({ snapshot, isActive, chromeLines }: Props): ReactE
   }
 
   useInput((input: string, key: Key) => {
+    if (key.tab) return; // handled by Dashboard for view switching
     if (showDetail) {
       if (key.escape) setShowDetail(false);
       return;
@@ -143,7 +145,7 @@ export function AllNodesView({ snapshot, isActive, chromeLines }: Props): ReactE
     const selectedQuest = flatQuests[clampedQuestIdx] ?? null;
     return (
       <Box flexDirection="column" height={listHeight + 1}>
-        <Box flexDirection="column" borderStyle="round" borderColor="cyan" flexGrow={1}>
+        <Box flexDirection="column" borderStyle="round" borderColor={t.ink(t.theme.border.primary)} flexGrow={1}>
           <Box paddingX={1} flexDirection="column">
             {selectedQuest !== null
               ? <QuestDetailPanel
@@ -180,7 +182,7 @@ export function AllNodesView({ snapshot, isActive, chromeLines }: Props): ReactE
           if (row.kind === 'header') {
             return (
               <Box key={`h-${row.label}`}>
-                <Text bold color="green">{row.label}</Text>
+                <Text bold color={t.ink(t.theme.semantic.success)}>{row.label}</Text>
               </Box>
             );
           }
@@ -207,13 +209,13 @@ export function AllNodesView({ snapshot, isActive, chromeLines }: Props): ReactE
             return (
               <Box key={row.id} marginLeft={2}>
                 <Box width={2}>
-                  <Text color="cyan">{isSelected ? '▶' : ' '}</Text>
+                  <Text color={t.ink(t.theme.ui.cursor)}>{isSelected ? '▶' : ' '}</Text>
                 </Box>
                 <Text dimColor>{row.id.slice(0, 18).padEnd(20)}</Text>
                 <Text bold={isSelected}>{row.title.slice(0, 30).padEnd(32)}</Text>
                 <StatusText status={row.status} />
                 <Text dimColor>  {row.hours}h</Text>
-                {row.hasScroll && <Text color="green">  ✓</Text>}
+                {row.hasScroll && <Text color={t.ink(t.theme.semantic.success)}>  ✓</Text>}
               </Box>
             );
           }
@@ -223,7 +225,7 @@ export function AllNodesView({ snapshot, isActive, chromeLines }: Props): ReactE
                 <Text dimColor>{row.id.slice(0, 24).padEnd(26)}</Text>
                 <Text dimColor>{row.questId.slice(0, 18).padEnd(20)}</Text>
                 <Text dimColor>{row.sealedBy.padEnd(16)}</Text>
-                <Text color={row.hasSeal ? 'green' : 'yellow'}>
+                <Text color={row.hasSeal ? t.ink(t.theme.semantic.success) : t.ink(t.theme.semantic.warning)}>
                   {row.hasSeal ? '⊕ sealed' : '○ unsigned'}
                 </Text>
               </Box>
