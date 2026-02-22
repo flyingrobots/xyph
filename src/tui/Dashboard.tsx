@@ -58,6 +58,7 @@ export function Dashboard({ service, intake, agentId, logoText, wordmarkText, wo
           prevMeta.current = prev?.graphMeta;
           return s;
         });
+        setLoadLog([]);
         setError(null);
       })
       .catch((err: unknown) => {

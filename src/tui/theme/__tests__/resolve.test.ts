@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { getTheme, isNoColor, _resetThemeForTesting } from '../resolve.js';
 
 describe('resolve', () => {
@@ -93,6 +93,3 @@ describe('resolve', () => {
     });
   });
 });
-
-// Import vi from vitest for spying
-import { vi } from 'vitest';

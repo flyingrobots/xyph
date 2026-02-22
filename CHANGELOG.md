@@ -2,7 +2,7 @@
 
 All notable changes to XYPH will be documented in this file.
 
-## [1.0.0-alpha.6] — TUI Polish: Performance, Copywriting, Tab Fix
+## [1.0.0-alpha.6] - 2026-02-22
 
 **Dashboard Performance & UX Improvements**
 
@@ -27,9 +27,18 @@ All notable changes to XYPH will be documented in this file.
 - Added explicit `return` after `key.tab` handler in `Dashboard.tsx` to prevent fall-through.
 - All 4 view components (`RoadmapView`, `LineageView`, `AllNodesView`, `InboxView`) now explicitly ignore `key.tab` at the top of their `useInput` handlers, ensuring Tab keypresses are cleanly handled only by Dashboard's view-switching logic.
 
----
+**Code review — 10 issues resolved**
+- *High*: Removed `getTheme`/`styled` TUI imports from domain-layer `TriageService` and `SovereigntyService` — domain services now use plain `console.log`/`console.warn` (hexagonal architecture fix).
+- *High*: Changed `'Opening WARP graph…'` → `'Opening project graph…'` in `WarpDashboardAdapter` progress log (brand consistency).
+- *Medium*: Added missing space after comma in 91 `styled()` calls in `xyph-actuator.ts`.
+- *Medium*: Removed redundant `syncCoverage()` + `materialize()` from `WarpGraphHolder.initGraph()` — `autoMaterialize: true` handles initial load, `fetchSnapshot()` handles subsequent syncs.
+- *Low*: Moved `import { vi } from 'vitest'` from bottom to top of `resolve.test.ts`.
+- *Low*: `Dashboard.tsx` now clears `loadLog` state when snapshot loads.
+- *Low*: Replaced inline token construction `{ hex, modifiers: ['bold'] }` with `chalkFromToken().bold()` in `coordinator-daemon.ts`.
+- *Low*: Re-indented `scripts/bar-demo.ts` from 4-space to 2-space (project convention).
+- *Low*: CHANGELOG structure — merged `[Unreleased]` sections into `[1.0.0-alpha.6] - 2026-02-22`, added comparison link.
 
-## [Unreleased]
+---
 
 **Theme Token System — Full Visual Layer Migration**
 
@@ -414,7 +423,8 @@ All notable changes to XYPH will be documented in this file.
 - **Strict Linting**: Configured ESLint with `typescript-eslint` strict rules.
 - Refined Actuator `syncWith` logic to use `syncCoverage()` for reliable multi-writer convergence.
 
-[Unreleased]: https://github.com/flyingrobots/xyph/compare/v1.0.0-alpha.5...HEAD
+[Unreleased]: https://github.com/flyingrobots/xyph/compare/v1.0.0-alpha.6...HEAD
+[1.0.0-alpha.6]: https://github.com/flyingrobots/xyph/compare/v1.0.0-alpha.5...v1.0.0-alpha.6
 [1.0.0-alpha.5]: https://github.com/flyingrobots/xyph/compare/v1.0.0-alpha.4...v1.0.0-alpha.5
 [1.0.0-alpha.4]: https://github.com/flyingrobots/xyph/compare/v1.0.0-alpha.3...v1.0.0-alpha.4
 [1.0.0-alpha.3]: https://github.com/flyingrobots/xyph/compare/v1.0.0-alpha.2...v1.0.0-alpha.3

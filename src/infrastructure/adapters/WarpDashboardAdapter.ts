@@ -60,7 +60,7 @@ export class WarpDashboardAdapter implements DashboardPort {
 
   public async fetchSnapshot(onProgress?: (msg: string) => void): Promise<GraphSnapshot> {
     const log = onProgress ?? (() => {});
-    log('Opening WARP graph…');
+    log('Opening project graph…');
     const graph = await this.graphHolder.getGraph();
 
     log('Syncing coverage…');
