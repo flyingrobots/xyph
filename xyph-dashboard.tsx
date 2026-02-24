@@ -65,8 +65,10 @@ const cleanup = (): void => {
   originalWrite('\x1b[?1049l\x1b[?25h');
 };
 process.on('exit', cleanup);
-process.on('SIGINT', () => { cleanup(); process.exit(0); });
-process.on('SIGTERM', () => { cleanup(); process.exit(0); });
+// Use conventional signal exit codes (128 + signal number) so shell
+// wrappers and supervisors can distinguish cancel/kill from success.
+process.on('SIGINT', () => { cleanup(); process.exit(128 + 2); });
+process.on('SIGTERM', () => { cleanup(); process.exit(128 + 15); });
 // ─────────────────────────────────────────────────────────────────────────
 
 const DEFAULT_AGENT_ID = 'agent.prime';
