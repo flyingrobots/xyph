@@ -64,9 +64,13 @@ export class WarpDashboardAdapter implements DashboardPort {
     log('Opening project graph…');
     const graph = await this.graphHolder.getGraph();
 
-    // Skip syncCoverage() — the dashboard is read-only and doesn't need to
-    // write an octopus anchor commit. materialize() will discover patches
-    // from git refs on its own.
+    // On refresh (cachedSnapshot exists), call syncCoverage() to discover
+    // external mutations committed since the last materialize. On first load
+    // this is unnecessary — WarpGraph.open() discovers refs automatically.
+    if (this.cachedSnapshot !== null) {
+      log('Syncing coverage…');
+      await graph.syncCoverage();
+    }
 
     // Short-circuit: if no writer tips changed since last materialize,
     // the graph is identical — return cached snapshot immediately.

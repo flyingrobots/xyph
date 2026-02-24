@@ -98,15 +98,16 @@ export function AllNodesView({ snapshot, isActive, chromeLines }: Props): ReactE
   const intentIdW = 22;
   const intentByW = 18;
   const intentTitleW = Math.max(12, cols - marginW - intentIdW - intentByW - scrollbarW);
-  // Quest: cursor(2) + id(20) + title(flex) + status(~12) + hours(6) + seal(3)
+  // Quest: cursor(2) + id(20) + title(flex) + status(~12) + hours(6="  Nh ") + seal(3="  ✓")
   const questIdW = 20;
   const questStatusW = 12;
-  const questSuffixW = 6 + 3; // hours + seal
+  const questSuffixW = 6 + 3;
   const questTitleW = Math.max(12, cols - marginW - 2 - questIdW - questStatusW - questSuffixW - scrollbarW);
-  // Scroll: id(26) + questId(20) + sealedBy(16) + status(~10)
+  // Scroll: id(26) + questId(20) + sealedBy(16) + sealStatus(10="○ unsigned")
   const scrollIdW = 26;
   const scrollQuestW = 20;
-  const scrollByW = Math.max(10, cols - marginW - scrollIdW - scrollQuestW - 10 - scrollbarW);
+  const scrollSealW = 10; // "○ unsigned"
+  const scrollByW = Math.max(10, cols - marginW - scrollIdW - scrollQuestW - scrollSealW - scrollbarW);
   const [scrollOffset, setScrollOffset] = useState(0);
   const [selectedQuestIdx, setSelectedQuestIdx] = useState(0);
   const [showDetail, setShowDetail] = useState(false);

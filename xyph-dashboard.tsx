@@ -56,7 +56,12 @@ process.stdout.write = function patchedWrite(
 process.stdout.write('\x1b[?1049h\x1b[2J\x1b[H\x1b[?25l');
 
 // Restore on exit (alternate screen off + show cursor)
+// Guard flag prevents double-cleanup: SIGINT/SIGTERM call cleanup() then
+// process.exit(0), which fires the 'exit' handler again.
+let cleaned = false;
 const cleanup = (): void => {
+  if (cleaned) return;
+  cleaned = true;
   originalWrite('\x1b[?1049l\x1b[?25h');
 };
 process.on('exit', cleanup);

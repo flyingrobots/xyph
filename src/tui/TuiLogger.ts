@@ -17,10 +17,12 @@ export interface LogEntry {
 export class TuiLogger extends LoggerPort {
   private _onEntry: ((entry: LogEntry) => void) | null = null;
   private readonly baseContext: Record<string, unknown>;
+  private readonly parent?: TuiLogger;
 
-  constructor(baseContext?: Record<string, unknown>) {
+  constructor(baseContext?: Record<string, unknown>, parent?: TuiLogger) {
     super();
     this.baseContext = baseContext ?? {};
+    this.parent = parent;
   }
 
   /** Set the callback that receives every log entry. */
@@ -45,17 +47,23 @@ export class TuiLogger extends LoggerPort {
   }
 
   child(context: Record<string, unknown>): TuiLogger {
-    const child = new TuiLogger({ ...this.baseContext, ...context });
-    // Child shares the same callback reference so all descendants
-    // feed into the same TUI gutter.
-    child._onEntry = this._onEntry;
-    return child;
+    return new TuiLogger({ ...this.baseContext, ...context }, this);
+  }
+
+  private resolveOnEntry(): ((entry: LogEntry) => void) | null {
+    if (this.parent) {
+      return this.parent.resolveOnEntry();
+    }
+    return this._onEntry;
   }
 
   private emit(level: LogLevel, message: string, context?: Record<string, unknown>): void {
-    const merged = context
-      ? { ...this.baseContext, ...context }
-      : Object.keys(this.baseContext).length > 0 ? this.baseContext : undefined;
-    this._onEntry?.({ level, message, context: merged, timestamp: Date.now() });
+    let merged: Record<string, unknown> | undefined;
+    if (context) {
+      merged = { ...this.baseContext, ...context };
+    } else if (Object.keys(this.baseContext).length > 0) {
+      merged = this.baseContext;
+    }
+    this.resolveOnEntry()?.({ level, message, context: merged, timestamp: Date.now() });
   }
 }

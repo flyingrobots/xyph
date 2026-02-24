@@ -396,7 +396,7 @@ export function InboxView({
                   {q.id.slice(0, idW - 2).padEnd(idW)}
                 </Text>
                 <Text bold={isSelected}>{q.title.slice(0, inboxTitleW - 2).padEnd(inboxTitleW)}</Text>
-                <Text dimColor>{(q.suggestedBy ?? '').slice(0, 14).padEnd(16)}</Text>
+                <Text dimColor>{(q.suggestedBy ?? '').slice(0, suggestedByW - 2).padEnd(suggestedByW)}</Text>
                 <Text dimColor>{dateStr}</Text>
                 {hasHistory && <Text color={t.ink(t.theme.semantic.warning)}>  ↩</Text>}
               </Box>

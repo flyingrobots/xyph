@@ -157,16 +157,19 @@ export function Dashboard({ service, intake, agentId, logoText, wordmarkText, wo
   const wordmarkLinesArray = useMemo(() => wordmarkText.split('\n'), [wordmarkText]);
 
   const rows = stdout.rows ?? 24;
-  const cols = stdout.columns ?? 80;
 
-  // Gutter height: status row (1) + log line (1) = 2
+  // Gutter height: status row (1) + log line (1) = 2 (always stable)
   const gutterLines = 2;
 
   // Resolve which content to render and what graphMeta to show in gutter
   let content: ReactElement;
   let graphMeta: GraphMeta | undefined;
 
-  if (showLanding && error === null) {
+  if (showHelp) {
+    // H-2: Render HelpModal AS the content area so it doesn't overflow height={rows}
+    graphMeta = filtered?.graphMeta;
+    content = <HelpModal />;
+  } else if (showLanding && error === null) {
     content = <LandingView logoText={logoText} snapshot={snapshot} loadLog={loadLog} />;
   } else if (loading) {
     content = (
@@ -189,6 +192,8 @@ export function Dashboard({ service, intake, agentId, logoText, wordmarkText, wo
   } else {
     graphMeta = filtered.graphMeta;
 
+    // L-5: cols only needed in this branch for layout calculations
+    const cols = stdout.columns ?? 80;
     const showWordmark = cols >= 50;
     // Chrome: header row height (max of 2-line tab column or wordmark) + margins + indicators + gutter
     const tabColumnHeight = 2; // tab labels row + hints row
@@ -255,7 +260,6 @@ export function Dashboard({ service, intake, agentId, logoText, wordmarkText, wo
         {content}
       </Box>
       <StatusLine graphMeta={graphMeta} prevGraphMeta={prevMeta.current} logLine={logLine} />
-      {showHelp && <HelpModal />}
     </Box>
   );
 }

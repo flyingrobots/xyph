@@ -2,7 +2,7 @@
 
 All notable changes to XYPH will be documented in this file.
 
-## [1.0.0-alpha.7] - 2026-02-23
+## [1.0.0-alpha.7] - 2026-02-24
 
 **TUI Overhaul: Fullscreen, Flicker-Free Rendering & Responsive Layout**
 
@@ -28,10 +28,11 @@ All notable changes to XYPH will be documented in this file.
 **Status line simplified**
 - Replaced `tick: 142 (8a062e1) | me: 122 | writers: 5` with `t=142` — one number, the global frontier tick.
 - Dropped per-writer tick and writer count (implementation details, not user-facing).
-- Gutter log line prefixed with `[warp(SHA)]` showing the checkpoint SHA when available.
+- Gutter log line prefixed with `[warp(t=N)]` showing the current graph tick when available.
 
 **Cold start performance**
-- Removed `syncCoverage()` from dashboard adapter — the dashboard is read-only and doesn't need to write octopus anchor commits.
+- Removed `syncCoverage()` from first-load path — `WarpGraph.open()` discovers refs automatically.
+- Restored `syncCoverage()` on refresh path — discovers external mutations committed since last materialize.
 - Added `createCheckpoint()` after `materialize()` — persists materialized state so subsequent launches load from checkpoint instead of replaying all patches.
 - `tipSha` now derived from `createCheckpoint()` return value (content hash of materialized state) instead of writer tip commit.
 
@@ -44,6 +45,22 @@ All notable changes to XYPH will be documented in this file.
 
 - Ghost content on title screen: erase-to-end-of-line (`\x1b[K`) injected after each line during cursor-home redraws, preventing remnants from longer previous renders.
 - Full terminal height: root Box in Dashboard and LandingView now properly fills terminal via `height={rows}` / `flexGrow={1}`.
+
+**Code review — 15 issues resolved (4 HIGH, 6 MEDIUM, 5 LOW)**
+- *High*: `TuiLogger.child()` now delegates `onEntry` through parent chain — children created before `onEntry` is set no longer get a permanent `null` callback.
+- *High*: `HelpModal` renders as the content area (replacing views) instead of appended below `StatusLine` — no longer overflows `height={rows}`.
+- *High*: `WarpDashboardAdapter` calls `syncCoverage()` on refresh path (when `cachedSnapshot !== null`) to discover external mutations; skipped on first load where `WarpGraph.open()` handles discovery.
+- *High*: `xyph-dashboard.tsx` cleanup guard prevents double terminal-restore on SIGINT → exit handler chain.
+- *Medium*: `StatusLine` always renders 2 lines (empty second line when no logLine) — stabilizes `gutterLines` constant.
+- *Medium*: Log prefix changed from unstable `[warp(SHA)]` to `[warp(t=N)]` using graph tick.
+- *Medium*: `LineageView` trailing spaces (+4) added to `lineageFixedW`; status text padded to fixed 14 chars.
+- *Medium*: `AllNodesView` magic `10` extracted to `scrollSealW` constant with comment.
+- *Medium*: `package.json` version bumped to `1.0.0-alpha.7`.
+- *Low*: `TuiLogger.emit()` nested ternary refactored to explicit if/else.
+- *Low*: `InboxView` `suggestedBy` uses `suggestedByW - 2` instead of hardcoded `14`.
+- *Low*: `AllNodesView` `questSuffixW` components documented with inline comments.
+- *Low*: `LineageView` `intentIdW` reverted from 32 to 30 (matches original behavior).
+- *Low*: `Dashboard.tsx` `cols` moved inside else branch where it's actually used.
 
 ---
 
@@ -477,7 +494,8 @@ All notable changes to XYPH will be documented in this file.
 - **Strict Linting**: Configured ESLint with `typescript-eslint` strict rules.
 - Refined Actuator `syncWith` logic to use `syncCoverage()` for reliable multi-writer convergence.
 
-[Unreleased]: https://github.com/flyingrobots/xyph/compare/v1.0.0-alpha.6...HEAD
+[Unreleased]: https://github.com/flyingrobots/xyph/compare/v1.0.0-alpha.7...HEAD
+[1.0.0-alpha.7]: https://github.com/flyingrobots/xyph/compare/v1.0.0-alpha.6...v1.0.0-alpha.7
 [1.0.0-alpha.6]: https://github.com/flyingrobots/xyph/compare/v1.0.0-alpha.5...v1.0.0-alpha.6
 [1.0.0-alpha.5]: https://github.com/flyingrobots/xyph/compare/v1.0.0-alpha.4...v1.0.0-alpha.5
 [1.0.0-alpha.4]: https://github.com/flyingrobots/xyph/compare/v1.0.0-alpha.3...v1.0.0-alpha.4

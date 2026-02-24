@@ -29,18 +29,17 @@ export function StatusLine({ graphMeta, prevGraphMeta, logLine }: Props): ReactE
   const pad = Math.max(0, cols - tag.length);
   const statusRow = tag + '/'.repeat(pad);
 
-  // Build enriched log prefix: [warp(SHA)] or [warp(--)]
-  let logRow: string | undefined;
+  // M-6: Use tick instead of unstable checkpoint SHA in log prefix
+  // M-2: Always render 2 lines to keep gutterLines stable
+  let logRow: string;
   if (logLine) {
-    const sha = graphMeta?.tipSha ?? '--';
-    const prefix = `[warp(${sha})] `;
+    const tick = graphMeta !== undefined ? `t=${graphMeta.maxTick}` : '--';
+    const prefix = `[warp(${tick})] `;
     const maxMsg = cols - prefix.length;
     const msg = logLine.length > maxMsg ? logLine.slice(0, maxMsg - 1) + '…' : logLine;
     logRow = prefix + msg;
-  }
-
-  if (!logRow) {
-    return <Text dimColor>{statusRow}</Text>;
+  } else {
+    logRow = '';
   }
 
   return (
