@@ -6,6 +6,10 @@ All notable changes to XYPH will be documented in this file.
 
 ### Added
 - CI workflow (`.github/workflows/ci.yml`): enforces build, lint, and test gates on every PR and push to main as three parallel jobs.
+- CI `audit` job: runs `npm audit --omit=dev` to catch known vulnerabilities in production dependencies.
+
+### Fixed
+- `inspect-graph.ts`: replaced unsafe inline type cast with `toNeighborEntries()` runtime guard.
 
 ## [1.0.0-alpha.7] - 2026-02-24
 
