@@ -25,8 +25,11 @@ export class TuiLogger extends LoggerPort {
     this.parent = parent;
   }
 
-  /** Set the callback that receives every log entry. */
+  /** Set the callback that receives every log entry. Must be set on the root logger. */
   set onEntry(fn: ((entry: LogEntry) => void) | null) {
+    if (this.parent) {
+      throw new Error('onEntry must be set on the root TuiLogger, not on a child');
+    }
     this._onEntry = fn;
   }
 
