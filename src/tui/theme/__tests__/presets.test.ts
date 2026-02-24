@@ -44,8 +44,9 @@ function validateTheme(theme: Theme): void {
           const curr = stops[i];
           expect(prev, `gradient.${name} stop ${i - 1}`).toBeDefined();
           expect(curr, `gradient.${name} stop ${i}`).toBeDefined();
-          expect(curr!.pos, `gradient.${name}[${i}].pos >= [${i - 1}].pos`)
-            .toBeGreaterThanOrEqual(prev!.pos);
+          if (curr === undefined || prev === undefined) continue;
+          expect(curr.pos, `gradient.${name}[${i}].pos >= [${i - 1}].pos`)
+            .toBeGreaterThanOrEqual(prev.pos);
         }
       }
     });

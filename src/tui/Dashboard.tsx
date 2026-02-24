@@ -51,7 +51,7 @@ export function Dashboard({ service, intake, agentId, logoText, wordmarkText, wo
   const logTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (!logger) return;
-    logger.onEntry = (entry) => {
+    logger.onEntry = (entry): void => {
       pendingLogRef.current = entry.message;
       if (logTimerRef.current === null) {
         logTimerRef.current = setTimeout(() => {
@@ -63,7 +63,7 @@ export function Dashboard({ service, intake, agentId, logoText, wordmarkText, wo
         }, 150);
       }
     };
-    return () => {
+    return (): void => {
       logger.onEntry = null;
       if (logTimerRef.current !== null) {
         clearTimeout(logTimerRef.current);
@@ -76,7 +76,7 @@ export function Dashboard({ service, intake, agentId, logoText, wordmarkText, wo
     if (showLoading) setLoading(true);
     const thisRequest = ++requestCounter.current;
     const onProgress = showLoading
-      ? (msg: string) => {
+      ? (msg: string): void => {
           setLoadLog((prev) => [...prev.slice(-9), msg]);
         }
       : undefined;
