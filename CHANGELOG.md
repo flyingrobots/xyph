@@ -2,6 +2,8 @@
 
 All notable changes to XYPH will be documented in this file.
 
+## [Unreleased]
+
 ## [1.0.0-alpha.7] - 2026-02-24
 
 **TUI Overhaul: Fullscreen, Flicker-Free Rendering & Responsive Layout**
