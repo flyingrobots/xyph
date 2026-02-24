@@ -26,6 +26,7 @@ import {
   type ReviewVerdict,
   type DecisionKind,
 } from '../../domain/entities/Submission.js';
+import type { LoggerPort } from '@git-stunts/git-warp';
 import { WarpGraphHolder } from '../helpers/WarpGraphHolder.js';
 import { toNeighborEntries, type NeighborEntry } from '../helpers/isNeighborEntry.js';
 
@@ -49,8 +50,8 @@ export class WarpDashboardAdapter implements DashboardPort {
   private readonly graphHolder: WarpGraphHolder;
   private cachedSnapshot: GraphSnapshot | null = null;
 
-  constructor(cwd: string, agentId: string) {
-    this.graphHolder = new WarpGraphHolder(cwd, 'xyph-roadmap', agentId);
+  constructor(cwd: string, agentId: string, logger?: LoggerPort) {
+    this.graphHolder = new WarpGraphHolder(cwd, 'xyph-roadmap', agentId, logger);
   }
 
   public invalidateCache(): void {
@@ -63,8 +64,9 @@ export class WarpDashboardAdapter implements DashboardPort {
     log('Opening project graph…');
     const graph = await this.graphHolder.getGraph();
 
-    log('Syncing coverage…');
-    await graph.syncCoverage();
+    // Skip syncCoverage() — the dashboard is read-only and doesn't need to
+    // write an octopus anchor commit. materialize() will discover patches
+    // from git refs on its own.
 
     // Short-circuit: if no writer tips changed since last materialize,
     // the graph is identical — return cached snapshot immediately.
@@ -75,6 +77,12 @@ export class WarpDashboardAdapter implements DashboardPort {
 
     log('Materializing graph…');
     await graph.materialize();
+
+    // Persist a checkpoint so subsequent launches can load from it
+    // instead of replaying all patches from scratch.
+    log('Creating checkpoint…');
+    const checkpointSha = await graph.createCheckpoint();
+
     const nodeIds = await graph.getNodes();
     log(`Classifying ${nodeIds.length} nodes…`);
 
@@ -307,10 +315,9 @@ export class WarpDashboardAdapter implements DashboardPort {
       }
     }
 
-    // Build graph meta from materialized state + frontier
+    // Build graph meta from materialized state
     log('Reading graph metadata…');
     const state = await graph.getStateSnapshot();
-    const frontier = await graph.getFrontier();
     const maxTick = state
       ? Math.max(0, ...state.observedFrontier.values())
       : 0;
@@ -318,9 +325,7 @@ export class WarpDashboardAdapter implements DashboardPort {
       ? (state.observedFrontier.get(graph.writerId) ?? 0)
       : 0;
     const writerCount = state ? state.observedFrontier.size : 0;
-    const tipSha = state
-      ? ((frontier.get(graph.writerId) ?? '').slice(0, 7) || '-------')
-      : '-------';
+    const tipSha = checkpointSha.slice(0, 7);
     const graphMeta: GraphMeta = { maxTick, myTick, writerCount, tipSha };
 
     log(`Snapshot ready — ${quests.length} quests, ${campaigns.length} campaigns`);

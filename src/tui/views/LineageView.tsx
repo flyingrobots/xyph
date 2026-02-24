@@ -90,7 +90,16 @@ export function LineageView({ snapshot, isActive, chromeLines }: Props): ReactEl
   const t = useTheme();
   const { stdout } = useStdout();
   const chrome = chromeLines ?? DEFAULT_CHROME_LINES;
+  const cols = stdout.columns ?? 80;
   const listHeight = Math.max(4, (stdout.rows ?? 24) - chrome);
+
+  // Column widths for quest rows: title absorbs remaining width
+  // Layout: marginLeft(2) + cursor(2) + branch(3) + id(18) + status(~14) + seal(3) + scrollbar(2)
+  const lineageFixedW = 2 + 2 + 3 + 18 + 14 + 3 + 2;
+  const lineageTitleW = Math.max(12, cols - lineageFixedW);
+  // Column widths for intent header: title absorbs remaining width
+  const intentIdW = 32;
+  const intentTitleW = Math.max(12, cols - intentIdW - 2 - 2); // 2=prefix "◆ ", 2=scrollbar
   const [scrollOffset, setScrollOffset] = useState(0);
   const [selectedVIdx, setSelectedVIdx] = useState(0);
 
@@ -161,8 +170,8 @@ export function LineageView({ snapshot, isActive, chromeLines }: Props): ReactEl
           if (row.kind === 'intent-header') {
             return (
               <Box key={`ih-${row.id}`}>
-                <Text bold color={t.ink(t.theme.ui.intentHeader)}>{'◆ ' + trunc(row.id, 30)}</Text>
-                <Text dimColor>  {trunc(row.title, 38)}</Text>
+                <Text bold color={t.ink(t.theme.ui.intentHeader)}>{'◆ ' + trunc(row.id, intentIdW)}</Text>
+                <Text dimColor>  {trunc(row.title, intentTitleW)}</Text>
               </Box>
             );
           }
@@ -189,7 +198,7 @@ export function LineageView({ snapshot, isActive, chromeLines }: Props): ReactEl
                 </Box>
                 <Text dimColor>{row.branch} </Text>
                 <Text dimColor>{trunc(row.id, 16)}  </Text>
-                <Text bold={isSelected}>{trunc(row.title, 36)}  </Text>
+                <Text bold={isSelected}>{trunc(row.title, lineageTitleW)}  </Text>
                 <Text color={t.inkStatus(row.status)}>{'[' + row.status + ']'}</Text>
                 {row.scrollId !== undefined && (
                   <Text color={row.sealed ? t.ink(t.theme.semantic.success) : t.ink(t.theme.semantic.warning)}>

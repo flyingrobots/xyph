@@ -54,9 +54,19 @@ export function InboxView({
   const t = useTheme();
   const { stdout } = useStdout();
   const chrome = chromeLines ?? DEFAULT_CHROME_LINES;
+  const cols = stdout.columns ?? 80;
 
   // Proportional split: 40% list, 60% detail
   const availableRows = (stdout.rows ?? 24) - chrome;
+
+  // Column widths: title absorbs remaining terminal width
+  const cursorW = 2;
+  const idW = 18;
+  const suggestedByW = 16;
+  const dateW = 10;
+  const historyW = 3; // "  ↩"
+  const scrollbarW = 2;
+  const inboxTitleW = Math.max(12, cols - cursorW - idW - suggestedByW - dateW - historyW - scrollbarW);
   const listHeight = Math.max(3, Math.floor(availableRows * 0.40));
   const detailHeight = Math.max(0, availableRows - listHeight);
 
@@ -383,9 +393,9 @@ export function InboxView({
                   <Text color={t.ink(t.theme.ui.cursor)}>{isSelected ? '▶' : ' '}</Text>
                 </Box>
                 <Text bold={isSelected} color={isSelected ? undefined : t.ink(t.theme.semantic.muted)}>
-                  {q.id.slice(0, 16).padEnd(18)}
+                  {q.id.slice(0, idW - 2).padEnd(idW)}
                 </Text>
-                <Text bold={isSelected}>{q.title.slice(0, 34).padEnd(36)}</Text>
+                <Text bold={isSelected}>{q.title.slice(0, inboxTitleW - 2).padEnd(inboxTitleW)}</Text>
                 <Text dimColor>{(q.suggestedBy ?? '').slice(0, 14).padEnd(16)}</Text>
                 <Text dimColor>{dateStr}</Text>
                 {hasHistory && <Text color={t.ink(t.theme.semantic.warning)}>  ↩</Text>}

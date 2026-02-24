@@ -1,35 +1,52 @@
 import type { ReactElement } from 'react';
-import { Text, useStdout } from 'ink';
+import { Box, Text, useStdout } from 'ink';
 import type { GraphMeta } from '../domain/models/dashboard.js';
 
 interface Props {
   graphMeta?: GraphMeta;
   prevGraphMeta?: GraphMeta;
+  logLine?: string;
 }
 
-export function StatusLine({ graphMeta, prevGraphMeta }: Props): ReactElement {
+export function StatusLine({ graphMeta, prevGraphMeta, logLine }: Props): ReactElement {
   const { stdout } = useStdout();
   const cols = stdout.columns ?? 80;
 
+  let tag: string;
   if (graphMeta === undefined) {
-    const prefix = '/// XYPH [--] ';
-    const empty = prefix + '/'.repeat(Math.max(0, cols - prefix.length));
-    return <Text dimColor>{empty}</Text>;
+    tag = '/// XYPH [--] ';
+  } else {
+    tag = `/// XYPH [t=${graphMeta.maxTick}`;
+    if (
+      prevGraphMeta !== undefined &&
+      prevGraphMeta.maxTick !== graphMeta.maxTick
+    ) {
+      tag += ` \u2190 ${prevGraphMeta.maxTick}`;
+    }
+    tag += '] ';
   }
-
-  let tag = `/// XYPH [tick: ${graphMeta.maxTick} (${graphMeta.tipSha})`;
-
-  if (
-    prevGraphMeta !== undefined &&
-    prevGraphMeta.maxTick !== graphMeta.maxTick
-  ) {
-    tag += ` \u2190 ${prevGraphMeta.maxTick} (${prevGraphMeta.tipSha})`;
-  }
-
-  tag += ` | me: ${graphMeta.myTick} | writers: ${graphMeta.writerCount}] `;
 
   const pad = Math.max(0, cols - tag.length);
-  const line = tag + '/'.repeat(pad);
+  const statusRow = tag + '/'.repeat(pad);
 
-  return <Text dimColor>{line}</Text>;
+  // Build enriched log prefix: [warp(SHA)] or [warp(--)]
+  let logRow: string | undefined;
+  if (logLine) {
+    const sha = graphMeta?.tipSha ?? '--';
+    const prefix = `[warp(${sha})] `;
+    const maxMsg = cols - prefix.length;
+    const msg = logLine.length > maxMsg ? logLine.slice(0, maxMsg - 1) + '…' : logLine;
+    logRow = prefix + msg;
+  }
+
+  if (!logRow) {
+    return <Text dimColor>{statusRow}</Text>;
+  }
+
+  return (
+    <Box flexDirection="column">
+      <Text dimColor>{statusRow}</Text>
+      <Text dimColor>{logRow}</Text>
+    </Box>
+  );
 }

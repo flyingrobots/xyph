@@ -2,6 +2,51 @@
 
 All notable changes to XYPH will be documented in this file.
 
+## [1.0.0-alpha.7] - 2026-02-23
+
+**TUI Overhaul: Fullscreen, Flicker-Free Rendering & Responsive Layout**
+
+### Added
+
+**Alternate screen + flicker-free rendering shim**
+- `xyph-dashboard.tsx`: enters alternate screen buffer (`\x1b[?1049h`) on launch, restores on exit.
+- Patches `stdout.write` to replace Ink's `clearTerminal` (erase + rewrite) with cursor-home + erase-to-EOL, eliminating full-screen flash on every render.
+- Proper cleanup on SIGINT/SIGTERM — always restores the original terminal.
+
+**git-warp verbose logging in the gutter**
+- `TuiLogger` (`src/tui/TuiLogger.ts`): new `LoggerPort` implementation that captures git-warp internal logs via a callback for display in the TUI.
+- `WarpGraphHolder` and `WarpDashboardAdapter` accept optional `LoggerPort`, passed to `WarpGraph.open()`.
+- Dashboard subscribes to logger with 150ms throttle to prevent rapid re-renders.
+
+**Persistent gutter on all screens**
+- `StatusLine` now renders on every screen (landing, loading, error, main views) — no more early returns that skip it.
+- Dashboard restructured: root `<Box height={rows}>` wrapper with `flexGrow={1}` content area and pinned gutter.
+- `LandingView` uses `flexGrow={1}` + `justifyContent="center"` for vertical centering within the flex container.
+
+### Changed
+
+**Status line simplified**
+- Replaced `tick: 142 (8a062e1) | me: 122 | writers: 5` with `t=142` — one number, the global frontier tick.
+- Dropped per-writer tick and writer count (implementation details, not user-facing).
+- Gutter log line prefixed with `[warp(SHA)]` showing the checkpoint SHA when available.
+
+**Cold start performance**
+- Removed `syncCoverage()` from dashboard adapter — the dashboard is read-only and doesn't need to write octopus anchor commits.
+- Added `createCheckpoint()` after `materialize()` — persists materialized state so subsequent launches load from checkpoint instead of replaying all patches.
+- `tipSha` now derived from `createCheckpoint()` return value (content hash of materialized state) instead of writer tip commit.
+
+**Responsive full-width table layout**
+- All four views (`RoadmapView`, `LineageView`, `AllNodesView`, `InboxView`) now calculate column widths dynamically from terminal width.
+- Title columns absorb remaining width instead of using hardcoded `.padEnd()` values.
+- Tables fill edge-to-edge on any terminal size (min 12 chars for title).
+
+### Fixed
+
+- Ghost content on title screen: erase-to-end-of-line (`\x1b[K`) injected after each line during cursor-home redraws, preventing remnants from longer previous renders.
+- Full terminal height: root Box in Dashboard and LandingView now properly fills terminal via `height={rows}` / `flexGrow={1}`.
+
+---
+
 ## [1.0.0-alpha.6] - 2026-02-22
 
 **Dashboard Performance & UX Improvements**

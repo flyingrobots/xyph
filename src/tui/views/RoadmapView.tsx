@@ -62,7 +62,17 @@ export function RoadmapView({ snapshot, isActive, chromeLines }: Props): ReactEl
   const t = useTheme();
   const { stdout } = useStdout();
   const chrome = chromeLines ?? DEFAULT_CHROME_LINES;
+  const cols = stdout.columns ?? 80;
   const listHeight = Math.max(4, (stdout.rows ?? 24) - chrome);
+
+  // Column widths: title absorbs remaining terminal width
+  const cursorW = 2;
+  const idW = 18;
+  const statusW = 14; // "  " + status.padEnd(12)
+  const hoursW = 4;   // "  3h"
+  const sealW = 3;    // "  ✓"
+  const scrollbarW = 2; // marginLeft(1) + 1 char
+  const titleW = Math.max(12, cols - cursorW - idW - statusW - hoursW - sealW - scrollbarW);
 
   const [foldedCampaigns, setFoldedCampaigns] = useState<Set<string>>(new Set());
   const [showDetail, setShowDetail] = useState(false);
@@ -230,9 +240,9 @@ export function RoadmapView({ snapshot, isActive, chromeLines }: Props): ReactEl
                   <Text color={t.ink(t.theme.ui.cursor)}>{isSelected ? '▶' : ''}</Text>
                 </Box>
                 <Text bold={isSelected} color={isSelected ? undefined : t.ink(t.theme.semantic.muted)}>
-                  {q.id.slice(0, 16).padEnd(18)}
+                  {q.id.slice(0, idW - 2).padEnd(idW)}
                 </Text>
-                <Text bold={isSelected}>{q.title.slice(0, 36).padEnd(38)}</Text>
+                <Text bold={isSelected}>{q.title.slice(0, titleW - 2).padEnd(titleW)}</Text>
                 <Text color={t.inkStatus(q.status)}>
                   {'  ' + q.status.padEnd(12)}
                 </Text>

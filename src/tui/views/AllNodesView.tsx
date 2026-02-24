@@ -84,7 +84,29 @@ export function AllNodesView({ snapshot, isActive, chromeLines }: Props): ReactE
   const t = useTheme();
   const { stdout } = useStdout();
   const chrome = chromeLines ?? DEFAULT_CHROME_LINES;
+  const cols = stdout.columns ?? 80;
   const listHeight = Math.max(4, (stdout.rows ?? 24) - chrome);
+
+  // Column widths: title columns absorb remaining terminal width
+  const scrollbarW = 2;
+  const marginW = 2; // marginLeft={2}
+  // Campaign: id(22) + title(flex) + status(~10)
+  const campIdW = 22;
+  const campStatusW = 12;
+  const campTitleW = Math.max(12, cols - marginW - campIdW - campStatusW - scrollbarW);
+  // Intent: id(22) + title(flex) + requestedBy(~16)
+  const intentIdW = 22;
+  const intentByW = 18;
+  const intentTitleW = Math.max(12, cols - marginW - intentIdW - intentByW - scrollbarW);
+  // Quest: cursor(2) + id(20) + title(flex) + status(~12) + hours(6) + seal(3)
+  const questIdW = 20;
+  const questStatusW = 12;
+  const questSuffixW = 6 + 3; // hours + seal
+  const questTitleW = Math.max(12, cols - marginW - 2 - questIdW - questStatusW - questSuffixW - scrollbarW);
+  // Scroll: id(26) + questId(20) + sealedBy(16) + status(~10)
+  const scrollIdW = 26;
+  const scrollQuestW = 20;
+  const scrollByW = Math.max(10, cols - marginW - scrollIdW - scrollQuestW - 10 - scrollbarW);
   const [scrollOffset, setScrollOffset] = useState(0);
   const [selectedQuestIdx, setSelectedQuestIdx] = useState(0);
   const [showDetail, setShowDetail] = useState(false);
@@ -189,8 +211,8 @@ export function AllNodesView({ snapshot, isActive, chromeLines }: Props): ReactE
           if (row.kind === 'campaign') {
             return (
               <Box key={row.id} marginLeft={2}>
-                <Text dimColor>{row.id.padEnd(22)}</Text>
-                <Text>{row.title.slice(0, 38).padEnd(40)}</Text>
+                <Text dimColor>{row.id.padEnd(campIdW)}</Text>
+                <Text>{row.title.slice(0, campTitleW - 2).padEnd(campTitleW)}</Text>
                 <StatusText status={row.status} />
               </Box>
             );
@@ -198,8 +220,8 @@ export function AllNodesView({ snapshot, isActive, chromeLines }: Props): ReactE
           if (row.kind === 'intent') {
             return (
               <Box key={row.id} marginLeft={2}>
-                <Text dimColor>{row.id.padEnd(22)}</Text>
-                <Text>{row.title.slice(0, 36).padEnd(38)}</Text>
+                <Text dimColor>{row.id.padEnd(intentIdW)}</Text>
+                <Text>{row.title.slice(0, intentTitleW - 2).padEnd(intentTitleW)}</Text>
                 <Text dimColor>{row.requestedBy}</Text>
               </Box>
             );
@@ -211,8 +233,8 @@ export function AllNodesView({ snapshot, isActive, chromeLines }: Props): ReactE
                 <Box width={2}>
                   <Text color={t.ink(t.theme.ui.cursor)}>{isSelected ? '▶' : ' '}</Text>
                 </Box>
-                <Text dimColor>{row.id.slice(0, 18).padEnd(20)}</Text>
-                <Text bold={isSelected}>{row.title.slice(0, 30).padEnd(32)}</Text>
+                <Text dimColor>{row.id.slice(0, questIdW - 2).padEnd(questIdW)}</Text>
+                <Text bold={isSelected}>{row.title.slice(0, questTitleW - 2).padEnd(questTitleW)}</Text>
                 <StatusText status={row.status} />
                 <Text dimColor>  {row.hours}h</Text>
                 {row.hasScroll && <Text color={t.ink(t.theme.semantic.success)}>  ✓</Text>}
@@ -222,9 +244,9 @@ export function AllNodesView({ snapshot, isActive, chromeLines }: Props): ReactE
           if (row.kind === 'scroll') {
             return (
               <Box key={row.id} marginLeft={2}>
-                <Text dimColor>{row.id.slice(0, 24).padEnd(26)}</Text>
-                <Text dimColor>{row.questId.slice(0, 18).padEnd(20)}</Text>
-                <Text dimColor>{row.sealedBy.padEnd(16)}</Text>
+                <Text dimColor>{row.id.slice(0, scrollIdW - 2).padEnd(scrollIdW)}</Text>
+                <Text dimColor>{row.questId.slice(0, scrollQuestW - 2).padEnd(scrollQuestW)}</Text>
+                <Text dimColor>{row.sealedBy.padEnd(scrollByW)}</Text>
                 <Text color={row.hasSeal ? t.ink(t.theme.semantic.success) : t.ink(t.theme.semantic.warning)}>
                   {row.hasSeal ? '⊕ sealed' : '○ unsigned'}
                 </Text>
