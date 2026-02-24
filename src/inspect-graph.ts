@@ -1,6 +1,7 @@
 import WarpGraph, { GitGraphAdapter } from '@git-stunts/git-warp';
 import Plumbing from '@git-stunts/plumbing';
 import { getTheme, styled } from './tui/theme/index.js';
+import { toNeighborEntries } from './infrastructure/helpers/isNeighborEntry.js';
 
 const plumbing = Plumbing.createDefault({ cwd: process.cwd() });
 const persistence = new GitGraphAdapter({ plumbing });
@@ -27,10 +28,10 @@ async function inspect(): Promise<void> {
     console.log(styled(t.semantic.info, `\nNode: ${id}`));
     console.log(JSON.stringify(Object.fromEntries(props), null, 2));
 
-    const neighbors = await graph.neighbors(id, 'outgoing');
+    const neighbors = toNeighborEntries(await graph.neighbors(id, 'outgoing'));
     if (neighbors.length > 0) {
       console.log(styled(t.semantic.muted, '  Outgoing Edges:'));
-      for (const n of neighbors as { label: string; nodeId: string }[]) {
+      for (const n of neighbors) {
         console.log(styled(t.semantic.muted, `    --[${n.label}]--> ${n.nodeId}`));
       }
     }
