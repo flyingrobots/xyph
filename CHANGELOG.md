@@ -4,6 +4,9 @@ All notable changes to XYPH will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- CI workflow (`.github/workflows/ci.yml`): enforces build, lint, and test gates on every PR and push to main as three parallel jobs.
+
 ## [1.0.0-alpha.7] - 2026-02-24
 
 **TUI Overhaul: Fullscreen, Flicker-Free Rendering & Responsive Layout**
