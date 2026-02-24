@@ -62,6 +62,10 @@ All notable changes to XYPH will be documented in this file.
 - *Low*: `LineageView` `intentIdW` reverted from 32 to 30 (matches original behavior).
 - *Low*: `Dashboard.tsx` `cols` moved inside else branch where it's actually used.
 
+**Codex review — 2 issues resolved (1 P1, 1 P2)**
+- *P1*: `WarpDashboardAdapter` `syncCoverage()` on refresh path — already addressed in H-3 above.
+- *P2*: `xyph-dashboard.tsx` SIGINT/SIGTERM handlers now use conventional signal exit codes (130/143) instead of `exit(0)`, so shell wrappers and supervisors can distinguish cancel/kill from success.
+
 ---
 
 ## [1.0.0-alpha.6] - 2026-02-22
