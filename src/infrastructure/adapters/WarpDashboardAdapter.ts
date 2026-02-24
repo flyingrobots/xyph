@@ -84,9 +84,15 @@ export class WarpDashboardAdapter implements DashboardPort {
     await graph.materialize();
 
     // Persist a checkpoint so subsequent launches can load from it
-    // instead of replaying all patches from scratch.
+    // instead of replaying all patches from scratch. Checkpoint is an
+    // optimization — if it fails, the snapshot should still render.
     log('Creating checkpoint…');
-    const checkpointSha = await graph.createCheckpoint();
+    let checkpointSha: string | undefined;
+    try {
+      checkpointSha = await graph.createCheckpoint();
+    } catch (err: unknown) {
+      console.warn(`[WARN] createCheckpoint failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
 
     const nodeIds = await graph.getNodes();
     log(`Classifying ${nodeIds.length} nodes…`);
@@ -330,7 +336,7 @@ export class WarpDashboardAdapter implements DashboardPort {
       ? (state.observedFrontier.get(graph.writerId) ?? 0)
       : 0;
     const writerCount = state ? state.observedFrontier.size : 0;
-    const tipSha = checkpointSha.slice(0, 7);
+    const tipSha = checkpointSha ? checkpointSha.slice(0, 7) : 'unknown';
     const graphMeta: GraphMeta = { maxTick, myTick, writerCount, tipSha };
 
     log(`Snapshot ready — ${quests.length} quests, ${campaigns.length} campaigns`);
