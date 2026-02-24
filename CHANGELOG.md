@@ -68,6 +68,14 @@ All notable changes to XYPH will be documented in this file.
 - *P1*: `WarpDashboardAdapter` `syncCoverage()` on refresh path — already addressed in H-3 above.
 - *P2*: `xyph-dashboard.tsx` SIGINT/SIGTERM handlers now use conventional signal exit codes (130/143) instead of `exit(0)`, so shell wrappers and supervisors can distinguish cancel/kill from success.
 
+**CodeRabbit review — 6 issues resolved (1 major, 3 minor, 2 nit)**
+- *Major*: `WarpDashboardAdapter.createCheckpoint()` wrapped in try/catch — checkpoint failures no longer block snapshot rendering; falls back to `tipSha='unknown'`.
+- *Minor*: `CHANGELOG.md` unused `[Unreleased]` link reference resolved by adding `## [Unreleased]` section header (MD053).
+- *Minor*: `AllNodesView` `sealedBy` column now truncated before padding to prevent line wraps on long values.
+- *Minor*: `LandingView` layout — full test suite (`npm run build` + `npm run test:local`) verified: 338/338 pass, lint clean.
+- *Nit*: `StatusLine` exports `STATUS_LINE_HEIGHT` constant; `Dashboard.tsx` imports it instead of hardcoding `gutterLines = 2`.
+- *Nit*: `TuiLogger.onEntry` setter throws on child loggers — prevents silent misconfiguration since `resolveOnEntry()` always defers to root.
+
 ---
 
 ## [1.0.0-alpha.6] - 2026-02-22
