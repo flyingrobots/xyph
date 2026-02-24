@@ -29,7 +29,7 @@ describe('resolve', () => {
   it('falls back to cyan-magenta for unknown theme name', () => {
     process.env['XYPH_THEME'] = 'nonexistent-theme';
     delete process.env['NO_COLOR'];
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation((_msg: string): void => { /* suppress */ });
     try {
       const t = getTheme();
       expect(t.theme.name).toBe('cyan-magenta');

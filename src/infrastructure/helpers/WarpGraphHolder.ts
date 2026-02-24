@@ -1,4 +1,4 @@
-import WarpGraph, { GitGraphAdapter } from '@git-stunts/git-warp';
+import WarpGraph, { GitGraphAdapter, type LoggerPort } from '@git-stunts/git-warp';
 import Plumbing from '@git-stunts/plumbing';
 
 /**
@@ -17,6 +17,7 @@ export class WarpGraphHolder {
     private readonly cwd: string,
     private readonly graphName: string,
     private readonly writerId: string,
+    private readonly logger?: LoggerPort,
   ) {}
 
   public async getGraph(): Promise<WarpGraph> {
@@ -47,6 +48,7 @@ export class WarpGraphHolder {
       writerId: this.writerId,
       autoMaterialize: true,
       checkpointPolicy: { every: 50 },
+      logger: this.logger,
     });
     return graph;
   }

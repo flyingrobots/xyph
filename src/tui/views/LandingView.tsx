@@ -108,7 +108,7 @@ export function LandingView({ logoText, snapshot, loadLog }: Props): ReactElemen
   }
 
   return (
-    <Box flexDirection="column" alignItems="center">
+    <Box flexDirection="column" alignItems="center" justifyContent="center" flexGrow={1}>
       {/* Logo — center as a single block to preserve internal alignment */}
       <Box justifyContent="center">
         <Box flexDirection="column">

@@ -2,6 +2,82 @@
 
 All notable changes to XYPH will be documented in this file.
 
+## [Unreleased]
+
+## [1.0.0-alpha.7] - 2026-02-24
+
+**TUI Overhaul: Fullscreen, Flicker-Free Rendering & Responsive Layout**
+
+### Added
+
+**Alternate screen + flicker-free rendering shim**
+- `xyph-dashboard.tsx`: enters alternate screen buffer (`\x1b[?1049h`) on launch, restores on exit.
+- Patches `stdout.write` to replace Ink's `clearTerminal` (erase + rewrite) with cursor-home + erase-to-EOL, eliminating full-screen flash on every render.
+- Proper cleanup on SIGINT/SIGTERM — always restores the original terminal.
+
+**git-warp verbose logging in the gutter**
+- `TuiLogger` (`src/tui/TuiLogger.ts`): new `LoggerPort` implementation that captures git-warp internal logs via a callback for display in the TUI.
+- `WarpGraphHolder` and `WarpDashboardAdapter` accept optional `LoggerPort`, passed to `WarpGraph.open()`.
+- Dashboard subscribes to logger with 150ms throttle to prevent rapid re-renders.
+
+**Persistent gutter on all screens**
+- `StatusLine` now renders on every screen (landing, loading, error, main views) — no more early returns that skip it.
+- Dashboard restructured: root `<Box height={rows}>` wrapper with `flexGrow={1}` content area and pinned gutter.
+- `LandingView` uses `flexGrow={1}` + `justifyContent="center"` for vertical centering within the flex container.
+
+### Changed
+
+**Status line simplified**
+- Replaced `tick: 142 (8a062e1) | me: 122 | writers: 5` with `t=142` — one number, the global frontier tick.
+- Dropped per-writer tick and writer count (implementation details, not user-facing).
+- Gutter log line prefixed with `[warp(t=N)]` showing the current graph tick when available.
+
+**Cold start performance**
+- Removed `syncCoverage()` from first-load path — `WarpGraph.open()` discovers refs automatically.
+- Restored `syncCoverage()` on refresh path — discovers external mutations committed since last materialize.
+- Added `createCheckpoint()` after `materialize()` — persists materialized state so subsequent launches load from checkpoint instead of replaying all patches.
+- `tipSha` now derived from `createCheckpoint()` return value (content hash of materialized state) instead of writer tip commit.
+
+**Responsive full-width table layout**
+- All four views (`RoadmapView`, `LineageView`, `AllNodesView`, `InboxView`) now calculate column widths dynamically from terminal width.
+- Title columns absorb remaining width instead of using hardcoded `.padEnd()` values.
+- Tables fill edge-to-edge on any terminal size (min 12 chars for title).
+
+### Fixed
+
+- Ghost content on title screen: erase-to-end-of-line (`\x1b[K`) injected after each line during cursor-home redraws, preventing remnants from longer previous renders.
+- Full terminal height: root Box in Dashboard and LandingView now properly fills terminal via `height={rows}` / `flexGrow={1}`.
+
+**Code review — 15 issues resolved (4 HIGH, 6 MEDIUM, 5 LOW)**
+- *High*: `TuiLogger.child()` now delegates `onEntry` through parent chain — children created before `onEntry` is set no longer get a permanent `null` callback.
+- *High*: `HelpModal` renders as the content area (replacing views) instead of appended below `StatusLine` — no longer overflows `height={rows}`.
+- *High*: `WarpDashboardAdapter` calls `syncCoverage()` on refresh path (when `cachedSnapshot !== null`) to discover external mutations; skipped on first load where `WarpGraph.open()` handles discovery.
+- *High*: `xyph-dashboard.tsx` cleanup guard prevents double terminal-restore on SIGINT → exit handler chain.
+- *Medium*: `StatusLine` always renders 2 lines (empty second line when no logLine) — stabilizes `gutterLines` constant.
+- *Medium*: Log prefix changed from unstable `[warp(SHA)]` to `[warp(t=N)]` using graph tick.
+- *Medium*: `LineageView` trailing spaces (+4) added to `lineageFixedW`; status text padded to fixed 14 chars.
+- *Medium*: `AllNodesView` magic `10` extracted to `scrollSealW` constant with comment.
+- *Medium*: `package.json` version bumped to `1.0.0-alpha.7`.
+- *Low*: `TuiLogger.emit()` nested ternary refactored to explicit if/else.
+- *Low*: `InboxView` `suggestedBy` uses `suggestedByW - 2` instead of hardcoded `14`.
+- *Low*: `AllNodesView` `questSuffixW` components documented with inline comments.
+- *Low*: `LineageView` `intentIdW` reverted from 32 to 30 (matches original behavior).
+- *Low*: `Dashboard.tsx` `cols` moved inside else branch where it's actually used.
+
+**Codex review — 2 issues resolved (1 P1, 1 P2)**
+- *P1*: `WarpDashboardAdapter` `syncCoverage()` on refresh path — already addressed in H-3 above.
+- *P2*: `xyph-dashboard.tsx` SIGINT/SIGTERM handlers now use conventional signal exit codes (130/143) instead of `exit(0)`, so shell wrappers and supervisors can distinguish cancel/kill from success.
+
+**CodeRabbit review — 6 issues resolved (1 major, 3 minor, 2 nit)**
+- *Major*: `WarpDashboardAdapter.createCheckpoint()` wrapped in try/catch — checkpoint failures no longer block snapshot rendering; falls back to `tipSha='unknown'`.
+- *Minor*: `CHANGELOG.md` unused `[Unreleased]` link reference resolved by adding `## [Unreleased]` section header (MD053).
+- *Minor*: `AllNodesView` `sealedBy` column now truncated before padding to prevent line wraps on long values.
+- *Minor*: `LandingView` layout — full test suite (`npm run build` + `npm run test:local`) verified: 338/338 pass, lint clean.
+- *Nit*: `StatusLine` exports `STATUS_LINE_HEIGHT` constant; `Dashboard.tsx` imports it instead of hardcoding `gutterLines = 2`.
+- *Nit*: `TuiLogger.onEntry` setter throws on child loggers — prevents silent misconfiguration since `resolveOnEntry()` always defers to root.
+
+---
+
 ## [1.0.0-alpha.6] - 2026-02-22
 
 **Dashboard Performance & UX Improvements**
@@ -432,7 +508,8 @@ All notable changes to XYPH will be documented in this file.
 - **Strict Linting**: Configured ESLint with `typescript-eslint` strict rules.
 - Refined Actuator `syncWith` logic to use `syncCoverage()` for reliable multi-writer convergence.
 
-[Unreleased]: https://github.com/flyingrobots/xyph/compare/v1.0.0-alpha.6...HEAD
+[Unreleased]: https://github.com/flyingrobots/xyph/compare/v1.0.0-alpha.7...HEAD
+[1.0.0-alpha.7]: https://github.com/flyingrobots/xyph/compare/v1.0.0-alpha.6...v1.0.0-alpha.7
 [1.0.0-alpha.6]: https://github.com/flyingrobots/xyph/compare/v1.0.0-alpha.5...v1.0.0-alpha.6
 [1.0.0-alpha.5]: https://github.com/flyingrobots/xyph/compare/v1.0.0-alpha.4...v1.0.0-alpha.5
 [1.0.0-alpha.4]: https://github.com/flyingrobots/xyph/compare/v1.0.0-alpha.3...v1.0.0-alpha.4
