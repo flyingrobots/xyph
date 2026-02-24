@@ -247,7 +247,7 @@ export function AllNodesView({ snapshot, isActive, chromeLines }: Props): ReactE
               <Box key={row.id} marginLeft={2}>
                 <Text dimColor>{row.id.slice(0, scrollIdW - 2).padEnd(scrollIdW)}</Text>
                 <Text dimColor>{row.questId.slice(0, scrollQuestW - 2).padEnd(scrollQuestW)}</Text>
-                <Text dimColor>{row.sealedBy.padEnd(scrollByW)}</Text>
+                <Text dimColor>{row.sealedBy.slice(0, scrollByW - 2).padEnd(scrollByW)}</Text>
                 <Text color={row.hasSeal ? t.ink(t.theme.semantic.success) : t.ink(t.theme.semantic.warning)}>
                   {row.hasSeal ? '⊕ sealed' : '○ unsigned'}
                 </Text>
