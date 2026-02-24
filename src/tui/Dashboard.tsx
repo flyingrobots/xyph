@@ -10,7 +10,7 @@ import { AllNodesView } from './views/AllNodesView.js';
 import { InboxView } from './views/InboxView.js';
 import { LandingView } from './views/LandingView.js';
 import { HelpModal } from './HelpModal.js';
-import { StatusLine } from './StatusLine.js';
+import { StatusLine, STATUS_LINE_HEIGHT } from './StatusLine.js';
 import { useTheme } from './theme/index.js';
 import type { TuiLogger } from './TuiLogger.js';
 
@@ -158,8 +158,9 @@ export function Dashboard({ service, intake, agentId, logoText, wordmarkText, wo
 
   const rows = stdout.rows ?? 24;
 
-  // Gutter height: status row (1) + log line (1) = 2 (always stable)
-  const gutterLines = 2;
+  // Gutter height must match StatusLine's rendered line count.
+  // IMPORTANT: StatusLine must always render exactly 2 lines — see StatusLine.tsx.
+  const gutterLines = STATUS_LINE_HEIGHT;
 
   // Resolve which content to render and what graphMeta to show in gutter
   let content: ReactElement;

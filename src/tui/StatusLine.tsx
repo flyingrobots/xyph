@@ -2,6 +2,9 @@ import type { ReactElement } from 'react';
 import { Box, Text, useStdout } from 'ink';
 import type { GraphMeta } from '../domain/models/dashboard.js';
 
+/** StatusLine always renders exactly this many lines (status row + log row). */
+export const STATUS_LINE_HEIGHT = 2;
+
 interface Props {
   graphMeta?: GraphMeta;
   prevGraphMeta?: GraphMeta;
