@@ -227,12 +227,16 @@ export class WarpDashboardAdapter implements DashboardPort {
 
       let campaignId: string | undefined;
       let intentId: string | undefined;
+      const dependsOnIds: string[] = [];
       for (const n of neighbors) {
         if (n.label === 'belongs-to') {
           campaignId = n.nodeId;
         }
         if (n.label === 'authorized-by' && n.nodeId.startsWith('intent:')) {
           intentId = n.nodeId;
+        }
+        if (n.label === 'depends-on' && n.nodeId.startsWith('task:')) {
+          dependsOnIds.push(n.nodeId);
         }
       }
 
@@ -262,6 +266,7 @@ export class WarpDashboardAdapter implements DashboardPort {
         rejectionRationale: typeof rejectionRationale === 'string' ? rejectionRationale : undefined,
         reopenedBy: typeof reopenedBy === 'string' ? reopenedBy : undefined,
         reopenedAt: typeof reopenedAt === 'number' ? reopenedAt : undefined,
+        dependsOn: dependsOnIds.length > 0 ? dependsOnIds : undefined,
       });
     }
 

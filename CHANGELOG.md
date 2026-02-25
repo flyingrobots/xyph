@@ -4,8 +4,20 @@ All notable changes to XYPH will be documented in this file.
 
 ## [Unreleased]
 
+## [1.0.0-alpha.8] - 2026-02-25
+
+**Milestone 7: Weaver — Task Dependency Graph**
+
 ### Added
+- `depend <from> <to>` CLI command: declares `depends-on` edges between `task:` nodes with cycle detection, self-dependency prevention, and existence validation.
+- `status --view deps`: new dashboard view showing frontier (ready tasks), blocked tasks, topological execution order, and critical path with total hours.
+- `WeaverService` (domain): pure validation and computation — frontier detection, topological ordering (via git-warp v12 `LogicalTraversal`), critical path DP over dependency DAG.
+- `WeaverPort` (port): write interface for dependency edge persistence.
+- `WarpWeaverAdapter` (infrastructure): implements both `WeaverPort` and `WeaverReadModel` using git-warp v12's `graph.traverse.isReachable()`, `graph.traverse.topologicalSort()`, and `graph.getEdges()`.
+- `QuestNode.dependsOn` field in dashboard model; `WarpDashboardAdapter` reads `depends-on` edges during snapshot construction.
+- `renderDeps()` renderer: frontier table, blocked-tasks table, numbered execution order, and critical path chain display.
 - CI workflow (`.github/workflows/ci.yml`): enforces build, lint, and test gates on every PR and push to main as three parallel jobs.
+- 31 new tests (23 unit + 8 integration), 369 total.
 
 ## [1.0.0-alpha.7] - 2026-02-24
 

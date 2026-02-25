@@ -49,7 +49,7 @@ XYPH plans and tracks its own development through the WARP graph. The `xyph-actu
 All project planning, prioritization, and progress tracking flows through the actuator. If you want to know what to work on, ask the graph. If you want to add work, write it to the graph.
 
 ### Command Reference
-- `npx tsx xyph-actuator.ts status --view <roadmap|lineage|all|inbox|submissions>`: View the roadmap state.
+- `npx tsx xyph-actuator.ts status --view <roadmap|lineage|all|inbox|submissions|deps>`: View the roadmap state.
 - `npx tsx xyph-actuator.ts quest <id> --title "Title" --campaign <id> --intent <id>`: Initialize a Quest.
 - `npx tsx xyph-actuator.ts intent <id> --title "Title" --requested-by human.<name>`: Declare a sovereign Intent.
 - `npx tsx xyph-actuator.ts claim <id>`: Volunteer for a task (OCP).
@@ -62,6 +62,7 @@ All project planning, prioritization, and progress tracking flows through the ac
 - `npx tsx xyph-actuator.ts inbox <id> --title "Title" --suggested-by <principal>`: Suggest a task for triage.
 - `npx tsx xyph-actuator.ts promote <id> --intent <id>`: Promote INBOX → BACKLOG.
 - `npx tsx xyph-actuator.ts reject <id> --rationale "..."`: Reject to GRAVEYARD.
+- `npx tsx xyph-actuator.ts depend <from> <to>`: Declare that `<from>` depends on `<to>` (both must be `task:` nodes).
 - `npx tsx xyph-actuator.ts audit-sovereignty`: Audit quests for missing intent lineage.
 - `npx tsx xyph-actuator.ts generate-key`: Generate an Ed25519 Guild Seal keypair.
 

@@ -17,6 +17,26 @@
 **The Planning Compiler for Agentic Coordination**
 
 
+## What's New in 1.0.0-alpha.8
+
+**Milestone 7: Weaver — Task Dependency Graph**
+
+Tasks can now declare dependencies on other tasks. XYPH uses git-warp v12's `LogicalTraversal` to detect cycles, compute topological execution order, and find the critical path through the dependency DAG.
+
+```bash
+# Declare that task B cannot start until task A is DONE
+npx tsx xyph-actuator.ts depend task:notif-002 task:notif-001
+
+# See what's ready, what's blocked, and the critical path
+npx tsx xyph-actuator.ts status --view deps
+```
+
+The `deps` view shows:
+- **Frontier** — tasks with all prerequisites complete (ready to work on)
+- **Blocked** — tasks waiting on incomplete prerequisites
+- **Execution Order** — topologically sorted task sequence
+- **Critical Path** — the longest dependency chain with total hours
+
 ## What Is XYPH?
 
 **XYPH** is a _planning compiler_ where the project roadmap is a living, deterministic graph. Humans and agents collaborate by reading and writing to that graph. No server, no database, just Git.
@@ -117,6 +137,18 @@ And later promote or reject it:
 ```bash
 npx tsx xyph-actuator.ts promote task:notif-003 --intent intent:live-alerts
 npx tsx xyph-actuator.ts reject task:notif-003 --rationale "Out of scope for v1"
+```
+
+Ada can also declare **dependencies** between tasks — saying "this can't start until that's done":
+
+```bash
+npx tsx xyph-actuator.ts depend task:notif-002 task:notif-001
+```
+
+Now `task:notif-002` (Toast UI) is blocked until `task:notif-001` (WebSocket bus) is DONE. She can check the dependency graph at any time:
+
+```bash
+npx tsx xyph-actuator.ts status --view deps
 ```
 
 #### 3. Hal Sets Up
@@ -266,13 +298,14 @@ All commands run via `npx tsx xyph-actuator.ts <command>`.
 
 | Command                                                  | What it does                                           |
 | -------------------------------------------------------- | ------------------------------------------------------ |
-| `status --view <roadmap\|lineage\|all\|inbox\|submissions>` | View the graph (`--include-graveyard` to see rejected) |
+| `status --view <roadmap\|lineage\|all\|inbox\|submissions\|deps>` | View the graph (`--include-graveyard` to see rejected) |
 | `intent <id> --title "..." --requested-by human.<name>`  | Declare a sovereign intent                             |
 | `quest <id> --title "..." --campaign <id> --intent <id>` | Create a quest                                         |
 | `inbox <id> --title "..." --suggested-by <principal>`    | Suggest a task for triage                              |
 | `promote <id> --intent <id>`                             | Promote inbox task to backlog                          |
 | `reject <id> --rationale "..."`                          | Reject to graveyard                                    |
 | `reopen <id>`                                            | Reopen a rejected task                                 |
+| `depend <from> <to>`                                     | Declare that `<from>` depends on `<to>`                |
 | `claim <id>`                                             | Volunteer for a quest (OCP)                            |
 | `submit <quest-id> --description "..."`                  | Submit quest for review (creates submission + patchset)|
 | `revise <submission-id> --description "..."`             | Push a new patchset superseding current tip            |
@@ -386,7 +419,7 @@ xyph-dashboard.tsx  # Interactive TUI entry point
 | 4+ | POWERLEVEL™ — full orchestration pipeline refactor | ✅ DONE |
 | 5 | WARP Dashboard TUI — interactive graph browser | ✅ DONE |
 | 6 | SUBMISSION — native review workflow (submit, revise, review, merge) | ✅ DONE |
-| 7 | WEAVER — DAG scheduling + dependency graph ([RFC_001](docs/canonical/RFC_001_AST_DRIVEN_INGEST.md)) | ⬜ PLANNED |
+| 7 | WEAVER — task dependency graph, frontier, critical path | ✅ DONE |
 | 8 | ORACLE — intent classification + policy engine | ⬜ PLANNED |
 | 9 | FORGE — emit + apply phases | ⬜ PLANNED |
 | 10 | CLI TOOLING — identity, packaging, time-travel, ergonomics | ⬜ PLANNED |
