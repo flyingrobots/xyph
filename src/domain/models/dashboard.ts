@@ -38,6 +38,8 @@ export interface QuestNode {
   // Reopen history
   reopenedBy?: string;
   reopenedAt?: number;
+  // Task dependencies (Weaver)
+  dependsOn?: string[];
 }
 
 export interface IntentNode {

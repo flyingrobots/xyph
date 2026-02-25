@@ -732,38 +732,97 @@ program
 // --- DASHBOARD COMMANDS ---
 
 program
+  .command('depend <from> <to>')
+  .description('Declare that <from> depends on <to> (both must be task: nodes)')
+  .action(async (from: string, to: string) => {
+    try {
+      const agentId = process.env['XYPH_AGENT_ID'] ?? DEFAULT_AGENT_ID;
+      const { WarpWeaverAdapter } = await import('./src/infrastructure/adapters/WarpWeaverAdapter.js');
+      const { WeaverService } = await import('./src/domain/services/WeaverService.js');
+
+      const adapter = new WarpWeaverAdapter(process.cwd(), agentId);
+      const service = new WeaverService(adapter);
+
+      await service.validateDependency(from, to);
+      const { patchSha } = await adapter.addDependency(from, to);
+      console.log(styled(getTheme().theme.semantic.success, `[OK] ${from} now depends on ${to} (patch: ${patchSha.slice(0, 7)})`));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(styled(getTheme().theme.semantic.error, `[ERROR] ${msg}`));
+      process.exit(1);
+    }
+  });
+
+program
   .command('status')
   .description('Show a snapshot of the WARP graph')
-  .option('--view <name>', 'roadmap | lineage | all | inbox | submissions', 'roadmap')
+  .option('--view <name>', 'roadmap | lineage | all | inbox | submissions | deps', 'roadmap')
   .option('--include-graveyard', 'include GRAVEYARD tasks in output (excluded by default)')
   .action(async (opts: { view: string; includeGraveyard?: boolean }) => {
     try {
       const agentId = process.env['XYPH_AGENT_ID'] ?? DEFAULT_AGENT_ID;
-      const { WarpDashboardAdapter } = await import('./src/infrastructure/adapters/WarpDashboardAdapter.js');
-      const { DashboardService } = await import('./src/domain/services/DashboardService.js');
-      const { renderRoadmap, renderLineage, renderAll, renderInbox, renderSubmissions } = await import('./src/tui/render-status.js');
-
-      const adapter = new WarpDashboardAdapter(process.cwd(), agentId);
-      const service = new DashboardService(adapter);
-      const raw = await service.getSnapshot();
-      const snapshot = service.filterSnapshot(raw, { includeGraveyard: opts.includeGraveyard ?? false });
-
       const view = opts.view;
-      const validViews = ['roadmap', 'lineage', 'all', 'inbox', 'submissions'];
+      const validViews = ['roadmap', 'lineage', 'all', 'inbox', 'submissions', 'deps'];
       if (!validViews.includes(view)) {
         console.error(styled(getTheme().theme.semantic.error, `[ERROR] Unknown --view '${view}'. Valid options: ${validViews.join(', ')}`));
         process.exit(1);
       }
-      if (view === 'lineage') {
-        console.log(renderLineage(snapshot));
-      } else if (view === 'all') {
-        console.log(renderAll(snapshot));
-      } else if (view === 'inbox') {
-        console.log(renderInbox(snapshot));
-      } else if (view === 'submissions') {
-        console.log(renderSubmissions(snapshot));
+
+      if (view === 'deps') {
+        const { WarpWeaverAdapter } = await import('./src/infrastructure/adapters/WarpWeaverAdapter.js');
+        const { WeaverService } = await import('./src/domain/services/WeaverService.js');
+        const { WarpDashboardAdapter } = await import('./src/infrastructure/adapters/WarpDashboardAdapter.js');
+        const { DashboardService } = await import('./src/domain/services/DashboardService.js');
+        const { renderDeps } = await import('./src/tui/render-status.js');
+
+        const weaverAdapter = new WarpWeaverAdapter(process.cwd(), agentId);
+        const weaverService = new WeaverService(weaverAdapter);
+
+        const dashAdapter = new WarpDashboardAdapter(process.cwd(), agentId);
+        const dashService = new DashboardService(dashAdapter);
+        const raw = await dashService.getSnapshot();
+        const snapshot = dashService.filterSnapshot(raw, { includeGraveyard: false });
+
+        const [frontierResult, orderResult, criticalResult] = await Promise.all([
+          weaverService.getFrontier(),
+          weaverService.getExecutionOrder(),
+          weaverService.getCriticalPath(),
+        ]);
+
+        const tasks = new Map<string, { title: string; status: string; hours: number }>();
+        for (const q of snapshot.quests) {
+          tasks.set(q.id, { title: q.title, status: q.status, hours: q.hours });
+        }
+
+        console.log(renderDeps({
+          frontier: frontierResult.frontier,
+          blockedBy: frontierResult.blockedBy,
+          executionOrder: orderResult.sorted,
+          criticalPath: criticalResult.path,
+          criticalPathHours: criticalResult.totalHours,
+          tasks,
+        }));
       } else {
-        console.log(renderRoadmap(snapshot));
+        const { WarpDashboardAdapter } = await import('./src/infrastructure/adapters/WarpDashboardAdapter.js');
+        const { DashboardService } = await import('./src/domain/services/DashboardService.js');
+        const { renderRoadmap, renderLineage, renderAll, renderInbox, renderSubmissions } = await import('./src/tui/render-status.js');
+
+        const adapter = new WarpDashboardAdapter(process.cwd(), agentId);
+        const service = new DashboardService(adapter);
+        const raw = await service.getSnapshot();
+        const snapshot = service.filterSnapshot(raw, { includeGraveyard: opts.includeGraveyard ?? false });
+
+        if (view === 'lineage') {
+          console.log(renderLineage(snapshot));
+        } else if (view === 'all') {
+          console.log(renderAll(snapshot));
+        } else if (view === 'inbox') {
+          console.log(renderInbox(snapshot));
+        } else if (view === 'submissions') {
+          console.log(renderSubmissions(snapshot));
+        } else {
+          console.log(renderRoadmap(snapshot));
+        }
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
