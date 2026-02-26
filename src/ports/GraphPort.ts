@@ -5,7 +5,7 @@ import type WarpGraph from '@git-stunts/git-warp';
  *
  * One instance per process. All adapters receive this via DI
  * and share the same underlying WarpGraph. Writes are immediately
- * visible to reads (autoMaterialize + eager _onPatchCommitted).
+ * visible to reads (autoMaterialize + eager post-commit materialization).
  */
 export interface GraphPort {
   /** Returns the shared, lazily-initialized WarpGraph instance. */

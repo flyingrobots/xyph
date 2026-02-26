@@ -28,51 +28,33 @@ describe('WarpIntakeAdapter Integration', () => {
         .setProperty('intent:sovereign-test', 'title', 'Sovereign Test Intent')
         .setProperty('intent:sovereign-test', 'requested_by', 'human.tester')
         .setProperty('intent:sovereign-test', 'created_at', 1700000000000)
-        .setProperty('intent:sovereign-test', 'type', 'intent');
-    });
-
-    await graph.patch((p) => {
-      p.addNode('task:INTAKE-001')
+        .setProperty('intent:sovereign-test', 'type', 'intent')
+        .addNode('task:INTAKE-001')
         .setProperty('task:INTAKE-001', 'title', 'Intake promote target task')
         .setProperty('task:INTAKE-001', 'status', 'INBOX')
         .setProperty('task:INTAKE-001', 'hours', 2)
-        .setProperty('task:INTAKE-001', 'type', 'task');
-    });
-
-    await graph.patch((p) => {
-      p.addNode('task:INTAKE-002')
+        .setProperty('task:INTAKE-001', 'type', 'task')
+        .addNode('task:INTAKE-002')
         .setProperty('task:INTAKE-002', 'title', 'Intake reject target task')
         .setProperty('task:INTAKE-002', 'status', 'INBOX')
         .setProperty('task:INTAKE-002', 'hours', 1)
-        .setProperty('task:INTAKE-002', 'type', 'task');
-    });
-
-    await graph.patch((p) => {
-      p.addNode('task:INTAKE-003')
+        .setProperty('task:INTAKE-002', 'type', 'task')
+        .addNode('task:INTAKE-003')
         .setProperty('task:INTAKE-003', 'title', 'Already promoted task')
         .setProperty('task:INTAKE-003', 'status', 'BACKLOG')
         .setProperty('task:INTAKE-003', 'hours', 3)
-        .setProperty('task:INTAKE-003', 'type', 'task');
-    });
-
-    await graph.patch((p) => {
-      p.addNode('task:INTAKE-004')
+        .setProperty('task:INTAKE-003', 'type', 'task')
+        .addNode('task:INTAKE-004')
         .setProperty('task:INTAKE-004', 'title', 'GRAVEYARD task for reject test')
         .setProperty('task:INTAKE-004', 'status', 'GRAVEYARD')
         .setProperty('task:INTAKE-004', 'hours', 1)
-        .setProperty('task:INTAKE-004', 'type', 'task');
-    });
-
-    await graph.patch((p) => {
-      p.addNode('task:INTAKE-FORBIDDEN')
+        .setProperty('task:INTAKE-004', 'type', 'task')
+        .addNode('task:INTAKE-FORBIDDEN')
         .setProperty('task:INTAKE-FORBIDDEN', 'title', 'Forbidden authority test task')
         .setProperty('task:INTAKE-FORBIDDEN', 'status', 'INBOX')
         .setProperty('task:INTAKE-FORBIDDEN', 'hours', 1)
-        .setProperty('task:INTAKE-FORBIDDEN', 'type', 'task');
-    });
-
-    await graph.patch((p) => {
-      p.addNode('task:INTAKE-ALREADY-PROMOTED')
+        .setProperty('task:INTAKE-FORBIDDEN', 'type', 'task')
+        .addNode('task:INTAKE-ALREADY-PROMOTED')
         .setProperty('task:INTAKE-ALREADY-PROMOTED', 'title', 'Already promoted task for order-independent test')
         .setProperty('task:INTAKE-ALREADY-PROMOTED', 'status', 'BACKLOG')
         .setProperty('task:INTAKE-ALREADY-PROMOTED', 'hours', 1)

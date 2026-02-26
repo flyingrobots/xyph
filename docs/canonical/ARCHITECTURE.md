@@ -1,26 +1,109 @@
 # ARCHITECTURE
 
-## Modules
-- ingest
-- normalize
-- classify
-- merge
-- rebalance
-- schedule
-- emit
-- policy-engine
-- graph-core
-- audit-log
-- review-gate
+## Hexagonal Architecture (Ports & Adapters)
 
-## Dependency Law
-Pipeline modules may depend on graph-core, policy-engine, and schemas.
-No module may depend on UI adapters for core logic.
+```
+  Driving Adapters              Domain Core               Driven Adapters
+ ┌──────────────┐        ┌───────────────────┐        ┌──────────────────┐
+ │ xyph-actuator│───────▶│  domain/entities  │        │ WarpGraphAdapter │
+ │  (CLI)       │        │  domain/services  │◀──────▶│ WarpIntakeAdapter│
+ ├──────────────┤        │  domain/models    │  ports  │ WarpSubmission..│
+ │xyph-dashboard│───────▶│                   │◀──────▶│ WarpRoadmap...  │
+ │  (TUI/Ink)   │        └───────────────────┘        │ GitWorkspace... │
+ ├──────────────┤                                     └──────────────────┘
+ │ coordinator  │
+ │  (daemon)    │
+ └──────────────┘
+```
+
+### Layers
+
+- **`src/domain/entities/`** — Core business objects: `Quest`, `Intent`, `Submission`, `ApprovalGate`, `Orchestration`.
+- **`src/domain/services/`** — Domain logic: `CoordinatorService`, `SubmissionService`, `IntakeService`, `DepAnalysis`, `GuildSealService`, `SovereigntyService`, `IngestService`, `NormalizeService`, `RebalanceService`.
+- **`src/domain/models/`** — View models for the TUI dashboard (`dashboard.ts`).
+- **`src/ports/`** — Boundary interfaces: `GraphPort`, `RoadmapPort`, `IntakePort`, `SubmissionPort`, `WorkspacePort`.
+- **`src/infrastructure/adapters/`** — Concrete implementations backed by git-warp and git: `WarpGraphAdapter`, `WarpIntakeAdapter`, `WarpSubmissionAdapter`, `WarpRoadmapAdapter`, `GitWorkspaceAdapter`.
+- **`src/infrastructure/GraphContext.ts`** — Shared gateway to the WARP graph. Replaces the old dashboard adapter with `graph.query()` for typed node fetching and frontier-based cache invalidation.
+- **`src/tui/`** — Ink (React) TUI: `Dashboard.tsx`, view components, `GraphProvider.tsx` (React context), theming system.
+- **`src/validation/`** — Cross-cutting concerns: cryptographic utilities, invariant enforcement.
+
+## Shared Graph Architecture
+
+One `WarpGraph` instance per process, managed by `GraphPort` / `WarpGraphAdapter`:
+
+```
+                     GraphPort (singleton)
+                           │
+              ┌────────────┼────────────┐
+              ▼            ▼            ▼
+        IntakeAdapter  SubmissionAdapter  GraphContext
+              │            │            │
+              └────────────┴────────────┘
+                    graph.patch(...)
+```
+
+- All adapters receive `GraphPort` via DI and share the same underlying `WarpGraph`.
+- Writes via `graph.patch()` are immediately visible to reads (`autoMaterialize: true`).
+- `GraphContext` builds snapshots by querying the graph, with frontier-key caching to skip re-materialization when nothing changed.
+- `invalidateCache()` clears only `GraphContext`'s own state — never resets the shared graph.
 
 ## Data Flow
-raw_docs -> ingest -> normalized_tasks -> classified_tasks -> merged_plan
--> rebalanced_plan -> schedule_artifacts -> emitted_patch
+
+### Write Path (CLI → Graph)
+```
+xyph-actuator command → adapter.method() → graph.patch(p => { ... }) → WARP graph
+```
+
+### Read Path (Graph → TUI)
+```
+GraphContext.fetchSnapshot()
+  → syncCoverage() (discover external writes)
+  → frontier key check (cache hit? return cached)
+  → materialize() → query() → build snapshot → cache
+```
+
+### Submission Lifecycle
+```
+submit → patchset → review → revise → approve → merge/close
+                                                    │
+                                            auto-seal quest DONE
+```
+
+## Key Services
+
+| Service | Responsibility |
+|---------|---------------|
+| `CoordinatorService` | Orchestration pipeline: ingest → normalize → rebalance → emit |
+| `SubmissionService` | PR-like workflow validation (submit, revise, review, merge, close) |
+| `IntakeService` | INBOX → BACKLOG promotion with sovereignty checks |
+| `DepAnalysis` | Frontier detection, critical path DP over dependency DAG |
+| `GuildSealService` | Ed25519 signing for Project Scrolls |
+| `SovereigntyService` | Genealogy of Intent audit (Constitution Art. IV) |
+
+## Graph Node Types
+
+| Type | Prefix | Description |
+|------|--------|-------------|
+| `task` | `task:` | Quest — unit of work |
+| `intent` | `intent:` | Sovereign human Intent — causal root |
+| `campaign` | `campaign:` / `milestone:` | Grouping container |
+| `scroll` | `artifact:` | Completion artifact with Guild Seal |
+| `submission` | `submission:` | PR-like review submission |
+| `patchset` | `patchset:` | Revision within a submission |
+| `review` | `review:` | Verdict on a patchset |
+| `decision` | `decision:` | Merge/close terminal action |
+| `approval` | `approval:` | Approval gate (critical path changes) |
+
+## Dependency Law
+
+- Domain services depend only on ports (interfaces), never on adapters.
+- Adapters depend on ports + infrastructure libraries (git-warp, git).
+- TUI components depend on domain models, never on adapters directly.
+- `GraphContext` is the only component that bridges infrastructure and presentation.
 
 ## Boundary Rules
-- LLMs can propose transformations but cannot commit mutations.
-- Storage adapters are replaceable; contracts are not.
+
+- All mutations go through `graph.patch()` — no raw patch sessions.
+- Every Quest must trace lineage to a sovereign human Intent (Constitution Art. IV).
+- LLMs can propose transformations but cannot commit mutations without agent identity.
+- Storage adapters are replaceable; port contracts are not.

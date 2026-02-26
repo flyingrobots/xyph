@@ -30,6 +30,15 @@ All notable changes to XYPH will be documented in this file.
 - `WeaverService`, `WeaverPort`, `WarpWeaverAdapter` — replaced by `DepAnalysis` + direct `graph.traverse` calls.
 - `WarpDashboardAdapter.test.ts`, `DashboardService.test.ts`, `WeaverService.test.ts`, `WarpWeaverAdapter.test.ts` — tests migrated to `DepAnalysis.test.ts` and existing integration suites.
 
+**Code review — 7 issues resolved (1 critical, 2 high, 2 medium, 2 low)**
+- *Critical*: `invalidateCache()` no longer calls `graphPort.reset()` — previous behavior orphaned the shared graph and violated the singleton invariant. Now only clears `GraphContext`'s own cached snapshot and frontier key.
+- *High*: Removed inconsistent `syncCoverage()` call from the `depend` command — no other write command calls it post-refactor.
+- *High*: Inlined dead `getGraph()` wrapper in `xyph-actuator.ts` — all ~7 call sites now use `graphPort.getGraph()` directly; removed unused `WarpGraph` type import.
+- *Medium*: Reduced `getStateSnapshot()` calls in `fetchSnapshot()` from 3 to 2 — early call for cache check, post-materialize call for graphMeta and cached frontier key.
+- *Medium*: `batchNeighbors()` now uses `Promise.all` instead of `Promise.allSettled` — neighbor resolution errors surface immediately instead of being silently swallowed.
+- *Low*: Batched separate `graph.patch()` seed calls into single patches in `WarpIntakeAdapter.test.ts` and `WarpSubmissionAdapter.test.ts`.
+- *Low*: Fixed JSDoc in `GraphPort.ts` — replaced reference to private `_onPatchCommitted` with public description.
+
 ## [1.0.0-alpha.8] - 2026-02-25
 
 **Milestone 7: Weaver — Task Dependency Graph**

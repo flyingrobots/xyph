@@ -1,6 +1,5 @@
 #!/usr/bin/env -S npx tsx
 import { randomUUID } from 'node:crypto';
-import type WarpGraph from '@git-stunts/git-warp';
 import { program, InvalidArgumentError } from 'commander';
 import { getTheme, styled } from './src/tui/theme/index.js';
 import { WarpGraphAdapter } from './src/infrastructure/adapters/WarpGraphAdapter.js';
@@ -13,10 +12,6 @@ import { WarpGraphAdapter } from './src/infrastructure/adapters/WarpGraphAdapter
 const DEFAULT_AGENT_ID = 'agent.prime';
 const agentId = process.env['XYPH_AGENT_ID'] ?? DEFAULT_AGENT_ID;
 const graphPort = new WarpGraphAdapter(process.cwd(), 'xyph-roadmap', agentId);
-
-async function getGraph(): Promise<WarpGraph> {
-  return graphPort.getGraph();
-}
 
 function parseHours(val: string): number {
   const parsed = parseFloat(val);
@@ -58,7 +53,7 @@ program
         process.exit(1);
       }
 
-      const graph = await getGraph();
+      const graph = await graphPort.getGraph();
       const sha = await graph.patch((p) => {
         p.addNode(id)
           .setProperty(id, 'title', opts.title)
@@ -108,7 +103,7 @@ program
         process.exit(1);
       }
 
-      const graph = await getGraph();
+      const graph = await graphPort.getGraph();
       const now = Date.now();
 
       const sha = await graph.patch((p) => {
@@ -140,7 +135,7 @@ program
   .action(async (id: string) => {
     try {
       const agentId = process.env['XYPH_AGENT_ID'] ?? DEFAULT_AGENT_ID;
-      const graph = await getGraph();
+      const graph = await graphPort.getGraph();
 
       console.log(styled(getTheme().theme.semantic.warning, `[*] Attempting to claim ${id} as ${agentId}...`));
 
@@ -206,7 +201,7 @@ program
 
       const guildSeal = await sealService.sign(scrollPayload, agentId);
 
-      const graph = await getGraph();
+      const graph = await graphPort.getGraph();
       const scrollId = `artifact:${id}`;
 
       const sha = await graph.patch((p) => {
@@ -521,7 +516,7 @@ program
           const guildSeal = await sealService.sign(scrollPayload, agentId);
 
           // Same graph instance — decide() patch is already visible via _onPatchCommitted
-          const sealGraph = await getGraph();
+          const sealGraph = await graphPort.getGraph();
           const scrollId = `artifact:${questId}`;
 
           await sealGraph.patch((p) => {
@@ -619,7 +614,7 @@ program
         process.exit(1);
       }
 
-      const graph = await getGraph();
+      const graph = await graphPort.getGraph();
       const now = Date.now();
 
       const sha = await graph.patch((p) => {
@@ -728,8 +723,7 @@ program
         throw new Error(`[SELF_DEPENDENCY] A task cannot depend on itself: ${from}`);
       }
 
-      const graph = await getGraph();
-      await graph.syncCoverage();
+      const graph = await graphPort.getGraph();
 
       const [fromExists, toExists] = await Promise.all([
         graph.hasNode(from),

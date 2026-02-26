@@ -21,29 +21,21 @@ describe('WarpSubmissionAdapter Integration', () => {
     graphPort = new WarpGraphAdapter(repoPath, 'xyph-roadmap', agentId);
     const graph = await graphPort.getGraph();
 
-    // Seed: intent
+    // Seed: intent + two IN_PROGRESS quests
     await graph.patch((p) => {
       p.addNode('intent:test-intent')
         .setProperty('intent:test-intent', 'title', 'Test Intent for submissions')
         .setProperty('intent:test-intent', 'requested_by', 'human.tester')
         .setProperty('intent:test-intent', 'created_at', 1700000000000)
-        .setProperty('intent:test-intent', 'type', 'intent');
-    });
-
-    // Seed: IN_PROGRESS quest for submission
-    await graph.patch((p) => {
-      p.addNode('task:SUB-001')
+        .setProperty('intent:test-intent', 'type', 'intent')
+        .addNode('task:SUB-001')
         .setProperty('task:SUB-001', 'title', 'Submission target quest')
         .setProperty('task:SUB-001', 'status', 'IN_PROGRESS')
         .setProperty('task:SUB-001', 'hours', 4)
         .setProperty('task:SUB-001', 'type', 'task')
         .setProperty('task:SUB-001', 'assigned_to', 'human.tester')
-        .addEdge('task:SUB-001', 'intent:test-intent', 'authorized-by');
-    });
-
-    // Seed: IN_PROGRESS quest for full lifecycle test
-    await graph.patch((p) => {
-      p.addNode('task:SUB-002')
+        .addEdge('task:SUB-001', 'intent:test-intent', 'authorized-by')
+        .addNode('task:SUB-002')
         .setProperty('task:SUB-002', 'title', 'Full lifecycle quest')
         .setProperty('task:SUB-002', 'status', 'IN_PROGRESS')
         .setProperty('task:SUB-002', 'hours', 2)

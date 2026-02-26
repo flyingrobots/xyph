@@ -102,17 +102,14 @@ async function batchNeighbors(
   ids: string[],
 ): Promise<Map<string, NeighborEntry[]>> {
   const map = new Map<string, NeighborEntry[]>();
-  const results = await Promise.allSettled(
+  const results = await Promise.all(
     ids.map(async (id) => {
       const raw = await graph.neighbors(id, 'outgoing');
       return [id, toNeighborEntries(raw)] as const;
     }),
   );
-  for (const result of results) {
-    if (result.status === 'fulfilled') {
-      const [id, neighbors] = result.value;
-      map.set(id, neighbors);
-    }
+  for (const [id, neighbors] of results) {
+    map.set(id, neighbors);
   }
   return map;
 }
@@ -136,10 +133,8 @@ class GraphContextImpl implements GraphContext {
   }
 
   invalidateCache(): void {
-    this.graphPort.reset();
     this.cachedSnapshot = null;
     this.cachedFrontierKey = null;
-    this._graph = null;
   }
 
   filterSnapshot(
@@ -172,7 +167,7 @@ class GraphContextImpl implements GraphContext {
     // (via graph.patch()) and external writes (discovered by syncCoverage).
     // hasFrontierChanged() only detects external patches, missing same-instance mutations.
     if (this.cachedSnapshot !== null) {
-      const currentKey = await this.frontierKey(graph);
+      const currentKey = this.frontierKeyFromState(await graph.getStateSnapshot());
       if (currentKey === this.cachedFrontierKey) {
         log('No changes detected — using cached snapshot');
         return this.cachedSnapshot;
@@ -379,7 +374,7 @@ class GraphContextImpl implements GraphContext {
       asOf: Date.now(), graphMeta,
     };
     this.cachedSnapshot = snap;
-    this.cachedFrontierKey = await this.frontierKey(graph);
+    this.cachedFrontierKey = this.frontierKeyFromState(state);
     return snap;
   }
 
@@ -388,8 +383,7 @@ class GraphContextImpl implements GraphContext {
   // -------------------------------------------------------------------------
 
   /** Deterministic string key from the graph's observed frontier (writer:tick pairs). */
-  private async frontierKey(graph: WarpGraph): Promise<string> {
-    const state = await graph.getStateSnapshot();
+  private frontierKeyFromState(state: { observedFrontier: Map<string, number> } | null): string {
     if (!state) return '';
     const entries = [...state.observedFrontier.entries()].sort(([a], [b]) => a.localeCompare(b));
     return entries.map(([w, t]) => `${w}:${t}`).join(',');
