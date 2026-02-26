@@ -558,7 +558,9 @@ All notable changes to XYPH will be documented in this file.
 - **Strict Linting**: Configured ESLint with `typescript-eslint` strict rules.
 - Refined Actuator `syncWith` logic to use `syncCoverage()` for reliable multi-writer convergence.
 
-[Unreleased]: https://github.com/flyingrobots/xyph/compare/v1.0.0-alpha.7...HEAD
+[Unreleased]: https://github.com/flyingrobots/xyph/compare/v1.0.0-alpha.9...HEAD
+[1.0.0-alpha.9]: https://github.com/flyingrobots/xyph/compare/v1.0.0-alpha.8...v1.0.0-alpha.9
+[1.0.0-alpha.8]: https://github.com/flyingrobots/xyph/compare/v1.0.0-alpha.7...v1.0.0-alpha.8
 [1.0.0-alpha.7]: https://github.com/flyingrobots/xyph/compare/v1.0.0-alpha.6...v1.0.0-alpha.7
 [1.0.0-alpha.6]: https://github.com/flyingrobots/xyph/compare/v1.0.0-alpha.5...v1.0.0-alpha.6
 [1.0.0-alpha.5]: https://github.com/flyingrobots/xyph/compare/v1.0.0-alpha.4...v1.0.0-alpha.5

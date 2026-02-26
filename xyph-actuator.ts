@@ -134,7 +134,6 @@ program
   .description('Volunteer for a Quest (Optimistic Claiming Protocol)')
   .action(async (id: string) => {
     try {
-      const agentId = process.env['XYPH_AGENT_ID'] ?? DEFAULT_AGENT_ID;
       const graph = await graphPort.getGraph();
 
       console.log(styled(getTheme().theme.semantic.warning, `[*] Attempting to claim ${id} as ${agentId}...`));
@@ -732,6 +731,18 @@ program
       if (!fromExists) throw new Error(`[NOT_FOUND] Task ${from} not found in the graph`);
       if (!toExists) throw new Error(`[NOT_FOUND] Task ${to} not found in the graph`);
 
+      // Verify both nodes are actually tasks (prefix alone is not sufficient)
+      const [fromProps, toProps] = await Promise.all([
+        graph.getNodeProps(from),
+        graph.getNodeProps(to),
+      ]);
+      if (fromProps?.get('type') !== 'task') {
+        throw new Error(`[TYPE_MISMATCH] ${from} exists but is not a task (type: ${String(fromProps?.get('type') ?? 'unknown')})`);
+      }
+      if (toProps?.get('type') !== 'task') {
+        throw new Error(`[TYPE_MISMATCH] ${to} exists but is not a task (type: ${String(toProps?.get('type') ?? 'unknown')})`);
+      }
+
       // Cycle check: if `to` can already reach `from`, adding from→to closes a cycle
       const { reachable } = await graph.traverse.isReachable(to, from, { labelFilter: 'depends-on' });
       if (reachable) {
@@ -778,6 +789,7 @@ program
         );
         const taskIds = snapshot.quests.map((q) => q.id);
         const { sorted } = await ctx.graph.traverse.topologicalSort(taskIds, {
+          dir: 'in',
           labelFilter: 'depends-on',
         });
 
