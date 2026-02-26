@@ -2,9 +2,14 @@
 
 All notable changes to XYPH will be documented in this file.
 
-## [Unreleased]
+## [1.0.0-alpha.9] - 2026-02-25
 
-### Changed — Observer-View & Direct Graph Refactor
+### Changed — Shared Graph Architecture & GraphContext Refactor
+
+**Architecture: one WarpGraph instance per process**
+- Introduced `GraphPort` (port) and `WarpGraphAdapter` (infrastructure) — a process-wide singleton for the shared `WarpGraph` instance. All adapters receive it via dependency injection instead of creating their own `WarpGraphHolder`.
+- Rewired `WarpSubmissionAdapter`, `WarpIntakeAdapter`, `WarpRoadmapAdapter`, `coordinator-daemon`, `xyph-actuator`, and `xyph-dashboard` to use `GraphPort` DI.
+- Eliminated WRITER_CAS_CONFLICT errors caused by multiple `WarpGraphHolder` instances sharing the same `writerId`.
 
 **Architecture: kill the adapter-walks-every-node anti-pattern**
 - Replaced monolithic `WarpDashboardAdapter` (542 LoC) + `DashboardService` (113 LoC) with `GraphContext` — a single shared gateway using `graph.query()` for typed node fetching and `graph.traverse` for graph algorithms.
@@ -12,12 +17,15 @@ All notable changes to XYPH will be documented in this file.
 - Extracted `DepAnalysis.ts` — pure domain functions for frontier detection and critical-path DP, replacing the algorithmic parts of `WeaverService`.
 
 **Performance: atomic `graph.patch()` for all writes**
-- Converted all adapters (`WarpSubmissionAdapter`, `WarpIntakeAdapter`, `WarpRoadmapAdapter`) and `xyph-actuator.ts` from manual `syncCoverage() + materialize() + createPatchSession() + commit()` to `graph.patch(p => { ... })`.
-- Eliminated redundant `materialize()` calls — `autoMaterialize: true` handles lazy materialization on reads.
-- `syncCoverage()` retained only before reads that need to discover other writers' patches.
+- Converted all adapters and `xyph-actuator.ts` from manual `syncCoverage() + materialize() + createPatchSession() + commit()` to `graph.patch(p => { ... })`.
+- Eliminated redundant `materialize()` and `syncCoverage()` calls — `autoMaterialize: true` makes writes immediately visible to reads on the same instance.
 - Submission lifecycle integration test: **15s timeout → default 5s**, actual runtime ~1.2s.
 
+### Fixed
+- `GraphContext` cache invalidation: replaced `hasFrontierChanged()` (only detects external patches) with frontier key comparison that catches both in-process `graph.patch()` writes and external mutations from `syncCoverage()`.
+
 ### Removed
+- `WarpGraphHolder` — replaced by `WarpGraphAdapter`.
 - `WarpDashboardAdapter`, `DashboardService`, `DashboardPort` — replaced by `GraphContext`.
 - `WeaverService`, `WeaverPort`, `WarpWeaverAdapter` — replaced by `DepAnalysis` + direct `graph.traverse` calls.
 - `WarpDashboardAdapter.test.ts`, `DashboardService.test.ts`, `WeaverService.test.ts`, `WarpWeaverAdapter.test.ts` — tests migrated to `DepAnalysis.test.ts` and existing integration suites.

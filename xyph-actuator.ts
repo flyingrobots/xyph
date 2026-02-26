@@ -1,9 +1,9 @@
 #!/usr/bin/env -S npx tsx
 import { randomUUID } from 'node:crypto';
-import WarpGraph, { GitGraphAdapter } from '@git-stunts/git-warp';
-import Plumbing from '@git-stunts/plumbing';
+import type WarpGraph from '@git-stunts/git-warp';
 import { program, InvalidArgumentError } from 'commander';
 import { getTheme, styled } from './src/tui/theme/index.js';
+import { WarpGraphAdapter } from './src/infrastructure/adapters/WarpGraphAdapter.js';
 
 /**
  * XYPH Actuator - The "Hands" of the Causal Agent.
@@ -11,18 +11,11 @@ import { getTheme, styled } from './src/tui/theme/index.js';
  */
 
 const DEFAULT_AGENT_ID = 'agent.prime';
-const plumbing = Plumbing.createDefault({ cwd: process.cwd() });
-const persistence = new GitGraphAdapter({ plumbing });
+const agentId = process.env['XYPH_AGENT_ID'] ?? DEFAULT_AGENT_ID;
+const graphPort = new WarpGraphAdapter(process.cwd(), 'xyph-roadmap', agentId);
 
 async function getGraph(): Promise<WarpGraph> {
-  const writerId = process.env['XYPH_AGENT_ID'] ?? DEFAULT_AGENT_ID;
-  const graph = await WarpGraph.open({
-    persistence,
-    graphName: 'xyph-roadmap',
-    writerId,
-    autoMaterialize: true,
-  });
-  return graph;
+  return graphPort.getGraph();
 }
 
 function parseHours(val: string): number {
@@ -190,7 +183,7 @@ program
       // Guard: warn if a non-terminal submission exists for this quest
       try {
         const { WarpSubmissionAdapter } = await import('./src/infrastructure/adapters/WarpSubmissionAdapter.js');
-        const subAdapter = new WarpSubmissionAdapter(process.cwd(), agentId);
+        const subAdapter = new WarpSubmissionAdapter(graphPort, agentId);
         const openSubs = await subAdapter.getOpenSubmissionsForQuest(id);
         if (openSubs.length > 0) {
           console.log(styled(getTheme().theme.semantic.warning,
@@ -302,7 +295,7 @@ program
         process.exit(1);
       }
 
-      const adapter = new WarpSubmissionAdapter(process.cwd(), agentId);
+      const adapter = new WarpSubmissionAdapter(graphPort, agentId);
       const service = new SubmissionService(adapter);
       await service.validateSubmit(questId, agentId);
 
@@ -364,7 +357,7 @@ program
         process.exit(1);
       }
 
-      const adapter = new WarpSubmissionAdapter(process.cwd(), agentId);
+      const adapter = new WarpSubmissionAdapter(graphPort, agentId);
       const service = new SubmissionService(adapter);
       await service.validateRevise(submissionId, agentId);
 
@@ -432,7 +425,7 @@ program
         process.exit(1);
       }
 
-      const adapter = new WarpSubmissionAdapter(process.cwd(), agentId);
+      const adapter = new WarpSubmissionAdapter(graphPort, agentId);
       const service = new SubmissionService(adapter);
       await service.validateReview(patchsetId, agentId);
 
@@ -471,7 +464,7 @@ program
       const { GitWorkspaceAdapter } = await import('./src/infrastructure/adapters/GitWorkspaceAdapter.js');
       const { GuildSealService } = await import('./src/domain/services/GuildSealService.js');
 
-      const adapter = new WarpSubmissionAdapter(process.cwd(), agentId);
+      const adapter = new WarpSubmissionAdapter(graphPort, agentId);
       const service = new SubmissionService(adapter);
       const { tipPatchsetId } = await service.validateMerge(submissionId, agentId, opts.patchset);
 
@@ -527,9 +520,8 @@ program
           };
           const guildSeal = await sealService.sign(scrollPayload, agentId);
 
-          // Fresh graph instance to see all prior patches (including the decide() above)
+          // Same graph instance — decide() patch is already visible via _onPatchCommitted
           const sealGraph = await getGraph();
-          await sealGraph.syncCoverage();
           const scrollId = `artifact:${questId}`;
 
           await sealGraph.patch((p) => {
@@ -579,7 +571,7 @@ program
       const { WarpSubmissionAdapter } = await import('./src/infrastructure/adapters/WarpSubmissionAdapter.js');
       const { SubmissionService } = await import('./src/domain/services/SubmissionService.js');
 
-      const adapter = new WarpSubmissionAdapter(process.cwd(), agentId);
+      const adapter = new WarpSubmissionAdapter(graphPort, agentId);
       const service = new SubmissionService(adapter);
       await service.validateClose(submissionId, agentId);
 
@@ -660,7 +652,7 @@ program
       const agentId = process.env['XYPH_AGENT_ID'] ?? DEFAULT_AGENT_ID;
       const { WarpIntakeAdapter } = await import('./src/infrastructure/adapters/WarpIntakeAdapter.js');
 
-      const intake = new WarpIntakeAdapter(process.cwd(), agentId);
+      const intake = new WarpIntakeAdapter(graphPort, agentId);
       const sha = await intake.promote(id, opts.intent, opts.campaign);
 
       console.log(styled(getTheme().theme.semantic.success, `[OK] Task ${id} promoted to BACKLOG.`));
@@ -683,7 +675,7 @@ program
       const agentId = process.env['XYPH_AGENT_ID'] ?? DEFAULT_AGENT_ID;
       const { WarpIntakeAdapter } = await import('./src/infrastructure/adapters/WarpIntakeAdapter.js');
 
-      const intake = new WarpIntakeAdapter(process.cwd(), agentId);
+      const intake = new WarpIntakeAdapter(graphPort, agentId);
       const sha = await intake.reject(id, opts.rationale);
 
       console.log(styled(getTheme().theme.semantic.success, `[OK] Task ${id} moved to GRAVEYARD.`));
@@ -705,7 +697,7 @@ program
       const agentId = process.env['XYPH_AGENT_ID'] ?? DEFAULT_AGENT_ID;
       const { WarpIntakeAdapter } = await import('./src/infrastructure/adapters/WarpIntakeAdapter.js');
 
-      const intake = new WarpIntakeAdapter(process.cwd(), agentId);
+      const intake = new WarpIntakeAdapter(graphPort, agentId);
       const sha = await intake.reopen(id);
 
       console.log(styled(getTheme().theme.semantic.success, `[OK] Task ${id} reopened to INBOX.`));
@@ -770,7 +762,6 @@ program
   .option('--include-graveyard', 'include GRAVEYARD tasks in output (excluded by default)')
   .action(async (opts: { view: string; includeGraveyard?: boolean }) => {
     try {
-      const agentId = process.env['XYPH_AGENT_ID'] ?? DEFAULT_AGENT_ID;
       const view = opts.view;
       const validViews = ['roadmap', 'lineage', 'all', 'inbox', 'submissions', 'deps'];
       if (!validViews.includes(view)) {
@@ -779,7 +770,7 @@ program
       }
 
       const { createGraphContext } = await import('./src/infrastructure/GraphContext.js');
-      const ctx = createGraphContext(process.cwd(), agentId);
+      const ctx = createGraphContext(graphPort);
       const raw = await ctx.fetchSnapshot();
       const snapshot = ctx.filterSnapshot(raw, { includeGraveyard: opts.includeGraveyard ?? false });
 
@@ -842,7 +833,7 @@ program
       const { WarpRoadmapAdapter } = await import('./src/infrastructure/adapters/WarpRoadmapAdapter.js');
       const { SovereigntyService } = await import('./src/domain/services/SovereigntyService.js');
 
-      const adapter = new WarpRoadmapAdapter(process.cwd(), 'xyph-roadmap', process.env['XYPH_AGENT_ID'] ?? DEFAULT_AGENT_ID);
+      const adapter = new WarpRoadmapAdapter(graphPort);
       const service = new SovereigntyService(adapter);
 
       const violations = await service.auditBacklog();

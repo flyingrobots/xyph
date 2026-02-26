@@ -1,16 +1,14 @@
+import type { GraphPort } from '../../ports/GraphPort.js';
 import WarpGraph, { GitGraphAdapter, type LoggerPort } from '@git-stunts/git-warp';
 import Plumbing from '@git-stunts/plumbing';
 
 /**
- * Shared lazy-initialization wrapper for WarpGraph instances.
+ * WarpGraphAdapter — single shared WarpGraph instance.
  *
- * All three WARP adapters (Dashboard, Intake, Roadmap) had near-identical
- * getGraph() / initGraph() boilerplate. This class consolidates the pattern:
- * - Lazy singleton: graph is opened on first access.
- * - Error recovery: if initialization fails, the cached promise is cleared
- *   so the next call can retry (prevents permanently-broken adapters).
+ * Replaces WarpGraphHolder. All adapters receive this via DI
+ * so they share one graph instance, one Lamport clock, one CAS chain.
  */
-export class WarpGraphHolder {
+export class WarpGraphAdapter implements GraphPort {
   private graphPromise: Promise<WarpGraph> | null = null;
 
   constructor(
@@ -22,7 +20,7 @@ export class WarpGraphHolder {
 
   public async getGraph(): Promise<WarpGraph> {
     if (!this.graphPromise) {
-      this.graphPromise = this.initGraph().catch((err) => {
+      this.graphPromise = this.open().catch((err) => {
         this.graphPromise = null;
         throw err;
       });
@@ -30,19 +28,14 @@ export class WarpGraphHolder {
     return this.graphPromise;
   }
 
-  /**
-   * Clears the cached graph promise, forcing a fresh initialization on the next
-   * getGraph() call. Use after external mutations (e.g., intake promote/reject)
-   * to ensure the next read sees the latest graph state.
-   */
   public reset(): void {
     this.graphPromise = null;
   }
 
-  private async initGraph(): Promise<WarpGraph> {
+  private async open(): Promise<WarpGraph> {
     const plumbing = Plumbing.createDefault({ cwd: this.cwd });
     const persistence = new GitGraphAdapter({ plumbing });
-    const graph = await WarpGraph.open({
+    return WarpGraph.open({
       persistence,
       graphName: this.graphName,
       writerId: this.writerId,
@@ -50,6 +43,5 @@ export class WarpGraphHolder {
       checkpointPolicy: { every: 50 },
       logger: this.logger,
     });
-    return graph;
   }
 }

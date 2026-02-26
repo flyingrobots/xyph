@@ -1,15 +1,11 @@
 import type { IntakePort } from '../../ports/IntakePort.js';
-import { WarpGraphHolder } from '../helpers/WarpGraphHolder.js';
+import type { GraphPort } from '../../ports/GraphPort.js';
 
 export class WarpIntakeAdapter implements IntakePort {
-  private readonly graphHolder: WarpGraphHolder;
-
   constructor(
-    cwd: string,
+    private readonly graphPort: GraphPort,
     private readonly agentId: string,
-  ) {
-    this.graphHolder = new WarpGraphHolder(cwd, 'xyph-roadmap', agentId);
-  }
+  ) {}
 
   private validateQuestId(questId: string): void {
     if (!questId.startsWith('task:')) {
@@ -32,8 +28,7 @@ export class WarpIntakeAdapter implements IntakePort {
       );
     }
 
-    const graph = await this.graphHolder.getGraph();
-    await graph.syncCoverage();
+    const graph = await this.graphPort.getGraph();
 
     const props = await graph.getNodeProps(questId);
     if (props === null) {
@@ -67,8 +62,7 @@ export class WarpIntakeAdapter implements IntakePort {
       throw new Error(`[MISSING_ARG] --rationale is required and must be non-empty`);
     }
 
-    const graph = await this.graphHolder.getGraph();
-    await graph.syncCoverage();
+    const graph = await this.graphPort.getGraph();
 
     const props = await graph.getNodeProps(questId);
     if (props === null) {
@@ -98,8 +92,7 @@ export class WarpIntakeAdapter implements IntakePort {
       );
     }
 
-    const graph = await this.graphHolder.getGraph();
-    await graph.syncCoverage();
+    const graph = await this.graphPort.getGraph();
 
     const props = await graph.getNodeProps(questId);
     if (props === null) {

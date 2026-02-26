@@ -12,7 +12,7 @@
  */
 
 import type WarpGraph from '@git-stunts/git-warp';
-import type { LoggerPort, QueryResultV1, AggregateResult } from '@git-stunts/git-warp';
+import type { QueryResultV1, AggregateResult } from '@git-stunts/git-warp';
 import { VALID_STATUSES as VALID_QUEST_STATUSES } from '../domain/entities/Quest.js';
 import type { QuestStatus } from '../domain/entities/Quest.js';
 import type { ApprovalGateTrigger } from '../domain/entities/ApprovalGate.js';
@@ -40,7 +40,7 @@ import type {
   ScrollNode,
   SubmissionNode,
 } from '../domain/models/dashboard.js';
-import { WarpGraphHolder } from './helpers/WarpGraphHolder.js';
+import type { GraphPort } from '../ports/GraphPort.js';
 import { toNeighborEntries, type NeighborEntry } from './helpers/isNeighborEntry.js';
 
 // ---------------------------------------------------------------------------
@@ -77,8 +77,8 @@ export interface GraphContext {
   invalidateCache(): void;
 }
 
-export function createGraphContext(cwd: string, agentId: string, logger?: LoggerPort): GraphContext {
-  return new GraphContextImpl(cwd, agentId, logger);
+export function createGraphContext(graphPort: GraphPort): GraphContext {
+  return new GraphContextImpl(graphPort);
 }
 
 // ---------------------------------------------------------------------------
@@ -122,13 +122,11 @@ async function batchNeighbors(
 // ---------------------------------------------------------------------------
 
 class GraphContextImpl implements GraphContext {
-  private readonly holder: WarpGraphHolder;
   private cachedSnapshot: GraphSnapshot | null = null;
+  private cachedFrontierKey: string | null = null;
   private _graph: WarpGraph | null = null;
 
-  constructor(cwd: string, agentId: string, logger?: LoggerPort) {
-    this.holder = new WarpGraphHolder(cwd, 'xyph-roadmap', agentId, logger);
-  }
+  constructor(private readonly graphPort: GraphPort) {}
 
   get graph(): WarpGraph {
     if (!this._graph) {
@@ -138,8 +136,9 @@ class GraphContextImpl implements GraphContext {
   }
 
   invalidateCache(): void {
-    this.holder.reset();
+    this.graphPort.reset();
     this.cachedSnapshot = null;
+    this.cachedFrontierKey = null;
     this._graph = null;
   }
 
@@ -162,15 +161,22 @@ class GraphContextImpl implements GraphContext {
 
     // --- Lifecycle: open → sync → materialize → checkpoint ---
     log('Opening project graph…');
-    const graph = await this.holder.getGraph();
+    const graph = await this.graphPort.getGraph();
     this._graph = graph;
 
+    // Dashboard polling: discover external writers' patches before querying
     log('Syncing coverage…');
     await graph.syncCoverage();
 
-    if (this.cachedSnapshot !== null && !(await graph.hasFrontierChanged())) {
-      log('No changes detected — using cached snapshot');
-      return this.cachedSnapshot;
+    // Cache check: compare frontier key to detect both in-process writes
+    // (via graph.patch()) and external writes (discovered by syncCoverage).
+    // hasFrontierChanged() only detects external patches, missing same-instance mutations.
+    if (this.cachedSnapshot !== null) {
+      const currentKey = await this.frontierKey(graph);
+      if (currentKey === this.cachedFrontierKey) {
+        log('No changes detected — using cached snapshot');
+        return this.cachedSnapshot;
+      }
     }
 
     log('Materializing graph…');
@@ -373,7 +379,20 @@ class GraphContextImpl implements GraphContext {
       asOf: Date.now(), graphMeta,
     };
     this.cachedSnapshot = snap;
+    this.cachedFrontierKey = await this.frontierKey(graph);
     return snap;
+  }
+
+  // -------------------------------------------------------------------------
+  // Cache helpers
+  // -------------------------------------------------------------------------
+
+  /** Deterministic string key from the graph's observed frontier (writer:tick pairs). */
+  private async frontierKey(graph: WarpGraph): Promise<string> {
+    const state = await graph.getStateSnapshot();
+    if (!state) return '';
+    const entries = [...state.observedFrontier.entries()].sort(([a], [b]) => a.localeCompare(b));
+    return entries.map(([w, t]) => `${w}:${t}`).join(',');
   }
 
   // -------------------------------------------------------------------------
