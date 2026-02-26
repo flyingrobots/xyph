@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { WarpDashboardAdapter } from '../../src/infrastructure/adapters/WarpDashboardAdapter.js';
+import { createGraphContext } from '../../src/infrastructure/GraphContext.js';
 import { WarpIntakeAdapter } from '../../src/infrastructure/adapters/WarpIntakeAdapter.js';
 import { execSync } from 'node:child_process';
 import os from 'node:os';
@@ -12,21 +12,18 @@ import Plumbing from '@git-stunts/plumbing';
 /**
  * Cross-Adapter Visibility Tests
  *
- * The dashboard TUI uses two separate WARP adapters with independent
- * WarpGraphHolder instances:
- *   - WarpDashboardAdapter (reads snapshots)
- *   - WarpIntakeAdapter (writes mutations: promote, reject)
+ * The dashboard TUI uses GraphContext for reads and a separate
+ * WarpIntakeAdapter for mutations (promote, reject).
  *
- * These tests verify that a Dashboard adapter instance that has already
+ * These tests verify that a GraphContext instance that has already
  * cached a snapshot can see mutations committed by a separate Intake
  * adapter instance — WITHOUT calling invalidateCache(). This exercises
- * the hasFrontierChanged() → syncCoverage() → re-materialize path that
- * replaced the old invalidateCache()-on-every-refresh pattern.
+ * the hasFrontierChanged() → syncCoverage() → re-materialize path.
  *
  * Critical invariant: same writerId across both adapters ensures
  * git-warp's coverage checkpoint mechanism reliably surfaces mutations.
  */
-describe('Cross-Adapter Visibility (Dashboard sees Intake mutations)', () => {
+describe('Cross-Adapter Visibility (GraphContext sees Intake mutations)', () => {
   let repoPath: string;
   const graphName = 'xyph-roadmap';
   const writerId = 'human.tester';
@@ -101,10 +98,10 @@ describe('Cross-Adapter Visibility (Dashboard sees Intake mutations)', () => {
     }
   });
 
-  it('Dashboard sees promote mutation from a separate Intake adapter (no invalidateCache)', async () => {
-    // Step 1: Dashboard fetches and caches a snapshot
-    const dashboard = new WarpDashboardAdapter(repoPath, writerId);
-    const before = await dashboard.fetchSnapshot();
+  it('GraphContext sees promote mutation from a separate Intake adapter (no invalidateCache)', async () => {
+    // Step 1: GraphContext fetches and caches a snapshot
+    const ctx = createGraphContext(repoPath, writerId);
+    const before = await ctx.fetchSnapshot();
     const questBefore = before.quests.find((q) => q.id === 'task:XVIS-001');
     expect(questBefore).toBeDefined();
     expect(questBefore?.status).toBe('INBOX');
@@ -113,19 +110,18 @@ describe('Cross-Adapter Visibility (Dashboard sees Intake mutations)', () => {
     const intake = new WarpIntakeAdapter(repoPath, writerId);
     await intake.promote('task:XVIS-001', 'intent:cross-test');
 
-    // Step 3: Dashboard fetches again — must see BACKLOG, NOT stale INBOX
-    // This exercises hasFrontierChanged() → syncCoverage() → re-materialize
-    const after = await dashboard.fetchSnapshot();
+    // Step 3: GraphContext fetches again — must see BACKLOG, NOT stale INBOX
+    const after = await ctx.fetchSnapshot();
     const questAfter = after.quests.find((q) => q.id === 'task:XVIS-001');
     expect(questAfter).toBeDefined();
     expect(questAfter?.status).toBe('BACKLOG');
     expect(questAfter?.intentId).toBe('intent:cross-test');
   });
 
-  it('Dashboard sees reject mutation from a separate Intake adapter (no invalidateCache)', async () => {
-    // Step 1: Dashboard fetches and caches
-    const dashboard = new WarpDashboardAdapter(repoPath, writerId);
-    const before = await dashboard.fetchSnapshot();
+  it('GraphContext sees reject mutation from a separate Intake adapter (no invalidateCache)', async () => {
+    // Step 1: GraphContext fetches and caches
+    const ctx = createGraphContext(repoPath, writerId);
+    const before = await ctx.fetchSnapshot();
     const questBefore = before.quests.find((q) => q.id === 'task:XVIS-002');
     expect(questBefore).toBeDefined();
     expect(questBefore?.status).toBe('INBOX');
@@ -134,8 +130,8 @@ describe('Cross-Adapter Visibility (Dashboard sees Intake mutations)', () => {
     const intake = new WarpIntakeAdapter(repoPath, writerId);
     await intake.reject('task:XVIS-002', 'Not aligned with goals');
 
-    // Step 3: Dashboard re-fetches without invalidateCache()
-    const after = await dashboard.fetchSnapshot();
+    // Step 3: GraphContext re-fetches without invalidateCache()
+    const after = await ctx.fetchSnapshot();
     const questAfter = after.quests.find((q) => q.id === 'task:XVIS-002');
     expect(questAfter).toBeDefined();
     expect(questAfter?.status).toBe('GRAVEYARD');
@@ -143,9 +139,9 @@ describe('Cross-Adapter Visibility (Dashboard sees Intake mutations)', () => {
   });
 
   it('graphMeta is populated and snapshot updates after an Intake mutation', async () => {
-    // Step 1: Dashboard fetches — graphMeta should be populated
-    const dashboard = new WarpDashboardAdapter(repoPath, writerId);
-    const before = await dashboard.fetchSnapshot();
+    // Step 1: GraphContext fetches — graphMeta should be populated
+    const ctx = createGraphContext(repoPath, writerId);
+    const before = await ctx.fetchSnapshot();
     expect(before.graphMeta).toBeDefined();
     expect(before.graphMeta?.maxTick).toBeGreaterThan(0);
     expect(before.graphMeta?.writerCount).toBeGreaterThan(0);
@@ -159,8 +155,8 @@ describe('Cross-Adapter Visibility (Dashboard sees Intake mutations)', () => {
     const intake = new WarpIntakeAdapter(repoPath, writerId);
     await intake.reject('task:XVIS-003', 'GraphMeta mutation test');
 
-    // Step 3: Dashboard re-fetches — must see the mutation AND have valid graphMeta
-    const after = await dashboard.fetchSnapshot();
+    // Step 3: GraphContext re-fetches — must see the mutation AND have valid graphMeta
+    const after = await ctx.fetchSnapshot();
     expect(after.graphMeta).toBeDefined();
     expect(after.graphMeta?.maxTick).toBeGreaterThanOrEqual(before.graphMeta?.maxTick ?? 0);
 
@@ -172,13 +168,13 @@ describe('Cross-Adapter Visibility (Dashboard sees Intake mutations)', () => {
   });
 
   it('cached snapshot is returned when no mutations occurred (hasFrontierChanged short-circuit)', async () => {
-    const dashboard = new WarpDashboardAdapter(repoPath, writerId);
+    const ctx = createGraphContext(repoPath, writerId);
 
     // First fetch — full materialize
-    const first = await dashboard.fetchSnapshot();
+    const first = await ctx.fetchSnapshot();
 
     // Second fetch — should short-circuit via hasFrontierChanged() = false
-    const second = await dashboard.fetchSnapshot();
+    const second = await ctx.fetchSnapshot();
 
     // Cache hit: second fetch returns the same object reference (no rebuild)
     expect(second).toBe(first);

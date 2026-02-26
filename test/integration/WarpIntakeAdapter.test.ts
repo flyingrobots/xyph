@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { WarpIntakeAdapter } from '../../src/infrastructure/adapters/WarpIntakeAdapter.js';
-import { WarpDashboardAdapter } from '../../src/infrastructure/adapters/WarpDashboardAdapter.js';
+import { createGraphContext } from '../../src/infrastructure/GraphContext.js';
 import { execSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
@@ -131,7 +131,7 @@ describe('WarpIntakeAdapter Integration', () => {
     await adapter.promote('task:INTAKE-001', 'intent:sovereign-test');
 
     // Verify via fresh reader with same writerId (single-writer reads are reliable)
-    const reader = new WarpDashboardAdapter(repoPath, humanAgentId);
+    const reader = createGraphContext(repoPath, humanAgentId);
     const snapshot = await reader.fetchSnapshot();
     const q = snapshot.quests.find((q) => q.id === 'task:INTAKE-001');
     expect(q).toBeDefined();
@@ -167,8 +167,8 @@ describe('WarpIntakeAdapter Integration', () => {
     const after = Date.now();
 
     // Verify via fresh reader with same writerId
-    const reader = new WarpDashboardAdapter(repoPath, humanAgentId);
-    // fetchSnapshot returns ALL quests (GRAVEYARD included); DashboardService.filterSnapshot filters
+    const reader = createGraphContext(repoPath, humanAgentId);
+    // fetchSnapshot returns ALL quests (GRAVEYARD included); filterSnapshot filters
     const snapshot = await reader.fetchSnapshot();
     const q = snapshot.quests.find((q) => q.id === 'task:INTAKE-002');
     expect(q).toBeDefined();

@@ -4,6 +4,24 @@ All notable changes to XYPH will be documented in this file.
 
 ## [Unreleased]
 
+### Changed — Observer-View & Direct Graph Refactor
+
+**Architecture: kill the adapter-walks-every-node anti-pattern**
+- Replaced monolithic `WarpDashboardAdapter` (542 LoC) + `DashboardService` (113 LoC) with `GraphContext` — a single shared gateway using `graph.query()` for typed node fetching and `graph.traverse` for graph algorithms.
+- New `GraphProvider.tsx` (React context) delivers the `GraphContext` to TUI components.
+- Extracted `DepAnalysis.ts` — pure domain functions for frontier detection and critical-path DP, replacing the algorithmic parts of `WeaverService`.
+
+**Performance: atomic `graph.patch()` for all writes**
+- Converted all adapters (`WarpSubmissionAdapter`, `WarpIntakeAdapter`, `WarpRoadmapAdapter`) and `xyph-actuator.ts` from manual `syncCoverage() + materialize() + createPatchSession() + commit()` to `graph.patch(p => { ... })`.
+- Eliminated redundant `materialize()` calls — `autoMaterialize: true` handles lazy materialization on reads.
+- `syncCoverage()` retained only before reads that need to discover other writers' patches.
+- Submission lifecycle integration test: **15s timeout → default 5s**, actual runtime ~1.2s.
+
+### Removed
+- `WarpDashboardAdapter`, `DashboardService`, `DashboardPort` — replaced by `GraphContext`.
+- `WeaverService`, `WeaverPort`, `WarpWeaverAdapter` — replaced by `DepAnalysis` + direct `graph.traverse` calls.
+- `WarpDashboardAdapter.test.ts`, `DashboardService.test.ts`, `WeaverService.test.ts`, `WarpWeaverAdapter.test.ts` — tests migrated to `DepAnalysis.test.ts` and existing integration suites.
+
 ## [1.0.0-alpha.8] - 2026-02-25
 
 **Milestone 7: Weaver — Task Dependency Graph**

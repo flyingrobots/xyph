@@ -1,5 +1,4 @@
 import type { SubmissionPort } from '../../ports/SubmissionPort.js';
-import { createPatchSession } from '../helpers/createPatchSession.js';
 import { WarpGraphHolder } from '../helpers/WarpGraphHolder.js';
 import { toNeighborEntries } from '../helpers/isNeighborEntry.js';
 import type { SubmissionReadModel } from '../../domain/services/SubmissionService.js';
@@ -12,6 +11,8 @@ import type WarpGraph from '@git-stunts/git-warp';
  * WarpSubmissionAdapter — graph-only persistence for the submission lifecycle.
  * Implements both the write port (SubmissionPort) and read model (SubmissionReadModel)
  * needed by SubmissionService.
+ *
+ * Uses graph.patch() for atomic writes and autoMaterialize for lazy reads.
  */
 export class WarpSubmissionAdapter implements SubmissionPort, SubmissionReadModel {
   private readonly graphHolder: WarpGraphHolder;
@@ -40,46 +41,41 @@ export class WarpSubmissionAdapter implements SubmissionPort, SubmissionReadMode
     };
   }): Promise<{ patchSha: string }> {
     const graph = await this.graphHolder.getGraph();
-    await graph.syncCoverage();
-    await graph.materialize();
-
     const now = Date.now();
-    const patch = await createPatchSession(graph);
 
-    // Create submission node
-    patch
-      .addNode(args.submissionId)
-      .setProperty(args.submissionId, 'type', 'submission')
-      .setProperty(args.submissionId, 'quest_id', args.questId)
-      .setProperty(args.submissionId, 'submitted_by', this.agentId)
-      .setProperty(args.submissionId, 'submitted_at', now);
+    const patchSha = await graph.patch((p) => {
+      // Create submission node
+      p.addNode(args.submissionId)
+        .setProperty(args.submissionId, 'type', 'submission')
+        .setProperty(args.submissionId, 'quest_id', args.questId)
+        .setProperty(args.submissionId, 'submitted_by', this.agentId)
+        .setProperty(args.submissionId, 'submitted_at', now);
 
-    // submits edge: submission → quest
-    patch.addEdge(args.submissionId, args.questId, 'submits');
+      // submits edge: submission → quest
+      p.addEdge(args.submissionId, args.questId, 'submits');
 
-    // Create first patchset node
-    patch
-      .addNode(args.patchsetId)
-      .setProperty(args.patchsetId, 'type', 'patchset')
-      .setProperty(args.patchsetId, 'workspace_ref', args.patchset.workspaceRef)
-      .setProperty(args.patchsetId, 'description', args.patchset.description)
-      .setProperty(args.patchsetId, 'authored_by', this.agentId)
-      .setProperty(args.patchsetId, 'authored_at', now);
+      // Create first patchset node
+      p.addNode(args.patchsetId)
+        .setProperty(args.patchsetId, 'type', 'patchset')
+        .setProperty(args.patchsetId, 'workspace_ref', args.patchset.workspaceRef)
+        .setProperty(args.patchsetId, 'description', args.patchset.description)
+        .setProperty(args.patchsetId, 'authored_by', this.agentId)
+        .setProperty(args.patchsetId, 'authored_at', now);
 
-    if (args.patchset.baseRef) {
-      patch.setProperty(args.patchsetId, 'base_ref', args.patchset.baseRef);
-    }
-    if (args.patchset.headRef) {
-      patch.setProperty(args.patchsetId, 'head_ref', args.patchset.headRef);
-    }
-    if (args.patchset.commitShas && args.patchset.commitShas.length > 0) {
-      patch.setProperty(args.patchsetId, 'commit_shas', args.patchset.commitShas.join(','));
-    }
+      if (args.patchset.baseRef) {
+        p.setProperty(args.patchsetId, 'base_ref', args.patchset.baseRef);
+      }
+      if (args.patchset.headRef) {
+        p.setProperty(args.patchsetId, 'head_ref', args.patchset.headRef);
+      }
+      if (args.patchset.commitShas && args.patchset.commitShas.length > 0) {
+        p.setProperty(args.patchsetId, 'commit_shas', args.patchset.commitShas.join(','));
+      }
 
-    // has-patchset edge: patchset → submission
-    patch.addEdge(args.patchsetId, args.submissionId, 'has-patchset');
+      // has-patchset edge: patchset → submission
+      p.addEdge(args.patchsetId, args.submissionId, 'has-patchset');
+    });
 
-    const patchSha = await patch.commit();
     return { patchSha };
   }
 
@@ -96,38 +92,34 @@ export class WarpSubmissionAdapter implements SubmissionPort, SubmissionReadMode
     };
   }): Promise<{ patchSha: string }> {
     const graph = await this.graphHolder.getGraph();
-    await graph.syncCoverage();
-    await graph.materialize();
-
     const now = Date.now();
-    const patch = await createPatchSession(graph);
 
-    // Create new patchset node
-    patch
-      .addNode(args.patchsetId)
-      .setProperty(args.patchsetId, 'type', 'patchset')
-      .setProperty(args.patchsetId, 'workspace_ref', args.patchset.workspaceRef)
-      .setProperty(args.patchsetId, 'description', args.patchset.description)
-      .setProperty(args.patchsetId, 'authored_by', this.agentId)
-      .setProperty(args.patchsetId, 'authored_at', now);
+    const patchSha = await graph.patch((p) => {
+      // Create new patchset node
+      p.addNode(args.patchsetId)
+        .setProperty(args.patchsetId, 'type', 'patchset')
+        .setProperty(args.patchsetId, 'workspace_ref', args.patchset.workspaceRef)
+        .setProperty(args.patchsetId, 'description', args.patchset.description)
+        .setProperty(args.patchsetId, 'authored_by', this.agentId)
+        .setProperty(args.patchsetId, 'authored_at', now);
 
-    if (args.patchset.baseRef) {
-      patch.setProperty(args.patchsetId, 'base_ref', args.patchset.baseRef);
-    }
-    if (args.patchset.headRef) {
-      patch.setProperty(args.patchsetId, 'head_ref', args.patchset.headRef);
-    }
-    if (args.patchset.commitShas && args.patchset.commitShas.length > 0) {
-      patch.setProperty(args.patchsetId, 'commit_shas', args.patchset.commitShas.join(','));
-    }
+      if (args.patchset.baseRef) {
+        p.setProperty(args.patchsetId, 'base_ref', args.patchset.baseRef);
+      }
+      if (args.patchset.headRef) {
+        p.setProperty(args.patchsetId, 'head_ref', args.patchset.headRef);
+      }
+      if (args.patchset.commitShas && args.patchset.commitShas.length > 0) {
+        p.setProperty(args.patchsetId, 'commit_shas', args.patchset.commitShas.join(','));
+      }
 
-    // has-patchset edge: new patchset → submission
-    patch.addEdge(args.patchsetId, args.submissionId, 'has-patchset');
+      // has-patchset edge: new patchset → submission
+      p.addEdge(args.patchsetId, args.submissionId, 'has-patchset');
 
-    // supersedes edge: new patchset → old patchset
-    patch.addEdge(args.patchsetId, args.supersedesPatchsetId, 'supersedes');
+      // supersedes edge: new patchset → old patchset
+      p.addEdge(args.patchsetId, args.supersedesPatchsetId, 'supersedes');
+    });
 
-    const patchSha = await patch.commit();
     return { patchSha };
   }
 
@@ -138,25 +130,21 @@ export class WarpSubmissionAdapter implements SubmissionPort, SubmissionReadMode
     comment: string;
   }): Promise<{ patchSha: string }> {
     const graph = await this.graphHolder.getGraph();
-    await graph.syncCoverage();
-    await graph.materialize();
-
     const now = Date.now();
-    const patch = await createPatchSession(graph);
 
-    // Create review node
-    patch
-      .addNode(args.reviewId)
-      .setProperty(args.reviewId, 'type', 'review')
-      .setProperty(args.reviewId, 'verdict', args.verdict)
-      .setProperty(args.reviewId, 'comment', args.comment)
-      .setProperty(args.reviewId, 'reviewed_by', this.agentId)
-      .setProperty(args.reviewId, 'reviewed_at', now);
+    const patchSha = await graph.patch((p) => {
+      // Create review node
+      p.addNode(args.reviewId)
+        .setProperty(args.reviewId, 'type', 'review')
+        .setProperty(args.reviewId, 'verdict', args.verdict)
+        .setProperty(args.reviewId, 'comment', args.comment)
+        .setProperty(args.reviewId, 'reviewed_by', this.agentId)
+        .setProperty(args.reviewId, 'reviewed_at', now);
 
-    // reviews edge: review → patchset
-    patch.addEdge(args.reviewId, args.patchsetId, 'reviews');
+      // reviews edge: review → patchset
+      p.addEdge(args.reviewId, args.patchsetId, 'reviews');
+    });
 
-    const patchSha = await patch.commit();
     return { patchSha };
   }
 
@@ -168,29 +156,25 @@ export class WarpSubmissionAdapter implements SubmissionPort, SubmissionReadMode
     mergeCommit?: string;
   }): Promise<{ patchSha: string }> {
     const graph = await this.graphHolder.getGraph();
-    await graph.syncCoverage();
-    await graph.materialize();
-
     const now = Date.now();
-    const patch = await createPatchSession(graph);
 
-    // Create decision node
-    patch
-      .addNode(args.decisionId)
-      .setProperty(args.decisionId, 'type', 'decision')
-      .setProperty(args.decisionId, 'kind', args.kind)
-      .setProperty(args.decisionId, 'decided_by', this.agentId)
-      .setProperty(args.decisionId, 'decided_at', now)
-      .setProperty(args.decisionId, 'rationale', args.rationale);
+    const patchSha = await graph.patch((p) => {
+      // Create decision node
+      p.addNode(args.decisionId)
+        .setProperty(args.decisionId, 'type', 'decision')
+        .setProperty(args.decisionId, 'kind', args.kind)
+        .setProperty(args.decisionId, 'decided_by', this.agentId)
+        .setProperty(args.decisionId, 'decided_at', now)
+        .setProperty(args.decisionId, 'rationale', args.rationale);
 
-    if (args.mergeCommit) {
-      patch.setProperty(args.decisionId, 'merge_commit', args.mergeCommit);
-    }
+      if (args.mergeCommit) {
+        p.setProperty(args.decisionId, 'merge_commit', args.mergeCommit);
+      }
 
-    // decides edge: decision → submission
-    patch.addEdge(args.decisionId, args.submissionId, 'decides');
+      // decides edge: decision → submission
+      p.addEdge(args.decisionId, args.submissionId, 'decides');
+    });
 
-    const patchSha = await patch.commit();
     return { patchSha };
   }
 
@@ -201,7 +185,6 @@ export class WarpSubmissionAdapter implements SubmissionPort, SubmissionReadMode
   public async getQuestStatus(questId: string): Promise<QuestStatus | null> {
     const graph = await this.graphHolder.getGraph();
     await graph.syncCoverage();
-    await graph.materialize();
 
     const props = await graph.getNodeProps(questId);
     if (!props) return null;
@@ -213,7 +196,6 @@ export class WarpSubmissionAdapter implements SubmissionPort, SubmissionReadMode
   public async getSubmissionQuestId(submissionId: string): Promise<string | null> {
     const graph = await this.graphHolder.getGraph();
     await graph.syncCoverage();
-    await graph.materialize();
 
     const props = await graph.getNodeProps(submissionId);
     if (!props) return null;
@@ -224,7 +206,6 @@ export class WarpSubmissionAdapter implements SubmissionPort, SubmissionReadMode
   public async getOpenSubmissionsForQuest(questId: string): Promise<string[]> {
     const graph = await this.graphHolder.getGraph();
     await graph.syncCoverage();
-    await graph.materialize();
 
     // Traverse incoming 'submits' edges from the quest to find submissions
     const submissionNeighbors = toNeighborEntries(
@@ -236,7 +217,7 @@ export class WarpSubmissionAdapter implements SubmissionPort, SubmissionReadMode
       const props = await graph.getNodeProps(n.nodeId);
       if (!props || props.get('type') !== 'submission') continue;
 
-      // Check if this submission has a terminal decision (reuse already-materialized graph)
+      // Check if this submission has a terminal decision
       const decisions = await this._getDecisionsFromGraph(graph, n.nodeId);
       const isTerminal = decisions.some((d) => d.kind === 'merge' || d.kind === 'close');
       if (!isTerminal) {
@@ -250,7 +231,6 @@ export class WarpSubmissionAdapter implements SubmissionPort, SubmissionReadMode
   public async getPatchsetRefs(submissionId: string): Promise<PatchsetRef[]> {
     const graph = await this.graphHolder.getGraph();
     await graph.syncCoverage();
-    await graph.materialize();
 
     // Traverse incoming 'has-patchset' edges from the submission to find patchsets
     const patchsetNeighbors = toNeighborEntries(
@@ -281,7 +261,6 @@ export class WarpSubmissionAdapter implements SubmissionPort, SubmissionReadMode
   public async getSubmissionForPatchset(patchsetId: string): Promise<string | null> {
     const graph = await this.graphHolder.getGraph();
     await graph.syncCoverage();
-    await graph.materialize();
 
     const neighbors = toNeighborEntries(await graph.neighbors(patchsetId, 'outgoing'));
     for (const n of neighbors) {
@@ -295,7 +274,6 @@ export class WarpSubmissionAdapter implements SubmissionPort, SubmissionReadMode
   public async getPatchsetWorkspaceRef(patchsetId: string): Promise<string | null> {
     const graph = await this.graphHolder.getGraph();
     await graph.syncCoverage();
-    await graph.materialize();
 
     const props = await graph.getNodeProps(patchsetId);
     if (!props) return null;
@@ -306,7 +284,6 @@ export class WarpSubmissionAdapter implements SubmissionPort, SubmissionReadMode
   public async getReviewsForPatchset(patchsetId: string): Promise<ReviewRef[]> {
     const graph = await this.graphHolder.getGraph();
     await graph.syncCoverage();
-    await graph.materialize();
 
     // Traverse incoming 'reviews' edges from the patchset to find review nodes
     const reviewNeighbors = toNeighborEntries(
@@ -341,7 +318,6 @@ export class WarpSubmissionAdapter implements SubmissionPort, SubmissionReadMode
   public async getDecisionsForSubmission(submissionId: string): Promise<DecisionProps[]> {
     const graph = await this.graphHolder.getGraph();
     await graph.syncCoverage();
-    await graph.materialize();
     return this._getDecisionsFromGraph(graph, submissionId);
   }
 

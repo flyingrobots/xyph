@@ -4,7 +4,6 @@ import WarpGraph, { GitGraphAdapter } from '@git-stunts/git-warp';
 import Plumbing from '@git-stunts/plumbing';
 import { program, InvalidArgumentError } from 'commander';
 import { getTheme, styled } from './src/tui/theme/index.js';
-import { createPatchSession } from './src/infrastructure/helpers/createPatchSession.js';
 
 /**
  * XYPH Actuator - The "Hands" of the Causal Agent.
@@ -17,22 +16,14 @@ const persistence = new GitGraphAdapter({ plumbing });
 
 async function getGraph(): Promise<WarpGraph> {
   const writerId = process.env['XYPH_AGENT_ID'] ?? DEFAULT_AGENT_ID;
-  // Every agent identifies as a unique writer in the XYPH roadmap
   const graph = await WarpGraph.open({
     persistence,
     graphName: 'xyph-roadmap',
     writerId,
     autoMaterialize: true,
   });
-
-  // Ensure we see all writers in the repo
-  await graph.syncCoverage();
-
-  await graph.materialize();
   return graph;
 }
-
-const createPatch = createPatchSession;
 
 function parseHours(val: string): number {
   const parsed = parseFloat(val);
@@ -57,7 +48,6 @@ program
   .option('--intent <id>', 'Sovereign Intent node that authorizes this Quest (intent:* prefix)')
   .action(async (id: string, opts: { title: string; campaign: string; hours?: number; intent?: string }) => {
     try {
-      // Validate all inputs before any async graph I/O
       if (!id.startsWith('task:')) {
         console.error(styled(getTheme().theme.semantic.error, `[ERROR] Quest ID must start with 'task:' prefix, got: '${id}'`));
         process.exit(1);
@@ -76,21 +66,21 @@ program
       }
 
       const graph = await getGraph();
-      const patch = await createPatch(graph);
+      const sha = await graph.patch((p) => {
+        p.addNode(id)
+          .setProperty(id, 'title', opts.title)
+          .setProperty(id, 'status', 'BACKLOG')
+          .setProperty(id, 'hours', opts.hours ?? 0)
+          .setProperty(id, 'type', 'task');
 
-      patch.addNode(id)
-        .setProperty(id, 'title', opts.title)
-        .setProperty(id, 'status', 'BACKLOG')
-        .setProperty(id, 'hours', opts.hours ?? 0)
-        .setProperty(id, 'type', 'task');
+        if (opts.campaign !== 'none') {
+          p.addEdge(id, opts.campaign, 'belongs-to');
+        }
+        // opts.intent is guaranteed non-null by the guard above
+        const intentId = opts.intent as string;
+        p.addEdge(id, intentId, 'authorized-by');
+      });
 
-      if (opts.campaign !== 'none') {
-        patch.addEdge(id, opts.campaign, 'belongs-to');
-      }
-
-      patch.addEdge(id, opts.intent, 'authorized-by');
-
-      const sha = await patch.commit();
       const campaignNote = opts.campaign === 'none' ? '(no campaign)' : `in campaign ${opts.campaign}`;
       console.log(styled(getTheme().theme.semantic.success, `[OK] Quest ${id} initialized ${campaignNote}. Patch: ${sha}`));
     } catch (err: unknown) {
@@ -126,20 +116,20 @@ program
       }
 
       const graph = await getGraph();
-      const patch = await createPatch(graph);
       const now = Date.now();
 
-      patch.addNode(id)
-        .setProperty(id, 'title', opts.title)
-        .setProperty(id, 'requested_by', opts.requestedBy)
-        .setProperty(id, 'created_at', now)
-        .setProperty(id, 'type', 'intent');
+      const sha = await graph.patch((p) => {
+        p.addNode(id)
+          .setProperty(id, 'title', opts.title)
+          .setProperty(id, 'requested_by', opts.requestedBy)
+          .setProperty(id, 'created_at', now)
+          .setProperty(id, 'type', 'intent');
 
-      if (opts.description) {
-        patch.setProperty(id, 'description', opts.description);
-      }
+        if (opts.description) {
+          p.setProperty(id, 'description', opts.description);
+        }
+      });
 
-      const sha = await patch.commit();
       console.log(styled(getTheme().theme.semantic.success, `[OK] Intent ${id} declared by ${opts.requestedBy}. Patch: ${sha}`));
       console.log(styled(getTheme().theme.semantic.muted, `  Title: ${opts.title}`));
     } catch (err: unknown) {
@@ -161,15 +151,13 @@ program
 
       console.log(styled(getTheme().theme.semantic.warning, `[*] Attempting to claim ${id} as ${agentId}...`));
 
-      const patch = await createPatch(graph);
-      patch.setProperty(id, 'assigned_to', agentId)
-           .setProperty(id, 'status', 'IN_PROGRESS')
-           .setProperty(id, 'claimed_at', Date.now());
-
-      await patch.commit();
+      await graph.patch((p) => {
+        p.setProperty(id, 'assigned_to', agentId)
+          .setProperty(id, 'status', 'IN_PROGRESS')
+          .setProperty(id, 'claimed_at', Date.now());
+      });
 
       // Verify claim post-materialization (The OCP Verification Step)
-      await graph.materialize();
       const props = await graph.getNodeProps(id);
 
       if (props && props.get('assigned_to') === agentId) {
@@ -226,31 +214,34 @@ program
       const guildSeal = await sealService.sign(scrollPayload, agentId);
 
       const graph = await getGraph();
-      const patch = await createPatch(graph);
       const scrollId = `artifact:${id}`;
 
-      patch.addNode(scrollId)
-        .setProperty(scrollId, 'artifact_hash', opts.artifact)
-        .setProperty(scrollId, 'rationale', opts.rationale)
-        .setProperty(scrollId, 'type', 'scroll')
-        .setProperty(scrollId, 'sealed_by', agentId)
-        .setProperty(scrollId, 'sealed_at', now)
-        .setProperty(scrollId, 'payload_digest', sealService.payloadDigest(scrollPayload))
-        .addEdge(scrollId, id, 'fulfills');
+      const sha = await graph.patch((p) => {
+        p.addNode(scrollId)
+          .setProperty(scrollId, 'artifact_hash', opts.artifact)
+          .setProperty(scrollId, 'rationale', opts.rationale)
+          .setProperty(scrollId, 'type', 'scroll')
+          .setProperty(scrollId, 'sealed_by', agentId)
+          .setProperty(scrollId, 'sealed_at', now)
+          .setProperty(scrollId, 'payload_digest', sealService.payloadDigest(scrollPayload))
+          .addEdge(scrollId, id, 'fulfills');
+
+        if (guildSeal) {
+          p.setProperty(scrollId, 'guild_seal_alg', guildSeal.alg)
+            .setProperty(scrollId, 'guild_seal_key_id', guildSeal.keyId)
+            .setProperty(scrollId, 'guild_seal_sig', guildSeal.sig);
+        }
+
+        p.setProperty(id, 'status', 'DONE')
+          .setProperty(id, 'completed_at', now);
+      });
 
       if (guildSeal) {
-        patch.setProperty(scrollId, 'guild_seal_alg', guildSeal.alg)
-             .setProperty(scrollId, 'guild_seal_key_id', guildSeal.keyId)
-             .setProperty(scrollId, 'guild_seal_sig', guildSeal.sig);
         console.log(styled(getTheme().theme.semantic.muted, `  Guild Seal: ${guildSeal.keyId}`));
       } else {
         console.log(styled(getTheme().theme.semantic.warning, `  [WARN] No private key found for ${agentId} — scroll is unsigned. Run: xyph-actuator generate-key`));
       }
 
-      patch.setProperty(id, 'status', 'DONE')
-           .setProperty(id, 'completed_at', now);
-
-      const sha = await patch.commit();
       console.log(styled(getTheme().theme.semantic.success, `[OK] Quest ${id} sealed. Scroll: ${scrollId}. Patch: ${sha}`));
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -538,29 +529,28 @@ program
 
           // Fresh graph instance to see all prior patches (including the decide() above)
           const sealGraph = await getGraph();
+          await sealGraph.syncCoverage();
           const scrollId = `artifact:${questId}`;
-          const patch = await createPatch(sealGraph);
-          patch
-            .addNode(scrollId)
-            .setProperty(scrollId, 'artifact_hash', mergeCommit ?? 'unknown')
-            .setProperty(scrollId, 'rationale', opts.rationale)
-            .setProperty(scrollId, 'type', 'scroll')
-            .setProperty(scrollId, 'sealed_by', agentId)
-            .setProperty(scrollId, 'sealed_at', now)
-            .setProperty(scrollId, 'payload_digest', sealService.payloadDigest(scrollPayload))
-            .addEdge(scrollId, questId, 'fulfills');
 
-          if (guildSeal) {
-            patch
-              .setProperty(scrollId, 'guild_seal_alg', guildSeal.alg)
-              .setProperty(scrollId, 'guild_seal_key_id', guildSeal.keyId)
-              .setProperty(scrollId, 'guild_seal_sig', guildSeal.sig);
-          }
+          await sealGraph.patch((p) => {
+            p.addNode(scrollId)
+              .setProperty(scrollId, 'artifact_hash', mergeCommit ?? 'unknown')
+              .setProperty(scrollId, 'rationale', opts.rationale)
+              .setProperty(scrollId, 'type', 'scroll')
+              .setProperty(scrollId, 'sealed_by', agentId)
+              .setProperty(scrollId, 'sealed_at', now)
+              .setProperty(scrollId, 'payload_digest', sealService.payloadDigest(scrollPayload))
+              .addEdge(scrollId, questId, 'fulfills');
 
-          patch
-            .setProperty(questId, 'status', 'DONE')
-            .setProperty(questId, 'completed_at', now);
-          await patch.commit();
+            if (guildSeal) {
+              p.setProperty(scrollId, 'guild_seal_alg', guildSeal.alg)
+                .setProperty(scrollId, 'guild_seal_key_id', guildSeal.keyId)
+                .setProperty(scrollId, 'guild_seal_sig', guildSeal.sig);
+            }
+
+            p.setProperty(questId, 'status', 'DONE')
+              .setProperty(questId, 'completed_at', now);
+          });
 
           console.log(styled(getTheme().theme.semantic.success, `[OK] Quest ${questId} auto-sealed via merge.`));
           if (guildSeal) {
@@ -638,18 +628,18 @@ program
       }
 
       const graph = await getGraph();
-      const patch = await createPatch(graph);
       const now = Date.now();
 
-      patch.addNode(id)
-        .setProperty(id, 'title', opts.title)
-        .setProperty(id, 'status', 'INBOX')
-        .setProperty(id, 'hours', opts.hours ?? 0)
-        .setProperty(id, 'type', 'task')
-        .setProperty(id, 'suggested_by', opts.suggestedBy)
-        .setProperty(id, 'suggested_at', now);
+      const sha = await graph.patch((p) => {
+        p.addNode(id)
+          .setProperty(id, 'title', opts.title)
+          .setProperty(id, 'status', 'INBOX')
+          .setProperty(id, 'hours', opts.hours ?? 0)
+          .setProperty(id, 'type', 'task')
+          .setProperty(id, 'suggested_by', opts.suggestedBy)
+          .setProperty(id, 'suggested_at', now);
+      });
 
-      const sha = await patch.commit();
       console.log(styled(getTheme().theme.semantic.success, `[OK] Task ${id} added to INBOX.`));
       console.log(styled(getTheme().theme.semantic.muted, `  Suggested by: ${opts.suggestedBy}`));
       console.log(styled(getTheme().theme.semantic.muted, `  Patch: ${sha}`));
@@ -736,15 +726,35 @@ program
   .description('Declare that <from> depends on <to> (both must be task: nodes)')
   .action(async (from: string, to: string) => {
     try {
-      const agentId = process.env['XYPH_AGENT_ID'] ?? DEFAULT_AGENT_ID;
-      const { WarpWeaverAdapter } = await import('./src/infrastructure/adapters/WarpWeaverAdapter.js');
-      const { WeaverService } = await import('./src/domain/services/WeaverService.js');
+      if (!from.startsWith('task:')) {
+        throw new Error(`[MISSING_ARG] from must start with 'task:', got: '${from}'`);
+      }
+      if (!to.startsWith('task:')) {
+        throw new Error(`[MISSING_ARG] to must start with 'task:', got: '${to}'`);
+      }
+      if (from === to) {
+        throw new Error(`[SELF_DEPENDENCY] A task cannot depend on itself: ${from}`);
+      }
 
-      const adapter = new WarpWeaverAdapter(process.cwd(), agentId);
-      const service = new WeaverService(adapter);
+      const graph = await getGraph();
+      await graph.syncCoverage();
 
-      await service.validateDependency(from, to);
-      const { patchSha } = await adapter.addDependency(from, to);
+      const [fromExists, toExists] = await Promise.all([
+        graph.hasNode(from),
+        graph.hasNode(to),
+      ]);
+      if (!fromExists) throw new Error(`[NOT_FOUND] Task ${from} not found in the graph`);
+      if (!toExists) throw new Error(`[NOT_FOUND] Task ${to} not found in the graph`);
+
+      // Cycle check: if `to` can already reach `from`, adding from→to closes a cycle
+      const { reachable } = await graph.traverse.isReachable(to, from, { labelFilter: 'depends-on' });
+      if (reachable) {
+        throw new Error(`[CYCLE_DETECTED] Adding ${from} → ${to} would create a cycle (${to} already reaches ${from})`);
+      }
+
+      const patchSha = await graph.patch((p) => {
+        p.addEdge(from, to, 'depends-on');
+      });
       console.log(styled(getTheme().theme.semantic.success, `[OK] ${from} now depends on ${to} (patch: ${patchSha.slice(0, 7)})`));
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -768,26 +778,26 @@ program
         process.exit(1);
       }
 
+      const { createGraphContext } = await import('./src/infrastructure/GraphContext.js');
+      const ctx = createGraphContext(process.cwd(), agentId);
+      const raw = await ctx.fetchSnapshot();
+      const snapshot = ctx.filterSnapshot(raw, { includeGraveyard: opts.includeGraveyard ?? false });
+
       if (view === 'deps') {
-        const { WarpWeaverAdapter } = await import('./src/infrastructure/adapters/WarpWeaverAdapter.js');
-        const { WeaverService } = await import('./src/domain/services/WeaverService.js');
-        const { WarpDashboardAdapter } = await import('./src/infrastructure/adapters/WarpDashboardAdapter.js');
-        const { DashboardService } = await import('./src/domain/services/DashboardService.js');
+        const { computeFrontier, computeCriticalPath } = await import('./src/domain/services/DepAnalysis.js');
         const { renderDeps } = await import('./src/tui/render-status.js');
 
-        const weaverAdapter = new WarpWeaverAdapter(process.cwd(), agentId);
-        const weaverService = new WeaverService(weaverAdapter);
+        const taskSummaries = snapshot.quests.map((q) => ({ id: q.id, status: q.status, hours: q.hours }));
+        const depEdges = snapshot.quests.flatMap((q) =>
+          (q.dependsOn ?? []).map((to) => ({ from: q.id, to })),
+        );
+        const taskIds = snapshot.quests.map((q) => q.id);
+        const { sorted } = await ctx.graph.traverse.topologicalSort(taskIds, {
+          labelFilter: 'depends-on',
+        });
 
-        const dashAdapter = new WarpDashboardAdapter(process.cwd(), agentId);
-        const dashService = new DashboardService(dashAdapter);
-        const raw = await dashService.getSnapshot();
-        const snapshot = dashService.filterSnapshot(raw, { includeGraveyard: false });
-
-        const [frontierResult, orderResult, criticalResult] = await Promise.all([
-          weaverService.getFrontier(),
-          weaverService.getExecutionOrder(),
-          weaverService.getCriticalPath(),
-        ]);
+        const frontierResult = computeFrontier(taskSummaries, depEdges);
+        const criticalResult = computeCriticalPath(sorted, taskSummaries, depEdges);
 
         const tasks = new Map<string, { title: string; status: string; hours: number }>();
         for (const q of snapshot.quests) {
@@ -797,20 +807,13 @@ program
         console.log(renderDeps({
           frontier: frontierResult.frontier,
           blockedBy: frontierResult.blockedBy,
-          executionOrder: orderResult.sorted,
+          executionOrder: sorted,
           criticalPath: criticalResult.path,
           criticalPathHours: criticalResult.totalHours,
           tasks,
         }));
       } else {
-        const { WarpDashboardAdapter } = await import('./src/infrastructure/adapters/WarpDashboardAdapter.js');
-        const { DashboardService } = await import('./src/domain/services/DashboardService.js');
         const { renderRoadmap, renderLineage, renderAll, renderInbox, renderSubmissions } = await import('./src/tui/render-status.js');
-
-        const adapter = new WarpDashboardAdapter(process.cwd(), agentId);
-        const service = new DashboardService(adapter);
-        const raw = await service.getSnapshot();
-        const snapshot = service.filterSnapshot(raw, { includeGraveyard: opts.includeGraveyard ?? false });
 
         if (view === 'lineage') {
           console.log(renderLineage(snapshot));

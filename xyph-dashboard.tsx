@@ -16,9 +16,8 @@
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { render } from 'ink';
-import { WarpDashboardAdapter } from './src/infrastructure/adapters/WarpDashboardAdapter.js';
+import { createGraphContext } from './src/infrastructure/GraphContext.js';
 import { WarpIntakeAdapter } from './src/infrastructure/adapters/WarpIntakeAdapter.js';
-import { DashboardService } from './src/domain/services/DashboardService.js';
 import { Dashboard } from './src/tui/Dashboard.js';
 import { ThemeProvider } from './src/tui/theme/index.js';
 import { loadRandomLogo, selectLogoSize } from './src/tui/logo-loader.js';
@@ -89,14 +88,13 @@ const splash = loadRandomLogo(logosDir, 'xyph', selectLogoSize(cols, rows), {
 const wordmark = loadRandomLogo(logosDir, 'xyph', 'small', { maxWidth: 30, maxHeight: 4 });
 
 const logger = new TuiLogger({ component: 'xyph-dashboard' });
-const adapter = new WarpDashboardAdapter(cwd, agentId, logger);
-const service = new DashboardService(adapter);
+const ctx = createGraphContext(cwd, agentId, logger);
 const intake = new WarpIntakeAdapter(cwd, agentId);
 
 render(
   <ThemeProvider>
     <Dashboard
-      service={service}
+      ctx={ctx}
       intake={intake}
       agentId={agentId}
       logoText={splash.text}

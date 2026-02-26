@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import type { ReactElement } from 'react';
 import { Box, Text, useInput, useApp, useStdout, type Key } from 'ink';
-import type { DashboardService } from '../domain/services/DashboardService.js';
+import type { GraphContext } from '../infrastructure/GraphContext.js';
 import type { GraphSnapshot, GraphMeta } from '../domain/models/dashboard.js';
 import type { IntakePort } from '../ports/IntakePort.js';
 import { RoadmapView } from './views/RoadmapView.js';
@@ -19,7 +19,7 @@ type ViewName = 'roadmap' | 'lineage' | 'all' | 'inbox';
 const VIEWS: ViewName[] = ['roadmap', 'lineage', 'all', 'inbox'];
 
 interface Props {
-  service: DashboardService;
+  ctx: GraphContext;
   intake: IntakePort;
   agentId: string;
   logoText: string;
@@ -28,7 +28,7 @@ interface Props {
   logger?: TuiLogger;
 }
 
-export function Dashboard({ service, intake, agentId, logoText, wordmarkText, wordmarkLines, logger }: Props): ReactElement {
+export function Dashboard({ ctx, intake, agentId, logoText, wordmarkText, wordmarkLines, logger }: Props): ReactElement {
   const t = useTheme();
   const [activeView, setActiveView] = useState<ViewName>('roadmap');
   const [snapshot, setSnapshot] = useState<GraphSnapshot | null>(null);
@@ -80,8 +80,8 @@ export function Dashboard({ service, intake, agentId, logoText, wordmarkText, wo
           setLoadLog((prev) => [...prev.slice(-9), msg]);
         }
       : undefined;
-    service
-      .getSnapshot(onProgress)
+    ctx
+      .fetchSnapshot(onProgress)
       .then((s) => {
         if (requestCounter.current !== thisRequest) return; // stale response
         setSnapshot((prev) => {
@@ -99,7 +99,7 @@ export function Dashboard({ service, intake, agentId, logoText, wordmarkText, wo
         if (requestCounter.current !== thisRequest) return; // stale response
         setLoading(false);
       });
-  }, [service]);
+  }, [ctx]);
 
   useEffect(() => {
     refresh(true);
@@ -151,8 +151,8 @@ export function Dashboard({ service, intake, agentId, logoText, wordmarkText, wo
 
   // NOTE: All useMemo/useEffect calls must be above early returns (Rules of Hooks)
   const filtered = useMemo(
-    () => snapshot ? service.filterSnapshot(snapshot, { includeGraveyard: false }) : null,
-    [service, snapshot],
+    () => snapshot ? ctx.filterSnapshot(snapshot, { includeGraveyard: false }) : null,
+    [ctx, snapshot],
   );
   const wordmarkLinesArray = useMemo(() => wordmarkText.split('\n'), [wordmarkText]);
 
