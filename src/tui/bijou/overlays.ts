@@ -27,8 +27,9 @@ export function confirmOverlay(content: string, prompt: string, cols: number, ro
   const side = styled(borderColor, '\u2502');
 
   const promptLine = prompt.slice(0, boxW - 4).padEnd(boxW - 4);
-  const hintText = styled(t.theme.semantic.info, 'y') + '/' + styled(t.theme.semantic.error, 'n');
-  const hintLine = (`  ${hintText}  `).padEnd(boxW - 4);
+  // Pad plain text first, then inject ANSI styling to avoid visual width miscalculation
+  const hintPlain = '  y/n  '.padEnd(boxW - 4);
+  const hintLine = hintPlain.replace('y', styled(t.theme.semantic.info, 'y')).replace('n', styled(t.theme.semantic.error, 'n'));
 
   const boxLines = [
     `${pad}${top}`,
@@ -80,7 +81,8 @@ export function inputOverlay(
   const inputW = boxW - 6;
   const displayValue = value.length > inputW ? value.slice(value.length - inputW) : value;
   const valueLine = (displayValue + '\u2588').padEnd(boxW - 4);
-  const hintLine = styled(t.theme.semantic.muted, 'Enter: submit  Esc: cancel').padEnd(boxW - 4);
+  const hintRaw = 'Enter: submit  Esc: cancel'.padEnd(boxW - 4);
+  const hintLine = styled(t.theme.semantic.muted, hintRaw);
 
   const boxLines = [
     `${pad}${top}`,

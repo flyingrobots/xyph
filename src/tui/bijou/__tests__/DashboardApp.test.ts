@@ -609,18 +609,35 @@ describe('DashboardApp', () => {
       expect(cmds.length).toBeGreaterThan(0); // dismiss timer
     });
 
-    it('dismiss-toast clears toast', () => {
+    it('dismiss-toast clears toast when expiresAt matches', () => {
+      const app = makeApp();
+      const [initial] = app.init();
+      const expiresAt = Date.now() + 3000;
+      const withToast: DashboardModel = {
+        ...initial,
+        showLanding: false,
+        loading: false,
+        toast: { message: 'test', variant: 'success', expiresAt },
+      };
+
+      const [after] = app.update({ type: 'dismiss-toast', expiresAt }, withToast);
+      expect(after.toast).toBeNull();
+    });
+
+    it('dismiss-toast ignores stale timer (expiresAt mismatch)', () => {
       const app = makeApp();
       const [initial] = app.init();
       const withToast: DashboardModel = {
         ...initial,
         showLanding: false,
         loading: false,
-        toast: { message: 'test', variant: 'success', expiresAt: Date.now() + 3000 },
+        toast: { message: 'newer toast', variant: 'success', expiresAt: Date.now() + 5000 },
       };
 
-      const [after] = app.update({ type: 'dismiss-toast' }, withToast);
-      expect(after.toast).toBeNull();
+      // Stale timer from an older toast tries to dismiss
+      const [after] = app.update({ type: 'dismiss-toast', expiresAt: Date.now() + 2000 }, withToast);
+      expect(after.toast).not.toBeNull();
+      expect(after.toast?.message).toBe('newer toast');
     });
 
     // ── Submission expand/collapse ────────────────────────────────────

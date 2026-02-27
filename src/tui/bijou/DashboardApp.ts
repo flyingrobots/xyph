@@ -106,7 +106,7 @@ export type DashboardMsg =
   | { type: 'pulse-done' }
   | { type: 'write-success'; message: string }
   | { type: 'write-error'; message: string }
-  | { type: 'dismiss-toast' };
+  | { type: 'dismiss-toast'; expiresAt: number };
 
 // ── Keybindings ─────────────────────────────────────────────────────────
 
@@ -316,10 +316,10 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
     };
   }
 
-  function delayedDismissToast(): Cmd<DashboardMsg> {
+  function delayedDismissToast(expiresAt: number): Cmd<DashboardMsg> {
     return async (emit) => {
       await new Promise(resolve => setTimeout(resolve, 3000));
-      emit({ type: 'dismiss-toast' });
+      emit({ type: 'dismiss-toast', expiresAt });
     };
   }
 
@@ -426,22 +426,25 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
       // Handle write results
       if (msg.type === 'write-success') {
         const nextReqId = model.requestId + 1;
+        const expiresAt = Date.now() + 3000;
         return [{
           ...model,
           loading: true,
           requestId: nextReqId,
-          toast: { message: msg.message, variant: 'success', expiresAt: Date.now() + 3000 },
-        }, [refreshAfterWrite(nextReqId), delayedDismissToast()]];
+          toast: { message: msg.message, variant: 'success', expiresAt },
+        }, [refreshAfterWrite(nextReqId), delayedDismissToast(expiresAt)]];
       }
       if (msg.type === 'write-error') {
+        const expiresAt = Date.now() + 3000;
         return [{
           ...model,
-          toast: { message: msg.message, variant: 'error', expiresAt: Date.now() + 3000 },
-        }, [delayedDismissToast()]];
+          toast: { message: msg.message, variant: 'error', expiresAt },
+        }, [delayedDismissToast(expiresAt)]];
       }
 
-      // Handle toast dismissal
+      // Handle toast dismissal (only clear if token matches to prevent stale timers)
       if (msg.type === 'dismiss-toast') {
+        if (!model.toast || model.toast.expiresAt !== msg.expiresAt) return [model, []];
         return [{ ...model, toast: null }, []];
       }
 
@@ -721,10 +724,11 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         if (!subId) return [model, []];
         const sub = snap.submissions.find(s => s.id === subId);
         if (!sub?.tipPatchsetId) {
+          const expiresAt = Date.now() + 3000;
           return [{
             ...model,
-            toast: { message: `No patchset to review for ${subId}`, variant: 'error', expiresAt: Date.now() + 3000 },
-          }, [delayedDismissToast()]];
+            toast: { message: `No patchset to review for ${subId}`, variant: 'error', expiresAt },
+          }, [delayedDismissToast(expiresAt)]];
         }
         const label = action.type === 'approve' ? 'Approve' : 'Request changes';
         return [{

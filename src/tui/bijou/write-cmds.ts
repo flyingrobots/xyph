@@ -62,6 +62,10 @@ export function claimQuest(deps: WriteDeps, questId: string): Cmd<DashboardMsg> 
 export function promoteQuest(deps: WriteDeps, questId: string, intentId: string, campaignId?: string): Cmd<DashboardMsg> {
   return async (emit) => {
     try {
+      if (!intentId.trim()) {
+        emit({ type: 'write-error', message: 'Intent ID is required for promotion' });
+        return;
+      }
       await deps.intake.promote(questId, intentId, campaignId);
       emit({ type: 'write-success', message: `Promoted ${questId} → PLANNED` });
     } catch (err: unknown) {
