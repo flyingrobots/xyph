@@ -36,15 +36,15 @@ export interface DashboardModel {
   cols: number;
   rows: number;
   logoText: string;
-  wordmarkText: string;
+  /** Monotonic request counter — used to discard stale snapshot responses. */
+  requestId: number;
 }
 
 export type DashboardMsg =
   | KeyMsg
   | ResizeMsg
-  | { type: 'snapshot-loaded'; snapshot: GraphSnapshot }
-  | { type: 'snapshot-error'; error: string }
-  | { type: 'dismiss-landing' };
+  | { type: 'snapshot-loaded'; snapshot: GraphSnapshot; requestId: number }
+  | { type: 'snapshot-error'; error: string; requestId: number };
 
 // ── Keybindings ─────────────────────────────────────────────────────────
 
@@ -53,8 +53,7 @@ type Action =
   | { type: 'next-view' }
   | { type: 'prev-view' }
   | { type: 'refresh' }
-  | { type: 'toggle-help' }
-  | { type: 'dismiss' };
+  | { type: 'toggle-help' };
 
 function buildKeyMap(): KeyMap<Action> {
   return createKeyMap<Action>()
@@ -72,20 +71,19 @@ export interface DashboardDeps {
   intake: IntakePort;
   agentId: string;
   logoText: string;
-  wordmarkText: string;
 }
 
 export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, DashboardMsg> {
   const keyMap = buildKeyMap();
 
-  // Command: fetch snapshot from the graph
-  function fetchSnapshot(): Cmd<DashboardMsg> {
+  // Command: fetch snapshot from the graph (carries requestId for stale-response filtering)
+  function fetchSnapshot(requestId: number): Cmd<DashboardMsg> {
     return async (emit) => {
       try {
         const snapshot = await deps.ctx.fetchSnapshot();
-        emit({ type: 'snapshot-loaded', snapshot });
+        emit({ type: 'snapshot-loaded', snapshot, requestId });
       } catch (err: unknown) {
-        emit({ type: 'snapshot-error', error: err instanceof Error ? err.message : String(err) });
+        emit({ type: 'snapshot-error', error: err instanceof Error ? err.message : String(err), requestId });
       }
     };
   }
@@ -104,9 +102,9 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         cols,
         rows,
         logoText: deps.logoText,
-        wordmarkText: deps.wordmarkText,
+        requestId: 1,
       };
-      return [model, [fetchSnapshot()]];
+      return [model, [fetchSnapshot(model.requestId)]];
     },
 
     update(msg: KeyMsg | ResizeMsg | DashboardMsg, model: DashboardModel): [DashboardModel, Cmd<DashboardMsg>[]] {
@@ -115,24 +113,23 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         return [{ ...model, cols: msg.columns, rows: msg.rows }, []];
       }
 
-      // Handle snapshot lifecycle
+      // Handle snapshot lifecycle (ignore stale responses)
       if (msg.type === 'snapshot-loaded') {
+        if (msg.requestId !== model.requestId) return [model, []];
         return [{ ...model, snapshot: msg.snapshot, loading: false, error: null }, []];
       }
       if (msg.type === 'snapshot-error') {
+        if (msg.requestId !== model.requestId) return [model, []];
         return [{ ...model, error: msg.error, loading: false }, []];
-      }
-
-      // Auto-dismiss landing
-      if (msg.type === 'dismiss-landing') {
-        if (model.showLanding && !model.loading) {
-          return [{ ...model, showLanding: false }, []];
-        }
-        return [model, []];
       }
 
       // Key handling
       if (msg.type === 'key') {
+        // Ctrl+C always quits, regardless of mode
+        if (msg.key === 'c' && msg.ctrl) {
+          return [model, [quit()]];
+        }
+
         // Landing screen: any key dismisses (except q which quits)
         if (model.showLanding) {
           if (msg.key === 'q' && !msg.ctrl && !msg.alt) {
@@ -144,17 +141,15 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
           return [model, []];
         }
 
-        // Help screen: ? or Escape dismisses
+        // Help screen: q quits, ? or Escape dismisses
         if (model.showHelp) {
+          if (msg.key === 'q' && !msg.ctrl && !msg.alt) {
+            return [model, [quit()]];
+          }
           if (msg.key === '?' || msg.key === 'escape') {
             return [{ ...model, showHelp: false }, []];
           }
           return [model, []];
-        }
-
-        // Ctrl+C always quits
-        if (msg.key === 'c' && msg.ctrl) {
-          return [model, [quit()]];
         }
 
         // Normal mode keybindings
@@ -173,12 +168,12 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
               const prev = VIEWS[(idx - 1 + VIEWS.length) % VIEWS.length] ?? 'roadmap';
               return [{ ...model, activeView: prev }, []];
             }
-            case 'refresh':
-              return [{ ...model, loading: true }, [fetchSnapshot()]];
+            case 'refresh': {
+              const nextReqId = model.requestId + 1;
+              return [{ ...model, loading: true, requestId: nextReqId }, [fetchSnapshot(nextReqId)]];
+            }
             case 'toggle-help':
               return [{ ...model, showHelp: !model.showHelp }, []];
-            case 'dismiss':
-              return [model, []];
           }
         }
       }

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { _resetThemeForTesting } from '@flyingrobots/bijou';
-import type { KeyMsg, ResizeMsg } from '@flyingrobots/bijou-tui';
+import type { App, KeyMsg, ResizeMsg } from '@flyingrobots/bijou-tui';
 import { ensureXyphContext, _resetBridgeForTesting } from '../../theme/bridge.js';
 import { createDashboardApp, type DashboardModel, type DashboardMsg } from '../DashboardApp.js';
 import type { GraphContext } from '../../../infrastructure/GraphContext.js';
@@ -58,13 +58,12 @@ describe('DashboardApp', () => {
     _resetBridgeForTesting();
   });
 
-  function makeApp() {
+  function makeApp(): App<DashboardModel, DashboardMsg> {
     return createDashboardApp({
       ctx: mockCtx,
       intake: mockIntake,
       agentId: 'agent.test',
       logoText: 'XYPH TEST LOGO',
-      wordmarkText: 'xyph',
     });
   }
 
@@ -86,7 +85,7 @@ describe('DashboardApp', () => {
       const [initial] = app.init();
       const snap = makeSnapshot({ asOf: 12345 });
       const [updated, cmds] = app.update(
-        { type: 'snapshot-loaded', snapshot: snap } as DashboardMsg,
+        { type: 'snapshot-loaded', snapshot: snap, requestId: initial.requestId },
         initial,
       );
       expect(updated.snapshot).toBe(snap);
@@ -99,11 +98,41 @@ describe('DashboardApp', () => {
       const app = makeApp();
       const [initial] = app.init();
       const [updated] = app.update(
-        { type: 'snapshot-error', error: 'oops' } as DashboardMsg,
+        { type: 'snapshot-error', error: 'oops', requestId: initial.requestId },
         initial,
       );
       expect(updated.error).toBe('oops');
       expect(updated.loading).toBe(false);
+    });
+
+    it('ignores stale snapshot-loaded from a superseded request', () => {
+      const app = makeApp();
+      const [initial] = app.init();
+      const loaded: DashboardModel = { ...initial, showLanding: false, loading: false };
+
+      // Trigger two refreshes — second supersedes first
+      const [afterRefresh1, cmds1] = app.update(makeKey('r'), loaded);
+      expect(cmds1.length).toBeGreaterThan(0);
+      const [afterRefresh2] = app.update(makeKey('r'), afterRefresh1);
+
+      // Stale response from first refresh arrives (requestId is old)
+      const staleSnap = makeSnapshot({ asOf: 1 });
+      const [afterStale] = app.update(
+        { type: 'snapshot-loaded', snapshot: staleSnap, requestId: afterRefresh1.requestId },
+        afterRefresh2,
+      );
+      // Should be ignored — model unchanged
+      expect(afterStale.loading).toBe(true);
+      expect(afterStale.snapshot).toBe(afterRefresh2.snapshot);
+
+      // Fresh response from second refresh arrives
+      const freshSnap = makeSnapshot({ asOf: 2 });
+      const [afterFresh] = app.update(
+        { type: 'snapshot-loaded', snapshot: freshSnap, requestId: afterRefresh2.requestId },
+        afterRefresh2,
+      );
+      expect(afterFresh.loading).toBe(false);
+      expect(afterFresh.snapshot).toBe(freshSnap);
     });
 
     it('handles resize message', () => {
@@ -184,6 +213,41 @@ describe('DashboardApp', () => {
       const [, cmds] = app.update(makeKey('q'), loaded);
       expect(cmds.length).toBeGreaterThan(0);
     });
+
+    it('Ctrl+C quits from normal mode', () => {
+      const app = makeApp();
+      const [initial] = app.init();
+      const normal: DashboardModel = { ...initial, showLanding: false, loading: false };
+
+      const [, cmds] = app.update(makeKey('c', { ctrl: true }), normal);
+      expect(cmds.length).toBeGreaterThan(0);
+    });
+
+    it('Ctrl+C quits from landing mode (while loading)', () => {
+      const app = makeApp();
+      const [initial] = app.init();
+      // Landing + loading: previously swallowed Ctrl+C
+      const [, cmds] = app.update(makeKey('c', { ctrl: true }), initial);
+      expect(cmds.length).toBeGreaterThan(0);
+    });
+
+    it('Ctrl+C quits from help mode', () => {
+      const app = makeApp();
+      const [initial] = app.init();
+      const helpMode: DashboardModel = { ...initial, showLanding: false, showHelp: true };
+
+      const [, cmds] = app.update(makeKey('c', { ctrl: true }), helpMode);
+      expect(cmds.length).toBeGreaterThan(0);
+    });
+
+    it('q quits from help mode', () => {
+      const app = makeApp();
+      const [initial] = app.init();
+      const helpMode: DashboardModel = { ...initial, showLanding: false, showHelp: true };
+
+      const [, cmds] = app.update(makeKey('q'), helpMode);
+      expect(cmds.length).toBeGreaterThan(0);
+    });
   });
 
   describe('view()', () => {
@@ -200,6 +264,23 @@ describe('DashboardApp', () => {
       const [model] = app.init();
       const output = app.view(model);
       expect(output).toContain('XYPH TEST LOGO');
+    });
+
+    it('landing view hides "Press any key" while loading', () => {
+      const app = makeApp();
+      const [model] = app.init();
+      // model.loading is true from init()
+      const output = app.view(model);
+      expect(output).not.toContain('Press any key');
+      expect(output).toContain('Loading');
+    });
+
+    it('landing view shows "Press any key" after loading', () => {
+      const app = makeApp();
+      const [initial] = app.init();
+      const loaded: DashboardModel = { ...initial, loading: false, snapshot: makeSnapshot() };
+      const output = app.view(loaded);
+      expect(output).toContain('Press any key');
     });
 
     it('shows tab bar when not on landing', () => {

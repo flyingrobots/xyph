@@ -13,13 +13,14 @@ export function landingView(model: DashboardModel): string {
     lines.push(styled(t.theme.semantic.warning, '  Loading project graph snapshot…'));
   } else if (model.error) {
     lines.push(styled(t.theme.semantic.error, `  Error: ${model.error}`));
+    lines.push('');
+    lines.push(styled(t.theme.semantic.muted, '  Press any key to continue…'));
   } else if (model.snapshot) {
     const snap = model.snapshot;
     lines.push(styled(t.theme.semantic.muted, `  ${snap.quests.length} quests, ${snap.campaigns.length} campaigns`));
+    lines.push('');
+    lines.push(styled(t.theme.semantic.muted, '  Press any key to continue…'));
   }
-
-  lines.push('');
-  lines.push(styled(t.theme.semantic.muted, '  Press any key to continue…'));
 
   return lines.join('\n');
 }

@@ -41,8 +41,6 @@ const splash = loadRandomLogo(logosDir, 'xyph', selectLogoSize(cols, rows), {
   maxWidth: cols - 4,
   maxHeight: rows - 12,
 });
-const wordmark = loadRandomLogo(logosDir, 'xyph', 'small', { maxWidth: 30, maxHeight: 4 });
-
 const logger = new TuiLogger({ component: 'xyph-dashboard' });
 const graphPort = new WarpGraphAdapter(cwd, 'xyph-roadmap', agentId, logger);
 const ctx = createGraphContext(graphPort);
@@ -53,7 +51,6 @@ const app = createDashboardApp({
   intake,
   agentId,
   logoText: splash.text,
-  wordmarkText: wordmark.text,
 });
 
 await run(app, { altScreen: true, hideCursor: true });

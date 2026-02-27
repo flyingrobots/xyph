@@ -8,6 +8,7 @@
 import {
   createBijou,
   setDefaultContext,
+  _resetDefaultContextForTesting,
   createThemeResolver,
   type ResolvedTheme,
   type ThemeResolver,
@@ -29,7 +30,6 @@ let resolver: ThemeResolver | null = null;
  */
 export function ensureXyphContext(): void {
   if (initialized) return;
-  initialized = true;
   const ctx = createBijou({
     runtime: nodeRuntime(),
     io: nodeIO(),
@@ -43,6 +43,7 @@ export function ensureXyphContext(): void {
     envVar: 'XYPH_THEME',
     fallback: XYPH_CYAN_MAGENTA,
   });
+  initialized = true;
 }
 
 /**
@@ -53,12 +54,14 @@ export function ensureXyphContext(): void {
  */
 export function getXyphTheme(): XyphResolvedTheme {
   ensureXyphContext();
-  return resolver!.getTheme() as unknown as XyphResolvedTheme;
+  if (!resolver) throw new Error('BUG: resolver not initialized after ensureXyphContext()');
+  return resolver.getTheme() as unknown as XyphResolvedTheme;
 }
 
-/** Reset bridge state. For tests only. */
+/** Reset bridge state (including bijou global context). For tests only. */
 export function _resetBridgeForTesting(): void {
   initialized = false;
   if (resolver) resolver._resetForTesting();
   resolver = null;
+  _resetDefaultContextForTesting();
 }

@@ -35,10 +35,14 @@ Our duty is to write **safe, correct code**. Shortcuts that compromise quality a
 **Own every failure you see:**
 - ❌ NEVER dismiss errors as "pre-existing" and move on. If you see something broken, fix it.
 - ❌ NEVER say CI/CD failures are acceptable or ignorable. A red build is your problem now.
-- If you encounter lint errors, test failures, or warnings — even ones that existed before your branch — fix them. You touched the codebase; you leave it better than you found it.
+- If you encounter lint errors, test failures, or warnings — even ones that existed
+  before your branch — fix them. You touched the codebase; you leave it better than
+  you found it.
 
 ### Project Planning via the Actuator
-XYPH plans and tracks its own development through the WARP graph. The `xyph-actuator.ts` CLI is the single source of truth for what's been done, what's next, and what's in the backlog.
+XYPH plans and tracks its own development through the WARP graph.
+The `xyph-actuator.ts` CLI is the single source of truth for what's been done,
+what's next, and what's in the backlog.
 
 - **See what's next**: `npx tsx xyph-actuator.ts status --view roadmap`
 - **See everything**: `npx tsx xyph-actuator.ts status --view all`
@@ -46,16 +50,21 @@ XYPH plans and tracks its own development through the WARP graph. The `xyph-actu
 - **Add a backlog item**: use `quest`, `inbox`, or `promote` commands
 - **Plan work**: always consult the graph first — don't plan in your head, plan through the actuator
 
-All project planning, prioritization, and progress tracking flows through the actuator. If you want to know what to work on, ask the graph. If you want to add work, write it to the graph.
+All project planning, prioritization, and progress tracking flows through the
+actuator. If you want to know what to work on, ask the graph. If you want to add
+work, write it to the graph.
 
 ### Command Reference
 - `npx tsx xyph-actuator.ts status --view <roadmap|lineage|all|inbox|submissions|deps>`: View the roadmap state.
 - `npx tsx xyph-actuator.ts quest <id> --title "Title" --campaign <id> --intent <id>`: Initialize a Quest.
 - `npx tsx xyph-actuator.ts intent <id> --title "Title" --requested-by human.<name>`: Declare a sovereign Intent.
 - `npx tsx xyph-actuator.ts claim <id>`: Volunteer for a task (OCP).
-- `npx tsx xyph-actuator.ts submit <quest-id> --description "..."`: Submit quest for review (creates submission + patchset).
-- `npx tsx xyph-actuator.ts revise <submission-id> --description "..."`: Push a new patchset superseding current tip.
-- `npx tsx xyph-actuator.ts review <patchset-id> --verdict approve|request-changes|comment --comment "..."`: Review a patchset.
+- `npx tsx xyph-actuator.ts submit <quest-id> --description "..."`:
+  Submit quest for review (creates submission + patchset).
+- `npx tsx xyph-actuator.ts revise <submission-id> --description "..."`:
+  Push a new patchset superseding current tip.
+- `npx tsx xyph-actuator.ts review <patchset-id> --verdict approve|request-changes|comment --comment "..."`:
+  Review a patchset.
 - `npx tsx xyph-actuator.ts merge <submission-id> --rationale "..."`: Merge (git settlement + auto-seal quest).
 - `npx tsx xyph-actuator.ts close <submission-id> --rationale "..."`: Close submission without merging.
 - `npx tsx xyph-actuator.ts seal <id> --artifact <hash> --rationale "..."`: Mark as DONE directly (solo work).
@@ -68,7 +77,12 @@ All project planning, prioritization, and progress tracking flows through the ac
 
 ### git-warp: The Engine Under the Hood
 
-XYPH is built on **git-warp** (v12.0.0) — a CRDT graph database that lives inside a Git repository without touching the codebase. Every piece of graph data is a Git commit pointing to the **empty tree** (`4b825dc6...`), making it invisible to `git log`, `git diff`, and `git status`. The result: a full graph database riding alongside your code, using Git as its storage and transport layer.
+XYPH is built on **git-warp** (v12.0.0) — a CRDT graph database that lives
+inside a Git repository without touching the codebase. Every piece of graph
+data is a Git commit pointing to the **empty tree** (`4b825dc6...`), making
+it invisible to `git log`, `git diff`, and `git status`. The result: a full
+graph database riding alongside your code, using Git as its storage and
+transport layer.
 
 #### Core Data Model
 - **Nodes**: Vertices with string IDs (`task:BX-001`, `intent:sovereignty`)
@@ -83,7 +97,10 @@ XYPH is built on **git-warp** (v12.0.0) — a CRDT graph database that lives ins
 - **Deterministic convergence**: All writers always compute the same final state, regardless of patch arrival order
 
 #### Materialization
-Calling `graph.materialize()` replays all patches in strict Lamport order and produces a deterministic `WarpStateV5` snapshot. Checkpoints (`graph.createCheckpoint()`) allow incremental materialization — only replay patches since the last checkpoint.
+Calling `graph.materialize()` replays all patches in strict Lamport order and
+produces a deterministic `WarpStateV5` snapshot.
+Checkpoints (`graph.createCheckpoint()`) allow incremental materialization —
+only replay patches since the last checkpoint.
 
 #### Mutation API
 ```typescript

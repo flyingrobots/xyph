@@ -2,6 +2,67 @@
 
 All notable changes to XYPH will be documented in this file.
 
+## [1.0.0-alpha.10] - 2026-02-26
+
+### Changed — BJU-001: Bijou TUI Migration (Theme Bridge + TEA App Shell)
+
+**Framework: Ink/React → bijou-tui TEA architecture**
+- Replaced the Ink/React `Dashboard.tsx` component tree with a pure-function
+  TEA (The Elm Architecture) app powered by `@flyingrobots/bijou-tui`'s `run()`.
+- New `DashboardApp.ts`: `init()` / `update()` / `view()` with immutable
+  `DashboardModel`, typed `DashboardMsg` union, and `Cmd<DashboardMsg>` effects.
+- Keybindings via bijou-tui's `createKeyMap()` — `q`, `Tab`, `Shift+Tab`, `r`, `?`.
+- Layout via `flex()` (column direction) with `tabs()` tab bar from `@flyingrobots/bijou`.
+
+**Theme: local token system → bijou theme bridge**
+- Replaced `tokens.ts`, `presets.ts`, `resolve.ts`, `chalk-adapter.ts`,
+  `gradient.ts`, and `ink-adapter.tsx` with bijou's theme system.
+- New `xyph-presets.ts`: extends bijou's `CYAN_MAGENTA` and `TEAL_ORANGE_PINK`
+  with 15 XYPH status keys + `intentHeader` UI key via `extendTheme()`.
+- New `bridge.ts`: lazy-init singleton that configures bijou's global context
+  with XYPH presets, env-var theme selection (`XYPH_THEME`), and NO_COLOR support.
+- `theme/index.ts` barrel: init-guarded `styled()` / `styledStatus()` wrappers
+  that call `ensureXyphContext()` before delegating to bijou.
+
+**Views: stub views for BJU-002 migration**
+- Five new bijou view functions (`roadmap-view.ts`, `lineage-view.ts`,
+  `all-view.ts`, `inbox-view.ts`, `landing-view.ts`) with summary stats
+  and placeholder text for full rendering in BJU-002.
+
+### Added
+- `@flyingrobots/bijou` ^0.2.0, `@flyingrobots/bijou-node` ^0.1.0,
+  `@flyingrobots/bijou-tui` ^0.1.0 as dependencies.
+- git-warp API reference section in CLAUDE.md.
+
+### Removed
+- 17 old Ink/React files: `Dashboard.tsx`, `GraphProvider.tsx`, `HelpModal.tsx`,
+  `QuestDetailPanel.tsx`, `Scrollbar.tsx`, `StatusLine.tsx`, and all 5 view
+  components (`AllNodesView.tsx`, `InboxView.tsx`, `LandingView.tsx`,
+  `LineageView.tsx`, `RoadmapView.tsx`), plus 6 local theme modules.
+- `chalkFromToken()` — replaced by bijou's `styled()`.
+
+### Fixed — Code Review (9 issues resolved: 3 high, 4 medium, 2 low)
+- *High*: Ctrl+C was swallowed in landing (while loading) and help modes — hoisted
+  Ctrl+C handler above mode-specific branches so it always quits.
+- *High*: `q` did nothing in help mode despite help text listing it as quit —
+  added `q` → quit handling in help mode to match displayed shortcuts.
+- *High*: Lint violations (`explicit-function-return-type` on `makeApp()`,
+  `no-non-null-assertion` on `resolver!`) — added return type annotation and
+  replaced `!` with explicit guard + throw.
+- *Medium*: `initialized` flag set before `createBijou()`/`createThemeResolver()`
+  completed — moved flag after success to prevent permanently broken state on init
+  failure.
+- *Medium*: Refresh race condition — added monotonic `requestId` to model and
+  snapshot messages; stale responses from superseded fetches are now discarded.
+- *Medium*: `styled()`/`styledStatus()` re-exported without init safety — replaced
+  raw re-exports with wrappers that call `ensureXyphContext()` before delegating.
+- *Medium*: `_resetBridgeForTesting()` did not reset bijou's global default
+  context — now calls `_resetDefaultContextForTesting()` for full test isolation.
+- *Low*: Dead code removed — `dismiss-landing` message type/handler, unreachable
+  `dismiss` action, unused `wordmarkText` field threaded through model and deps.
+- *Low*: Landing "Press any key" prompt shown during loading (when keys are
+  ignored) — prompt now only appears after data loads or on error.
+
 ## [1.0.0-alpha.9] - 2026-02-25
 
 ### Changed — Shared Graph Architecture & GraphContext Refactor
