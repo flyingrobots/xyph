@@ -24,6 +24,12 @@ All notable changes to XYPH will be documented in this file.
 - ESLint `noInlineConfig: true` — inline lint bypass comments are now a
   hard error.
 
+### Fixed
+
+- `lineage-view.ts`: orphan quests now shown even when no intents exist
+  (previously hidden by early return).
+- `all-view.ts`: node total now includes submissions, reviews, and decisions.
+
 ## [1.0.0-alpha.10] - 2026-02-26
 
 ### Changed — BJU-001: Bijou TUI Migration (Theme Bridge + TEA App Shell)
