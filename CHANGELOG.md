@@ -52,7 +52,11 @@ All notable changes to XYPH will be documented in this file.
 - `QuestNode.dependsOn` field in dashboard model; `WarpDashboardAdapter` reads `depends-on` edges during snapshot construction.
 - `renderDeps()` renderer: frontier table, blocked-tasks table, numbered execution order, and critical path chain display.
 - CI workflow (`.github/workflows/ci.yml`): enforces build, lint, and test gates on every PR and push to main as three parallel jobs.
+- CI `audit` job: runs `npm audit --omit=dev` to catch known vulnerabilities in production dependencies.
 - 31 new tests (23 unit + 8 integration), 369 total.
+
+### Fixed
+- `inspect-graph.ts`: replaced unsafe inline type cast with `toNeighborEntries()` runtime guard.
 
 ## [1.0.0-alpha.7] - 2026-02-24
 
