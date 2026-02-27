@@ -12,7 +12,10 @@ export function allView(model: DashboardModel): string {
     snap.quests.length +
     snap.intents.length +
     snap.scrolls.length +
-    snap.approvals.length;
+    snap.approvals.length +
+    snap.submissions.length +
+    snap.reviews.length +
+    snap.decisions.length;
 
   const lines: string[] = [];
 
