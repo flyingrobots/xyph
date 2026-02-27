@@ -1,4 +1,4 @@
-import { headerBox, dag, type DagNode } from '@flyingrobots/bijou';
+import { headerBox, dagLayout, type DagNode, type DagLayout } from '@flyingrobots/bijou';
 import { flex, viewport } from '@flyingrobots/bijou-tui';
 import { styled, styledStatus, getTheme } from '../../theme/index.js';
 import type { DashboardModel } from '../DashboardApp.js';
@@ -210,17 +210,33 @@ export function roadmapView(model: DashboardModel, width?: number, height?: numb
         : critSet.has(q.id) ? t.theme.semantic.warning : undefined,
     }));
 
-    const dagContent = dag(dagNodes, {
+    const layout: DagLayout = dagLayout(dagNodes, {
       highlightPath: criticalPath.length > 1 ? criticalPath : undefined,
       highlightToken: t.theme.semantic.warning,
-      maxWidth: pw - 2,
+      selectedId: selectedQuestId ?? undefined,
+      selectedToken: t.theme.semantic.primary,
+      direction: 'right',
+      maxWidth: Math.max(pw * 2, 120), // allow wider graph, scroll handles it
     });
+
+    // Auto-center on selected node, with manual offset
+    let scrollX = model.roadmap.dagScrollX;
+    let scrollY = model.roadmap.dagScrollY;
+    if (selectedQuestId) {
+      const nodePos = layout.nodes.get(selectedQuestId);
+      if (nodePos) {
+        // Center the selected node in the viewport; manual scroll offsets from auto-center
+        scrollX = Math.max(0, nodePos.col - Math.floor(pw / 2)) + model.roadmap.dagScrollX;
+        scrollY = Math.max(0, nodePos.row - Math.floor(ph / 2));
+      }
+    }
 
     return viewport({
       width: pw,
       height: ph,
-      content: dagContent,
-      scrollY: model.roadmap.dagScrollY,
+      content: layout.output,
+      scrollY,
+      scrollX,
     });
   }
 

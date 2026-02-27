@@ -4,7 +4,6 @@
  */
 
 export type QuestStatus =
-  | 'INBOX'
   | 'BACKLOG'
   | 'PLANNED'
   | 'IN_PROGRESS'
@@ -13,7 +12,7 @@ export type QuestStatus =
   | 'GRAVEYARD';
 
 export const VALID_STATUSES: ReadonlySet<string> = new Set<QuestStatus>([
-  'INBOX', 'BACKLOG', 'PLANNED', 'IN_PROGRESS', 'BLOCKED', 'DONE', 'GRAVEYARD',
+  'BACKLOG', 'PLANNED', 'IN_PROGRESS', 'BLOCKED', 'DONE', 'GRAVEYARD',
 ]);
 
 export type QuestType = 'task';

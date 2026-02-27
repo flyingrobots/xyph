@@ -22,7 +22,7 @@ import {
 /** Quest/workflow status keys beyond bijou's BaseStatusKey. */
 type XyphExtStatus =
   | 'DONE' | 'IN_PROGRESS' | 'BACKLOG' | 'BLOCKED' | 'PLANNED'
-  | 'INBOX' | 'GRAVEYARD' | 'PENDING' | 'APPROVED' | 'REJECTED' | 'UNKNOWN'
+  | 'GRAVEYARD' | 'PENDING' | 'APPROVED' | 'REJECTED' | 'UNKNOWN'
   | 'OPEN' | 'CHANGES_REQUESTED' | 'MERGED' | 'CLOSED';
 
 /** XYPH-specific UI element keys beyond bijou's BaseUiKey. */
@@ -45,10 +45,9 @@ export const XYPH_CYAN_MAGENTA: XyphTheme = extendTheme<XyphExtStatus, XyphExtUi
     status: {
       DONE:              tv('#00ff00'),
       IN_PROGRESS:       tv('#00ffff'),
-      BACKLOG:           tv('#808080', ['dim']),
+      BACKLOG:           tv('#ff00ff'),
       BLOCKED:           tv('#ff0000'),
       PLANNED:           tv('#ffff00'),
-      INBOX:             tv('#ff00ff'),
       GRAVEYARD:         tv('#808080', ['dim', 'strikethrough']),
       PENDING:           tv('#ffff00'),
       APPROVED:          tv('#00ff00'),
@@ -71,10 +70,9 @@ export const XYPH_TEAL_ORANGE_PINK: XyphTheme = extendTheme<XyphExtStatus, XyphE
     status: {
       DONE:              tv('#34d399'),
       IN_PROGRESS:       tv('#3bcfd4'),
-      BACKLOG:           tv('#6b7280', ['dim']),
+      BACKLOG:           tv('#f20094'),
       BLOCKED:           tv('#ef4444'),
       PLANNED:           tv('#fc9305'),
-      INBOX:             tv('#f20094'),
       GRAVEYARD:         tv('#6b7280', ['dim', 'strikethrough']),
       PENDING:           tv('#fc9305'),
       APPROVED:          tv('#34d399'),

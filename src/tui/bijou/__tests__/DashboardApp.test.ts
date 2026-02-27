@@ -93,7 +93,7 @@ describe('DashboardApp', () => {
       const [model, cmds] = app.init();
       expect(model.showLanding).toBe(true);
       expect(model.loading).toBe(true);
-      expect(model.activeView).toBe('roadmap');
+      expect(model.activeView).toBe('dashboard');
       expect(model.snapshot).toBeNull();
       expect(cmds.length).toBeGreaterThan(0);
     });
@@ -101,9 +101,9 @@ describe('DashboardApp', () => {
     it('initializes per-view state', () => {
       const app = makeApp();
       const [model] = app.init();
-      expect(model.roadmap).toEqual({ selectedIndex: -1, dagScrollY: 0, detailScrollY: 0 });
+      expect(model.roadmap).toEqual({ selectedIndex: -1, dagScrollY: 0, dagScrollX: 0, detailScrollY: 0 });
       expect(model.submissions).toEqual({ selectedIndex: -1, expandedId: null, listScrollY: 0, detailScrollY: 0 });
-      expect(model.inbox).toEqual({ selectedIndex: -1, listScrollY: 0 });
+      expect(model.backlog).toEqual({ selectedIndex: -1, listScrollY: 0 });
       expect(model.lineage).toEqual({ selectedIndex: -1, collapsedIntents: [] });
       expect(model.pulsePhase).toBe(0);
       expect(model.mode).toBe('normal');
@@ -183,19 +183,19 @@ describe('DashboardApp', () => {
       const loaded: DashboardModel = { ...initial, showLanding: false, loading: false };
 
       const [afterTab1] = app.update(makeKey('tab'), loaded);
-      expect(afterTab1.activeView).toBe('submissions');
+      expect(afterTab1.activeView).toBe('roadmap');
 
       const [afterTab2] = app.update(makeKey('tab'), afterTab1);
-      expect(afterTab2.activeView).toBe('lineage');
+      expect(afterTab2.activeView).toBe('submissions');
 
       const [afterTab3] = app.update(makeKey('tab'), afterTab2);
-      expect(afterTab3.activeView).toBe('overview');
+      expect(afterTab3.activeView).toBe('lineage');
 
       const [afterTab4] = app.update(makeKey('tab'), afterTab3);
-      expect(afterTab4.activeView).toBe('inbox');
+      expect(afterTab4.activeView).toBe('backlog');
 
       const [afterTab5] = app.update(makeKey('tab'), afterTab4);
-      expect(afterTab5.activeView).toBe('roadmap');
+      expect(afterTab5.activeView).toBe('dashboard');
     });
 
     it('cycles views backward with Shift+Tab', () => {
@@ -207,7 +207,7 @@ describe('DashboardApp', () => {
         makeKey('tab', { shift: true }),
         loaded,
       );
-      expect(afterShiftTab.activeView).toBe('inbox');
+      expect(afterShiftTab.activeView).toBe('backlog');
     });
 
     it('toggles help with ?', () => {
@@ -355,13 +355,13 @@ describe('DashboardApp', () => {
       expect(after1.submissions.selectedIndex).toBe(0);
     });
 
-    it('j/k selects items in inbox view', () => {
+    it('j/k selects items in backlog view', () => {
       const app = makeApp();
       const [initial] = app.init();
       const snap = makeSnapshot({
         quests: [
-          { id: 'task:I1', title: 'Inbox 1', status: 'INBOX', hours: 1, suggestedBy: 'agent.test' },
-          { id: 'task:I2', title: 'Inbox 2', status: 'INBOX', hours: 1, suggestedBy: 'agent.test' },
+          { id: 'task:I1', title: 'Backlog 1', status: 'BACKLOG', hours: 1, suggestedBy: 'agent.test' },
+          { id: 'task:I2', title: 'Backlog 2', status: 'BACKLOG', hours: 1, suggestedBy: 'agent.test' },
         ],
       });
       const loaded: DashboardModel = {
@@ -369,14 +369,14 @@ describe('DashboardApp', () => {
         showLanding: false,
         loading: false,
         snapshot: snap,
-        activeView: 'inbox',
+        activeView: 'backlog',
       };
 
       const [after1] = app.update(makeKey('j'), loaded);
-      expect(after1.inbox.selectedIndex).toBe(0);
+      expect(after1.backlog.selectedIndex).toBe(0);
 
       const [after2] = app.update(makeKey('j'), after1);
-      expect(after2.inbox.selectedIndex).toBe(1);
+      expect(after2.backlog.selectedIndex).toBe(1);
     });
 
     // ── Confirm mode ──────────────────────────────────────────────────
@@ -457,12 +457,12 @@ describe('DashboardApp', () => {
 
     // ── Input mode ────────────────────────────────────────────────────
 
-    it('d on inbox enters input mode for reject', () => {
+    it('d on backlog enters input mode for reject', () => {
       const app = makeApp();
       const [initial] = app.init();
       const snap = makeSnapshot({
         quests: [
-          { id: 'task:I1', title: 'Inbox 1', status: 'INBOX', hours: 1, suggestedBy: 'agent.test' },
+          { id: 'task:I1', title: 'Backlog 1', status: 'BACKLOG', hours: 1, suggestedBy: 'agent.test' },
         ],
       });
       const loaded: DashboardModel = {
@@ -470,8 +470,8 @@ describe('DashboardApp', () => {
         showLanding: false,
         loading: false,
         snapshot: snap,
-        activeView: 'inbox',
-        inbox: { ...initial.inbox, selectedIndex: 0 },
+        activeView: 'backlog',
+        backlog: { ...initial.backlog, selectedIndex: 0 },
       };
 
       const [afterD] = app.update(makeKey('d'), loaded);
@@ -479,12 +479,12 @@ describe('DashboardApp', () => {
       expect(afterD.inputState?.action.kind).toBe('reject');
     });
 
-    it('p on inbox enters input mode for promote', () => {
+    it('p on backlog enters input mode for promote', () => {
       const app = makeApp();
       const [initial] = app.init();
       const snap = makeSnapshot({
         quests: [
-          { id: 'task:I1', title: 'Inbox 1', status: 'INBOX', hours: 1, suggestedBy: 'agent.test' },
+          { id: 'task:I1', title: 'Backlog 1', status: 'BACKLOG', hours: 1, suggestedBy: 'agent.test' },
         ],
       });
       const loaded: DashboardModel = {
@@ -492,8 +492,8 @@ describe('DashboardApp', () => {
         showLanding: false,
         loading: false,
         snapshot: snap,
-        activeView: 'inbox',
-        inbox: { ...initial.inbox, selectedIndex: 0 },
+        activeView: 'backlog',
+        backlog: { ...initial.backlog, selectedIndex: 0 },
       };
 
       const [afterP] = app.update(makeKey('p'), loaded);
@@ -782,8 +782,8 @@ describe('DashboardApp', () => {
       const output = app.view(model);
       expect(output).toContain('roadmap');
       expect(output).toContain('submissions');
-      expect(output).toContain('overview');
-      expect(output).toContain('inbox');
+      expect(output).toContain('dashboard');
+      expect(output).toContain('backlog');
     });
 
     it('shows view-specific hints', () => {
@@ -794,7 +794,7 @@ describe('DashboardApp', () => {
         showLanding: false,
         loading: false,
         snapshot: makeSnapshot(),
-        activeView: 'inbox',
+        activeView: 'backlog',
       };
       const output = app.view(model);
       expect(output).toContain('promote');

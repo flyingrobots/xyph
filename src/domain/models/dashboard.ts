@@ -47,6 +47,7 @@ export interface IntentNode {
   title: string;
   requestedBy: string;
   createdAt: number;
+  description?: string;
 }
 
 export interface ScrollNode {

@@ -35,18 +35,18 @@ describe('TRANSITION_TABLE', () => {
     const fromGraveyard = TRANSITION_TABLE.filter((r) => r.from === 'GRAVEYARD');
     expect(fromGraveyard).toHaveLength(1);
     expect(fromGraveyard[0]?.command).toBe('reopen');
-    expect(fromGraveyard[0]?.to).toBe('INBOX');
+    expect(fromGraveyard[0]?.to).toBe('BACKLOG');
   });
 
-  it('promote goes from INBOX to BACKLOG', () => {
+  it('promote goes from BACKLOG to PLANNED', () => {
     const rule = TRANSITION_TABLE.find((r) => r.command === 'promote');
-    expect(rule?.from).toBe('INBOX');
-    expect(rule?.to).toBe('BACKLOG');
+    expect(rule?.from).toBe('BACKLOG');
+    expect(rule?.to).toBe('PLANNED');
   });
 
-  it('reject goes from INBOX to GRAVEYARD', () => {
+  it('reject goes from BACKLOG to GRAVEYARD', () => {
     const rule = TRANSITION_TABLE.find((r) => r.command === 'reject');
-    expect(rule?.from).toBe('INBOX');
+    expect(rule?.from).toBe('BACKLOG');
     expect(rule?.to).toBe('GRAVEYARD');
     expect(rule?.requiresHuman).toBe(false);
   });
@@ -76,14 +76,14 @@ describe('IntakeService', () => {
 
   describe('validatePromote', () => {
     it('throws [FORBIDDEN] for non-human actor', async () => {
-      const svc = new IntakeService(makePort(makeQuest('INBOX')));
+      const svc = new IntakeService(makePort(makeQuest('BACKLOG')));
       await expect(
         svc.validatePromote('task:TST-001', 'agent.claude', 'intent:TEST')
       ).rejects.toThrow('[FORBIDDEN]');
     });
 
     it('throws [MISSING_ARG] for intent without intent: prefix', async () => {
-      const svc = new IntakeService(makePort(makeQuest('INBOX')));
+      const svc = new IntakeService(makePort(makeQuest('BACKLOG')));
       await expect(
         svc.validatePromote('task:TST-001', 'human.james', 'task:WRONG')
       ).rejects.toThrow('[MISSING_ARG]');
@@ -96,8 +96,8 @@ describe('IntakeService', () => {
       ).rejects.toThrow('[NOT_FOUND]');
     });
 
-    it('throws [INVALID_FROM] when quest is not INBOX', async () => {
-      const svc = new IntakeService(makePort(makeQuest('BACKLOG')));
+    it('throws [INVALID_FROM] when quest is not BACKLOG', async () => {
+      const svc = new IntakeService(makePort(makeQuest('PLANNED')));
       await expect(
         svc.validatePromote('task:TST-001', 'human.james', 'intent:TEST')
       ).rejects.toThrow('[INVALID_FROM]');
@@ -110,8 +110,8 @@ describe('IntakeService', () => {
       ).rejects.toThrow('[INVALID_FROM]');
     });
 
-    it('resolves for a valid human actor with an INBOX quest and valid intent', async () => {
-      const svc = new IntakeService(makePort(makeQuest('INBOX')));
+    it('resolves for a valid human actor with a BACKLOG quest and valid intent', async () => {
+      const svc = new IntakeService(makePort(makeQuest('BACKLOG')));
       await expect(
         svc.validatePromote('task:TST-001', 'human.james', 'intent:VALID')
       ).resolves.toBeUndefined();
@@ -120,12 +120,12 @@ describe('IntakeService', () => {
 
   describe('validateReject', () => {
     it('throws [MISSING_ARG] for empty rationale', async () => {
-      const svc = new IntakeService(makePort(makeQuest('INBOX')));
+      const svc = new IntakeService(makePort(makeQuest('BACKLOG')));
       await expect(svc.validateReject('task:TST-001', '')).rejects.toThrow('[MISSING_ARG]');
     });
 
     it('throws [MISSING_ARG] for whitespace-only rationale', async () => {
-      const svc = new IntakeService(makePort(makeQuest('INBOX')));
+      const svc = new IntakeService(makePort(makeQuest('BACKLOG')));
       await expect(svc.validateReject('task:TST-001', '   ')).rejects.toThrow('[MISSING_ARG]');
     });
 
@@ -134,13 +134,13 @@ describe('IntakeService', () => {
       await expect(svc.validateReject('task:TST-001', 'Out of scope')).rejects.toThrow('[NOT_FOUND]');
     });
 
-    it('throws [INVALID_FROM] when quest is not INBOX', async () => {
-      const svc = new IntakeService(makePort(makeQuest('BACKLOG')));
+    it('throws [INVALID_FROM] when quest is not BACKLOG', async () => {
+      const svc = new IntakeService(makePort(makeQuest('PLANNED')));
       await expect(svc.validateReject('task:TST-001', 'Out of scope')).rejects.toThrow('[INVALID_FROM]');
     });
 
-    it('resolves for any actor when quest is INBOX and rationale is provided', async () => {
-      const svc = new IntakeService(makePort(makeQuest('INBOX')));
+    it('resolves for any actor when quest is BACKLOG and rationale is provided', async () => {
+      const svc = new IntakeService(makePort(makeQuest('BACKLOG')));
       await expect(svc.validateReject('task:TST-001', 'Out of scope')).resolves.toBeUndefined();
     });
 
@@ -157,8 +157,8 @@ describe('IntakeService', () => {
       await expect(svc.validateReopen('task:TST-001', 'human.james')).rejects.toThrow('[NOT_FOUND]');
     });
 
-    it('throws [INVALID_FROM] when quest is INBOX (not GRAVEYARD)', async () => {
-      const svc = new IntakeService(makePort(makeQuest('INBOX')));
+    it('throws [INVALID_FROM] when quest is BACKLOG (not GRAVEYARD)', async () => {
+      const svc = new IntakeService(makePort(makeQuest('BACKLOG')));
       await expect(svc.validateReopen('task:TST-001', 'human.james')).rejects.toThrow('[INVALID_FROM]');
     });
 
@@ -184,7 +184,7 @@ describe('IntakeService', () => {
     });
 
     it('validates each command calls getQuest exactly once', async () => {
-      const port = makePort(makeQuest('INBOX'));
+      const port = makePort(makeQuest('BACKLOG'));
       const svc = new IntakeService(port);
 
       await svc.validatePromote('task:TST-001', 'human.james', 'intent:X');
@@ -193,7 +193,7 @@ describe('IntakeService', () => {
     });
 
     it('does not call getQuest if authority check fails before the lookup (promote)', async () => {
-      const port = makePort(makeQuest('INBOX'));
+      const port = makePort(makeQuest('BACKLOG'));
       const svc = new IntakeService(port);
 
       await expect(

@@ -1,9 +1,31 @@
-import { headerBox, tree, type TreeNode, accordion, type AccordionSection } from '@flyingrobots/bijou';
+import { headerBox, tree, type TreeNode, accordion, type AccordionSection, progressBar } from '@flyingrobots/bijou';
 import { styled, styledStatus, getTheme } from '../../theme/index.js';
 import type { DashboardModel } from '../DashboardApp.js';
+import type { QuestNode } from '../../../domain/models/dashboard.js';
 
 function truncate(s: string, max: number): string {
   return s.length > max ? s.slice(0, max - 1) + '\u2026' : s;
+}
+
+interface IntentStats {
+  questCount: number;
+  doneCount: number;
+  totalHours: number;
+  doneHours: number;
+}
+
+function computeIntentStats(quests: QuestNode[]): IntentStats {
+  let doneCount = 0;
+  let totalHours = 0;
+  let doneHours = 0;
+  for (const q of quests) {
+    totalHours += q.hours;
+    if (q.status === 'DONE') {
+      doneCount++;
+      doneHours += q.hours;
+    }
+  }
+  return { questCount: quests.length, doneCount, totalHours, doneHours };
 }
 
 export function lineageView(model: DashboardModel, _width?: number, _height?: number): string {
@@ -33,9 +55,9 @@ export function lineageView(model: DashboardModel, _width?: number, _height?: nu
     }
   }
 
-  // Orphan quests (no intentId, excluding INBOX which legitimately lack intent)
+  // Orphan quests (no intentId, excluding BACKLOG which legitimately lack intent)
   const orphans = snap.quests.filter(
-    q => q.intentId === undefined && q.status !== 'INBOX',
+    q => q.intentId === undefined && q.status !== 'BACKLOG',
   );
 
   if (snap.intents.length === 0) {
@@ -45,22 +67,38 @@ export function lineageView(model: DashboardModel, _width?: number, _height?: nu
     ));
   }
 
-  // Render each intent as an accordion section (item 9)
+  // Render each intent as an accordion section with card layout
   const sections: AccordionSection[] = snap.intents.map((intent, i) => {
     const isSelected = i === model.lineage.selectedIndex;
     const isCollapsed = model.lineage.collapsedIntents.includes(intent.id);
 
-    // Title with selection indicator
-    const titleStyle = isSelected ? t.theme.semantic.primary : t.theme.ui.intentHeader;
-    const title = styled(titleStyle, `\u25C6 ${intent.id}`) +
-      styled(t.theme.semantic.muted, `  ${intent.title}  (${intent.requestedBy})`);
-
-    // Content: quest tree
     const quests = questsByIntent.get(intent.id) ?? [];
-    let content: string;
+    const stats = computeIntentStats(quests);
+
+    // Card title: ◆ intent:ID  Title
+    const titleStyle = isSelected ? t.theme.semantic.primary : t.theme.ui.intentHeader;
+    const pct = stats.questCount > 0 ? Math.round((stats.doneCount / stats.questCount) * 100) : 0;
+    const bar = stats.questCount > 0 ? '  ' + progressBar(pct, { width: 18 }) : '';
+    const statsLine = stats.questCount > 0
+      ? `  ${stats.doneCount}/${stats.questCount} quests  \u00B7  ${stats.doneHours}h / ${stats.totalHours}h`
+      : '';
+    const title = styled(titleStyle, `\u25C6 ${intent.id}`) +
+      styled(t.theme.semantic.muted, `  ${intent.title}`) +
+      bar + styled(t.theme.semantic.muted, statsLine);
+
+    // Build card subtitle lines
+    const subtitleLines: string[] = [];
+    const dateStr = new Date(intent.createdAt).toLocaleDateString();
+    subtitleLines.push(styled(t.theme.semantic.muted, `    requested-by: ${intent.requestedBy}  \u00B7  ${dateStr}`));
+    if (intent.description) {
+      subtitleLines.push(styled(t.theme.semantic.muted, `    ${truncate(intent.description, 72)}`));
+    }
+
+    // Content: subtitle + quest tree
+    const contentParts: string[] = [...subtitleLines];
 
     if (quests.length === 0) {
-      content = styled(t.theme.semantic.muted, '  (no quests)');
+      contentParts.push(styled(t.theme.semantic.muted, '    (no quests)'));
     } else {
       const treeNodes: TreeNode[] = quests.map(q => {
         const scrollEntry = scrollByQuestId.get(q.id);
@@ -82,10 +120,10 @@ export function lineageView(model: DashboardModel, _width?: number, _height?: nu
 
       // Indent tree output
       const rendered = tree(treeNodes, { guideToken: t.theme.semantic.muted });
-      content = rendered.split('\n').map(l => `  ${l}`).join('\n');
+      contentParts.push(rendered.split('\n').map(l => `    ${l}`).join('\n'));
     }
 
-    return { title, content, expanded: !isCollapsed };
+    return { title, content: contentParts.join('\n'), expanded: !isCollapsed };
   });
 
   if (sections.length > 0) {

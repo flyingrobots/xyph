@@ -2,30 +2,30 @@ import { headerBox, table } from '@flyingrobots/bijou';
 import { styled, getTheme } from '../../theme/index.js';
 import type { DashboardModel } from '../DashboardApp.js';
 
-export function inboxView(model: DashboardModel, _width?: number, _height?: number): string {
+export function backlogView(model: DashboardModel, _width?: number, _height?: number): string {
   const t = getTheme();
   const snap = model.snapshot;
   if (!snap) return styled(t.theme.semantic.muted, '  No snapshot loaded.');
 
-  const inbox = snap.quests.filter(q => q.status === 'INBOX');
+  const backlog = snap.quests.filter(q => q.status === 'BACKLOG');
   const lines: string[] = [];
 
-  lines.push(headerBox('Intake INBOX', {
-    detail: `${inbox.length} task(s) awaiting triage`,
+  lines.push(headerBox('Backlog', {
+    detail: `${backlog.length} task(s) awaiting triage`,
     borderToken: t.theme.border.secondary,
   }));
 
-  if (inbox.length === 0) {
+  if (backlog.length === 0) {
     lines.push(styled(t.theme.semantic.muted,
-      '\n  No tasks in INBOX.\n' +
+      '\n  No tasks in backlog.\n' +
       '  Add one: xyph-actuator inbox task:ID --title "..." --suggested-by <principal>',
     ));
     return lines.join('\n');
   }
 
   // Build flat ordered list for selection index mapping
-  const bySuggester = new Map<string, typeof inbox>();
-  for (const q of inbox) {
+  const bySuggester = new Map<string, typeof backlog>();
+  for (const q of backlog) {
     const key = q.suggestedBy ?? '(unknown suggester)';
     const arr = bySuggester.get(key) ?? [];
     arr.push(q);
@@ -40,7 +40,7 @@ export function inboxView(model: DashboardModel, _width?: number, _height?: numb
     }
   }
 
-  const selectedIndex = model.inbox.selectedIndex;
+  const selectedIndex = model.backlog.selectedIndex;
   const selectedId = flatList[selectedIndex] ?? null;
 
   for (const [suggester, quests] of bySuggester) {

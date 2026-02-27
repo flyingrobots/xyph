@@ -57,13 +57,13 @@ export function claimQuest(deps: WriteDeps, questId: string): Cmd<DashboardMsg> 
 }
 
 /**
- * Promote an INBOX quest to BACKLOG via IntakePort.
+ * Promote a BACKLOG quest to PLANNED via IntakePort.
  */
 export function promoteQuest(deps: WriteDeps, questId: string, intentId: string, campaignId?: string): Cmd<DashboardMsg> {
   return async (emit) => {
     try {
       await deps.intake.promote(questId, intentId, campaignId);
-      emit({ type: 'write-success', message: `Promoted ${questId} → BACKLOG` });
+      emit({ type: 'write-success', message: `Promoted ${questId} → PLANNED` });
     } catch (err: unknown) {
       emit({ type: 'write-error', message: err instanceof Error ? err.message : String(err) });
     }
@@ -71,7 +71,7 @@ export function promoteQuest(deps: WriteDeps, questId: string, intentId: string,
 }
 
 /**
- * Reject an INBOX quest to GRAVEYARD via IntakePort.
+ * Reject a BACKLOG quest to GRAVEYARD via IntakePort.
  */
 export function rejectQuest(deps: WriteDeps, questId: string, rationale: string): Cmd<DashboardMsg> {
   return async (emit) => {

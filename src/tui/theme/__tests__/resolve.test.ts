@@ -99,7 +99,6 @@ describe('bridge (replacing resolve)', () => {
       expect(t.theme.status.BACKLOG).toBeDefined();
       expect(t.theme.status.BLOCKED).toBeDefined();
       expect(t.theme.status.PLANNED).toBeDefined();
-      expect(t.theme.status.INBOX).toBeDefined();
       expect(t.theme.status.GRAVEYARD).toBeDefined();
       expect(t.theme.status.PENDING).toBeDefined();
       expect(t.theme.status.APPROVED).toBeDefined();

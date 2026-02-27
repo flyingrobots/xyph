@@ -47,6 +47,15 @@ import { toNeighborEntries, type NeighborEntry } from './helpers/isNeighborEntry
 // Validation sets
 // ---------------------------------------------------------------------------
 
+/** Normalize legacy status strings at read time (vocabulary rename Phase 9). */
+function normalizeQuestStatus(raw: string): string {
+  switch (raw) {
+    case 'INBOX':   return 'BACKLOG';   // old INBOX → new BACKLOG (suggestion pool)
+    case 'BACKLOG': return 'PLANNED';   // old BACKLOG → new PLANNED (vetted work)
+    default:        return raw;
+  }
+}
+
 const VALID_CAMPAIGN_STATUSES: ReadonlySet<string> = new Set<CampaignStatus>([
   'BACKLOG', 'IN_PROGRESS', 'DONE', 'UNKNOWN',
 ]);
@@ -241,9 +250,10 @@ class GraphContextImpl implements GraphContext {
     for (const n of taskNodes) {
       if (n.props['type'] !== 'task') continue;
       const title = n.props['title'];
-      const rawStatus = n.props['status'];
+      const rawStatusRaw = n.props['status'];
       const hours = n.props['hours'];
-      if (typeof title !== 'string' || typeof rawStatus !== 'string') continue;
+      if (typeof title !== 'string' || typeof rawStatusRaw !== 'string') continue;
+      const rawStatus = normalizeQuestStatus(rawStatusRaw);
       if (!VALID_QUEST_STATUSES.has(rawStatus)) continue;
 
       const neighbors = neighborsCache.get(n.id) ?? [];
@@ -293,8 +303,12 @@ class GraphContextImpl implements GraphContext {
       const title = n.props['title'];
       const requestedBy = n.props['requested_by'];
       const createdAt = n.props['created_at'];
+      const description = n.props['description'];
       if (typeof title === 'string' && typeof requestedBy === 'string' && typeof createdAt === 'number') {
-        intents.push({ id: n.id, title, requestedBy, createdAt });
+        intents.push({
+          id: n.id, title, requestedBy, createdAt,
+          description: typeof description === 'string' ? description : undefined,
+        });
       }
     }
 

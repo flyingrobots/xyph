@@ -17,8 +17,8 @@ import type { IntakePort } from '../../ports/IntakePort.js';
 import type { GraphPort } from '../../ports/GraphPort.js';
 import { roadmapView } from './views/roadmap-view.js';
 import { lineageView } from './views/lineage-view.js';
-import { overviewView } from './views/overview-view.js';
-import { inboxView } from './views/inbox-view.js';
+import { dashboardView } from './views/dashboard-view.js';
+import { backlogView } from './views/backlog-view.js';
 import { submissionsView } from './views/submissions-view.js';
 import { landingView } from './views/landing-view.js';
 import { confirmOverlay, inputOverlay } from './overlays.js';
@@ -27,9 +27,9 @@ import type { SubmissionPort } from '../../ports/SubmissionPort.js';
 
 // ── Public types ────────────────────────────────────────────────────────
 
-export type ViewName = 'roadmap' | 'submissions' | 'lineage' | 'overview' | 'inbox';
+export type ViewName = 'dashboard' | 'roadmap' | 'submissions' | 'lineage' | 'backlog';
 
-const VIEWS: ViewName[] = ['roadmap', 'submissions', 'lineage', 'overview', 'inbox'];
+const VIEWS: ViewName[] = ['dashboard', 'roadmap', 'submissions', 'lineage', 'backlog'];
 
 /** Pending write action stored in confirm/input state. */
 export type PendingWrite =
@@ -42,6 +42,7 @@ export type PendingWrite =
 export interface RoadmapState {
   selectedIndex: number;
   dagScrollY: number;
+  dagScrollX: number;
   detailScrollY: number;
 }
 
@@ -52,7 +53,7 @@ export interface SubmissionsState {
   detailScrollY: number;
 }
 
-export interface InboxState {
+export interface BacklogState {
   selectedIndex: number;
   listScrollY: number;
 }
@@ -82,7 +83,7 @@ export interface DashboardModel {
   // Per-view state
   roadmap: RoadmapState;
   submissions: SubmissionsState;
-  inbox: InboxState;
+  backlog: BacklogState;
   lineage: LineageState;
 
   // Interaction mode
@@ -125,7 +126,9 @@ type ViewAction =
   | { type: 'approve' }
   | { type: 'request-changes' }
   | { type: 'scroll-dag-down' }
-  | { type: 'scroll-dag-up' };
+  | { type: 'scroll-dag-up' }
+  | { type: 'scroll-dag-left' }
+  | { type: 'scroll-dag-right' };
 
 function buildGlobalKeys(): KeyMap<GlobalAction> {
   return createKeyMap<GlobalAction>()
@@ -144,7 +147,11 @@ function buildRoadmapKeys(): KeyMap<ViewAction> {
     .bind('up', 'Select prev', { type: 'select-prev' })
     .bind('c', 'Claim quest', { type: 'claim' })
     .bind('pagedown', 'Scroll DAG down', { type: 'scroll-dag-down' })
-    .bind('pageup', 'Scroll DAG up', { type: 'scroll-dag-up' });
+    .bind('pageup', 'Scroll DAG up', { type: 'scroll-dag-up' })
+    .bind('h', 'Scroll DAG left', { type: 'scroll-dag-left' })
+    .bind('left', 'Scroll DAG left', { type: 'scroll-dag-left' })
+    .bind('l', 'Scroll DAG right', { type: 'scroll-dag-right' })
+    .bind('right', 'Scroll DAG right', { type: 'scroll-dag-right' });
 }
 
 function buildSubmissionsKeys(): KeyMap<ViewAction> {
@@ -158,7 +165,7 @@ function buildSubmissionsKeys(): KeyMap<ViewAction> {
     .bind('x', 'Request changes', { type: 'request-changes' });
 }
 
-function buildInboxKeys(): KeyMap<ViewAction> {
+function buildBacklogKeys(): KeyMap<ViewAction> {
   return createKeyMap<ViewAction>()
     .bind('j', 'Select next', { type: 'select-next' })
     .bind('down', 'Select next', { type: 'select-next' })
@@ -204,9 +211,9 @@ function submissionIds(snap: GraphSnapshot): string[] {
     .map(s => s.id);
 }
 
-/** Return ordered inbox quest IDs matching inbox-view rendering order. */
-function inboxQuestIds(snap: GraphSnapshot): string[] {
-  return snap.quests.filter(q => q.status === 'INBOX').map(q => q.id);
+/** Return ordered backlog quest IDs matching backlog-view rendering order. */
+function backlogQuestIds(snap: GraphSnapshot): string[] {
+  return snap.quests.filter(q => q.status === 'BACKLOG').map(q => q.id);
 }
 
 /** Return ordered intent IDs for lineage view selection. */
@@ -225,9 +232,9 @@ function viewHints(view: ViewName): string {
   const t = getTheme();
   let keys = '? help  q quit  Tab cycle  r refresh';
   switch (view) {
-    case 'roadmap':     keys += '  j/k select  c claim  PgDn/PgUp scroll'; break;
+    case 'roadmap':     keys += '  j/k select  c claim  PgDn/PgUp scroll  h/l scroll-h'; break;
     case 'submissions': keys += '  j/k select  Enter expand  a approve  x request-changes'; break;
-    case 'inbox':       keys += '  j/k select  p promote  d reject'; break;
+    case 'backlog':     keys += '  j/k select  p promote  d reject'; break;
     case 'lineage':     keys += '  j/k select  Enter expand/collapse'; break;
     default:            break;
   }
@@ -249,7 +256,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
   const globalKeys = buildGlobalKeys();
   const roadmapKeys = buildRoadmapKeys();
   const submissionsKeys = buildSubmissionsKeys();
-  const inboxKeys = buildInboxKeys();
+  const backlogKeys = buildBacklogKeys();
   const lineageKeys = buildLineageKeys();
 
   const writeDeps: WriteDeps = {
@@ -313,7 +320,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
     switch (view) {
       case 'roadmap':     return roadmapKeys;
       case 'submissions': return submissionsKeys;
-      case 'inbox':       return inboxKeys;
+      case 'backlog':     return backlogKeys;
       case 'lineage':     return lineageKeys;
       default:            return null;
     }
@@ -326,7 +333,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
       const cols = process.stdout.columns ?? 80;
       const rows = process.stdout.rows ?? 24;
       const model: DashboardModel = {
-        activeView: 'roadmap',
+        activeView: 'dashboard',
         snapshot: null,
         loading: true,
         error: null,
@@ -337,9 +344,9 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         logoText: deps.logoText,
         requestId: 1,
         loadingProgress: 0,
-        roadmap: { selectedIndex: -1, dagScrollY: 0, detailScrollY: 0 },
+        roadmap: { selectedIndex: -1, dagScrollY: 0, dagScrollX: 0, detailScrollY: 0 },
         submissions: { selectedIndex: -1, expandedId: null, listScrollY: 0, detailScrollY: 0 },
-        inbox: { selectedIndex: -1, listScrollY: 0 },
+        backlog: { selectedIndex: -1, listScrollY: 0 },
         lineage: { selectedIndex: -1, collapsedIntents: [] },
         pulsePhase: 0,
         mode: 'normal',
@@ -578,11 +585,11 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
       const viewRenderer = (w: number, h: number): string => {
         let content: string;
         switch (model.activeView) {
+          case 'dashboard':   content = dashboardView(model, w, h); break;
           case 'roadmap':     content = roadmapView(model, w, h); break;
           case 'submissions': content = submissionsView(model, w, h); break;
           case 'lineage':     content = lineageView(model, w, h); break;
-          case 'overview':    content = overviewView(model, w, h); break;
-          case 'inbox':       content = inboxView(model, w, h); break;
+          case 'backlog':     content = backlogView(model, w, h); break;
         }
 
         // Overlay rendering for modal modes
@@ -634,8 +641,8 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
 
       case 'promote': {
         if (!snap) return [model, []];
-        const ids = inboxQuestIds(snap);
-        const questId = ids[model.inbox.selectedIndex];
+        const ids = backlogQuestIds(snap);
+        const questId = ids[model.backlog.selectedIndex];
         if (!questId) return [model, []];
         return [{
           ...model,
@@ -646,8 +653,8 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
 
       case 'reject': {
         if (!snap) return [model, []];
-        const ids = inboxQuestIds(snap);
-        const questId = ids[model.inbox.selectedIndex];
+        const ids = backlogQuestIds(snap);
+        const questId = ids[model.backlog.selectedIndex];
         if (!questId) return [model, []];
         return [{
           ...model,
@@ -720,6 +727,20 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
           roadmap: { ...model.roadmap, dagScrollY: Math.max(0, model.roadmap.dagScrollY - pageStep) },
         }, []];
       }
+      case 'scroll-dag-left': {
+        const colStep = 8;
+        return [{
+          ...model,
+          roadmap: { ...model.roadmap, dagScrollX: Math.max(0, model.roadmap.dagScrollX - colStep) },
+        }, []];
+      }
+      case 'scroll-dag-right': {
+        const colStep = 8;
+        return [{
+          ...model,
+          roadmap: { ...model.roadmap, dagScrollX: model.roadmap.dagScrollX + colStep },
+        }, []];
+      }
     }
   }
 
@@ -738,10 +759,10 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         const next = clampIndex(model.submissions.selectedIndex + delta, count);
         return { ...model, submissions: { ...model.submissions, selectedIndex: next } };
       }
-      case 'inbox': {
-        const count = inboxQuestIds(snap).length;
-        const next = clampIndex(model.inbox.selectedIndex + delta, count);
-        return { ...model, inbox: { ...model.inbox, selectedIndex: next } };
+      case 'backlog': {
+        const count = backlogQuestIds(snap).length;
+        const next = clampIndex(model.backlog.selectedIndex + delta, count);
+        return { ...model, backlog: { ...model.backlog, selectedIndex: next } };
       }
       case 'lineage': {
         const count = lineageIntentIds(snap).length;
@@ -779,7 +800,7 @@ function renderHelp(): string {
   lines.push(`    ${styled(t.theme.semantic.info, 'a')}           Approve tip patchset`);
   lines.push(`    ${styled(t.theme.semantic.info, 'x')}           Request changes`);
   lines.push('');
-  lines.push(styled(t.theme.semantic.info, '  Inbox'));
+  lines.push(styled(t.theme.semantic.info, '  Backlog'));
   lines.push(`    ${styled(t.theme.semantic.info, 'j/k')}         Select item`);
   lines.push(`    ${styled(t.theme.semantic.info, 'p')}           Promote selected`);
   lines.push(`    ${styled(t.theme.semantic.info, 'd')}           Reject selected`);

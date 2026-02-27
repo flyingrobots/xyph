@@ -4,6 +4,49 @@ All notable changes to XYPH will be documented in this file.
 
 ## [Unreleased]
 
+### Changed — Phase 9: Vocabulary Rename
+
+- `INBOX` → `BACKLOG` (suggestion pool), `BACKLOG` → `PLANNED` (vetted work).
+- Read-time normalization in `GraphContext` (`normalizeQuestStatus`) ensures
+  legacy graph data maps transparently — no graph migration needed.
+- `inbox-view.ts` → `backlog-view.ts`; all references, tests, keybindings, and
+  tab labels updated.
+- `IntakeService` and adapters updated: `sendToInbox()` now writes `BACKLOG`;
+  `promote()` transitions `BACKLOG → PLANNED`.
+- `Quest` entity and status types reflect new vocabulary.
+- Theme presets: `INBOX` tokens replaced with `BACKLOG`.
+
+### Added — Phase 5: Dashboard Redesign
+
+- `dashboard-view.ts`: Full replacement for `overview-view.ts` as the default
+  landing view.
+- Project progress bar via bijou `progressBar()` — DONE / non-backlog ratio.
+- Alert bar: warns on orphan quests (no intent) and forked patchsets.
+- "In Progress" and "Pending Review" panels with top items.
+- Campaign progress: per-campaign `progressBar()` with done/total counts.
+- "My Issues" panel (assigned, non-terminal quests).
+- Health section: sovereignty audit ratio, orphan count, fork count.
+- Graph meta section: max tick, writer count, tip SHA.
+- Two-column flex layout (2:1 ratio).
+
+### Added — Phase 4: Lineage Intent Cards
+
+- Intent descriptions surfaced from graph (`description` property on intent
+  nodes, read in `GraphContext`).
+- `progressBar()` completion stats per intent (DONE / total authorized quests).
+- Indented quest trees under each intent with status styling.
+
+### Added — Phase 3: Interactive DAG Scrolling
+
+- Roadmap view upgraded to bijou `dagLayout()` with `viewport({ scrollX })`.
+- Auto-centers on selected node when selection changes.
+- `h`/`l` keybindings for horizontal DAG scrolling.
+
+### Removed
+
+- `overview-view.ts` — replaced by `dashboard-view.ts`.
+- `inbox-view.ts` — replaced by `backlog-view.ts`.
+
 ### Added — Interactive TUI Phase 2: Review Actions + Roadmap Detail
 
 **Review actions in submissions view:**

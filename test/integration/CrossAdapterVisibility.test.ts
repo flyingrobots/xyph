@@ -73,7 +73,8 @@ describe('Cross-Adapter Visibility (GraphContext sees Intake mutations)', () => 
     const before = await ctx.fetchSnapshot();
     const questBefore = before.quests.find((q) => q.id === 'task:XVIS-001');
     expect(questBefore).toBeDefined();
-    expect(questBefore?.status).toBe('INBOX');
+    // Graph stores INBOX, read-time normalization converts to BACKLOG
+    expect(questBefore?.status).toBe('BACKLOG');
 
     const intake = new WarpIntakeAdapter(graphPort, writerId);
     await intake.promote('task:XVIS-001', 'intent:cross-test');
@@ -81,7 +82,8 @@ describe('Cross-Adapter Visibility (GraphContext sees Intake mutations)', () => 
     const after = await ctx.fetchSnapshot();
     const questAfter = after.quests.find((q) => q.id === 'task:XVIS-001');
     expect(questAfter).toBeDefined();
-    expect(questAfter?.status).toBe('BACKLOG');
+    // Graph stores BACKLOG (post-promote), read-time normalization converts to PLANNED
+    expect(questAfter?.status).toBe('PLANNED');
     expect(questAfter?.intentId).toBe('intent:cross-test');
   });
 
@@ -90,7 +92,8 @@ describe('Cross-Adapter Visibility (GraphContext sees Intake mutations)', () => 
     const before = await ctx.fetchSnapshot();
     const questBefore = before.quests.find((q) => q.id === 'task:XVIS-002');
     expect(questBefore).toBeDefined();
-    expect(questBefore?.status).toBe('INBOX');
+    // Graph stores INBOX, read-time normalization converts to BACKLOG
+    expect(questBefore?.status).toBe('BACKLOG');
 
     const intake = new WarpIntakeAdapter(graphPort, writerId);
     await intake.reject('task:XVIS-002', 'Not aligned with goals');
@@ -111,7 +114,8 @@ describe('Cross-Adapter Visibility (GraphContext sees Intake mutations)', () => 
     expect(before.graphMeta?.tipSha).toBeTruthy();
 
     const questBefore = before.quests.find((q) => q.id === 'task:XVIS-003');
-    expect(questBefore?.status).toBe('INBOX');
+    // Graph stores INBOX, read-time normalization converts to BACKLOG
+    expect(questBefore?.status).toBe('BACKLOG');
 
     const intake = new WarpIntakeAdapter(graphPort, writerId);
     await intake.reject('task:XVIS-003', 'GraphMeta mutation test');

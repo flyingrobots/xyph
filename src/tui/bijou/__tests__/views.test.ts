@@ -5,8 +5,8 @@ import type { DashboardModel } from '../DashboardApp.js';
 import type { GraphSnapshot, QuestNode, IntentNode, CampaignNode, ScrollNode, SubmissionNode, ReviewNode, DecisionNode } from '../../../domain/models/dashboard.js';
 import { roadmapView } from '../views/roadmap-view.js';
 import { lineageView } from '../views/lineage-view.js';
-import { overviewView } from '../views/overview-view.js';
-import { inboxView } from '../views/inbox-view.js';
+import { dashboardView } from '../views/dashboard-view.js';
+import { backlogView } from '../views/backlog-view.js';
 import { submissionsView } from '../views/submissions-view.js';
 
 // ── Helpers ────────────────────────────────────────────────────────────
@@ -45,9 +45,9 @@ function makeModel(snapshot: GraphSnapshot | null): DashboardModel {
     logoText: 'XYPH',
     requestId: 1,
     loadingProgress: 100,
-    roadmap: { selectedIndex: -1, dagScrollY: 0, detailScrollY: 0 },
+    roadmap: { selectedIndex: -1, dagScrollY: 0, dagScrollX: 0, detailScrollY: 0 },
     submissions: { selectedIndex: -1, expandedId: null, listScrollY: 0, detailScrollY: 0 },
-    inbox: { selectedIndex: -1, listScrollY: 0 },
+    backlog: { selectedIndex: -1, listScrollY: 0 },
     lineage: { selectedIndex: -1, collapsedIntents: [] },
     pulsePhase: 0,
     mode: 'normal',
@@ -255,32 +255,32 @@ describe('bijou views', () => {
     });
   });
 
-  // ── Inbox View ─────────────────────────────────────────────────────────
+  // ── Backlog View ───────────────────────────────────────────────────────
 
-  describe('inboxView', () => {
+  describe('backlogView', () => {
     it('returns muted text when snapshot is null', () => {
-      const out = inboxView(makeModel(null));
+      const out = backlogView(makeModel(null));
       expect(strip(out)).toContain('No snapshot loaded');
     });
 
-    it('shows empty message when inbox is empty', () => {
+    it('shows empty message when backlog is empty', () => {
       const snap = makeSnapshot({
-        quests: [quest({ id: 'task:Q-001', title: 'Not inbox', status: 'PLANNED' })],
+        quests: [quest({ id: 'task:Q-001', title: 'Not backlog', status: 'PLANNED' })],
       });
-      const plain = strip(inboxView(makeModel(snap)));
-      expect(plain).toContain('Intake INBOX');
-      expect(plain).toContain('No tasks in INBOX');
+      const plain = strip(backlogView(makeModel(snap)));
+      expect(plain).toContain('Backlog');
+      expect(plain).toContain('No tasks in backlog');
     });
 
-    it('groups inbox quests by suggestedBy', () => {
+    it('groups backlog quests by suggestedBy', () => {
       const snap = makeSnapshot({
         quests: [
-          quest({ id: 'task:I-001', title: 'Task from agent', status: 'INBOX', suggestedBy: 'agent.claude', suggestedAt: Date.now() }),
-          quest({ id: 'task:I-002', title: 'Task from human', status: 'INBOX', suggestedBy: 'human.james', suggestedAt: Date.now() }),
-          quest({ id: 'task:I-003', title: 'Another from agent', status: 'INBOX', suggestedBy: 'agent.claude' }),
+          quest({ id: 'task:I-001', title: 'Task from agent', status: 'BACKLOG', suggestedBy: 'agent.claude', suggestedAt: Date.now() }),
+          quest({ id: 'task:I-002', title: 'Task from human', status: 'BACKLOG', suggestedBy: 'human.james', suggestedAt: Date.now() }),
+          quest({ id: 'task:I-003', title: 'Another from agent', status: 'BACKLOG', suggestedBy: 'agent.claude' }),
         ],
       });
-      const plain = strip(inboxView(makeModel(snap)));
+      const plain = strip(backlogView(makeModel(snap)));
       expect(plain).toContain('agent.claude');
       expect(plain).toContain('human.james');
       expect(plain).toContain('task:I-001');
@@ -294,13 +294,13 @@ describe('bijou views', () => {
           quest({
             id: 'task:I-010',
             title: 'Rejected once',
-            status: 'INBOX',
+            status: 'BACKLOG',
             suggestedBy: 'agent.claude',
             rejectionRationale: 'This was rejected because the scope was way too large for a single quest',
           }),
         ],
       });
-      const plain = strip(inboxView(makeModel(snap)));
+      const plain = strip(backlogView(makeModel(snap)));
       // 24 chars + ellipsis
       expect(plain).toContain('This was rejected becau');
       expect(plain).toContain('\u2026');
@@ -308,48 +308,45 @@ describe('bijou views', () => {
 
     it('shows unknown suggester fallback', () => {
       const snap = makeSnapshot({
-        quests: [quest({ id: 'task:I-020', title: 'Mystery task', status: 'INBOX' })],
+        quests: [quest({ id: 'task:I-020', title: 'Mystery task', status: 'BACKLOG' })],
       });
-      const plain = strip(inboxView(makeModel(snap)));
+      const plain = strip(backlogView(makeModel(snap)));
       expect(plain).toContain('(unknown suggester)');
     });
 
-    it('highlights selected inbox item', () => {
+    it('highlights selected backlog item', () => {
       const snap = makeSnapshot({
         quests: [
-          quest({ id: 'task:I-001', title: 'Item 1', status: 'INBOX', suggestedBy: 'agent.test' }),
-          quest({ id: 'task:I-002', title: 'Item 2', status: 'INBOX', suggestedBy: 'agent.test' }),
+          quest({ id: 'task:I-001', title: 'Item 1', status: 'BACKLOG', suggestedBy: 'agent.test' }),
+          quest({ id: 'task:I-002', title: 'Item 2', status: 'BACKLOG', suggestedBy: 'agent.test' }),
         ],
       });
       const model = makeModel(snap);
-      model.inbox.selectedIndex = 0;
-      const plain = strip(inboxView(model));
+      model.backlog.selectedIndex = 0;
+      const plain = strip(backlogView(model));
       expect(plain).toContain('\u25B6');
     });
   });
 
-  // ── Overview View (replaces All View) ────────────────────────────────
+  // ── Dashboard View (replaces Overview) ──────────────────────────────
 
-  describe('overviewView', () => {
+  describe('dashboardView', () => {
     it('returns muted text when snapshot is null', () => {
-      const out = overviewView(makeModel(null));
+      const out = dashboardView(makeModel(null));
       expect(strip(out)).toContain('No snapshot loaded');
     });
 
-    it('shows quest and submission counts', () => {
+    it('shows project header with progress', () => {
       const snap = makeSnapshot({
         quests: [
           quest({ id: 'task:Q-001', title: 'Q1', status: 'DONE' }),
           quest({ id: 'task:Q-002', title: 'Q2', status: 'PLANNED' }),
         ],
-        submissions: [
-          submission({ id: 'submission:S1', questId: 'task:Q-001', status: 'MERGED' }),
-        ],
       });
-      const plain = strip(overviewView(makeModel(snap)));
-      expect(plain).toContain('XYPH Overview');
-      expect(plain).toContain('2 quests');
-      expect(plain).toContain('1 submissions');
+      const plain = strip(dashboardView(makeModel(snap)));
+      expect(plain).toContain('XYPH Dashboard');
+      expect(plain).toContain('50%');
+      expect(plain).toContain('1/2');
     });
 
     it('shows sovereignty health metric', () => {
@@ -358,46 +355,67 @@ describe('bijou views', () => {
         quests: [
           quest({ id: 'task:Q-001', title: 'With intent', status: 'PLANNED', intentId: 'intent:SOV' }),
           quest({ id: 'task:Q-002', title: 'Orphan', status: 'PLANNED' }),
-          quest({ id: 'task:I-001', title: 'Inbox', status: 'INBOX' }), // excluded from sovereignty
+          quest({ id: 'task:I-001', title: 'Backlog item', status: 'BACKLOG' }), // excluded from sovereignty
         ],
       });
-      const plain = strip(overviewView(makeModel(snap)));
-      // 1 with intent out of 2 non-inbox quests
+      const plain = strip(dashboardView(makeModel(snap)));
+      // 1 with intent out of 2 non-backlog quests
       expect(plain).toContain('Sovereignty: 1/2');
-      expect(plain).toContain('Orphan quests: 1');
+      expect(plain).toContain('Orphans: 1');
     });
 
-    it('shows campaign list', () => {
+    it('shows campaigns with progress', () => {
       const snap = makeSnapshot({
         campaigns: [
           campaign({ id: 'campaign:M1', title: 'SOVEREIGNTY', status: 'DONE' }),
           campaign({ id: 'campaign:M2', title: 'DASHBOARD', status: 'IN_PROGRESS' }),
         ],
+        quests: [
+          quest({ id: 'task:Q-001', title: 'Q1', status: 'DONE', campaignId: 'campaign:M2' }),
+          quest({ id: 'task:Q-002', title: 'Q2', status: 'PLANNED', campaignId: 'campaign:M2' }),
+        ],
       });
-      const plain = strip(overviewView(makeModel(snap)));
+      const plain = strip(dashboardView(makeModel(snap)));
       expect(plain).toContain('Campaigns');
-      expect(plain).toContain('SOVEREIGNTY');
       expect(plain).toContain('DASHBOARD');
+      expect(plain).toContain('1/2');
+      expect(plain).toContain('Completed (1 campaign)');
     });
 
     it('shows graph meta when available', () => {
       const snap = makeSnapshot({
         graphMeta: { maxTick: 147, myTick: 44, writerCount: 4, tipSha: 'abc1234' },
       });
-      const plain = strip(overviewView(makeModel(snap)));
-      expect(plain).toContain('Graph Meta');
-      expect(plain).toContain('Max tick: 147');
-      expect(plain).toContain('Writers: 4');
+      const plain = strip(dashboardView(makeModel(snap)));
+      expect(plain).toContain('Graph');
+      expect(plain).toContain('tick: 147');
+      expect(plain).toContain('4 wrtrs');
     });
 
-    it('shows forked patchsets warning', () => {
+    it('shows alert bar for orphans and forked patchsets', () => {
       const snap = makeSnapshot({
+        quests: [
+          quest({ id: 'task:Q-001', title: 'Orphan', status: 'PLANNED' }),
+        ],
         submissions: [
           submission({ id: 'submission:S1', questId: 'task:Q1', headsCount: 2 }),
         ],
       });
-      const plain = strip(overviewView(makeModel(snap)));
-      expect(plain).toContain('Forked patchsets: 1');
+      const plain = strip(dashboardView(makeModel(snap)));
+      expect(plain).toContain('1 orphan quest');
+      expect(plain).toContain('1 forked patchset');
+    });
+
+    it('shows in-progress quests', () => {
+      const snap = makeSnapshot({
+        quests: [
+          quest({ id: 'task:Q-001', title: 'Active work', status: 'IN_PROGRESS', assignedTo: 'agent.james' }),
+        ],
+      });
+      const plain = strip(dashboardView(makeModel(snap)));
+      expect(plain).toContain('In Progress (1)');
+      expect(plain).toContain('Active work');
+      expect(plain).toContain('agent.james');
     });
   });
 
@@ -550,19 +568,19 @@ describe('bijou views', () => {
       expect(plain).toContain('\u25CB'); // unsealed scroll mark
     });
 
-    it('renders orphan quests section (excludes INBOX)', () => {
+    it('renders orphan quests section (excludes BACKLOG)', () => {
       const snap = makeSnapshot({
         intents: [intent({ id: 'intent:SOV', title: 'Sovereignty' })],
         quests: [
           quest({ id: 'task:ORPHAN-001', title: 'Orphan quest', status: 'PLANNED' }),
-          quest({ id: 'task:INBOX-001', title: 'Inbox task', status: 'INBOX' }),
+          quest({ id: 'task:BL-001', title: 'Backlog task', status: 'BACKLOG' }),
         ],
       });
       const plain = strip(lineageView(makeModel(snap)));
       expect(plain).toContain('Orphan quests');
       expect(plain).toContain('task:ORPHAN-001');
-      // INBOX tasks should NOT appear in orphan section
-      expect(plain).not.toContain('task:INBOX-001');
+      // BACKLOG tasks should NOT appear in orphan section
+      expect(plain).not.toContain('task:BL-001');
     });
 
     it('shows orphan quests even when no intents exist', () => {
