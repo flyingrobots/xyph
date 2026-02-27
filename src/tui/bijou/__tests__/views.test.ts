@@ -241,6 +241,27 @@ describe('bijou views', () => {
       expect(plain).toContain('OPEN');
     });
 
+    it('selectableIds aligns with frontier/blocked render order when deps exist', () => {
+      // When deps exist, frontier items appear first, then blocked items (sorted).
+      // selectedIndex=0 should select the first frontier item, not declaration order.
+      const snap = makeSnapshot({
+        quests: [
+          quest({ id: 'task:C', title: 'Charlie (blocked)', status: 'PLANNED', dependsOn: ['task:A'] }),
+          quest({ id: 'task:A', title: 'Alpha (frontier)', status: 'PLANNED' }),
+          quest({ id: 'task:B', title: 'Bravo (frontier)', status: 'IN_PROGRESS' }),
+        ],
+      });
+      const model = makeModel(snap);
+      model.roadmap.selectedIndex = 0; // should select first frontier item
+      const plain = strip(roadmapView(model, 120, 30));
+      // The selection indicator should be next to a frontier item, not task:C
+      const lines = plain.split('\n');
+      const selectedLine = lines.find(l => l.includes('\u25B6'));
+      expect(selectedLine).toBeDefined();
+      // task:C is blocked, so it should NOT be the selected item at index 0
+      expect(selectedLine).not.toContain('Charlie');
+    });
+
     it('hides detail panel when no quest is selected', () => {
       const snap = makeSnapshot({
         quests: [

@@ -23,6 +23,7 @@ import { submissionsView } from './views/submissions-view.js';
 import { landingView } from './views/landing-view.js';
 import { confirmOverlay, inputOverlay } from './overlays.js';
 import { claimQuest, promoteQuest, rejectQuest, reviewSubmission, type WriteDeps } from './write-cmds.js';
+import { computeFrontier, type TaskSummary, type DepEdge } from '../../domain/services/DepAnalysis.js';
 import type { SubmissionPort } from '../../ports/SubmissionPort.js';
 
 // ── Public types ────────────────────────────────────────────────────────
@@ -194,10 +195,26 @@ const SUB_STATUS_ORDER: Record<string, number> = {
   CLOSED: 4,
 };
 
-/** Return ordered quest IDs as they appear in the roadmap frontier panel. */
+/** Return ordered quest IDs matching the roadmap frontier panel render order. */
 function roadmapQuestIds(snap: GraphSnapshot): string[] {
-  // Non-DONE quests in declaration order (matching frontier panel rendering)
-  return snap.quests.filter(q => q.status !== 'DONE').map(q => q.id);
+  const tasks: TaskSummary[] = snap.quests.map(q => ({
+    id: q.id,
+    status: q.status,
+    hours: q.hours,
+  }));
+  const edges: DepEdge[] = [];
+  for (const q of snap.quests) {
+    if (q.dependsOn) {
+      for (const dep of q.dependsOn) {
+        edges.push({ from: q.id, to: dep });
+      }
+    }
+  }
+  if (edges.length === 0) {
+    return snap.quests.filter(q => q.status !== 'DONE').map(q => q.id);
+  }
+  const { frontier, blockedBy } = computeFrontier(tasks, edges);
+  return [...frontier, ...[...blockedBy.keys()].sort()];
 }
 
 /** Return ordered submission IDs matching submissions-view sort order. */
@@ -211,9 +228,17 @@ function submissionIds(snap: GraphSnapshot): string[] {
     .map(s => s.id);
 }
 
-/** Return ordered backlog quest IDs matching backlog-view rendering order. */
+/** Return ordered backlog quest IDs matching backlog-view rendering order (grouped by suggestedBy). */
 function backlogQuestIds(snap: GraphSnapshot): string[] {
-  return snap.quests.filter(q => q.status === 'BACKLOG').map(q => q.id);
+  const backlog = snap.quests.filter(q => q.status === 'BACKLOG');
+  const bySuggester = new Map<string, string[]>();
+  for (const q of backlog) {
+    const key = q.suggestedBy ?? '(unknown suggester)';
+    const arr = bySuggester.get(key) ?? [];
+    arr.push(q.id);
+    bySuggester.set(key, arr);
+  }
+  return [...bySuggester.values()].flat();
 }
 
 /** Return ordered intent IDs for lineage view selection. */

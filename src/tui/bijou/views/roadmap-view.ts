@@ -67,8 +67,10 @@ export function roadmapView(model: DashboardModel, width?: number, height?: numb
   // ── Left panel: Frontier ──────────────────────────────────────────────
   const leftWidth = Math.max(28, Math.floor(w * 0.3));
 
-  // Build the ordered list of selectable quest IDs (non-DONE, matching frontier panel order)
-  const selectableIds: string[] = snap.quests.filter(q => q.status !== 'DONE').map(q => q.id);
+  // Build the ordered list of selectable quest IDs matching frontier panel render order
+  const selectableIds: string[] = hasDeps
+    ? [...frontier, ...[...blockedBy.keys()].sort()]
+    : snap.quests.filter(q => q.status !== 'DONE').map(q => q.id);
   const selectedQuestId = selectableIds[model.roadmap.selectedIndex] ?? null;
 
   function renderFrontierPanel(_pw: number, ph: number): string {
