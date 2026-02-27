@@ -29,6 +29,7 @@ import { ensureXyphContext } from './src/tui/theme/index.js';
 import { createGraphContext } from './src/infrastructure/GraphContext.js';
 import { WarpGraphAdapter } from './src/infrastructure/adapters/WarpGraphAdapter.js';
 import { WarpIntakeAdapter } from './src/infrastructure/adapters/WarpIntakeAdapter.js';
+import { WarpSubmissionAdapter } from './src/infrastructure/adapters/WarpSubmissionAdapter.js';
 import { createDashboardApp } from './src/tui/bijou/DashboardApp.js';
 import { loadRandomLogo, selectLogoSize } from './src/tui/logo-loader.js';
 import { TuiLogger } from './src/tui/TuiLogger.js';
@@ -56,11 +57,13 @@ const logger = new TuiLogger({ component: 'xyph-dashboard' });
 const graphPort = new WarpGraphAdapter(cwd, 'xyph-roadmap', agentId, logger);
 const ctx = createGraphContext(graphPort);
 const intake = new WarpIntakeAdapter(graphPort, agentId);
+const submissionPort = new WarpSubmissionAdapter(graphPort, agentId);
 
 const app = createDashboardApp({
   ctx,
   intake,
   graphPort,
+  submissionPort,
   agentId,
   logoText: splash.text,
 });

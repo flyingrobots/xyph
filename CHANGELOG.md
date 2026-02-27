@@ -4,6 +4,30 @@ All notable changes to XYPH will be documented in this file.
 
 ## [Unreleased]
 
+### Added — Interactive TUI Phase 2: Review Actions + Roadmap Detail
+
+**Review actions in submissions view:**
+- `a` (approve) and `x` (request-changes) keybindings in submissions view.
+- Input mode prompts for review comment before dispatching.
+- Validates tip patchset exists — shows error toast if missing.
+- `reviewSubmission()` write command factory with auto-generated review IDs.
+- `SubmissionPort` wired into `WriteDeps` and `DashboardDeps`.
+
+**Roadmap detail panel:**
+- Third flex column (28 cols) appears when a quest is selected.
+- Shows: quest ID, title, status, hours, owner, campaign title, intent,
+  dependency count with status icons, submission status, and scroll info.
+- Hidden when no quest is selected — DAG takes full width.
+
+**DAG selected node highlighting:**
+- Selected quest node in DAG uses `primary` theme token, overriding the
+  critical-path warning color for visual distinction.
+
+**Tests:**
+- 8 new tests: review keybindings (`a`/`x` enter input mode), error toast
+  on missing tip patchset, review input flow, detail panel content/deps/
+  submission status, hidden detail panel.
+
 ### Added — Interactive TUI Phase 1: New Views, Selection, and Write Operations
 
 **New views:**

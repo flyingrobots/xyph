@@ -200,13 +200,13 @@ interface DashboardDeps {
 
 ---
 
-## Phase 2: Review Actions + Roadmap Detail (needs bijou specs 3, 4)
+## Phase 2: Review Actions + Roadmap Detail ✅ DONE
 
-After bijou ships `selectedId` (spec 3) and exported ANSI utils (spec 4):
+Implemented without bijou specs 3/4 (workarounds: `DagNode.token` for highlighting, ANSI utils not needed).
 
 - Submissions view: `a` (approve) and `x` (request-changes) hotkeys with comment input
-- Roadmap: DAG highlights selected node via `selectedId` option
-- Roadmap: detail panel (third flex column) showing quest metadata when selected
+- Roadmap: DAG highlights selected node via `token` field override (primary color)
+- Roadmap: detail panel (third flex column, 28 cols) showing quest metadata when selected
 
 ---
 

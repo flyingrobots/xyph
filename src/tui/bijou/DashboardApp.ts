@@ -22,7 +22,8 @@ import { inboxView } from './views/inbox-view.js';
 import { submissionsView } from './views/submissions-view.js';
 import { landingView } from './views/landing-view.js';
 import { confirmOverlay, inputOverlay } from './overlays.js';
-import { claimQuest, promoteQuest, rejectQuest, type WriteDeps } from './write-cmds.js';
+import { claimQuest, promoteQuest, rejectQuest, reviewSubmission, type WriteDeps } from './write-cmds.js';
+import type { SubmissionPort } from '../../ports/SubmissionPort.js';
 
 // ── Public types ────────────────────────────────────────────────────────
 
@@ -34,7 +35,9 @@ const VIEWS: ViewName[] = ['roadmap', 'submissions', 'lineage', 'overview', 'inb
 export type PendingWrite =
   | { kind: 'claim'; questId: string }
   | { kind: 'promote'; questId: string }
-  | { kind: 'reject'; questId: string };
+  | { kind: 'reject'; questId: string }
+  | { kind: 'approve'; patchsetId: string }
+  | { kind: 'request-changes'; patchsetId: string };
 
 export interface RoadmapState {
   selectedIndex: number;
@@ -109,6 +112,8 @@ type ViewAction =
   | { type: 'promote' }
   | { type: 'reject' }
   | { type: 'expand' }
+  | { type: 'approve' }
+  | { type: 'request-changes' }
   | { type: 'scroll-dag-down' }
   | { type: 'scroll-dag-up' };
 
@@ -138,7 +143,9 @@ function buildSubmissionsKeys(): KeyMap<ViewAction> {
     .bind('down', 'Select next', { type: 'select-next' })
     .bind('k', 'Select prev', { type: 'select-prev' })
     .bind('up', 'Select prev', { type: 'select-prev' })
-    .bind('enter', 'Expand/collapse', { type: 'expand' });
+    .bind('enter', 'Expand/collapse', { type: 'expand' })
+    .bind('a', 'Approve', { type: 'approve' })
+    .bind('x', 'Request changes', { type: 'request-changes' });
 }
 
 function buildInboxKeys(): KeyMap<ViewAction> {
@@ -196,7 +203,7 @@ function viewHints(view: ViewName): string {
   let extra = '';
   switch (view) {
     case 'roadmap':     extra = '  j/k: select  c: claim  PgDn/PgUp: scroll'; break;
-    case 'submissions': extra = '  j/k: select  Enter: expand'; break;
+    case 'submissions': extra = '  j/k: select  Enter: expand  a: approve  x: request changes'; break;
     case 'inbox':       extra = '  j/k: select  p: promote  d: reject'; break;
     default:            break;
   }
@@ -209,6 +216,7 @@ export interface DashboardDeps {
   ctx: GraphContext;
   intake: IntakePort;
   graphPort: GraphPort;
+  submissionPort: SubmissionPort;
   agentId: string;
   logoText: string;
 }
@@ -222,6 +230,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
   const writeDeps: WriteDeps = {
     graphPort: deps.graphPort,
     intake: deps.intake,
+    submissionPort: deps.submissionPort,
     agentId: deps.agentId,
   };
 
@@ -266,6 +275,10 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         return promoteQuest(writeDeps, action.questId, inputValue ?? '');
       case 'reject':
         return rejectQuest(writeDeps, action.questId, inputValue ?? '');
+      case 'approve':
+        return reviewSubmission(writeDeps, action.patchsetId, 'approve', inputValue ?? '');
+      case 'request-changes':
+        return reviewSubmission(writeDeps, action.patchsetId, 'request-changes', inputValue ?? '');
     }
   }
 
@@ -597,6 +610,31 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         }, []];
       }
 
+      case 'approve':
+      case 'request-changes': {
+        if (!snap) return [model, []];
+        const ids = submissionIds(snap);
+        const subId = ids[model.submissions.selectedIndex];
+        if (!subId) return [model, []];
+        const sub = snap.submissions.find(s => s.id === subId);
+        if (!sub?.tipPatchsetId) {
+          return [{
+            ...model,
+            toast: { message: `No patchset to review for ${subId}`, variant: 'error', expiresAt: Date.now() + 3000 },
+          }, [delayedDismissToast()]];
+        }
+        const label = action.type === 'approve' ? 'Approve' : 'Request changes';
+        return [{
+          ...model,
+          mode: 'input',
+          inputState: {
+            label: `${label} comment for ${subId}:`,
+            value: '',
+            action: { kind: action.type, patchsetId: sub.tipPatchsetId },
+          },
+        }, []];
+      }
+
       case 'scroll-dag-down': {
         const pageStep = Math.max(1, model.rows - 6);
         return [{
@@ -662,6 +700,8 @@ function renderHelp(): string {
   lines.push(styled(t.theme.semantic.info, '  Submissions'));
   lines.push(`    ${styled(t.theme.semantic.info, 'j/k')}         Select submission`);
   lines.push(`    ${styled(t.theme.semantic.info, 'Enter')}       Expand/collapse detail`);
+  lines.push(`    ${styled(t.theme.semantic.info, 'a')}           Approve tip patchset`);
+  lines.push(`    ${styled(t.theme.semantic.info, 'x')}           Request changes`);
   lines.push('');
   lines.push(styled(t.theme.semantic.info, '  Inbox'));
   lines.push(`    ${styled(t.theme.semantic.info, 'j/k')}         Select item`);

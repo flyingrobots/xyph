@@ -7,14 +7,24 @@
  * 3. The caller (DashboardApp update) handles refresh chaining
  */
 
+import { randomUUID } from 'crypto';
 import type { Cmd } from '@flyingrobots/bijou-tui';
 import type { DashboardMsg } from './DashboardApp.js';
 import type { GraphPort } from '../../ports/GraphPort.js';
 import type { IntakePort } from '../../ports/IntakePort.js';
+import type { SubmissionPort } from '../../ports/SubmissionPort.js';
+
+/** Generate a lexicographically-sortable unique ID (matches actuator pattern). */
+export function generateId(): string {
+  const ts = Date.now().toString(36).padStart(9, '0');
+  const rand = randomUUID().replace(/-/g, '').slice(0, 8);
+  return `${ts}${rand}`;
+}
 
 export interface WriteDeps {
   graphPort: GraphPort;
   intake: IntakePort;
+  submissionPort: SubmissionPort;
   agentId: string;
 }
 
@@ -68,6 +78,27 @@ export function rejectQuest(deps: WriteDeps, questId: string, rationale: string)
     try {
       await deps.intake.reject(questId, rationale);
       emit({ type: 'write-success', message: `Rejected ${questId}` });
+    } catch (err: unknown) {
+      emit({ type: 'write-error', message: err instanceof Error ? err.message : String(err) });
+    }
+  };
+}
+
+/**
+ * Review a patchset — approve or request changes.
+ */
+export function reviewSubmission(
+  deps: WriteDeps,
+  patchsetId: string,
+  verdict: 'approve' | 'request-changes',
+  comment: string,
+): Cmd<DashboardMsg> {
+  return async (emit) => {
+    try {
+      const reviewId = `review:${generateId()}`;
+      await deps.submissionPort.review({ patchsetId, reviewId, verdict, comment });
+      const label = verdict === 'approve' ? 'Approved' : 'Changes requested';
+      emit({ type: 'write-success', message: `${label} (${patchsetId})` });
     } catch (err: unknown) {
       emit({ type: 'write-error', message: err instanceof Error ? err.message : String(err) });
     }

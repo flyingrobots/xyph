@@ -280,17 +280,21 @@ XYPH has an interactive TUI that provides a visual browser for your project and 
 XYPH_AGENT_ID=human.yourname ./xyph-dashboard.tsx
 ```
 
-| Key     | Action                                        |
-|---------|-----------------------------------------------|
-| `Tab`   | Cycle views (roadmap → lineage → all → inbox) |
-| `↑↓`   | Navigate                                      |
-| `Space` | Fold/unfold campaign · open quest detail      |
-| `r`     | Refresh snapshot                              |
-| `?`     | Help modal                                    |
-| `p`     | Promote inbox task (human.* only)             |
-| `x`     | Reject inbox task                             |
-| `Esc`   | Close modal                                   |
-| `q`     | Quit                                          |
+| Key     | Context      | Action                                        |
+|---------|-------------|-----------------------------------------------|
+| `Tab`   | Global       | Cycle views (roadmap → submissions → lineage → overview → inbox) |
+| `j/k`   | Global       | Select next/prev item                         |
+| `r`     | Global       | Refresh snapshot                              |
+| `?`     | Global       | Help modal                                    |
+| `q`     | Global       | Quit                                          |
+| `c`     | Roadmap      | Claim selected quest                          |
+| `PgDn/Up` | Roadmap   | Scroll DAG                                    |
+| `Enter` | Submissions  | Expand/collapse submission detail             |
+| `a`     | Submissions  | Approve tip patchset                          |
+| `x`     | Submissions  | Request changes on tip patchset               |
+| `p`     | Inbox        | Promote selected task                         |
+| `d`     | Inbox        | Reject selected task                          |
+| `Esc`   | Modal        | Cancel / close                                |
 
 ### XYPH CLI Reference
 

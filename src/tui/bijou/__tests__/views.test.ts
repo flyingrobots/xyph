@@ -188,6 +188,69 @@ describe('bijou views', () => {
       // The selected quest should have a selection indicator
       expect(plain).toContain('\u25B6');
     });
+
+    it('shows detail panel when a quest is selected', () => {
+      const snap = makeSnapshot({
+        campaigns: [campaign({ id: 'campaign:M1', title: 'Milestone 1' })],
+        intents: [intent({ id: 'intent:SOV', title: 'Sovereignty' })],
+        quests: [
+          quest({ id: 'task:A', title: 'Alpha Quest', status: 'PLANNED', campaignId: 'campaign:M1', intentId: 'intent:SOV', hours: 4 }),
+          quest({ id: 'task:B', title: 'Beta Quest', status: 'IN_PROGRESS', dependsOn: ['task:A'] }),
+        ],
+      });
+      const model = makeModel(snap);
+      model.roadmap.selectedIndex = 0;
+      const plain = strip(roadmapView(model, 120, 30));
+      expect(plain).toContain('task:A');
+      expect(plain).toContain('Alpha Quest');
+      expect(plain).toContain('PLANNED');
+      expect(plain).toContain('Hours:  4');
+      expect(plain).toContain('Milestone 1');
+      expect(plain).toContain('intent:SOV');
+    });
+
+    it('detail panel shows dependency info', () => {
+      const snap = makeSnapshot({
+        quests: [
+          quest({ id: 'task:A', title: 'Alpha', status: 'DONE' }),
+          quest({ id: 'task:B', title: 'Beta', status: 'PLANNED', dependsOn: ['task:A'] }),
+        ],
+      });
+      const model = makeModel(snap);
+      model.roadmap.selectedIndex = 0; // task:B is the only non-DONE quest (index 0 in selectable list)
+      const plain = strip(roadmapView(model, 120, 30));
+      expect(plain).toContain('Deps (1)');
+      expect(plain).toContain('Alpha');
+    });
+
+    it('detail panel shows submission status', () => {
+      const snap = makeSnapshot({
+        quests: [
+          quest({ id: 'task:A', title: 'Alpha', status: 'IN_PROGRESS' }),
+        ],
+        submissions: [
+          submission({ id: 'submission:S1', questId: 'task:A', status: 'OPEN', tipPatchsetId: 'patchset:P1' }),
+        ],
+      });
+      const model = makeModel(snap);
+      model.roadmap.selectedIndex = 0;
+      const plain = strip(roadmapView(model, 120, 30));
+      expect(plain).toContain('Sub:');
+      expect(plain).toContain('OPEN');
+    });
+
+    it('hides detail panel when no quest is selected', () => {
+      const snap = makeSnapshot({
+        quests: [
+          quest({ id: 'task:A', title: 'Alpha', status: 'PLANNED' }),
+        ],
+      });
+      const model = makeModel(snap);
+      model.roadmap.selectedIndex = -1;
+      const plain = strip(roadmapView(model, 120, 30));
+      // Should NOT contain detail-panel-specific fields like "Hours:" or "Campaign:"
+      expect(plain).not.toContain('Hours:');
+    });
   });
 
   // ── Inbox View ─────────────────────────────────────────────────────────

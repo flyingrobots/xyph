@@ -7,6 +7,7 @@ import type { GraphContext } from '../../../infrastructure/GraphContext.js';
 import type { GraphSnapshot } from '../../../domain/models/dashboard.js';
 import type { IntakePort } from '../../../ports/IntakePort.js';
 import type { GraphPort } from '../../../ports/GraphPort.js';
+import type { SubmissionPort } from '../../../ports/SubmissionPort.js';
 
 function makeSnapshot(overrides?: Partial<GraphSnapshot>): GraphSnapshot {
   return {
@@ -53,6 +54,13 @@ describe('DashboardApp', () => {
     reset: vi.fn(),
   };
 
+  const mockSubmissionPort: SubmissionPort = {
+    submit: vi.fn().mockResolvedValue({ patchSha: 'sha-s' }) as SubmissionPort['submit'],
+    revise: vi.fn().mockResolvedValue({ patchSha: 'sha-r' }) as SubmissionPort['revise'],
+    review: vi.fn().mockResolvedValue({ patchSha: 'sha-v' }) as SubmissionPort['review'],
+    decide: vi.fn().mockResolvedValue({ patchSha: 'sha-d' }) as SubmissionPort['decide'],
+  };
+
   beforeEach(() => {
     _resetThemeForTesting();
     _resetBridgeForTesting();
@@ -73,6 +81,7 @@ describe('DashboardApp', () => {
       ctx: mockCtx,
       intake: mockIntake,
       graphPort: mockGraphPort,
+      submissionPort: mockSubmissionPort,
       agentId: 'agent.test',
       logoText: 'XYPH TEST LOGO',
     });
@@ -390,7 +399,9 @@ describe('DashboardApp', () => {
       const [afterC] = app.update(makeKey('c'), loaded);
       expect(afterC.mode).toBe('confirm');
       expect(afterC.confirmState?.action.kind).toBe('claim');
-      expect(afterC.confirmState?.action.questId).toBe('task:Q1');
+      if (afterC.confirmState?.action.kind === 'claim') {
+        expect(afterC.confirmState.action.questId).toBe('task:Q1');
+      }
     });
 
     it('y in confirm mode dispatches write command', () => {
@@ -634,6 +645,95 @@ describe('DashboardApp', () => {
 
       const [afterCollapse] = app.update(makeKey('enter'), afterExpand);
       expect(afterCollapse.submissions.expandedId).toBeNull();
+    });
+
+    // ── Review actions ────────────────────────────────────────────────
+
+    it('a on submissions enters input mode for approve', () => {
+      const app = makeApp();
+      const [initial] = app.init();
+      const snap = makeSnapshot({
+        submissions: [
+          { id: 'submission:S1', questId: 'task:A', status: 'OPEN', headsCount: 1, approvalCount: 0, submittedBy: 'agent.test', submittedAt: 100, tipPatchsetId: 'patchset:P1' },
+        ],
+      });
+      const loaded: DashboardModel = {
+        ...initial,
+        showLanding: false,
+        loading: false,
+        snapshot: snap,
+        activeView: 'submissions',
+        submissions: { ...initial.submissions, selectedIndex: 0 },
+      };
+
+      const [afterA] = app.update(makeKey('a'), loaded);
+      expect(afterA.mode).toBe('input');
+      expect(afterA.inputState?.action.kind).toBe('approve');
+      if (afterA.inputState?.action.kind === 'approve') {
+        expect(afterA.inputState.action.patchsetId).toBe('patchset:P1');
+      }
+    });
+
+    it('x on submissions enters input mode for request-changes', () => {
+      const app = makeApp();
+      const [initial] = app.init();
+      const snap = makeSnapshot({
+        submissions: [
+          { id: 'submission:S1', questId: 'task:A', status: 'OPEN', headsCount: 1, approvalCount: 0, submittedBy: 'agent.test', submittedAt: 100, tipPatchsetId: 'patchset:P1' },
+        ],
+      });
+      const loaded: DashboardModel = {
+        ...initial,
+        showLanding: false,
+        loading: false,
+        snapshot: snap,
+        activeView: 'submissions',
+        submissions: { ...initial.submissions, selectedIndex: 0 },
+      };
+
+      const [afterX] = app.update(makeKey('x'), loaded);
+      expect(afterX.mode).toBe('input');
+      expect(afterX.inputState?.action.kind).toBe('request-changes');
+    });
+
+    it('a on submission without tipPatchsetId shows error toast', () => {
+      const app = makeApp();
+      const [initial] = app.init();
+      const snap = makeSnapshot({
+        submissions: [
+          { id: 'submission:S1', questId: 'task:A', status: 'OPEN', headsCount: 1, approvalCount: 0, submittedBy: 'agent.test', submittedAt: 100 },
+        ],
+      });
+      const loaded: DashboardModel = {
+        ...initial,
+        showLanding: false,
+        loading: false,
+        snapshot: snap,
+        activeView: 'submissions',
+        submissions: { ...initial.submissions, selectedIndex: 0 },
+      };
+
+      const [afterA] = app.update(makeKey('a'), loaded);
+      expect(afterA.mode).toBe('normal');
+      expect(afterA.toast?.variant).toBe('error');
+      expect(afterA.toast?.message).toContain('No patchset');
+    });
+
+    it('review approve input submits write command', () => {
+      const app = makeApp();
+      const [initial] = app.init();
+      const withInput: DashboardModel = {
+        ...initial,
+        showLanding: false,
+        loading: false,
+        mode: 'input',
+        inputState: { label: 'comment:', value: 'LGTM', action: { kind: 'approve', patchsetId: 'patchset:P1' } },
+      };
+
+      const [after, cmds] = app.update(makeKey('enter'), withInput);
+      expect(after.mode).toBe('normal');
+      expect(after.inputState).toBeNull();
+      expect(cmds.length).toBeGreaterThan(0);
     });
   });
 

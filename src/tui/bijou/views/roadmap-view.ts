@@ -193,7 +193,9 @@ export function roadmapView(model: DashboardModel, width?: number, height?: numb
       label: q.id.replace(/^task:/, ''),
       edges: q.dependsOn ?? [],
       badge: styledStatus(q.status),
-      token: critSet.has(q.id) ? t.theme.semantic.warning : undefined,
+      token: q.id === selectedQuestId
+        ? t.theme.semantic.primary
+        : critSet.has(q.id) ? t.theme.semantic.warning : undefined,
     }));
 
     const dagContent = dag(dagNodes, {
@@ -210,7 +212,76 @@ export function roadmapView(model: DashboardModel, width?: number, height?: numb
     });
   }
 
-  // ── Compose two-column layout ─────────────────────────────────────────
+  // ── Right panel: Detail ─────────────────────────────────────────────
+  const detailWidth = 28;
+
+  function renderDetailPanel(pw: number, ph: number): string {
+    if (!selectedQuestId) return '';
+    const q = questMap.get(selectedQuestId);
+    if (!q) return styled(t.theme.semantic.muted, '  Quest not found.');
+
+    const lines: string[] = [];
+    lines.push(styled(t.theme.semantic.primary, ` ${q.id}`));
+    lines.push(` ${q.title.slice(0, pw - 2)}`);
+    lines.push('');
+    lines.push(` Status: ${styledStatus(q.status)}`);
+    if (q.hours !== undefined) lines.push(` Hours:  ${q.hours}`);
+    if (q.assignedTo) lines.push(` Owner:  ${q.assignedTo}`);
+
+    // Campaign
+    if (q.campaignId) {
+      const cTitle = snap.campaigns.find(c => c.id === q.campaignId)?.title ?? q.campaignId;
+      lines.push(` Campaign: ${cTitle.slice(0, pw - 12)}`);
+    }
+
+    // Intent
+    if (q.intentId) {
+      lines.push(` Intent: ${q.intentId}`);
+    }
+
+    // Dependencies
+    const deps = q.dependsOn ?? [];
+    if (deps.length > 0) {
+      lines.push('');
+      lines.push(styled(t.theme.semantic.info, ` Deps (${deps.length})`));
+      for (const depId of deps) {
+        const depQ = questMap.get(depId);
+        const icon = depQ ? statusIcon(depQ.status) : '?';
+        const depTitle = depQ ? depQ.title.slice(0, pw - 6) : depId;
+        lines.push(` ${icon} ${depTitle}`);
+      }
+    }
+
+    // Submission status
+    const sub = snap.submissions.find(s => s.questId === q.id);
+    if (sub) {
+      lines.push('');
+      lines.push(` Sub: ${styledStatus(sub.status)}`);
+      if (sub.tipPatchsetId) {
+        lines.push(styled(t.theme.semantic.muted, ` tip: ${sub.tipPatchsetId.slice(0, pw - 7)}`));
+      }
+    }
+
+    // Scroll
+    const sc = snap.scrolls.find(s => s.questId === q.id);
+    if (sc) {
+      lines.push('');
+      lines.push(styled(t.theme.semantic.success, ` \u2713 Scroll: ${sc.id.slice(0, pw - 12)}`));
+    }
+
+    return viewport({ width: pw, height: ph, content: lines.join('\n'), scrollY: model.roadmap.detailScrollY });
+  }
+
+  // ── Compose layout ─────────────────────────────────────────────────────
+  if (selectedQuestId !== null) {
+    return flex(
+      { direction: 'row', width: w, height: h },
+      { basis: leftWidth, content: renderFrontierPanel },
+      { flex: 1, content: renderDagPanel },
+      { basis: detailWidth, content: renderDetailPanel },
+    );
+  }
+
   return flex(
     { direction: 'row', width: w, height: h },
     { basis: leftWidth, content: renderFrontierPanel },
