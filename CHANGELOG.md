@@ -4,6 +4,31 @@ All notable changes to XYPH will be documented in this file.
 
 ## [Unreleased]
 
+### Changed — BJU-002: Port TUI Views to Bijou Components
+
+- Ported 4 dashboard views from stub placeholders to full rendering logic
+  using bijou `headerBox()`, `table()`, and `tree()` components.
+- `roadmap-view.ts`: quests grouped by campaign with `table()`.
+- `inbox-view.ts`: INBOX quests grouped by `suggestedBy` with per-suggester `table()`.
+- `all-view.ts`: conditional sections (campaigns, intents, quests, scrolls,
+  approvals) each with `table()`.
+- `lineage-view.ts`: intent→quest→scroll hierarchy using `tree()` with
+  scroll marks (sealed/unsealed) and orphan quest detection.
+
+### Added
+
+- 20 new view tests in `views.test.ts` covering null/empty/populated
+  snapshots, orphan quests, scroll marks, truncated rejection rationale.
+- CI `strict-policy` job: grep-based gate rejecting `eslint-disable`,
+  `@ts-ignore`, `@ts-expect-error`, and `@ts-nocheck` in all source files.
+- ESLint `noInlineConfig: true` — inline lint bypass comments are now a
+  hard error.
+
+### Fixed — BJU-003
+
+- Sealed BJU-003 (TEA app shell) — work was completed as part of BJU-001
+  PR #20 but the quest was not sealed.
+
 ## [1.0.0-alpha.10] - 2026-02-26
 
 ### Changed — BJU-001: Bijou TUI Migration (Theme Bridge + TEA App Shell)
