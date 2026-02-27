@@ -2,6 +2,8 @@
 
 All notable changes to XYPH will be documented in this file.
 
+## [Unreleased]
+
 ## [1.0.0-alpha.10] - 2026-02-26
 
 ### Changed — BJU-001: Bijou TUI Migration (Theme Bridge + TEA App Shell)

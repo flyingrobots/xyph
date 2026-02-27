@@ -196,6 +196,22 @@ describe('DashboardApp', () => {
       expect(cmds.length).toBeGreaterThan(0);
     });
 
+    it('refresh clears stale error state', () => {
+      const app = makeApp();
+      const [initial] = app.init();
+      const withError: DashboardModel = {
+        ...initial,
+        showLanding: false,
+        loading: false,
+        error: 'previous failure',
+      };
+
+      const [updated, cmds] = app.update(makeKey('r'), withError);
+      expect(updated.error).toBeNull();
+      expect(updated.loading).toBe(true);
+      expect(cmds.length).toBeGreaterThan(0);
+    });
+
     it('dismisses landing on any key (non-q) when loaded', () => {
       const app = makeApp();
       const [initial] = app.init();
