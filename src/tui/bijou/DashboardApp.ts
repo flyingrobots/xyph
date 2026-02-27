@@ -25,6 +25,7 @@ import { confirmOverlay, inputOverlay } from './overlays.js';
 import { claimQuest, promoteQuest, rejectQuest, reviewSubmission, type WriteDeps } from './write-cmds.js';
 import { computeFrontier, type TaskSummary, type DepEdge } from '../../domain/services/DepAnalysis.js';
 import type { SubmissionPort } from '../../ports/SubmissionPort.js';
+import { SUBMISSION_STATUS_ORDER } from '../../domain/entities/Submission.js';
 
 // ── Public types ────────────────────────────────────────────────────────
 
@@ -187,14 +188,6 @@ function buildLineageKeys(): KeyMap<ViewAction> {
 
 // ── Selection helpers ───────────────────────────────────────────────────
 
-const SUB_STATUS_ORDER: Record<string, number> = {
-  OPEN: 0,
-  CHANGES_REQUESTED: 1,
-  APPROVED: 2,
-  MERGED: 3,
-  CLOSED: 4,
-};
-
 /** Return ordered quest IDs matching the roadmap frontier panel render order. */
 function roadmapQuestIds(snap: GraphSnapshot): string[] {
   const tasks: TaskSummary[] = snap.quests.map(q => ({
@@ -221,7 +214,7 @@ function roadmapQuestIds(snap: GraphSnapshot): string[] {
 function submissionIds(snap: GraphSnapshot): string[] {
   return [...snap.submissions]
     .sort((a, b) => {
-      const p = (SUB_STATUS_ORDER[a.status] ?? 5) - (SUB_STATUS_ORDER[b.status] ?? 5);
+      const p = (SUBMISSION_STATUS_ORDER[a.status] ?? 5) - (SUBMISSION_STATUS_ORDER[b.status] ?? 5);
       if (p !== 0) return p;
       return b.submittedAt - a.submittedAt;
     })

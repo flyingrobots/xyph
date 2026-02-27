@@ -2,18 +2,10 @@ import { flex, viewport } from '@flyingrobots/bijou-tui';
 import { styled, styledStatus, getTheme } from '../../theme/index.js';
 import type { DashboardModel } from '../DashboardApp.js';
 import type { SubmissionNode, ReviewNode, DecisionNode } from '../../../domain/models/dashboard.js';
-
-/** Status sort priority — lower = higher in list. */
-const STATUS_ORDER: Record<string, number> = {
-  OPEN: 0,
-  CHANGES_REQUESTED: 1,
-  APPROVED: 2,
-  MERGED: 3,
-  CLOSED: 4,
-};
+import { SUBMISSION_STATUS_ORDER } from '../../../domain/entities/Submission.js';
 
 function statusPriority(s: SubmissionNode): number {
-  return STATUS_ORDER[s.status] ?? 5;
+  return SUBMISSION_STATUS_ORDER[s.status] ?? 5;
 }
 
 function verdictIcon(verdict: string): string {

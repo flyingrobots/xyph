@@ -46,6 +46,7 @@ All notable changes to XYPH will be documented in this file.
 
 - `overview-view.ts` — replaced by `dashboard-view.ts`.
 - `inbox-view.ts` — replaced by `backlog-view.ts`.
+- `all-view.ts` — replaced by `overview-view.ts`.
 
 ### Added — Interactive TUI Phase 2: Review Actions + Roadmap Detail
 
@@ -112,10 +113,6 @@ All notable changes to XYPH will be documented in this file.
   cycling, per-view state init, selection (j/k), confirm mode, input mode,
   toast lifecycle, submission expand/collapse, overview metrics, submissions
   detail rendering.
-
-### Removed
-
-- `all-view.ts` — replaced by `overview-view.ts`.
 
 ### Changed — BJU-002: Port TUI Views to Bijou Components
 

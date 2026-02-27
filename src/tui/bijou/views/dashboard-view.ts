@@ -29,6 +29,7 @@ export function dashboardView(model: DashboardModel, width?: number, height?: nu
   const inProgress = snap.quests.filter(q => q.status === 'IN_PROGRESS');
 
   // ── Pending Review ────────────────────────────────────────────────
+  const questById = new Map(snap.quests.map(q => [q.id, q]));
   const pendingReview = snap.submissions.filter(s =>
     s.status === 'OPEN' || s.status === 'CHANGES_REQUESTED',
   );
@@ -106,7 +107,7 @@ export function dashboardView(model: DashboardModel, width?: number, height?: nu
       lines.push('');
       lines.push(styled(t.theme.semantic.warning, ` \u25CE Pending Review (${pendingReview.length})`));
       for (const s of pendingReview.slice(0, 5)) {
-        const q = snap.quests.find(qn => qn.id === s.questId);
+        const q = questById.get(s.questId);
         const title = q ? q.title.slice(0, pw - 30) : s.questId;
         lines.push(`   ${styled(t.theme.semantic.muted, s.id.replace(/^submission:/, ''))} ${title}  ${styledStatus(s.status)}`);
       }

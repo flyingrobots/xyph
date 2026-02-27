@@ -1,23 +1,10 @@
 import { RoadmapPort } from '../../ports/RoadmapPort.js';
-import { Quest, QuestStatus, QuestType } from '../../domain/entities/Quest.js';
+import { Quest, QuestType, VALID_RAW_STATUSES, normalizeQuestStatus } from '../../domain/entities/Quest.js';
 import { EdgeType } from '../../schema.js';
 import type { GraphPort } from '../../ports/GraphPort.js';
 import { toNeighborEntries } from '../helpers/isNeighborEntry.js';
 
-/** Accept both legacy and current status values from the graph. */
-const VALID_RAW_STATUSES: ReadonlySet<string> = new Set([
-  'INBOX', 'BACKLOG', 'PLANNED', 'IN_PROGRESS', 'BLOCKED', 'DONE', 'GRAVEYARD',
-]);
 const VALID_TYPES: ReadonlySet<string> = new Set(['task']);
-
-/** Normalize legacy status strings at read time (vocabulary rename Phase 9). */
-function normalizeStatus(raw: string): QuestStatus {
-  switch (raw) {
-    case 'INBOX':   return 'BACKLOG';   // old INBOX → new BACKLOG
-    case 'BACKLOG': return 'PLANNED';   // old BACKLOG → new PLANNED
-    default:        return raw as QuestStatus;
-  }
-}
 
 export class WarpRoadmapAdapter implements RoadmapPort {
   constructor(
@@ -45,7 +32,7 @@ export class WarpRoadmapAdapter implements RoadmapPort {
     return new Quest({
       id,
       title,
-      status: normalizeStatus(status),
+      status: normalizeQuestStatus(status),
       hours: parsedHours,
       assignedTo: typeof assignedTo === 'string' ? assignedTo : undefined,
       claimedAt: typeof claimedAt === 'number' ? claimedAt : undefined,

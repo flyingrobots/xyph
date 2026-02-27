@@ -17,6 +17,15 @@ export type SubmissionStatus =
   | 'MERGED'
   | 'CLOSED';
 
+/** Submission status sort priority — lower = higher in list. */
+export const SUBMISSION_STATUS_ORDER: Record<string, number> = {
+  OPEN: 0,
+  CHANGES_REQUESTED: 1,
+  APPROVED: 2,
+  MERGED: 3,
+  CLOSED: 4,
+};
+
 export type ReviewVerdict = 'approve' | 'request-changes' | 'comment';
 
 export type DecisionKind = 'merge' | 'close';

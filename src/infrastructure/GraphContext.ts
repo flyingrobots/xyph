@@ -13,7 +13,7 @@
 
 import type WarpGraph from '@git-stunts/git-warp';
 import type { QueryResultV1, AggregateResult } from '@git-stunts/git-warp';
-import { VALID_STATUSES as VALID_QUEST_STATUSES } from '../domain/entities/Quest.js';
+import { VALID_STATUSES as VALID_QUEST_STATUSES, normalizeQuestStatus } from '../domain/entities/Quest.js';
 import type { QuestStatus } from '../domain/entities/Quest.js';
 import type { ApprovalGateTrigger } from '../domain/entities/ApprovalGate.js';
 import {
@@ -46,15 +46,6 @@ import { toNeighborEntries, type NeighborEntry } from './helpers/isNeighborEntry
 // ---------------------------------------------------------------------------
 // Validation sets
 // ---------------------------------------------------------------------------
-
-/** Normalize legacy status strings at read time (vocabulary rename Phase 9). */
-function normalizeQuestStatus(raw: string): string {
-  switch (raw) {
-    case 'INBOX':   return 'BACKLOG';   // old INBOX → new BACKLOG (suggestion pool)
-    case 'BACKLOG': return 'PLANNED';   // old BACKLOG → new PLANNED (vetted work)
-    default:        return raw;
-  }
-}
 
 const VALID_CAMPAIGN_STATUSES: ReadonlySet<string> = new Set<CampaignStatus>([
   'BACKLOG', 'IN_PROGRESS', 'DONE', 'UNKNOWN',
