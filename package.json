@@ -12,6 +12,9 @@
     "test:local": "vitest run"
   },
   "dependencies": {
+    "@flyingrobots/bijou": "^0.2.0",
+    "@flyingrobots/bijou-node": "^0.2.0",
+    "@flyingrobots/bijou-tui": "^0.2.0",
     "@git-stunts/git-warp": "^12.0.0",
     "@git-stunts/plumbing": "^2.8.0",
     "@noble/ed25519": "^3.0.0",
