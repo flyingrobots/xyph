@@ -14,14 +14,6 @@ export function lineageView(model: DashboardModel): string {
     borderToken: t.theme.border.secondary,
   }));
 
-  if (snap.intents.length === 0) {
-    lines.push(styled(t.theme.semantic.muted,
-      '\n  No intents declared yet.\n' +
-      '  xyph-actuator intent <id> --title "..." --requested-by human.<name>',
-    ));
-    return lines.join('\n');
-  }
-
   // Build lookup maps
   const scrollByQuestId = new Map<string, { id: string; hasSeal: boolean }>();
   for (const s of snap.scrolls) {
@@ -41,6 +33,13 @@ export function lineageView(model: DashboardModel): string {
   const orphans = snap.quests.filter(
     q => q.intentId === undefined && q.status !== 'INBOX',
   );
+
+  if (snap.intents.length === 0) {
+    lines.push(styled(t.theme.semantic.muted,
+      '\n  No intents declared yet.\n' +
+      '  xyph-actuator intent <id> --title "..." --requested-by human.<name>',
+    ));
+  }
 
   // Render each intent as a tree
   for (const intent of snap.intents) {
