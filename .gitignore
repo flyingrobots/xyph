@@ -8,3 +8,4 @@ trust/*.sk
 .env
 coverage/
 *.tsbuildinfo
+.codex/

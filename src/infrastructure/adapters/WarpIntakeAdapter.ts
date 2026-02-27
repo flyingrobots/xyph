@@ -1,16 +1,11 @@
 import type { IntakePort } from '../../ports/IntakePort.js';
-import { createPatchSession } from '../helpers/createPatchSession.js';
-import { WarpGraphHolder } from '../helpers/WarpGraphHolder.js';
+import type { GraphPort } from '../../ports/GraphPort.js';
 
 export class WarpIntakeAdapter implements IntakePort {
-  private readonly graphHolder: WarpGraphHolder;
-
   constructor(
-    cwd: string,
+    private readonly graphPort: GraphPort,
     private readonly agentId: string,
-  ) {
-    this.graphHolder = new WarpGraphHolder(cwd, 'xyph-roadmap', agentId);
-  }
+  ) {}
 
   private validateQuestId(questId: string): void {
     if (!questId.startsWith('task:')) {
@@ -21,7 +16,6 @@ export class WarpIntakeAdapter implements IntakePort {
   }
 
   public async promote(questId: string, intentId: string, campaignId?: string): Promise<string> {
-    // Boundary validation (defense-in-depth — also checked by IntakeService)
     this.validateQuestId(questId);
     if (!this.agentId.startsWith('human.')) {
       throw new Error(
@@ -34,9 +28,7 @@ export class WarpIntakeAdapter implements IntakePort {
       );
     }
 
-    const graph = await this.graphHolder.getGraph();
-    await graph.syncCoverage();
-    await graph.materialize();
+    const graph = await this.graphPort.getGraph();
 
     const props = await graph.getNodeProps(questId);
     if (props === null) {
@@ -49,7 +41,6 @@ export class WarpIntakeAdapter implements IntakePort {
       );
     }
 
-    // Verify edge targets exist before creating dangling references
     if (!await graph.hasNode(intentId)) {
       throw new Error(`[NOT_FOUND] Intent ${intentId} not found in the graph`);
     }
@@ -57,12 +48,12 @@ export class WarpIntakeAdapter implements IntakePort {
       throw new Error(`[NOT_FOUND] Campaign ${campaignId} not found in the graph`);
     }
 
-    const patch = await createPatchSession(graph);
-    patch.setProperty(questId, 'status', 'BACKLOG').addEdge(questId, intentId, 'authorized-by');
-    if (campaignId !== undefined) {
-      patch.addEdge(questId, campaignId, 'belongs-to');
-    }
-    return patch.commit();
+    return graph.patch((p) => {
+      p.setProperty(questId, 'status', 'BACKLOG').addEdge(questId, intentId, 'authorized-by');
+      if (campaignId !== undefined) {
+        p.addEdge(questId, campaignId, 'belongs-to');
+      }
+    });
   }
 
   public async reject(questId: string, rationale: string): Promise<string> {
@@ -71,9 +62,7 @@ export class WarpIntakeAdapter implements IntakePort {
       throw new Error(`[MISSING_ARG] --rationale is required and must be non-empty`);
     }
 
-    const graph = await this.graphHolder.getGraph();
-    await graph.syncCoverage();
-    await graph.materialize();
+    const graph = await this.graphPort.getGraph();
 
     const props = await graph.getNodeProps(questId);
     if (props === null) {
@@ -87,17 +76,15 @@ export class WarpIntakeAdapter implements IntakePort {
     }
 
     const now = Date.now();
-    const patch = await createPatchSession(graph);
-    patch
-      .setProperty(questId, 'status', 'GRAVEYARD')
-      .setProperty(questId, 'rejected_by', this.agentId)
-      .setProperty(questId, 'rejected_at', now)
-      .setProperty(questId, 'rejection_rationale', rationale.trim());
-    return patch.commit();
+    return graph.patch((p) => {
+      p.setProperty(questId, 'status', 'GRAVEYARD')
+        .setProperty(questId, 'rejected_by', this.agentId)
+        .setProperty(questId, 'rejected_at', now)
+        .setProperty(questId, 'rejection_rationale', rationale.trim());
+    });
   }
 
   public async reopen(questId: string): Promise<string> {
-    // Boundary validation (defense-in-depth — also checked by IntakeService)
     this.validateQuestId(questId);
     if (!this.agentId.startsWith('human.')) {
       throw new Error(
@@ -105,9 +92,7 @@ export class WarpIntakeAdapter implements IntakePort {
       );
     }
 
-    const graph = await this.graphHolder.getGraph();
-    await graph.syncCoverage();
-    await graph.materialize();
+    const graph = await this.graphPort.getGraph();
 
     const props = await graph.getNodeProps(questId);
     if (props === null) {
@@ -121,11 +106,10 @@ export class WarpIntakeAdapter implements IntakePort {
     }
 
     const now = Date.now();
-    const patch = await createPatchSession(graph);
-    patch
-      .setProperty(questId, 'status', 'INBOX')
-      .setProperty(questId, 'reopened_by', this.agentId)
-      .setProperty(questId, 'reopened_at', now);
-    return patch.commit();
+    return graph.patch((p) => {
+      p.setProperty(questId, 'status', 'INBOX')
+        .setProperty(questId, 'reopened_by', this.agentId)
+        .setProperty(questId, 'reopened_at', now);
+    });
   }
 }

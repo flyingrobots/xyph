@@ -470,3 +470,112 @@ export function renderSubmissions(snapshot: GraphSnapshot): string {
 
   return lines.join('\n');
 }
+
+// ---------------------------------------------------------------------------
+// Deps view — Task Dependency Graph
+// ---------------------------------------------------------------------------
+
+export interface DepsViewData {
+  frontier: string[];
+  blockedBy: Map<string, string[]>;
+  executionOrder: string[];
+  criticalPath: string[];
+  criticalPathHours: number;
+  tasks: Map<string, { title: string; status: string; hours: number }>;
+}
+
+/**
+ * Renders the task dependency graph: frontier, blocked tasks, execution order, and critical path.
+ */
+export function renderDeps(data: DepsViewData): string {
+  const t = getTheme();
+  const lines: string[] = [];
+
+  lines.push(snapshotHeader(
+    'Task Dependencies',
+    `${data.tasks.size} task(s)  ${data.frontier.length} ready  ${data.blockedBy.size} blocked`,
+    'warning'
+  ));
+
+  // --- Frontier (ready tasks) ---
+  if (data.frontier.length > 0) {
+    lines.push('');
+    lines.push(styled(t.theme.semantic.success, '  Ready (Frontier)'));
+    const ft = new Table({
+      head: [
+        styled(t.theme.ui.tableHeader, 'Task'),
+        styled(t.theme.ui.tableHeader, 'Title'),
+        styled(t.theme.ui.tableHeader, 'Status'),
+        styled(t.theme.ui.tableHeader, 'h'),
+      ],
+      style: { head: [], border: [] },
+      colWidths: [22, 44, 13, 5],
+    });
+    for (const id of data.frontier) {
+      const info = data.tasks.get(id);
+      ft.push([
+        styled(t.theme.semantic.success, id.slice(0, 20)),
+        info?.title.slice(0, 42) ?? '—',
+        info ? styledStatus(info.status) : '—',
+        String(info?.hours ?? 0),
+      ]);
+    }
+    lines.push(ft.toString());
+  } else {
+    lines.push('');
+    lines.push(styled(t.theme.semantic.muted, '  No tasks are ready (all tasks have incomplete prerequisites or are DONE).'));
+  }
+
+  // --- Blocked tasks ---
+  if (data.blockedBy.size > 0) {
+    lines.push('');
+    lines.push(styled(t.theme.semantic.warning, '  Blocked'));
+    const bt = new Table({
+      head: [
+        styled(t.theme.ui.tableHeader, 'Task'),
+        styled(t.theme.ui.tableHeader, 'Title'),
+        styled(t.theme.ui.tableHeader, 'Waiting On'),
+      ],
+      style: { head: [], border: [] },
+      colWidths: [22, 34, 40],
+    });
+    for (const [id, blockers] of data.blockedBy) {
+      const info = data.tasks.get(id);
+      bt.push([
+        styled(t.theme.semantic.warning, id.slice(0, 20)),
+        info?.title.slice(0, 32) ?? '—',
+        blockers.map((b) => b.slice(0, 18)).join(', '),
+      ]);
+    }
+    lines.push(bt.toString());
+  }
+
+  // --- Execution Order ---
+  if (data.executionOrder.length > 0) {
+    lines.push('');
+    lines.push(styled(t.theme.semantic.primary, '  Execution Order'));
+    for (let i = 0; i < data.executionOrder.length; i++) {
+      const id = data.executionOrder[i];
+      if (!id) continue;
+      const info = data.tasks.get(id);
+      const statusStr = info ? ` [${styledStatus(info.status)}]` : '';
+      lines.push(
+        `    ${styled(t.theme.semantic.muted, `${String(i + 1).padStart(2)}.`)} ${id}${statusStr}`
+      );
+    }
+  }
+
+  // --- Critical Path ---
+  if (data.criticalPath.length > 0) {
+    lines.push('');
+    lines.push(styled(t.theme.semantic.error, '  Critical Path'));
+    const chain = data.criticalPath.map((id) => {
+      const info = data.tasks.get(id);
+      const h = info?.hours ?? 0;
+      return `${id}(${h}h)`;
+    }).join(styled(t.theme.semantic.muted, ' → '));
+    lines.push(`    ${chain} ${styled(t.theme.semantic.muted, `= ${data.criticalPathHours}h total`)}`);
+  }
+
+  return lines.join('\n');
+}

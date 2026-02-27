@@ -38,6 +38,8 @@ export interface QuestNode {
   // Reopen history
   reopenedBy?: string;
   reopenedAt?: number;
+  // Task dependencies (Weaver)
+  dependsOn?: string[];
 }
 
 export interface IntentNode {
@@ -114,10 +116,3 @@ export interface GraphSnapshot {
   graphMeta?: GraphMeta;
 }
 
-export interface LineageTree {
-  intent: IntentNode;
-  quests: {
-    quest: QuestNode;
-    scroll?: ScrollNode;
-  }[];
-}
