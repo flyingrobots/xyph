@@ -1,4 +1,5 @@
 import { WarpRoadmapAdapter } from './infrastructure/adapters/WarpRoadmapAdapter.js';
+import { WarpGraphAdapter } from './infrastructure/adapters/WarpGraphAdapter.js';
 import { CoordinatorService } from './domain/services/CoordinatorService.js';
 import { IngestService } from './domain/services/IngestService.js';
 import { NormalizeService } from './domain/services/NormalizeService.js';
@@ -34,7 +35,8 @@ async function main(): Promise<void> {
   const t = getTheme().theme;
   console.log(chalkFromToken(t.semantic.success).bold('XYPH Coordinator Daemon starting...'));
 
-  const roadmap = new WarpRoadmapAdapter(REPO_PATH, GRAPH_NAME, AGENT_ID);
+  const graphPort = new WarpGraphAdapter(REPO_PATH, GRAPH_NAME, AGENT_ID);
+  const roadmap = new WarpRoadmapAdapter(graphPort);
   const coordinator = new CoordinatorService(roadmap, AGENT_ID, new IngestService(), new NormalizeService(), new RebalanceService());
 
   // Initial heartbeat — fatal on failure (daemon should not start if graph is unreachable).

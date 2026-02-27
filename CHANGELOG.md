@@ -2,7 +2,42 @@
 
 All notable changes to XYPH will be documented in this file.
 
-## [Unreleased]
+## [1.0.0-alpha.9] - 2026-02-25
+
+### Changed — Shared Graph Architecture & GraphContext Refactor
+
+**Architecture: one WarpGraph instance per process**
+- Introduced `GraphPort` (port) and `WarpGraphAdapter` (infrastructure) — a process-wide singleton for the shared `WarpGraph` instance. All adapters receive it via dependency injection instead of creating their own `WarpGraphHolder`.
+- Rewired `WarpSubmissionAdapter`, `WarpIntakeAdapter`, `WarpRoadmapAdapter`, `coordinator-daemon`, `xyph-actuator`, and `xyph-dashboard` to use `GraphPort` DI.
+- Eliminated WRITER_CAS_CONFLICT errors caused by multiple `WarpGraphHolder` instances sharing the same `writerId`.
+
+**Architecture: kill the adapter-walks-every-node anti-pattern**
+- Replaced monolithic `WarpDashboardAdapter` (542 LoC) + `DashboardService` (113 LoC) with `GraphContext` — a single shared gateway using `graph.query()` for typed node fetching and `graph.traverse` for graph algorithms.
+- New `GraphProvider.tsx` (React context) delivers the `GraphContext` to TUI components.
+- Extracted `DepAnalysis.ts` — pure domain functions for frontier detection and critical-path DP, replacing the algorithmic parts of `WeaverService`.
+
+**Performance: atomic `graph.patch()` for all writes**
+- Converted all adapters and `xyph-actuator.ts` from manual `syncCoverage() + materialize() + createPatchSession() + commit()` to `graph.patch(p => { ... })`.
+- Eliminated redundant `materialize()` and `syncCoverage()` calls — `autoMaterialize: true` makes writes immediately visible to reads on the same instance.
+- Submission lifecycle integration test: **15s timeout → default 5s**, actual runtime ~1.2s.
+
+### Fixed
+- `GraphContext` cache invalidation: replaced `hasFrontierChanged()` (only detects external patches) with frontier key comparison that catches both in-process `graph.patch()` writes and external mutations from `syncCoverage()`.
+
+### Removed
+- `WarpGraphHolder` — replaced by `WarpGraphAdapter`.
+- `WarpDashboardAdapter`, `DashboardService`, `DashboardPort` — replaced by `GraphContext`.
+- `WeaverService`, `WeaverPort`, `WarpWeaverAdapter` — replaced by `DepAnalysis` + direct `graph.traverse` calls.
+- `WarpDashboardAdapter.test.ts`, `DashboardService.test.ts`, `WeaverService.test.ts`, `WarpWeaverAdapter.test.ts` — tests migrated to `DepAnalysis.test.ts` and existing integration suites.
+
+**Code review — 7 issues resolved (1 critical, 2 high, 2 medium, 2 low)**
+- *Critical*: `invalidateCache()` no longer calls `graphPort.reset()` — previous behavior orphaned the shared graph and violated the singleton invariant. Now only clears `GraphContext`'s own cached snapshot and frontier key.
+- *High*: Removed inconsistent `syncCoverage()` call from the `depend` command — no other write command calls it post-refactor.
+- *High*: Inlined dead `getGraph()` wrapper in `xyph-actuator.ts` — all ~7 call sites now use `graphPort.getGraph()` directly; removed unused `WarpGraph` type import.
+- *Medium*: Reduced `getStateSnapshot()` calls in `fetchSnapshot()` from 3 to 2 — early call for cache check, post-materialize call for graphMeta and cached frontier key.
+- *Medium*: `batchNeighbors()` now uses `Promise.all` instead of `Promise.allSettled` — neighbor resolution errors surface immediately instead of being silently swallowed.
+- *Low*: Batched separate `graph.patch()` seed calls into single patches in `WarpIntakeAdapter.test.ts` and `WarpSubmissionAdapter.test.ts`.
+- *Low*: Fixed JSDoc in `GraphPort.ts` — replaced reference to private `_onPatchCommitted` with public description.
 
 ## [1.0.0-alpha.8] - 2026-02-25
 
@@ -523,7 +558,9 @@ All notable changes to XYPH will be documented in this file.
 - **Strict Linting**: Configured ESLint with `typescript-eslint` strict rules.
 - Refined Actuator `syncWith` logic to use `syncCoverage()` for reliable multi-writer convergence.
 
-[Unreleased]: https://github.com/flyingrobots/xyph/compare/v1.0.0-alpha.7...HEAD
+[Unreleased]: https://github.com/flyingrobots/xyph/compare/v1.0.0-alpha.9...HEAD
+[1.0.0-alpha.9]: https://github.com/flyingrobots/xyph/compare/v1.0.0-alpha.8...v1.0.0-alpha.9
+[1.0.0-alpha.8]: https://github.com/flyingrobots/xyph/compare/v1.0.0-alpha.7...v1.0.0-alpha.8
 [1.0.0-alpha.7]: https://github.com/flyingrobots/xyph/compare/v1.0.0-alpha.6...v1.0.0-alpha.7
 [1.0.0-alpha.6]: https://github.com/flyingrobots/xyph/compare/v1.0.0-alpha.5...v1.0.0-alpha.6
 [1.0.0-alpha.5]: https://github.com/flyingrobots/xyph/compare/v1.0.0-alpha.4...v1.0.0-alpha.5

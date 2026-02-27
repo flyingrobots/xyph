@@ -116,10 +116,3 @@ export interface GraphSnapshot {
   graphMeta?: GraphMeta;
 }
 
-export interface LineageTree {
-  intent: IntentNode;
-  quests: {
-    quest: QuestNode;
-    scroll?: ScrollNode;
-  }[];
-}

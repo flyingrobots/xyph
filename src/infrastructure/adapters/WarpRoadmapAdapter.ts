@@ -1,22 +1,18 @@
 import { RoadmapPort } from '../../ports/RoadmapPort.js';
 import { Quest, QuestStatus, QuestType } from '../../domain/entities/Quest.js';
 import { EdgeType } from '../../schema.js';
-import { createPatchSession } from '../helpers/createPatchSession.js';
-import { WarpGraphHolder } from '../helpers/WarpGraphHolder.js';
+import type { GraphPort } from '../../ports/GraphPort.js';
 import { toNeighborEntries } from '../helpers/isNeighborEntry.js';
 
 const VALID_STATUSES: ReadonlySet<string> = new Set([
   'INBOX', 'BACKLOG', 'PLANNED', 'IN_PROGRESS', 'BLOCKED', 'DONE', 'GRAVEYARD',
 ]);
-// Only 'task' nodes are valid Quests; other types (scroll, campaign, etc.) are not Quest entities
 const VALID_TYPES: ReadonlySet<string> = new Set(['task']);
 
 export class WarpRoadmapAdapter implements RoadmapPort {
-  private readonly graphHolder: WarpGraphHolder;
-
-  constructor(repoPath: string, graphName: string, writerId: string) {
-    this.graphHolder = new WarpGraphHolder(repoPath, graphName, writerId);
-  }
+  constructor(
+    private readonly graphPort: GraphPort,
+  ) {}
 
   private buildQuestFromProps(id: string, props: Map<string, unknown>): Quest | null {
     const title = props.get('title');
@@ -50,9 +46,7 @@ export class WarpRoadmapAdapter implements RoadmapPort {
   }
 
   public async getQuests(): Promise<Quest[]> {
-    const graph = await this.graphHolder.getGraph();
-    await graph.syncCoverage();
-    await graph.materialize();
+    const graph = await this.graphPort.getGraph();
     const nodeIds = await graph.getNodes();
     const quests: Quest[] = [];
 
@@ -68,9 +62,7 @@ export class WarpRoadmapAdapter implements RoadmapPort {
   }
 
   public async getQuest(id: string): Promise<Quest | null> {
-    const graph = await this.graphHolder.getGraph();
-    await graph.syncCoverage();
-    await graph.materialize();
+    const graph = await this.graphPort.getGraph();
     if (!await graph.hasNode(id)) return null;
 
     const props = await graph.getNodeProps(id);
@@ -80,48 +72,41 @@ export class WarpRoadmapAdapter implements RoadmapPort {
   }
 
   public async upsertQuest(quest: Quest): Promise<string> {
-    const graph = await this.graphHolder.getGraph();
-    const patch = await createPatchSession(graph);
+    const graph = await this.graphPort.getGraph();
+    const needsAdd = !await graph.hasNode(quest.id);
 
-    if (!await graph.hasNode(quest.id)) {
-      patch.addNode(quest.id);
-    }
+    return graph.patch((p) => {
+      if (needsAdd) {
+        p.addNode(quest.id);
+      }
 
-    patch.setProperty(quest.id, 'title', quest.title)
-         .setProperty(quest.id, 'status', quest.status)
-         .setProperty(quest.id, 'hours', quest.hours)
-         .setProperty(quest.id, 'type', quest.type);
+      p.setProperty(quest.id, 'title', quest.title)
+        .setProperty(quest.id, 'status', quest.status)
+        .setProperty(quest.id, 'hours', quest.hours)
+        .setProperty(quest.id, 'type', quest.type);
 
-    // DESIGN NOTE (L-24): These != null guards mean we can only SET optional properties,
-    // never UNSET them. E.g., unclaiming a quest can't clear `assigned_to` — it stays
-    // stale. The WARP graph's setProperty API doesn't support deletion; a future
-    // "tombstone" or "null-value" convention would be needed to support unsetting.
-    if (quest.assignedTo != null) patch.setProperty(quest.id, 'assigned_to', quest.assignedTo);
-    if (quest.claimedAt != null) patch.setProperty(quest.id, 'claimed_at', quest.claimedAt);
-    if (quest.completedAt != null) patch.setProperty(quest.id, 'completed_at', quest.completedAt);
-    if (quest.originContext != null) patch.setProperty(quest.id, 'origin_context', quest.originContext);
-
-    return await patch.commit();
+      if (quest.assignedTo != null) p.setProperty(quest.id, 'assigned_to', quest.assignedTo);
+      if (quest.claimedAt != null) p.setProperty(quest.id, 'claimed_at', quest.claimedAt);
+      if (quest.completedAt != null) p.setProperty(quest.id, 'completed_at', quest.completedAt);
+      if (quest.originContext != null) p.setProperty(quest.id, 'origin_context', quest.originContext);
+    });
   }
 
   public async addEdge(from: string, to: string, type: EdgeType): Promise<string> {
-    const graph = await this.graphHolder.getGraph();
-    const patch = await createPatchSession(graph);
-    patch.addEdge(from, to, type);
-    return await patch.commit();
+    const graph = await this.graphPort.getGraph();
+    return graph.patch((p) => {
+      p.addEdge(from, to, type);
+    });
   }
 
   public async getOutgoingEdges(nodeId: string): Promise<{ to: string; type: string }[]> {
-    const graph = await this.graphHolder.getGraph();
-    await graph.syncCoverage();
-    await graph.materialize();
+    const graph = await this.graphPort.getGraph();
     const neighbors = toNeighborEntries(await graph.neighbors(nodeId, 'outgoing'));
     return neighbors.map(n => ({ to: n.nodeId, type: n.label }));
   }
 
   public async sync(): Promise<void> {
-    const graph = await this.graphHolder.getGraph();
+    const graph = await this.graphPort.getGraph();
     await graph.syncCoverage();
-    await graph.materialize();
   }
 }
