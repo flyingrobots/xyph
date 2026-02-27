@@ -4,6 +4,23 @@ All notable changes to XYPH will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed — PR Feedback (Review Round)
+
+- Roadmap frontier selection ordering now matches visual render order
+  (frontier items first, then blocked, both sorted).
+- Backlog write targets aligned with suggester-grouped render order,
+  preventing wrong-target promote/reject operations.
+- Toast dismissal uses tokenized `expiresAt` to prevent stale timers
+  from clearing newer toasts.
+- `promoteQuest` validates intentId is non-empty before calling IntakePort.
+- Overlay dialog hint lines pad plain text before ANSI styling to fix
+  visual width miscalculation.
+- Landing progress bar width clamped to terminal width for narrow screens.
+- Consolidated duplicate "### Removed" CHANGELOG sections.
+- Extracted shared `normalizeQuestStatus` and `SUBMISSION_STATUS_ORDER`
+  constants to domain entities, eliminating duplication across adapters.
+- Dashboard pending-review lookup optimized from O(n) find to Map.
+
 ### Changed — Phase 9: Vocabulary Rename
 
 - `INBOX` → `BACKLOG` (suggestion pool), `BACKLOG` → `PLANNED` (vetted work).
