@@ -1,8 +1,9 @@
 #!/usr/bin/env -S npx tsx
 
-import { lerp3 } from '../src/tui/theme/gradient.js';
-import { CYAN_MAGENTA, TEAL_ORANGE_PINK } from '../src/tui/theme/presets.js';
-import type { GradientStop } from '../src/tui/theme/tokens.js';
+import { lerp3, CYAN_MAGENTA, TEAL_ORANGE_PINK, ensureXyphContext } from '../src/tui/theme/index.js';
+import type { GradientStop } from '../src/tui/theme/index.js';
+
+ensureXyphContext();
 
 const sleep = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms));
 

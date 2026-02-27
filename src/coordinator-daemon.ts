@@ -4,7 +4,7 @@ import { CoordinatorService } from './domain/services/CoordinatorService.js';
 import { IngestService } from './domain/services/IngestService.js';
 import { NormalizeService } from './domain/services/NormalizeService.js';
 import { RebalanceService } from './domain/services/RebalanceService.js';
-import { getTheme, styled, chalkFromToken } from './tui/theme/index.js';
+import { getTheme, styled } from './tui/theme/index.js';
 
 /**
  * Coordinator Daemon
@@ -33,7 +33,7 @@ const INTERVAL_MS = parseInterval();
 
 async function main(): Promise<void> {
   const t = getTheme().theme;
-  console.log(chalkFromToken(t.semantic.success).bold('XYPH Coordinator Daemon starting...'));
+  console.log(styled({ hex: t.semantic.success.hex, modifiers: ['bold'] }, 'XYPH Coordinator Daemon starting...'));
 
   const graphPort = new WarpGraphAdapter(REPO_PATH, GRAPH_NAME, AGENT_ID);
   const roadmap = new WarpRoadmapAdapter(graphPort);

@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { lerp3 } from '../gradient.js';
-import type { GradientStop } from '../tokens.js';
+import { lerp3, type GradientStop } from '@flyingrobots/bijou';
 
 describe('lerp3', () => {
   const twoStop: GradientStop[] = [
