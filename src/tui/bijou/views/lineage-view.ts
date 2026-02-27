@@ -2,6 +2,10 @@ import { headerBox, tree, type TreeNode } from '@flyingrobots/bijou';
 import { styled, styledStatus, getTheme } from '../../theme/index.js';
 import type { DashboardModel } from '../DashboardApp.js';
 
+function truncate(s: string, max: number): string {
+  return s.length > max ? s.slice(0, max - 1) + '\u2026' : s;
+}
+
 export function lineageView(model: DashboardModel): string {
   const t = getTheme();
   const snap = model.snapshot;
@@ -62,7 +66,7 @@ export function lineageView(model: DashboardModel): string {
         ? (scrollEntry.hasSeal ? styled(t.theme.semantic.success, ' \u2713') : styled(t.theme.semantic.warning, ' \u25CB'))
         : '';
 
-      const label = `${styled(t.theme.semantic.muted, q.id)}  ${q.title.slice(0, 38)}  [${styledStatus(q.status)}]${scrollMark}`;
+      const label = `${styled(t.theme.semantic.muted, q.id)}  ${truncate(q.title, 38)}  [${styledStatus(q.status)}]${scrollMark}`;
 
       const children: TreeNode[] = [];
       if (scrollEntry !== undefined) {
@@ -87,7 +91,7 @@ export function lineageView(model: DashboardModel): string {
     lines.push(styled(t.theme.semantic.error, '  \u26A0 Orphan quests (no intent \u2014 Constitution violation)'));
 
     const orphanNodes: TreeNode[] = orphans.map(q => ({
-      label: `${styled(t.theme.semantic.muted, q.id)}  ${q.title.slice(0, 38)}  [${styledStatus(q.status)}]`,
+      label: `${styled(t.theme.semantic.muted, q.id)}  ${truncate(q.title, 38)}  [${styledStatus(q.status)}]`,
     }));
 
     const rendered = tree(orphanNodes, { guideToken: t.theme.semantic.error });

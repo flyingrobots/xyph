@@ -7,6 +7,9 @@ export function allView(model: DashboardModel): string {
   const snap = model.snapshot;
   if (!snap) return styled(t.theme.semantic.muted, '  No snapshot loaded.');
 
+  // Total includes all graph node types; submissions/reviews/decisions
+  // are rendered via --view submissions (separate view), counted here for
+  // an accurate whole-graph tally.
   const total =
     snap.campaigns.length +
     snap.quests.length +
