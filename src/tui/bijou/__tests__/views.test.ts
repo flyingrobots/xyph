@@ -11,9 +11,9 @@ import { inboxView } from '../views/inbox-view.js';
 // ── Helpers ────────────────────────────────────────────────────────────
 
 /** Strip ANSI escape codes for assertion matching. */
+const ANSI_RE = new RegExp(String.fromCharCode(0x1b) + '\\[[0-9;]*m', 'g');
 function strip(s: string): string {
-  // eslint-disable-next-line no-control-regex
-  return s.replace(/\x1b\[[0-9;]*m/g, '');
+  return s.replace(ANSI_RE, '');
 }
 
 function makeSnapshot(overrides?: Partial<GraphSnapshot>): GraphSnapshot {
@@ -71,20 +71,21 @@ function campaign(overrides: Partial<CampaignNode> & { id: string; title: string
 
 // ── Setup / teardown ───────────────────────────────────────────────────
 
-beforeEach(() => {
-  _resetThemeForTesting();
-  _resetBridgeForTesting();
-  delete process.env['NO_COLOR'];
-  delete process.env['XYPH_THEME'];
-  process.env['NO_COLOR'] = '1';
-  ensureXyphContext();
-});
+describe('bijou views', () => {
+  beforeEach(() => {
+    _resetThemeForTesting();
+    _resetBridgeForTesting();
+    delete process.env['NO_COLOR'];
+    delete process.env['XYPH_THEME'];
+    vi.stubEnv('NO_COLOR', '1');
+    ensureXyphContext();
+  });
 
-afterEach(() => {
-  vi.unstubAllEnvs();
-  _resetThemeForTesting();
-  _resetBridgeForTesting();
-});
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    _resetThemeForTesting();
+    _resetBridgeForTesting();
+  });
 
 // ── Roadmap View ───────────────────────────────────────────────────────
 
@@ -315,3 +316,4 @@ describe('lineageView', () => {
     expect(plain).not.toContain('task:INBOX-001');
   });
 });
+}); // bijou views
