@@ -24,11 +24,6 @@ All notable changes to XYPH will be documented in this file.
 - ESLint `noInlineConfig: true` — inline lint bypass comments are now a
   hard error.
 
-### Fixed — BJU-003
-
-- Sealed BJU-003 (TEA app shell) — work was completed as part of BJU-001
-  PR #20 but the quest was not sealed.
-
 ## [1.0.0-alpha.10] - 2026-02-26
 
 ### Changed — BJU-001: Bijou TUI Migration (Theme Bridge + TEA App Shell)
