@@ -8,7 +8,7 @@ Quick win (DAG labels → task IDs) already shipped.
 
 ---
 
-## Phase 1: New Views + Selection (no bijou spec deps)
+## Phase 1: New Views + Selection (no bijou spec deps) ✅ DONE
 
 ### 1a. Model & Architecture Changes
 

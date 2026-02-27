@@ -78,106 +78,67 @@ export function overviewView(model: DashboardModel, width?: number, height?: num
     metaLines.push(styled(t.theme.semantic.muted, '(no graph meta)'));
   }
 
-  // ── Render panels ───────────────────────────────────────────────────
+  // ── Build panel content ───────────────────────────────────────────
 
-  function renderTopRow(pw: number, _ph: number): string {
-    const panelW = Math.max(20, Math.floor((pw - 4) / 3));
-    const lines: string[] = [];
-
-    // Quest status panel
-    const questPanel: string[] = [];
-    questPanel.push(styled(t.theme.semantic.primary, ' Quest Status'));
-    questPanel.push('');
-    for (const row of questRows) {
-      const label = (row[0] ?? '').padEnd(14);
-      questPanel.push(` ${label} ${row[1] ?? ''}`);
-    }
-    if (questRows.length === 0) {
-      questPanel.push(styled(t.theme.semantic.muted, ' (no quests)'));
-    }
-
-    // Submission panel
-    const subPanel: string[] = [];
-    subPanel.push(styled(t.theme.semantic.primary, ' Submissions'));
-    subPanel.push('');
-    for (const row of subRows) {
-      const label = (row[0] ?? '').padEnd(18);
-      subPanel.push(` ${label} ${row[1] ?? ''}`);
-    }
-    if (subRows.length === 0) {
-      subPanel.push(styled(t.theme.semantic.muted, ' (none)'));
-    }
-
-    // Health panel
-    const healthPanel: string[] = [];
-    healthPanel.push(styled(t.theme.semantic.primary, ' Health'));
-    healthPanel.push('');
-    for (const line of healthLines) {
-      healthPanel.push(` ${line}`);
-    }
-
-    // Pad to same height
-    const maxH = Math.max(questPanel.length, subPanel.length, healthPanel.length);
-    while (questPanel.length < maxH) questPanel.push('');
-    while (subPanel.length < maxH) subPanel.push('');
-    while (healthPanel.length < maxH) healthPanel.push('');
-
-    // Side by side
-    for (let i = 0; i < maxH; i++) {
-      const q = (questPanel[i] ?? '').padEnd(panelW);
-      const s = (subPanel[i] ?? '').padEnd(panelW);
-      const hp = healthPanel[i] ?? '';
-      lines.push(`${q}  ${s}  ${hp}`);
-    }
-
-    return lines.join('\n');
+  // Quest status panel
+  const questPanel: string[] = [];
+  questPanel.push(styled(t.theme.semantic.primary, ' Quest Status'));
+  questPanel.push('');
+  for (const row of questRows) {
+    const label = (row[0] ?? '').padEnd(14);
+    questPanel.push(` ${label} ${row[1] ?? ''}`);
+  }
+  if (questRows.length === 0) {
+    questPanel.push(styled(t.theme.semantic.muted, ' (no quests)'));
   }
 
-  function renderBottomRow(pw: number, _ph: number): string {
-    const leftW = Math.max(30, Math.floor(pw * 0.6));
-    const lines: string[] = [];
-
-    // Campaign panel
-    const campPanel: string[] = [];
-    campPanel.push(styled(t.theme.semantic.primary, ' Campaigns'));
-    campPanel.push('');
-    if (campaignRows.length > 0) {
-      campPanel.push(table({
-        columns: [
-          { header: 'ID' },
-          { header: 'Title' },
-          { header: 'Status' },
-        ],
-        rows: campaignRows,
-        headerToken: t.theme.ui.tableHeader,
-      }));
-    } else {
-      campPanel.push(styled(t.theme.semantic.muted, ' (no campaigns)'));
-    }
-
-    // Meta panel
-    const metaPanel: string[] = [];
-    metaPanel.push(styled(t.theme.semantic.primary, ' Graph Meta'));
-    metaPanel.push('');
-    for (const line of metaLines) {
-      metaPanel.push(` ${line}`);
-    }
-
-    // Pad to same height
-    const maxH = Math.max(campPanel.length, metaPanel.length);
-    while (campPanel.length < maxH) campPanel.push('');
-    while (metaPanel.length < maxH) metaPanel.push('');
-
-    for (let i = 0; i < maxH; i++) {
-      const c = (campPanel[i] ?? '').padEnd(leftW);
-      const m = metaPanel[i] ?? '';
-      lines.push(`${c}  ${m}`);
-    }
-
-    return lines.join('\n');
+  // Submission panel
+  const subPanel: string[] = [];
+  subPanel.push(styled(t.theme.semantic.primary, ' Submissions'));
+  subPanel.push('');
+  for (const row of subRows) {
+    const label = (row[0] ?? '').padEnd(18);
+    subPanel.push(` ${label} ${row[1] ?? ''}`);
+  }
+  if (subRows.length === 0) {
+    subPanel.push(styled(t.theme.semantic.muted, ' (none)'));
   }
 
-  // ── Layout ──────────────────────────────────────────────────────────
+  // Health panel
+  const healthPanel: string[] = [];
+  healthPanel.push(styled(t.theme.semantic.primary, ' Health'));
+  healthPanel.push('');
+  for (const line of healthLines) {
+    healthPanel.push(` ${line}`);
+  }
+
+  // Campaign panel
+  const campPanel: string[] = [];
+  campPanel.push(styled(t.theme.semantic.primary, ' Campaigns'));
+  campPanel.push('');
+  if (campaignRows.length > 0) {
+    campPanel.push(table({
+      columns: [
+        { header: 'ID' },
+        { header: 'Title' },
+        { header: 'Status' },
+      ],
+      rows: campaignRows,
+      headerToken: t.theme.ui.tableHeader,
+    }));
+  } else {
+    campPanel.push(styled(t.theme.semantic.muted, ' (no campaigns)'));
+  }
+
+  // Meta panel
+  const metaPanel: string[] = [];
+  metaPanel.push(styled(t.theme.semantic.primary, ' Graph Meta'));
+  metaPanel.push('');
+  for (const line of metaLines) {
+    metaPanel.push(` ${line}`);
+  }
+
+  // ── Layout with flex rows (item 10) ──────────────────────────────
 
   const header = headerBox('XYPH Overview', {
     detail: `${snap.quests.length} quests  ${snap.submissions.length} submissions  ${snap.campaigns.length} campaigns`,
@@ -188,8 +149,23 @@ export function overviewView(model: DashboardModel, width?: number, height?: num
     { direction: 'column', width: w, height: h },
     { basis: 2, content: header },
     { basis: 1, content: '' },
-    { flex: 1, content: renderTopRow },
+    {
+      flex: 1,
+      content: (rw: number, rh: number) => flex(
+        { direction: 'row', width: rw, height: rh },
+        { flex: 1, content: questPanel.join('\n') },
+        { flex: 1, content: subPanel.join('\n') },
+        { flex: 1, content: healthPanel.join('\n') },
+      ),
+    },
     { basis: 1, content: '' },
-    { flex: 1, content: renderBottomRow },
+    {
+      flex: 1,
+      content: (rw: number, rh: number) => flex(
+        { direction: 'row', width: rw, height: rh },
+        { flex: 2, content: campPanel.join('\n') },
+        { flex: 1, content: metaPanel.join('\n') },
+      ),
+    },
   );
 }

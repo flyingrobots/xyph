@@ -1,4 +1,4 @@
-import { headerBox, tree, type TreeNode } from '@flyingrobots/bijou';
+import { headerBox, tree, type TreeNode, accordion, type AccordionSection } from '@flyingrobots/bijou';
 import { styled, styledStatus, getTheme } from '../../theme/index.js';
 import type { DashboardModel } from '../DashboardApp.js';
 
@@ -45,44 +45,54 @@ export function lineageView(model: DashboardModel, _width?: number, _height?: nu
     ));
   }
 
-  // Render each intent as a tree
-  for (const intent of snap.intents) {
-    lines.push('');
-    lines.push(
-      styled(t.theme.ui.intentHeader, `  \u25C6 ${intent.id}`) +
-      styled(t.theme.semantic.muted, `  ${intent.title}`),
-    );
-    lines.push(styled(t.theme.semantic.muted, `     requested-by: ${intent.requestedBy}`));
+  // Render each intent as an accordion section (item 9)
+  const sections: AccordionSection[] = snap.intents.map((intent, i) => {
+    const isSelected = i === model.lineage.selectedIndex;
+    const isCollapsed = model.lineage.collapsedIntents.includes(intent.id);
 
+    // Title with selection indicator
+    const titleStyle = isSelected ? t.theme.semantic.primary : t.theme.ui.intentHeader;
+    const title = styled(titleStyle, `\u25C6 ${intent.id}`) +
+      styled(t.theme.semantic.muted, `  ${intent.title}  (${intent.requestedBy})`);
+
+    // Content: quest tree
     const quests = questsByIntent.get(intent.id) ?? [];
+    let content: string;
+
     if (quests.length === 0) {
-      lines.push(styled(t.theme.semantic.muted, '     \u2514\u2500 (no quests)'));
-      continue;
+      content = styled(t.theme.semantic.muted, '  (no quests)');
+    } else {
+      const treeNodes: TreeNode[] = quests.map(q => {
+        const scrollEntry = scrollByQuestId.get(q.id);
+        const scrollMark = scrollEntry !== undefined
+          ? (scrollEntry.hasSeal ? styled(t.theme.semantic.success, ' \u2713') : styled(t.theme.semantic.warning, ' \u25CB'))
+          : '';
+
+        const label = `${styled(t.theme.semantic.muted, q.id)}  ${truncate(q.title, 38)}  [${styledStatus(q.status)}]${scrollMark}`;
+
+        const children: TreeNode[] = [];
+        if (scrollEntry !== undefined) {
+          children.push({
+            label: `${styled(t.theme.semantic.muted, 'scroll:')} ${styled(t.theme.semantic.muted, scrollEntry.id)}`,
+          });
+        }
+
+        return { label, children: children.length > 0 ? children : undefined };
+      });
+
+      // Indent tree output
+      const rendered = tree(treeNodes, { guideToken: t.theme.semantic.muted });
+      content = rendered.split('\n').map(l => `  ${l}`).join('\n');
     }
 
-    const treeNodes: TreeNode[] = quests.map(q => {
-      const scrollEntry = scrollByQuestId.get(q.id);
-      const scrollMark = scrollEntry !== undefined
-        ? (scrollEntry.hasSeal ? styled(t.theme.semantic.success, ' \u2713') : styled(t.theme.semantic.warning, ' \u25CB'))
-        : '';
+    return { title, content, expanded: !isCollapsed };
+  });
 
-      const label = `${styled(t.theme.semantic.muted, q.id)}  ${truncate(q.title, 38)}  [${styledStatus(q.status)}]${scrollMark}`;
-
-      const children: TreeNode[] = [];
-      if (scrollEntry !== undefined) {
-        children.push({
-          label: `${styled(t.theme.semantic.muted, 'scroll:')} ${styled(t.theme.semantic.muted, scrollEntry.id)}`,
-        });
-      }
-
-      return { label, children: children.length > 0 ? children : undefined };
-    });
-
-    // Indent tree output by 5 spaces to match legacy visual alignment
-    const rendered = tree(treeNodes, { guideToken: t.theme.semantic.muted });
-    for (const line of rendered.split('\n')) {
-      lines.push(`     ${line}`);
-    }
+  if (sections.length > 0) {
+    lines.push('');
+    lines.push(accordion(sections, {
+      indicatorToken: t.theme.semantic.primary,
+    }));
   }
 
   // Orphan quests section

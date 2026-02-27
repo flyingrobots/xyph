@@ -73,6 +73,11 @@ export function roadmapView(model: DashboardModel, width?: number, height?: numb
 
   function renderFrontierPanel(_pw: number, ph: number): string {
     const lines: string[] = [];
+    let selectedLine = -1;
+
+    // Drawer header (item 7)
+    lines.push(styled(t.theme.semantic.info, '\u2500\u2500 Frontier \u2500\u2500'));
+    lines.push('');
 
     if (hasDeps) {
       lines.push(styled(t.theme.semantic.primary, ' \u25B6 Ready'));
@@ -86,6 +91,7 @@ export function roadmapView(model: DashboardModel, width?: number, height?: numb
           if (!q) continue;
           const icon = statusIcon(q.status);
           const mark = critSet.has(id) ? styled(t.theme.semantic.warning, ' \u2605') : '';
+          if (id === selectedQuestId) selectedLine = lines.length;
           const sel = id === selectedQuestId ? styled(t.theme.semantic.primary, '\u25B6') : ' ';
           const titleStyle = id === selectedQuestId
             ? styled(t.theme.semantic.primary, q.title.slice(0, leftWidth - 15))
@@ -104,6 +110,7 @@ export function roadmapView(model: DashboardModel, width?: number, height?: numb
           const q = questMap.get(id);
           if (!q) continue;
           const deps = blockedBy.get(id) ?? [];
+          if (id === selectedQuestId) selectedLine = lines.length;
           const sel = id === selectedQuestId ? styled(t.theme.semantic.primary, '\u25B6') : ' ';
           const titleStyle = id === selectedQuestId
             ? styled(t.theme.semantic.primary, q.title.slice(0, leftWidth - 11))
@@ -128,6 +135,7 @@ export function roadmapView(model: DashboardModel, width?: number, height?: numb
       for (const [status, quests] of byStatus) {
         lines.push(` ${styledStatus(status)}`);
         for (const q of quests) {
+          if (q.id === selectedQuestId) selectedLine = lines.length;
           const sel = q.id === selectedQuestId ? styled(t.theme.semantic.primary, '\u25B6') : ' ';
           const titleStyle = q.id === selectedQuestId
             ? styled(t.theme.semantic.primary, q.title.slice(0, leftWidth - 9))
@@ -145,8 +153,12 @@ export function roadmapView(model: DashboardModel, width?: number, height?: numb
     }
 
     const content = lines.join('\n');
+    // Auto-scroll to keep selected item visible (item 1)
+    const scrollY = selectedLine >= 0
+      ? Math.max(0, selectedLine - Math.floor(ph / 2))
+      : 0;
     if (ph > 0) {
-      return viewport({ width: _pw, height: ph, content, scrollY: 0 });
+      return viewport({ width: _pw, height: ph, content, scrollY });
     }
     return content;
   }
@@ -272,11 +284,18 @@ export function roadmapView(model: DashboardModel, width?: number, height?: numb
     return viewport({ width: pw, height: ph, content: lines.join('\n'), scrollY: model.roadmap.detailScrollY });
   }
 
+  // ── Vertical separator (item 7) ────────────────────────────────────
+  function renderSeparator(_pw: number, ph: number): string {
+    const sep = styled(t.theme.semantic.muted, '\u2502');
+    return Array.from({ length: ph }, () => sep).join('\n');
+  }
+
   // ── Compose layout ─────────────────────────────────────────────────────
   if (selectedQuestId !== null) {
     return flex(
       { direction: 'row', width: w, height: h },
       { basis: leftWidth, content: renderFrontierPanel },
+      { basis: 1, content: renderSeparator },
       { flex: 1, content: renderDagPanel },
       { basis: detailWidth, content: renderDetailPanel },
     );
@@ -285,6 +304,7 @@ export function roadmapView(model: DashboardModel, width?: number, height?: numb
   return flex(
     { direction: 'row', width: w, height: h },
     { basis: leftWidth, content: renderFrontierPanel },
+    { basis: 1, content: renderSeparator },
     { flex: 1, content: renderDagPanel },
   );
 }

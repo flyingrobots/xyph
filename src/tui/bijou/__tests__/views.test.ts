@@ -48,6 +48,8 @@ function makeModel(snapshot: GraphSnapshot | null): DashboardModel {
     roadmap: { selectedIndex: -1, dagScrollY: 0, detailScrollY: 0 },
     submissions: { selectedIndex: -1, expandedId: null, listScrollY: 0, detailScrollY: 0 },
     inbox: { selectedIndex: -1, listScrollY: 0 },
+    lineage: { selectedIndex: -1, collapsedIntents: [] },
+    pulsePhase: 0,
     mode: 'normal',
     confirmState: null,
     inputState: null,

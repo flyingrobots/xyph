@@ -1,4 +1,3 @@
-import { headerBox } from '@flyingrobots/bijou';
 import { flex, viewport } from '@flyingrobots/bijou-tui';
 import { styled, styledStatus, getTheme } from '../../theme/index.js';
 import type { DashboardModel } from '../DashboardApp.js';
@@ -45,12 +44,10 @@ export function submissionsView(model: DashboardModel, width?: number, height?: 
 
   if (snap.submissions.length === 0) {
     const lines: string[] = [];
-    lines.push(headerBox('Submissions', {
-      detail: '0 submissions',
-      borderToken: t.theme.border.secondary,
-    }));
+    lines.push(styled(t.theme.semantic.primary, ' Submissions'));
+    lines.push('');
     lines.push(styled(t.theme.semantic.muted,
-      '\n  No submissions yet.\n' +
+      '  No submissions yet.\n' +
       '  Submit work: xyph-actuator submit <quest-id> --description "..."',
     ));
     return lines.join('\n');
@@ -81,12 +78,12 @@ export function submissionsView(model: DashboardModel, width?: number, height?: 
   const selectedIndex = model.submissions.selectedIndex;
   const expandedId = model.submissions.expandedId;
 
-  // ── Left panel: submission list ────────────────────────────────────
+  // ── Left panel: submission list (item 8: inline header) ─────────
   const leftWidth = Math.max(36, Math.floor(w * 0.35));
 
   function renderList(pw: number, ph: number): string {
     const lines: string[] = [];
-    lines.push(styled(t.theme.semantic.primary, ' Submissions'));
+    lines.push(styled(t.theme.semantic.primary, ` Submissions (${sorted.length})`));
     lines.push('');
 
     for (let i = 0; i < sorted.length; i++) {
@@ -184,23 +181,10 @@ export function submissionsView(model: DashboardModel, width?: number, height?: 
     return viewport({ width: pw, height: ph, content, scrollY: model.submissions.detailScrollY });
   }
 
-  // ── Compose layout ─────────────────────────────────────────────────
-
-  const header = headerBox('Submissions', {
-    detail: `${snap.submissions.length} submission(s)`,
-    borderToken: t.theme.border.secondary,
-  });
-
+  // ── Compose layout (item 8: flat row, no outer column header) ───
   return flex(
-    { direction: 'column', width: w, height: h },
-    { basis: 2, content: header },
-    {
-      flex: 1,
-      content: (cw: number, ch: number) => flex(
-        { direction: 'row', width: cw, height: ch },
-        { basis: leftWidth, content: renderList },
-        { flex: 1, content: renderDetail },
-      ),
-    },
+    { direction: 'row', width: w, height: h },
+    { basis: leftWidth, content: renderList },
+    { flex: 1, content: renderDetail },
   );
 }

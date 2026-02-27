@@ -57,6 +57,11 @@ export interface InboxState {
   listScrollY: number;
 }
 
+export interface LineageState {
+  selectedIndex: number;
+  collapsedIntents: string[];
+}
+
 export interface DashboardModel {
   activeView: ViewName;
   snapshot: GraphSnapshot | null;
@@ -71,11 +76,14 @@ export interface DashboardModel {
   requestId: number;
   /** 0-100, drives landing progress bar animation. */
   loadingProgress: number;
+  /** 0-100, drives pulse animation for landing screen. */
+  pulsePhase: number;
 
   // Per-view state
   roadmap: RoadmapState;
   submissions: SubmissionsState;
   inbox: InboxState;
+  lineage: LineageState;
 
   // Interaction mode
   mode: 'normal' | 'confirm' | 'input';
@@ -92,6 +100,8 @@ export type DashboardMsg =
   | { type: 'snapshot-loaded'; snapshot: GraphSnapshot; requestId: number }
   | { type: 'snapshot-error'; error: string; requestId: number }
   | { type: 'loading-progress'; value: number }
+  | { type: 'pulse-frame'; value: number }
+  | { type: 'pulse-done' }
   | { type: 'write-success'; message: string }
   | { type: 'write-error'; message: string }
   | { type: 'dismiss-toast' };
@@ -158,6 +168,15 @@ function buildInboxKeys(): KeyMap<ViewAction> {
     .bind('d', 'Reject', { type: 'reject' });
 }
 
+function buildLineageKeys(): KeyMap<ViewAction> {
+  return createKeyMap<ViewAction>()
+    .bind('j', 'Select next', { type: 'select-next' })
+    .bind('down', 'Select next', { type: 'select-next' })
+    .bind('k', 'Select prev', { type: 'select-prev' })
+    .bind('up', 'Select prev', { type: 'select-prev' })
+    .bind('enter', 'Expand/collapse', { type: 'expand' });
+}
+
 // ── Selection helpers ───────────────────────────────────────────────────
 
 const SUB_STATUS_ORDER: Record<string, number> = {
@@ -190,6 +209,11 @@ function inboxQuestIds(snap: GraphSnapshot): string[] {
   return snap.quests.filter(q => q.status === 'INBOX').map(q => q.id);
 }
 
+/** Return ordered intent IDs for lineage view selection. */
+function lineageIntentIds(snap: GraphSnapshot): string[] {
+  return snap.intents.map(i => i.id);
+}
+
 function clampIndex(idx: number, count: number): number {
   if (count <= 0) return -1;
   return Math.max(0, Math.min(idx, count - 1));
@@ -199,15 +223,15 @@ function clampIndex(idx: number, count: number): number {
 
 function viewHints(view: ViewName): string {
   const t = getTheme();
-  const base = 'Tab: cycle  r: refresh  ?: help  q: quit';
-  let extra = '';
+  let keys = '? help  q quit  Tab cycle  r refresh';
   switch (view) {
-    case 'roadmap':     extra = '  j/k: select  c: claim  PgDn/PgUp: scroll'; break;
-    case 'submissions': extra = '  j/k: select  Enter: expand  a: approve  x: request changes'; break;
-    case 'inbox':       extra = '  j/k: select  p: promote  d: reject'; break;
+    case 'roadmap':     keys += '  j/k select  c claim  PgDn/PgUp scroll'; break;
+    case 'submissions': keys += '  j/k select  Enter expand  a approve  x request-changes'; break;
+    case 'inbox':       keys += '  j/k select  p promote  d reject'; break;
+    case 'lineage':     keys += '  j/k select  Enter expand/collapse'; break;
     default:            break;
   }
-  return styled(t.theme.semantic.muted, `  ${base}${extra}`);
+  return styled(t.theme.semantic.muted, `  ${keys}`);
 }
 
 // ── Factory ─────────────────────────────────────────────────────────────
@@ -226,6 +250,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
   const roadmapKeys = buildRoadmapKeys();
   const submissionsKeys = buildSubmissionsKeys();
   const inboxKeys = buildInboxKeys();
+  const lineageKeys = buildLineageKeys();
 
   const writeDeps: WriteDeps = {
     graphPort: deps.graphPort,
@@ -289,6 +314,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
       case 'roadmap':     return roadmapKeys;
       case 'submissions': return submissionsKeys;
       case 'inbox':       return inboxKeys;
+      case 'lineage':     return lineageKeys;
       default:            return null;
     }
   }
@@ -314,6 +340,8 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         roadmap: { selectedIndex: -1, dagScrollY: 0, detailScrollY: 0 },
         submissions: { selectedIndex: -1, expandedId: null, listScrollY: 0, detailScrollY: 0 },
         inbox: { selectedIndex: -1, listScrollY: 0 },
+        lineage: { selectedIndex: -1, collapsedIntents: [] },
+        pulsePhase: 0,
         mode: 'normal',
         confirmState: null,
         inputState: null,
@@ -328,6 +356,15 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
           duration: 2000,
           ease: EASINGS.easeOut,
           onFrame: (v) => ({ type: 'loading-progress', value: v }),
+        }),
+        animate<DashboardMsg>({
+          type: 'tween',
+          from: 0,
+          to: 100,
+          duration: 1500,
+          ease: EASINGS.easeInOut,
+          onFrame: (v) => ({ type: 'pulse-frame', value: v }),
+          onComplete: () => ({ type: 'pulse-done' }),
         }),
       ]];
     },
@@ -374,6 +411,27 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
       // Handle toast dismissal
       if (msg.type === 'dismiss-toast') {
         return [{ ...model, toast: null }, []];
+      }
+
+      // Handle pulse animation
+      if (msg.type === 'pulse-frame') {
+        if (!model.showLanding) return [model, []];
+        return [{ ...model, pulsePhase: msg.value }, []];
+      }
+      if (msg.type === 'pulse-done') {
+        if (!model.showLanding) return [model, []];
+        // Reverse direction: if phase is high, go back down; otherwise go up
+        const wasRising = model.pulsePhase >= 50;
+        const [from, to] = wasRising ? [100, 0] as const : [0, 100] as const;
+        return [model, [animate<DashboardMsg>({
+          type: 'tween',
+          from,
+          to,
+          duration: 1500,
+          ease: EASINGS.easeInOut,
+          onFrame: (v) => ({ type: 'pulse-frame', value: v }),
+          onComplete: () => ({ type: 'pulse-done' }),
+        })]];
       }
 
       // ── Key handling ──────────────────────────────────────────────────
@@ -537,13 +595,13 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         return content;
       };
 
-      // Layout: header + content + status
+      // Layout: tabBar → content → WARP gutter → hints
       return flex(
         { direction: 'column', width: model.cols, height: model.rows },
         { basis: 1, content: `  ${tabBar}` },
-        { basis: 1, content: hints },
         { flex: 1, content: viewRenderer },
         { basis: 1, content: statusLine },
+        { basis: 1, content: hints },
       );
     },
   };
@@ -600,6 +658,19 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
 
       case 'expand': {
         if (!snap) return [model, []];
+        if (model.activeView === 'lineage') {
+          const ids = lineageIntentIds(snap);
+          const intentId = ids[model.lineage.selectedIndex];
+          if (!intentId) return [model, []];
+          const collapsed = model.lineage.collapsedIntents;
+          const nextCollapsed = collapsed.includes(intentId)
+            ? collapsed.filter(id => id !== intentId)
+            : [...collapsed, intentId];
+          return [{
+            ...model,
+            lineage: { ...model.lineage, collapsedIntents: nextCollapsed },
+          }, []];
+        }
         const ids = submissionIds(snap);
         const subId = ids[model.submissions.selectedIndex];
         if (!subId) return [model, []];
@@ -672,6 +743,11 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         const next = clampIndex(model.inbox.selectedIndex + delta, count);
         return { ...model, inbox: { ...model.inbox, selectedIndex: next } };
       }
+      case 'lineage': {
+        const count = lineageIntentIds(snap).length;
+        const next = clampIndex(model.lineage.selectedIndex + delta, count);
+        return { ...model, lineage: { ...model.lineage, selectedIndex: next } };
+      }
       default:
         return model;
     }
@@ -714,25 +790,34 @@ function renderHelp(): string {
 
 function renderStatusLine(model: DashboardModel, t: ReturnType<typeof getTheme>): string {
   const meta = model.snapshot?.graphMeta;
-  const parts: string[] = [];
 
+  // Build WARP tag: // [WARP(af322e) tick: 144] ///...///
+  let tag: string;
   if (meta) {
-    parts.push(`tick:${meta.maxTick}`);
-    parts.push(`writers:${meta.writerCount}`);
-    parts.push(`tip:${meta.tipSha}`);
-  }
-  if (model.loading) {
-    parts.push(styled(t.theme.semantic.warning, 'loading\u2026'));
-  }
-  if (model.error) {
-    parts.push(styled(t.theme.semantic.error, `error: ${model.error}`));
+    const shortTip = meta.tipSha.slice(0, 6);
+    tag = `// [WARP(${shortTip}) tick: ${meta.maxTick}]`;
+  } else {
+    tag = '// [WARP]';
   }
 
-  // Toast notification
+  if (model.loading) {
+    tag += ' loading\u2026';
+  } else if (model.error) {
+    tag += ` err: ${model.error.slice(0, 20)}`;
+  }
+
+  // Toast on right side
+  let toastText = '';
+  let toastVisualLen = 0;
   if (model.toast) {
     const token = model.toast.variant === 'success' ? t.theme.semantic.success : t.theme.semantic.error;
-    parts.push(styled(token, model.toast.message));
+    toastText = ' ' + styled(token, model.toast.message);
+    toastVisualLen = model.toast.message.length + 1;
   }
 
-  return styled(t.theme.semantic.muted, `  ${parts.join('  ')}`);
+  // Fill remaining width with /
+  const fillLen = Math.max(1, model.cols - tag.length - toastVisualLen);
+  const fill = ' ' + '/'.repeat(fillLen - 1);
+
+  return styled(t.theme.semantic.muted, tag + fill) + toastText;
 }

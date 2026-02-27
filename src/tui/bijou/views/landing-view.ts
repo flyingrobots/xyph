@@ -1,14 +1,24 @@
 import { flex } from '@flyingrobots/bijou-tui';
-import { progressBar } from '@flyingrobots/bijou';
+import { progressBar, gradientText, getDefaultContext } from '@flyingrobots/bijou';
 import { styled, getTheme } from '../../theme/index.js';
 import type { DashboardModel } from '../DashboardApp.js';
 
 export function landingView(model: DashboardModel): string {
   const t = getTheme();
+  const ctx = getDefaultContext();
   const lines: string[] = [];
 
-  // Show the logo
-  lines.push(model.logoText);
+  // Pad logo lines to max width to prevent ragged alignment (item 4)
+  const logoLines = model.logoText.split('\n');
+  const maxW = logoLines.reduce((m, l) => Math.max(m, l.length), 0);
+  const padded = logoLines.map(l => l.padEnd(maxW));
+
+  // Apply gradient to each line (item 6)
+  const gradientLogo = padded
+    .map(line => gradientText(line, t.theme.gradient.brand, { style: ctx.style }))
+    .join('\n');
+
+  lines.push(gradientLogo);
   lines.push('');
 
   // Copyright
@@ -30,7 +40,9 @@ export function landingView(model: DashboardModel): string {
     const snap = model.snapshot;
     lines.push(styled(t.theme.semantic.muted, `${snap.quests.length} quests, ${snap.campaigns.length} campaigns`));
     lines.push('');
-    lines.push(styled(t.theme.semantic.muted, 'Press any key to continue\u2026'));
+    // Pulsing "Press any key" text (item 5)
+    const pulseToken = model.pulsePhase >= 50 ? t.theme.semantic.primary : t.theme.semantic.muted;
+    lines.push(styled(pulseToken, 'Press any key to continue\u2026'));
   }
 
   const content = lines.join('\n');

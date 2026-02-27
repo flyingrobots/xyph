@@ -104,6 +104,8 @@ describe('DashboardApp', () => {
       expect(model.roadmap).toEqual({ selectedIndex: -1, dagScrollY: 0, detailScrollY: 0 });
       expect(model.submissions).toEqual({ selectedIndex: -1, expandedId: null, listScrollY: 0, detailScrollY: 0 });
       expect(model.inbox).toEqual({ selectedIndex: -1, listScrollY: 0 });
+      expect(model.lineage).toEqual({ selectedIndex: -1, collapsedIntents: [] });
+      expect(model.pulsePhase).toBe(0);
       expect(model.mode).toBe('normal');
       expect(model.confirmState).toBeNull();
       expect(model.inputState).toBeNull();
