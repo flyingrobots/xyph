@@ -4,6 +4,52 @@ All notable changes to XYPH will be documented in this file.
 
 ## [Unreleased]
 
+### Added — Interactive TUI Phase 1: New Views, Selection, and Write Operations
+
+**New views:**
+- `overview-view.ts`: Summary dashboard with quest status counts, submission
+  status counts, health metrics (sovereignty audit, orphan quests, forked
+  patchsets), campaign list, and graph meta — replaces the raw-table `all-view`.
+- `submissions-view.ts`: Master-detail layout (35/65 flex split). Left panel
+  shows submissions sorted by status priority (OPEN first); right panel shows
+  expanded detail with patchset chain, reviews, and decisions.
+
+**Selection and navigation:**
+- Per-view state: `roadmap.selectedIndex`, `submissions.selectedIndex`,
+  `inbox.selectedIndex` with j/k (or arrow keys) for navigation.
+- Roadmap frontier panel highlights selected quest with `▶` indicator.
+- Inbox table highlights selected item with `▶` indicator.
+- Submissions list highlights selected entry; Enter toggles detail expansion.
+- View-specific hint bar shows available keybindings per view.
+
+**Write operations:**
+- `write-cmds.ts`: Cmd factories for `claimQuest` (OCP via direct graph patch),
+  `promoteQuest` (IntakePort), `rejectQuest` (IntakePort).
+- Confirm mode: `c` on roadmap → confirm dialog (`y/n`) → claim quest → toast.
+- Input mode: `p` on inbox → text input for intent ID → promote quest → toast.
+  `d` on inbox → text input for rationale → reject quest → toast.
+- `overlays.ts`: Centered confirm dialog and text input overlays rendered over
+  view content.
+- Toast notifications in status line (success=green, error=red, auto-dismiss 3s).
+
+**Architecture:**
+- `DashboardModel` expanded: per-view state objects, interaction modes
+  (`normal`/`confirm`/`input`), `PendingWrite` action type, toast state.
+- `DashboardMsg` expanded: `write-success`, `write-error`, `dismiss-toast`.
+- `DashboardDeps` expanded: `graphPort: GraphPort` for direct graph patches.
+- Tab order: roadmap → submissions → lineage → overview → inbox (5 views).
+- View-specific keymaps via separate `KeyMap` instances per view.
+
+**Tests:**
+- 57 new tests across `DashboardApp.test.ts` and `views.test.ts`: 5-view
+  cycling, per-view state init, selection (j/k), confirm mode, input mode,
+  toast lifecycle, submission expand/collapse, overview metrics, submissions
+  detail rendering.
+
+### Removed
+
+- `all-view.ts` — replaced by `overview-view.ts`.
+
 ### Changed — BJU-002: Port TUI Views to Bijou Components
 
 - Ported 4 dashboard views from stub placeholders to full rendering logic

@@ -6,11 +6,22 @@
  *   XYPH_AGENT_ID=human.james ./xyph-dashboard.tsx
  *
  * Keys:
- *   Tab   — cycle views (roadmap → lineage → all → inbox)
+ *   Tab   — cycle views (roadmap → submissions → lineage → overview → inbox)
  *   r     — refresh snapshot
  *   q     — quit
  *   ?     — help
  */
+
+// Suppress DEP0169 stderr output from transitive deps.
+// The process.on('warning') approach only catches the event; Node also writes
+// directly to stderr via internal mechanisms before our listener runs (ESM
+// import hoisting).  Intercepting stderr.write catches both paths.
+const _origStderrWrite = process.stderr.write.bind(process.stderr);
+process.stderr.write = function (chunk: any, ...args: any[]) {
+  if (typeof chunk === 'string' && chunk.includes('DEP0169')) return true;
+  return _origStderrWrite(chunk, ...args);
+} as typeof process.stderr.write;
+
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { run } from '@flyingrobots/bijou-tui';
@@ -49,6 +60,7 @@ const intake = new WarpIntakeAdapter(graphPort, agentId);
 const app = createDashboardApp({
   ctx,
   intake,
+  graphPort,
   agentId,
   logoText: splash.text,
 });

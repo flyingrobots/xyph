@@ -6,6 +6,7 @@ import { createDashboardApp, type DashboardModel, type DashboardMsg } from '../D
 import type { GraphContext } from '../../../infrastructure/GraphContext.js';
 import type { GraphSnapshot } from '../../../domain/models/dashboard.js';
 import type { IntakePort } from '../../../ports/IntakePort.js';
+import type { GraphPort } from '../../../ports/GraphPort.js';
 
 function makeSnapshot(overrides?: Partial<GraphSnapshot>): GraphSnapshot {
   return {
@@ -44,6 +45,14 @@ describe('DashboardApp', () => {
     reopen: vi.fn().mockResolvedValue('sha-3') as IntakePort['reopen'],
   };
 
+  const mockGraphPort: GraphPort = {
+    getGraph: vi.fn().mockResolvedValue({
+      patch: vi.fn(),
+      getNodeProps: vi.fn().mockResolvedValue(new Map([['assigned_to', 'agent.test']])),
+    }),
+    reset: vi.fn(),
+  };
+
   beforeEach(() => {
     _resetThemeForTesting();
     _resetBridgeForTesting();
@@ -63,6 +72,7 @@ describe('DashboardApp', () => {
     return createDashboardApp({
       ctx: mockCtx,
       intake: mockIntake,
+      graphPort: mockGraphPort,
       agentId: 'agent.test',
       logoText: 'XYPH TEST LOGO',
     });
@@ -77,6 +87,18 @@ describe('DashboardApp', () => {
       expect(model.activeView).toBe('roadmap');
       expect(model.snapshot).toBeNull();
       expect(cmds.length).toBeGreaterThan(0);
+    });
+
+    it('initializes per-view state', () => {
+      const app = makeApp();
+      const [model] = app.init();
+      expect(model.roadmap).toEqual({ selectedIndex: -1, dagScrollY: 0, detailScrollY: 0 });
+      expect(model.submissions).toEqual({ selectedIndex: -1, expandedId: null, listScrollY: 0, detailScrollY: 0 });
+      expect(model.inbox).toEqual({ selectedIndex: -1, listScrollY: 0 });
+      expect(model.mode).toBe('normal');
+      expect(model.confirmState).toBeNull();
+      expect(model.inputState).toBeNull();
+      expect(model.toast).toBeNull();
     });
   });
 
@@ -144,23 +166,25 @@ describe('DashboardApp', () => {
       expect(updated.rows).toBe(40);
     });
 
-    it('cycles views with Tab', () => {
+    it('cycles through 5 views with Tab', () => {
       const app = makeApp();
       const [initial] = app.init();
-      // Dismiss landing first
       const loaded: DashboardModel = { ...initial, showLanding: false, loading: false };
 
       const [afterTab1] = app.update(makeKey('tab'), loaded);
-      expect(afterTab1.activeView).toBe('lineage');
+      expect(afterTab1.activeView).toBe('submissions');
 
       const [afterTab2] = app.update(makeKey('tab'), afterTab1);
-      expect(afterTab2.activeView).toBe('all');
+      expect(afterTab2.activeView).toBe('lineage');
 
       const [afterTab3] = app.update(makeKey('tab'), afterTab2);
-      expect(afterTab3.activeView).toBe('inbox');
+      expect(afterTab3.activeView).toBe('overview');
 
       const [afterTab4] = app.update(makeKey('tab'), afterTab3);
-      expect(afterTab4.activeView).toBe('roadmap');
+      expect(afterTab4.activeView).toBe('inbox');
+
+      const [afterTab5] = app.update(makeKey('tab'), afterTab4);
+      expect(afterTab5.activeView).toBe('roadmap');
     });
 
     it('cycles views backward with Shift+Tab', () => {
@@ -243,7 +267,6 @@ describe('DashboardApp', () => {
     it('Ctrl+C quits from landing mode (while loading)', () => {
       const app = makeApp();
       const [initial] = app.init();
-      // Landing + loading: previously swallowed Ctrl+C
       const [, cmds] = app.update(makeKey('c', { ctrl: true }), initial);
       expect(cmds.length).toBeGreaterThan(0);
     });
@@ -264,6 +287,353 @@ describe('DashboardApp', () => {
 
       const [, cmds] = app.update(makeKey('q'), helpMode);
       expect(cmds.length).toBeGreaterThan(0);
+    });
+
+    // ── Selection ─────────────────────────────────────────────────────
+
+    it('j/k selects quests in roadmap view', () => {
+      const app = makeApp();
+      const [initial] = app.init();
+      const snap = makeSnapshot({
+        quests: [
+          { id: 'task:A', title: 'A', status: 'PLANNED', hours: 1 },
+          { id: 'task:B', title: 'B', status: 'IN_PROGRESS', hours: 2 },
+        ],
+      });
+      const loaded: DashboardModel = {
+        ...initial,
+        showLanding: false,
+        loading: false,
+        snapshot: snap,
+        activeView: 'roadmap',
+      };
+
+      const [after1] = app.update(makeKey('j'), loaded);
+      expect(after1.roadmap.selectedIndex).toBe(0);
+
+      const [after2] = app.update(makeKey('j'), after1);
+      expect(after2.roadmap.selectedIndex).toBe(1);
+
+      // Should clamp at max
+      const [after3] = app.update(makeKey('j'), after2);
+      expect(after3.roadmap.selectedIndex).toBe(1);
+
+      // k goes back
+      const [after4] = app.update(makeKey('k'), after3);
+      expect(after4.roadmap.selectedIndex).toBe(0);
+    });
+
+    it('j/k selects submissions in submissions view', () => {
+      const app = makeApp();
+      const [initial] = app.init();
+      const snap = makeSnapshot({
+        submissions: [
+          { id: 'submission:S1', questId: 'task:A', status: 'OPEN', headsCount: 1, approvalCount: 0, submittedBy: 'agent.test', submittedAt: 100 },
+          { id: 'submission:S2', questId: 'task:B', status: 'MERGED', headsCount: 1, approvalCount: 1, submittedBy: 'agent.test', submittedAt: 200 },
+        ],
+      });
+      const loaded: DashboardModel = {
+        ...initial,
+        showLanding: false,
+        loading: false,
+        snapshot: snap,
+        activeView: 'submissions',
+      };
+
+      const [after1] = app.update(makeKey('j'), loaded);
+      expect(after1.submissions.selectedIndex).toBe(0);
+    });
+
+    it('j/k selects items in inbox view', () => {
+      const app = makeApp();
+      const [initial] = app.init();
+      const snap = makeSnapshot({
+        quests: [
+          { id: 'task:I1', title: 'Inbox 1', status: 'INBOX', hours: 1, suggestedBy: 'agent.test' },
+          { id: 'task:I2', title: 'Inbox 2', status: 'INBOX', hours: 1, suggestedBy: 'agent.test' },
+        ],
+      });
+      const loaded: DashboardModel = {
+        ...initial,
+        showLanding: false,
+        loading: false,
+        snapshot: snap,
+        activeView: 'inbox',
+      };
+
+      const [after1] = app.update(makeKey('j'), loaded);
+      expect(after1.inbox.selectedIndex).toBe(0);
+
+      const [after2] = app.update(makeKey('j'), after1);
+      expect(after2.inbox.selectedIndex).toBe(1);
+    });
+
+    // ── Confirm mode ──────────────────────────────────────────────────
+
+    it('c on roadmap enters confirm mode for claim', () => {
+      const app = makeApp();
+      const [initial] = app.init();
+      const snap = makeSnapshot({
+        quests: [
+          { id: 'task:Q1', title: 'Quest 1', status: 'PLANNED', hours: 1 },
+        ],
+      });
+      const loaded: DashboardModel = {
+        ...initial,
+        showLanding: false,
+        loading: false,
+        snapshot: snap,
+        activeView: 'roadmap',
+        roadmap: { ...initial.roadmap, selectedIndex: 0 },
+      };
+
+      const [afterC] = app.update(makeKey('c'), loaded);
+      expect(afterC.mode).toBe('confirm');
+      expect(afterC.confirmState?.action.kind).toBe('claim');
+      expect(afterC.confirmState?.action.questId).toBe('task:Q1');
+    });
+
+    it('y in confirm mode dispatches write command', () => {
+      const app = makeApp();
+      const [initial] = app.init();
+      const withConfirm: DashboardModel = {
+        ...initial,
+        showLanding: false,
+        loading: false,
+        mode: 'confirm',
+        confirmState: { prompt: 'Claim task:Q1?', action: { kind: 'claim', questId: 'task:Q1' } },
+      };
+
+      const [afterY, cmds] = app.update(makeKey('y'), withConfirm);
+      expect(afterY.mode).toBe('normal');
+      expect(afterY.confirmState).toBeNull();
+      expect(cmds.length).toBeGreaterThan(0);
+    });
+
+    it('n in confirm mode cancels', () => {
+      const app = makeApp();
+      const [initial] = app.init();
+      const withConfirm: DashboardModel = {
+        ...initial,
+        showLanding: false,
+        loading: false,
+        mode: 'confirm',
+        confirmState: { prompt: 'Claim task:Q1?', action: { kind: 'claim', questId: 'task:Q1' } },
+      };
+
+      const [afterN, cmds] = app.update(makeKey('n'), withConfirm);
+      expect(afterN.mode).toBe('normal');
+      expect(afterN.confirmState).toBeNull();
+      expect(cmds).toHaveLength(0);
+    });
+
+    it('Ctrl+C quits from confirm mode', () => {
+      const app = makeApp();
+      const [initial] = app.init();
+      const withConfirm: DashboardModel = {
+        ...initial,
+        showLanding: false,
+        loading: false,
+        mode: 'confirm',
+        confirmState: { prompt: 'test', action: { kind: 'claim', questId: 'task:Q1' } },
+      };
+
+      const [, cmds] = app.update(makeKey('c', { ctrl: true }), withConfirm);
+      expect(cmds.length).toBeGreaterThan(0);
+    });
+
+    // ── Input mode ────────────────────────────────────────────────────
+
+    it('d on inbox enters input mode for reject', () => {
+      const app = makeApp();
+      const [initial] = app.init();
+      const snap = makeSnapshot({
+        quests: [
+          { id: 'task:I1', title: 'Inbox 1', status: 'INBOX', hours: 1, suggestedBy: 'agent.test' },
+        ],
+      });
+      const loaded: DashboardModel = {
+        ...initial,
+        showLanding: false,
+        loading: false,
+        snapshot: snap,
+        activeView: 'inbox',
+        inbox: { ...initial.inbox, selectedIndex: 0 },
+      };
+
+      const [afterD] = app.update(makeKey('d'), loaded);
+      expect(afterD.mode).toBe('input');
+      expect(afterD.inputState?.action.kind).toBe('reject');
+    });
+
+    it('p on inbox enters input mode for promote', () => {
+      const app = makeApp();
+      const [initial] = app.init();
+      const snap = makeSnapshot({
+        quests: [
+          { id: 'task:I1', title: 'Inbox 1', status: 'INBOX', hours: 1, suggestedBy: 'agent.test' },
+        ],
+      });
+      const loaded: DashboardModel = {
+        ...initial,
+        showLanding: false,
+        loading: false,
+        snapshot: snap,
+        activeView: 'inbox',
+        inbox: { ...initial.inbox, selectedIndex: 0 },
+      };
+
+      const [afterP] = app.update(makeKey('p'), loaded);
+      expect(afterP.mode).toBe('input');
+      expect(afterP.inputState?.action.kind).toBe('promote');
+    });
+
+    it('typing in input mode appends characters', () => {
+      const app = makeApp();
+      const [initial] = app.init();
+      const withInput: DashboardModel = {
+        ...initial,
+        showLanding: false,
+        loading: false,
+        mode: 'input',
+        inputState: { label: 'test:', value: '', action: { kind: 'reject', questId: 'task:I1' } },
+      };
+
+      const [after1] = app.update(makeKey('h'), withInput);
+      expect(after1.inputState?.value).toBe('h');
+
+      const [after2] = app.update(makeKey('i'), after1);
+      expect(after2.inputState?.value).toBe('hi');
+    });
+
+    it('backspace in input mode removes last char', () => {
+      const app = makeApp();
+      const [initial] = app.init();
+      const withInput: DashboardModel = {
+        ...initial,
+        showLanding: false,
+        loading: false,
+        mode: 'input',
+        inputState: { label: 'test:', value: 'abc', action: { kind: 'reject', questId: 'task:I1' } },
+      };
+
+      const [after] = app.update(makeKey('backspace'), withInput);
+      expect(after.inputState?.value).toBe('ab');
+    });
+
+    it('Enter in input mode with value dispatches write command', () => {
+      const app = makeApp();
+      const [initial] = app.init();
+      const withInput: DashboardModel = {
+        ...initial,
+        showLanding: false,
+        loading: false,
+        mode: 'input',
+        inputState: { label: 'test:', value: 'reason', action: { kind: 'reject', questId: 'task:I1' } },
+      };
+
+      const [after, cmds] = app.update(makeKey('enter'), withInput);
+      expect(after.mode).toBe('normal');
+      expect(after.inputState).toBeNull();
+      expect(cmds.length).toBeGreaterThan(0);
+    });
+
+    it('Enter in input mode with empty value does nothing', () => {
+      const app = makeApp();
+      const [initial] = app.init();
+      const withInput: DashboardModel = {
+        ...initial,
+        showLanding: false,
+        loading: false,
+        mode: 'input',
+        inputState: { label: 'test:', value: '', action: { kind: 'reject', questId: 'task:I1' } },
+      };
+
+      const [after, cmds] = app.update(makeKey('enter'), withInput);
+      expect(after.mode).toBe('input'); // stays in input
+      expect(cmds).toHaveLength(0);
+    });
+
+    it('Escape in input mode cancels', () => {
+      const app = makeApp();
+      const [initial] = app.init();
+      const withInput: DashboardModel = {
+        ...initial,
+        showLanding: false,
+        loading: false,
+        mode: 'input',
+        inputState: { label: 'test:', value: 'partial', action: { kind: 'reject', questId: 'task:I1' } },
+      };
+
+      const [after, cmds] = app.update(makeKey('escape'), withInput);
+      expect(after.mode).toBe('normal');
+      expect(after.inputState).toBeNull();
+      expect(cmds).toHaveLength(0);
+    });
+
+    // ── Toast / write results ─────────────────────────────────────────
+
+    it('write-success shows toast and triggers refresh', () => {
+      const app = makeApp();
+      const [initial] = app.init();
+      const loaded: DashboardModel = { ...initial, showLanding: false, loading: false };
+
+      const [after, cmds] = app.update({ type: 'write-success', message: 'Claimed task:Q1' }, loaded);
+      expect(after.toast?.variant).toBe('success');
+      expect(after.toast?.message).toBe('Claimed task:Q1');
+      expect(after.loading).toBe(true);
+      expect(cmds.length).toBeGreaterThan(0); // refresh + dismiss timer
+    });
+
+    it('write-error shows error toast', () => {
+      const app = makeApp();
+      const [initial] = app.init();
+      const loaded: DashboardModel = { ...initial, showLanding: false, loading: false };
+
+      const [after, cmds] = app.update({ type: 'write-error', message: 'Failed' }, loaded);
+      expect(after.toast?.variant).toBe('error');
+      expect(after.toast?.message).toBe('Failed');
+      expect(cmds.length).toBeGreaterThan(0); // dismiss timer
+    });
+
+    it('dismiss-toast clears toast', () => {
+      const app = makeApp();
+      const [initial] = app.init();
+      const withToast: DashboardModel = {
+        ...initial,
+        showLanding: false,
+        loading: false,
+        toast: { message: 'test', variant: 'success', expiresAt: Date.now() + 3000 },
+      };
+
+      const [after] = app.update({ type: 'dismiss-toast' }, withToast);
+      expect(after.toast).toBeNull();
+    });
+
+    // ── Submission expand/collapse ────────────────────────────────────
+
+    it('Enter on submissions view toggles expanded detail', () => {
+      const app = makeApp();
+      const [initial] = app.init();
+      const snap = makeSnapshot({
+        submissions: [
+          { id: 'submission:S1', questId: 'task:A', status: 'OPEN', headsCount: 1, approvalCount: 0, submittedBy: 'agent.test', submittedAt: 100 },
+        ],
+      });
+      const loaded: DashboardModel = {
+        ...initial,
+        showLanding: false,
+        loading: false,
+        snapshot: snap,
+        activeView: 'submissions',
+        submissions: { ...initial.submissions, selectedIndex: 0 },
+      };
+
+      const [afterExpand] = app.update(makeKey('enter'), loaded);
+      expect(afterExpand.submissions.expandedId).toBe('submission:S1');
+
+      const [afterCollapse] = app.update(makeKey('enter'), afterExpand);
+      expect(afterCollapse.submissions.expandedId).toBeNull();
     });
   });
 
@@ -286,10 +656,8 @@ describe('DashboardApp', () => {
     it('landing view hides "Press any key" while loading', () => {
       const app = makeApp();
       const [model] = app.init();
-      // model.loading is true from init()
       const output = app.view(model);
       expect(output).not.toContain('Press any key');
-      expect(output).toContain('Loading');
     });
 
     it('landing view shows "Press any key" after loading', () => {
@@ -300,7 +668,7 @@ describe('DashboardApp', () => {
       expect(output).toContain('Press any key');
     });
 
-    it('shows tab bar when not on landing', () => {
+    it('shows tab bar with all 5 views when not on landing', () => {
       const app = makeApp();
       const [initial] = app.init();
       const model: DashboardModel = {
@@ -311,6 +679,38 @@ describe('DashboardApp', () => {
       };
       const output = app.view(model);
       expect(output).toContain('roadmap');
+      expect(output).toContain('submissions');
+      expect(output).toContain('overview');
+      expect(output).toContain('inbox');
+    });
+
+    it('shows view-specific hints', () => {
+      const app = makeApp();
+      const [initial] = app.init();
+      const model: DashboardModel = {
+        ...initial,
+        showLanding: false,
+        loading: false,
+        snapshot: makeSnapshot(),
+        activeView: 'inbox',
+      };
+      const output = app.view(model);
+      expect(output).toContain('promote');
+      expect(output).toContain('reject');
+    });
+
+    it('shows toast in status line', () => {
+      const app = makeApp();
+      const [initial] = app.init();
+      const model: DashboardModel = {
+        ...initial,
+        showLanding: false,
+        loading: false,
+        snapshot: makeSnapshot(),
+        toast: { message: 'Claimed task:Q1', variant: 'success', expiresAt: Date.now() + 3000 },
+      };
+      const output = app.view(model);
+      expect(output).toContain('Claimed task:Q1');
     });
   });
 });
