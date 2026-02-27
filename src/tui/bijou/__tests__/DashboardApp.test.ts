@@ -54,6 +54,7 @@ describe('DashboardApp', () => {
 
   afterEach(() => {
     vi.unstubAllEnvs();
+    vi.clearAllMocks();
     _resetThemeForTesting();
     _resetBridgeForTesting();
   });

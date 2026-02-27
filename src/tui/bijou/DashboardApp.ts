@@ -68,7 +68,7 @@ function buildKeyMap(): KeyMap<Action> {
 
 export interface DashboardDeps {
   ctx: GraphContext;
-  intake: IntakePort;
+  intake: IntakePort; // reserved for BJU-002 promote/reject flows
   agentId: string;
   logoText: string;
 }
