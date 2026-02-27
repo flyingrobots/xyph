@@ -33,7 +33,7 @@ const INTERVAL_MS = parseInterval();
 
 async function main(): Promise<void> {
   const t = getTheme().theme;
-  console.log(styled({ hex: t.semantic.success.hex, modifiers: ['bold'] }, 'XYPH Coordinator Daemon starting...'));
+  console.log(styled({ ...t.semantic.success, modifiers: [...(t.semantic.success.modifiers ?? []), 'bold'] }, 'XYPH Coordinator Daemon starting...'));
 
   const graphPort = new WarpGraphAdapter(REPO_PATH, GRAPH_NAME, AGENT_ID);
   const roadmap = new WarpRoadmapAdapter(graphPort);

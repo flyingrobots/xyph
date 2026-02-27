@@ -170,7 +170,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
             }
             case 'refresh': {
               const nextReqId = model.requestId + 1;
-              return [{ ...model, loading: true, requestId: nextReqId }, [fetchSnapshot(nextReqId)]];
+              return [{ ...model, loading: true, error: null, requestId: nextReqId }, [fetchSnapshot(nextReqId)]];
             }
             case 'toggle-help':
               return [{ ...model, showHelp: !model.showHelp }, []];

@@ -20,6 +20,8 @@ export function allView(model: DashboardModel): string {
   lines.push(`  ${badge('Quests', { variant: 'info' })} ${snap.quests.length}`);
   lines.push(`  ${badge('Campaigns', { variant: 'info' })} ${snap.campaigns.length}`);
   lines.push(`  ${badge('Intents', { variant: 'info' })} ${snap.intents.length}`);
+  lines.push(`  ${badge('Scrolls', { variant: 'info' })} ${snap.scrolls.length}`);
+  lines.push(`  ${badge('Approvals', { variant: 'info' })} ${snap.approvals.length}`);
   lines.push(`  ${badge('Submissions', { variant: 'info' })} ${snap.submissions.length}`);
   lines.push('');
   lines.push(styled(t.theme.semantic.muted, '  Full node table coming in BJU-002.'));
