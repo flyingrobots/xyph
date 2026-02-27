@@ -54,6 +54,23 @@ jobs:
       - run: npm ci
       - run: npm run test:local
 
+  strict-policy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Ban inline lint/typecheck bypass comments
+        run: |
+          PATTERNS='eslint-disable|@ts-ignore|@ts-expect-error|@ts-nocheck'
+          if grep -rn --include='*.ts' --include='*.tsx' --include='*.js' --include='*.jsx' \
+            -E "$PATTERNS" src/ test/ xyph-actuator.ts xyph-dashboard.tsx; then
+            echo "::error::Found forbidden bypass comments. Fix the code, don't silence the linter."
+            exit 1
+          fi
+
   audit:
     runs-on: ubuntu-latest
     timeout-minutes: 5
