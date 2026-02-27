@@ -1,18 +1,20 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { styled, styledStatus, chalkFromToken } from '../chalk-adapter.js';
-import { getTheme, _resetThemeForTesting } from '../resolve.js';
-import type { TokenValue } from '../tokens.js';
+import { styled, styledStatus, type TokenValue, _resetThemeForTesting } from '@flyingrobots/bijou';
+import { ensureXyphContext, _resetBridgeForTesting } from '../bridge.js';
 
-describe('chalk-adapter', () => {
+describe('bijou styled (replacing chalk-adapter)', () => {
   beforeEach(() => {
     _resetThemeForTesting();
+    _resetBridgeForTesting();
     delete process.env['NO_COLOR'];
     delete process.env['XYPH_THEME'];
+    ensureXyphContext();
   });
 
   afterEach(() => {
     vi.unstubAllEnvs();
     _resetThemeForTesting();
+    _resetBridgeForTesting();
   });
 
   describe('styled', () => {
@@ -28,7 +30,7 @@ describe('chalk-adapter', () => {
       expect(result).toContain('graveyard');
     });
 
-    it('returns raw text for empty modifiers', () => {
+    it('returns string containing text for empty modifiers', () => {
       const token: TokenValue = { hex: '#ffffff' };
       const result = styled(token, 'plain');
       expect(result).toContain('plain');
@@ -41,7 +43,7 @@ describe('chalk-adapter', () => {
       expect(result).toContain('DONE');
     });
 
-    it('uses UNKNOWN fallback for unrecognized status', () => {
+    it('uses fallback for unrecognized status', () => {
       const result = styledStatus('FAKE_STATUS');
       expect(result).toContain('FAKE_STATUS');
     });
@@ -51,45 +53,24 @@ describe('chalk-adapter', () => {
       expect(result).toContain('completed');
       expect(result).not.toContain('DONE');
     });
-
-    it('renders all status keys without error', () => {
-      const t = getTheme();
-      const keys = Object.keys(t.theme.status);
-      expect(keys.length).toBeGreaterThan(0);
-      for (const key of keys) {
-        const result = styledStatus(key);
-        expect(result).toContain(key);
-      }
-    });
-  });
-
-  describe('chalkFromToken', () => {
-    it('returns a callable chalk instance', () => {
-      const token: TokenValue = { hex: '#00ff00' };
-      const c = chalkFromToken(token);
-      expect(typeof c).toBe('function');
-      expect(c('test')).toContain('test');
-    });
-
-    it('handles all modifier types', () => {
-      const token: TokenValue = { hex: '#ff00ff', modifiers: ['bold', 'dim', 'strikethrough', 'inverse'] };
-      const c = chalkFromToken(token);
-      expect(c('styled')).toContain('styled');
-    });
   });
 
   describe('NO_COLOR mode', () => {
     it('styled output still contains the text', () => {
-      process.env['NO_COLOR'] = '1';
       _resetThemeForTesting();
+      _resetBridgeForTesting();
+      process.env['NO_COLOR'] = '1';
+      ensureXyphContext();
       const token: TokenValue = { hex: '#ff0000' };
       const result = styled(token, 'error text');
       expect(result).toContain('error text');
     });
 
     it('modifiers are applied without error in NO_COLOR mode', () => {
-      process.env['NO_COLOR'] = '1';
       _resetThemeForTesting();
+      _resetBridgeForTesting();
+      process.env['NO_COLOR'] = '1';
+      ensureXyphContext();
       const token: TokenValue = { hex: '#808080', modifiers: ['bold'] };
       const result = styled(token, 'bold text');
       expect(result).toContain('bold text');

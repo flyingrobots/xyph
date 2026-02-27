@@ -1,8 +1,11 @@
 #!/usr/bin/env -S npx tsx
 import { randomUUID } from 'node:crypto';
 import { program, InvalidArgumentError } from 'commander';
-import { getTheme, styled } from './src/tui/theme/index.js';
+import { ensureXyphContext, getTheme, styled } from './src/tui/theme/index.js';
 import { WarpGraphAdapter } from './src/infrastructure/adapters/WarpGraphAdapter.js';
+
+// Initialize bijou context with XYPH presets before any themed output.
+ensureXyphContext();
 
 /**
  * XYPH Actuator - The "Hands" of the Causal Agent.

@@ -35,10 +35,14 @@ Our duty is to write **safe, correct code**. Shortcuts that compromise quality a
 **Own every failure you see:**
 - ❌ NEVER dismiss errors as "pre-existing" and move on. If you see something broken, fix it.
 - ❌ NEVER say CI/CD failures are acceptable or ignorable. A red build is your problem now.
-- If you encounter lint errors, test failures, or warnings — even ones that existed before your branch — fix them. You touched the codebase; you leave it better than you found it.
+- If you encounter lint errors, test failures, or warnings — even ones that existed
+  before your branch — fix them. You touched the codebase; you leave it better than
+  you found it.
 
 ### Project Planning via the Actuator
-XYPH plans and tracks its own development through the WARP graph. The `xyph-actuator.ts` CLI is the single source of truth for what's been done, what's next, and what's in the backlog.
+XYPH plans and tracks its own development through the WARP graph.
+The `xyph-actuator.ts` CLI is the single source of truth for what's been done,
+what's next, and what's in the backlog.
 
 - **See what's next**: `npx tsx xyph-actuator.ts status --view roadmap`
 - **See everything**: `npx tsx xyph-actuator.ts status --view all`
@@ -46,16 +50,21 @@ XYPH plans and tracks its own development through the WARP graph. The `xyph-actu
 - **Add a backlog item**: use `quest`, `inbox`, or `promote` commands
 - **Plan work**: always consult the graph first — don't plan in your head, plan through the actuator
 
-All project planning, prioritization, and progress tracking flows through the actuator. If you want to know what to work on, ask the graph. If you want to add work, write it to the graph.
+All project planning, prioritization, and progress tracking flows through the
+actuator. If you want to know what to work on, ask the graph. If you want to add
+work, write it to the graph.
 
 ### Command Reference
 - `npx tsx xyph-actuator.ts status --view <roadmap|lineage|all|inbox|submissions|deps>`: View the roadmap state.
 - `npx tsx xyph-actuator.ts quest <id> --title "Title" --campaign <id> --intent <id>`: Initialize a Quest.
 - `npx tsx xyph-actuator.ts intent <id> --title "Title" --requested-by human.<name>`: Declare a sovereign Intent.
 - `npx tsx xyph-actuator.ts claim <id>`: Volunteer for a task (OCP).
-- `npx tsx xyph-actuator.ts submit <quest-id> --description "..."`: Submit quest for review (creates submission + patchset).
-- `npx tsx xyph-actuator.ts revise <submission-id> --description "..."`: Push a new patchset superseding current tip.
-- `npx tsx xyph-actuator.ts review <patchset-id> --verdict approve|request-changes|comment --comment "..."`: Review a patchset.
+- `npx tsx xyph-actuator.ts submit <quest-id> --description "..."`:
+  Submit quest for review (creates submission + patchset).
+- `npx tsx xyph-actuator.ts revise <submission-id> --description "..."`:
+  Push a new patchset superseding current tip.
+- `npx tsx xyph-actuator.ts review <patchset-id> --verdict approve|request-changes|comment --comment "..."`:
+  Review a patchset.
 - `npx tsx xyph-actuator.ts merge <submission-id> --rationale "..."`: Merge (git settlement + auto-seal quest).
 - `npx tsx xyph-actuator.ts close <submission-id> --rationale "..."`: Close submission without merging.
 - `npx tsx xyph-actuator.ts seal <id> --artifact <hash> --rationale "..."`: Mark as DONE directly (solo work).
@@ -65,6 +74,139 @@ All project planning, prioritization, and progress tracking flows through the ac
 - `npx tsx xyph-actuator.ts depend <from> <to>`: Declare that `<from>` depends on `<to>` (both must be `task:` nodes).
 - `npx tsx xyph-actuator.ts audit-sovereignty`: Audit quests for missing intent lineage.
 - `npx tsx xyph-actuator.ts generate-key`: Generate an Ed25519 Guild Seal keypair.
+
+### git-warp: The Engine Under the Hood
+
+XYPH is built on **git-warp** (v12.0.0) — a CRDT graph database that lives
+inside a Git repository without touching the codebase. Every piece of graph
+data is a Git commit pointing to the **empty tree** (`4b825dc6...`), making
+it invisible to `git log`, `git diff`, and `git status`. The result: a full
+graph database riding alongside your code, using Git as its storage and
+transport layer.
+
+#### Core Data Model
+- **Nodes**: Vertices with string IDs (`task:BX-001`, `intent:sovereignty`)
+- **Edges**: Directed, labeled relationships (`task:A --depends-on--> task:B`)
+- **Properties**: Key-value pairs on nodes/edges, merged via **LWW** (Last-Writer-Wins)
+- **Writers**: Independent causal agents, each with their own patch chain under `refs/warp/<graph>/writers/<writerId>`
+- **Patches**: Atomic batches of operations stored as Git commits; each carries a **Lamport clock** tick
+
+#### CRDT Merge Semantics
+- **Nodes & Edges**: OR-Set — add wins over concurrent delete unless the delete observed the add
+- **Properties**: LWW registers — highest Lamport timestamp wins; ties broken by writerId (lex), then patchSha
+- **Deterministic convergence**: All writers always compute the same final state, regardless of patch arrival order
+
+#### Materialization
+Calling `graph.materialize()` replays all patches in strict Lamport order and
+produces a deterministic `WarpStateV5` snapshot.
+Checkpoints (`graph.createCheckpoint()`) allow incremental materialization —
+only replay patches since the last checkpoint.
+
+#### Mutation API
+```typescript
+// Convenience: create patch, run callback, commit — returns SHA
+await graph.patch((p) => {
+  p.addNode('task:X')
+    .setProperty('task:X', 'title', 'Do the thing')
+    .addEdge('task:X', 'task:Y', 'depends-on');
+});
+
+// Or: manual patch for CAS-protected multi-step mutations
+const patch = await graph.createPatch();
+patch.addNode('task:Z').setProperty('task:Z', 'status', 'PLANNED');
+await patch.commit();
+```
+
+#### Query API
+```typescript
+// Simple lookups (auto-materialize)
+await graph.getNodes();                          // string[]
+await graph.hasNode('task:X');                   // boolean (MUST await!)
+await graph.getNodeProps('task:X');              // Map<string, unknown> | null
+await graph.neighbors('task:X', 'outgoing');    // adjacent nodes + edge labels
+
+// Fluent QueryBuilder
+const result = await graph.query()
+  .match('task:*')
+  .where({ status: 'PLANNED' })
+  .outgoing('depends-on', { depth: [1, 3] })
+  .select(['id', 'props'])
+  .run();
+
+// Aggregation
+const stats = await graph.query()
+  .match('task:*').where({ status: 'DONE' })
+  .aggregate({ count: true, sum: 'props.hours' })
+  .run();
+```
+
+#### Traversal API (`graph.traverse.*`)
+```typescript
+bfs(start, { dir, labelFilter })           // → string[]
+dfs(start, { dir, maxDepth })              // → string[]
+shortestPath(from, to, { dir })            // → { found, path, length }
+weightedShortestPath(from, to, { weightFn }) // → { path, totalCost } (Dijkstra)
+aStarSearch(from, to, { heuristicFn })     // → { path, totalCost, nodesExplored }
+topologicalSort(start, { dir, labelFilter, throwOnCycle }) // → { sorted, hasCycle }
+weightedLongestPath(from, to, { weightFn }) // → { path, totalCost } (critical path)
+isReachable(from, to, { labelFilter })     // → { reachable }
+connectedComponent(start, { maxDepth })    // → string[]
+commonAncestors(nodes[], { maxDepth })     // → { ancestors }
+```
+- **`dir`**: `'out'` (default) | `'in'` | `'both'` — edge traversal direction
+- **`labelFilter`**: string or string[] to restrict by edge label
+- **Weight functions**: Use EITHER `weightFn` (edge) OR `nodeWeightFn` (node), never both
+
+#### Subscriptions & Reactivity
+```typescript
+// Subscribe to ALL graph changes
+const { unsubscribe } = graph.subscribe({
+  onChange: (diff: StateDiffResult) => {
+    // diff.nodes.added, diff.nodes.removed
+    // diff.edges.added, diff.edges.removed
+    // diff.props.set, diff.props.removed
+  },
+  onError: (err) => console.error(err),
+  replay: true,  // fire immediately with current state
+});
+
+// Watch with pattern filtering + auto-polling for remote changes
+const { unsubscribe } = graph.watch('task:*', {
+  onChange: (diff) => { /* only task:* changes */ },
+  poll: 5000,  // every 5s: hasFrontierChanged() → auto-materialize if changed
+});
+```
+- **`StateDiffResult`**: Deterministic diff with added/removed nodes, edges, and property changes
+- **`hasFrontierChanged()`**: O(writers) check — cheap way to detect remote writes without materializing
+- **Subscriptions fire after `materialize()`** — they are pull-based, not push-based
+- **Polling** (`poll` option): `setInterval` that calls `hasFrontierChanged()`, auto-materializes on change
+
+#### Temporal Queries (CTL* Operators)
+```typescript
+// Was this node ALWAYS in 'active' status since tick 0?
+await graph.temporal.always('task:X', (snap) => snap.props.status === 'active', { since: 0 });
+
+// Did this task EVER reach 'DONE'?
+await graph.temporal.eventually('task:X', (snap) => snap.props.status === 'DONE');
+```
+
+#### Observer Views (Filtered Projections)
+```typescript
+const view = await graph.observer('dashboard', {
+  match: 'task:*',
+  expose: ['title', 'status', 'hours'],
+  redact: ['internal_notes'],
+});
+// Read-only, property-filtered view with full query/traverse API
+```
+
+#### Other Capabilities
+- **Provenance**: `graph.patchesFor('task:X')` — which patches touched a node
+- **Slicing**: `graph.materializeSlice('task:X')` — materialize only the causal cone for one node
+- **Fork**: `graph.fork({ from, at, forkName })` — branch from a point in history
+- **Sync**: `graph.syncWith(url)` or `graph.syncWith(otherGraph)` — multi-writer sync via Git transport or HTTP
+- **GC**: `graph.runGC()` / `graph.maybeRunGC()` — compaction of tombstones
+- **Content**: `patch.attachContent(nodeId, blob)` / `graph.getContent(nodeId)` — content-addressed blobs
 
 ### Remember
 - You are a **Causal Agent**. Your actions are permanent, signed, and time-travelable.

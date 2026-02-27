@@ -1,20 +1,41 @@
 import { describe, it, expect } from 'vitest';
-import { PRESETS, CYAN_MAGENTA, TEAL_ORANGE_PINK } from '../presets.js';
-import type { StatusKey, Theme } from '../tokens.js';
+import { type BaseStatusKey } from '@flyingrobots/bijou';
+import {
+  XYPH_PRESETS,
+  XYPH_CYAN_MAGENTA,
+  XYPH_TEAL_ORANGE_PINK,
+  type XyphStatusKey,
+  type XyphTheme,
+} from '../xyph-presets.js';
 
-const ALL_STATUS_KEYS = [
+/** All XYPH-extended status keys (15). */
+type XyphExtStatus = Exclude<XyphStatusKey, BaseStatusKey>;
+
+const XYPH_STATUS_KEYS: readonly XyphExtStatus[] = [
   'DONE', 'IN_PROGRESS', 'BACKLOG', 'BLOCKED', 'PLANNED',
   'INBOX', 'GRAVEYARD', 'PENDING', 'APPROVED', 'REJECTED',
   'UNKNOWN', 'OPEN', 'CHANGES_REQUESTED', 'MERGED', 'CLOSED',
-] as const satisfies readonly StatusKey[];
+] as const;
+
+/** Bijou base status keys (7). */
+const BASE_STATUS_KEYS: readonly BaseStatusKey[] = [
+  'success', 'error', 'warning', 'info', 'pending', 'active', 'muted',
+] as const;
 
 const HEX_RE = /^#[0-9a-fA-F]{6}$/;
 
-function validateTheme(theme: Theme): void {
+function validateTheme(theme: XyphTheme): void {
   describe(`theme: ${theme.name}`, () => {
-    it('has all status keys defined', () => {
-      for (const key of ALL_STATUS_KEYS) {
-        expect(theme.status[key], `missing status key: ${key}`).toBeDefined();
+    it('has all 15 XYPH status keys defined', () => {
+      for (const key of XYPH_STATUS_KEYS) {
+        expect(theme.status[key], `missing XYPH status key: ${key}`).toBeDefined();
+        expect(theme.status[key].hex).toMatch(HEX_RE);
+      }
+    });
+
+    it('has all 7 base status keys defined', () => {
+      for (const key of BASE_STATUS_KEYS) {
+        expect(theme.status[key], `missing base status key: ${key}`).toBeDefined();
         expect(theme.status[key].hex).toMatch(HEX_RE);
       }
     });
@@ -35,6 +56,11 @@ function validateTheme(theme: Theme): void {
       for (const [name, token] of Object.entries(theme.ui)) {
         expect(token.hex, `ui.${name} hex`).toMatch(HEX_RE);
       }
+    });
+
+    it('has intentHeader UI key', () => {
+      expect(theme.ui.intentHeader).toBeDefined();
+      expect(theme.ui.intentHeader.hex).toMatch(HEX_RE);
     });
 
     it('has gradient stops sorted by position', () => {
@@ -58,12 +84,17 @@ function validateTheme(theme: Theme): void {
   });
 }
 
-describe('presets', () => {
-  validateTheme(CYAN_MAGENTA);
-  validateTheme(TEAL_ORANGE_PINK);
+describe('xyph-presets', () => {
+  validateTheme(XYPH_CYAN_MAGENTA);
+  validateTheme(XYPH_TEAL_ORANGE_PINK);
 
-  it('PRESETS registry includes both themes', () => {
-    expect(PRESETS['cyan-magenta']).toBe(CYAN_MAGENTA);
-    expect(PRESETS['teal-orange-pink']).toBe(TEAL_ORANGE_PINK);
+  it('XYPH_PRESETS registry includes both themes', () => {
+    expect(XYPH_PRESETS['cyan-magenta']).toBe(XYPH_CYAN_MAGENTA);
+    expect(XYPH_PRESETS['teal-orange-pink']).toBe(XYPH_TEAL_ORANGE_PINK);
+  });
+
+  it('extended themes have 22 total status keys (7 base + 15 XYPH)', () => {
+    const keys = Object.keys(XYPH_CYAN_MAGENTA.status);
+    expect(keys.length).toBe(22);
   });
 });
