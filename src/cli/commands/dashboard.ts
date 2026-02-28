@@ -1,0 +1,139 @@
+import type { Command } from 'commander';
+import type { CliContext } from '../context.js';
+import { withErrorHandler } from '../errorHandler.js';
+import { assertPrefix } from '../validators.js';
+
+export function registerDashboardCommands(program: Command, ctx: CliContext): void {
+  program
+    .command('depend <from> <to>')
+    .description('Declare that <from> depends on <to> (both must be task: nodes)')
+    .action(withErrorHandler(async (from: string, to: string) => {
+      assertPrefix(from, 'task:', 'from');
+      assertPrefix(to, 'task:', 'to');
+      if (from === to) {
+        throw new Error(`[SELF_DEPENDENCY] A task cannot depend on itself: ${from}`);
+      }
+
+      const graph = await ctx.graphPort.getGraph();
+
+      const [fromExists, toExists] = await Promise.all([
+        graph.hasNode(from),
+        graph.hasNode(to),
+      ]);
+      if (!fromExists) throw new Error(`[NOT_FOUND] Task ${from} not found in the graph`);
+      if (!toExists) throw new Error(`[NOT_FOUND] Task ${to} not found in the graph`);
+
+      // Verify both nodes are actually tasks
+      const [fromProps, toProps] = await Promise.all([
+        graph.getNodeProps(from),
+        graph.getNodeProps(to),
+      ]);
+      if (fromProps?.get('type') !== 'task') {
+        throw new Error(`[TYPE_MISMATCH] ${from} exists but is not a task (type: ${String(fromProps?.get('type') ?? 'unknown')})`);
+      }
+      if (toProps?.get('type') !== 'task') {
+        throw new Error(`[TYPE_MISMATCH] ${to} exists but is not a task (type: ${String(toProps?.get('type') ?? 'unknown')})`);
+      }
+
+      // Cycle check
+      const { reachable } = await graph.traverse.isReachable(to, from, { labelFilter: 'depends-on' });
+      if (reachable) {
+        throw new Error(`[CYCLE_DETECTED] Adding ${from} → ${to} would create a cycle (${to} already reaches ${from})`);
+      }
+
+      const patchSha = await graph.patch((p) => {
+        p.addEdge(from, to, 'depends-on');
+      });
+      ctx.ok(`[OK] ${from} now depends on ${to} (patch: ${patchSha.slice(0, 7)})`);
+    }));
+
+  program
+    .command('status')
+    .description('Show a snapshot of the WARP graph')
+    .option('--view <name>', 'roadmap | lineage | all | inbox | submissions | deps', 'roadmap')
+    .option('--include-graveyard', 'include GRAVEYARD tasks in output (excluded by default)')
+    .action(withErrorHandler(async (opts: { view: string; includeGraveyard?: boolean }) => {
+      const view = opts.view;
+      const validViews = ['roadmap', 'lineage', 'all', 'inbox', 'submissions', 'deps'];
+      if (!validViews.includes(view)) {
+        ctx.fail(`[ERROR] Unknown --view '${view}'. Valid options: ${validViews.join(', ')}`);
+      }
+
+      const { createGraphContext } = await import('../../infrastructure/GraphContext.js');
+      const graphCtx = createGraphContext(ctx.graphPort);
+      const raw = await graphCtx.fetchSnapshot();
+      const snapshot = graphCtx.filterSnapshot(raw, { includeGraveyard: opts.includeGraveyard ?? false });
+
+      if (view === 'deps') {
+        const { computeFrontier, computeCriticalPath, computeTopBlockers } = await import('../../domain/services/DepAnalysis.js');
+        const { renderDeps } = await import('../../tui/render-status.js');
+
+        const taskSummaries = snapshot.quests.map((q) => ({ id: q.id, status: q.status, hours: q.hours }));
+        const depEdges = snapshot.quests.flatMap((q) =>
+          (q.dependsOn ?? []).map((to) => ({ from: q.id, to })),
+        );
+        const taskIds = snapshot.quests.map((q) => q.id);
+        const { sorted } = await graphCtx.graph.traverse.topologicalSort(taskIds, {
+          dir: 'in',
+          labelFilter: 'depends-on',
+        });
+
+        const frontierResult = computeFrontier(taskSummaries, depEdges);
+        const criticalResult = computeCriticalPath(sorted, taskSummaries, depEdges);
+
+        const tasks = new Map<string, { title: string; status: string; hours: number }>();
+        for (const q of snapshot.quests) {
+          tasks.set(q.id, { title: q.title, status: q.status, hours: q.hours });
+        }
+
+        const topBlockers = computeTopBlockers(taskSummaries, depEdges, 10);
+
+        console.log(renderDeps({
+          frontier: frontierResult.frontier,
+          blockedBy: frontierResult.blockedBy,
+          executionOrder: sorted,
+          criticalPath: criticalResult.path,
+          criticalPathHours: criticalResult.totalHours,
+          tasks,
+          topBlockers,
+        }));
+      } else {
+        const { renderRoadmap, renderLineage, renderAll, renderInbox, renderSubmissions } = await import('../../tui/render-status.js');
+
+        if (view === 'lineage') {
+          console.log(renderLineage(snapshot));
+        } else if (view === 'all') {
+          console.log(renderAll(snapshot));
+        } else if (view === 'inbox') {
+          console.log(renderInbox(snapshot));
+        } else if (view === 'submissions') {
+          console.log(renderSubmissions(snapshot));
+        } else {
+          console.log(renderRoadmap(snapshot));
+        }
+      }
+    }));
+
+  program
+    .command('audit-sovereignty')
+    .description('Audit all BACKLOG quests for missing Genealogy of Intent (Constitution Art. IV)')
+    .action(withErrorHandler(async () => {
+      const { WarpRoadmapAdapter } = await import('../../infrastructure/adapters/WarpRoadmapAdapter.js');
+      const { SovereigntyService } = await import('../../domain/services/SovereigntyService.js');
+
+      const adapter = new WarpRoadmapAdapter(ctx.graphPort);
+      const service = new SovereigntyService(adapter);
+
+      const violations = await service.auditBacklog();
+
+      if (violations.length === 0) {
+        ctx.ok('[OK] All BACKLOG quests have a valid Genealogy of Intent.');
+      } else {
+        ctx.fail(
+          `\n[VIOLATION] ${violations.length} quest(s) lack sovereign intent ancestry:\n` +
+          violations.map((v) => `  ✗ ${v.questId}\n    ${v.reason}`).join('\n') +
+          `\n\n  Fix: xyph-actuator quest <id> --intent <intent:ID> ...`,
+        );
+      }
+    }));
+}
