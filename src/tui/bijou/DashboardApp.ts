@@ -372,7 +372,11 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
           roadmap: { ...model.roadmap, selectedIndex: clampIndex(model.roadmap.selectedIndex, roadmapQuestIds(snap).length) },
           submissions: { ...model.submissions, selectedIndex: clampIndex(model.submissions.selectedIndex, submissionIds(snap).length) },
           backlog: { ...model.backlog, selectedIndex: clampIndex(model.backlog.selectedIndex, backlogQuestIds(snap).length) },
-          lineage: { ...model.lineage, selectedIndex: clampIndex(model.lineage.selectedIndex, lineageIntentIds(snap).length) },
+          lineage: {
+            ...model.lineage,
+            selectedIndex: clampIndex(model.lineage.selectedIndex, lineageIntentIds(snap).length),
+            collapsedIntents: model.lineage.collapsedIntents.filter(id => snap.intents.some(i => i.id === id)),
+          },
         }, []];
       }
       if (msg.type === 'snapshot-error') {
@@ -800,6 +804,10 @@ function renderHelp(): string {
   lines.push(`    ${styled(t.theme.semantic.info, 'j/k')}         Select item`);
   lines.push(`    ${styled(t.theme.semantic.info, 'p')}           Promote selected`);
   lines.push(`    ${styled(t.theme.semantic.info, 'd')}           Reject selected`);
+  lines.push('');
+  lines.push(styled(t.theme.semantic.info, '  Lineage'));
+  lines.push(`    ${styled(t.theme.semantic.info, 'j/k')}         Select intent`);
+  lines.push(`    ${styled(t.theme.semantic.info, 'Enter')}       Expand/collapse intent`);
   lines.push('');
   lines.push(styled(t.theme.semantic.muted, '  Press ? or Esc to close.'));
   return lines.join('\n');

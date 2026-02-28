@@ -95,7 +95,7 @@ export function dashboardView(model: DashboardModel, width?: number, height?: nu
     } else {
       for (const q of inProgress.slice(0, 8)) {
         const owner = q.assignedTo ? styled(t.theme.semantic.muted, `  ${q.assignedTo}`) : '';
-        lines.push(`   ${styled(t.theme.semantic.muted, q.id.replace(/^task:/, ''))} ${q.title.slice(0, pw - 28)}${owner}`);
+        lines.push(`   ${styled(t.theme.semantic.muted, q.id.replace(/^task:/, ''))} ${q.title.slice(0, Math.max(0, pw - 28))}${owner}`);
       }
       if (inProgress.length > 8) {
         lines.push(styled(t.theme.semantic.muted, `   +${inProgress.length - 8} more`));
@@ -108,7 +108,7 @@ export function dashboardView(model: DashboardModel, width?: number, height?: nu
       lines.push(styled(t.theme.semantic.warning, ` \u25CE Pending Review (${pendingReview.length})`));
       for (const s of pendingReview.slice(0, 5)) {
         const q = questById.get(s.questId);
-        const title = q ? q.title.slice(0, pw - 30) : s.questId;
+        const title = q ? q.title.slice(0, Math.max(0, pw - 30)) : s.questId;
         lines.push(`   ${styled(t.theme.semantic.muted, s.id.replace(/^submission:/, ''))} ${title}  ${styledStatus(s.status)}`);
       }
     }
@@ -124,7 +124,7 @@ export function dashboardView(model: DashboardModel, width?: number, height?: nu
         const cPct = cTotal > 0 ? Math.round((cDone / cTotal) * 100) : 0;
         const cBarWidth = Math.max(6, Math.min(12, pw - 40));
         const cBar = cTotal > 0 ? progressBar(cPct, { width: cBarWidth }) : '';
-        const label = c.title.slice(0, pw - 30);
+        const label = c.title.slice(0, Math.max(0, pw - 30));
         lines.push(`   ${label}  ${cBar} ${cDone}/${cTotal}`);
       }
     }
@@ -154,7 +154,7 @@ export function dashboardView(model: DashboardModel, width?: number, height?: nu
       lines.push(styled(t.theme.semantic.muted, '  (none assigned)'));
     } else {
       for (const q of myIssues.slice(0, 6)) {
-        lines.push(`  ${styled(t.theme.semantic.muted, q.id.replace(/^task:/, ''))} ${q.title.slice(0, pw - 16)}`);
+        lines.push(`  ${styled(t.theme.semantic.muted, q.id.replace(/^task:/, ''))} ${q.title.slice(0, Math.max(0, pw - 16))}`);
       }
       if (myIssues.length > 6) {
         lines.push(styled(t.theme.semantic.muted, `  +${myIssues.length - 6} more`));

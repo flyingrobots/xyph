@@ -98,7 +98,7 @@ All notable changes to XYPH will be documented in this file.
 - Alert bar: warns on orphan quests (no intent) and forked patchsets.
 - "In Progress" and "Pending Review" panels with top items.
 - Campaign progress: per-campaign `progressBar()` with done/total counts.
-- "My Issues" panel (assigned, non-terminal quests).
+- "Assigned Issues" panel (assigned, non-terminal quests).
 - Health section: sovereignty audit ratio, orphan count, fork count.
 - Graph meta section: max tick, writer count, tip SHA.
 - Two-column flex layout (2:1 ratio).
