@@ -30,6 +30,7 @@ async function main(): Promise<void> {
   await graph.syncCoverage();
   await graph.materialize();
 
+  const safe: Array<[string, string]> = [];
   for (const [from, to] of EDGES) {
     const fromExists = await graph.hasNode(from);
     const toExists = await graph.hasNode(to);
@@ -44,14 +45,20 @@ async function main(): Promise<void> {
       console.log(chalk.yellow(`  [CYCLE] ${from} → ${to}`));
       continue;
     }
+    safe.push([from, to]);
+  }
+
+  if (safe.length === 0) {
+    console.log(chalk.yellow('  [SKIP] No safe edges to commit'));
+    return;
   }
 
   const patch = await createPatchSession(graph);
-  for (const [from, to] of EDGES) {
+  for (const [from, to] of safe) {
     patch.addEdge(from, to, 'depends-on');
   }
   const sha = await patch.commit();
-  console.log(chalk.green(`  [OK] 5 fixup edges → ${sha.slice(0, 12)}`));
+  console.log(chalk.green(`  [OK] ${safe.length} fixup edges → ${sha.slice(0, 12)}`));
 }
 
 main().catch((err) => {

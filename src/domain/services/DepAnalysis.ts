@@ -98,7 +98,9 @@ export function computeTopBlockers(
     dependentsOf.set(edge.to, arr);
   }
 
-  // BFS to count transitive downstream from a starting task
+  // BFS to count transitive downstream from a starting task.
+  // Traverses through DONE nodes (to reach dependents beyond them)
+  // but only counts non-DONE nodes in the result.
   function transitiveDownstream(startId: string): number {
     const visited = new Set<string>();
     const queue = [startId];
@@ -111,7 +113,11 @@ export function computeTopBlockers(
         }
       }
     }
-    return visited.size;
+    let count = 0;
+    for (const id of visited) {
+      if (!doneSet.has(id)) count++;
+    }
+    return count;
   }
 
   const results: BlockerInfo[] = [];

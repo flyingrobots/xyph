@@ -106,7 +106,8 @@ const CAMPAIGN_LINKS: LinkSpec[] = [
 async function linkTasksToCampaigns(graph: WarpGraph): Promise<void> {
   console.log(chalk.cyan('\n── Link tasks to campaigns + intents ──'));
 
-  // Verify all target nodes exist
+  // Verify all target nodes exist, collecting only valid specs
+  const validLinks: LinkSpec[] = [];
   for (const { taskId, campaignId, intentId } of CAMPAIGN_LINKS) {
     const [taskExists, campaignExists, intentExists] = await Promise.all([
       graph.hasNode(taskId),
@@ -123,11 +124,12 @@ async function linkTasksToCampaigns(graph: WarpGraph): Promise<void> {
     if (!intentExists) {
       throw new Error(`Intent ${intentId} not found — create it first`);
     }
+    validLinks.push({ taskId, campaignId, intentId });
   }
 
   // Batch by campaign for cleaner patches
   const byCampaign = new Map<string, LinkSpec[]>();
-  for (const spec of CAMPAIGN_LINKS) {
+  for (const spec of validLinks) {
     const arr = byCampaign.get(spec.campaignId) ?? [];
     arr.push(spec);
     byCampaign.set(spec.campaignId, arr);
@@ -205,22 +207,24 @@ async function wireDependencies(graph: WarpGraph): Promise<void> {
   }
 
   // Cycle detection: check each edge won't create a cycle
+  const safe: Array<[string, string]> = [];
   for (const [from, to] of DEPENDENCY_EDGES) {
     const { reachable } = await graph.traverse.isReachable(to, from, {
       labelFilter: 'depends-on',
     });
     if (reachable) {
       console.log(chalk.red(`  [CYCLE] ${from} → ${to} would create a cycle — skipping`));
-      continue;
+    } else {
+      safe.push([from, to]);
     }
   }
 
-  // Batch all dependency edges into one patch
+  // Batch safe dependency edges into one patch
   await commitPatch(
     graph,
-    `${DEPENDENCY_EDGES.length} depends-on edges`,
+    `${safe.length} depends-on edges`,
     (p) => {
-      for (const [from, to] of DEPENDENCY_EDGES) {
+      for (const [from, to] of safe) {
         p.addEdge(from, to, 'depends-on');
       }
     },

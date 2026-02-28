@@ -1,6 +1,7 @@
 import Table from 'cli-table3';
 import boxen, { type Options as BoxenOptions } from 'boxen';
 import type { GraphSnapshot } from '../domain/models/dashboard.js';
+import type { BlockerInfo } from '../domain/services/DepAnalysis.js';
 import { getTheme, styled, styledStatus } from './theme/index.js';
 
 function colorStatus(status: string): string {
@@ -475,12 +476,6 @@ export function renderSubmissions(snapshot: GraphSnapshot): string {
 // Deps view — Task Dependency Graph
 // ---------------------------------------------------------------------------
 
-export interface TopBlockerEntry {
-  id: string;
-  directCount: number;
-  transitiveCount: number;
-}
-
 export interface DepsViewData {
   frontier: string[];
   blockedBy: Map<string, string[]>;
@@ -488,7 +483,7 @@ export interface DepsViewData {
   criticalPath: string[];
   criticalPathHours: number;
   tasks: Map<string, { title: string; status: string; hours: number }>;
-  topBlockers?: TopBlockerEntry[];
+  topBlockers?: BlockerInfo[];
 }
 
 /**

@@ -62,6 +62,9 @@ export function roadmapView(model: DashboardModel, width?: number, height?: numb
   const { path: criticalPath } = computeCriticalPath(snap.sortedTaskIds, tasks, edges);
   const critSet = new Set(criticalPath);
 
+  // Top blockers (hoisted out of render callback to avoid recomputation)
+  const topBlockers = computeTopBlockers(tasks, edges, 5);
+
   // Quest lookup
   const questMap = new Map(snap.quests.map(q => [q.id, q]));
 
@@ -102,7 +105,6 @@ export function roadmapView(model: DashboardModel, width?: number, height?: numb
       }
 
       // Top Blockers section
-      const topBlockers = computeTopBlockers(tasks, edges, 5);
       if (topBlockers.length > 0) {
         lines.push('');
         lines.push(styled(t.theme.semantic.error, ' \u26A1 Top Blockers'));
