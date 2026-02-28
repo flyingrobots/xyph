@@ -1,9 +1,11 @@
 import type { Command } from 'commander';
 import type { CliContext } from '../context.js';
-import { withErrorHandler } from '../errorHandler.js';
+import { createErrorHandler } from '../errorHandler.js';
 import { assertPrefix, parseHours } from '../validators.js';
 
 export function registerIngestCommands(program: Command, ctx: CliContext): void {
+  const withErrorHandler = createErrorHandler(ctx);
+
   program
     .command('quest <id>')
     .description('Initialize a new Quest (Task) node')
@@ -16,7 +18,7 @@ export function registerIngestCommands(program: Command, ctx: CliContext): void 
 
       const intentId = opts.intent;
       if (!intentId) {
-        ctx.fail(
+        return ctx.fail(
           `[CONSTITUTION VIOLATION] Quest ${id} requires --intent <id> (Art. IV — Genealogy of Intent).\n` +
           `  Every Quest must trace its lineage to a sovereign human Intent.\n` +
           `  Declare one first: xyph-actuator intent <id> --title "..." --requested-by human.<name>`,

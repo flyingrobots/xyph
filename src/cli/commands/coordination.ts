@@ -1,8 +1,10 @@
 import type { Command } from 'commander';
 import type { CliContext } from '../context.js';
-import { withErrorHandler } from '../errorHandler.js';
+import { createErrorHandler } from '../errorHandler.js';
 
 export function registerCoordinationCommands(program: Command, ctx: CliContext): void {
+  const withErrorHandler = createErrorHandler(ctx);
+
   program
     .command('claim <id>')
     .description('Volunteer for a Quest (Optimistic Claiming Protocol)')

@@ -1,8 +1,10 @@
 import type { Command } from 'commander';
 import type { CliContext } from '../context.js';
-import { withErrorHandler } from '../errorHandler.js';
+import { createErrorHandler } from '../errorHandler.js';
 
 export function registerArtifactCommands(program: Command, ctx: CliContext): void {
+  const withErrorHandler = createErrorHandler(ctx);
+
   program
     .command('seal <id>')
     .description('Mark Quest as DONE and seal with a Project Scroll')

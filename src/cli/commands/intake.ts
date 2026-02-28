@@ -1,9 +1,11 @@
 import type { Command } from 'commander';
 import type { CliContext } from '../context.js';
-import { withErrorHandler } from '../errorHandler.js';
+import { createErrorHandler } from '../errorHandler.js';
 import { assertPrefix, assertMinLength, assertPrefixOneOf, parseHours } from '../validators.js';
 
 export function registerIntakeCommands(program: Command, ctx: CliContext): void {
+  const withErrorHandler = createErrorHandler(ctx);
+
   program
     .command('inbox <id>')
     .description('Suggest a task for triage — adds to INBOX with provenance tracking')

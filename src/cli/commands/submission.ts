@@ -1,10 +1,12 @@
 import type { Command } from 'commander';
 import type { CliContext } from '../context.js';
-import { withErrorHandler } from '../errorHandler.js';
+import { createErrorHandler } from '../errorHandler.js';
 import { assertMinLength } from '../validators.js';
 import { generateId } from '../generateId.js';
 
 export function registerSubmissionCommands(program: Command, ctx: CliContext): void {
+  const withErrorHandler = createErrorHandler(ctx);
+
   program
     .command('submit <quest-id>')
     .description('Submit a quest for review — creates submission + first patchset')
@@ -78,7 +80,7 @@ export function registerSubmissionCommands(program: Command, ctx: CliContext): v
       const patchsetRefs = await adapter.getPatchsetRefs(submissionId);
       const { tip } = computeTipPatchset(patchsetRefs);
       if (!tip) {
-        ctx.fail(`[ERROR] No existing patchsets found for ${submissionId}`);
+        return ctx.fail(`No existing patchsets found for ${submissionId}`);
       }
 
       const workspace = new GitWorkspaceAdapter(process.cwd());
@@ -121,7 +123,7 @@ export function registerSubmissionCommands(program: Command, ctx: CliContext): v
     .action(withErrorHandler(async (patchsetId: string, opts: { verdict: string; comment: string }) => {
       const validVerdicts = ['approve', 'request-changes', 'comment'] as const;
       if (!validVerdicts.includes(opts.verdict as typeof validVerdicts[number])) {
-        ctx.fail(`[ERROR] --verdict must be one of: ${validVerdicts.join(', ')}. Got: '${opts.verdict}'`);
+        return ctx.fail(`--verdict must be one of: ${validVerdicts.join(', ')}. Got: '${opts.verdict}'`);
       }
 
       const { WarpSubmissionAdapter } = await import('../../infrastructure/adapters/WarpSubmissionAdapter.js');
@@ -166,7 +168,7 @@ export function registerSubmissionCommands(program: Command, ctx: CliContext): v
       // Get workspace ref from the tip patchset
       const workspaceRef = await adapter.getPatchsetWorkspaceRef(tipPatchsetId);
       if (typeof workspaceRef !== 'string') {
-        ctx.fail(`[ERROR] Could not resolve workspace ref from patchset ${tipPatchsetId}`);
+        return ctx.fail(`Could not resolve workspace ref from patchset ${tipPatchsetId}`);
       }
 
       // Git settlement
@@ -176,7 +178,7 @@ export function registerSubmissionCommands(program: Command, ctx: CliContext): v
       if (alreadyMerged) {
         mergeCommit = await workspace.getHeadCommit(opts.into);
         if (!mergeCommit) {
-          ctx.fail(`[ERROR] Could not resolve HEAD of ${opts.into}`);
+          return ctx.fail(`Could not resolve HEAD of ${opts.into}`);
         }
         ctx.muted(`  Branch ${workspaceRef} already merged into ${opts.into}`);
       } else {

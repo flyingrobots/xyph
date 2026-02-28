@@ -9,6 +9,7 @@ export interface CliContext {
   ok(msg: string): void;
   warn(msg: string): void;
   muted(msg: string): void;
+  print(msg: string): void;
   fail(msg: string): never;
 }
 
@@ -30,6 +31,9 @@ export function createCliContext(
     },
     muted(msg: string): void {
       console.log(styled(getTheme().theme.semantic.muted, msg));
+    },
+    print(msg: string): void {
+      console.log(msg);
     },
     fail(msg: string): never {
       console.error(styled(getTheme().theme.semantic.error, msg));

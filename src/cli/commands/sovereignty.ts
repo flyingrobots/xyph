@@ -1,9 +1,11 @@
 import type { Command } from 'commander';
 import type { CliContext } from '../context.js';
-import { withErrorHandler } from '../errorHandler.js';
+import { createErrorHandler } from '../errorHandler.js';
 import { assertPrefix, assertMinLength } from '../validators.js';
 
 export function registerSovereigntyCommands(program: Command, ctx: CliContext): void {
+  const withErrorHandler = createErrorHandler(ctx);
+
   program
     .command('intent <id>')
     .description('Declare a sovereign human Intent — the causal root of all Quests')
