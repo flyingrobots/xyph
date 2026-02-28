@@ -75,13 +75,13 @@ XYPH is in alpha. What works today:
 - Cryptographic Guild Seals (Ed25519 signing of completed work)
 - TUI dashboard for browsing the roadmap
 - CLI actuator for all graph mutations
-- 339 tests, strict TypeScript, clean CI
+- 500 tests, strict TypeScript, clean CI
 
 What's next:
 
-- **Task dependency graph** — topological sort, cycle detection, frontier computation, critical path
+- **CLI tooling** — identity resolution, `--json` output, interactive wizards, `xyph show/plan/diff`
+- **Agent protocol** — structured session commands: `xyph briefing`, `xyph next`, `xyph context`, `xyph handoff`
 - **Requirements traceability** — stories, requirements, acceptance criteria, and evidence as graph nodes
-- **Computed completion** — "done" as a graph query, not a checkbox
 - **MCP server** — AI agents as native graph participants
 
 ## Architecture

@@ -4,6 +4,36 @@ All notable changes to XYPH will be documented in this file.
 
 ## [Unreleased]
 
+### Changed — Roadmap Audit & Documentation Overhaul
+
+- **Roadmap audit**: Identified and sealed 17 quests that were DONE but still
+  marked PLANNED/IN_PROGRESS in the graph (WVR-001–005, BJU-004–008,
+  DSH-005, DSH-007, BX-021, SUB-TUI-001, SUB-TUI-002, SUB-REFACTOR-001,
+  inkstatus-type-safety).
+- **Closed 2 stale submissions**: submission:0mm4fvum740cf37 (BJU-001) and
+  submission:0mm4nm0oa510ca6 (BJU-002) — referenced commits already on main,
+  branches diverged past patchset snapshots.
+- **Bijou v0.6.0 upgrade**: `@flyingrobots/bijou`, `bijou-tui`, `bijou-node`
+  all upgraded from v0.5.1. New: `navigableTable()`, `browsableList()`,
+  `createInputStack()`, `helpView()`, `wizard()`, `filter()`, `dagStats()`.
+  No breaking changes.
+- **GRAPH_SCHEMA.md rewritten** (v1.0 → v2.0.0): All 21 prefixes, 16 edge
+  types, 10 node property contracts, edge traversal diagram, LWW rules.
+- **DATA_CONTRACTS.md retired**: M1-era speculation superseded by
+  GRAPH_SCHEMA.md Section 4.
+- **AGENT_CHARTER.md**: Added DRAFT status header (unimplemented 6-agent
+  role architecture).
+- **Version fixes**: README (alpha.8 → alpha.11), CLAUDE.md (git-warp v12.0.0
+  → v12.1.0), EXECUTIVE_SUMMARY.md (339 → 500 tests), ROADMAP.md (inbox
+  count 33 → ~100).
+- **README.md**: Updated TUI file tree (Ink → bijou architecture).
+- **ROADMAP.md**: Moved Weaver to DONE, added M12 Agent Protocol milestone,
+  updated CLI Tooling scope.
+- **New docs**: `CLI-plan.md` (interactive wizards, missing commands, agent
+  protocol), `docs/XYPH_Workflows.md` (practical guide to all XYPH features).
+- **New backlog items**: 20 tasks filed across CLI wizards, missing commands,
+  agent protocol, TUI enhancements, and doc rewrites.
+
 ### Fixed — Code Review
 
 - **H-1: Shared selection ordering** — Extracted `roadmapQuestIds`, `submissionIds`,

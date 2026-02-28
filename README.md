@@ -17,7 +17,7 @@
 **The Planning Compiler for Agentic Coordination**
 
 
-## What's New in 1.0.0-alpha.8
+## What's New in 1.0.0-alpha.11
 
 **Milestone 7: Weaver — Task Dependency Graph**
 
@@ -390,22 +390,19 @@ src/
 ├── ports/            # Interfaces (RoadmapPort, DashboardPort, SubmissionPort, WorkspacePort, ...)
 ├── infrastructure/
 │   └── adapters/     # git-warp adapters (WarpSubmissionAdapter, GitWorkspaceAdapter, ...)
-└── tui/              # Ink-based interactive dashboard
-    ├── Dashboard.tsx         # Root component (landing, help, tab routing)
-    ├── HelpModal.tsx         # ? key help overlay
-    ├── QuestDetailPanel.tsx  # Reusable quest detail panel
-    ├── Scrollbar.tsx
+└── tui/              # bijou-powered interactive dashboard
+    ├── bijou/
+    │   ├── DashboardApp.ts   # TEA app shell (model, update, view, keymaps)
+    │   └── views/
+    │       ├── roadmap-view.ts    # DAG + detail panel (bijou dagLayout)
+    │       ├── submissions-view.ts # Review workflow browser
+    │       ├── lineage-view.ts    # Genealogy of Intent tree
+    │       ├── dashboard-view.ts  # Project overview + campaign progress
+    │       ├── backlog-view.ts    # Triage inbox
+    │       └── landing-view.ts    # Startup screen with WARP stats
+    ├── theme/                # Theme bridge (bijou ↔ XYPH tokens)
     ├── logos/                # ASCII art logos organized by family and size
-    │   ├── xyph/             #   XYPH wordmarks (small, medium, large)
-    │   ├── flyingRobotsWide/ #   Wide FLYING ROBOTS banners
-    │   ├── flyingRobotsTall/ #   Tall FLYING ROBOTS banners
-    │   └── byFlyingRobots/   #   "by FLYING ROBOTS" taglines
-    └── views/
-        ├── LandingView.tsx   # Startup screen with WARP stats
-        ├── RoadmapView.tsx   # Campaign/quest tree with fold/unfold
-        ├── LineageView.tsx   # Genealogy of Intent tree
-        ├── AllNodesView.tsx  # Full graph node browser
-        └── InboxView.tsx     # Triage inbox (Gmail-style)
+    └── render-status.ts      # CLI table renderers (non-TUI output)
 
 # Root entry points
 xyph-actuator.ts    # CLI for graph mutations (quest, intent, seal, ...)

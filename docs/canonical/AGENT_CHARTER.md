@@ -1,5 +1,6 @@
 # AGENT CHARTER
 **Version:** 1.0.0
+**Status:** DRAFT — This describes a proposed 6-agent role architecture that has not been implemented. The current system uses a single generic writer identity per participant. Tracked by `task:doc-agent-charter`.
 **Enforcement:** HARD BOUNDARY VIOLATION = IMMEDIATE REJECT
 
 ## Agent Roster & Scopes

@@ -77,7 +77,7 @@ work, write it to the graph.
 
 ### git-warp: The Engine Under the Hood
 
-XYPH is built on **git-warp** (v12.0.0) — a CRDT graph database that lives
+XYPH is built on **git-warp** (v12.1.0) — a CRDT graph database that lives
 inside a Git repository without touching the codebase. Every piece of graph
 data is a Git commit pointing to the **empty tree** (`4b825dc6...`), making
 it invisible to `git log`, `git diff`, and `git status`. The result: a full
