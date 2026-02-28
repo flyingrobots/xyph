@@ -4,6 +4,23 @@ All notable changes to XYPH will be documented in this file.
 
 ## [Unreleased]
 
+### Added — Animated Spiral Title Screen
+
+- **Spiral shader** (`src/tui/bijou/shaders/spiral.ts`): Ported ertdfgcvb's
+  "Spiral" ASCII shader — generates an animated full-screen character background
+  driven by `Date.now()`, using the density ramp ` .·:;░▒▓█`.
+- **Solid content box**: Logo, copyright, and status text render inside a
+  centered `┌─┐│ │└─┘` bordered panel with 3-char horizontal / 1-line vertical
+  padding. The spiral fills all space outside the box.
+- **Full-width progress bar**: Loading bar pinned to the absolute bottom row,
+  stretching the full terminal width.
+- **Event loop yields** (`GraphContext.ts`): Added `setImmediate` yields between
+  the 5 heaviest `fetchSnapshot()` pipeline stages (syncCoverage, materialize,
+  checkpoint, queries, neighbor resolution) so animation frames fire between
+  CPU-heavy steps instead of freezing for the entire load.
+- **Backlog**: `task:worker-thread-loading` — offload `fetchSnapshot` to a
+  `worker_threads` Worker for true zero-hitch loading (future).
+
 ### Added — Top Blockers Analysis
 
 - **`computeTopBlockers()`** in `DepAnalysis.ts`: BFS-based analysis that ranks

@@ -115,6 +115,13 @@ async function batchNeighbors(
 }
 
 // ---------------------------------------------------------------------------
+// Yield to let animations/setIntervals fire between CPU-heavy pipeline stages
+// ---------------------------------------------------------------------------
+function yieldEventLoop(): Promise<void> {
+  return new Promise(resolve => setImmediate(resolve));
+}
+
+// ---------------------------------------------------------------------------
 // Implementation
 // ---------------------------------------------------------------------------
 
@@ -164,6 +171,7 @@ class GraphContextImpl implements GraphContext {
     // Dashboard polling: discover external writers' patches before querying
     log('Syncing coverage…');
     await graph.syncCoverage();
+    await yieldEventLoop();
 
     // Cache check: compare frontier key to detect both in-process writes
     // (via graph.patch()) and external writes (discovered by syncCoverage).
@@ -178,6 +186,7 @@ class GraphContextImpl implements GraphContext {
 
     log('Materializing graph…');
     await graph.materialize();
+    await yieldEventLoop();
 
     log('Creating checkpoint…');
     let checkpointSha: string | undefined;
@@ -186,6 +195,7 @@ class GraphContextImpl implements GraphContext {
     } catch (err: unknown) {
       console.warn(`[WARN] createCheckpoint failed: ${err instanceof Error ? err.message : String(err)}`);
     }
+    await yieldEventLoop();
 
     // --- Query each node type in parallel ---
     log('Querying graph…');
@@ -206,6 +216,8 @@ class GraphContextImpl implements GraphContext {
       graph.query().match('decision:*').select(['id', 'props']).run().then(extractNodes),
     ]);
 
+    await yieldEventLoop();
+
     // --- Batch-fetch neighbors for nodes that need edge resolution ---
     // DX pain point #2: QueryResultV1 can't project edges, forcing separate neighbor calls
     log('Resolving edges…');
@@ -217,6 +229,8 @@ class GraphContextImpl implements GraphContext {
       ...decisionNodes.map((n) => n.id),
     ];
     const neighborsCache = await batchNeighbors(graph, neighborsNeeded);
+
+    await yieldEventLoop();
 
     // --- Build campaigns (union of campaign:* and milestone:* prefixes) ---
     // DX pain point #1: can't match('campaign:*,milestone:*') in one observer/query
