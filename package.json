@@ -9,7 +9,8 @@
     "coordinator": "node dist/src/coordinator-daemon.js",
     "verify:patch-ops": "npm run build && node scripts/verify-patch-ops.mjs patches",
     "test": "docker build -t xyph-test . && docker run --rm xyph-test npm run test:local",
-    "test:local": "vitest run"
+    "test:local": "vitest run",
+    "postinstall": "patch-package"
   },
   "dependencies": {
     "@flyingrobots/bijou": "^0.6.0",

@@ -2,7 +2,7 @@ import { headerBox, dagLayout, type DagLayout, type SlicedDagSource } from '@fly
 import { flex, viewport } from '@flyingrobots/bijou-tui';
 import { styled, styledStatus, getTheme } from '../../theme/index.js';
 import type { DashboardModel } from '../DashboardApp.js';
-import { computeFrontier, computeCriticalPath, type TaskSummary, type DepEdge } from '../../../domain/services/DepAnalysis.js';
+import { computeFrontier, computeCriticalPath, computeTopBlockers, type TaskSummary, type DepEdge } from '../../../domain/services/DepAnalysis.js';
 import { roadmapQuestIds } from '../selection-order.js';
 
 /** Map quest status to a single-char token for DAG badges. */
@@ -98,6 +98,23 @@ export function roadmapView(model: DashboardModel, width?: number, height?: numb
             ? styled(t.theme.semantic.primary, q.title.slice(0, leftWidth - 15))
             : q.title.slice(0, leftWidth - 15);
           lines.push(`${sel}${icon} ${styledStatus(q.status, q.status.padEnd(4))} ${titleStyle}${mark}`);
+        }
+      }
+
+      // Top Blockers section
+      const topBlockers = computeTopBlockers(tasks, edges, 5);
+      if (topBlockers.length > 0) {
+        lines.push('');
+        lines.push(styled(t.theme.semantic.error, ' \u26A1 Top Blockers'));
+        lines.push('');
+        for (const b of topBlockers) {
+          const q = questMap.get(b.id);
+          const shortId = b.id.replace('task:', '');
+          const title = q ? q.title.slice(0, leftWidth - 20) : shortId;
+          if (b.id === selectedQuestId) selectedLine = lines.length;
+          const sel = b.id === selectedQuestId ? styled(t.theme.semantic.primary, '\u25B6') : ' ';
+          lines.push(`${sel}${styled(t.theme.semantic.error, shortId.slice(0, 14).padEnd(14))} ${styled(t.theme.semantic.muted, `\u2193${b.transitiveCount}`)}`);
+          lines.push(`   ${styled(t.theme.semantic.muted, title)}`);
         }
       }
 

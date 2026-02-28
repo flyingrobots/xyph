@@ -475,6 +475,12 @@ export function renderSubmissions(snapshot: GraphSnapshot): string {
 // Deps view — Task Dependency Graph
 // ---------------------------------------------------------------------------
 
+export interface TopBlockerEntry {
+  id: string;
+  directCount: number;
+  transitiveCount: number;
+}
+
 export interface DepsViewData {
   frontier: string[];
   blockedBy: Map<string, string[]>;
@@ -482,6 +488,7 @@ export interface DepsViewData {
   criticalPath: string[];
   criticalPathHours: number;
   tasks: Map<string, { title: string; status: string; hours: number }>;
+  topBlockers?: TopBlockerEntry[];
 }
 
 /**
@@ -548,6 +555,32 @@ export function renderDeps(data: DepsViewData): string {
       ]);
     }
     lines.push(bt.toString());
+  }
+
+  // --- Top Blockers ---
+  if (data.topBlockers && data.topBlockers.length > 0) {
+    lines.push('');
+    lines.push(styled(t.theme.semantic.error, '  Top Blockers'));
+    const tb = new Table({
+      head: [
+        styled(t.theme.ui.tableHeader, 'Task'),
+        styled(t.theme.ui.tableHeader, 'Title'),
+        styled(t.theme.ui.tableHeader, 'Direct'),
+        styled(t.theme.ui.tableHeader, 'Transitive'),
+      ],
+      style: { head: [], border: [] },
+      colWidths: [22, 40, 8, 12],
+    });
+    for (const blocker of data.topBlockers) {
+      const info = data.tasks.get(blocker.id);
+      tb.push([
+        styled(t.theme.semantic.error, blocker.id.slice(0, 20)),
+        info?.title.slice(0, 38) ?? '—',
+        String(blocker.directCount),
+        String(blocker.transitiveCount),
+      ]);
+    }
+    lines.push(tb.toString());
   }
 
   // --- Execution Order ---

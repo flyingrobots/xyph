@@ -4,6 +4,23 @@ All notable changes to XYPH will be documented in this file.
 
 ## [Unreleased]
 
+### Added — Top Blockers Analysis
+
+- **`computeTopBlockers()`** in `DepAnalysis.ts`: BFS-based analysis that ranks
+  non-DONE tasks by transitive downstream impact (how many other tasks they block).
+- **`deps` CLI view**: New "Top Blockers" table showing direct and transitive
+  dependent counts per blocking task.
+- **Roadmap TUI view**: New "Top Blockers" section in the left panel between
+  frontier and blocked lists.
+- **`postinstall` script**: Added `patch-package` postinstall hook to `package.json`.
+
+### Fixed — Documentation Accuracy
+
+- **CLAUDE.md**: Updated test count (60+ → 900+), added missing `reopen` command
+  to reference.
+- **README.md**: Fixed TUI view cycle names (overview/inbox → dashboard/backlog),
+  added missing `reopen` command to CLI table, removed duplicate entry.
+
 ### Changed — Roadmap Audit & Documentation Overhaul
 
 - **Roadmap audit**: Identified and sealed 17 quests that were DONE but still

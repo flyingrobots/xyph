@@ -282,7 +282,7 @@ XYPH_AGENT_ID=human.yourname ./xyph-dashboard.tsx
 
 | Key     | Context      | Action                                        |
 |---------|-------------|-----------------------------------------------|
-| `Tab`   | Global       | Cycle views (roadmap → submissions → lineage → overview → inbox) |
+| `Tab`   | Global       | Cycle views (dashboard → roadmap → submissions → lineage → backlog) |
 | `j/k`   | Global       | Select next/prev item                         |
 | `r`     | Global       | Refresh snapshot                              |
 | `?`     | Global       | Help modal                                    |
@@ -308,7 +308,7 @@ All commands run via `npx tsx xyph-actuator.ts <command>`.
 | `inbox <id> --title "..." --suggested-by <principal>`    | Suggest a task for triage                              |
 | `promote <id> --intent <id>`                             | Promote inbox task to backlog                          |
 | `reject <id> --rationale "..."`                          | Reject to graveyard                                    |
-| `reopen <id>`                                            | Reopen a rejected task                                 |
+| `reopen <id>`                                            | Reopen a graveyard task back to inbox                  |
 | `depend <from> <to>`                                     | Declare that `<from>` depends on `<to>`                |
 | `claim <id>`                                             | Volunteer for a quest (OCP)                            |
 | `submit <quest-id> --description "..."`                  | Submit quest for review (creates submission + patchset)|

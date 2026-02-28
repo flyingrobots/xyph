@@ -20,7 +20,7 @@ You're working on **XYPH** - a Causal Operating System for Agent Planning and Or
 Before opening or updating a PR, **always** run the full test suite:
 ```bash
 npm run build    # Verify TypeScript compilation
-npm test         # Run full Docker-based test suite (60+ tests)
+npm test         # Run full Docker-based test suite (900+ tests)
 ```
 Never push code that doesn't pass both checks. CI failures waste time and break the review flow.
 
@@ -71,6 +71,7 @@ work, write it to the graph.
 - `npx tsx xyph-actuator.ts inbox <id> --title "Title" --suggested-by <principal>`: Suggest a task for triage.
 - `npx tsx xyph-actuator.ts promote <id> --intent <id>`: Promote INBOX → BACKLOG.
 - `npx tsx xyph-actuator.ts reject <id> --rationale "..."`: Reject to GRAVEYARD.
+- `npx tsx xyph-actuator.ts reopen <id>`: Reopen a GRAVEYARD task back to INBOX (human authority required).
 - `npx tsx xyph-actuator.ts depend <from> <to>`: Declare that `<from>` depends on `<to>` (both must be `task:` nodes).
 - `npx tsx xyph-actuator.ts audit-sovereignty`: Audit quests for missing intent lineage.
 - `npx tsx xyph-actuator.ts generate-key`: Generate an Ed25519 Guild Seal keypair.
