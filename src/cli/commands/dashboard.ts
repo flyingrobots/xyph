@@ -173,12 +173,10 @@ export function registerDashboardCommands(program: Command, ctx: CliContext): vo
             data: { valid: true, violations: [] },
           });
         } else {
-          console.log(JSON.stringify({
-            success: false,
-            error: `${violations.length} quest(s) lack sovereign intent ancestry`,
-            data: { violations },
-          }));
-          process.exit(1);
+          ctx.failWithData(
+            `${violations.length} quest(s) lack sovereign intent ancestry`,
+            { violations },
+          );
         }
         return;
       }

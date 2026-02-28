@@ -1,4 +1,4 @@
-import { getTheme, styled } from '../tui/theme/index.js';
+import { getTheme, styled, ensureXyphContext } from '../tui/theme/index.js';
 import { WarpGraphAdapter } from '../infrastructure/adapters/WarpGraphAdapter.js';
 
 export const DEFAULT_AGENT_ID = 'agent.prime';
@@ -9,6 +9,14 @@ export interface JsonEnvelope {
   data: Record<string, unknown>;
 }
 
+export interface JsonErrorEnvelope {
+  success: false;
+  error: string;
+  data?: Record<string, unknown>;
+}
+
+export type JsonOutput = JsonEnvelope | JsonErrorEnvelope;
+
 export interface CliContext {
   readonly agentId: string;
   readonly json: boolean;
@@ -18,6 +26,7 @@ export interface CliContext {
   muted(msg: string): void;
   print(msg: string): void;
   fail(msg: string): never;
+  failWithData(msg: string, data: Record<string, unknown>): never;
   jsonOut(envelope: JsonEnvelope): void;
 }
 
@@ -30,6 +39,12 @@ export function createCliContext(
   const agentId = envAgentId ? envAgentId : DEFAULT_AGENT_ID;
   const graphPort = new WarpGraphAdapter(cwd, graphName, agentId);
   const jsonMode = opts?.json ?? false;
+
+  // Initialize bijou theme context eagerly in non-JSON mode.
+  // ensureXyphContext() is idempotent — safe to call multiple times.
+  if (!jsonMode) {
+    ensureXyphContext();
+  }
 
   return {
     agentId,
@@ -54,6 +69,14 @@ export function createCliContext(
     fail(msg: string): never {
       if (jsonMode) {
         console.log(JSON.stringify({ success: false, error: msg }));
+      } else {
+        console.error(styled(getTheme().theme.semantic.error, msg));
+      }
+      process.exit(1);
+    },
+    failWithData(msg: string, data: Record<string, unknown>): never {
+      if (jsonMode) {
+        console.log(JSON.stringify({ success: false, error: msg, data }));
       } else {
         console.error(styled(getTheme().theme.semantic.error, msg));
       }

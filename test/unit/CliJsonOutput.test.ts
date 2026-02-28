@@ -19,6 +19,7 @@ vi.mock('../../src/tui/theme/index.js', () => ({
     },
   }),
   styled: (_fn: unknown, s: string) => s,
+  ensureXyphContext: () => {},
 }));
 
 describe('CliContext JSON mode', () => {
@@ -113,6 +114,73 @@ describe('CliContext JSON mode', () => {
     expect(errorSpy).toHaveBeenCalledTimes(1);
     expect(logSpy).not.toHaveBeenCalled();
     expect(exitSpy).toHaveBeenCalledWith(1);
+    exitSpy.mockRestore();
+  });
+
+  it('failWithData in json mode writes error envelope with data to stdout', () => {
+    const ctx = createCliContext('/tmp', 'test-graph', { json: true });
+
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
+    try {
+      ctx.failWithData('audit failed', { violations: ['task:A', 'task:B'] });
+    } catch {
+      // process.exit mock may throw
+    }
+
+    expect(logSpy).toHaveBeenCalledTimes(1);
+    const output = logSpy.mock.calls[0]?.[0] as string;
+    const parsed = JSON.parse(output);
+    expect(parsed).toEqual({
+      success: false,
+      error: 'audit failed',
+      data: { violations: ['task:A', 'task:B'] },
+    });
+    expect(errorSpy).not.toHaveBeenCalled();
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    exitSpy.mockRestore();
+  });
+
+  it('failWithData in non-json mode writes to stderr (ignores data)', () => {
+    const ctx = createCliContext('/tmp', 'test-graph', { json: false });
+
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
+    try {
+      ctx.failWithData('audit failed', { violations: ['task:A'] });
+    } catch {
+      // process.exit mock may throw
+    }
+
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    expect(errorSpy).toHaveBeenCalledWith('audit failed');
+    expect(logSpy).not.toHaveBeenCalled();
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    exitSpy.mockRestore();
+  });
+
+  it('failWithData error envelope matches JsonErrorEnvelope shape', () => {
+    const ctx = createCliContext('/tmp', 'test-graph', { json: true });
+
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
+    try {
+      ctx.failWithData('3 quest(s) lack sovereign intent ancestry', {
+        violations: [
+          { questId: 'task:X', reason: 'no intent' },
+          { questId: 'task:Y', reason: 'orphaned campaign' },
+        ],
+      });
+    } catch {
+      // process.exit mock may throw
+    }
+
+    const output = logSpy.mock.calls[0]?.[0] as string;
+    const parsed = JSON.parse(output);
+    // Discriminated union check: success is false
+    expect(parsed.success).toBe(false);
+    // Has error string
+    expect(typeof parsed.error).toBe('string');
+    // Has data with violations array
+    expect(Array.isArray(parsed.data.violations)).toBe(true);
+    expect(parsed.data.violations).toHaveLength(2);
     exitSpy.mockRestore();
   });
 });

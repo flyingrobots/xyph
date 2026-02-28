@@ -9,15 +9,9 @@ import { registerSubmissionCommands } from './src/cli/commands/submission.js';
 import { registerIntakeCommands } from './src/cli/commands/intake.js';
 import { registerDashboardCommands } from './src/cli/commands/dashboard.js';
 
-// Pre-scan for --json before Commander parses (avoids theme side effects).
+// Best-effort pre-scan for --json before Commander parses.
+// createCliContext() handles theme init internally based on this flag.
 const jsonFlag = process.argv.includes('--json');
-
-// Initialize bijou context with XYPH presets before any themed output —
-// skip in JSON mode to avoid theme side effects on stdout.
-if (!jsonFlag) {
-  const { ensureXyphContext } = await import('./src/tui/theme/index.js');
-  ensureXyphContext();
-}
 
 /**
  * XYPH Actuator - The "Hands" of the Causal Agent.

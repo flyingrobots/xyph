@@ -1,8 +1,7 @@
 <div align="center">
   <img src="docs/assets/title-screen.gif" alt="XYPH Title Screen" />
-	<h1>XYPH [<a href="https://ipa-reader.com/?text=%CB%8Cz%C9%AAf">/ˌzɪf/</a>]</h1>
-
-<h3>The Dev Tool From The Future</h3>
+  <h1>XYPH [<a href="https://ipa-reader.com/?text=%CB%8Cz%C9%AAf">/ˌzɪf/</a>]</h1>
+  <h3>The Dev Tool From The Future</h3>
 </div>
 
 ---

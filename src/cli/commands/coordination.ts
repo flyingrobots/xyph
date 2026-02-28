@@ -33,7 +33,7 @@ export function registerCoordinationCommands(program: Command, ctx: CliContext):
         }
         ctx.jsonOut({
           success: true, command: 'claim',
-          data: { id, assignedTo: ctx.agentId, status: 'IN_PROGRESS', confirmed },
+          data: { id, assignedTo: ctx.agentId, status: 'IN_PROGRESS' },
         });
         return;
       }
