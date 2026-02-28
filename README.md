@@ -1,14 +1,22 @@
 <div align="center">
   <img src="docs/assets/title-screen.gif" alt="XYPH Title Screen" />
   <h1>XYPH [<a href="https://ipa-reader.com/?text=%CB%8Cz%C9%AAf">/ˌzɪf/</a>]</h1>
-  <h3>The Dev Tool From The Future</h3>
+  <h3>Reificatory Engine</h3>
+  <p><em>Xyph it done.</em></p>
 </div>
 
 ---
 
 ## What Is XYPH?
 
-**XYPH** is a _planning compiler_ where the project roadmap is a living, deterministic graph. Humans and agents collaborate by reading and writing to that graph. No server, no database, just Git.
+**XYPH _xyphs_ intent into reality.**  
+An offline-first, decentralized, deterministic **planning compiler + collaboration engine** for humans and agents.
+
+**No server. No database. Just Git.**  
+Instead of hand-orchestrating workflows, you compile intent into a living graph, execute it to completion, and settle outcomes with receipts.
+
+### xyph (verb)
+To compile intent into an executable plan, run it to completion, and settle the result into history with verifiable receipts.
 
 ## How XYPH Works (Part I)
 
