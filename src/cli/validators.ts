@@ -21,10 +21,10 @@ export function assertPrefixOneOf(value: string, prefixes: readonly string[], la
   }
 }
 
-/** Commander option parser for non-negative float hours. */
+/** Commander option parser for non-negative finite hours. */
 export function parseHours(val: string): number {
-  const parsed = parseFloat(val);
-  if (isNaN(parsed) || parsed < 0) {
+  const parsed = Number(val);
+  if (val.trim() === '' || !Number.isFinite(parsed) || parsed < 0) {
     throw new InvalidArgumentError(`Invalid hours value: "${val}". Must be a non-negative number.`);
   }
   return parsed;

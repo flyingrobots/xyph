@@ -8,9 +8,9 @@ export function registerIngestCommands(program: Command, ctx: CliContext): void 
 
   program
     .command('quest <id>')
-    .description('Initialize a new Quest (Task) node')
+    .description('Initialize a new Quest node')
     .requiredOption('--title <text>', 'Quest title')
-    .requiredOption('--campaign <id>', 'Parent Campaign (Milestone) ID (use "none" to skip)')
+    .requiredOption('--campaign <id>', 'Parent Campaign ID (use "none" to skip)')
     .option('--hours <number>', 'Estimated human hours (PERT)', parseHours)
     .option('--intent <id>', 'Sovereign Intent node that authorizes this Quest (intent:* prefix)')
     .action(withErrorHandler(async (id: string, opts: { title: string; campaign: string; hours?: number; intent?: string }) => {

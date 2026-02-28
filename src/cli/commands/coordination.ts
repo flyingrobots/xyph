@@ -1,6 +1,7 @@
 import type { Command } from 'commander';
 import type { CliContext } from '../context.js';
 import { createErrorHandler } from '../errorHandler.js';
+import { assertPrefix } from '../validators.js';
 
 export function registerCoordinationCommands(program: Command, ctx: CliContext): void {
   const withErrorHandler = createErrorHandler(ctx);
@@ -9,6 +10,7 @@ export function registerCoordinationCommands(program: Command, ctx: CliContext):
     .command('claim <id>')
     .description('Volunteer for a Quest (Optimistic Claiming Protocol)')
     .action(withErrorHandler(async (id: string) => {
+      assertPrefix(id, 'task:', 'Quest ID');
       const graph = await ctx.graphPort.getGraph();
 
       ctx.warn(`[*] Attempting to claim ${id} as ${ctx.agentId}...`);

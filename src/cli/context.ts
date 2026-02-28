@@ -17,7 +17,8 @@ export function createCliContext(
   cwd: string,
   graphName: string,
 ): CliContext {
-  const agentId = process.env['XYPH_AGENT_ID'] ?? DEFAULT_AGENT_ID;
+  const envAgentId = process.env['XYPH_AGENT_ID']?.trim();
+  const agentId = envAgentId ? envAgentId : DEFAULT_AGENT_ID;
   const graphPort = new WarpGraphAdapter(cwd, graphName, agentId);
 
   return {
