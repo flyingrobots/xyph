@@ -42,7 +42,8 @@ export function claimQuest(deps: WriteDeps, questId: string): Cmd<DashboardMsg> 
           .setProperty(questId, 'claimed_at', Date.now());
       });
 
-      // OCP verification
+      // OCP post-check: reads local state only (remote sync happens on next snapshot refresh).
+      // True cross-writer verification requires a full materialize with remote patches.
       const props = await graph.getNodeProps(questId);
       if (props && props.get('assigned_to') === deps.agentId) {
         emit({ type: 'write-success', message: `Claimed ${questId}` });
@@ -80,6 +81,10 @@ export function promoteQuest(deps: WriteDeps, questId: string, intentId: string,
 export function rejectQuest(deps: WriteDeps, questId: string, rationale: string): Cmd<DashboardMsg> {
   return async (emit) => {
     try {
+      if (!rationale.trim()) {
+        emit({ type: 'write-error', message: 'Rationale is required for rejection' });
+        return;
+      }
       await deps.intake.reject(questId, rationale);
       emit({ type: 'write-success', message: `Rejected ${questId}` });
     } catch (err: unknown) {

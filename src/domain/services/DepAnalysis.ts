@@ -114,6 +114,7 @@ export function computeCriticalPath(
 
     const dependents = dependentsOf.get(node) ?? [];
     for (const dep of dependents) {
+      if (!weightMap.has(dep)) continue;  // skip phantom edges
       const currentDist = dist.get(node) ?? 0;
       const depWeight = weightMap.get(dep) ?? 0;
       const newDist = currentDist + depWeight;

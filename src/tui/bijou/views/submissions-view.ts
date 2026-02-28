@@ -1,12 +1,8 @@
 import { flex, viewport } from '@flyingrobots/bijou-tui';
 import { styled, styledStatus, getTheme } from '../../theme/index.js';
 import type { DashboardModel } from '../DashboardApp.js';
-import type { SubmissionNode, ReviewNode, DecisionNode } from '../../../domain/models/dashboard.js';
-import { SUBMISSION_STATUS_ORDER } from '../../../domain/entities/Submission.js';
-
-function statusPriority(s: SubmissionNode): number {
-  return SUBMISSION_STATUS_ORDER[s.status] ?? 5;
-}
+import type { ReviewNode, DecisionNode } from '../../../domain/models/dashboard.js';
+import { sortedSubmissions } from '../selection-order.js';
 
 function verdictIcon(verdict: string): string {
   const t = getTheme();
@@ -45,12 +41,8 @@ export function submissionsView(model: DashboardModel, width?: number, height?: 
     return lines.join('\n');
   }
 
-  // Sort submissions by status priority, then by date descending
-  const sorted = [...snap.submissions].sort((a, b) => {
-    const p = statusPriority(a) - statusPriority(b);
-    if (p !== 0) return p;
-    return b.submittedAt - a.submittedAt;
-  });
+  // Sort submissions by status priority, then by date descending (shared with DashboardApp)
+  const sorted = sortedSubmissions(snap);
 
   // Lookup maps
   const questTitle = new Map(snap.quests.map(q => [q.id, q.title]));

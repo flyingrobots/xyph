@@ -3,6 +3,7 @@ import { flex, viewport } from '@flyingrobots/bijou-tui';
 import { styled, styledStatus, getTheme } from '../../theme/index.js';
 import type { DashboardModel } from '../DashboardApp.js';
 import { computeFrontier, computeCriticalPath, type TaskSummary, type DepEdge } from '../../../domain/services/DepAnalysis.js';
+import { roadmapQuestIds } from '../selection-order.js';
 
 /** Map quest status to a single-char token for DAG badges. */
 function statusIcon(status: string): string {
@@ -12,6 +13,7 @@ function statusIcon(status: string): string {
     case 'BLOCKED':     return '\u2718';
     case 'PLANNED':     return '\u25CB';
     case 'BACKLOG':     return '\u00B7';
+    case 'GRAVEYARD':   return '\u2620';
     default:            return '?';
   }
 }
@@ -66,10 +68,8 @@ export function roadmapView(model: DashboardModel, width?: number, height?: numb
   // ── Left panel: Frontier ──────────────────────────────────────────────
   const leftWidth = Math.max(28, Math.floor(w * 0.3));
 
-  // Build the ordered list of selectable quest IDs matching frontier panel render order
-  const selectableIds: string[] = hasDeps
-    ? [...frontier, ...[...blockedBy.keys()].sort()]
-    : snap.quests.filter(q => q.status !== 'DONE').map(q => q.id);
+  // Build the ordered list of selectable quest IDs (shared with DashboardApp j/k navigation)
+  const selectableIds = roadmapQuestIds(snap);
   const selectedQuestId = selectableIds[model.roadmap.selectedIndex] ?? null;
 
   function renderFrontierPanel(_pw: number, ph: number): string {
@@ -235,7 +235,7 @@ export function roadmapView(model: DashboardModel, width?: number, height?: numb
       if (nodePos) {
         // Center the selected node in the viewport; manual scroll offsets from auto-center
         scrollX = Math.max(0, nodePos.col - Math.floor(pw / 2)) + model.roadmap.dagScrollX;
-        scrollY = Math.max(0, nodePos.row - Math.floor(ph / 2));
+        scrollY = Math.max(0, nodePos.row - Math.floor(ph / 2)) + model.roadmap.dagScrollY;
       }
     }
 

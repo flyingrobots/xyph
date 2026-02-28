@@ -12,7 +12,7 @@ export function dashboardView(model: DashboardModel, width?: number, height?: nu
   const snap = model.snapshot;
 
   // ── Compute project-wide stats ─────────────────────────────────────
-  const nonBacklog = snap.quests.filter(q => q.status !== 'BACKLOG');
+  const nonBacklog = snap.quests.filter(q => q.status !== 'BACKLOG' && q.status !== 'GRAVEYARD');
   const doneQuests = nonBacklog.filter(q => q.status === 'DONE');
   const totalNonBacklog = nonBacklog.length;
   const pct = totalNonBacklog > 0 ? Math.round((doneQuests.length / totalNonBacklog) * 100) : 0;
@@ -149,7 +149,7 @@ export function dashboardView(model: DashboardModel, width?: number, height?: nu
     const lines: string[] = [];
 
     // My Issues
-    lines.push(styled(t.theme.semantic.primary, ' My Issues'));
+    lines.push(styled(t.theme.semantic.primary, ' Assigned Issues'));
     if (myIssues.length === 0) {
       lines.push(styled(t.theme.semantic.muted, '  (none assigned)'));
     } else {

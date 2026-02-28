@@ -1,6 +1,7 @@
 import { headerBox, table } from '@flyingrobots/bijou';
 import { styled, getTheme } from '../../theme/index.js';
 import type { DashboardModel } from '../DashboardApp.js';
+import { backlogQuestIds } from '../selection-order.js';
 
 export function backlogView(model: DashboardModel, _width?: number, _height?: number): string {
   const t = getTheme();
@@ -23,7 +24,12 @@ export function backlogView(model: DashboardModel, _width?: number, _height?: nu
     return lines.join('\n');
   }
 
-  // Build flat ordered list for selection index mapping
+  // Shared ordering (matches DashboardApp j/k navigation)
+  const flatList = backlogQuestIds(snap);
+  const selectedIndex = model.backlog.selectedIndex;
+  const selectedId = flatList[selectedIndex] ?? null;
+
+  // Group by suggester for rendering
   const bySuggester = new Map<string, typeof backlog>();
   for (const q of backlog) {
     const key = q.suggestedBy ?? '(unknown suggester)';
@@ -31,17 +37,6 @@ export function backlogView(model: DashboardModel, _width?: number, _height?: nu
     arr.push(q);
     bySuggester.set(key, arr);
   }
-
-  // Flatten in rendering order for selection
-  const flatList: string[] = [];
-  for (const [, quests] of bySuggester) {
-    for (const q of quests) {
-      flatList.push(q.id);
-    }
-  }
-
-  const selectedIndex = model.backlog.selectedIndex;
-  const selectedId = flatList[selectedIndex] ?? null;
 
   for (const [suggester, quests] of bySuggester) {
     lines.push('');

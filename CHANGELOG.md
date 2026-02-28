@@ -4,6 +4,43 @@ All notable changes to XYPH will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed — Code Review
+
+- **H-1: Shared selection ordering** — Extracted `roadmapQuestIds`, `submissionIds`,
+  `backlogQuestIds`, `lineageIntentIds` into `selection-order.ts`. Both DashboardApp
+  (j/k navigation) and view renderers import from the same module, preventing
+  wrong-item-selected bugs from ordering divergence.
+- **M-1: dagScrollY asymmetry** — Vertical DAG scroll offset now applies as an
+  offset from auto-center, matching the existing dagScrollX behavior.
+- **M-2: GRAVEYARD progress exclusion** — Dashboard progress bar and orphan alert
+  exclude GRAVEYARD quests (previously inflated denominator).
+- **M-3: filterSnapshot submissions** — `filterSnapshot()` now filters submissions
+  for graveyard quests alongside scrolls and sortedTaskIds.
+- **M-4: "Assigned Issues" rename** — Dashboard right column header changed from
+  "My Issues" to "Assigned Issues" for clarity.
+- **M-7: normalizeQuestStatus hardened** — All known statuses now have explicit
+  switch cases; `default` branch is truly unreachable for valid input.
+- **M-8: Write debounce** — Added `writePending` flag to prevent double-writes
+  while a graph mutation is in flight. Confirm/input handlers set the flag;
+  write-success/error clear it; write actions short-circuit when true.
+- **L-1/L-4: GRAVEYARD in roadmap** — Added skull icon for GRAVEYARD status;
+  excluded GRAVEYARD quests from selectable IDs in both deps and no-deps paths.
+- **L-3: OCP comment** — Clarified that claim verification reads local state only.
+- **L-4: rejectQuest guard** — Empty-rationale check added, matching promoteQuest.
+- **L-5: Clamp on reload** — Per-view `selectedIndex` is clamped when a new
+  snapshot arrives, preventing stale indices after quest deletion.
+- **L-6: Critical path phantom guard** — `computeCriticalPath` inner loop skips
+  dependents not in the weight map, preventing NaN propagation from phantom edges.
+- **L-8/N-7: Exhaustive defaults** — `handleViewAction` and `viewRenderer` switch
+  statements now have `default: never` guards for compile-time exhaustiveness.
+
+### Changed — Dependency Upgrade: bijou v0.5.1
+
+- Upgraded `@flyingrobots/bijou`, `@flyingrobots/bijou-node`, and
+  `@flyingrobots/bijou-tui` to v0.5.1. Resolves dual-package context issue
+  where `bijou-tui` bundled a nested bijou v0.4.0 copy, causing
+  `[bijou] No default context configured` crash at dashboard startup.
+
 ### Changed — Performance: Query-based getQuests() and DagSource adapter
 
 - `WarpRoadmapAdapter.getQuests()` now uses `graph.query().match('task:*')`

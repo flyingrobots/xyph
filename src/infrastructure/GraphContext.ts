@@ -148,6 +148,7 @@ class GraphContextImpl implements GraphContext {
       ...snapshot,
       quests,
       scrolls: snapshot.scrolls.filter((s) => questIds.has(s.questId)),
+      submissions: snapshot.submissions.filter((s) => questIds.has(s.questId)),
       sortedTaskIds: snapshot.sortedTaskIds.filter((id) => questIds.has(id)),
     };
   }

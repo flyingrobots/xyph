@@ -23,9 +23,8 @@ import { submissionsView } from './views/submissions-view.js';
 import { landingView } from './views/landing-view.js';
 import { confirmOverlay, inputOverlay } from './overlays.js';
 import { claimQuest, promoteQuest, rejectQuest, reviewSubmission, type WriteDeps } from './write-cmds.js';
-import { computeFrontier, type TaskSummary, type DepEdge } from '../../domain/services/DepAnalysis.js';
+import { roadmapQuestIds, submissionIds, backlogQuestIds, lineageIntentIds } from './selection-order.js';
 import type { SubmissionPort } from '../../ports/SubmissionPort.js';
-import { SUBMISSION_STATUS_ORDER } from '../../domain/entities/Submission.js';
 
 // ── Public types ────────────────────────────────────────────────────────
 
@@ -95,6 +94,9 @@ export interface DashboardModel {
 
   // Toast notifications
   toast: { message: string; variant: 'success' | 'error'; expiresAt: number } | null;
+
+  /** Guards against double-writes while a write command is in flight. */
+  writePending: boolean;
 }
 
 export type DashboardMsg =
@@ -187,57 +189,7 @@ function buildLineageKeys(): KeyMap<ViewAction> {
 }
 
 // ── Selection helpers ───────────────────────────────────────────────────
-
-/** Return ordered quest IDs matching the roadmap frontier panel render order. */
-function roadmapQuestIds(snap: GraphSnapshot): string[] {
-  const tasks: TaskSummary[] = snap.quests.map(q => ({
-    id: q.id,
-    status: q.status,
-    hours: q.hours,
-  }));
-  const edges: DepEdge[] = [];
-  for (const q of snap.quests) {
-    if (q.dependsOn) {
-      for (const dep of q.dependsOn) {
-        edges.push({ from: q.id, to: dep });
-      }
-    }
-  }
-  if (edges.length === 0) {
-    return snap.quests.filter(q => q.status !== 'DONE').map(q => q.id);
-  }
-  const { frontier, blockedBy } = computeFrontier(tasks, edges);
-  return [...frontier, ...[...blockedBy.keys()].sort()];
-}
-
-/** Return ordered submission IDs matching submissions-view sort order. */
-function submissionIds(snap: GraphSnapshot): string[] {
-  return [...snap.submissions]
-    .sort((a, b) => {
-      const p = (SUBMISSION_STATUS_ORDER[a.status] ?? 5) - (SUBMISSION_STATUS_ORDER[b.status] ?? 5);
-      if (p !== 0) return p;
-      return b.submittedAt - a.submittedAt;
-    })
-    .map(s => s.id);
-}
-
-/** Return ordered backlog quest IDs matching backlog-view rendering order (grouped by suggestedBy). */
-function backlogQuestIds(snap: GraphSnapshot): string[] {
-  const backlog = snap.quests.filter(q => q.status === 'BACKLOG');
-  const bySuggester = new Map<string, string[]>();
-  for (const q of backlog) {
-    const key = q.suggestedBy ?? '(unknown suggester)';
-    const arr = bySuggester.get(key) ?? [];
-    arr.push(q.id);
-    bySuggester.set(key, arr);
-  }
-  return [...bySuggester.values()].flat();
-}
-
-/** Return ordered intent IDs for lineage view selection. */
-function lineageIntentIds(snap: GraphSnapshot): string[] {
-  return snap.intents.map(i => i.id);
-}
+// Ordering functions imported from ./selection-order.ts (shared with views)
 
 function clampIndex(idx: number, count: number): number {
   if (count <= 0) return -1;
@@ -371,6 +323,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         confirmState: null,
         inputState: null,
         toast: null,
+        writePending: false,
       };
       return [model, [
         fetchSnapshot(model.requestId),
@@ -409,7 +362,18 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
       // Handle snapshot lifecycle (ignore stale responses)
       if (msg.type === 'snapshot-loaded') {
         if (msg.requestId !== model.requestId) return [model, []];
-        return [{ ...model, snapshot: msg.snapshot, loading: false, error: null, loadingProgress: 100 }, []];
+        const snap = msg.snapshot;
+        return [{
+          ...model,
+          snapshot: snap,
+          loading: false,
+          error: null,
+          loadingProgress: 100,
+          roadmap: { ...model.roadmap, selectedIndex: clampIndex(model.roadmap.selectedIndex, roadmapQuestIds(snap).length) },
+          submissions: { ...model.submissions, selectedIndex: clampIndex(model.submissions.selectedIndex, submissionIds(snap).length) },
+          backlog: { ...model.backlog, selectedIndex: clampIndex(model.backlog.selectedIndex, backlogQuestIds(snap).length) },
+          lineage: { ...model.lineage, selectedIndex: clampIndex(model.lineage.selectedIndex, lineageIntentIds(snap).length) },
+        }, []];
       }
       if (msg.type === 'snapshot-error') {
         if (msg.requestId !== model.requestId) return [model, []];
@@ -424,6 +388,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
           ...model,
           loading: true,
           requestId: nextReqId,
+          writePending: false,
           toast: { message: msg.message, variant: 'success', expiresAt },
         }, [refreshAfterWrite(nextReqId), delayedDismissToast(expiresAt)]];
       }
@@ -431,6 +396,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         const expiresAt = Date.now() + 3000;
         return [{
           ...model,
+          writePending: false,
           toast: { message: msg.message, variant: 'error', expiresAt },
         }, [delayedDismissToast(expiresAt)]];
       }
@@ -478,6 +444,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
               ...model,
               mode: 'normal',
               confirmState: null,
+              writePending: true,
             }, [executeWrite(action)]];
           }
           if (msg.key === 'n' || msg.key === 'escape') {
@@ -500,6 +467,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
               ...model,
               mode: 'normal',
               inputState: null,
+              writePending: true,
             }, [executeWrite(action, value)]];
           }
           if (msg.key === 'backspace' || msg.key === 'delete') {
@@ -611,6 +579,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
           case 'submissions': content = submissionsView(model, w, h); break;
           case 'lineage':     content = lineageView(model, w, h); break;
           case 'backlog':     content = backlogView(model, w, h); break;
+          default: { const _exhaustive: never = model.activeView; void _exhaustive; content = ''; break; }
         }
 
         // Overlay rendering for modal modes
@@ -649,7 +618,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         return [selectDelta(model, -1), []];
 
       case 'claim': {
-        if (!snap) return [model, []];
+        if (!snap || model.writePending) return [model, []];
         const ids = roadmapQuestIds(snap);
         const questId = ids[model.roadmap.selectedIndex];
         if (!questId) return [model, []];
@@ -661,7 +630,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
       }
 
       case 'promote': {
-        if (!snap) return [model, []];
+        if (!snap || model.writePending) return [model, []];
         const ids = backlogQuestIds(snap);
         const questId = ids[model.backlog.selectedIndex];
         if (!questId) return [model, []];
@@ -673,7 +642,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
       }
 
       case 'reject': {
-        if (!snap) return [model, []];
+        if (!snap || model.writePending) return [model, []];
         const ids = backlogQuestIds(snap);
         const questId = ids[model.backlog.selectedIndex];
         if (!questId) return [model, []];
@@ -711,7 +680,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
 
       case 'approve':
       case 'request-changes': {
-        if (!snap) return [model, []];
+        if (!snap || model.writePending) return [model, []];
         const ids = submissionIds(snap);
         const subId = ids[model.submissions.selectedIndex];
         if (!subId) return [model, []];
@@ -762,6 +731,10 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
           ...model,
           roadmap: { ...model.roadmap, dagScrollX: model.roadmap.dagScrollX + colStep },
         }, []];
+      }
+      default: {
+        const _exhaustive: never = action; void _exhaustive;
+        return [model, []];
       }
     }
   }

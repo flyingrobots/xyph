@@ -60,6 +60,7 @@ function makeModel(snapshot: GraphSnapshot | null): DashboardModel {
     confirmState: null,
     inputState: null,
     toast: null,
+    writePending: false,
   };
 }
 
