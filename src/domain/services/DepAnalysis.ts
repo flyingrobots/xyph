@@ -85,7 +85,7 @@ export interface BlockerInfo {
 export function computeTopBlockers(
   tasks: TaskSummary[],
   edges: DepEdge[],
-  limit: number = 10,
+  limit = 10,
 ): BlockerInfo[] {
   const doneSet = new Set(tasks.filter((t) => t.status === 'DONE').map((t) => t.id));
 
@@ -105,7 +105,8 @@ export function computeTopBlockers(
     const visited = new Set<string>();
     const queue = [startId];
     while (queue.length > 0) {
-      const current = queue.shift()!;
+      const current = queue.shift();
+      if (current === undefined) break;
       for (const dep of dependentsOf.get(current) ?? []) {
         if (!visited.has(dep)) {
           visited.add(dep);
