@@ -4,6 +4,26 @@ All notable changes to XYPH will be documented in this file.
 
 ## [Unreleased]
 
+### Changed — Performance: Query-based getQuests() and DagSource adapter
+
+- `WarpRoadmapAdapter.getQuests()` now uses `graph.query().match('task:*')`
+  instead of walking every node via `getNodes()` + per-node `getNodeProps()`.
+  Reduces work from O(total_nodes) to O(task_nodes).
+- Upgraded `@flyingrobots/bijou` to v0.5.0.
+- Roadmap DAG rendering now uses a `SlicedDagSource` adapter backed by the
+  existing `questMap` instead of building an intermediate `DagNode[]` array.
+  Graph data is read lazily via the source interface — no duplication.
+
+### Changed — Topological Sort: Use git-warp Engine
+
+- Removed manual `topoSort()` (Kahn's algorithm) from `DepAnalysis.ts` — git-warp
+  already provides `graph.traverse.topologicalSort()` with the same semantics.
+- `GraphContext.fetchSnapshot()` now computes `sortedTaskIds` via the engine
+  (`dir: 'in'`, `labelFilter: 'depends-on'`) and includes it in `GraphSnapshot`.
+- `roadmap-view.ts` reads `snap.sortedTaskIds` instead of calling a manual sort.
+- `filterSnapshot()` filters `sortedTaskIds` when excluding GRAVEYARD quests.
+- Removed 4 `topoSort` unit tests (coverage now lives in git-warp's own test suite).
+
 ### Fixed — PR Feedback (Review Round)
 
 - Roadmap frontier selection ordering now matches visual render order

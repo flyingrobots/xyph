@@ -18,7 +18,7 @@ function strip(s: string): string {
 }
 
 function makeSnapshot(overrides?: Partial<GraphSnapshot>): GraphSnapshot {
-  return {
+  const base = {
     campaigns: [],
     quests: [],
     intents: [],
@@ -28,8 +28,14 @@ function makeSnapshot(overrides?: Partial<GraphSnapshot>): GraphSnapshot {
     reviews: [],
     decisions: [],
     asOf: Date.now(),
+    sortedTaskIds: [] as string[],
     ...overrides,
   };
+  // Auto-populate sortedTaskIds from quests if not explicitly provided
+  if (!overrides?.sortedTaskIds && base.quests.length > 0) {
+    base.sortedTaskIds = base.quests.map(q => q.id);
+  }
+  return base;
 }
 
 function makeModel(snapshot: GraphSnapshot | null): DashboardModel {

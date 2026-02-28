@@ -103,12 +103,14 @@ export function submissionsView(model: DashboardModel, width?: number, height?: 
 
   // ── Right panel: detail ────────────────────────────────────────────
 
+  const submissionById = new Map(sorted.map(s => [s.id, s]));
+
   function renderDetail(pw: number, ph: number): string {
     if (expandedId === null) {
       return styled(t.theme.semantic.muted, '  Select a submission and press Enter to view details.');
     }
 
-    const sub = sorted.find(s => s.id === expandedId);
+    const sub = submissionById.get(expandedId);
     if (!sub) {
       return styled(t.theme.semantic.muted, '  Submission not found.');
     }

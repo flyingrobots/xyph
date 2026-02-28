@@ -10,7 +10,7 @@ import type { GraphPort } from '../../../ports/GraphPort.js';
 import type { SubmissionPort } from '../../../ports/SubmissionPort.js';
 
 function makeSnapshot(overrides?: Partial<GraphSnapshot>): GraphSnapshot {
-  return {
+  const base = {
     campaigns: [],
     quests: [],
     intents: [],
@@ -20,8 +20,14 @@ function makeSnapshot(overrides?: Partial<GraphSnapshot>): GraphSnapshot {
     reviews: [],
     decisions: [],
     asOf: Date.now(),
+    sortedTaskIds: [] as string[],
     ...overrides,
   };
+  // Auto-populate sortedTaskIds from quests if not explicitly provided
+  if (!overrides?.sortedTaskIds && base.quests.length > 0) {
+    base.sortedTaskIds = base.quests.map(q => q.id);
+  }
+  return base;
 }
 
 function makeKey(key: string, mods?: Partial<Pick<KeyMsg, 'ctrl' | 'alt' | 'shift'>>): KeyMsg {

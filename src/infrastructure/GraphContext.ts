@@ -148,6 +148,7 @@ class GraphContextImpl implements GraphContext {
       ...snapshot,
       quests,
       scrolls: snapshot.scrolls.filter((s) => questIds.has(s.questId)),
+      sortedTaskIds: snapshot.sortedTaskIds.filter((id) => questIds.has(id)),
     };
   }
 
@@ -372,11 +373,19 @@ class GraphContextImpl implements GraphContext {
     const tipSha = checkpointSha ? checkpointSha.slice(0, 7) : 'unknown';
     const graphMeta: GraphMeta = { maxTick, myTick, writerCount, tipSha };
 
+    // --- Topological sort via git-warp traversal engine ---
+    log('Computing topological order…');
+    const taskIds = quests.map((q) => q.id);
+    const { sorted: sortedTaskIds } = await graph.traverse.topologicalSort(taskIds, {
+      dir: 'in',
+      labelFilter: 'depends-on',
+    });
+
     log(`Snapshot ready — ${quests.length} quests, ${campaigns.length} campaigns`);
     const snap: GraphSnapshot = {
       campaigns, quests, intents, scrolls, approvals,
       submissions, reviews, decisions,
-      asOf: Date.now(), graphMeta,
+      asOf: Date.now(), graphMeta, sortedTaskIds,
     };
     this.cachedSnapshot = snap;
     this.cachedFrontierKey = this.frontierKeyFromState(state);

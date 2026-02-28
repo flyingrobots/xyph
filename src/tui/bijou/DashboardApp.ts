@@ -815,6 +815,7 @@ function renderHelp(): string {
   lines.push(`    ${styled(t.theme.semantic.info, 'j/k')}         Select quest`);
   lines.push(`    ${styled(t.theme.semantic.info, 'c')}           Claim selected quest`);
   lines.push(`    ${styled(t.theme.semantic.info, 'PgDn/PgUp')}   Scroll DAG`);
+  lines.push(`    ${styled(t.theme.semantic.info, 'h/l')}         Scroll DAG horizontally`);
   lines.push('');
   lines.push(styled(t.theme.semantic.info, '  Submissions'));
   lines.push(`    ${styled(t.theme.semantic.info, 'j/k')}         Select submission`);

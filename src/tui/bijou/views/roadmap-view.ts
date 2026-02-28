@@ -1,4 +1,4 @@
-import { headerBox, dagLayout, type DagNode, type DagLayout } from '@flyingrobots/bijou';
+import { headerBox, dagLayout, type DagLayout, type SlicedDagSource } from '@flyingrobots/bijou';
 import { flex, viewport } from '@flyingrobots/bijou-tui';
 import { styled, styledStatus, getTheme } from '../../theme/index.js';
 import type { DashboardModel } from '../DashboardApp.js';
@@ -56,9 +56,8 @@ export function roadmapView(model: DashboardModel, width?: number, height?: numb
   // Frontier analysis
   const { frontier, blockedBy } = computeFrontier(tasks, edges);
 
-  // Critical path (simple topo sort for DP — use task order as approximation)
-  const sortedIds = snap.quests.map(q => q.id);
-  const { path: criticalPath } = computeCriticalPath(sortedIds, tasks, edges);
+  // Critical path via DP over engine-sorted IDs (git-warp topologicalSort)
+  const { path: criticalPath } = computeCriticalPath(snap.sortedTaskIds, tasks, edges);
   const critSet = new Set(criticalPath);
 
   // Quest lookup
@@ -201,18 +200,25 @@ export function roadmapView(model: DashboardModel, width?: number, height?: numb
       return viewport({ width: pw, height: ph, content: lines.join('\n'), scrollY: model.roadmap.dagScrollY });
     }
 
-    // Build DagNode[] from quests
-    const dagNodes: DagNode[] = snap.quests.map(q => ({
-      id: q.id,
-      label: q.id.replace(/^task:/, ''),
-      edges: q.dependsOn ?? [],
-      badge: styledStatus(q.status),
-      token: q.id === selectedQuestId
-        ? t.theme.semantic.primary
-        : critSet.has(q.id) ? t.theme.semantic.warning : undefined,
-    }));
+    // DagSource adapter — reads directly from questMap, no intermediate array
+    const questIds = snap.quests.map(q => q.id);
+    const dagSource: SlicedDagSource = {
+      ids: () => questIds,
+      has: (id) => questMap.has(id),
+      label: (id) => id.replace(/^task:/, ''),
+      children: (id) => questMap.get(id)?.dependsOn ?? [],
+      badge: (id) => {
+        const q = questMap.get(id);
+        return q ? styledStatus(q.status) : undefined;
+      },
+      token: (id) =>
+        id === selectedQuestId ? t.theme.semantic.primary
+          : critSet.has(id) ? t.theme.semantic.warning : undefined,
+      ghost: () => false,
+      ghostLabel: () => undefined,
+    };
 
-    const layout: DagLayout = dagLayout(dagNodes, {
+    const layout: DagLayout = dagLayout(dagSource, {
       highlightPath: criticalPath.length > 1 ? criticalPath : undefined,
       highlightToken: t.theme.semantic.warning,
       selectedId: selectedQuestId ?? undefined,

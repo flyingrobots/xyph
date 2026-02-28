@@ -27,7 +27,7 @@ export function landingView(model: DashboardModel): string {
 
   if (model.loading) {
     // Animated progress bar while loading
-    const barWidth = Math.max(12, Math.min(40, model.cols - 6));
+    const barWidth = Math.min(40, Math.max(1, model.cols - 6));
     lines.push(progressBar(model.loadingProgress, {
       width: barWidth,
       gradient: t.theme.gradient.progress,
