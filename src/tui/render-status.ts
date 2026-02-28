@@ -1,6 +1,7 @@
 import Table from 'cli-table3';
 import boxen, { type Options as BoxenOptions } from 'boxen';
 import type { GraphSnapshot } from '../domain/models/dashboard.js';
+import type { BlockerInfo } from '../domain/services/DepAnalysis.js';
 import { getTheme, styled, styledStatus } from './theme/index.js';
 
 function colorStatus(status: string): string {
@@ -482,6 +483,7 @@ export interface DepsViewData {
   criticalPath: string[];
   criticalPathHours: number;
   tasks: Map<string, { title: string; status: string; hours: number }>;
+  topBlockers?: BlockerInfo[];
 }
 
 /**
@@ -548,6 +550,32 @@ export function renderDeps(data: DepsViewData): string {
       ]);
     }
     lines.push(bt.toString());
+  }
+
+  // --- Top Blockers ---
+  if (data.topBlockers && data.topBlockers.length > 0) {
+    lines.push('');
+    lines.push(styled(t.theme.semantic.error, '  Top Blockers'));
+    const tb = new Table({
+      head: [
+        styled(t.theme.ui.tableHeader, 'Task'),
+        styled(t.theme.ui.tableHeader, 'Title'),
+        styled(t.theme.ui.tableHeader, 'Direct'),
+        styled(t.theme.ui.tableHeader, 'Transitive'),
+      ],
+      style: { head: [], border: [] },
+      colWidths: [22, 40, 8, 12],
+    });
+    for (const blocker of data.topBlockers) {
+      const info = data.tasks.get(blocker.id);
+      tb.push([
+        styled(t.theme.semantic.error, blocker.id.slice(0, 20)),
+        info?.title.slice(0, 38) ?? '—',
+        String(blocker.directCount),
+        String(blocker.transitiveCount),
+      ]);
+    }
+    lines.push(tb.toString());
   }
 
   // --- Execution Order ---

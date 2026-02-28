@@ -67,6 +67,77 @@ export function computeFrontier(
 }
 
 // ---------------------------------------------------------------------------
+// Top blockers computation
+// ---------------------------------------------------------------------------
+
+export interface BlockerInfo {
+  id: string;
+  directCount: number;
+  transitiveCount: number;
+}
+
+/**
+ * Computes which non-DONE tasks block the most other tasks.
+ *
+ * Uses a reverse adjacency map (prerequisite → dependents) and BFS
+ * to count transitive downstream impact for each task.
+ */
+export function computeTopBlockers(
+  tasks: TaskSummary[],
+  edges: DepEdge[],
+  limit = 10,
+): BlockerInfo[] {
+  const doneSet = new Set(tasks.filter((t) => t.status === 'DONE').map((t) => t.id));
+
+  // Build reverse map: prerequisite → [tasks that depend on it]
+  const dependentsOf = new Map<string, string[]>();
+  for (const edge of edges) {
+    // edge.from depends on edge.to → edge.to is prerequisite of edge.from
+    const arr = dependentsOf.get(edge.to) ?? [];
+    arr.push(edge.from);
+    dependentsOf.set(edge.to, arr);
+  }
+
+  // BFS to count transitive downstream from a starting task.
+  // Traverses through DONE nodes (to reach dependents beyond them)
+  // but only counts non-DONE nodes in the result.
+  function transitiveDownstream(startId: string): number {
+    const visited = new Set<string>();
+    const queue = [startId];
+    while (queue.length > 0) {
+      const current = queue.shift();
+      if (current === undefined) break;
+      for (const dep of dependentsOf.get(current) ?? []) {
+        if (!visited.has(dep)) {
+          visited.add(dep);
+          queue.push(dep);
+        }
+      }
+    }
+    let count = 0;
+    for (const id of visited) {
+      if (!doneSet.has(id)) count++;
+    }
+    return count;
+  }
+
+  const results: BlockerInfo[] = [];
+  for (const task of tasks) {
+    if (doneSet.has(task.id)) continue;
+    const direct = (dependentsOf.get(task.id) ?? []).length;
+    if (direct === 0) continue;
+    results.push({
+      id: task.id,
+      directCount: direct,
+      transitiveCount: transitiveDownstream(task.id),
+    });
+  }
+
+  results.sort((a, b) => b.transitiveCount - a.transitiveCount);
+  return results.slice(0, limit);
+}
+
+// ---------------------------------------------------------------------------
 // Critical path computation
 // ---------------------------------------------------------------------------
 

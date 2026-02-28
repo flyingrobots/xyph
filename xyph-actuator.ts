@@ -783,7 +783,7 @@ program
       const snapshot = ctx.filterSnapshot(raw, { includeGraveyard: opts.includeGraveyard ?? false });
 
       if (view === 'deps') {
-        const { computeFrontier, computeCriticalPath } = await import('./src/domain/services/DepAnalysis.js');
+        const { computeFrontier, computeCriticalPath, computeTopBlockers } = await import('./src/domain/services/DepAnalysis.js');
         const { renderDeps } = await import('./src/tui/render-status.js');
 
         const taskSummaries = snapshot.quests.map((q) => ({ id: q.id, status: q.status, hours: q.hours }));
@@ -804,6 +804,8 @@ program
           tasks.set(q.id, { title: q.title, status: q.status, hours: q.hours });
         }
 
+        const topBlockers = computeTopBlockers(taskSummaries, depEdges, 10);
+
         console.log(renderDeps({
           frontier: frontierResult.frontier,
           blockedBy: frontierResult.blockedBy,
@@ -811,6 +813,7 @@ program
           criticalPath: criticalResult.path,
           criticalPathHours: criticalResult.totalHours,
           tasks,
+          topBlockers,
         }));
       } else {
         const { renderRoadmap, renderLineage, renderAll, renderInbox, renderSubmissions } = await import('./src/tui/render-status.js');

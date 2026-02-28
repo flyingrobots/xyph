@@ -20,7 +20,7 @@ You're working on **XYPH** - a Causal Operating System for Agent Planning and Or
 Before opening or updating a PR, **always** run the full test suite:
 ```bash
 npm run build    # Verify TypeScript compilation
-npm test         # Run full Docker-based test suite (60+ tests)
+npm test         # Run full Docker-based test suite (900+ tests)
 ```
 Never push code that doesn't pass both checks. CI failures waste time and break the review flow.
 
@@ -71,13 +71,14 @@ work, write it to the graph.
 - `npx tsx xyph-actuator.ts inbox <id> --title "Title" --suggested-by <principal>`: Suggest a task for triage.
 - `npx tsx xyph-actuator.ts promote <id> --intent <id>`: Promote INBOX → BACKLOG.
 - `npx tsx xyph-actuator.ts reject <id> --rationale "..."`: Reject to GRAVEYARD.
+- `npx tsx xyph-actuator.ts reopen <id>`: Reopen a GRAVEYARD task back to INBOX (human authority required).
 - `npx tsx xyph-actuator.ts depend <from> <to>`: Declare that `<from>` depends on `<to>` (both must be `task:` nodes).
 - `npx tsx xyph-actuator.ts audit-sovereignty`: Audit quests for missing intent lineage.
 - `npx tsx xyph-actuator.ts generate-key`: Generate an Ed25519 Guild Seal keypair.
 
 ### git-warp: The Engine Under the Hood
 
-XYPH is built on **git-warp** (v12.0.0) — a CRDT graph database that lives
+XYPH is built on **git-warp** (v12.1.0) — a CRDT graph database that lives
 inside a Git repository without touching the codebase. Every piece of graph
 data is a Git commit pointing to the **empty tree** (`4b825dc6...`), making
 it invisible to `git log`, `git diff`, and `git status`. The result: a full

@@ -9,12 +9,13 @@
     "coordinator": "node dist/src/coordinator-daemon.js",
     "verify:patch-ops": "npm run build && node scripts/verify-patch-ops.mjs patches",
     "test": "docker build -t xyph-test . && docker run --rm xyph-test npm run test:local",
-    "test:local": "vitest run"
+    "test:local": "vitest run",
+    "postinstall": "patch-package"
   },
   "dependencies": {
-    "@flyingrobots/bijou": "^0.5.1",
-    "@flyingrobots/bijou-node": "^0.5.1",
-    "@flyingrobots/bijou-tui": "^0.5.1",
+    "@flyingrobots/bijou": "^0.6.0",
+    "@flyingrobots/bijou-node": "^0.6.0",
+    "@flyingrobots/bijou-tui": "^0.6.0",
     "@git-stunts/git-warp": "^12.1.0",
     "@git-stunts/plumbing": "^2.8.0",
     "@noble/ed25519": "^3.0.0",
