@@ -274,12 +274,14 @@ export function registerSubmissionCommands(program: Command, ctx: CliContext): v
       }
 
       if (ctx.json) {
+        const warnings: string[] = [];
+        if (autoSealed && !guildSealInfo) warnings.push(`No private key found for ${ctx.agentId} — scroll is unsigned`);
         ctx.jsonOut({
           success: true, command: 'merge',
           data: {
             submissionId, decisionId, questId: questId ?? null,
             mergeCommit: mergeCommit ?? null, alreadyMerged,
-            autoSealed, guildSeal: guildSealInfo, patch: patchSha,
+            autoSealed, guildSeal: guildSealInfo, patch: patchSha, warnings,
           },
         });
         return;

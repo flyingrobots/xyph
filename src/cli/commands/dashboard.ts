@@ -136,7 +136,7 @@ export function registerDashboardCommands(program: Command, ctx: CliContext): vo
           if (ctx.json) {
             ctx.jsonOut({
               success: true, command: 'status',
-              data: { view, ...snapshot },
+              data: { ...snapshot, view },
             });
             return;
           }

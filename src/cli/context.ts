@@ -26,6 +26,10 @@ export interface CliContext {
   muted(msg: string): void;
   print(msg: string): void;
   fail(msg: string): never;
+  /**
+   * Fail with structured data. The `data` payload is included in the JSON
+   * error envelope; in non-JSON mode only `msg` is printed to stderr.
+   */
   failWithData(msg: string, data: Record<string, unknown>): never;
   jsonOut(envelope: JsonEnvelope): void;
 }

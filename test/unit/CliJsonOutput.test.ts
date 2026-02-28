@@ -25,15 +25,18 @@ vi.mock('../../src/tui/theme/index.js', () => ({
 describe('CliContext JSON mode', () => {
   let logSpy: ReturnType<typeof vi.spyOn>;
   let errorSpy: ReturnType<typeof vi.spyOn>;
+  let exitSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
   });
 
   afterEach(() => {
     logSpy.mockRestore();
     errorSpy.mockRestore();
+    exitSpy.mockRestore();
   });
 
   it('sets json property to true when opts.json is true', () => {
@@ -85,12 +88,7 @@ describe('CliContext JSON mode', () => {
   it('fail in json mode writes JSON error envelope to stdout', () => {
     const ctx = createCliContext('/tmp', 'test-graph', { json: true });
 
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
-    try {
-      ctx.fail('something went wrong');
-    } catch {
-      // process.exit mock may throw
-    }
+    ctx.fail('something went wrong');
 
     expect(logSpy).toHaveBeenCalledTimes(1);
     const output = logSpy.mock.calls[0]?.[0] as string;
@@ -98,34 +96,22 @@ describe('CliContext JSON mode', () => {
     expect(parsed).toEqual({ success: false, error: 'something went wrong' });
     expect(errorSpy).not.toHaveBeenCalled();
     expect(exitSpy).toHaveBeenCalledWith(1);
-    exitSpy.mockRestore();
   });
 
   it('fail in non-json mode writes to stderr', () => {
     const ctx = createCliContext('/tmp', 'test-graph', { json: false });
 
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
-    try {
-      ctx.fail('boom');
-    } catch {
-      // process.exit mock may throw
-    }
+    ctx.fail('boom');
 
     expect(errorSpy).toHaveBeenCalledTimes(1);
     expect(logSpy).not.toHaveBeenCalled();
     expect(exitSpy).toHaveBeenCalledWith(1);
-    exitSpy.mockRestore();
   });
 
   it('failWithData in json mode writes error envelope with data to stdout', () => {
     const ctx = createCliContext('/tmp', 'test-graph', { json: true });
 
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
-    try {
-      ctx.failWithData('audit failed', { violations: ['task:A', 'task:B'] });
-    } catch {
-      // process.exit mock may throw
-    }
+    ctx.failWithData('audit failed', { violations: ['task:A', 'task:B'] });
 
     expect(logSpy).toHaveBeenCalledTimes(1);
     const output = logSpy.mock.calls[0]?.[0] as string;
@@ -137,40 +123,28 @@ describe('CliContext JSON mode', () => {
     });
     expect(errorSpy).not.toHaveBeenCalled();
     expect(exitSpy).toHaveBeenCalledWith(1);
-    exitSpy.mockRestore();
   });
 
   it('failWithData in non-json mode writes to stderr (ignores data)', () => {
     const ctx = createCliContext('/tmp', 'test-graph', { json: false });
 
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
-    try {
-      ctx.failWithData('audit failed', { violations: ['task:A'] });
-    } catch {
-      // process.exit mock may throw
-    }
+    ctx.failWithData('audit failed', { violations: ['task:A'] });
 
     expect(errorSpy).toHaveBeenCalledTimes(1);
     expect(errorSpy).toHaveBeenCalledWith('audit failed');
     expect(logSpy).not.toHaveBeenCalled();
     expect(exitSpy).toHaveBeenCalledWith(1);
-    exitSpy.mockRestore();
   });
 
   it('failWithData error envelope matches JsonErrorEnvelope shape', () => {
     const ctx = createCliContext('/tmp', 'test-graph', { json: true });
 
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
-    try {
-      ctx.failWithData('3 quest(s) lack sovereign intent ancestry', {
-        violations: [
-          { questId: 'task:X', reason: 'no intent' },
-          { questId: 'task:Y', reason: 'orphaned campaign' },
-        ],
-      });
-    } catch {
-      // process.exit mock may throw
-    }
+    ctx.failWithData('3 quest(s) lack sovereign intent ancestry', {
+      violations: [
+        { questId: 'task:X', reason: 'no intent' },
+        { questId: 'task:Y', reason: 'orphaned campaign' },
+      ],
+    });
 
     const output = logSpy.mock.calls[0]?.[0] as string;
     const parsed = JSON.parse(output);
@@ -181,6 +155,5 @@ describe('CliContext JSON mode', () => {
     // Has data with violations array
     expect(Array.isArray(parsed.data.violations)).toBe(true);
     expect(parsed.data.violations).toHaveLength(2);
-    exitSpy.mockRestore();
   });
 });
