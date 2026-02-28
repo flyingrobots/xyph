@@ -15,11 +15,13 @@ export function registerArtifactCommands(program: Command, ctx: CliContext): voi
       const sealService = new GuildSealService();
 
       // Guard: warn if a non-terminal submission exists for this quest
+      let openSubWarning: string | undefined;
       try {
         const { WarpSubmissionAdapter } = await import('../../infrastructure/adapters/WarpSubmissionAdapter.js');
         const subAdapter = new WarpSubmissionAdapter(ctx.graphPort, ctx.agentId);
         const openSubs = await subAdapter.getOpenSubmissionsForQuest(id);
         if (openSubs.length > 0) {
+          openSubWarning = `Quest ${id} has open submission ${openSubs[0]}. Consider using 'merge' instead.`;
           ctx.warn(
             `  [WARN] Quest ${id} has an open submission: ${openSubs[0]}\n` +
             `  Consider using 'xyph merge' instead of 'xyph seal' to settle via the review workflow.`,
@@ -63,6 +65,22 @@ export function registerArtifactCommands(program: Command, ctx: CliContext): voi
           .setProperty(id, 'completed_at', now);
       });
 
+      if (ctx.json) {
+        const warnings: string[] = [];
+        if (openSubWarning) warnings.push(openSubWarning);
+        if (!guildSeal) warnings.push(`No private key found for ${ctx.agentId} — scroll is unsigned`);
+        ctx.jsonOut({
+          success: true, command: 'seal',
+          data: {
+            id, scrollId, artifactHash: opts.artifact, rationale: opts.rationale,
+            sealedBy: ctx.agentId, sealedAt: now,
+            guildSeal: guildSeal ? { keyId: guildSeal.keyId, alg: guildSeal.alg } : null,
+            patch: sha, warnings,
+          },
+        });
+        return;
+      }
+
       if (guildSeal) {
         ctx.muted(`  Guild Seal: ${guildSeal.keyId}`);
       } else {
@@ -80,6 +98,15 @@ export function registerArtifactCommands(program: Command, ctx: CliContext): voi
       const sealService = new GuildSealService();
 
       const { keyId, publicKeyHex } = await sealService.generateKeypair(ctx.agentId);
+
+      if (ctx.json) {
+        ctx.jsonOut({
+          success: true, command: 'generate-key',
+          data: { agentId: ctx.agentId, keyId, publicKeyHex },
+        });
+        return;
+      }
+
       ctx.ok(`[OK] Keypair generated for agent ${ctx.agentId}`);
       ctx.muted(`  Key ID:     ${keyId}`);
       ctx.muted(`  Public key: ${publicKeyHex}`);

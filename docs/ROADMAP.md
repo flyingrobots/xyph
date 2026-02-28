@@ -58,7 +58,7 @@ The graph became computable. `depends-on` edges, cycle rejection, frontier sets,
 
 These milestones transform XYPH from a dev tool into a collaborative platform. CLI and agent interfaces are the priority.
 
-**See:** `CLI-plan.md` for the full enhancement plan.
+**See:** `docs/CLI-plan.md` for the full enhancement plan.
 
 ### Milestone 10: CLI Tooling
 *Identity resolution, `xyph whoami`, `xyph login/logout`, `--json` output, interactive wizards, missing commands.*

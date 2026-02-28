@@ -1337,7 +1337,7 @@ This is a codebase-wide rename touching:
 **Documentation:**
 - CLAUDE.md command reference
 - CONSTITUTION.md if it references status names
-- TUI-plan.md (this file)
+- docs/TUI-plan.md (this file)
 
 ### Migration Strategy
 

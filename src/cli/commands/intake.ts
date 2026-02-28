@@ -30,6 +30,14 @@ export function registerIntakeCommands(program: Command, ctx: CliContext): void 
           .setProperty(id, 'suggested_at', now);
       });
 
+      if (ctx.json) {
+        ctx.jsonOut({
+          success: true, command: 'inbox',
+          data: { id, title: opts.title, status: 'INBOX', suggestedBy: opts.suggestedBy, hours: opts.hours ?? 0, patch: sha },
+        });
+        return;
+      }
+
       ctx.ok(`[OK] Task ${id} added to INBOX.`);
       ctx.muted(`  Suggested by: ${opts.suggestedBy}`);
       ctx.muted(`  Patch: ${sha}`);
@@ -45,6 +53,14 @@ export function registerIntakeCommands(program: Command, ctx: CliContext): void 
 
       const intake = new WarpIntakeAdapter(ctx.graphPort, ctx.agentId);
       const sha = await intake.promote(id, opts.intent, opts.campaign);
+
+      if (ctx.json) {
+        ctx.jsonOut({
+          success: true, command: 'promote',
+          data: { id, intent: opts.intent, campaign: opts.campaign ?? null, patch: sha },
+        });
+        return;
+      }
 
       ctx.ok(`[OK] Task ${id} promoted to BACKLOG.`);
       ctx.muted(`  Intent:   ${opts.intent}`);
@@ -62,6 +78,14 @@ export function registerIntakeCommands(program: Command, ctx: CliContext): void 
       const intake = new WarpIntakeAdapter(ctx.graphPort, ctx.agentId);
       const sha = await intake.reject(id, opts.rationale);
 
+      if (ctx.json) {
+        ctx.jsonOut({
+          success: true, command: 'reject',
+          data: { id, rejectedBy: ctx.agentId, rationale: opts.rationale, patch: sha },
+        });
+        return;
+      }
+
       ctx.ok(`[OK] Task ${id} moved to GRAVEYARD.`);
       ctx.muted(`  Rejected by: ${ctx.agentId}`);
       ctx.muted(`  Rationale:   ${opts.rationale}`);
@@ -76,6 +100,14 @@ export function registerIntakeCommands(program: Command, ctx: CliContext): void 
 
       const intake = new WarpIntakeAdapter(ctx.graphPort, ctx.agentId);
       const sha = await intake.reopen(id);
+
+      if (ctx.json) {
+        ctx.jsonOut({
+          success: true, command: 'reopen',
+          data: { id, reopenedBy: ctx.agentId, patch: sha },
+        });
+        return;
+      }
 
       ctx.ok(`[OK] Task ${id} reopened to INBOX.`);
       ctx.muted(`  Reopened by: ${ctx.agentId}`);

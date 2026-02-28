@@ -1,41 +1,10 @@
-```txt
-                                                             ▒██████            
- ░░░░░░░░░░  ░░░░░░░░░░░░░░░    ░░░░░░░░░░░░░░   ░░░░░░░░    ▒██████  ░░░░░░    
- ░░███████▓░░███████▓██████▓   ░▓█████▓▒██████ ░▓████████▒   ▒██████░▒██████▒   
-   ░▒██████▒▓██████░░░██████▒  ▒██████░▒█████░▒████░░░▓████░ ▒█████░▓█▓██████▒  
-     ░█████▒▓████▒    ▒██████░░██████░ ▒████▒▓███▒░  ░█████▓░▒████▒▒█░ ▓█████▓  
-      ░▒████████░     ░▓█████▒▓█████░  ▒████░███▒    ▓█████▓░▒████░█▒  ▓█████▓  
-     ░▓████▓█████▒     ░▓████▒▓████▒░  ▒████████░ ░▒███████▒ ▒██████░  ▓█████▓  
-   ░▒██████▒▓█████▓░     ▓████████▓░   ▒██████████████████▒  ▒██████░  ▓█████▓  
-  ░▓███████░▒███████▒░   ░████████     ▒██████░█████████▓░   ▒██████   ▓█████▓  
- ░░▒▒▒▒▒▒░░  ░▒▒▒▒▒▒▒░    ▒██████░     ▒██████ ░░░▒▒▒▒░░     ░▒▒▒▒▒▒   ░▒▒▒▒▒░  
-                         ░██████▒░     ▒██████                                  
-                         ▓█████▒       ▒██████                                  
-```
+<div align="center">
+  <img src="docs/assets/title-screen.gif" alt="XYPH Title Screen" />
+  <h1>XYPH [<a href="https://ipa-reader.com/?text=%CB%8Cz%C9%AAf">/ˌzɪf/</a>]</h1>
+  <h3>The Dev Tool From The Future</h3>
+</div>
 
-# XYPH ([/ˌzɪf/](https://ipa-reader.com/?text=%CB%8Cz%C9%AAf))
-**The Planning Compiler for Agentic Coordination**
-
-
-## What's New in 1.0.0-alpha.11
-
-**Milestone 7: Weaver — Task Dependency Graph**
-
-Tasks can now declare dependencies on other tasks. XYPH uses git-warp v12's `LogicalTraversal` to detect cycles, compute topological execution order, and find the critical path through the dependency DAG.
-
-```bash
-# Declare that task B cannot start until task A is DONE
-npx tsx xyph-actuator.ts depend task:notif-002 task:notif-001
-
-# See what's ready, what's blocked, and the critical path
-npx tsx xyph-actuator.ts status --view deps
-```
-
-The `deps` view shows:
-- **Frontier** — tasks with all prerequisites complete (ready to work on)
-- **Blocked** — tasks waiting on incomplete prerequisites
-- **Execution Order** — topologically sorted task sequence
-- **Critical Path** — the longest dependency chain with total hours
+---
 
 ## What Is XYPH?
 
@@ -271,7 +240,7 @@ npx tsx xyph-actuator.ts audit-sovereignty
 ### XYPH TUI Dashboard
 
 <p align="center">
-  <img src="demo.gif" alt="XYPH TUI Dashboard Demo" width="700" />
+  <img src="docs/assets/dashboard-demo.gif" alt="XYPH TUI Dashboard Demo" width="700" />
 </p>
 
 XYPH has an interactive TUI that provides a visual browser for your project and its XYPH artifacts.
@@ -439,17 +408,20 @@ Every mutation must obey the [CONSTITUTION.md](docs/canonical/CONSTITUTION.md):
 The `docs/canonical/` directory contains the foundational specifications:
 
 **Vision & Governance**
+
 - [VISION_NORTH_STAR.md](docs/canonical/VISION_NORTH_STAR.md) — Project vision and the Digital Guild model
 - [CONSTITUTION.md](docs/canonical/CONSTITUTION.md) — Fundamental laws (determinism, DAG integrity, provenance, sovereignty)
 - [CHANGE_CONTROL.md](docs/canonical/CHANGE_CONTROL.md) — Process for amending canonical docs
 
 **Architecture & Pipeline**
+
 - [ARCHITECTURE.md](docs/canonical/ARCHITECTURE.md) — Module structure and dependency rules
 - [ORCHESTRATION_SPEC.md](docs/canonical/ORCHESTRATION_SPEC.md) — Planning pipeline state machine
 - [SCHEDULING_AND_DAG.md](docs/canonical/SCHEDULING_AND_DAG.md) — DAG scheduling primitives (critical path, anti-chains, lanes)
 - [ROADMAP_PROTOCOL.md](docs/canonical/ROADMAP_PROTOCOL.md) — Task and milestone lifecycle states
 
 **Data & Schema**
+
 - [GRAPH_SCHEMA.md](docs/canonical/GRAPH_SCHEMA.md) — Node and edge type definitions
 - [DATA_CONTRACTS.md](docs/canonical/DATA_CONTRACTS.md) — Canonical data structures (Task, PlanPatch)
 - [PATCH_OPS_INVARIANTS.md](docs/canonical/PATCH_OPS_INVARIANTS.md) — Patch operation invariants
@@ -457,11 +429,13 @@ The `docs/canonical/` directory contains the foundational specifications:
 - [APPLY_TRANSACTION_SPEC.md](docs/canonical/APPLY_TRANSACTION_SPEC.md) — Atomic mutation gate
 
 **Security & Audit**
+
 - [SECURITY_AND_TRUST.md](docs/canonical/SECURITY_AND_TRUST.md) — Cryptographic identity and trust model
 - [AUDIT_AND_PROVENANCE.md](docs/canonical/AUDIT_AND_PROVENANCE.md) — Provenance tracking requirements
 - [AUDIT_EVENT_SCHEMA.json](docs/canonical/AUDIT_EVENT_SCHEMA.json) — Audit record JSON Schema
 
 **Quality & Policy**
+
 - [POLICY_ENGINE.md](docs/canonical/POLICY_ENGINE.md) — Three-tier rule evaluation (MUST/SHOULD/COULD)
 - [AGENT_CHARTER.md](docs/canonical/AGENT_CHARTER.md) — Agent role boundaries and capabilities
 - [REVIEW_RUBRIC.md](docs/canonical/REVIEW_RUBRIC.md) — Quality gate criteria
@@ -469,6 +443,7 @@ The `docs/canonical/` directory contains the foundational specifications:
 - [OPERATIONS_RUNBOOK.md](docs/canonical/OPERATIONS_RUNBOOK.md) — Operational troubleshooting
 
 **RFCs**
+
 - [RFC_001_AST_DRIVEN_INGEST.md](docs/canonical/RFC_001_AST_DRIVEN_INGEST.md) — AST-based ingest proposal (Milestone 7)
 
 ---
