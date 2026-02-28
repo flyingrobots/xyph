@@ -818,10 +818,11 @@ describe('DashboardApp', () => {
         loading: false,
         snapshot: makeSnapshot(),
         activeView: 'backlog',
+        cols: 120, // wide enough for all helpShort entries
       };
       const output = app.view(model);
-      expect(output).toContain('promote');
-      expect(output).toContain('reject');
+      expect(output).toContain('Promote');
+      expect(output).toContain('Reject');
     });
 
     it('shows toast in status line', () => {

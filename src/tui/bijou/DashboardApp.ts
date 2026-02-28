@@ -9,6 +9,9 @@ import type { App, Cmd, KeyMsg, ResizeMsg } from '@flyingrobots/bijou-tui';
 import { quit, animate, EASINGS } from '@flyingrobots/bijou-tui';
 import { flex } from '@flyingrobots/bijou-tui';
 import { createKeyMap, type KeyMap } from '@flyingrobots/bijou-tui';
+import { statusBar } from '@flyingrobots/bijou-tui';
+import { composite, toast as toastOverlay } from '@flyingrobots/bijou-tui';
+import { helpView, helpShort } from '@flyingrobots/bijou-tui';
 import { tabs } from '@flyingrobots/bijou';
 import { styled, getTheme } from '../theme/index.js';
 import type { GraphContext } from '../../infrastructure/GraphContext.js';
@@ -136,56 +139,66 @@ type ViewAction =
 
 function buildGlobalKeys(): KeyMap<GlobalAction> {
   return createKeyMap<GlobalAction>()
-    .bind('q', 'Quit', { type: 'quit' })
-    .bind('tab', 'Next view', { type: 'next-view' })
-    .bind('shift+tab', 'Previous view', { type: 'prev-view' })
-    .bind('r', 'Refresh', { type: 'refresh' })
-    .bind('?', 'Toggle help', { type: 'toggle-help' });
+    .group('Global', g => g
+      .bind('q', 'Quit', { type: 'quit' })
+      .bind('tab', 'Next view', { type: 'next-view' })
+      .bind('shift+tab', 'Previous view', { type: 'prev-view' })
+      .bind('r', 'Refresh', { type: 'refresh' })
+      .bind('?', 'Toggle help', { type: 'toggle-help' })
+    );
 }
 
 function buildRoadmapKeys(): KeyMap<ViewAction> {
   return createKeyMap<ViewAction>()
-    .bind('j', 'Select next', { type: 'select-next' })
-    .bind('down', 'Select next', { type: 'select-next' })
-    .bind('k', 'Select prev', { type: 'select-prev' })
-    .bind('up', 'Select prev', { type: 'select-prev' })
-    .bind('c', 'Claim quest', { type: 'claim' })
-    .bind('pagedown', 'Scroll DAG down', { type: 'scroll-dag-down' })
-    .bind('pageup', 'Scroll DAG up', { type: 'scroll-dag-up' })
-    .bind('h', 'Scroll DAG left', { type: 'scroll-dag-left' })
-    .bind('left', 'Scroll DAG left', { type: 'scroll-dag-left' })
-    .bind('l', 'Scroll DAG right', { type: 'scroll-dag-right' })
-    .bind('right', 'Scroll DAG right', { type: 'scroll-dag-right' });
+    .group('Roadmap', g => g
+      .bind('j', 'Select next', { type: 'select-next' })
+      .bind('down', 'Select next', { type: 'select-next' })
+      .bind('k', 'Select prev', { type: 'select-prev' })
+      .bind('up', 'Select prev', { type: 'select-prev' })
+      .bind('c', 'Claim quest', { type: 'claim' })
+      .bind('pagedown', 'Scroll DAG down', { type: 'scroll-dag-down' })
+      .bind('pageup', 'Scroll DAG up', { type: 'scroll-dag-up' })
+      .bind('h', 'Scroll DAG left', { type: 'scroll-dag-left' })
+      .bind('left', 'Scroll DAG left', { type: 'scroll-dag-left' })
+      .bind('l', 'Scroll DAG right', { type: 'scroll-dag-right' })
+      .bind('right', 'Scroll DAG right', { type: 'scroll-dag-right' })
+    );
 }
 
 function buildSubmissionsKeys(): KeyMap<ViewAction> {
   return createKeyMap<ViewAction>()
-    .bind('j', 'Select next', { type: 'select-next' })
-    .bind('down', 'Select next', { type: 'select-next' })
-    .bind('k', 'Select prev', { type: 'select-prev' })
-    .bind('up', 'Select prev', { type: 'select-prev' })
-    .bind('enter', 'Expand/collapse', { type: 'expand' })
-    .bind('a', 'Approve', { type: 'approve' })
-    .bind('x', 'Request changes', { type: 'request-changes' });
+    .group('Submissions', g => g
+      .bind('j', 'Select next', { type: 'select-next' })
+      .bind('down', 'Select next', { type: 'select-next' })
+      .bind('k', 'Select prev', { type: 'select-prev' })
+      .bind('up', 'Select prev', { type: 'select-prev' })
+      .bind('enter', 'Expand/collapse', { type: 'expand' })
+      .bind('a', 'Approve', { type: 'approve' })
+      .bind('x', 'Request changes', { type: 'request-changes' })
+    );
 }
 
 function buildBacklogKeys(): KeyMap<ViewAction> {
   return createKeyMap<ViewAction>()
-    .bind('j', 'Select next', { type: 'select-next' })
-    .bind('down', 'Select next', { type: 'select-next' })
-    .bind('k', 'Select prev', { type: 'select-prev' })
-    .bind('up', 'Select prev', { type: 'select-prev' })
-    .bind('p', 'Promote', { type: 'promote' })
-    .bind('d', 'Reject', { type: 'reject' });
+    .group('Backlog', g => g
+      .bind('j', 'Select next', { type: 'select-next' })
+      .bind('down', 'Select next', { type: 'select-next' })
+      .bind('k', 'Select prev', { type: 'select-prev' })
+      .bind('up', 'Select prev', { type: 'select-prev' })
+      .bind('p', 'Promote', { type: 'promote' })
+      .bind('d', 'Reject', { type: 'reject' })
+    );
 }
 
 function buildLineageKeys(): KeyMap<ViewAction> {
   return createKeyMap<ViewAction>()
-    .bind('j', 'Select next', { type: 'select-next' })
-    .bind('down', 'Select next', { type: 'select-next' })
-    .bind('k', 'Select prev', { type: 'select-prev' })
-    .bind('up', 'Select prev', { type: 'select-prev' })
-    .bind('enter', 'Expand/collapse', { type: 'expand' });
+    .group('Lineage', g => g
+      .bind('j', 'Select next', { type: 'select-next' })
+      .bind('down', 'Select next', { type: 'select-next' })
+      .bind('k', 'Select prev', { type: 'select-prev' })
+      .bind('up', 'Select prev', { type: 'select-prev' })
+      .bind('enter', 'Expand/collapse', { type: 'expand' })
+    );
 }
 
 // ── Selection helpers ───────────────────────────────────────────────────
@@ -196,20 +209,7 @@ function clampIndex(idx: number, count: number): number {
   return Math.max(0, Math.min(idx, count - 1));
 }
 
-// ── View hints ──────────────────────────────────────────────────────────
-
-function viewHints(view: ViewName): string {
-  const t = getTheme();
-  let keys = '? help  q quit  Tab cycle  r refresh';
-  switch (view) {
-    case 'roadmap':     keys += '  j/k select  c claim  PgDn/PgUp scroll  h/l scroll-h'; break;
-    case 'submissions': keys += '  j/k select  Enter expand  a approve  x request-changes'; break;
-    case 'backlog':     keys += '  j/k select  p promote  d reject'; break;
-    case 'lineage':     keys += '  j/k select  Enter expand/collapse'; break;
-    default:            break;
-  }
-  return styled(t.theme.semantic.muted, `  ${keys}`);
-}
+// ── View hints (auto-generated from keymaps) ────────────────────────────
 
 // ── Factory ─────────────────────────────────────────────────────────────
 
@@ -558,9 +558,11 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         return landingView(model);
       }
 
-      // Help view
+      // Help view (auto-generated from keymaps)
       if (model.showHelp) {
-        return renderHelp();
+        const vk = viewKeyMap(model.activeView);
+        return helpView(globalKeys, { title: 'XYPH Dashboard' })
+          + (vk ? '\n' + helpView(vk) : '');
       }
 
       // Tab bar
@@ -568,8 +570,9 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
       const activeIdx = VIEWS.indexOf(model.activeView);
       const tabBar = tabs(tabItems, { active: activeIdx });
 
-      // Hints line (view-specific)
-      const hints = viewHints(model.activeView);
+      // Hints line (auto-generated from keymaps — view-specific when available)
+      const vk = viewKeyMap(model.activeView);
+      const hints = '  ' + (vk ? helpShort(vk) : helpShort(globalKeys));
 
       // Status line with toast
       const statusLine = renderStatusLine(model, t);
@@ -597,13 +600,27 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
       };
 
       // Layout: tabBar → content → WARP gutter → hints
-      return flex(
+      let output = flex(
         { direction: 'column', width: model.cols, height: model.rows },
         { basis: 1, content: `  ${tabBar}` },
         { flex: 1, content: viewRenderer },
         { basis: 1, content: statusLine },
         { basis: 1, content: hints },
       );
+
+      // Toast overlay
+      if (model.toast) {
+        const tov = toastOverlay({
+          message: model.toast.message,
+          variant: model.toast.variant,
+          anchor: 'bottom-right',
+          screenWidth: model.cols,
+          screenHeight: model.rows,
+        });
+        output = composite(output, [tov]);
+      }
+
+      return output;
     },
   };
 
@@ -776,51 +793,12 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
 
 // ── Render helpers ──────────────────────────────────────────────────────
 
-function renderHelp(): string {
-  const t = getTheme();
-  const lines: string[] = [];
-  lines.push(styled(t.theme.semantic.primary, '  XYPH Dashboard — Help'));
-  lines.push('');
-  lines.push(styled(t.theme.semantic.info, '  Global'));
-  lines.push(`    ${styled(t.theme.semantic.info, 'Tab')}         Cycle views`);
-  lines.push(`    ${styled(t.theme.semantic.info, 'Shift+Tab')}   Cycle views (reverse)`);
-  lines.push(`    ${styled(t.theme.semantic.info, 'r')}           Refresh snapshot`);
-  lines.push(`    ${styled(t.theme.semantic.info, '?')}           Toggle help`);
-  lines.push(`    ${styled(t.theme.semantic.info, 'q')}           Quit`);
-  lines.push('');
-  lines.push(styled(t.theme.semantic.info, '  Roadmap'));
-  lines.push(`    ${styled(t.theme.semantic.info, 'j/k')}         Select quest`);
-  lines.push(`    ${styled(t.theme.semantic.info, 'c')}           Claim selected quest`);
-  lines.push(`    ${styled(t.theme.semantic.info, 'PgDn/PgUp')}   Scroll DAG vertically`);
-  lines.push(`    ${styled(t.theme.semantic.info, 'h/l')}         Scroll DAG horizontally`);
-  lines.push('');
-  lines.push(styled(t.theme.semantic.info, '  Submissions'));
-  lines.push(`    ${styled(t.theme.semantic.info, 'j/k')}         Select submission`);
-  lines.push(`    ${styled(t.theme.semantic.info, 'Enter')}       Expand/collapse detail`);
-  lines.push(`    ${styled(t.theme.semantic.info, 'a')}           Approve tip patchset`);
-  lines.push(`    ${styled(t.theme.semantic.info, 'x')}           Request changes`);
-  lines.push('');
-  lines.push(styled(t.theme.semantic.info, '  Backlog'));
-  lines.push(`    ${styled(t.theme.semantic.info, 'j/k')}         Select item`);
-  lines.push(`    ${styled(t.theme.semantic.info, 'p')}           Promote selected`);
-  lines.push(`    ${styled(t.theme.semantic.info, 'd')}           Reject selected`);
-  lines.push('');
-  lines.push(styled(t.theme.semantic.info, '  Lineage'));
-  lines.push(`    ${styled(t.theme.semantic.info, 'j/k')}         Select intent`);
-  lines.push(`    ${styled(t.theme.semantic.info, 'Enter')}       Expand/collapse intent`);
-  lines.push('');
-  lines.push(styled(t.theme.semantic.muted, '  Press ? or Esc to close.'));
-  return lines.join('\n');
-}
-
 function renderStatusLine(model: DashboardModel, t: ReturnType<typeof getTheme>): string {
   const meta = model.snapshot?.graphMeta;
 
-  // Build WARP tag: // [WARP(af322e) tick: 144] ///...///
   let tag: string;
   if (meta) {
-    const shortTip = meta.tipSha.slice(0, 6);
-    tag = `// [WARP(${shortTip}) tick: ${meta.maxTick}]`;
+    tag = `// [WARP(${meta.tipSha.slice(0, 6)}) tick: ${meta.maxTick}]`;
   } else {
     tag = '// [WARP]';
   }
@@ -831,18 +809,9 @@ function renderStatusLine(model: DashboardModel, t: ReturnType<typeof getTheme>)
     tag += ` err: ${model.error.slice(0, 20)}`;
   }
 
-  // Toast on right side
-  let toastText = '';
-  let toastVisualLen = 0;
-  if (model.toast) {
-    const token = model.toast.variant === 'success' ? t.theme.semantic.success : t.theme.semantic.error;
-    toastText = ' ' + styled(token, model.toast.message);
-    toastVisualLen = model.toast.message.length + 1;
-  }
-
-  // Fill remaining width with /
-  const fillLen = Math.max(1, model.cols - tag.length - toastVisualLen);
-  const fill = ' ' + '/'.repeat(fillLen - 1);
-
-  return styled(t.theme.semantic.muted, tag + fill) + toastText;
+  return statusBar({
+    left: styled(t.theme.semantic.muted, tag),
+    width: model.cols,
+    fillChar: '/',
+  });
 }

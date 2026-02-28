@@ -4,6 +4,27 @@ All notable changes to XYPH will be documented in this file.
 
 ## [Unreleased]
 
+### Changed — Bijou 0.10.0 Adoption
+
+Upgraded `@flyingrobots/bijou` and `@flyingrobots/bijou-tui` from 0.6.0 to 0.10.0.
+Replaced hand-rolled TUI primitives with bijou builtins where strictly better.
+
+- **Overlays** (`overlays.ts`): Rewrote `confirmOverlay()` and `inputOverlay()` to
+  use bijou `composite()` + `modal()` — ANSI-safe cell-by-cell painting replaces
+  manual line-splicing with box-drawing characters (~60 lines deleted).
+- **Status bar** (`DashboardApp.ts`): Replaced `renderStatusLine()` with bijou
+  `statusBar()` (~20 lines deleted).
+- **Toast notifications** (`DashboardApp.ts`): Toast is now a proper `composite()`
+  overlay anchored bottom-right instead of being embedded in the status bar.
+- **Help system** (`DashboardApp.ts`): Deleted `renderHelp()` and `viewHints()`,
+  replaced by auto-generated `helpView()` / `helpShort()` from keymaps — help text
+  always stays in sync with actual bindings. All keymap builders refactored to use
+  `.group()` (~50 lines deleted).
+- **Landing view** (`landing-view.ts`): Manual spiral + box compositing replaced by
+  bijou `canvas()` + `spiralShader` + `composite()` + `modal()` (~70 lines deleted).
+- **Spiral shader** (`spiral.ts`): Extracted per-cell `spiralShader: ShaderFn` export
+  for use with bijou `canvas()`, alongside the original `spiralFrame()`.
+
 ### Added — Animated Spiral Title Screen
 
 - **Spiral shader** (`src/tui/bijou/shaders/spiral.ts`): Ported ertdfgcvb's
