@@ -17,7 +17,8 @@
 // directly to stderr via internal mechanisms before our listener runs (ESM
 // import hoisting).  Intercepting stderr.write catches both paths.
 const _origStderrWrite = process.stderr.write.bind(process.stderr);
-process.stderr.write = function (chunk: any, ...args: any[]) {
+type StderrWriteRest = Parameters<typeof process.stderr.write> extends [unknown, ...infer R] ? R : never;
+process.stderr.write = function (chunk: string | Uint8Array, ...args: StderrWriteRest) {
   if (typeof chunk === 'string' && chunk.includes('DEP0169')) return true;
   return _origStderrWrite(chunk, ...args);
 } as typeof process.stderr.write;

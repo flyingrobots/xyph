@@ -234,8 +234,8 @@ export function roadmapView(model: DashboardModel, width?: number, height?: numb
       const nodePos = layout.nodes.get(selectedQuestId);
       if (nodePos) {
         // Center the selected node in the viewport; manual scroll offsets from auto-center
-        scrollX = Math.max(0, nodePos.col - Math.floor(pw / 2)) + model.roadmap.dagScrollX;
-        scrollY = Math.max(0, nodePos.row - Math.floor(ph / 2)) + model.roadmap.dagScrollY;
+        scrollX = Math.max(0, nodePos.col - Math.floor(pw / 2) + model.roadmap.dagScrollX);
+        scrollY = Math.max(0, nodePos.row - Math.floor(ph / 2) + model.roadmap.dagScrollY);
       }
     }
 
