@@ -75,7 +75,7 @@ XYPH is in alpha. What works today:
 - Cryptographic Guild Seals (Ed25519 signing of completed work)
 - TUI dashboard for browsing the roadmap
 - CLI actuator for all graph mutations
-- 500 tests, strict TypeScript, clean CI
+- 900+ tests, strict TypeScript, clean CI
 
 What's next:
 

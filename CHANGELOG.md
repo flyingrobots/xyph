@@ -12,7 +12,6 @@ All notable changes to XYPH will be documented in this file.
   dependent counts per blocking task.
 - **Roadmap TUI view**: New "Top Blockers" section in the left panel between
   frontier and blocked lists.
-- **`postinstall` script**: Added `patch-package` postinstall hook to `package.json`.
 
 ### Fixed — Documentation Accuracy
 
@@ -23,6 +22,7 @@ All notable changes to XYPH will be documented in this file.
 
 ### Changed — Roadmap Audit & Documentation Overhaul
 
+- **`postinstall` script**: Added `patch-package` postinstall hook to `package.json`.
 - **Roadmap audit**: Identified and sealed 17 quests that were DONE but still
   marked PLANNED/IN_PROGRESS in the graph (WVR-001–005, BJU-004–008,
   DSH-005, DSH-007, BX-021, SUB-TUI-001, SUB-TUI-002, SUB-REFACTOR-001,
