@@ -50,6 +50,13 @@ export function createCliContext(
     ensureXyphContext();
   }
 
+  const emitJsonError = (error: string, data?: Record<string, unknown>): void => {
+    const envelope: JsonErrorEnvelope = data === undefined
+      ? { success: false, error }
+      : { success: false, error, data };
+    console.log(JSON.stringify(envelope));
+  };
+
   return {
     agentId,
     json: jsonMode,
@@ -72,7 +79,7 @@ export function createCliContext(
     },
     fail(msg: string): never {
       if (jsonMode) {
-        console.log(JSON.stringify({ success: false, error: msg }));
+        emitJsonError(msg);
       } else {
         console.error(styled(getTheme().theme.semantic.error, msg));
       }
@@ -80,7 +87,7 @@ export function createCliContext(
     },
     failWithData(msg: string, data: Record<string, unknown>): never {
       if (jsonMode) {
-        console.log(JSON.stringify({ success: false, error: msg, data }));
+        emitJsonError(msg, data);
       } else {
         console.error(styled(getTheme().theme.semantic.error, msg));
       }
