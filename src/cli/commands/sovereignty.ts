@@ -32,6 +32,14 @@ export function registerSovereigntyCommands(program: Command, ctx: CliContext): 
         }
       });
 
+      if (ctx.json) {
+        ctx.jsonOut({
+          success: true, command: 'intent',
+          data: { id, title: opts.title, requestedBy: opts.requestedBy, description: opts.description ?? null, createdAt: now, patch: sha },
+        });
+        return;
+      }
+
       ctx.ok(`[OK] Intent ${id} declared by ${opts.requestedBy}. Patch: ${sha}`);
       ctx.muted(`  Title: ${opts.title}`);
     }));

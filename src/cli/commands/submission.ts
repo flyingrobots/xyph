@@ -51,6 +51,14 @@ export function registerSubmissionCommands(program: Command, ctx: CliContext): v
         },
       });
 
+      if (ctx.json) {
+        ctx.jsonOut({
+          success: true, command: 'submit',
+          data: { submissionId, patchsetId, questId, workspaceRef, baseRef: opts.base, patch: patchSha },
+        });
+        return;
+      }
+
       ctx.ok(`[OK] Submission ${submissionId} created.`);
       ctx.muted(`  Patchset:  ${patchsetId}`);
       ctx.muted(`  Quest:     ${questId}`);
@@ -109,6 +117,14 @@ export function registerSubmissionCommands(program: Command, ctx: CliContext): v
         },
       });
 
+      if (ctx.json) {
+        ctx.jsonOut({
+          success: true, command: 'revise',
+          data: { patchsetId, submissionId, supersedes: tip.id, workspaceRef, patch: patchSha },
+        });
+        return;
+      }
+
       ctx.ok(`[OK] Revision ${patchsetId} created.`);
       ctx.muted(`  Supersedes: ${tip.id}`);
       ctx.muted(`  Workspace:  ${workspaceRef}`);
@@ -142,6 +158,14 @@ export function registerSubmissionCommands(program: Command, ctx: CliContext): v
         verdict,
         comment: opts.comment,
       });
+
+      if (ctx.json) {
+        ctx.jsonOut({
+          success: true, command: 'review',
+          data: { reviewId, patchsetId, verdict, patch: patchSha },
+        });
+        return;
+      }
 
       ctx.ok(`[OK] Review ${reviewId} posted.`);
       ctx.muted(`  Verdict:  ${verdict}`);
@@ -197,6 +221,8 @@ export function registerSubmissionCommands(program: Command, ctx: CliContext): v
       });
 
       // Auto-seal: create scroll + sign with GuildSealService + set quest DONE
+      let autoSealed = false;
+      let guildSealInfo: { keyId: string; alg: string } | null = null;
       const questId = await adapter.getSubmissionQuestId(submissionId);
       if (questId) {
         const questStatus = await adapter.getQuestStatus(questId);
@@ -237,11 +263,26 @@ export function registerSubmissionCommands(program: Command, ctx: CliContext): v
               .setProperty(questId, 'completed_at', now);
           });
 
+          autoSealed = true;
+          if (guildSeal) guildSealInfo = { keyId: guildSeal.keyId, alg: guildSeal.alg };
+
           ctx.ok(`[OK] Quest ${questId} auto-sealed via merge.`);
           if (guildSeal) {
             ctx.muted(`  Guild Seal: ${guildSeal.keyId}`);
           }
         }
+      }
+
+      if (ctx.json) {
+        ctx.jsonOut({
+          success: true, command: 'merge',
+          data: {
+            submissionId, decisionId, questId: questId ?? null,
+            mergeCommit: mergeCommit ?? null, alreadyMerged,
+            autoSealed, guildSeal: guildSealInfo, patch: patchSha,
+          },
+        });
+        return;
       }
 
       ctx.ok(`[OK] Submission ${submissionId} merged.`);
@@ -268,6 +309,14 @@ export function registerSubmissionCommands(program: Command, ctx: CliContext): v
         kind: 'close',
         rationale: opts.rationale,
       });
+
+      if (ctx.json) {
+        ctx.jsonOut({
+          success: true, command: 'close',
+          data: { submissionId, decisionId, rationale: opts.rationale, patch: patchSha },
+        });
+        return;
+      }
 
       ctx.ok(`[OK] Submission ${submissionId} closed.`);
       ctx.muted(`  Decision:  ${decisionId}`);

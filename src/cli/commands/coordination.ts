@@ -24,7 +24,21 @@ export function registerCoordinationCommands(program: Command, ctx: CliContext):
       // Verify claim post-materialization (The OCP Verification Step)
       const props = await graph.getNodeProps(id);
 
-      if (props && props.get('assigned_to') === ctx.agentId) {
+      const confirmed = !!(props && props.get('assigned_to') === ctx.agentId);
+
+      if (ctx.json) {
+        if (!confirmed) {
+          const winner = props ? String(props.get('assigned_to')) : 'unknown';
+          ctx.fail(`Lost race condition for ${id}. Current owner: ${winner}`);
+        }
+        ctx.jsonOut({
+          success: true, command: 'claim',
+          data: { id, assignedTo: ctx.agentId, status: 'IN_PROGRESS', confirmed },
+        });
+        return;
+      }
+
+      if (confirmed) {
         ctx.ok(`[OK] Claim confirmed. ${id} is yours.`);
       } else {
         const winner = props ? props.get('assigned_to') : 'unknown';

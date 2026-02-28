@@ -40,6 +40,14 @@ export function registerIngestCommands(program: Command, ctx: CliContext): void 
         p.addEdge(id, intentId, 'authorized-by');
       });
 
+      if (ctx.json) {
+        ctx.jsonOut({
+          success: true, command: 'quest',
+          data: { id, title: opts.title, status: 'BACKLOG', campaign: opts.campaign, intent: intentId, hours: opts.hours ?? 0, patch: sha },
+        });
+        return;
+      }
+
       const campaignNote = opts.campaign === 'none' ? '(no campaign)' : `in campaign ${opts.campaign}`;
       ctx.ok(`[OK] Quest ${id} initialized ${campaignNote}. Patch: ${sha}`);
     }));

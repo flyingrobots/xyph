@@ -46,6 +46,15 @@ export function registerDashboardCommands(program: Command, ctx: CliContext): vo
       const patchSha = await graph.patch((p) => {
         p.addEdge(from, to, 'depends-on');
       });
+
+      if (ctx.json) {
+        ctx.jsonOut({
+          success: true, command: 'depend',
+          data: { from, to, patch: patchSha },
+        });
+        return;
+      }
+
       ctx.ok(`[OK] ${from} now depends on ${to} (patch: ${patchSha.slice(0, 7)})`);
     }));
 
@@ -69,7 +78,6 @@ export function registerDashboardCommands(program: Command, ctx: CliContext): vo
       switch (view) {
         case 'deps': {
           const { computeFrontier, computeCriticalPath, computeTopBlockers } = await import('../../domain/services/DepAnalysis.js');
-          const { renderDeps } = await import('../../tui/render-status.js');
 
           const taskSummaries = snapshot.quests.map((q) => ({ id: q.id, status: q.status, hours: q.hours }));
           const depEdges = snapshot.quests.flatMap((q) =>
@@ -91,6 +99,28 @@ export function registerDashboardCommands(program: Command, ctx: CliContext): vo
 
           const topBlockers = computeTopBlockers(taskSummaries, depEdges, 10);
 
+          if (ctx.json) {
+            const blockedByObj: Record<string, string[]> = {};
+            for (const [k, v] of frontierResult.blockedBy) blockedByObj[k] = v;
+            const tasksObj: Record<string, { title: string; status: string; hours: number }> = {};
+            for (const [k, v] of tasks) tasksObj[k] = v;
+            ctx.jsonOut({
+              success: true, command: 'status',
+              data: {
+                view: 'deps',
+                frontier: frontierResult.frontier,
+                blockedBy: blockedByObj,
+                executionOrder: sorted,
+                criticalPath: criticalResult.path,
+                criticalPathHours: criticalResult.totalHours,
+                tasks: tasksObj,
+                topBlockers,
+              },
+            });
+            return;
+          }
+
+          const { renderDeps } = await import('../../tui/render-status.js');
           ctx.print(renderDeps({
             frontier: frontierResult.frontier,
             blockedBy: frontierResult.blockedBy,
@@ -103,6 +133,14 @@ export function registerDashboardCommands(program: Command, ctx: CliContext): vo
           break;
         }
         default: {
+          if (ctx.json) {
+            ctx.jsonOut({
+              success: true, command: 'status',
+              data: { view, ...snapshot },
+            });
+            return;
+          }
+
           const { renderRoadmap, renderLineage, renderAll, renderInbox, renderSubmissions } = await import('../../tui/render-status.js');
 
           switch (view) {
@@ -127,6 +165,23 @@ export function registerDashboardCommands(program: Command, ctx: CliContext): vo
       const service = new SovereigntyService(adapter);
 
       const violations = await service.auditBacklog();
+
+      if (ctx.json) {
+        if (violations.length === 0) {
+          ctx.jsonOut({
+            success: true, command: 'audit-sovereignty',
+            data: { valid: true, violations: [] },
+          });
+        } else {
+          console.log(JSON.stringify({
+            success: false,
+            error: `${violations.length} quest(s) lack sovereign intent ancestry`,
+            data: { violations },
+          }));
+          process.exit(1);
+        }
+        return;
+      }
 
       if (violations.length === 0) {
         ctx.ok('[OK] All BACKLOG quests have a valid Genealogy of Intent.');
