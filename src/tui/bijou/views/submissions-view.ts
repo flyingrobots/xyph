@@ -1,4 +1,4 @@
-import { flex, viewport } from '@flyingrobots/bijou-tui';
+import { flex, viewport, navigableTable } from '@flyingrobots/bijou-tui';
 import { styled, styledStatus, getTheme } from '../../theme/index.js';
 import type { DashboardModel } from '../DashboardApp.js';
 import type { ReviewNode, DecisionNode } from '../../../domain/models/dashboard.js';
@@ -59,38 +59,19 @@ export function submissionsView(model: DashboardModel, width?: number, height?: 
     decisionsBySub.set(d.submissionId, arr);
   }
 
-  const selectedIndex = model.submissions.selectedIndex;
   const expandedId = model.submissions.expandedId;
 
-  // ── Left panel: submission list (item 8: inline header) ─────────
+  // ── Left panel: submission list (navigable table) ───────────────
   const leftWidth = Math.max(36, Math.floor(w * 0.35));
 
-  function renderList(pw: number, ph: number): string {
+  function renderList(_pw: number, _ph: number): string {
     const lines: string[] = [];
     lines.push(styled(t.theme.semantic.primary, ` Submissions (${sorted.length})`));
     lines.push('');
-
-    for (let i = 0; i < sorted.length; i++) {
-      const sub = sorted[i];
-      if (!sub) continue;
-      const isSelected = i === selectedIndex;
-      const qTitle = questTitle.get(sub.questId) ?? sub.questId;
-      const shortId = sub.id.replace(/^submission:/, '');
-      const approvals = sub.approvalCount > 0
-        ? styled(t.theme.semantic.success, ` \u2713${sub.approvalCount}`)
-        : '';
-
-      const line = ` ${shortId}  ${qTitle.slice(0, pw - 28)}  ${styledStatus(sub.status)}${approvals}`;
-
-      if (isSelected) {
-        lines.push(styled(t.theme.semantic.primary, '\u25B6') + styled(t.theme.semantic.primary, line));
-      } else {
-        lines.push(` ${line}`);
-      }
-    }
-
-    const content = lines.join('\n');
-    return viewport({ width: pw, height: ph, content, scrollY: model.submissions.listScrollY });
+    lines.push(navigableTable(model.submissions.table, {
+      focusIndicator: styled(t.theme.semantic.primary, '\u25B6'),
+    }));
+    return lines.join('\n');
   }
 
   // ── Right panel: detail ────────────────────────────────────────────

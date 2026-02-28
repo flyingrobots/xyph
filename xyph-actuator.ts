@@ -8,6 +8,7 @@ import { registerArtifactCommands } from './src/cli/commands/artifact.js';
 import { registerSubmissionCommands } from './src/cli/commands/submission.js';
 import { registerIntakeCommands } from './src/cli/commands/intake.js';
 import { registerDashboardCommands } from './src/cli/commands/dashboard.js';
+import { registerWizardCommands } from './src/cli/commands/wizards.js';
 
 // Best-effort pre-scan for --json before Commander parses.
 // createCliContext() handles theme init internally based on this flag.
@@ -32,5 +33,6 @@ registerArtifactCommands(program, ctx);
 registerSubmissionCommands(program, ctx);
 registerIntakeCommands(program, ctx);
 registerDashboardCommands(program, ctx);
+registerWizardCommands(program, ctx);
 
 await program.parseAsync(process.argv);

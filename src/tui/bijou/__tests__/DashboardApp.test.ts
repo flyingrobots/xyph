@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { _resetThemeForTesting } from '@flyingrobots/bijou';
 import type { App, KeyMsg, ResizeMsg } from '@flyingrobots/bijou-tui';
+
 import { ensureXyphContext, _resetBridgeForTesting } from '../../theme/bridge.js';
 import { createDashboardApp, type DashboardModel, type DashboardMsg } from '../DashboardApp.js';
 import type { GraphContext } from '../../../infrastructure/GraphContext.js';
@@ -107,9 +108,14 @@ describe('DashboardApp', () => {
     it('initializes per-view state', () => {
       const app = makeApp();
       const [model] = app.init();
-      expect(model.roadmap).toEqual({ selectedIndex: -1, dagScrollY: 0, dagScrollX: 0, detailScrollY: 0 });
-      expect(model.submissions).toEqual({ selectedIndex: -1, expandedId: null, listScrollY: 0, detailScrollY: 0 });
-      expect(model.backlog).toEqual({ selectedIndex: -1, listScrollY: 0 });
+      expect(model.roadmap.table.focusRow).toBe(0);
+      expect(model.roadmap.table.rows).toHaveLength(0);
+      expect(model.roadmap.dagScrollY).toBe(0);
+      expect(model.submissions.table.focusRow).toBe(0);
+      expect(model.submissions.table.rows).toHaveLength(0);
+      expect(model.submissions.expandedId).toBeNull();
+      expect(model.backlog.table.focusRow).toBe(0);
+      expect(model.backlog.table.rows).toHaveLength(0);
       expect(model.lineage).toEqual({ selectedIndex: -1, collapsedIntents: [] });
       expect(model.pulsePhase).toBe(0);
       expect(model.mode).toBe('normal');
@@ -317,27 +323,29 @@ describe('DashboardApp', () => {
           { id: 'task:B', title: 'B', status: 'IN_PROGRESS', hours: 2 },
         ],
       });
+      // Feed snapshot through update to rebuild the roadmap table
+      const [withSnap] = app.update(
+        { type: 'snapshot-loaded', snapshot: snap, requestId: initial.requestId },
+        initial,
+      );
       const loaded: DashboardModel = {
-        ...initial,
+        ...withSnap,
         showLanding: false,
-        loading: false,
-        snapshot: snap,
         activeView: 'roadmap',
       };
 
+      expect(loaded.roadmap.table.focusRow).toBe(0);
+
       const [after1] = app.update(makeKey('j'), loaded);
-      expect(after1.roadmap.selectedIndex).toBe(0);
+      expect(after1.roadmap.table.focusRow).toBe(1);
 
+      // wraps around (NavigableTable behavior)
       const [after2] = app.update(makeKey('j'), after1);
-      expect(after2.roadmap.selectedIndex).toBe(1);
+      expect(after2.roadmap.table.focusRow).toBe(0);
 
-      // Should clamp at max
-      const [after3] = app.update(makeKey('j'), after2);
-      expect(after3.roadmap.selectedIndex).toBe(1);
-
-      // k goes back
-      const [after4] = app.update(makeKey('k'), after3);
-      expect(after4.roadmap.selectedIndex).toBe(0);
+      // k goes back (wraps to last)
+      const [after3] = app.update(makeKey('k'), after2);
+      expect(after3.roadmap.table.focusRow).toBe(1);
     });
 
     it('j/k selects submissions in submissions view', () => {
@@ -349,16 +357,21 @@ describe('DashboardApp', () => {
           { id: 'submission:S2', questId: 'task:B', status: 'MERGED', headsCount: 1, approvalCount: 1, submittedBy: 'agent.test', submittedAt: 200 },
         ],
       });
+      // Feed snapshot through update to rebuild the submissions table
+      const [withSnap] = app.update(
+        { type: 'snapshot-loaded', snapshot: snap, requestId: initial.requestId },
+        initial,
+      );
       const loaded: DashboardModel = {
-        ...initial,
+        ...withSnap,
         showLanding: false,
-        loading: false,
-        snapshot: snap,
         activeView: 'submissions',
       };
 
+      expect(loaded.submissions.table.focusRow).toBe(0);
+
       const [after1] = app.update(makeKey('j'), loaded);
-      expect(after1.submissions.selectedIndex).toBe(0);
+      expect(after1.submissions.table.focusRow).toBe(1);
     });
 
     it('j/k selects items in backlog view', () => {
@@ -370,19 +383,22 @@ describe('DashboardApp', () => {
           { id: 'task:I2', title: 'Backlog 2', status: 'BACKLOG', hours: 1, suggestedBy: 'agent.test' },
         ],
       });
+      // Feed snapshot through update to rebuild the backlog table
+      const [withSnap] = app.update(
+        { type: 'snapshot-loaded', snapshot: snap, requestId: initial.requestId },
+        initial,
+      );
       const loaded: DashboardModel = {
-        ...initial,
+        ...withSnap,
         showLanding: false,
-        loading: false,
-        snapshot: snap,
         activeView: 'backlog',
       };
 
       const [after1] = app.update(makeKey('j'), loaded);
-      expect(after1.backlog.selectedIndex).toBe(0);
+      expect(after1.backlog.table.focusRow).toBe(1);
 
       const [after2] = app.update(makeKey('j'), after1);
-      expect(after2.backlog.selectedIndex).toBe(1);
+      expect(after2.backlog.table.focusRow).toBe(0); // wraps around
     });
 
     // ── Confirm mode ──────────────────────────────────────────────────
@@ -395,13 +411,15 @@ describe('DashboardApp', () => {
           { id: 'task:Q1', title: 'Quest 1', status: 'PLANNED', hours: 1 },
         ],
       });
+      // Feed snapshot through update to rebuild the roadmap table
+      const [withSnap] = app.update(
+        { type: 'snapshot-loaded', snapshot: snap, requestId: initial.requestId },
+        initial,
+      );
       const loaded: DashboardModel = {
-        ...initial,
+        ...withSnap,
         showLanding: false,
-        loading: false,
-        snapshot: snap,
         activeView: 'roadmap',
-        roadmap: { ...initial.roadmap, selectedIndex: 0 },
       };
 
       const [afterC] = app.update(makeKey('c'), loaded);
@@ -471,13 +489,14 @@ describe('DashboardApp', () => {
           { id: 'task:I1', title: 'Backlog 1', status: 'BACKLOG', hours: 1, suggestedBy: 'agent.test' },
         ],
       });
+      const [withSnap] = app.update(
+        { type: 'snapshot-loaded', snapshot: snap, requestId: initial.requestId },
+        initial,
+      );
       const loaded: DashboardModel = {
-        ...initial,
+        ...withSnap,
         showLanding: false,
-        loading: false,
-        snapshot: snap,
         activeView: 'backlog',
-        backlog: { ...initial.backlog, selectedIndex: 0 },
       };
 
       const [afterD] = app.update(makeKey('d'), loaded);
@@ -493,13 +512,14 @@ describe('DashboardApp', () => {
           { id: 'task:I1', title: 'Backlog 1', status: 'BACKLOG', hours: 1, suggestedBy: 'agent.test' },
         ],
       });
+      const [withSnap] = app.update(
+        { type: 'snapshot-loaded', snapshot: snap, requestId: initial.requestId },
+        initial,
+      );
       const loaded: DashboardModel = {
-        ...initial,
+        ...withSnap,
         showLanding: false,
-        loading: false,
-        snapshot: snap,
         activeView: 'backlog',
-        backlog: { ...initial.backlog, selectedIndex: 0 },
       };
 
       const [afterP] = app.update(makeKey('p'), loaded);
@@ -656,13 +676,15 @@ describe('DashboardApp', () => {
           { id: 'submission:S1', questId: 'task:A', status: 'OPEN', headsCount: 1, approvalCount: 0, submittedBy: 'agent.test', submittedAt: 100 },
         ],
       });
+      // Feed snapshot through update to rebuild the submissions table
+      const [withSnap] = app.update(
+        { type: 'snapshot-loaded', snapshot: snap, requestId: initial.requestId },
+        initial,
+      );
       const loaded: DashboardModel = {
-        ...initial,
+        ...withSnap,
         showLanding: false,
-        loading: false,
-        snapshot: snap,
         activeView: 'submissions',
-        submissions: { ...initial.submissions, selectedIndex: 0 },
       };
 
       const [afterExpand] = app.update(makeKey('enter'), loaded);
@@ -682,13 +704,14 @@ describe('DashboardApp', () => {
           { id: 'submission:S1', questId: 'task:A', status: 'OPEN', headsCount: 1, approvalCount: 0, submittedBy: 'agent.test', submittedAt: 100, tipPatchsetId: 'patchset:P1' },
         ],
       });
+      const [withSnap] = app.update(
+        { type: 'snapshot-loaded', snapshot: snap, requestId: initial.requestId },
+        initial,
+      );
       const loaded: DashboardModel = {
-        ...initial,
+        ...withSnap,
         showLanding: false,
-        loading: false,
-        snapshot: snap,
         activeView: 'submissions',
-        submissions: { ...initial.submissions, selectedIndex: 0 },
       };
 
       const [afterA] = app.update(makeKey('a'), loaded);
@@ -707,13 +730,14 @@ describe('DashboardApp', () => {
           { id: 'submission:S1', questId: 'task:A', status: 'OPEN', headsCount: 1, approvalCount: 0, submittedBy: 'agent.test', submittedAt: 100, tipPatchsetId: 'patchset:P1' },
         ],
       });
+      const [withSnap] = app.update(
+        { type: 'snapshot-loaded', snapshot: snap, requestId: initial.requestId },
+        initial,
+      );
       const loaded: DashboardModel = {
-        ...initial,
+        ...withSnap,
         showLanding: false,
-        loading: false,
-        snapshot: snap,
         activeView: 'submissions',
-        submissions: { ...initial.submissions, selectedIndex: 0 },
       };
 
       const [afterX] = app.update(makeKey('x'), loaded);
@@ -729,13 +753,14 @@ describe('DashboardApp', () => {
           { id: 'submission:S1', questId: 'task:A', status: 'OPEN', headsCount: 1, approvalCount: 0, submittedBy: 'agent.test', submittedAt: 100 },
         ],
       });
+      const [withSnap] = app.update(
+        { type: 'snapshot-loaded', snapshot: snap, requestId: initial.requestId },
+        initial,
+      );
       const loaded: DashboardModel = {
-        ...initial,
+        ...withSnap,
         showLanding: false,
-        loading: false,
-        snapshot: snap,
         activeView: 'submissions',
-        submissions: { ...initial.submissions, selectedIndex: 0 },
       };
 
       const [afterA] = app.update(makeKey('a'), loaded);

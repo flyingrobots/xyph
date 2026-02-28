@@ -4,6 +4,38 @@ All notable changes to XYPH will be documented in this file.
 
 ## [Unreleased]
 
+### Added — Second Wave: Bijou 0.10.0 Primitives
+
+- **Command palette** (`DashboardApp.ts`): `:` or `/` opens a fuzzy-searchable
+  `commandPalette()` in a `modal()` overlay with context-aware actions per view
+  (claim, promote, reject, expand, approve, request-changes).
+- **Interactive wizards** (`src/cli/commands/wizards.ts`): `quest-wizard`,
+  `review-wizard`, `promote-wizard`, and `triage` CLI commands using bijou
+  `filter()`, `select()`, `input()`, `textarea()`, and `confirm()` primitives.
+- **Integration test suite** (`integration.test.ts`): 22 deterministic "drive"
+  pattern tests for the full init → update → view cycle without async settling.
+- **Drawer detail panel** (`roadmap-view.ts`): Quest detail now renders as a
+  bijou `drawer()` + `composite()` overlay; DAG takes full width when no quest
+  is selected.
+
+### Changed — NavigableTableState Migration (Phase A complete)
+
+All three selectable views now use `NavigableTableState` for focus management
+with circular j/k navigation and built-in scroll tracking.
+
+- **Backlog view**: Already migrated (first wave). Uses `navigableTable()` renderer.
+- **Submissions view**: Migrated from manual `selectedIndex` + `listScrollY` to
+  `NavigableTableState`. List panel now uses `navigableTable()` renderer.
+- **Roadmap view**: Migrated from manual `selectedIndex` to `NavigableTableState`
+  for focus tracking. Frontier panel rendering unchanged (custom grouped layout).
+- `RoadmapState.selectedIndex` → `RoadmapState.table: NavigableTableState`
+- `SubmissionsState.selectedIndex` / `listScrollY` → `SubmissionsState.table`
+- Added `rebuildRoadmapTable()` and `rebuildSubmissionsTable()` table builders.
+- `selectDelta()` uses `navTableFocusNext`/`navTableFocusPrev` (wrapping).
+- `buildPaletteItems()` checks `table.rows.length > 0` instead of `selectedIndex >= 0`.
+- Lineage view retains manual selection (different interaction model with
+  collapsible intents).
+
 ### Changed — Bijou 0.10.0 Adoption
 
 Upgraded `@flyingrobots/bijou` and `@flyingrobots/bijou-tui` from 0.6.0 to 0.10.0.

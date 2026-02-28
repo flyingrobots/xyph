@@ -1,5 +1,5 @@
 import { headerBox, dagLayout, type DagLayout, type SlicedDagSource } from '@flyingrobots/bijou';
-import { flex, viewport } from '@flyingrobots/bijou-tui';
+import { flex, viewport, composite, drawer } from '@flyingrobots/bijou-tui';
 import { styled, styledStatus, getTheme } from '../../theme/index.js';
 import type { DashboardModel } from '../DashboardApp.js';
 import { computeFrontier, computeCriticalPath, computeTopBlockers, type TaskSummary, type DepEdge } from '../../../domain/services/DepAnalysis.js';
@@ -73,7 +73,7 @@ export function roadmapView(model: DashboardModel, width?: number, height?: numb
 
   // Build the ordered list of selectable quest IDs (shared with DashboardApp j/k navigation)
   const selectableIds = roadmapQuestIds(snap);
-  const selectedQuestId = selectableIds[model.roadmap.selectedIndex] ?? null;
+  const selectedQuestId = selectableIds[model.roadmap.table.focusRow] ?? null;
 
   function renderFrontierPanel(_pw: number, ph: number): string {
     const lines: string[] = [];
@@ -267,12 +267,9 @@ export function roadmapView(model: DashboardModel, width?: number, height?: numb
     });
   }
 
-  // ── Right panel: Detail ─────────────────────────────────────────────
-  const detailWidth = 28;
-
-  function renderDetailPanel(pw: number, ph: number): string {
-    if (!selectedQuestId) return '';
-    const q = questMap.get(selectedQuestId);
+  // ── Detail content (for drawer overlay) ────────────────────────────
+  function renderDetailContent(questId: string, pw: number): string {
+    const q = questMap.get(questId);
     if (!q) return styled(t.theme.semantic.muted, '  Quest not found.');
 
     const lines: string[] = [];
@@ -324,7 +321,10 @@ export function roadmapView(model: DashboardModel, width?: number, height?: numb
       lines.push(styled(t.theme.semantic.success, ` \u2713 Scroll: ${sc.id.slice(0, pw - 12)}`));
     }
 
-    return viewport({ width: pw, height: ph, content: lines.join('\n'), scrollY: model.roadmap.detailScrollY });
+    // Apply scroll offset by slicing content lines
+    const allLines = lines.join('\n').split('\n');
+    const scrolled = allLines.slice(model.roadmap.detailScrollY);
+    return scrolled.join('\n');
   }
 
   // ── Vertical separator (item 7) ────────────────────────────────────
@@ -334,20 +334,25 @@ export function roadmapView(model: DashboardModel, width?: number, height?: numb
   }
 
   // ── Compose layout ─────────────────────────────────────────────────────
-  if (selectedQuestId !== null) {
-    return flex(
-      { direction: 'row', width: w, height: h },
-      { basis: leftWidth, content: renderFrontierPanel },
-      { basis: 1, content: renderSeparator },
-      { flex: 1, content: renderDagPanel },
-      { basis: detailWidth, content: renderDetailPanel },
-    );
-  }
-
-  return flex(
+  const base = flex(
     { direction: 'row', width: w, height: h },
     { basis: leftWidth, content: renderFrontierPanel },
     { basis: 1, content: renderSeparator },
     { flex: 1, content: renderDagPanel },
   );
+
+  if (selectedQuestId === null) return base;
+
+  const detailW = Math.min(40, Math.max(28, Math.floor(w * 0.3)));
+  const detailContent = renderDetailContent(selectedQuestId, detailW);
+  const panel = drawer({
+    content: detailContent,
+    anchor: 'right',
+    width: detailW,
+    screenWidth: w,
+    screenHeight: h,
+    title: selectedQuestId,
+    borderToken: t.theme.border.primary,
+  });
+  return composite(base, [panel]);
 }

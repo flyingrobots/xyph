@@ -1,7 +1,7 @@
-import { headerBox, table } from '@flyingrobots/bijou';
+import { headerBox } from '@flyingrobots/bijou';
+import { navigableTable } from '@flyingrobots/bijou-tui';
 import { styled, getTheme } from '../../theme/index.js';
 import type { DashboardModel } from '../DashboardApp.js';
-import { backlogQuestIds } from '../selection-order.js';
 
 export function backlogView(model: DashboardModel, _width?: number, _height?: number): string {
   const t = getTheme();
@@ -24,56 +24,24 @@ export function backlogView(model: DashboardModel, _width?: number, _height?: nu
     return lines.join('\n');
   }
 
-  // Shared ordering (matches DashboardApp j/k navigation)
-  const flatList = backlogQuestIds(snap);
-  const selectedIndex = model.backlog.selectedIndex;
-  const selectedId = flatList[selectedIndex] ?? null;
-
-  // Group by suggester for rendering
-  const bySuggester = new Map<string, typeof backlog>();
+  // Group headers by suggester
+  const bySuggester = new Map<string, string[]>();
   for (const q of backlog) {
     const key = q.suggestedBy ?? '(unknown suggester)';
     const arr = bySuggester.get(key) ?? [];
-    arr.push(q);
+    arr.push(q.id);
     bySuggester.set(key, arr);
   }
 
-  for (const [suggester, quests] of bySuggester) {
+  for (const [suggester] of bySuggester) {
     lines.push('');
     lines.push(styled(t.theme.ui.intentHeader, `  ${suggester}`));
-
-    lines.push(table({
-      columns: [
-        { header: '' , width: 2 },
-        { header: 'ID' },
-        { header: 'Title' },
-        { header: 'h', width: 5 },
-        { header: 'Suggested' },
-        { header: 'Prev rejection' },
-      ],
-      rows: quests.map(q => {
-        const suggestedAt = q.suggestedAt !== undefined
-          ? new Date(q.suggestedAt).toLocaleDateString()
-          : '\u2014';
-        const prevRej = q.rejectionRationale !== undefined
-          ? styled(t.theme.semantic.muted, q.rejectionRationale.slice(0, 24) + (q.rejectionRationale.length > 24 ? '\u2026' : ''))
-          : '\u2014';
-        const sel = q.id === selectedId ? styled(t.theme.semantic.primary, '\u25B6') : ' ';
-        const idStyle = q.id === selectedId
-          ? styled(t.theme.semantic.primary, q.id)
-          : styled(t.theme.semantic.muted, q.id);
-        return [
-          sel,
-          idStyle,
-          q.title.slice(0, 38),
-          String(q.hours),
-          suggestedAt,
-          prevRej,
-        ];
-      }),
-      headerToken: t.theme.ui.tableHeader,
-    }));
   }
+
+  lines.push('');
+  lines.push(navigableTable(model.backlog.table, {
+    focusIndicator: styled(t.theme.semantic.primary, '\u25B6'),
+  }));
 
   return lines.join('\n');
 }

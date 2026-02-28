@@ -12,6 +12,8 @@ import { createKeyMap, type KeyMap } from '@flyingrobots/bijou-tui';
 import { statusBar } from '@flyingrobots/bijou-tui';
 import { composite, toast as toastOverlay } from '@flyingrobots/bijou-tui';
 import { helpView, helpShort } from '@flyingrobots/bijou-tui';
+import { createNavigableTableState, navTableFocusNext, navTableFocusPrev, type NavigableTableState } from '@flyingrobots/bijou-tui';
+import { createCommandPaletteState, cpFilter, cpFocusNext, cpFocusPrev, cpSelectedItem, commandPalette, modal, type CommandPaletteState, type CommandPaletteItem } from '@flyingrobots/bijou-tui';
 import { tabs } from '@flyingrobots/bijou';
 import { styled, getTheme } from '../theme/index.js';
 import type { GraphContext } from '../../infrastructure/GraphContext.js';
@@ -26,7 +28,7 @@ import { submissionsView } from './views/submissions-view.js';
 import { landingView } from './views/landing-view.js';
 import { confirmOverlay, inputOverlay } from './overlays.js';
 import { claimQuest, promoteQuest, rejectQuest, reviewSubmission, type WriteDeps } from './write-cmds.js';
-import { roadmapQuestIds, submissionIds, backlogQuestIds, lineageIntentIds } from './selection-order.js';
+import { roadmapQuestIds, submissionIds, sortedSubmissions, backlogQuestIds, lineageIntentIds } from './selection-order.js';
 import type { SubmissionPort } from '../../ports/SubmissionPort.js';
 
 // ── Public types ────────────────────────────────────────────────────────
@@ -44,22 +46,20 @@ export type PendingWrite =
   | { kind: 'request-changes'; patchsetId: string };
 
 export interface RoadmapState {
-  selectedIndex: number;
+  table: NavigableTableState;
   dagScrollY: number;
   dagScrollX: number;
   detailScrollY: number;
 }
 
 export interface SubmissionsState {
-  selectedIndex: number;
+  table: NavigableTableState;
   expandedId: string | null;
-  listScrollY: number;
   detailScrollY: number;
 }
 
 export interface BacklogState {
-  selectedIndex: number;
-  listScrollY: number;
+  table: NavigableTableState;
 }
 
 export interface LineageState {
@@ -91,9 +91,10 @@ export interface DashboardModel {
   lineage: LineageState;
 
   // Interaction mode
-  mode: 'normal' | 'confirm' | 'input';
+  mode: 'normal' | 'confirm' | 'input' | 'palette';
   confirmState: { prompt: string; action: PendingWrite } | null;
   inputState: { label: string; value: string; action: PendingWrite } | null;
+  paletteState: CommandPaletteState | null;
 
   // Toast notifications
   toast: { message: string; variant: 'success' | 'error'; expiresAt: number } | null;
@@ -314,14 +315,15 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         logoText: deps.logoText,
         requestId: 1,
         loadingProgress: 0,
-        roadmap: { selectedIndex: -1, dagScrollY: 0, dagScrollX: 0, detailScrollY: 0 },
-        submissions: { selectedIndex: -1, expandedId: null, listScrollY: 0, detailScrollY: 0 },
-        backlog: { selectedIndex: -1, listScrollY: 0 },
+        roadmap: { table: createNavigableTableState({ columns: [], rows: [], height: 20 }), dagScrollY: 0, dagScrollX: 0, detailScrollY: 0 },
+        submissions: { table: createNavigableTableState({ columns: [], rows: [], height: 20 }), expandedId: null, detailScrollY: 0 },
+        backlog: { table: createNavigableTableState({ columns: [], rows: [], height: 20 }) },
         lineage: { selectedIndex: -1, collapsedIntents: [] },
         pulsePhase: 0,
         mode: 'normal',
         confirmState: null,
         inputState: null,
+        paletteState: null,
         toast: null,
         writePending: false,
       };
@@ -369,9 +371,9 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
           loading: false,
           error: null,
           loadingProgress: 100,
-          roadmap: { ...model.roadmap, selectedIndex: clampIndex(model.roadmap.selectedIndex, roadmapQuestIds(snap).length) },
-          submissions: { ...model.submissions, selectedIndex: clampIndex(model.submissions.selectedIndex, submissionIds(snap).length) },
-          backlog: { ...model.backlog, selectedIndex: clampIndex(model.backlog.selectedIndex, backlogQuestIds(snap).length) },
+          roadmap: { ...model.roadmap, table: rebuildRoadmapTable(snap, model.roadmap.table.focusRow, model.rows - 4) },
+          submissions: { ...model.submissions, table: rebuildSubmissionsTable(snap, model.submissions.table.focusRow, model.rows - 4) },
+          backlog: { table: rebuildBacklogTable(snap, model.backlog.table.focusRow, model.rows - 4) },
           lineage: {
             ...model.lineage,
             selectedIndex: clampIndex(model.lineage.selectedIndex, lineageIntentIds(snap).length),
@@ -492,6 +494,33 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
           return [model, []]; // swallow other keys
         }
 
+        // ── Palette mode ──────────────────────────────────────────────
+        if (model.mode === 'palette' && model.paletteState) {
+          if (msg.key === 'escape') {
+            return [{ ...model, mode: 'normal', paletteState: null }, []];
+          }
+          if (msg.key === 'enter' || msg.key === 'return') {
+            const item = cpSelectedItem(model.paletteState);
+            if (!item) return [{ ...model, mode: 'normal', paletteState: null }, []];
+            return dispatchPaletteAction(item.id, { ...model, mode: 'normal', paletteState: null });
+          }
+          if (msg.key === 'j' || msg.key === 'down') {
+            return [{ ...model, paletteState: cpFocusNext(model.paletteState) }, []];
+          }
+          if (msg.key === 'k' || msg.key === 'up') {
+            return [{ ...model, paletteState: cpFocusPrev(model.paletteState) }, []];
+          }
+          if (msg.key === 'backspace' || msg.key === 'delete') {
+            const q = model.paletteState.query.slice(0, -1);
+            return [{ ...model, paletteState: cpFilter(model.paletteState, q) }, []];
+          }
+          if (msg.key.length === 1 && !msg.ctrl && !msg.alt) {
+            const q = model.paletteState.query + msg.key;
+            return [{ ...model, paletteState: cpFilter(model.paletteState, q) }, []];
+          }
+          return [model, []];
+        }
+
         // ── Landing screen ──────────────────────────────────────────────
         if (model.showLanding) {
           if (msg.key === 'q' && !msg.ctrl && !msg.alt) {
@@ -537,6 +566,13 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
             case 'toggle-help':
               return [{ ...model, showHelp: !model.showHelp }, []];
           }
+        }
+
+        // ── Command palette trigger ───────────────────────────────────
+        if (msg.key === ':' || msg.key === '/') {
+          const items = buildPaletteItems(model);
+          const paletteState = createCommandPaletteState(items, Math.min(model.rows - 6, 15));
+          return [{ ...model, mode: 'palette', paletteState }, []];
         }
 
         // ── Normal mode: view-specific keys ─────────────────────────────
@@ -608,6 +644,22 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         { basis: 1, content: hints },
       );
 
+      // Command palette overlay
+      if (model.mode === 'palette' && model.paletteState) {
+        const rendered = commandPalette(model.paletteState, {
+          width: Math.min(60, model.cols - 4),
+          showCategory: true,
+          showShortcut: true,
+        });
+        const ov = modal({
+          body: rendered,
+          screenWidth: model.cols,
+          screenHeight: model.rows,
+          borderToken: t.theme.border.primary,
+        });
+        output = composite(output, [ov]);
+      }
+
       // Toast overlay
       if (model.toast) {
         const tov = toastOverlay({
@@ -641,7 +693,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
       case 'claim': {
         if (!snap || model.writePending) return [model, []];
         const ids = roadmapQuestIds(snap);
-        const questId = ids[model.roadmap.selectedIndex];
+        const questId = ids[model.roadmap.table.focusRow];
         if (!questId) return [model, []];
         return [{
           ...model,
@@ -653,7 +705,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
       case 'promote': {
         if (!snap || model.writePending) return [model, []];
         const ids = backlogQuestIds(snap);
-        const questId = ids[model.backlog.selectedIndex];
+        const questId = ids[model.backlog.table.focusRow];
         if (!questId) return [model, []];
         return [{
           ...model,
@@ -665,7 +717,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
       case 'reject': {
         if (!snap || model.writePending) return [model, []];
         const ids = backlogQuestIds(snap);
-        const questId = ids[model.backlog.selectedIndex];
+        const questId = ids[model.backlog.table.focusRow];
         if (!questId) return [model, []];
         return [{
           ...model,
@@ -690,7 +742,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
           }, []];
         }
         const ids = submissionIds(snap);
-        const subId = ids[model.submissions.selectedIndex];
+        const subId = ids[model.submissions.table.focusRow];
         if (!subId) return [model, []];
         const expandedId = model.submissions.expandedId === subId ? null : subId;
         return [{
@@ -703,7 +755,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
       case 'request-changes': {
         if (!snap || model.writePending) return [model, []];
         const ids = submissionIds(snap);
-        const subId = ids[model.submissions.selectedIndex];
+        const subId = ids[model.submissions.table.focusRow];
         if (!subId) return [model, []];
         const sub = snap.submissions.find(s => s.id === subId);
         if (!sub?.tipPatchsetId) {
@@ -766,19 +818,22 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
 
     switch (model.activeView) {
       case 'roadmap': {
-        const count = roadmapQuestIds(snap).length;
-        const next = clampIndex(model.roadmap.selectedIndex + delta, count);
-        return { ...model, roadmap: { ...model.roadmap, selectedIndex: next } };
+        const nextTable = delta > 0
+          ? navTableFocusNext(model.roadmap.table)
+          : navTableFocusPrev(model.roadmap.table);
+        return { ...model, roadmap: { ...model.roadmap, table: nextTable } };
       }
       case 'submissions': {
-        const count = submissionIds(snap).length;
-        const next = clampIndex(model.submissions.selectedIndex + delta, count);
-        return { ...model, submissions: { ...model.submissions, selectedIndex: next } };
+        const nextTable = delta > 0
+          ? navTableFocusNext(model.submissions.table)
+          : navTableFocusPrev(model.submissions.table);
+        return { ...model, submissions: { ...model.submissions, table: nextTable } };
       }
       case 'backlog': {
-        const count = backlogQuestIds(snap).length;
-        const next = clampIndex(model.backlog.selectedIndex + delta, count);
-        return { ...model, backlog: { ...model.backlog, selectedIndex: next } };
+        const nextTable = delta > 0
+          ? navTableFocusNext(model.backlog.table)
+          : navTableFocusPrev(model.backlog.table);
+        return { ...model, backlog: { table: nextTable } };
       }
       case 'lineage': {
         const count = lineageIntentIds(snap).length;
@@ -787,6 +842,46 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
       }
       default:
         return model;
+    }
+  }
+
+  function dispatchPaletteAction(
+    actionId: string,
+    model: DashboardModel,
+  ): [DashboardModel, Cmd<DashboardMsg>[]] {
+    switch (actionId) {
+      case 'quit':
+        return [model, [quit()]];
+      case 'refresh': {
+        const nextReqId = model.requestId + 1;
+        return [{ ...model, loading: true, error: null, requestId: nextReqId }, [fetchSnapshot(nextReqId)]];
+      }
+      case 'help':
+        return [{ ...model, showHelp: !model.showHelp }, []];
+      case 'view-dashboard':
+        return [{ ...model, activeView: 'dashboard' }, []];
+      case 'view-roadmap':
+        return [{ ...model, activeView: 'roadmap' }, []];
+      case 'view-submissions':
+        return [{ ...model, activeView: 'submissions' }, []];
+      case 'view-lineage':
+        return [{ ...model, activeView: 'lineage' }, []];
+      case 'view-backlog':
+        return [{ ...model, activeView: 'backlog' }, []];
+      case 'claim':
+        return handleViewAction({ type: 'claim' }, model);
+      case 'promote':
+        return handleViewAction({ type: 'promote' }, model);
+      case 'reject':
+        return handleViewAction({ type: 'reject' }, model);
+      case 'expand':
+        return handleViewAction({ type: 'expand' }, model);
+      case 'approve':
+        return handleViewAction({ type: 'approve' }, model);
+      case 'request-changes':
+        return handleViewAction({ type: 'request-changes' }, model);
+      default:
+        return [model, []];
     }
   }
 }
@@ -814,4 +909,147 @@ function renderStatusLine(model: DashboardModel, t: ReturnType<typeof getTheme>)
     width: model.cols,
     fillChar: '/',
   });
+}
+
+// ── Command palette ──────────────────────────────────────────────────
+
+function buildPaletteItems(model: DashboardModel): CommandPaletteItem[] {
+  const items: CommandPaletteItem[] = [
+    { id: 'refresh',          label: 'Refresh snapshot',    category: 'Global',  shortcut: 'r' },
+    { id: 'help',             label: 'Toggle help',         category: 'Global',  shortcut: '?' },
+    { id: 'quit',             label: 'Quit',                category: 'Global',  shortcut: 'q' },
+    { id: 'view-dashboard',   label: 'Dashboard',           category: 'Views',   shortcut: 'Tab' },
+    { id: 'view-roadmap',     label: 'Roadmap',             category: 'Views' },
+    { id: 'view-submissions', label: 'Submissions',         category: 'Views' },
+    { id: 'view-lineage',     label: 'Lineage',             category: 'Views' },
+    { id: 'view-backlog',     label: 'Backlog',             category: 'Views' },
+  ];
+
+  if (model.activeView === 'roadmap' && model.roadmap.table.rows.length > 0) {
+    items.push({ id: 'claim', label: 'Claim selected quest', category: 'Roadmap', shortcut: 'c' });
+  }
+  if (model.activeView === 'backlog' && model.backlog.table.rows.length > 0) {
+    items.push({ id: 'promote', label: 'Promote selected', category: 'Backlog', shortcut: 'p' });
+    items.push({ id: 'reject',  label: 'Reject selected',  category: 'Backlog', shortcut: 'd' });
+  }
+  if (model.activeView === 'submissions' && model.submissions.table.rows.length > 0) {
+    items.push({ id: 'expand',          label: 'Expand/collapse detail', category: 'Submissions', shortcut: 'Enter' });
+    items.push({ id: 'approve',         label: 'Approve patchset',      category: 'Submissions', shortcut: 'a' });
+    items.push({ id: 'request-changes', label: 'Request changes',       category: 'Submissions', shortcut: 'x' });
+  }
+
+  return items;
+}
+
+// ── Backlog table builder ────────────────────────────────────────────
+
+function rebuildBacklogTable(
+  snap: GraphSnapshot,
+  prevFocusRow: number,
+  height: number,
+): NavigableTableState {
+  const ids = backlogQuestIds(snap);
+  const questMap = new Map(snap.quests.map(q => [q.id, q]));
+  const rows = ids.map(id => {
+    const q = questMap.get(id);
+    if (!q) return [id, '', '0', '\u2014', '\u2014'];
+    const suggestedAt = q.suggestedAt !== undefined
+      ? new Date(q.suggestedAt).toLocaleDateString()
+      : '\u2014';
+    const prevRej = q.rejectionRationale !== undefined
+      ? q.rejectionRationale.slice(0, 24) + (q.rejectionRationale.length > 24 ? '\u2026' : '')
+      : '\u2014';
+    return [q.id, q.title.slice(0, 38), String(q.hours), suggestedAt, prevRej];
+  });
+
+  const table = createNavigableTableState({
+    columns: [
+      { header: 'ID', width: 20 },
+      { header: 'Title' },
+      { header: 'h', width: 5 },
+      { header: 'Suggested' },
+      { header: 'Prev rejection' },
+    ],
+    rows,
+    height: Math.max(height, 5),
+  });
+
+  // Preserve focus row (clamped to new row count)
+  if (ids.length === 0) return table;
+  const clamped = Math.max(0, Math.min(prevFocusRow, ids.length - 1));
+  let t = table;
+  for (let i = 0; i < clamped; i++) {
+    t = navTableFocusNext(t);
+  }
+  return t;
+}
+
+// ── Submissions table builder ─────────────────────────────────────────
+
+function rebuildSubmissionsTable(
+  snap: GraphSnapshot,
+  prevFocusRow: number,
+  height: number,
+): NavigableTableState {
+  const sorted = sortedSubmissions(snap);
+  const questTitle = new Map(snap.quests.map(q => [q.id, q.title]));
+  const rows = sorted.map(s => {
+    const qTitle = questTitle.get(s.questId) ?? s.questId;
+    const shortId = s.id.replace(/^submission:/, '');
+    const approvals = s.approvalCount > 0 ? `\u2713${s.approvalCount}` : '\u2014';
+    return [shortId, qTitle.slice(0, 38), s.status, approvals];
+  });
+
+  const table = createNavigableTableState({
+    columns: [
+      { header: 'ID', width: 20 },
+      { header: 'Quest' },
+      { header: 'Status', width: 12 },
+      { header: '\u2713', width: 5 },
+    ],
+    rows,
+    height: Math.max(height, 5),
+  });
+
+  if (sorted.length === 0) return table;
+  const clamped = Math.max(0, Math.min(prevFocusRow, sorted.length - 1));
+  let t = table;
+  for (let i = 0; i < clamped; i++) {
+    t = navTableFocusNext(t);
+  }
+  return t;
+}
+
+// ── Roadmap table builder ─────────────────────────────────────────────
+
+function rebuildRoadmapTable(
+  snap: GraphSnapshot,
+  prevFocusRow: number,
+  height: number,
+): NavigableTableState {
+  const ids = roadmapQuestIds(snap);
+  const questMap = new Map(snap.quests.map(q => [q.id, q]));
+  const rows = ids.map(id => {
+    const q = questMap.get(id);
+    if (!q) return [id, '', ''];
+    return [q.id, q.title.slice(0, 38), q.status];
+  });
+
+  const table = createNavigableTableState({
+    columns: [
+      { header: 'ID', width: 20 },
+      { header: 'Title' },
+      { header: 'Status', width: 12 },
+    ],
+    rows,
+    height: Math.max(height, 5),
+  });
+
+  if (ids.length === 0) return table;
+  const clamped = Math.max(0, Math.min(prevFocusRow, ids.length - 1));
+  let t = table;
+  for (let i = 0; i < clamped; i++) {
+    t = navTableFocusNext(t);
+  }
+  return t;
 }
