@@ -32,6 +32,29 @@ Never push code that doesn't pass both checks. CI failures waste time and break 
 
 Our duty is to write **safe, correct code**. Shortcuts that compromise quality are not acceptable.
 
+**NEVER rewrite git history in any way:**
+- ❌ NEVER amend commits (`--amend`)
+- ❌ NEVER rebase
+- ❌ NEVER force push (`--force`, `--force-with-lease`)
+- ❌ NEVER squash
+
+Every commit is permanent. If you made a mistake, fix it in a new commit.
+
+**The TESTS are the SPEC:**
+- ❌ NEVER change a test to make it pass
+- ❌ NEVER skip tests
+- ❌ NEVER use `--no-verify`
+- ❌ NEVER disable or otherwise circumvent tests
+
+If a test fails, the code is wrong — not the test. Fix the implementation.
+
+**NEVER use loose types:**
+- ❌ NEVER use `any` type
+- ❌ NEVER use wildcard imports/types to dodge type safety
+- ❌ NEVER cast to `any` or `unknown` to silence the compiler
+
+If the types are hard, that means you need to understand the code better.
+
 **Own every failure you see:**
 - ❌ NEVER dismiss errors as "pre-existing" and move on. If you see something broken, fix it.
 - ❌ NEVER say CI/CD failures are acceptable or ignorable. A red build is your problem now.
