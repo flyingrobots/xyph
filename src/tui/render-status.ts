@@ -116,9 +116,9 @@ export function renderLineage(snapshot: GraphSnapshot): string {
   }
 
   // Collect orphan quests (no intentId)
-  // INBOX tasks genuinely lack an intent (not yet promoted) — exclude from orphan list
+  // BACKLOG tasks genuinely lack an intent (not yet promoted) — exclude from orphan list
   const orphans = snapshot.quests.filter(
-    (q) => q.intentId === undefined && q.status !== 'INBOX'
+    (q) => q.intentId === undefined && q.status !== 'BACKLOG'
   );
 
   for (const intent of snapshot.intents) {
@@ -304,17 +304,17 @@ export function renderAll(snapshot: GraphSnapshot): string {
 export function renderInbox(snapshot: GraphSnapshot): string {
   const t = getTheme();
   const lines: string[] = [];
-  const inbox = snapshot.quests.filter((q) => q.status === 'INBOX');
+  const inbox = snapshot.quests.filter((q) => q.status === 'BACKLOG');
 
   lines.push(snapshotHeader(
-    'Intake INBOX',
+    'Backlog',
     `${inbox.length} task(s) awaiting triage`,
     'secondary'
   ));
 
   if (inbox.length === 0) {
     lines.push(styled(t.theme.semantic.muted,
-      '\n  No tasks in INBOX.\n' +
+      '\n  No tasks in backlog.\n' +
       '  Add one: xyph-actuator inbox task:ID --title "..." --suggested-by <principal>'
     ));
     return lines.join('\n');

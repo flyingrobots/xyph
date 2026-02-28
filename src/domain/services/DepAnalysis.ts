@@ -4,6 +4,9 @@
  * These are domain computations that git-warp's generic traversal can't
  * provide directly (they depend on quest status semantics like "DONE tasks
  * weigh 0" and "frontier = tasks whose deps are all DONE").
+ *
+ * Topological sorting is NOT here — it's handled by git-warp's native
+ * `graph.traverse.topologicalSort()` and stored in `GraphSnapshot.sortedTaskIds`.
  */
 
 // ---------------------------------------------------------------------------
@@ -111,6 +114,7 @@ export function computeCriticalPath(
 
     const dependents = dependentsOf.get(node) ?? [];
     for (const dep of dependents) {
+      if (!weightMap.has(dep)) continue;  // skip phantom edges
       const currentDist = dist.get(node) ?? 0;
       const depWeight = weightMap.get(dep) ?? 0;
       const newDist = currentDist + depWeight;

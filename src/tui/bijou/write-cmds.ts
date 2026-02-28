@@ -1,0 +1,115 @@
+/**
+ * Write command factories for TUI write operations.
+ *
+ * Each factory returns a Cmd<DashboardMsg> that:
+ * 1. Performs the write via the appropriate port/graph
+ * 2. Emits write-success or write-error
+ * 3. The caller (DashboardApp update) handles refresh chaining
+ */
+
+import { randomUUID } from 'crypto';
+import type { Cmd } from '@flyingrobots/bijou-tui';
+import type { DashboardMsg } from './DashboardApp.js';
+import type { GraphPort } from '../../ports/GraphPort.js';
+import type { IntakePort } from '../../ports/IntakePort.js';
+import type { SubmissionPort } from '../../ports/SubmissionPort.js';
+
+/** Generate a lexicographically-sortable unique ID (matches actuator pattern). */
+export function generateId(): string {
+  const ts = Date.now().toString(36).padStart(9, '0');
+  const rand = randomUUID().replace(/-/g, '').slice(0, 8);
+  return `${ts}${rand}`;
+}
+
+export interface WriteDeps {
+  graphPort: GraphPort;
+  intake: IntakePort;
+  submissionPort: SubmissionPort;
+  agentId: string;
+}
+
+/**
+ * Claim a quest via direct graph patch (OCP — Optimistic Claiming Protocol).
+ * Sets status to IN_PROGRESS, assigned_to to agentId, claimed_at to now.
+ */
+export function claimQuest(deps: WriteDeps, questId: string): Cmd<DashboardMsg> {
+  return async (emit) => {
+    try {
+      const graph = await deps.graphPort.getGraph();
+      await graph.patch((p) => {
+        p.setProperty(questId, 'assigned_to', deps.agentId)
+          .setProperty(questId, 'status', 'IN_PROGRESS')
+          .setProperty(questId, 'claimed_at', Date.now());
+      });
+
+      // OCP post-check: reads local state only (remote sync happens on next snapshot refresh).
+      // True cross-writer verification requires a full materialize with remote patches.
+      const props = await graph.getNodeProps(questId);
+      if (props && props.get('assigned_to') === deps.agentId) {
+        emit({ type: 'write-success', message: `Claimed ${questId}` });
+      } else {
+        const winner = props ? String(props.get('assigned_to') ?? 'unknown') : 'unknown';
+        emit({ type: 'write-error', message: `Lost claim race for ${questId}. Owner: ${winner}` });
+      }
+    } catch (err: unknown) {
+      emit({ type: 'write-error', message: err instanceof Error ? err.message : String(err) });
+    }
+  };
+}
+
+/**
+ * Promote a BACKLOG quest to PLANNED via IntakePort.
+ */
+export function promoteQuest(deps: WriteDeps, questId: string, intentId: string, campaignId?: string): Cmd<DashboardMsg> {
+  return async (emit) => {
+    try {
+      if (!intentId.trim()) {
+        emit({ type: 'write-error', message: 'Intent ID is required for promotion' });
+        return;
+      }
+      await deps.intake.promote(questId, intentId, campaignId);
+      emit({ type: 'write-success', message: `Promoted ${questId} → PLANNED` });
+    } catch (err: unknown) {
+      emit({ type: 'write-error', message: err instanceof Error ? err.message : String(err) });
+    }
+  };
+}
+
+/**
+ * Reject a BACKLOG quest to GRAVEYARD via IntakePort.
+ */
+export function rejectQuest(deps: WriteDeps, questId: string, rationale: string): Cmd<DashboardMsg> {
+  return async (emit) => {
+    try {
+      if (!rationale.trim()) {
+        emit({ type: 'write-error', message: 'Rationale is required for rejection' });
+        return;
+      }
+      await deps.intake.reject(questId, rationale);
+      emit({ type: 'write-success', message: `Rejected ${questId}` });
+    } catch (err: unknown) {
+      emit({ type: 'write-error', message: err instanceof Error ? err.message : String(err) });
+    }
+  };
+}
+
+/**
+ * Review a patchset — approve or request changes.
+ */
+export function reviewSubmission(
+  deps: WriteDeps,
+  patchsetId: string,
+  verdict: 'approve' | 'request-changes',
+  comment: string,
+): Cmd<DashboardMsg> {
+  return async (emit) => {
+    try {
+      const reviewId = `review:${generateId()}`;
+      await deps.submissionPort.review({ patchsetId, reviewId, verdict, comment });
+      const label = verdict === 'approve' ? 'Approved' : 'Changes requested';
+      emit({ type: 'write-success', message: `${label} (${patchsetId})` });
+    } catch (err: unknown) {
+      emit({ type: 'write-error', message: err instanceof Error ? err.message : String(err) });
+    }
+  };
+}

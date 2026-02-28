@@ -4,7 +4,6 @@
  */
 
 export type QuestStatus =
-  | 'INBOX'
   | 'BACKLOG'
   | 'PLANNED'
   | 'IN_PROGRESS'
@@ -13,8 +12,27 @@ export type QuestStatus =
   | 'GRAVEYARD';
 
 export const VALID_STATUSES: ReadonlySet<string> = new Set<QuestStatus>([
+  'BACKLOG', 'PLANNED', 'IN_PROGRESS', 'BLOCKED', 'DONE', 'GRAVEYARD',
+]);
+
+/** Accept both legacy and current status values from the graph. */
+export const VALID_RAW_STATUSES: ReadonlySet<string> = new Set([
   'INBOX', 'BACKLOG', 'PLANNED', 'IN_PROGRESS', 'BLOCKED', 'DONE', 'GRAVEYARD',
 ]);
+
+/** Normalize legacy status strings at read time (vocabulary rename Phase 9). */
+export function normalizeQuestStatus(raw: string): QuestStatus {
+  switch (raw) {
+    case 'INBOX':       return 'BACKLOG';       // old INBOX → new BACKLOG (suggestion pool)
+    case 'BACKLOG':     return 'PLANNED';       // old BACKLOG → new PLANNED (vetted work)
+    case 'PLANNED':     return 'PLANNED';
+    case 'IN_PROGRESS': return 'IN_PROGRESS';
+    case 'BLOCKED':     return 'BLOCKED';
+    case 'DONE':        return 'DONE';
+    case 'GRAVEYARD':   return 'GRAVEYARD';
+    default:            return raw as QuestStatus; // caller MUST validate
+  }
+}
 
 export type QuestType = 'task';
 

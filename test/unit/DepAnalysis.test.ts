@@ -151,3 +151,4 @@ describe('computeCriticalPath', () => {
     expect(result.totalHours).toBe(5);
   });
 });
+

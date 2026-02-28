@@ -47,6 +47,7 @@ export interface IntentNode {
   title: string;
   requestedBy: string;
   createdAt: number;
+  description?: string;
 }
 
 export interface ScrollNode {
@@ -114,5 +115,7 @@ export interface GraphSnapshot {
   decisions: DecisionNode[];
   asOf: number;
   graphMeta?: GraphMeta;
+  /** Task IDs in topological order (prerequisites first), computed by git-warp's traversal engine. */
+  sortedTaskIds: string[];
 }
 

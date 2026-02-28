@@ -13,7 +13,7 @@
 
 import type WarpGraph from '@git-stunts/git-warp';
 import type { QueryResultV1, AggregateResult } from '@git-stunts/git-warp';
-import { VALID_STATUSES as VALID_QUEST_STATUSES } from '../domain/entities/Quest.js';
+import { VALID_STATUSES as VALID_QUEST_STATUSES, normalizeQuestStatus } from '../domain/entities/Quest.js';
 import type { QuestStatus } from '../domain/entities/Quest.js';
 import type { ApprovalGateTrigger } from '../domain/entities/ApprovalGate.js';
 import {
@@ -148,6 +148,8 @@ class GraphContextImpl implements GraphContext {
       ...snapshot,
       quests,
       scrolls: snapshot.scrolls.filter((s) => questIds.has(s.questId)),
+      submissions: snapshot.submissions.filter((s) => questIds.has(s.questId)),
+      sortedTaskIds: snapshot.sortedTaskIds.filter((id) => questIds.has(id)),
     };
   }
 
@@ -241,9 +243,10 @@ class GraphContextImpl implements GraphContext {
     for (const n of taskNodes) {
       if (n.props['type'] !== 'task') continue;
       const title = n.props['title'];
-      const rawStatus = n.props['status'];
+      const rawStatusRaw = n.props['status'];
       const hours = n.props['hours'];
-      if (typeof title !== 'string' || typeof rawStatus !== 'string') continue;
+      if (typeof title !== 'string' || typeof rawStatusRaw !== 'string') continue;
+      const rawStatus = normalizeQuestStatus(rawStatusRaw);
       if (!VALID_QUEST_STATUSES.has(rawStatus)) continue;
 
       const neighbors = neighborsCache.get(n.id) ?? [];
@@ -293,8 +296,12 @@ class GraphContextImpl implements GraphContext {
       const title = n.props['title'];
       const requestedBy = n.props['requested_by'];
       const createdAt = n.props['created_at'];
+      const description = n.props['description'];
       if (typeof title === 'string' && typeof requestedBy === 'string' && typeof createdAt === 'number') {
-        intents.push({ id: n.id, title, requestedBy, createdAt });
+        intents.push({
+          id: n.id, title, requestedBy, createdAt,
+          description: typeof description === 'string' ? description : undefined,
+        });
       }
     }
 
@@ -367,11 +374,19 @@ class GraphContextImpl implements GraphContext {
     const tipSha = checkpointSha ? checkpointSha.slice(0, 7) : 'unknown';
     const graphMeta: GraphMeta = { maxTick, myTick, writerCount, tipSha };
 
+    // --- Topological sort via git-warp traversal engine ---
+    log('Computing topological order…');
+    const taskIds = quests.map((q) => q.id);
+    const { sorted: sortedTaskIds } = await graph.traverse.topologicalSort(taskIds, {
+      dir: 'in',
+      labelFilter: 'depends-on',
+    });
+
     log(`Snapshot ready — ${quests.length} quests, ${campaigns.length} campaigns`);
     const snap: GraphSnapshot = {
       campaigns, quests, intents, scrolls, approvals,
       submissions, reviews, decisions,
-      asOf: Date.now(), graphMeta,
+      asOf: Date.now(), graphMeta, sortedTaskIds,
     };
     this.cachedSnapshot = snap;
     this.cachedFrontierKey = this.frontierKeyFromState(state);

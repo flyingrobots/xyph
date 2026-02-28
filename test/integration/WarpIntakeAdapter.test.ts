@@ -68,7 +68,7 @@ describe('WarpIntakeAdapter Integration', () => {
     }
   });
 
-  it('promote succeeds: status → BACKLOG with authorized-by edge', async () => {
+  it('promote succeeds: status → PLANNED with authorized-by edge', async () => {
     const adapter = new WarpIntakeAdapter(graphPort, humanAgentId);
     await adapter.promote('task:INTAKE-001', 'intent:sovereign-test');
 
@@ -76,7 +76,8 @@ describe('WarpIntakeAdapter Integration', () => {
     const snapshot = await reader.fetchSnapshot();
     const q = snapshot.quests.find((q) => q.id === 'task:INTAKE-001');
     expect(q).toBeDefined();
-    expect(q?.status).toBe('BACKLOG');
+    // Graph stores BACKLOG, read-time normalization converts to PLANNED
+    expect(q?.status).toBe('PLANNED');
     expect(q?.intentId).toBe('intent:sovereign-test');
   });
 

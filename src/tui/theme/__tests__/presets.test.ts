@@ -8,12 +8,12 @@ import {
   type XyphTheme,
 } from '../xyph-presets.js';
 
-/** All XYPH-extended status keys (15). */
+/** All XYPH-extended status keys (14). */
 type XyphExtStatus = Exclude<XyphStatusKey, BaseStatusKey>;
 
 const XYPH_STATUS_KEYS: readonly XyphExtStatus[] = [
   'DONE', 'IN_PROGRESS', 'BACKLOG', 'BLOCKED', 'PLANNED',
-  'INBOX', 'GRAVEYARD', 'PENDING', 'APPROVED', 'REJECTED',
+  'GRAVEYARD', 'PENDING', 'APPROVED', 'REJECTED',
   'UNKNOWN', 'OPEN', 'CHANGES_REQUESTED', 'MERGED', 'CLOSED',
 ] as const;
 
@@ -26,7 +26,7 @@ const HEX_RE = /^#[0-9a-fA-F]{6}$/;
 
 function validateTheme(theme: XyphTheme): void {
   describe(`theme: ${theme.name}`, () => {
-    it('has all 15 XYPH status keys defined', () => {
+    it('has all 14 XYPH status keys defined', () => {
       for (const key of XYPH_STATUS_KEYS) {
         expect(theme.status[key], `missing XYPH status key: ${key}`).toBeDefined();
         expect(theme.status[key].hex).toMatch(HEX_RE);
@@ -93,8 +93,8 @@ describe('xyph-presets', () => {
     expect(XYPH_PRESETS['teal-orange-pink']).toBe(XYPH_TEAL_ORANGE_PINK);
   });
 
-  it('extended themes have 22 total status keys (7 base + 15 XYPH)', () => {
+  it('extended themes have 21 total status keys (7 base + 14 XYPH)', () => {
     const keys = Object.keys(XYPH_CYAN_MAGENTA.status);
-    expect(keys.length).toBe(22);
+    expect(keys.length).toBe(21);
   });
 });

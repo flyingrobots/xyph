@@ -1,12 +1,9 @@
 import { RoadmapPort } from '../../ports/RoadmapPort.js';
-import { Quest, QuestStatus, QuestType } from '../../domain/entities/Quest.js';
+import { Quest, QuestType, VALID_RAW_STATUSES, normalizeQuestStatus } from '../../domain/entities/Quest.js';
 import { EdgeType } from '../../schema.js';
 import type { GraphPort } from '../../ports/GraphPort.js';
 import { toNeighborEntries } from '../helpers/isNeighborEntry.js';
 
-const VALID_STATUSES: ReadonlySet<string> = new Set([
-  'INBOX', 'BACKLOG', 'PLANNED', 'IN_PROGRESS', 'BLOCKED', 'DONE', 'GRAVEYARD',
-]);
 const VALID_TYPES: ReadonlySet<string> = new Set(['task']);
 
 export class WarpRoadmapAdapter implements RoadmapPort {
@@ -21,7 +18,7 @@ export class WarpRoadmapAdapter implements RoadmapPort {
     const type = props.get('type');
 
     if (typeof title !== 'string' || title.length < 5) return null;
-    if (typeof status !== 'string' || !VALID_STATUSES.has(status)) return null;
+    if (typeof status !== 'string' || !VALID_RAW_STATUSES.has(status)) return null;
     if (typeof type !== 'string' || !VALID_TYPES.has(type)) return null;
     if (!id.startsWith('task:')) return null;
 
@@ -35,7 +32,7 @@ export class WarpRoadmapAdapter implements RoadmapPort {
     return new Quest({
       id,
       title,
-      status: status as QuestStatus,
+      status: normalizeQuestStatus(status),
       hours: parsedHours,
       assignedTo: typeof assignedTo === 'string' ? assignedTo : undefined,
       claimedAt: typeof claimedAt === 'number' ? claimedAt : undefined,
@@ -47,17 +44,17 @@ export class WarpRoadmapAdapter implements RoadmapPort {
 
   public async getQuests(): Promise<Quest[]> {
     const graph = await this.graphPort.getGraph();
-    const nodeIds = await graph.getNodes();
+    const result = await graph.query().match('task:*').select(['id', 'props']).run();
+    if (!('nodes' in result)) return [];
+
     const quests: Quest[] = [];
-
-    for (const id of nodeIds) {
-      const props = await graph.getNodeProps(id);
-      if (props && props.get('type') === 'task') {
-        const quest = this.buildQuestFromProps(id, props);
-        if (quest) quests.push(quest);
-      }
+    for (const node of result.nodes) {
+      if (typeof node.id !== 'string' || !node.props) continue;
+      // query returns Record<string, unknown>; buildQuestFromProps expects Map
+      const props = new Map(Object.entries(node.props));
+      const quest = this.buildQuestFromProps(node.id, props);
+      if (quest) quests.push(quest);
     }
-
     return quests;
   }
 
@@ -78,10 +75,13 @@ export class WarpRoadmapAdapter implements RoadmapPort {
     return graph.patch((p) => {
       if (needsAdd) {
         p.addNode(quest.id);
+        // Only set status on creation — status transitions go through dedicated
+        // methods (IntakePort, direct patches) to avoid writing normalized values
+        // back to the graph in read-modify-write cycles.
+        p.setProperty(quest.id, 'status', quest.status);
       }
 
       p.setProperty(quest.id, 'title', quest.title)
-        .setProperty(quest.id, 'status', quest.status)
         .setProperty(quest.id, 'hours', quest.hours)
         .setProperty(quest.id, 'type', quest.type);
 

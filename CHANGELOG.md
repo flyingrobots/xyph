@@ -4,6 +4,190 @@ All notable changes to XYPH will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed — Code Review
+
+- **H-1: Shared selection ordering** — Extracted `roadmapQuestIds`, `submissionIds`,
+  `backlogQuestIds`, `lineageIntentIds` into `selection-order.ts`. Both DashboardApp
+  (j/k navigation) and view renderers import from the same module, preventing
+  wrong-item-selected bugs from ordering divergence.
+- **M-1: dagScrollY asymmetry** — Vertical DAG scroll offset now applies as an
+  offset from auto-center, matching the existing dagScrollX behavior.
+- **M-2: GRAVEYARD progress exclusion** — Dashboard progress bar and orphan alert
+  exclude GRAVEYARD quests (previously inflated denominator).
+- **M-3: filterSnapshot submissions** — `filterSnapshot()` now filters submissions
+  for graveyard quests alongside scrolls and sortedTaskIds.
+- **M-4: "Assigned Issues" rename** — Dashboard right column header changed from
+  "My Issues" to "Assigned Issues" for clarity.
+- **M-7: normalizeQuestStatus hardened** — All known statuses now have explicit
+  switch cases; `default` branch is truly unreachable for valid input.
+- **M-8: Write debounce** — Added `writePending` flag to prevent double-writes
+  while a graph mutation is in flight. Confirm/input handlers set the flag;
+  write-success/error clear it; write actions short-circuit when true.
+- **L-1/L-4: GRAVEYARD in roadmap** — Added skull icon for GRAVEYARD status;
+  excluded GRAVEYARD quests from selectable IDs in both deps and no-deps paths.
+- **L-3: OCP comment** — Clarified that claim verification reads local state only.
+- **L-4: rejectQuest guard** — Empty-rationale check added, matching promoteQuest.
+- **L-5: Clamp on reload** — Per-view `selectedIndex` is clamped when a new
+  snapshot arrives, preventing stale indices after quest deletion.
+- **L-6: Critical path phantom guard** — `computeCriticalPath` inner loop skips
+  dependents not in the weight map, preventing NaN propagation from phantom edges.
+- **L-8/N-7: Exhaustive defaults** — `handleViewAction` and `viewRenderer` switch
+  statements now have `default: never` guards for compile-time exhaustiveness.
+
+### Changed — Dependency Upgrade: bijou v0.5.1
+
+- Upgraded `@flyingrobots/bijou`, `@flyingrobots/bijou-node`, and
+  `@flyingrobots/bijou-tui` to v0.5.1. Resolves dual-package context issue
+  where `bijou-tui` bundled a nested bijou v0.4.0 copy, causing
+  `[bijou] No default context configured` crash at dashboard startup.
+
+### Changed — Performance: Query-based getQuests() and DagSource adapter
+
+- `WarpRoadmapAdapter.getQuests()` now uses `graph.query().match('task:*')`
+  instead of walking every node via `getNodes()` + per-node `getNodeProps()`.
+  Reduces work from O(total_nodes) to O(task_nodes).
+- Upgraded `@flyingrobots/bijou` to v0.5.0.
+- Roadmap DAG rendering now uses a `SlicedDagSource` adapter backed by the
+  existing `questMap` instead of building an intermediate `DagNode[]` array.
+  Graph data is read lazily via the source interface — no duplication.
+
+### Changed — Topological Sort: Use git-warp Engine
+
+- Removed manual `topoSort()` (Kahn's algorithm) from `DepAnalysis.ts` — git-warp
+  already provides `graph.traverse.topologicalSort()` with the same semantics.
+- `GraphContext.fetchSnapshot()` now computes `sortedTaskIds` via the engine
+  (`dir: 'in'`, `labelFilter: 'depends-on'`) and includes it in `GraphSnapshot`.
+- `roadmap-view.ts` reads `snap.sortedTaskIds` instead of calling a manual sort.
+- `filterSnapshot()` filters `sortedTaskIds` when excluding GRAVEYARD quests.
+- Removed 4 `topoSort` unit tests (coverage now lives in git-warp's own test suite).
+
+### Fixed — PR Feedback (Review Round)
+
+- Roadmap frontier selection ordering now matches visual render order
+  (frontier items first, then blocked, both sorted).
+- Backlog write targets aligned with suggester-grouped render order,
+  preventing wrong-target promote/reject operations.
+- Toast dismissal uses tokenized `expiresAt` to prevent stale timers
+  from clearing newer toasts.
+- `promoteQuest` validates intentId is non-empty before calling IntakePort.
+- Overlay dialog hint lines pad plain text before ANSI styling to fix
+  visual width miscalculation.
+- Landing progress bar width clamped to terminal width for narrow screens.
+- Consolidated duplicate "### Removed" CHANGELOG sections.
+- Extracted shared `normalizeQuestStatus` and `SUBMISSION_STATUS_ORDER`
+  constants to domain entities, eliminating duplication across adapters.
+- Dashboard pending-review lookup optimized from O(n) find to Map.
+
+### Changed — Phase 9: Vocabulary Rename
+
+- `INBOX` → `BACKLOG` (suggestion pool), `BACKLOG` → `PLANNED` (vetted work).
+- Read-time normalization in `GraphContext` (`normalizeQuestStatus`) ensures
+  legacy graph data maps transparently — no graph migration needed.
+- `inbox-view.ts` → `backlog-view.ts`; all references, tests, keybindings, and
+  tab labels updated.
+- `IntakeService` and adapters updated: `sendToInbox()` now writes `BACKLOG`;
+  `promote()` transitions `BACKLOG → PLANNED`.
+- `Quest` entity and status types reflect new vocabulary.
+- Theme presets: `INBOX` tokens replaced with `BACKLOG`.
+
+### Added — Phase 5: Dashboard Redesign
+
+- `dashboard-view.ts`: Full replacement for `overview-view.ts` as the default
+  landing view.
+- Project progress bar via bijou `progressBar()` — DONE / non-backlog ratio.
+- Alert bar: warns on orphan quests (no intent) and forked patchsets.
+- "In Progress" and "Pending Review" panels with top items.
+- Campaign progress: per-campaign `progressBar()` with done/total counts.
+- "Assigned Issues" panel (assigned, non-terminal quests).
+- Health section: sovereignty audit ratio, orphan count, fork count.
+- Graph meta section: max tick, writer count, tip SHA.
+- Two-column flex layout (2:1 ratio).
+
+### Added — Phase 4: Lineage Intent Cards
+
+- Intent descriptions surfaced from graph (`description` property on intent
+  nodes, read in `GraphContext`).
+- `progressBar()` completion stats per intent (DONE / total authorized quests).
+- Indented quest trees under each intent with status styling.
+
+### Added — Phase 3: Interactive DAG Scrolling
+
+- Roadmap view upgraded to bijou `dagLayout()` with `viewport({ scrollX })`.
+- Auto-centers on selected node when selection changes.
+- `h`/`l` keybindings for horizontal DAG scrolling.
+
+### Removed
+
+- `overview-view.ts` — replaced by `dashboard-view.ts`.
+- `inbox-view.ts` — replaced by `backlog-view.ts`.
+- `all-view.ts` — replaced by `overview-view.ts`.
+
+### Added — Interactive TUI Phase 2: Review Actions + Roadmap Detail
+
+**Review actions in submissions view:**
+- `a` (approve) and `x` (request-changes) keybindings in submissions view.
+- Input mode prompts for review comment before dispatching.
+- Validates tip patchset exists — shows error toast if missing.
+- `reviewSubmission()` write command factory with auto-generated review IDs.
+- `SubmissionPort` wired into `WriteDeps` and `DashboardDeps`.
+
+**Roadmap detail panel:**
+- Third flex column (28 cols) appears when a quest is selected.
+- Shows: quest ID, title, status, hours, owner, campaign title, intent,
+  dependency count with status icons, submission status, and scroll info.
+- Hidden when no quest is selected — DAG takes full width.
+
+**DAG selected node highlighting:**
+- Selected quest node in DAG uses `primary` theme token, overriding the
+  critical-path warning color for visual distinction.
+
+**Tests:**
+- 8 new tests: review keybindings (`a`/`x` enter input mode), error toast
+  on missing tip patchset, review input flow, detail panel content/deps/
+  submission status, hidden detail panel.
+
+### Added — Interactive TUI Phase 1: New Views, Selection, and Write Operations
+
+**New views:**
+- `overview-view.ts`: Summary dashboard with quest status counts, submission
+  status counts, health metrics (sovereignty audit, orphan quests, forked
+  patchsets), campaign list, and graph meta — replaces the raw-table `all-view`.
+- `submissions-view.ts`: Master-detail layout (35/65 flex split). Left panel
+  shows submissions sorted by status priority (OPEN first); right panel shows
+  expanded detail with patchset chain, reviews, and decisions.
+
+**Selection and navigation:**
+- Per-view state: `roadmap.selectedIndex`, `submissions.selectedIndex`,
+  `inbox.selectedIndex` with j/k (or arrow keys) for navigation.
+- Roadmap frontier panel highlights selected quest with `▶` indicator.
+- Inbox table highlights selected item with `▶` indicator.
+- Submissions list highlights selected entry; Enter toggles detail expansion.
+- View-specific hint bar shows available keybindings per view.
+
+**Write operations:**
+- `write-cmds.ts`: Cmd factories for `claimQuest` (OCP via direct graph patch),
+  `promoteQuest` (IntakePort), `rejectQuest` (IntakePort).
+- Confirm mode: `c` on roadmap → confirm dialog (`y/n`) → claim quest → toast.
+- Input mode: `p` on inbox → text input for intent ID → promote quest → toast.
+  `d` on inbox → text input for rationale → reject quest → toast.
+- `overlays.ts`: Centered confirm dialog and text input overlays rendered over
+  view content.
+- Toast notifications in status line (success=green, error=red, auto-dismiss 3s).
+
+**Architecture:**
+- `DashboardModel` expanded: per-view state objects, interaction modes
+  (`normal`/`confirm`/`input`), `PendingWrite` action type, toast state.
+- `DashboardMsg` expanded: `write-success`, `write-error`, `dismiss-toast`.
+- `DashboardDeps` expanded: `graphPort: GraphPort` for direct graph patches.
+- Tab order: roadmap → submissions → lineage → overview → inbox (5 views).
+- View-specific keymaps via separate `KeyMap` instances per view.
+
+**Tests:**
+- 57 new tests across `DashboardApp.test.ts` and `views.test.ts`: 5-view
+  cycling, per-view state init, selection (j/k), confirm mode, input mode,
+  toast lifecycle, submission expand/collapse, overview metrics, submissions
+  detail rendering.
+
 ### Changed — BJU-002: Port TUI Views to Bijou Components
 
 - Ported 4 dashboard views from stub placeholders to full rendering logic

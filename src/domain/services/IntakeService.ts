@@ -4,11 +4,11 @@ import type { Quest, QuestStatus } from '../entities/Quest.js';
 /**
  * Canonical state-machine for the intake pipeline.
  *
- * INBOX  ──promote (human only)──▶  BACKLOG
- *        └──reject  (any actor) ──▶  GRAVEYARD
- * GRAVEYARD  ──reopen (human only)──▶  INBOX
+ * BACKLOG  ──promote (human only)──▶  PLANNED
+ *          └──reject  (any actor) ──▶  GRAVEYARD
+ * GRAVEYARD  ──reopen (human only)──▶  BACKLOG
  *
- * All existing BACKLOG→IN_PROGRESS→DONE transitions are unchanged.
+ * All existing PLANNED→IN_PROGRESS→DONE transitions are unchanged.
  */
 export interface TransitionRule {
   from: QuestStatus;
@@ -18,9 +18,9 @@ export interface TransitionRule {
 }
 
 export const TRANSITION_TABLE: readonly TransitionRule[] = [
-  { from: 'INBOX', to: 'BACKLOG', requiresHuman: true, command: 'promote' },
-  { from: 'INBOX', to: 'GRAVEYARD', requiresHuman: false, command: 'reject' },
-  { from: 'GRAVEYARD', to: 'INBOX', requiresHuman: true, command: 'reopen' },
+  { from: 'BACKLOG', to: 'PLANNED', requiresHuman: true, command: 'promote' },
+  { from: 'BACKLOG', to: 'GRAVEYARD', requiresHuman: false, command: 'reject' },
+  { from: 'GRAVEYARD', to: 'BACKLOG', requiresHuman: true, command: 'reopen' },
 ];
 
 /**
@@ -70,9 +70,9 @@ export class IntakeService {
       );
     }
     const quest = await this.getQuestOrThrow(questId);
-    if (quest.status !== 'INBOX') {
+    if (quest.status !== 'BACKLOG') {
       throw new Error(
-        `[INVALID_FROM] promote requires status INBOX, quest ${questId} is ${quest.status}`
+        `[INVALID_FROM] promote requires status BACKLOG, quest ${questId} is ${quest.status}`
       );
     }
   }
@@ -86,9 +86,9 @@ export class IntakeService {
       throw new Error(`[MISSING_ARG] --rationale is required and must be non-empty`);
     }
     const quest = await this.getQuestOrThrow(questId);
-    if (quest.status !== 'INBOX') {
+    if (quest.status !== 'BACKLOG') {
       throw new Error(
-        `[INVALID_FROM] reject requires status INBOX, quest ${questId} is ${quest.status}`
+        `[INVALID_FROM] reject requires status BACKLOG, quest ${questId} is ${quest.status}`
       );
     }
   }

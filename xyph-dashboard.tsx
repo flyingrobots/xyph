@@ -6,11 +6,23 @@
  *   XYPH_AGENT_ID=human.james ./xyph-dashboard.tsx
  *
  * Keys:
- *   Tab   — cycle views (roadmap → lineage → all → inbox)
+ *   Tab   — cycle views (roadmap → submissions → lineage → overview → inbox)
  *   r     — refresh snapshot
  *   q     — quit
  *   ?     — help
  */
+
+// Suppress DEP0169 stderr output from transitive deps.
+// The process.on('warning') approach only catches the event; Node also writes
+// directly to stderr via internal mechanisms before our listener runs (ESM
+// import hoisting).  Intercepting stderr.write catches both paths.
+const _origStderrWrite = process.stderr.write.bind(process.stderr);
+type StderrWriteRest = Parameters<typeof process.stderr.write> extends [unknown, ...infer R] ? R : never;
+process.stderr.write = function (chunk: string | Uint8Array, ...args: StderrWriteRest) {
+  if (typeof chunk === 'string' && chunk.includes('DEP0169')) return true;
+  return _origStderrWrite(chunk, ...args);
+} as typeof process.stderr.write;
+
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { run } from '@flyingrobots/bijou-tui';
@@ -18,6 +30,7 @@ import { ensureXyphContext } from './src/tui/theme/index.js';
 import { createGraphContext } from './src/infrastructure/GraphContext.js';
 import { WarpGraphAdapter } from './src/infrastructure/adapters/WarpGraphAdapter.js';
 import { WarpIntakeAdapter } from './src/infrastructure/adapters/WarpIntakeAdapter.js';
+import { WarpSubmissionAdapter } from './src/infrastructure/adapters/WarpSubmissionAdapter.js';
 import { createDashboardApp } from './src/tui/bijou/DashboardApp.js';
 import { loadRandomLogo, selectLogoSize } from './src/tui/logo-loader.js';
 import { TuiLogger } from './src/tui/TuiLogger.js';
@@ -45,10 +58,13 @@ const logger = new TuiLogger({ component: 'xyph-dashboard' });
 const graphPort = new WarpGraphAdapter(cwd, 'xyph-roadmap', agentId, logger);
 const ctx = createGraphContext(graphPort);
 const intake = new WarpIntakeAdapter(graphPort, agentId);
+const submissionPort = new WarpSubmissionAdapter(graphPort, agentId);
 
 const app = createDashboardApp({
   ctx,
   intake,
+  graphPort,
+  submissionPort,
   agentId,
   logoText: splash.text,
 });
