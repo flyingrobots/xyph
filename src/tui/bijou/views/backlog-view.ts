@@ -24,18 +24,15 @@ export function backlogView(model: DashboardModel, _width?: number, _height?: nu
     return lines.join('\n');
   }
 
-  // Group headers by suggester
-  const bySuggester = new Map<string, string[]>();
+  // Show suggester breakdown above the flat navigable table
+  const bySuggester = new Map<string, number>();
   for (const q of backlog) {
     const key = q.suggestedBy ?? '(unknown suggester)';
-    const arr = bySuggester.get(key) ?? [];
-    arr.push(q.id);
-    bySuggester.set(key, arr);
+    bySuggester.set(key, (bySuggester.get(key) ?? 0) + 1);
   }
 
-  for (const [suggester] of bySuggester) {
-    lines.push('');
-    lines.push(styled(t.theme.ui.intentHeader, `  ${suggester}`));
+  for (const [suggester, count] of bySuggester) {
+    lines.push(styled(t.theme.ui.intentHeader, `  ${suggester}`) + styled(t.theme.semantic.muted, ` (${count})`));
   }
 
   lines.push('');

@@ -2,10 +2,14 @@ import type { Command } from 'commander';
 import type { CliContext } from '../context.js';
 import { createErrorHandler } from '../errorHandler.js';
 import { assertPrefix } from '../validators.js';
+import { toNeighborEntries } from '../../infrastructure/helpers/isNeighborEntry.js';
 
 /**
  * Shared validation + graph write for campaign and intent linking.
  * Used by move, authorize, and the convenience link command.
+ *
+ * When `campaignId` is provided, any existing `belongs-to` edge is removed
+ * before the new one is added — enforcing single-campaign cardinality.
  */
 async function applyLink(
   ctx: CliContext,
@@ -32,8 +36,23 @@ async function applyLink(
     throw new Error(`[NOT_FOUND] Intent ${intentId} not found in the graph`);
   }
 
+  // Discover existing belongs-to edges so move replaces rather than accumulates
+  const existingCampaignEdges: Array<{ nodeId: string }> = [];
+  if (campaignId !== undefined) {
+    const neighbors = toNeighborEntries(await graph.neighbors(quest, 'outgoing'));
+    for (const n of neighbors) {
+      if (n.label === 'belongs-to') {
+        existingCampaignEdges.push({ nodeId: n.nodeId });
+      }
+    }
+  }
+
   const sha = await graph.patch((p) => {
     if (campaignId !== undefined) {
+      // Remove any existing belongs-to edges first (single-campaign cardinality)
+      for (const old of existingCampaignEdges) {
+        p.removeEdge(quest, old.nodeId, 'belongs-to');
+      }
       p.addEdge(quest, campaignId, 'belongs-to');
     }
     if (intentId !== undefined) {

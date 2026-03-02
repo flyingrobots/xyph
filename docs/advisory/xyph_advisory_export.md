@@ -94,10 +94,10 @@ Without that, you just smear partial policy across the codebase.
 
 ### Graph semantics
 The authoritative graph schema defines:
-- `belongs-to` as task -> campaign/milestone,
-- `authorized-by` as task -> intent,
-- `depends-on` as task -> task,
-and describes quests as belonging to a campaign and tracing to human intent.
+- `belongs-to` as Quest → campaign/milestone,
+- `authorized-by` as Quest → intent,
+- `depends-on` as Quest → Quest,
+and describes Quests as belonging to a campaign and tracing to human intent.
 
 That makes campaign assignment and intent authorization first-class semantics, not generic graph plumbing.
 

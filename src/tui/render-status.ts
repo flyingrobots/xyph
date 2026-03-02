@@ -439,7 +439,7 @@ export function renderSubmissions(snapshot: GraphSnapshot): string {
         { variant: statusVariant(r.verdict === 'approve' ? 'APPROVED' : r.verdict === 'request-changes' ? 'CHANGES_REQUESTED' : 'PENDING') },
       ),
       r.reviewedBy,
-      r.comment.slice(0, 28),
+      (r.comment ?? '—').slice(0, 28),
     ]);
     lines.push(table({
       columns: [
@@ -467,7 +467,7 @@ export function renderSubmissions(snapshot: GraphSnapshot): string {
         { variant: statusVariant(d.kind === 'merge' ? 'MERGED' : 'CLOSED') },
       ),
       d.decidedBy,
-      d.rationale.slice(0, 28),
+      (d.rationale ?? '—').slice(0, 28),
     ]);
     lines.push(table({
       columns: [
@@ -528,7 +528,7 @@ export function renderDeps(data: DepsViewData): string {
     });
     lines.push(table({
       columns: [
-        { header: 'Task', width: 22 },
+        { header: 'Quest', width: 22 },
         { header: 'Title', width: 44 },
         { header: 'Status', width: 13 },
         { header: 'h', width: 5 },
@@ -556,7 +556,7 @@ export function renderDeps(data: DepsViewData): string {
     });
     lines.push(table({
       columns: [
-        { header: 'Task', width: 22 },
+        { header: 'Quest', width: 22 },
         { header: 'Title', width: 34 },
         { header: 'Waiting On', width: 40 },
       ],

@@ -4,6 +4,7 @@ import { createNavigableTableState, navTableFocusNext, type NavigableTableState 
 import { ensureXyphContext, _resetBridgeForTesting } from '../../theme/bridge.js';
 import type { DashboardModel } from '../DashboardApp.js';
 import type { GraphSnapshot, QuestNode, IntentNode, CampaignNode, ScrollNode, SubmissionNode, ReviewNode, DecisionNode } from '../../../domain/models/dashboard.js';
+import { SUBMISSION_STATUS_ORDER } from '../../../domain/entities/Submission.js';
 import { roadmapView } from '../views/roadmap-view.js';
 import { lineageView } from '../views/lineage-view.js';
 import { dashboardView } from '../views/dashboard-view.js';
@@ -48,7 +49,7 @@ function buildBacklogTable(snapshot: GraphSnapshot | null, focusRow = 0): Naviga
     q.id,
     q.title.slice(0, 38),
     String(q.hours),
-    q.suggestedAt !== undefined ? new Date(q.suggestedAt).toLocaleDateString() : '\u2014',
+    q.suggestedAt !== undefined ? new Date(q.suggestedAt).toISOString().slice(0, 10) : '\u2014',
     q.rejectionRationale !== undefined
       ? q.rejectionRationale.slice(0, 24) + (q.rejectionRationale.length > 24 ? '\u2026' : '')
       : '\u2014',
@@ -69,10 +70,6 @@ function buildBacklogTable(snapshot: GraphSnapshot | null, focusRow = 0): Naviga
   }
   return table;
 }
-
-const SUBMISSION_STATUS_ORDER: Record<string, number> = {
-  OPEN: 0, CHANGES_REQUESTED: 1, APPROVED: 2, MERGED: 3, CLOSED: 4,
-};
 
 function buildSubmissionsTable(snapshot: GraphSnapshot | null, focusRow = 0): NavigableTableState {
   if (!snapshot || snapshot.submissions.length === 0) {

@@ -128,7 +128,7 @@ export function dashboardView(model: DashboardModel, width?: number, height?: nu
 
     // Graph + DAG stats (compact)
     const statParts: string[] = [];
-    statParts.push(`${snap.quests.length} tasks`);
+    statParts.push(`${snap.quests.length} quests`);
     statParts.push(`${frontierCount} frontier`);
     statParts.push(`${inProgress.length} active`);
     if (meta) {
@@ -246,7 +246,7 @@ export function dashboardView(model: DashboardModel, width?: number, height?: nu
     if (depEdges.length > 0 && snap.sortedTaskIds.length > 0) {
       const cp = computeCriticalPath(snap.sortedTaskIds, tasks, depEdges);
       if (cp.path.length > 1) {
-        const cpLabel = `Critical Path  ${cp.path.length} tasks \u00B7 ${cp.totalHours}h`;
+        const cpLabel = `Critical Path  ${cp.path.length} quests \u00B7 ${cp.totalHours}h`;
         lines.push(styled(t.theme.semantic.muted, `  ${cpLabel}`));
       }
     }

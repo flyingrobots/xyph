@@ -343,7 +343,8 @@ export function roadmapView(model: DashboardModel, width?: number, height?: numb
 
   if (selectedQuestId === null) return base;
 
-  const detailW = Math.min(40, Math.max(28, Math.floor(w * 0.3)));
+  const preferredDetailW = Math.min(40, Math.max(28, Math.floor(w * 0.3)));
+  const detailW = Math.min(preferredDetailW, Math.max(1, w - 1));
   const detailContent = renderDetailContent(selectedQuestId, detailW);
   const panel = drawer({
     content: detailContent,

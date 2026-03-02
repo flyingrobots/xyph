@@ -298,7 +298,7 @@ mocks.
 
 ## Execution Order
 
-```
+```text
 Independent — can run in parallel:
   Phase B (Drawer)        — smallest, lowest risk, immediate visual win
   Phase D (Wizards)       — high value, independent codebase area (CLI)

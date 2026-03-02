@@ -68,8 +68,14 @@ export function registerWizardCommands(program: Command, ctx: CliContext): void 
       const hoursStr = await bijouInput({
         title: 'Estimated hours (optional, 0 to skip)',
         defaultValue: '0',
+        validate: (v) => {
+          const n = Number(v);
+          return Number.isFinite(n) && n >= 0
+            ? { valid: true }
+            : { valid: false, message: 'Enter a non-negative number' };
+        },
       });
-      const hours = Number(hoursStr) || 0;
+      const hours = Number(hoursStr);
 
       // Intent (required by constitution)
       const intentOptions = snap.intents.map(i => ({
@@ -201,7 +207,7 @@ export function registerWizardCommands(program: Command, ctx: CliContext): void 
     .action(withErrorHandler(async (id: string) => {
       if (ctx.json) return ctx.fail('Interactive mode not available with --json. Use promote command with flags.');
 
-      assertPrefix(id, 'task:', 'Task ID');
+      assertPrefix(id, 'task:', 'Quest ID');
 
       const { filter, confirm } = await import('@flyingrobots/bijou');
       const snap = await fetchWizardSnapshot(ctx);
@@ -248,7 +254,7 @@ export function registerWizardCommands(program: Command, ctx: CliContext): void 
       const intake = new WarpIntakeAdapter(ctx.graphPort, ctx.agentId);
       const sha = await intake.promote(id, intentId, campaignId);
 
-      ctx.ok(`[OK] Task ${id} promoted to BACKLOG.`);
+      ctx.ok(`[OK] Quest ${id} promoted to BACKLOG.`);
       ctx.muted(`  Intent:   ${intentId}`);
       if (campaignId !== undefined) ctx.muted(`  Campaign: ${campaignId}`);
       ctx.muted(`  Patch: ${sha}`);
@@ -290,7 +296,7 @@ export function registerWizardCommands(program: Command, ctx: CliContext): void 
             { label: 'Promote to BACKLOG', value: 'promote' as const },
             { label: 'Reject to GRAVEYARD', value: 'reject' as const },
             { label: 'Skip (leave in INBOX)', value: 'skip' as const },
-            { label: 'Stop triage session', value: 'stop' as const },
+            { label: 'Stop triage', value: 'stop' as const },
           ],
         });
 
