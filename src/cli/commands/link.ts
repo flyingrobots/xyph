@@ -37,7 +37,7 @@ async function applyLink(
   }
 
   // Discover existing belongs-to edges so move replaces rather than accumulates
-  const existingCampaignEdges: Array<{ nodeId: string }> = [];
+  const existingCampaignEdges: { nodeId: string }[] = [];
   if (campaignId !== undefined) {
     const neighbors = toNeighborEntries(await graph.neighbors(quest, 'outgoing'));
     for (const n of neighbors) {
