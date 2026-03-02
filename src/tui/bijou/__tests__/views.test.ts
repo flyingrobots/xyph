@@ -39,7 +39,7 @@ function makeSnapshot(overrides?: Partial<GraphSnapshot>): GraphSnapshot {
   return base;
 }
 
-function buildBacklogTable(snapshot: GraphSnapshot | null, focusRow = 0) {
+function buildBacklogTable(snapshot: GraphSnapshot | null, focusRow = 0): NavigableTableState {
   if (!snapshot) {
     return createNavigableTableState({ columns: [], rows: [], height: 20 });
   }

@@ -38,7 +38,7 @@ function key(k: string, mods?: Partial<Pick<KeyMsg, 'ctrl' | 'alt' | 'shift'>>):
   return { type: 'key', key: k, ctrl: false, alt: false, shift: false, ...mods };
 }
 
-function buildApp() {
+function buildApp(): { app: App<DashboardModel, DashboardMsg>; mockIntake: IntakePort; mockGraphPort: GraphPort; mockSubmissionPort: SubmissionPort } {
   const mockCtx: GraphContext = {
     get graph(): never { throw new Error('not initialized'); },
     fetchSnapshot: vi.fn().mockResolvedValue(makeSnapshot()) as GraphContext['fetchSnapshot'],
