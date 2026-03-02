@@ -48,6 +48,20 @@ Every commit is permanent. If you made a mistake, fix it in a new commit.
 
 If a test fails, the code is wrong — not the test. Fix the implementation.
 
+**Test BEHAVIOR, not vocabulary:**
+When writing view/UI tests, assert on **data you put in** — not display text you read out.
+- ✅ Assert on IDs (`'task:A-001'`), counts (`toHaveLength(3)`), domain constants (`'DONE'`, `'approve'`), numeric values, and model state
+- ✅ Assert on data absence for empty states (`not.toContain('task:')` proves no quest data leaked)
+- ✅ Assert on output length / non-emptiness for structural checks
+- ❌ NEVER assert on section headers (`'XYPH Roadmap'`, `'Campaigns'`)
+- ❌ NEVER assert on empty-state prose (`'No quests yet'`, `'No snapshot loaded'`)
+- ❌ NEVER assert on label text (`'Hours:'`, `'Deps (1)'`, `'In Progress (1)'`)
+- ❌ NEVER assert on fallback placeholders (`'(no campaign)'`, `'(unknown suggester)'`)
+- ❌ NEVER assert on help text or hint bar copy (`'Press any key'`, `'Promote'`, `'Quit'`)
+
+Labels and prose are presentation — they change with terminology, design, and i18n.
+Data values are the contract — they prove the view received and rendered what it was given.
+
 **NEVER use loose types:**
 - ❌ NEVER use `any` type
 - ❌ NEVER use wildcard imports/types to dodge type safety
