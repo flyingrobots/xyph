@@ -488,7 +488,7 @@ export interface DepsViewData {
   executionOrder: string[];
   criticalPath: string[];
   criticalPathHours: number;
-  tasks: Map<string, { title: string; status: string; hours: number }>;
+  quests: Map<string, { title: string; status: string; hours: number }>;
   topBlockers?: BlockerInfo[];
 }
 
@@ -501,7 +501,7 @@ export function renderDeps(data: DepsViewData): string {
 
   lines.push(snapshotHeader(
     'Quest Dependencies',
-    `${data.tasks.size} quest(s)  ${data.frontier.length} ready  ${data.blockedBy.size} blocked`,
+    `${data.quests.size} quest(s)  ${data.frontier.length} ready  ${data.blockedBy.size} blocked`,
     'warning'
   ));
 
@@ -510,7 +510,7 @@ export function renderDeps(data: DepsViewData): string {
     lines.push('');
     lines.push(separator({ label: 'Ready (Frontier)', borderToken: t.theme.border.success }));
     const frontierRows = data.frontier.map(id => {
-      const info = data.tasks.get(id);
+      const info = data.quests.get(id);
       return [
         styled(t.theme.semantic.success, id.slice(0, 20)),
         info?.title.slice(0, 42) ?? '—',
@@ -539,7 +539,7 @@ export function renderDeps(data: DepsViewData): string {
     lines.push('');
     lines.push(separator({ label: 'Blocked', borderToken: t.theme.border.warning }));
     const blockedRows = [...data.blockedBy.entries()].map(([id, blockers]) => {
-      const info = data.tasks.get(id);
+      const info = data.quests.get(id);
       return [
         styled(t.theme.semantic.warning, id.slice(0, 20)),
         info?.title.slice(0, 32) ?? '—',
@@ -563,7 +563,7 @@ export function renderDeps(data: DepsViewData): string {
     lines.push('');
     lines.push(separator({ label: 'Top Blockers', borderToken: t.theme.border.error }));
     const blockerItems = data.topBlockers.map(blocker => {
-      const info = data.tasks.get(blocker.id);
+      const info = data.quests.get(blocker.id);
       const title = info?.title.slice(0, 38) ?? '—';
       return `${blocker.id.slice(0, 20)} ${title}  direct: ${blocker.directCount}  transitive: ${blocker.transitiveCount}`;
     });
@@ -575,7 +575,7 @@ export function renderDeps(data: DepsViewData): string {
     lines.push('');
     lines.push(separator({ label: 'Execution Order', borderToken: t.theme.border.primary }));
     const orderItems = data.executionOrder.map(id => {
-      const info = data.tasks.get(id);
+      const info = data.quests.get(id);
       const statusStr = info ? ` [${badge(info.status, { variant: statusVariant(info.status) })}]` : '';
       return `${id}${statusStr}`;
     });
@@ -587,7 +587,7 @@ export function renderDeps(data: DepsViewData): string {
     lines.push('');
     lines.push(separator({ label: 'Critical Path', borderToken: t.theme.border.error }));
     const chain = data.criticalPath.map((id) => {
-      const info = data.tasks.get(id);
+      const info = data.quests.get(id);
       const h = info?.hours ?? 0;
       return `${id}(${h}h)`;
     }).join(styled(t.theme.semantic.muted, ' → '));

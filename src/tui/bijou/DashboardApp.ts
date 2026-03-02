@@ -1208,26 +1208,34 @@ function rebuildRoadmapTable(
 
 // ── Dashboard panel helpers ───────────────────────────────────────────
 
+// Visibility caps — must match the .slice() limits used by dashboard-view.ts
+const DASHBOARD_IN_PROGRESS_VISIBLE = 8;
+const DASHBOARD_MY_ISSUES_VISIBLE = 6;
+
 function dashboardFocusedQuestId(snap: GraphSnapshot, model: DashboardModel): string | null {
   if (!model.dashboardView) return null;
   const { focusPanel, focusRow } = model.dashboardView;
   if (focusPanel === 'in-progress') {
     const inProgress = snap.quests.filter(q => q.status === 'IN_PROGRESS');
-    return inProgress[focusRow]?.id ?? null;
+    return inProgress.slice(0, DASHBOARD_IN_PROGRESS_VISIBLE)[focusRow]?.id ?? null;
   }
   const agentId = model.agentId;
   const myIssues = agentId
     ? snap.quests.filter(q => q.assignedTo === agentId && q.status !== 'DONE' && q.status !== 'GRAVEYARD')
     : snap.quests.filter(q => q.assignedTo !== undefined && q.status !== 'DONE' && q.status !== 'GRAVEYARD');
-  return myIssues[focusRow]?.id ?? null;
+  return myIssues.slice(0, DASHBOARD_MY_ISSUES_VISIBLE)[focusRow]?.id ?? null;
 }
 
 function dashboardPanelCount(snap: GraphSnapshot, model: DashboardModel, panel: 'in-progress' | 'my-issues'): number {
   if (panel === 'in-progress') {
-    return snap.quests.filter(q => q.status === 'IN_PROGRESS').length;
+    return Math.min(
+      snap.quests.filter(q => q.status === 'IN_PROGRESS').length,
+      DASHBOARD_IN_PROGRESS_VISIBLE,
+    );
   }
   const agentId = model.agentId;
-  return agentId
+  const count = agentId
     ? snap.quests.filter(q => q.assignedTo === agentId && q.status !== 'DONE' && q.status !== 'GRAVEYARD').length
     : snap.quests.filter(q => q.assignedTo !== undefined && q.status !== 'DONE' && q.status !== 'GRAVEYARD').length;
+  return Math.min(count, DASHBOARD_MY_ISSUES_VISIBLE);
 }

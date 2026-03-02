@@ -74,12 +74,14 @@ export function dashboardView(model: DashboardModel, width?: number, height?: nu
     }
   }
   const dagResult = depEdges.length > 0 ? computeFrontier(tasks, depEdges) : null;
+  const actionableQuestIds = new Set(
+    snap.quests
+      .filter(q => q.status !== 'DONE' && q.status !== 'GRAVEYARD' && q.status !== 'BACKLOG')
+      .map(q => q.id),
+  );
   const frontierCount = dagResult
-    ? dagResult.frontier.filter(id => {
-        const quest = snap.quests.find(q => q.id === id);
-        return quest && quest.status !== 'DONE' && quest.status !== 'GRAVEYARD';
-      }).length
-    : nonBacklog.filter(q => q.status !== 'DONE').length;
+    ? dagResult.frontier.filter(id => actionableQuestIds.has(id)).length
+    : actionableQuestIds.size;
 
   // ── My Stuff ──────────────────────────────────────────────────────
   const agentId = model.agentId;
@@ -310,8 +312,8 @@ export function dashboardView(model: DashboardModel, width?: number, height?: nu
     // Inbox pressure
     if (backlogCount > 0) {
       lines.push('');
-      lines.push(styled(t.theme.semantic.info, ` Inbox (${backlogCount} item${backlogCount > 1 ? 's' : ''})`));
-      lines.push(styled(t.theme.semantic.muted, '  Items awaiting triage'));
+      lines.push(styled(t.theme.semantic.info, ` Inbox (${backlogCount} quest${backlogCount > 1 ? 's' : ''})`));
+      lines.push(styled(t.theme.semantic.muted, '  Quests awaiting triage'));
     }
 
     // Activity Feed

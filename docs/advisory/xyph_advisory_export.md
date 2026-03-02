@@ -32,7 +32,7 @@ That is cleaner than one-off scripts and matches the existing planning direction
 
 ### 2) It noticed that authorization is special
 The user's pushback was dead right:
-authorizing a task against an intent is not just "linking two nodes."
+authorizing a Quest against an intent is not just "linking two nodes."
 It is a sovereignty act.
 Treating `authorized-by` as just another edge is too casual.
 
@@ -59,7 +59,7 @@ So: keep value objects if you want better ergonomics, but do not confuse them wi
 In the transcript, `move` is described as "reassign a quest to a campaign."
 But the implementation only adds a new `belongs-to` edge.
 
-If a task already belongs to a campaign, "move" should almost certainly remove the previous campaign edge or otherwise enforce single-campaign cardinality.
+If a Quest already belongs to a campaign, "move" should almost certainly remove the previous campaign edge or otherwise enforce single-campaign cardinality.
 If you do not do that, you do not have move.
 You have attach-another-campaign.
 

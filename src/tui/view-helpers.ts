@@ -13,6 +13,7 @@ export function statusVariant(status: string): BadgeVariant {
 
 /** Format a timestamp as a human-friendly relative age string (e.g. "3d"). */
 export function formatAge(ts: number): string {
+  if (!Number.isFinite(ts)) return '0m';
   const diff = Math.max(0, Date.now() - ts);
   const mins = Math.floor(diff / 60_000);
   if (mins < 60) return `${mins}m`;

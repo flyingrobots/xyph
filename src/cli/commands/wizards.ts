@@ -142,7 +142,9 @@ export function registerWizardCommands(program: Command, ctx: CliContext): void 
       const { filter, select, textarea } = await import('@flyingrobots/bijou');
       const snap = await fetchWizardSnapshot(ctx);
 
-      const openSubs = snap.submissions.filter(s => s.status === 'OPEN');
+      const openSubs = snap.submissions.filter(
+        s => s.status !== 'MERGED' && s.status !== 'CLOSED',
+      );
       if (openSubs.length === 0) {
         return ctx.fail('No open submissions to review.');
       }
@@ -296,9 +298,9 @@ export function registerWizardCommands(program: Command, ctx: CliContext): void 
         const action = await select<'promote' | 'reject' | 'skip' | 'stop'>({
           title: `Action for ${quest.id}`,
           options: [
-            { label: 'Promote to BACKLOG', value: 'promote' as const },
+            { label: 'Promote to PLANNED', value: 'promote' as const },
             { label: 'Reject to GRAVEYARD', value: 'reject' as const },
-            { label: 'Skip (leave in INBOX)', value: 'skip' as const },
+            { label: 'Skip (leave in BACKLOG)', value: 'skip' as const },
             { label: 'Stop triage', value: 'stop' as const },
           ],
         });
