@@ -13,6 +13,8 @@ import {
   type TaskSummary, type DepEdge,
 } from '../../../domain/services/DepAnalysis.js';
 
+interface ActivityEvent { ts: number; text: string }
+
 export function dashboardView(model: DashboardModel, width?: number, height?: number): string {
   const t = getTheme();
   const w = width ?? model.cols;
@@ -90,7 +92,6 @@ export function dashboardView(model: DashboardModel, width?: number, height?: nu
     : pendingReview.slice(0, 5);
 
   // ── Activity Feed ─────────────────────────────────────────────────
-  interface ActivityEvent { ts: number; text: string }
   const activity: ActivityEvent[] = [];
   for (const s of snap.submissions) {
     activity.push({ ts: s.submittedAt, text: `${s.submittedBy} submitted ${s.id.replace(/^submission:/, '')}` });

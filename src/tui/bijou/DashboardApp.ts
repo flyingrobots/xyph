@@ -417,7 +417,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
           loadingProgress: 100,
           roadmap: { ...model.roadmap, table: rebuildRoadmapTable(snap, model.roadmap.table.focusRow, model.rows - 4) },
           submissions: { ...model.submissions, table: rebuildSubmissionsTable(snap, model.submissions.table.focusRow, model.rows - 4) },
-          backlog: { table: rebuildBacklogTable(snap, model.backlog.table.focusRow, model.rows - 4) },
+          backlog: { ...model.backlog, table: rebuildBacklogTable(snap, model.backlog.table.focusRow, model.rows - 4) },
           lineage: {
             ...model.lineage,
             selectedIndex: clampIndex(model.lineage.selectedIndex, lineageIntentIds(snap).length),
@@ -907,8 +907,9 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
           return [{ ...model, submissions: { ...model.submissions, table: navTablePageDown(model.submissions.table) } }, []];
         }
         if (model.activeView === 'backlog') {
-          return [{ ...model, backlog: { table: navTablePageDown(model.backlog.table) } }, []];
+          return [{ ...model, backlog: { ...model.backlog, table: navTablePageDown(model.backlog.table) } }, []];
         }
+        // Toggle between dashboard panels (symmetric — both directions cycle)
         if (model.activeView === 'dashboard' && model.dashboardView) {
           const nextPanel = model.dashboardView.focusPanel === 'in-progress' ? 'my-issues' as const : 'in-progress' as const;
           return [{ ...model, dashboardView: { ...model.dashboardView, focusPanel: nextPanel, focusRow: 0 } }, []];
@@ -920,8 +921,9 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
           return [{ ...model, submissions: { ...model.submissions, table: navTablePageUp(model.submissions.table) } }, []];
         }
         if (model.activeView === 'backlog') {
-          return [{ ...model, backlog: { table: navTablePageUp(model.backlog.table) } }, []];
+          return [{ ...model, backlog: { ...model.backlog, table: navTablePageUp(model.backlog.table) } }, []];
         }
+        // Toggle between dashboard panels (symmetric — both directions cycle)
         if (model.activeView === 'dashboard' && model.dashboardView) {
           const nextPanel = model.dashboardView.focusPanel === 'in-progress' ? 'my-issues' as const : 'in-progress' as const;
           return [{ ...model, dashboardView: { ...model.dashboardView, focusPanel: nextPanel, focusRow: 0 } }, []];
@@ -957,7 +959,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         const nextTable = delta > 0
           ? navTableFocusNext(model.backlog.table)
           : navTableFocusPrev(model.backlog.table);
-        return { ...model, backlog: { table: nextTable } };
+        return { ...model, backlog: { ...model.backlog, table: nextTable } };
       }
       case 'lineage': {
         const count = lineageIntentIds(snap).length;

@@ -1,12 +1,14 @@
 import {
-  headerBox, table, separator, badge, enumeratedList, styledStatus,
+  headerBox, table, separator, badge, enumeratedList,
 } from '@flyingrobots/bijou';
 import type { GraphSnapshot } from '../domain/models/dashboard.js';
 import type { BlockerInfo } from '../domain/services/DepAnalysis.js';
 import { getTheme, styled } from './theme/index.js';
 import { statusVariant } from './view-helpers.js';
 
-function snapshotHeader(label: string, detail: string, borderToken: 'primary' | 'secondary' | 'success' | 'warning' | 'error' | 'muted'): string {
+type BorderKey = keyof ReturnType<typeof getTheme>['theme']['border'];
+
+function snapshotHeader(label: string, detail: string, borderToken: BorderKey): string {
   const t = getTheme();
   return headerBox(label, {
     detail: styled(t.theme.semantic.muted, detail),
@@ -421,16 +423,16 @@ export function renderSubmissions(snapshot: GraphSnapshot): string {
   if (recentReviews.length > 0) {
     lines.push('');
     lines.push(separator({ label: 'Recent Reviews', borderToken: t.theme.border.secondary }));
-    const reviewRows = recentReviews.map(r => [
-      styled(t.theme.semantic.muted, r.id.slice(0, 26)),
-      styled(t.theme.semantic.muted, r.patchsetId.slice(0, 26)),
-      badge(
-        r.verdict === 'approve' ? 'APPROVED' : r.verdict === 'request-changes' ? 'CHANGES_REQUESTED' : 'PENDING',
-        { variant: statusVariant(r.verdict === 'approve' ? 'APPROVED' : r.verdict === 'request-changes' ? 'CHANGES_REQUESTED' : 'PENDING') },
-      ),
-      r.reviewedBy,
-      (r.comment ?? '—').slice(0, 28),
-    ]);
+    const reviewRows = recentReviews.map(r => {
+      const mappedVerdict = r.verdict === 'approve' ? 'APPROVED' : r.verdict === 'request-changes' ? 'CHANGES_REQUESTED' : 'PENDING';
+      return [
+        styled(t.theme.semantic.muted, r.id.slice(0, 26)),
+        styled(t.theme.semantic.muted, r.patchsetId.slice(0, 26)),
+        badge(mappedVerdict, { variant: statusVariant(mappedVerdict) }),
+        r.reviewedBy,
+        r.comment.slice(0, 28),
+      ];
+    });
     lines.push(table({
       columns: [
         { header: 'Review', width: 28 },
@@ -449,16 +451,16 @@ export function renderSubmissions(snapshot: GraphSnapshot): string {
   if (snapshot.decisions.length > 0) {
     lines.push('');
     lines.push(separator({ label: 'Decisions', borderToken: t.theme.border.secondary }));
-    const decisionRows = snapshot.decisions.map(d => [
-      styled(t.theme.semantic.muted, d.id.slice(0, 26)),
-      styled(t.theme.semantic.muted, d.submissionId.slice(0, 26)),
-      badge(
-        d.kind === 'merge' ? 'MERGED' : 'CLOSED',
-        { variant: statusVariant(d.kind === 'merge' ? 'MERGED' : 'CLOSED') },
-      ),
-      d.decidedBy,
-      (d.rationale ?? '—').slice(0, 28),
-    ]);
+    const decisionRows = snapshot.decisions.map(d => {
+      const mappedKind = d.kind === 'merge' ? 'MERGED' : 'CLOSED';
+      return [
+        styled(t.theme.semantic.muted, d.id.slice(0, 26)),
+        styled(t.theme.semantic.muted, d.submissionId.slice(0, 26)),
+        badge(mappedKind, { variant: statusVariant(mappedKind) }),
+        d.decidedBy,
+        d.rationale.slice(0, 28),
+      ];
+    });
     lines.push(table({
       columns: [
         { header: 'Decision', width: 28 },
@@ -512,7 +514,7 @@ export function renderDeps(data: DepsViewData): string {
       return [
         styled(t.theme.semantic.success, id.slice(0, 20)),
         info?.title.slice(0, 42) ?? '—',
-        info ? styledStatus(info.status) : '—',
+        info ? badge(info.status, { variant: statusVariant(info.status) }) : '—',
         String(info?.hours ?? 0),
       ];
     });
@@ -574,7 +576,7 @@ export function renderDeps(data: DepsViewData): string {
     lines.push(separator({ label: 'Execution Order', borderToken: t.theme.border.primary }));
     const orderItems = data.executionOrder.map(id => {
       const info = data.tasks.get(id);
-      const statusStr = info ? ` [${styledStatus(info.status)}]` : '';
+      const statusStr = info ? ` [${badge(info.status, { variant: statusVariant(info.status) })}]` : '';
       return `${id}${statusStr}`;
     });
     lines.push(enumeratedList(orderItems, { style: 'arabic', indent: 4 }));
