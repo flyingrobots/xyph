@@ -275,7 +275,7 @@ export function dashboardView(model: DashboardModel, width?: number, height?: nu
     const lines: string[] = [];
 
     // My Issues
-    const issueLabel = agentId ? 'My Issues' : 'Assigned Issues';
+    const issueLabel = agentId ? 'My Quests' : 'Assigned Quests';
     lines.push(separator({ label: `${issueLabel} (${myIssues.length})`, borderToken: t.theme.border.secondary, width: pw }));
     if (myIssues.length === 0) {
       lines.push(styled(t.theme.semantic.muted, '  (none)'));

@@ -409,6 +409,10 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
       if (msg.type === 'snapshot-loaded') {
         if (msg.requestId !== model.requestId) return [model, []];
         const snap = msg.snapshot;
+        // Clamp dashboard focusRow to visible panel size after data refresh
+        const currentDv = model.dashboardView ?? { focusPanel: 'in-progress' as const, focusRow: 0, detailId: null };
+        const panelCount = dashboardPanelCount(snap, model, currentDv.focusPanel);
+        const clampedFocusRow = panelCount > 0 ? Math.min(currentDv.focusRow, panelCount - 1) : 0;
         return [{
           ...model,
           snapshot: snap,
@@ -422,6 +426,11 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
             ...model.lineage,
             selectedIndex: clampIndex(model.lineage.selectedIndex, lineageIntentIds(snap).length),
             collapsedIntents: model.lineage.collapsedIntents.filter(id => snap.intents.some(i => i.id === id)),
+          },
+          dashboardView: {
+            ...currentDv,
+            focusRow: clampedFocusRow,
+            detailId: currentDv.detailId && snap.quests.some(q => q.id === currentDv.detailId) ? currentDv.detailId : null,
           },
         }, []];
       }

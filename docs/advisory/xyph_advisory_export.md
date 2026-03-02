@@ -1,5 +1,7 @@
 # XYPH advisory export: Claude session review
 
+> **As-of note (2026-02-27):** This review was written against an early draft of the `move`/`authorize`/`link` commands. The `move` cardinality bug (Section 4.2) and missing rationale (Section 4.3) have since been remediated. The strategic recommendations remain relevant.
+
 ## Executive summary
 
 Claude found a real product need: the repo needs semantic maintenance commands instead of one-off graph scripts.
