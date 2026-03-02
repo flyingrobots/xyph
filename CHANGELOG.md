@@ -10,7 +10,7 @@ All notable changes to XYPH will be documented in this file.
 - **Single-intent cardinality**: `authorize` / `link` now removes existing `authorized-by` edges before adding the new one, matching the `belongs-to` pattern for campaigns
 - **DRY violation**: extracted shared `statusVariant()` and `formatAge()` into `src/tui/view-helpers.ts`; removed duplicate definitions from dashboard-view, submissions-view, and render-status
 - **Triage loop performance**: hoisted `WarpIntakeAdapter` import and instantiation outside the per-quest loop in `wizards.ts`
-- **Quest terminology**: replaced user-facing "task(s)" with "quest(s)" in render-status deps view headers
+- **Quest terminology**: replaced user-facing "task(s)" with "quest(s)" in backlog and deps view headers
 - **Array guard**: guarded `lines[lines.length - 1]` access in landing-view against empty arrays (strict TS)
 
 ### Added — Dashboard Enhancement Chunk 2: Components + Data

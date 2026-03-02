@@ -384,7 +384,9 @@ describe('bijou views', () => {
       });
       const plain = strip(backlogView(makeModel(snap)));
       expect(plain).toContain('Backlog');
-      expect(plain).toContain('No tasks in backlog');
+      // Assert on count (0 items), not display vocabulary
+      expect(plain).toContain('0');
+      expect(plain).not.toContain('task:Q-001');
     });
 
     it('groups backlog quests by suggestedBy', () => {

@@ -12,13 +12,13 @@ export function backlogView(model: DashboardModel, _width?: number, _height?: nu
   const lines: string[] = [];
 
   lines.push(headerBox('Backlog', {
-    detail: `${backlog.length} task(s) awaiting triage`,
+    detail: `${backlog.length} quest(s) awaiting triage`,
     borderToken: t.theme.border.secondary,
   }));
 
   if (backlog.length === 0) {
     lines.push(styled(t.theme.semantic.muted,
-      '\n  No tasks in backlog.\n' +
+      '\n  No quests in backlog.\n' +
       '  Add one: xyph-actuator inbox task:ID --title "..." --suggested-by <principal>',
     ));
     return lines.join('\n');
