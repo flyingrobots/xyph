@@ -1,5 +1,7 @@
-import { flex, viewport } from '@flyingrobots/bijou-tui';
-import { styled, styledStatus, getTheme } from '../../theme/index.js';
+import { flex, navigableTable, createPagerState, pagerScrollTo, pager } from '@flyingrobots/bijou-tui';
+import { badge, stepper, type StepperStep } from '@flyingrobots/bijou';
+import { styled, getTheme } from '../../theme/index.js';
+import { statusVariant, formatAge } from '../../view-helpers.js';
 import type { DashboardModel } from '../DashboardApp.js';
 import type { ReviewNode, DecisionNode } from '../../../domain/models/dashboard.js';
 import { sortedSubmissions } from '../selection-order.js';
@@ -59,38 +61,19 @@ export function submissionsView(model: DashboardModel, width?: number, height?: 
     decisionsBySub.set(d.submissionId, arr);
   }
 
-  const selectedIndex = model.submissions.selectedIndex;
   const expandedId = model.submissions.expandedId;
 
-  // ── Left panel: submission list (item 8: inline header) ─────────
+  // ── Left panel: submission list (navigable table) ───────────────
   const leftWidth = Math.max(36, Math.floor(w * 0.35));
 
-  function renderList(pw: number, ph: number): string {
+  function renderList(_pw: number, _ph: number): string {
     const lines: string[] = [];
     lines.push(styled(t.theme.semantic.primary, ` Submissions (${sorted.length})`));
     lines.push('');
-
-    for (let i = 0; i < sorted.length; i++) {
-      const sub = sorted[i];
-      if (!sub) continue;
-      const isSelected = i === selectedIndex;
-      const qTitle = questTitle.get(sub.questId) ?? sub.questId;
-      const shortId = sub.id.replace(/^submission:/, '');
-      const approvals = sub.approvalCount > 0
-        ? styled(t.theme.semantic.success, ` \u2713${sub.approvalCount}`)
-        : '';
-
-      const line = ` ${shortId}  ${qTitle.slice(0, pw - 28)}  ${styledStatus(sub.status)}${approvals}`;
-
-      if (isSelected) {
-        lines.push(styled(t.theme.semantic.primary, '\u25B6') + styled(t.theme.semantic.primary, line));
-      } else {
-        lines.push(` ${line}`);
-      }
-    }
-
-    const content = lines.join('\n');
-    return viewport({ width: pw, height: ph, content, scrollY: model.submissions.listScrollY });
+    lines.push(navigableTable(model.submissions.table, {
+      focusIndicator: styled(t.theme.semantic.primary, '\u25B6'),
+    }));
+    return lines.join('\n');
   }
 
   // ── Right panel: detail ────────────────────────────────────────────
@@ -114,8 +97,19 @@ export function submissionsView(model: DashboardModel, width?: number, height?: 
     lines.push('');
     lines.push(` Quest:     ${qTitle}`);
     lines.push(` Submitter: ${sub.submittedBy}`);
-    lines.push(` Date:      ${new Date(sub.submittedAt).toLocaleDateString()}`);
-    lines.push(` Status:    ${styledStatus(sub.status)}`);
+    lines.push(` Date:      ${new Date(sub.submittedAt).toISOString().slice(0, 10)}`);
+    lines.push(` Age:       ${formatAge(sub.submittedAt)} ago`);
+    lines.push(` Status:    ${badge(sub.status, { variant: statusVariant(sub.status) })}`);
+
+    // Submission lifecycle stepper
+    const steps: StepperStep[] = [
+      { label: 'Submitted' },
+      { label: 'Reviewed' },
+      { label: 'Approved' },
+      { label: sub.status === 'CLOSED' ? 'Closed' : 'Merged' },
+    ];
+    const currentStep = stepForStatus(sub.status, sub.approvalCount);
+    lines.push(stepper(steps, { current: currentStep }));
     if (sub.headsCount > 1) {
       lines.push(styled(t.theme.semantic.warning, ` \u26A0 Forked: ${sub.headsCount} heads`));
     }
@@ -164,7 +158,9 @@ export function submissionsView(model: DashboardModel, width?: number, height?: 
     }
 
     const content = lines.join('\n');
-    return viewport({ width: pw, height: ph, content, scrollY: model.submissions.detailScrollY });
+    let ps = createPagerState({ content, width: pw, height: ph });
+    ps = pagerScrollTo(ps, model.submissions.detailScrollY);
+    return pager(ps);
   }
 
   // ── Compose layout (item 8: flat row, no outer column header) ───
@@ -174,3 +170,14 @@ export function submissionsView(model: DashboardModel, width?: number, height?: 
     { flex: 1, content: renderDetail },
   );
 }
+
+function stepForStatus(status: string, approvalCount: number): number {
+  switch (status) {
+    case 'OPEN': return approvalCount > 0 ? 1 : 0;
+    case 'CHANGES_REQUESTED': return 1;
+    case 'APPROVED': return 2;
+    case 'MERGED': case 'CLOSED': return 3;
+    default: return 0;
+  }
+}
+

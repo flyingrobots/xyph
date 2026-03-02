@@ -1,4 +1,5 @@
-import { headerBox, tree, type TreeNode, accordion, type AccordionSection, progressBar } from '@flyingrobots/bijou';
+import { headerBox, tree, type TreeNode, type AccordionSection, progressBar } from '@flyingrobots/bijou';
+import { interactiveAccordion, type AccordionState } from '@flyingrobots/bijou-tui';
 import { styled, styledStatus, getTheme } from '../../theme/index.js';
 import type { DashboardModel } from '../DashboardApp.js';
 import type { QuestNode } from '../../../domain/models/dashboard.js';
@@ -88,7 +89,7 @@ export function lineageView(model: DashboardModel, _width?: number, _height?: nu
 
     // Build card subtitle lines
     const subtitleLines: string[] = [];
-    const dateStr = new Date(intent.createdAt).toLocaleDateString();
+    const dateStr = new Date(intent.createdAt).toISOString().slice(0, 10);
     subtitleLines.push(styled(t.theme.semantic.muted, `    requested-by: ${intent.requestedBy}  \u00B7  ${dateStr}`));
     if (intent.description) {
       subtitleLines.push(styled(t.theme.semantic.muted, `    ${truncate(intent.description, 72)}`));
@@ -128,8 +129,13 @@ export function lineageView(model: DashboardModel, _width?: number, _height?: nu
 
   if (sections.length > 0) {
     lines.push('');
-    lines.push(accordion(sections, {
+    const accState: AccordionState = {
+      sections,
+      focusIndex: Math.max(0, model.lineage.selectedIndex),
+    };
+    lines.push(interactiveAccordion(accState, {
       indicatorToken: t.theme.semantic.primary,
+      focusChar: '\u25B6',
     }));
   }
 

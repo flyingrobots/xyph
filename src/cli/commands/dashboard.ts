@@ -127,7 +127,7 @@ export function registerDashboardCommands(program: Command, ctx: CliContext): vo
             executionOrder: sorted,
             criticalPath: criticalResult.path,
             criticalPathHours: criticalResult.totalHours,
-            tasks,
+            quests: tasks,
             topBlockers,
           }));
           break;

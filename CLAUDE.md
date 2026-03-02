@@ -32,6 +32,43 @@ Never push code that doesn't pass both checks. CI failures waste time and break 
 
 Our duty is to write **safe, correct code**. Shortcuts that compromise quality are not acceptable.
 
+**NEVER rewrite git history in any way:**
+- ❌ NEVER amend commits (`--amend`)
+- ❌ NEVER rebase
+- ❌ NEVER force push (`--force`, `--force-with-lease`)
+- ❌ NEVER squash
+
+Every commit is permanent. If you made a mistake, fix it in a new commit.
+
+**The TESTS are the SPEC:**
+- ❌ NEVER change a test to make it pass
+- ❌ NEVER skip tests
+- ❌ NEVER use `--no-verify`
+- ❌ NEVER disable or otherwise circumvent tests
+
+If a test fails, the code is wrong — not the test. Fix the implementation.
+
+**Test BEHAVIOR, not vocabulary:**
+When writing view/UI tests, assert on **data you put in** — not display text you read out.
+- ✅ Assert on IDs (`'task:A-001'`), counts (`toHaveLength(3)`), domain constants (`'DONE'`, `'approve'`), numeric values, and model state
+- ✅ Assert on data absence for empty states (`not.toContain('task:')` proves no quest data leaked)
+- ✅ Assert on output length / non-emptiness for structural checks
+- ❌ NEVER assert on section headers (`'XYPH Roadmap'`, `'Campaigns'`)
+- ❌ NEVER assert on empty-state prose (`'No quests yet'`, `'No snapshot loaded'`)
+- ❌ NEVER assert on label text (`'Hours:'`, `'Deps (1)'`, `'In Progress (1)'`)
+- ❌ NEVER assert on fallback placeholders (`'(no campaign)'`, `'(unknown suggester)'`)
+- ❌ NEVER assert on help text or hint bar copy (`'Press any key'`, `'Promote'`, `'Quit'`)
+
+Labels and prose are presentation — they change with terminology, design, and i18n.
+Data values are the contract — they prove the view received and rendered what it was given.
+
+**NEVER use loose types:**
+- ❌ NEVER use `any` type
+- ❌ NEVER use wildcard imports/types to dodge type safety
+- ❌ NEVER cast to `any` or `unknown` to silence the compiler
+
+If the types are hard, that means you need to understand the code better.
+
 **Own every failure you see:**
 - ❌ NEVER dismiss errors as "pre-existing" and move on. If you see something broken, fix it.
 - ❌ NEVER say CI/CD failures are acceptable or ignorable. A red build is your problem now.

@@ -4,6 +4,95 @@ All notable changes to XYPH will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Brittle test assertions**: rewrote ~34 string-matching assertions across 5 test files to assert on data (IDs, counts, domain constants) instead of UI labels, section headers, and empty-state prose — eliminates false failures from vocabulary changes
+- **Date formatting**: replaced locale-dependent `toLocaleDateString()` with deterministic `toISOString().slice(0, 10)` across all views (DashboardApp, render-status, submissions-view, lineage-view)
+- **Single-campaign cardinality**: `authorize` / `link` now removes existing `belongs-to` edges before adding the new one, enforcing single-campaign assignment
+- **DRY violation**: extracted shared `statusVariant()` and `formatAge()` into `src/tui/view-helpers.ts`; removed duplicate definitions from dashboard-view, submissions-view, and render-status
+- **Triage loop performance**: hoisted `WarpIntakeAdapter` import and instantiation outside the per-quest loop in `wizards.ts`
+- **Quest terminology**: replaced user-facing "task(s)" with "quest(s)" in backlog and deps view headers
+- **Array guard**: guarded `lines[lines.length - 1]` access in landing-view against empty arrays (strict TS)
+
+### Added — Dashboard Enhancement Chunk 2: Components + Data
+
+**New bijou components adopted (TUI dashboard):**
+- `separator()` — section dividers replace styled-header patterns across dashboard
+- `badge()` — status tags with visual weight in Pending Review, My Submissions, submission detail
+- `timeline()` — Recent Activity feed with status-colored event markers
+- `enumeratedList()` — numbered Top Blockers list
+- `stepper()` — submission lifecycle visualization (Submitted → Reviewed → Approved → Merged/Closed)
+
+**New data surfaced in dashboard:**
+- Top Blockers — calls existing `computeTopBlockers()`, shown as numbered list (gated by deps)
+- Critical Path — calls existing `computeCriticalPath()`, compact stat line (gated by deps)
+- Blocked Quests — surfaces `computeFrontier().blockedBy` with waits-on detail (gated by deps)
+- Submission Age — relative age in submission detail panel
+
+### Changed — BJU-002: Port render-status.ts to bijou
+
+Replaced all legacy `cli-table3` and `boxen` usage in the CLI status views with
+bijou equivalents. Zero remaining imports of either package in `src/`.
+
+- 11 `cli-table3` tables → bijou `table()`
+- 6 `boxen` snapshot headers → bijou `headerBox()`
+- Section headers → `separator()`
+- Status tags → `badge()` with `statusVariant()` helper
+- Manual numbered lists → `enumeratedList()` in deps view
+
+### Added — Second Wave: Bijou 0.10.0 Primitives
+
+- **Command palette** (`DashboardApp.ts`): `:` or `/` opens a fuzzy-searchable
+  `commandPalette()` in a `modal()` overlay with context-aware actions per view
+  (claim, promote, reject, expand, approve, request-changes).
+- **Interactive wizards** (`src/cli/commands/wizards.ts`): `quest-wizard`,
+  `review-wizard`, `promote-wizard`, and `triage` CLI commands using bijou
+  `filter()`, `select()`, `input()`, `textarea()`, and `confirm()` primitives.
+- **Integration test suite** (`integration.test.ts`): 22 deterministic "drive"
+  pattern tests for the full init → update → view cycle without async settling.
+- **Drawer detail panel** (`roadmap-view.ts`): Quest detail now renders as a
+  bijou `drawer()` + `composite()` overlay; DAG takes full width when no quest
+  is selected.
+
+### Changed — NavigableTableState Migration (Phase A complete)
+
+All three selectable views now use `NavigableTableState` for focus management
+with circular j/k navigation and built-in scroll tracking.
+
+- **Backlog view**: Already migrated (first wave). Uses `navigableTable()` renderer.
+- **Submissions view**: Migrated from manual `selectedIndex` + `listScrollY` to
+  `NavigableTableState`. List panel now uses `navigableTable()` renderer.
+- **Roadmap view**: Migrated from manual `selectedIndex` to `NavigableTableState`
+  for focus tracking. Frontier panel rendering unchanged (custom grouped layout).
+- `RoadmapState.selectedIndex` → `RoadmapState.table: NavigableTableState`
+- `SubmissionsState.selectedIndex` / `listScrollY` → `SubmissionsState.table`
+- Added `rebuildRoadmapTable()` and `rebuildSubmissionsTable()` table builders.
+- `selectDelta()` uses `navTableFocusNext`/`navTableFocusPrev` (wrapping).
+- `buildPaletteItems()` checks `table.rows.length > 0` instead of `selectedIndex >= 0`.
+- Lineage view retains manual selection (different interaction model with
+  collapsible intents).
+
+### Changed — Bijou 0.10.0 Adoption
+
+Upgraded `@flyingrobots/bijou` and `@flyingrobots/bijou-tui` from 0.6.0 to 0.10.0.
+Replaced hand-rolled TUI primitives with bijou builtins where strictly better.
+
+- **Overlays** (`overlays.ts`): Rewrote `confirmOverlay()` and `inputOverlay()` to
+  use bijou `composite()` + `modal()` — ANSI-safe cell-by-cell painting replaces
+  manual line-splicing with box-drawing characters (~60 lines deleted).
+- **Status bar** (`DashboardApp.ts`): Replaced `renderStatusLine()` with bijou
+  `statusBar()` (~20 lines deleted).
+- **Toast notifications** (`DashboardApp.ts`): Toast is now a proper `composite()`
+  overlay anchored bottom-right instead of being embedded in the status bar.
+- **Help system** (`DashboardApp.ts`): Deleted `renderHelp()` and `viewHints()`,
+  replaced by auto-generated `helpView()` / `helpShort()` from keymaps — help text
+  always stays in sync with actual bindings. All keymap builders refactored to use
+  `.group()` (~50 lines deleted).
+- **Landing view** (`landing-view.ts`): Manual spiral + box compositing replaced by
+  bijou `canvas()` + `spiralShader` + `composite()` + `modal()` (~70 lines deleted).
+- **Spiral shader** (`spiral.ts`): Extracted per-cell `spiralShader: ShaderFn` export
+  for use with bijou `canvas()`, alongside the original `spiralFrame()`.
+
 ### Added — Animated Spiral Title Screen
 
 - **Spiral shader** (`src/tui/bijou/shaders/spiral.ts`): Ported ertdfgcvb's

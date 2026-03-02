@@ -1,8 +1,19 @@
-import { headerBox, progressBar } from '@flyingrobots/bijou';
+import {
+  headerBox, progressBar, table as bijouTable, alert,
+  separator, badge, timeline, enumeratedList,
+  type TimelineEvent, type BaseStatusKey,
+} from '@flyingrobots/bijou';
 import { flex } from '@flyingrobots/bijou-tui';
 import { styled, styledStatus, getTheme } from '../../theme/index.js';
+import { statusVariant, formatAge } from '../../view-helpers.js';
 import type { DashboardModel } from '../DashboardApp.js';
-import type { QuestNode, CampaignNode } from '../../../domain/models/dashboard.js';
+import type { QuestNode } from '../../../domain/models/dashboard.js';
+import {
+  computeFrontier, computeTopBlockers, computeCriticalPath,
+  type TaskSummary, type DepEdge,
+} from '../../../domain/services/DepAnalysis.js';
+
+interface ActivityEvent { ts: number; text: string }
 
 export function dashboardView(model: DashboardModel, width?: number, height?: number): string {
   const t = getTheme();
@@ -44,79 +55,155 @@ export function dashboardView(model: DashboardModel, width?: number, height?: nu
     }
   }
 
-  const activeCampaigns: CampaignNode[] = [];
-  const doneCampaigns: CampaignNode[] = [];
-  for (const c of snap.campaigns) {
-    if (c.status === 'DONE') {
-      doneCampaigns.push(c);
-    } else {
-      activeCampaigns.push(c);
-    }
-  }
+  const activeCampaigns = snap.campaigns.filter(c => c.status !== 'DONE');
+  const doneCampaigns = snap.campaigns.filter(c => c.status === 'DONE');
 
-  // ── Graveyard count ───────────────────────────────────────────────
+  // ── Counts ──────────────────────────────────────────────────────
   const graveyardCount = snap.quests.filter(q => q.status === 'GRAVEYARD').length;
-
-  // ── Backlog count ─────────────────────────────────────────────────
   const backlogCount = snap.quests.filter(q => q.status === 'BACKLOG').length;
-
-  // ── Graph meta ────────────────────────────────────────────────────
   const meta = snap.graphMeta;
 
-  // ── My Issues (any assigned, non-terminal) ────────────────────────
-  const myIssues = snap.quests.filter(q =>
-    q.assignedTo !== undefined && q.status !== 'DONE' && q.status !== 'GRAVEYARD',
+  // ── DAG stats ─────────────────────────────────────────────────────
+  const tasks: TaskSummary[] = snap.quests.map(q => ({ id: q.id, status: q.status, hours: q.hours }));
+  const depEdges: DepEdge[] = [];
+  for (const q of snap.quests) {
+    if (q.dependsOn) {
+      for (const dep of q.dependsOn) {
+        depEdges.push({ from: q.id, to: dep });
+      }
+    }
+  }
+  const dagResult = depEdges.length > 0 ? computeFrontier(tasks, depEdges) : null;
+  const actionableQuestIds = new Set(
+    snap.quests
+      .filter(q => q.status !== 'DONE' && q.status !== 'GRAVEYARD' && q.status !== 'BACKLOG')
+      .map(q => q.id),
   );
+  const frontierCount = dagResult
+    ? dagResult.frontier.filter(id => actionableQuestIds.has(id)).length
+    : actionableQuestIds.size;
 
-  // ── Build left column ──────────────────────────────────────────────
+  // ── My Stuff ──────────────────────────────────────────────────────
+  const agentId = model.agentId;
+  const myIssues = agentId
+    ? snap.quests.filter(q => q.assignedTo === agentId && q.status !== 'DONE' && q.status !== 'GRAVEYARD')
+    : snap.quests.filter(q => q.assignedTo !== undefined && q.status !== 'DONE' && q.status !== 'GRAVEYARD');
+
+  const mySubmissions = agentId
+    ? snap.submissions.filter(s => s.submittedBy === agentId && (s.status === 'OPEN' || s.status === 'CHANGES_REQUESTED'))
+    : pendingReview.slice(0, 5);
+
+  // ── Activity Feed ─────────────────────────────────────────────────
+  const activity: ActivityEvent[] = [];
+  for (const s of snap.submissions) {
+    activity.push({ ts: s.submittedAt, text: `${s.submittedBy} submitted ${s.id.replace(/^submission:/, '')}` });
+  }
+  for (const r of snap.reviews) {
+    const verb = r.verdict === 'approve' ? 'approved' : 'reviewed';
+    activity.push({ ts: r.reviewedAt, text: `${r.reviewedBy} ${verb} ${r.patchsetId.replace(/^patchset:/, '')}` });
+  }
+  for (const d of snap.decisions) {
+    activity.push({ ts: d.decidedAt, text: `${d.decidedBy} ${d.kind}d ${d.submissionId.replace(/^submission:/, '')}` });
+  }
+  activity.sort((a, b) => b.ts - a.ts);
+  const recentActivity = activity.slice(0, 6);
+
+  // ── Dashboard focus state (optional — undefined in tests) ─────
+  const dv = model.dashboardView;
+
+  // ── Left column (main content) ──────────────────────────────────
 
   function renderLeftColumn(pw: number, _ph: number): string {
     const lines: string[] = [];
 
-    // Project header with progress
-    const barWidth = Math.max(10, Math.min(20, pw - 40));
-    const barStr = progressBar(pct, { width: barWidth });
+    // Project header with progress bar (full-width)
+    const barWidth = Math.max(10, Math.min(30, pw - 44));
+    const barStr = progressBar(pct, { width: barWidth, gradient: t.theme.gradient.progress });
     lines.push(headerBox('XYPH Dashboard', {
-      detail: `${barStr} ${pct}% (${doneQuests.length}/${totalNonBacklog})`,
+      detail: `${barStr}  ${styled(t.theme.semantic.primary, `${pct}%`)}  ${doneQuests.length}/${totalNonBacklog} complete`,
       borderToken: t.theme.border.primary,
+      width: pw,
     }));
 
     // Alert bar
     if (alerts.length > 0) {
-      lines.push('');
-      lines.push(styled(t.theme.semantic.warning, `  \u26A0 ${alerts.join(' \u00B7 ')}`));
+      lines.push(alert(alerts.join(' \u00B7 '), { variant: 'warning' }));
     }
 
-    // In Progress
+    // Graph + DAG stats (compact)
+    const statParts: string[] = [];
+    statParts.push(`${snap.quests.length} quests`);
+    statParts.push(`${frontierCount} frontier`);
+    statParts.push(`${inProgress.length} active`);
+    if (meta) {
+      statParts.push(`${meta.writerCount} wrtrs`);
+      statParts.push(`tick: ${meta.maxTick}`);
+    }
     lines.push('');
-    lines.push(styled(t.theme.semantic.info, ` \u25B6 In Progress (${inProgress.length})`));
+    lines.push(styled(t.theme.semantic.muted, `  Graph  ${statParts.join(' \u00B7 ')}`));
+
+    // In Progress (table)
+    lines.push('');
+    lines.push(separator({ label: `In Progress (${inProgress.length})`, borderToken: t.theme.border.secondary, width: pw }));
     if (inProgress.length === 0) {
       lines.push(styled(t.theme.semantic.muted, '   (none)'));
     } else {
-      for (const q of inProgress.slice(0, 8)) {
-        const owner = q.assignedTo ? styled(t.theme.semantic.muted, `  ${q.assignedTo}`) : '';
-        lines.push(`   ${styled(t.theme.semantic.muted, q.id.replace(/^task:/, ''))} ${q.title.slice(0, Math.max(0, pw - 28))}${owner}`);
-      }
+      const ipRows = inProgress.slice(0, 8).map((q, i) => {
+        const indicator = (dv?.focusPanel === 'in-progress' && dv.focusRow === i)
+          ? styled(t.theme.semantic.primary, '\u25B6 ')
+          : '  ';
+        return [
+          indicator + q.id.replace(/^task:/, ''),
+          q.title.slice(0, Math.max(0, pw - 40)),
+          q.assignedTo ?? '\u2014',
+        ];
+      });
+      lines.push(bijouTable({
+        columns: [
+          { header: 'ID', width: 12 },
+          { header: 'Title' },
+          { header: 'Owner', width: 14 },
+        ],
+        rows: ipRows,
+        headerToken: t.theme.ui.tableHeader,
+        borderToken: t.theme.border.primary,
+      }));
       if (inProgress.length > 8) {
         lines.push(styled(t.theme.semantic.muted, `   +${inProgress.length - 8} more`));
+      }
+    }
+
+    // Blocked quests
+    if (dagResult && dagResult.blockedBy.size > 0) {
+      lines.push('');
+      lines.push(separator({ label: `Blocked (${dagResult.blockedBy.size})`, borderToken: t.theme.border.secondary, width: pw }));
+      for (const [id, blockers] of [...dagResult.blockedBy.entries()].slice(0, 4)) {
+        const q = snap.quests.find(quest => quest.id === id);
+        const title = q ? q.title.slice(0, pw - 35) : id;
+        const deps = blockers.map(b => b.replace(/^task:/, '')).join(', ');
+        lines.push(`  ${styled(t.theme.semantic.muted, id.replace(/^task:/, ''))} ${title}`);
+        lines.push(styled(t.theme.semantic.warning, `    waits on: ${deps.slice(0, pw - 14)}`));
+      }
+      if (dagResult.blockedBy.size > 4) {
+        lines.push(styled(t.theme.semantic.muted, `  +${dagResult.blockedBy.size - 4} more`));
       }
     }
 
     // Pending Review
     if (pendingReview.length > 0) {
       lines.push('');
-      lines.push(styled(t.theme.semantic.warning, ` \u25CE Pending Review (${pendingReview.length})`));
+      lines.push(separator({ label: `Pending Review (${pendingReview.length})`, borderToken: t.theme.border.secondary, width: pw }));
       for (const s of pendingReview.slice(0, 5)) {
         const q = questById.get(s.questId);
         const title = q ? q.title.slice(0, Math.max(0, pw - 30)) : s.questId;
-        lines.push(`   ${styled(t.theme.semantic.muted, s.id.replace(/^submission:/, ''))} ${title}  ${styledStatus(s.status)}`);
+        lines.push(`   ${styled(t.theme.semantic.muted, s.id.replace(/^submission:/, ''))} ${title}  ${badge(s.status, { variant: statusVariant(s.status) })}`);
       }
     }
 
     // Campaigns with progress
     if (activeCampaigns.length > 0) {
       lines.push('');
-      lines.push(styled(t.theme.semantic.primary, ' Campaigns'));
+      lines.push(separator({ label: 'Campaigns', borderToken: t.theme.border.secondary, width: pw }));
       for (const c of activeCampaigns) {
         const cQuests = questsByCampaign.get(c.id) ?? [];
         const cDone = cQuests.filter(q => q.status === 'DONE').length;
@@ -126,6 +213,45 @@ export function dashboardView(model: DashboardModel, width?: number, height?: nu
         const cBar = cTotal > 0 ? progressBar(cPct, { width: cBarWidth }) : '';
         const label = c.title.slice(0, Math.max(0, pw - 30));
         lines.push(`   ${label}  ${cBar} ${cDone}/${cTotal}`);
+      }
+    }
+
+    // Health
+    lines.push('');
+    lines.push(separator({ label: 'Health', borderToken: t.theme.border.secondary, width: pw }));
+    lines.push(`  Sovereignty: ${withIntent}/${totalNonBacklog}`);
+    if (orphanCount > 0) {
+      lines.push(styled(t.theme.semantic.warning, `  Orphans: ${orphanCount}`));
+    } else {
+      lines.push(`  Orphans: 0`);
+    }
+    if (forkedCount > 0) {
+      lines.push(styled(t.theme.semantic.error, `  Forked: ${forkedCount}`));
+    } else {
+      lines.push(`  Forked: 0`);
+    }
+
+    // Top Blockers
+    if (depEdges.length > 0) {
+      const topBlockers = computeTopBlockers(tasks, depEdges, 3);
+      if (topBlockers.length > 0) {
+        lines.push('');
+        lines.push(separator({ label: 'Top Blockers', borderToken: t.theme.border.secondary, width: pw }));
+        const blockerItems = topBlockers.map(b => {
+          const q = snap.quests.find(quest => quest.id === b.id);
+          const title = q ? q.title.slice(0, pw - 30) : b.id;
+          return `${b.id.replace(/^task:/, '')} ${title}  blocks ${b.transitiveCount}`;
+        });
+        lines.push(enumeratedList(blockerItems, { style: 'arabic', indent: 2 }));
+      }
+    }
+
+    // Critical Path
+    if (depEdges.length > 0 && snap.sortedTaskIds.length > 0) {
+      const cp = computeCriticalPath(snap.sortedTaskIds, tasks, depEdges);
+      if (cp.path.length > 1) {
+        const cpLabel = `Critical Path  ${cp.path.length} quests \u00B7 ${cp.totalHours}h`;
+        lines.push(styled(t.theme.semantic.muted, `  ${cpLabel}`));
       }
     }
 
@@ -143,53 +269,62 @@ export function dashboardView(model: DashboardModel, width?: number, height?: nu
     return lines.join('\n');
   }
 
-  // ── Build right column ─────────────────────────────────────────────
+  // ── Right column (My Stuff) ─────────────────────────────────────
 
   function renderRightColumn(pw: number, _ph: number): string {
     const lines: string[] = [];
 
     // My Issues
-    lines.push(styled(t.theme.semantic.primary, ' Assigned Issues'));
+    const issueLabel = agentId ? 'My Quests' : 'Assigned Quests';
+    lines.push(separator({ label: `${issueLabel} (${myIssues.length})`, borderToken: t.theme.border.secondary, width: pw }));
     if (myIssues.length === 0) {
-      lines.push(styled(t.theme.semantic.muted, '  (none assigned)'));
+      lines.push(styled(t.theme.semantic.muted, '  (none)'));
     } else {
-      for (const q of myIssues.slice(0, 6)) {
-        lines.push(`  ${styled(t.theme.semantic.muted, q.id.replace(/^task:/, ''))} ${q.title.slice(0, Math.max(0, pw - 16))}`);
+      for (const [i, q] of myIssues.slice(0, 6).entries()) {
+        const indicator = (dv?.focusPanel === 'my-issues' && dv.focusRow === i)
+          ? styled(t.theme.semantic.primary, '\u25B6')
+          : ' ';
+        const statusStr = styledStatus(q.status);
+        lines.push(`  ${indicator} ${styled(t.theme.semantic.muted, q.id.replace(/^task:/, ''))} ${q.title.slice(0, Math.max(0, pw - 22))} ${statusStr}`);
       }
       if (myIssues.length > 6) {
         lines.push(styled(t.theme.semantic.muted, `  +${myIssues.length - 6} more`));
       }
     }
 
-    // Health
+    // My Submissions
     lines.push('');
-    lines.push(styled(t.theme.semantic.primary, ' Health'));
-    lines.push(`  Sovereignty: ${withIntent}/${totalNonBacklog}`);
-    if (orphanCount > 0) {
-      lines.push(styled(t.theme.semantic.warning, `  Orphans: ${orphanCount}`));
+    const subLabel = agentId ? 'My Submissions' : 'Pending Submissions';
+    lines.push(separator({ label: `${subLabel} (${mySubmissions.length})`, borderToken: t.theme.border.secondary, width: pw }));
+    if (mySubmissions.length === 0) {
+      lines.push(styled(t.theme.semantic.muted, '  (none pending)'));
     } else {
-      lines.push(`  Orphans: 0`);
-    }
-    if (forkedCount > 0) {
-      lines.push(styled(t.theme.semantic.error, `  Forked: ${forkedCount}`));
-    } else {
-      lines.push(`  Forked: 0`);
+      for (const s of mySubmissions.slice(0, 4)) {
+        const q = questById.get(s.questId);
+        const title = q ? q.title.slice(0, Math.max(0, pw - 20)) : s.questId;
+        lines.push(`  ${styled(t.theme.semantic.muted, s.id.replace(/^submission:/, ''))} ${title}  ${badge(s.status, { variant: statusVariant(s.status) })}`);
+      }
+      if (mySubmissions.length > 4) {
+        lines.push(styled(t.theme.semantic.muted, `  +${mySubmissions.length - 4} more`));
+      }
     }
 
-    // Graph meta
-    lines.push('');
-    lines.push(styled(t.theme.semantic.primary, ' Graph'));
-    if (meta) {
-      lines.push(`  tick: ${meta.maxTick} \u00B7 ${meta.writerCount} wrtrs`);
-      lines.push(`  tip: ${meta.tipSha}`);
-    } else {
-      lines.push(styled(t.theme.semantic.muted, '  (no graph meta)'));
-    }
-
-    // Backlog pressure
+    // Inbox pressure
     if (backlogCount > 0) {
       lines.push('');
-      lines.push(styled(t.theme.semantic.info, `  ${backlogCount} backlog item${backlogCount > 1 ? 's' : ''}`));
+      lines.push(styled(t.theme.semantic.info, ` Inbox (${backlogCount} quest${backlogCount > 1 ? 's' : ''})`));
+      lines.push(styled(t.theme.semantic.muted, '  Quests awaiting triage'));
+    }
+
+    // Activity Feed
+    if (recentActivity.length > 0) {
+      lines.push('');
+      lines.push(separator({ label: 'Recent Activity', borderToken: t.theme.border.secondary, width: pw }));
+      const tlEvents: TimelineEvent[] = recentActivity.map(ev => ({
+        label: `${formatAge(ev.ts)}  ${ev.text.slice(0, Math.max(0, pw - 10))}`,
+        status: activityEventStatus(ev.text),
+      }));
+      lines.push(timeline(tlEvents, { lineToken: t.theme.semantic.muted }));
     }
 
     return lines.join('\n');
@@ -202,4 +337,11 @@ export function dashboardView(model: DashboardModel, width?: number, height?: nu
     { flex: 2, content: renderLeftColumn },
     { flex: 1, content: renderRightColumn },
   );
+}
+
+function activityEventStatus(text: string): BaseStatusKey {
+  if (text.includes('approved') || text.includes('merged')) return 'success';
+  if (text.includes('closed')) return 'error';
+  if (text.includes('reviewed')) return 'warning';
+  return 'info';
 }
