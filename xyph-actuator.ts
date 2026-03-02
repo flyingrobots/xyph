@@ -9,6 +9,7 @@ import { registerSubmissionCommands } from './src/cli/commands/submission.js';
 import { registerIntakeCommands } from './src/cli/commands/intake.js';
 import { registerDashboardCommands } from './src/cli/commands/dashboard.js';
 import { registerWizardCommands } from './src/cli/commands/wizards.js';
+import { registerLinkCommands } from './src/cli/commands/link.js';
 
 // Best-effort pre-scan for --json before Commander parses.
 // createCliContext() handles theme init internally based on this flag.
@@ -34,5 +35,6 @@ registerSubmissionCommands(program, ctx);
 registerIntakeCommands(program, ctx);
 registerDashboardCommands(program, ctx);
 registerWizardCommands(program, ctx);
+registerLinkCommands(program, ctx);
 
 await program.parseAsync(process.argv);

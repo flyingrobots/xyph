@@ -1,5 +1,6 @@
-import { flex, viewport, navigableTable } from '@flyingrobots/bijou-tui';
-import { styled, styledStatus, getTheme } from '../../theme/index.js';
+import { flex, navigableTable, createPagerState, pagerScrollTo, pager } from '@flyingrobots/bijou-tui';
+import { badge, stepper, type BadgeVariant, type StepperStep } from '@flyingrobots/bijou';
+import { styled, getTheme } from '../../theme/index.js';
 import type { DashboardModel } from '../DashboardApp.js';
 import type { ReviewNode, DecisionNode } from '../../../domain/models/dashboard.js';
 import { sortedSubmissions } from '../selection-order.js';
@@ -96,7 +97,18 @@ export function submissionsView(model: DashboardModel, width?: number, height?: 
     lines.push(` Quest:     ${qTitle}`);
     lines.push(` Submitter: ${sub.submittedBy}`);
     lines.push(` Date:      ${new Date(sub.submittedAt).toLocaleDateString()}`);
-    lines.push(` Status:    ${styledStatus(sub.status)}`);
+    lines.push(` Age:       ${formatAge(sub.submittedAt)} ago`);
+    lines.push(` Status:    ${badge(sub.status, { variant: statusVariant(sub.status) })}`);
+
+    // Submission lifecycle stepper
+    const steps: StepperStep[] = [
+      { label: 'Submitted' },
+      { label: 'Reviewed' },
+      { label: 'Approved' },
+      { label: sub.status === 'CLOSED' ? 'Closed' : 'Merged' },
+    ];
+    const currentStep = stepForStatus(sub.status, sub.approvalCount);
+    lines.push(stepper(steps, { current: currentStep }));
     if (sub.headsCount > 1) {
       lines.push(styled(t.theme.semantic.warning, ` \u26A0 Forked: ${sub.headsCount} heads`));
     }
@@ -145,7 +157,9 @@ export function submissionsView(model: DashboardModel, width?: number, height?: 
     }
 
     const content = lines.join('\n');
-    return viewport({ width: pw, height: ph, content, scrollY: model.submissions.detailScrollY });
+    let ps = createPagerState({ content, width: pw, height: ph });
+    ps = pagerScrollTo(ps, model.submissions.detailScrollY);
+    return pager(ps);
   }
 
   // ── Compose layout (item 8: flat row, no outer column header) ───
@@ -154,4 +168,34 @@ export function submissionsView(model: DashboardModel, width?: number, height?: 
     { basis: leftWidth, content: renderList },
     { flex: 1, content: renderDetail },
   );
+}
+
+function statusVariant(status: string): BadgeVariant {
+  switch (status) {
+    case 'DONE': case 'MERGED': case 'APPROVED': return 'success';
+    case 'IN_PROGRESS': case 'OPEN': return 'info';
+    case 'CHANGES_REQUESTED': case 'BLOCKED': return 'warning';
+    case 'CLOSED': case 'GRAVEYARD': return 'error';
+    default: return 'muted';
+  }
+}
+
+function stepForStatus(status: string, approvalCount: number): number {
+  switch (status) {
+    case 'OPEN': return approvalCount > 0 ? 1 : 0;
+    case 'CHANGES_REQUESTED': return 1;
+    case 'APPROVED': return 2;
+    case 'MERGED': case 'CLOSED': return 3;
+    default: return 0;
+  }
+}
+
+function formatAge(ts: number): string {
+  const diff = Math.max(0, Date.now() - ts);
+  const mins = Math.floor(diff / 60_000);
+  if (mins < 60) return `${mins}m`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  return `${days}d`;
 }

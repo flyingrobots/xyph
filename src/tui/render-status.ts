@@ -1,19 +1,27 @@
-import Table from 'cli-table3';
-import boxen, { type Options as BoxenOptions } from 'boxen';
+import {
+  headerBox, table, separator, badge, enumeratedList, styledStatus,
+  type BadgeVariant,
+} from '@flyingrobots/bijou';
 import type { GraphSnapshot } from '../domain/models/dashboard.js';
 import type { BlockerInfo } from '../domain/services/DepAnalysis.js';
-import { getTheme, styled, styledStatus } from './theme/index.js';
+import { getTheme, styled } from './theme/index.js';
 
-function colorStatus(status: string): string {
-  return styledStatus(status);
+function statusVariant(status: string): BadgeVariant {
+  switch (status) {
+    case 'DONE': case 'MERGED': case 'APPROVED': return 'success';
+    case 'IN_PROGRESS': case 'OPEN': return 'info';
+    case 'CHANGES_REQUESTED': case 'BLOCKED': return 'warning';
+    case 'CLOSED': case 'GRAVEYARD': return 'error';
+    default: return 'muted';
+  }
 }
 
 function snapshotHeader(label: string, detail: string, borderToken: 'primary' | 'secondary' | 'success' | 'warning' | 'error' | 'muted'): string {
   const t = getTheme();
-  return boxen(
-    styled(t.theme.semantic.primary, label) + styled(t.theme.semantic.muted, `  ${detail}`),
-    { padding: { top: 0, bottom: 0, left: 1, right: 1 }, borderStyle: 'single', borderColor: t.hex(t.theme.border[borderToken]) as BoxenOptions['borderColor'] }
-  );
+  return headerBox(label, {
+    detail: styled(t.theme.semantic.muted, detail),
+    borderToken: t.theme.border[borderToken],
+  });
 }
 
 /**
@@ -53,29 +61,26 @@ export function renderRoadmap(snapshot: GraphSnapshot): string {
     lines.push('');
     lines.push(styled(t.theme.ui.sectionHeader, `  ${heading}`));
 
-    const table = new Table({
-      head: [
-        styled(t.theme.ui.tableHeader, 'Quest'),
-        styled(t.theme.ui.tableHeader, 'Title'),
-        styled(t.theme.ui.tableHeader, 'Status'),
-        styled(t.theme.ui.tableHeader, 'h'),
-        styled(t.theme.ui.tableHeader, 'Assigned'),
+    const rows = quests.map(q => [
+      styled(t.theme.semantic.muted, q.id.slice(0, 20)),
+      q.title.slice(0, 42),
+      badge(q.status, { variant: statusVariant(q.status) }),
+      String(q.hours),
+      q.assignedTo ?? '—',
+    ]);
+
+    lines.push(table({
+      columns: [
+        { header: 'Quest', width: 22 },
+        { header: 'Title', width: 44 },
+        { header: 'Status', width: 13 },
+        { header: 'h', width: 5 },
+        { header: 'Assigned', width: 16 },
       ],
-      style: { head: [], border: [] },
-      colWidths: [22, 44, 13, 5, 16],
-    });
-
-    for (const q of quests) {
-      table.push([
-        styled(t.theme.semantic.muted, q.id.slice(0, 20)),
-        q.title.slice(0, 42),
-        colorStatus(q.status),
-        String(q.hours),
-        q.assignedTo ?? '—',
-      ]);
-    }
-
-    lines.push(table.toString());
+      rows,
+      headerToken: t.theme.ui.tableHeader,
+      borderToken: t.theme.border.primary,
+    }));
   }
 
   return lines.join('\n');
@@ -147,7 +152,7 @@ export function renderLineage(snapshot: GraphSnapshot): string {
         : '';
 
       lines.push(
-        `     ${branch} ${styled(t.theme.semantic.muted, q.id)}  ${q.title.slice(0, 38)}  [${colorStatus(q.status)}]${scrollMark}`
+        `     ${branch} ${styled(t.theme.semantic.muted, q.id)}  ${q.title.slice(0, 38)}  [${badge(q.status, { variant: statusVariant(q.status) })}]${scrollMark}`
       );
 
       if (scrollEntry !== undefined) {
@@ -166,7 +171,7 @@ export function renderLineage(snapshot: GraphSnapshot): string {
       const q = orphans[i];
       if (!q) continue;
       const branch = i === orphans.length - 1 ? '└─' : '├─';
-      lines.push(`     ${branch} ${styled(t.theme.semantic.muted, q.id)}  ${q.title.slice(0, 38)}  [${colorStatus(q.status)}]`);
+      lines.push(`     ${branch} ${styled(t.theme.semantic.muted, q.id)}  ${q.title.slice(0, 38)}  [${badge(q.status, { variant: statusVariant(q.status) })}]`);
     }
   }
 
@@ -190,109 +195,118 @@ export function renderAll(snapshot: GraphSnapshot): string {
 
   if (snapshot.campaigns.length > 0) {
     lines.push('');
-    lines.push(styled(t.theme.semantic.primary, '  Campaigns / Milestones'));
-    const tbl = new Table({
-      head: [styled(t.theme.ui.tableHeader, 'ID'), styled(t.theme.ui.tableHeader, 'Title'), styled(t.theme.ui.tableHeader, 'Status')],
-      style: { head: [], border: [] },
-    });
-    for (const c of snapshot.campaigns) {
-      tbl.push([styled(t.theme.semantic.muted, c.id), c.title, colorStatus(c.status)]);
-    }
-    lines.push(tbl.toString());
+    lines.push(separator({ label: 'Campaigns / Milestones', borderToken: t.theme.border.secondary }));
+    const rows = snapshot.campaigns.map(c => [
+      styled(t.theme.semantic.muted, c.id),
+      c.title,
+      badge(c.status, { variant: statusVariant(c.status) }),
+    ]);
+    lines.push(table({
+      columns: [
+        { header: 'ID' },
+        { header: 'Title' },
+        { header: 'Status' },
+      ],
+      rows,
+      headerToken: t.theme.ui.tableHeader,
+      borderToken: t.theme.border.primary,
+    }));
   }
 
   if (snapshot.intents.length > 0) {
     lines.push('');
-    lines.push(styled(t.theme.semantic.primary, '  Intents'));
-    const tbl = new Table({
-      head: [
-        styled(t.theme.ui.tableHeader, 'ID'),
-        styled(t.theme.ui.tableHeader, 'Title'),
-        styled(t.theme.ui.tableHeader, 'Requested By'),
-        styled(t.theme.ui.tableHeader, 'Created'),
+    lines.push(separator({ label: 'Intents', borderToken: t.theme.border.secondary }));
+    const rows = snapshot.intents.map(intent => [
+      styled(t.theme.semantic.muted, intent.id),
+      intent.title.slice(0, 40),
+      intent.requestedBy,
+      new Date(intent.createdAt).toLocaleDateString(),
+    ]);
+    lines.push(table({
+      columns: [
+        { header: 'ID' },
+        { header: 'Title' },
+        { header: 'Requested By' },
+        { header: 'Created' },
       ],
-      style: { head: [], border: [] },
-    });
-    for (const intent of snapshot.intents) {
-      tbl.push([
-        styled(t.theme.semantic.muted, intent.id),
-        intent.title.slice(0, 40),
-        intent.requestedBy,
-        new Date(intent.createdAt).toLocaleDateString(),
-      ]);
-    }
-    lines.push(tbl.toString());
+      rows,
+      headerToken: t.theme.ui.tableHeader,
+      borderToken: t.theme.border.primary,
+    }));
   }
 
   if (snapshot.quests.length > 0) {
     lines.push('');
-    lines.push(styled(t.theme.semantic.primary, '  Quests'));
-    const tbl = new Table({
-      head: [
-        styled(t.theme.ui.tableHeader, 'ID'),
-        styled(t.theme.ui.tableHeader, 'Title'),
-        styled(t.theme.ui.tableHeader, 'Status'),
-        styled(t.theme.ui.tableHeader, 'h'),
-        styled(t.theme.ui.tableHeader, 'Campaign'),
-        styled(t.theme.ui.tableHeader, 'Scroll'),
+    lines.push(separator({ label: 'Quests', borderToken: t.theme.border.secondary }));
+    const rows = snapshot.quests.map(q => [
+      styled(t.theme.semantic.muted, q.id),
+      q.title.slice(0, 35),
+      badge(q.status, { variant: statusVariant(q.status) }),
+      String(q.hours),
+      q.campaignId ?? '—',
+      q.scrollId ? styled(t.theme.semantic.success, '✓') : '—',
+    ]);
+    lines.push(table({
+      columns: [
+        { header: 'ID' },
+        { header: 'Title' },
+        { header: 'Status' },
+        { header: 'h' },
+        { header: 'Campaign' },
+        { header: 'Scroll' },
       ],
-      style: { head: [], border: [] },
-    });
-    for (const q of snapshot.quests) {
-      tbl.push([
-        styled(t.theme.semantic.muted, q.id),
-        q.title.slice(0, 35),
-        colorStatus(q.status),
-        String(q.hours),
-        q.campaignId ?? '—',
-        q.scrollId ? styled(t.theme.semantic.success, '✓') : '—',
-      ]);
-    }
-    lines.push(tbl.toString());
+      rows,
+      headerToken: t.theme.ui.tableHeader,
+      borderToken: t.theme.border.primary,
+    }));
   }
 
   if (snapshot.scrolls.length > 0) {
     lines.push('');
-    lines.push(styled(t.theme.semantic.primary, '  Scrolls'));
-    const tbl = new Table({
-      head: [
-        styled(t.theme.ui.tableHeader, 'ID'),
-        styled(t.theme.ui.tableHeader, 'Quest'),
-        styled(t.theme.ui.tableHeader, 'Sealed By'),
-        styled(t.theme.ui.tableHeader, 'Date'),
-        styled(t.theme.ui.tableHeader, 'Guild Seal'),
+    lines.push(separator({ label: 'Scrolls', borderToken: t.theme.border.secondary }));
+    const rows = snapshot.scrolls.map(s => [
+      styled(t.theme.semantic.muted, s.id),
+      s.questId,
+      s.sealedBy,
+      new Date(s.sealedAt).toLocaleDateString(),
+      s.hasSeal ? styled(t.theme.semantic.success, '⊕') : styled(t.theme.semantic.warning, '○'),
+    ]);
+    lines.push(table({
+      columns: [
+        { header: 'ID' },
+        { header: 'Quest' },
+        { header: 'Sealed By' },
+        { header: 'Date' },
+        { header: 'Guild Seal' },
       ],
-      style: { head: [], border: [] },
-    });
-    for (const s of snapshot.scrolls) {
-      tbl.push([
-        styled(t.theme.semantic.muted, s.id),
-        s.questId,
-        s.sealedBy,
-        new Date(s.sealedAt).toLocaleDateString(),
-        s.hasSeal ? styled(t.theme.semantic.success, '⊕') : styled(t.theme.semantic.warning, '○'),
-      ]);
-    }
-    lines.push(tbl.toString());
+      rows,
+      headerToken: t.theme.ui.tableHeader,
+      borderToken: t.theme.border.primary,
+    }));
   }
 
   if (snapshot.approvals.length > 0) {
     lines.push('');
-    lines.push(styled(t.theme.semantic.primary, '  Approval Gates'));
-    const tbl = new Table({
-      head: [
-        styled(t.theme.ui.tableHeader, 'ID'),
-        styled(t.theme.ui.tableHeader, 'Status'),
-        styled(t.theme.ui.tableHeader, 'Trigger'),
-        styled(t.theme.ui.tableHeader, 'Approver'),
-        styled(t.theme.ui.tableHeader, 'Requester'),
+    lines.push(separator({ label: 'Approval Gates', borderToken: t.theme.border.secondary }));
+    const rows = snapshot.approvals.map(a => [
+      styled(t.theme.semantic.muted, a.id),
+      badge(a.status, { variant: statusVariant(a.status) }),
+      a.trigger,
+      a.approver,
+      a.requestedBy,
+    ]);
+    lines.push(table({
+      columns: [
+        { header: 'ID' },
+        { header: 'Status' },
+        { header: 'Trigger' },
+        { header: 'Approver' },
+        { header: 'Requester' },
       ],
-      style: { head: [], border: [] },
-    });
-    for (const a of snapshot.approvals) {
-      tbl.push([styled(t.theme.semantic.muted, a.id), colorStatus(a.status), a.trigger, a.approver, a.requestedBy]);
-    }
-    lines.push(tbl.toString());
+      rows,
+      headerToken: t.theme.ui.tableHeader,
+      borderToken: t.theme.border.primary,
+    }));
   }
 
   return lines.join('\n');
@@ -333,29 +347,28 @@ export function renderInbox(snapshot: GraphSnapshot): string {
     lines.push('');
     lines.push(styled(t.theme.ui.intentHeader, `  ${suggester}`));
 
-    const tbl = new Table({
-      head: [
-        styled(t.theme.ui.tableHeader, 'ID'),
-        styled(t.theme.ui.tableHeader, 'Title'),
-        styled(t.theme.ui.tableHeader, 'h'),
-        styled(t.theme.ui.tableHeader, 'Suggested'),
-        styled(t.theme.ui.tableHeader, 'Prev rejection'),
-      ],
-      style: { head: [], border: [] },
-    });
-
-    for (const q of quests) {
+    const rows = quests.map(q => {
       const suggestedAt = q.suggestedAt !== undefined
         ? new Date(q.suggestedAt).toLocaleDateString()
         : '—';
       const prevRej = q.rejectionRationale !== undefined
         ? styled(t.theme.semantic.muted, q.rejectionRationale.slice(0, 24) + (q.rejectionRationale.length > 24 ? '…' : ''))
         : '—';
+      return [styled(t.theme.semantic.muted, q.id), q.title.slice(0, 38), String(q.hours), suggestedAt, prevRej];
+    });
 
-      tbl.push([styled(t.theme.semantic.muted, q.id), q.title.slice(0, 38), String(q.hours), suggestedAt, prevRej]);
-    }
-
-    lines.push(tbl.toString());
+    lines.push(table({
+      columns: [
+        { header: 'ID' },
+        { header: 'Title' },
+        { header: 'h' },
+        { header: 'Suggested' },
+        { header: 'Prev rejection' },
+      ],
+      rows,
+      headerToken: t.theme.ui.tableHeader,
+      borderToken: t.theme.border.primary,
+    }));
   }
 
   return lines.join('\n');
@@ -383,34 +396,33 @@ export function renderSubmissions(snapshot: GraphSnapshot): string {
     return lines.join('\n');
   }
 
-  const tbl = new Table({
-    head: [
-      styled(t.theme.ui.tableHeader, 'Submission'),
-      styled(t.theme.ui.tableHeader, 'Quest'),
-      styled(t.theme.ui.tableHeader, 'Status'),
-      styled(t.theme.ui.tableHeader, 'Approvals'),
-      styled(t.theme.ui.tableHeader, 'Heads'),
-      styled(t.theme.ui.tableHeader, 'Submitted By'),
-      styled(t.theme.ui.tableHeader, 'Date'),
-    ],
-    style: { head: [], border: [] },
-    colWidths: [28, 20, 20, 10, 7, 16, 12],
-  });
-
-  for (const sub of subs) {
+  const subRows = subs.map(sub => {
     const headsWarning = sub.headsCount > 1 ? styled(t.theme.semantic.warning, `${sub.headsCount} ⚠`) : String(sub.headsCount);
-    tbl.push([
+    return [
       styled(t.theme.semantic.muted, sub.id.slice(0, 26)),
       styled(t.theme.semantic.muted, sub.questId.slice(0, 18)),
-      colorStatus(sub.status),
+      badge(sub.status, { variant: statusVariant(sub.status) }),
       String(sub.approvalCount),
       headsWarning,
       sub.submittedBy,
       new Date(sub.submittedAt).toLocaleDateString(),
-    ]);
-  }
+    ];
+  });
 
-  lines.push(tbl.toString());
+  lines.push(table({
+    columns: [
+      { header: 'Submission', width: 28 },
+      { header: 'Quest', width: 20 },
+      { header: 'Status', width: 20 },
+      { header: 'Approvals', width: 10 },
+      { header: 'Heads', width: 7 },
+      { header: 'Submitted By', width: 16 },
+      { header: 'Date', width: 12 },
+    ],
+    rows: subRows,
+    headerToken: t.theme.ui.tableHeader,
+    borderToken: t.theme.border.primary,
+  }));
 
   // Show recent reviews (sorted by most recent first)
   const recentReviews = [...snapshot.reviews]
@@ -418,55 +430,57 @@ export function renderSubmissions(snapshot: GraphSnapshot): string {
     .slice(0, 10);
   if (recentReviews.length > 0) {
     lines.push('');
-    lines.push(styled(t.theme.semantic.primary, '  Recent Reviews'));
-    const rt = new Table({
-      head: [
-        styled(t.theme.ui.tableHeader, 'Review'),
-        styled(t.theme.ui.tableHeader, 'Patchset'),
-        styled(t.theme.ui.tableHeader, 'Verdict'),
-        styled(t.theme.ui.tableHeader, 'By'),
-        styled(t.theme.ui.tableHeader, 'Comment'),
+    lines.push(separator({ label: 'Recent Reviews', borderToken: t.theme.border.secondary }));
+    const reviewRows = recentReviews.map(r => [
+      styled(t.theme.semantic.muted, r.id.slice(0, 26)),
+      styled(t.theme.semantic.muted, r.patchsetId.slice(0, 26)),
+      badge(
+        r.verdict === 'approve' ? 'APPROVED' : r.verdict === 'request-changes' ? 'CHANGES_REQUESTED' : 'PENDING',
+        { variant: statusVariant(r.verdict === 'approve' ? 'APPROVED' : r.verdict === 'request-changes' ? 'CHANGES_REQUESTED' : 'PENDING') },
+      ),
+      r.reviewedBy,
+      r.comment.slice(0, 28),
+    ]);
+    lines.push(table({
+      columns: [
+        { header: 'Review', width: 28 },
+        { header: 'Patchset', width: 28 },
+        { header: 'Verdict', width: 18 },
+        { header: 'By', width: 16 },
+        { header: 'Comment', width: 30 },
       ],
-      style: { head: [], border: [] },
-      colWidths: [28, 28, 18, 16, 30],
-    });
-    for (const r of recentReviews) {
-      rt.push([
-        styled(t.theme.semantic.muted, r.id.slice(0, 26)),
-        styled(t.theme.semantic.muted, r.patchsetId.slice(0, 26)),
-        colorStatus(r.verdict === 'approve' ? 'APPROVED' : r.verdict === 'request-changes' ? 'CHANGES_REQUESTED' : 'PENDING'),
-        r.reviewedBy,
-        r.comment.slice(0, 28),
-      ]);
-    }
-    lines.push(rt.toString());
+      rows: reviewRows,
+      headerToken: t.theme.ui.tableHeader,
+      borderToken: t.theme.border.primary,
+    }));
   }
 
   // Show decisions
   if (snapshot.decisions.length > 0) {
     lines.push('');
-    lines.push(styled(t.theme.semantic.primary, '  Decisions'));
-    const dt = new Table({
-      head: [
-        styled(t.theme.ui.tableHeader, 'Decision'),
-        styled(t.theme.ui.tableHeader, 'Submission'),
-        styled(t.theme.ui.tableHeader, 'Kind'),
-        styled(t.theme.ui.tableHeader, 'By'),
-        styled(t.theme.ui.tableHeader, 'Rationale'),
+    lines.push(separator({ label: 'Decisions', borderToken: t.theme.border.secondary }));
+    const decisionRows = snapshot.decisions.map(d => [
+      styled(t.theme.semantic.muted, d.id.slice(0, 26)),
+      styled(t.theme.semantic.muted, d.submissionId.slice(0, 26)),
+      badge(
+        d.kind === 'merge' ? 'MERGED' : 'CLOSED',
+        { variant: statusVariant(d.kind === 'merge' ? 'MERGED' : 'CLOSED') },
+      ),
+      d.decidedBy,
+      d.rationale.slice(0, 28),
+    ]);
+    lines.push(table({
+      columns: [
+        { header: 'Decision', width: 28 },
+        { header: 'Submission', width: 28 },
+        { header: 'Kind', width: 8 },
+        { header: 'By', width: 16 },
+        { header: 'Rationale', width: 30 },
       ],
-      style: { head: [], border: [] },
-      colWidths: [28, 28, 8, 16, 30],
-    });
-    for (const d of snapshot.decisions) {
-      dt.push([
-        styled(t.theme.semantic.muted, d.id.slice(0, 26)),
-        styled(t.theme.semantic.muted, d.submissionId.slice(0, 26)),
-        colorStatus(d.kind === 'merge' ? 'MERGED' : 'CLOSED'),
-        d.decidedBy,
-        d.rationale.slice(0, 28),
-      ]);
-    }
-    lines.push(dt.toString());
+      rows: decisionRows,
+      headerToken: t.theme.ui.tableHeader,
+      borderToken: t.theme.border.primary,
+    }));
   }
 
   return lines.join('\n');
@@ -502,27 +516,27 @@ export function renderDeps(data: DepsViewData): string {
   // --- Frontier (ready tasks) ---
   if (data.frontier.length > 0) {
     lines.push('');
-    lines.push(styled(t.theme.semantic.success, '  Ready (Frontier)'));
-    const ft = new Table({
-      head: [
-        styled(t.theme.ui.tableHeader, 'Task'),
-        styled(t.theme.ui.tableHeader, 'Title'),
-        styled(t.theme.ui.tableHeader, 'Status'),
-        styled(t.theme.ui.tableHeader, 'h'),
-      ],
-      style: { head: [], border: [] },
-      colWidths: [22, 44, 13, 5],
-    });
-    for (const id of data.frontier) {
+    lines.push(separator({ label: 'Ready (Frontier)', borderToken: t.theme.border.success }));
+    const frontierRows = data.frontier.map(id => {
       const info = data.tasks.get(id);
-      ft.push([
+      return [
         styled(t.theme.semantic.success, id.slice(0, 20)),
         info?.title.slice(0, 42) ?? '—',
         info ? styledStatus(info.status) : '—',
         String(info?.hours ?? 0),
-      ]);
-    }
-    lines.push(ft.toString());
+      ];
+    });
+    lines.push(table({
+      columns: [
+        { header: 'Task', width: 22 },
+        { header: 'Title', width: 44 },
+        { header: 'Status', width: 13 },
+        { header: 'h', width: 5 },
+      ],
+      rows: frontierRows,
+      headerToken: t.theme.ui.tableHeader,
+      borderToken: t.theme.border.primary,
+    }));
   } else {
     lines.push('');
     lines.push(styled(t.theme.semantic.muted, '  No tasks are ready (all tasks have incomplete prerequisites or are DONE).'));
@@ -531,72 +545,55 @@ export function renderDeps(data: DepsViewData): string {
   // --- Blocked tasks ---
   if (data.blockedBy.size > 0) {
     lines.push('');
-    lines.push(styled(t.theme.semantic.warning, '  Blocked'));
-    const bt = new Table({
-      head: [
-        styled(t.theme.ui.tableHeader, 'Task'),
-        styled(t.theme.ui.tableHeader, 'Title'),
-        styled(t.theme.ui.tableHeader, 'Waiting On'),
-      ],
-      style: { head: [], border: [] },
-      colWidths: [22, 34, 40],
-    });
-    for (const [id, blockers] of data.blockedBy) {
+    lines.push(separator({ label: 'Blocked', borderToken: t.theme.border.warning }));
+    const blockedRows = [...data.blockedBy.entries()].map(([id, blockers]) => {
       const info = data.tasks.get(id);
-      bt.push([
+      return [
         styled(t.theme.semantic.warning, id.slice(0, 20)),
         info?.title.slice(0, 32) ?? '—',
         blockers.map((b) => b.slice(0, 18)).join(', '),
-      ]);
-    }
-    lines.push(bt.toString());
+      ];
+    });
+    lines.push(table({
+      columns: [
+        { header: 'Task', width: 22 },
+        { header: 'Title', width: 34 },
+        { header: 'Waiting On', width: 40 },
+      ],
+      rows: blockedRows,
+      headerToken: t.theme.ui.tableHeader,
+      borderToken: t.theme.border.primary,
+    }));
   }
 
   // --- Top Blockers ---
   if (data.topBlockers && data.topBlockers.length > 0) {
     lines.push('');
-    lines.push(styled(t.theme.semantic.error, '  Top Blockers'));
-    const tb = new Table({
-      head: [
-        styled(t.theme.ui.tableHeader, 'Task'),
-        styled(t.theme.ui.tableHeader, 'Title'),
-        styled(t.theme.ui.tableHeader, 'Direct'),
-        styled(t.theme.ui.tableHeader, 'Transitive'),
-      ],
-      style: { head: [], border: [] },
-      colWidths: [22, 40, 8, 12],
-    });
-    for (const blocker of data.topBlockers) {
+    lines.push(separator({ label: 'Top Blockers', borderToken: t.theme.border.error }));
+    const blockerItems = data.topBlockers.map(blocker => {
       const info = data.tasks.get(blocker.id);
-      tb.push([
-        styled(t.theme.semantic.error, blocker.id.slice(0, 20)),
-        info?.title.slice(0, 38) ?? '—',
-        String(blocker.directCount),
-        String(blocker.transitiveCount),
-      ]);
-    }
-    lines.push(tb.toString());
+      const title = info?.title.slice(0, 38) ?? '—';
+      return `${blocker.id.slice(0, 20)} ${title}  direct: ${blocker.directCount}  transitive: ${blocker.transitiveCount}`;
+    });
+    lines.push(enumeratedList(blockerItems, { style: 'arabic', indent: 2 }));
   }
 
   // --- Execution Order ---
   if (data.executionOrder.length > 0) {
     lines.push('');
-    lines.push(styled(t.theme.semantic.primary, '  Execution Order'));
-    for (let i = 0; i < data.executionOrder.length; i++) {
-      const id = data.executionOrder[i];
-      if (!id) continue;
+    lines.push(separator({ label: 'Execution Order', borderToken: t.theme.border.primary }));
+    const orderItems = data.executionOrder.map(id => {
       const info = data.tasks.get(id);
       const statusStr = info ? ` [${styledStatus(info.status)}]` : '';
-      lines.push(
-        `    ${styled(t.theme.semantic.muted, `${String(i + 1).padStart(2)}.`)} ${id}${statusStr}`
-      );
-    }
+      return `${id}${statusStr}`;
+    });
+    lines.push(enumeratedList(orderItems, { style: 'arabic', indent: 4 }));
   }
 
   // --- Critical Path ---
   if (data.criticalPath.length > 0) {
     lines.push('');
-    lines.push(styled(t.theme.semantic.error, '  Critical Path'));
+    lines.push(separator({ label: 'Critical Path', borderToken: t.theme.border.error }));
     const chain = data.criticalPath.map((id) => {
       const info = data.tasks.get(id);
       const h = info?.hours ?? 0;

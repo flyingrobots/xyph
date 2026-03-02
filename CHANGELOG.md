@@ -4,6 +4,32 @@ All notable changes to XYPH will be documented in this file.
 
 ## [Unreleased]
 
+### Added — Dashboard Enhancement Chunk 2: Components + Data
+
+**New bijou components adopted (TUI dashboard):**
+- `separator()` — section dividers replace styled-header patterns across dashboard
+- `badge()` — status tags with visual weight in Pending Review, My Submissions, submission detail
+- `timeline()` — Recent Activity feed with status-colored event markers
+- `enumeratedList()` — numbered Top Blockers list
+- `stepper()` — submission lifecycle visualization (Submitted → Reviewed → Approved → Merged/Closed)
+
+**New data surfaced in dashboard:**
+- Top Blockers — calls existing `computeTopBlockers()`, shown as numbered list (gated by deps)
+- Critical Path — calls existing `computeCriticalPath()`, compact stat line (gated by deps)
+- Blocked Quests — surfaces `computeFrontier().blockedBy` with waits-on detail (gated by deps)
+- Submission Age — relative age in submission detail panel
+
+### Changed — BJU-002: Port render-status.ts to bijou
+
+Replaced all legacy `cli-table3` and `boxen` usage in the CLI status views with
+bijou equivalents. Zero remaining imports of either package in `src/`.
+
+- 11 `cli-table3` tables → bijou `table()`
+- 6 `boxen` snapshot headers → bijou `headerBox()`
+- Section headers → `separator()`
+- Status tags → `badge()` with `statusVariant()` helper
+- Manual numbered lists → `enumeratedList()` in deps view
+
 ### Added — Second Wave: Bijou 0.10.0 Primitives
 
 - **Command palette** (`DashboardApp.ts`): `:` or `/` opens a fuzzy-searchable

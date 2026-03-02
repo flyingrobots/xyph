@@ -1,4 +1,5 @@
-import { headerBox, tree, type TreeNode, accordion, type AccordionSection, progressBar } from '@flyingrobots/bijou';
+import { headerBox, tree, type TreeNode, type AccordionSection, progressBar } from '@flyingrobots/bijou';
+import { interactiveAccordion, type AccordionState } from '@flyingrobots/bijou-tui';
 import { styled, styledStatus, getTheme } from '../../theme/index.js';
 import type { DashboardModel } from '../DashboardApp.js';
 import type { QuestNode } from '../../../domain/models/dashboard.js';
@@ -128,8 +129,13 @@ export function lineageView(model: DashboardModel, _width?: number, _height?: nu
 
   if (sections.length > 0) {
     lines.push('');
-    lines.push(accordion(sections, {
+    const accState: AccordionState = {
+      sections,
+      focusIndex: Math.max(0, model.lineage.selectedIndex),
+    };
+    lines.push(interactiveAccordion(accState, {
       indicatorToken: t.theme.semantic.primary,
+      focusChar: '\u25B6',
     }));
   }
 

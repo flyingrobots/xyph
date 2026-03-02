@@ -12,10 +12,10 @@ import { createKeyMap, type KeyMap } from '@flyingrobots/bijou-tui';
 import { statusBar } from '@flyingrobots/bijou-tui';
 import { composite, toast as toastOverlay } from '@flyingrobots/bijou-tui';
 import { helpView, helpShort } from '@flyingrobots/bijou-tui';
-import { createNavigableTableState, navTableFocusNext, navTableFocusPrev, type NavigableTableState } from '@flyingrobots/bijou-tui';
+import { createNavigableTableState, navTableFocusNext, navTableFocusPrev, navTablePageDown, navTablePageUp, type NavigableTableState } from '@flyingrobots/bijou-tui';
 import { createCommandPaletteState, cpFilter, cpFocusNext, cpFocusPrev, cpSelectedItem, commandPalette, modal, type CommandPaletteState, type CommandPaletteItem } from '@flyingrobots/bijou-tui';
-import { tabs } from '@flyingrobots/bijou';
-import { styled, getTheme } from '../theme/index.js';
+import { tabs, gradientText, getDefaultContext } from '@flyingrobots/bijou';
+import { styled, styledStatus, getTheme } from '../theme/index.js';
 import type { GraphContext } from '../../infrastructure/GraphContext.js';
 import type { GraphSnapshot } from '../../domain/models/dashboard.js';
 import type { IntakePort } from '../../ports/IntakePort.js';
@@ -67,6 +67,12 @@ export interface LineageState {
   collapsedIntents: string[];
 }
 
+export interface DashboardViewState {
+  focusPanel: 'in-progress' | 'my-issues';
+  focusRow: number;
+  detailId: string | null;
+}
+
 export interface DashboardModel {
   activeView: ViewName;
   snapshot: GraphSnapshot | null;
@@ -89,6 +95,7 @@ export interface DashboardModel {
   submissions: SubmissionsState;
   backlog: BacklogState;
   lineage: LineageState;
+  dashboardView?: DashboardViewState;
 
   // Interaction mode
   mode: 'normal' | 'confirm' | 'input' | 'palette';
@@ -101,6 +108,12 @@ export interface DashboardModel {
 
   /** Guards against double-writes while a write command is in flight. */
   writePending: boolean;
+
+  /** Timestamp of first q press for quit confirmation (press q twice within 2s). */
+  quitPending?: number;
+
+  /** The current user's writer ID (e.g. 'agent.james'). Used to filter personal panels. */
+  agentId?: string;
 }
 
 export type DashboardMsg =
@@ -113,7 +126,8 @@ export type DashboardMsg =
   | { type: 'pulse-done' }
   | { type: 'write-success'; message: string }
   | { type: 'write-error'; message: string }
-  | { type: 'dismiss-toast'; expiresAt: number };
+  | { type: 'dismiss-toast'; expiresAt: number }
+  | { type: 'quit-confirm-expired'; pressedAt: number };
 
 // ── Keybindings ─────────────────────────────────────────────────────────
 
@@ -136,7 +150,9 @@ type ViewAction =
   | { type: 'scroll-dag-down' }
   | { type: 'scroll-dag-up' }
   | { type: 'scroll-dag-left' }
-  | { type: 'scroll-dag-right' };
+  | { type: 'scroll-dag-right' }
+  | { type: 'page-down' }
+  | { type: 'page-up' };
 
 function buildGlobalKeys(): KeyMap<GlobalAction> {
   return createKeyMap<GlobalAction>()
@@ -176,6 +192,8 @@ function buildSubmissionsKeys(): KeyMap<ViewAction> {
       .bind('enter', 'Expand/collapse', { type: 'expand' })
       .bind('a', 'Approve', { type: 'approve' })
       .bind('x', 'Request changes', { type: 'request-changes' })
+      .bind('pagedown', 'Page down', { type: 'page-down' })
+      .bind('pageup', 'Page up', { type: 'page-up' })
     );
 }
 
@@ -188,6 +206,21 @@ function buildBacklogKeys(): KeyMap<ViewAction> {
       .bind('up', 'Select prev', { type: 'select-prev' })
       .bind('p', 'Promote', { type: 'promote' })
       .bind('d', 'Reject', { type: 'reject' })
+      .bind('pagedown', 'Page down', { type: 'page-down' })
+      .bind('pageup', 'Page up', { type: 'page-up' })
+    );
+}
+
+function buildDashboardKeys(): KeyMap<ViewAction> {
+  return createKeyMap<ViewAction>()
+    .group('Dashboard', g => g
+      .bind('j', 'Select next', { type: 'select-next' })
+      .bind('down', 'Select next', { type: 'select-next' })
+      .bind('k', 'Select prev', { type: 'select-prev' })
+      .bind('up', 'Select prev', { type: 'select-prev' })
+      .bind('enter', 'Show detail', { type: 'expand' })
+      .bind('pagedown', 'Next panel', { type: 'page-down' })
+      .bind('pageup', 'Prev panel', { type: 'page-up' })
     );
 }
 
@@ -225,6 +258,7 @@ export interface DashboardDeps {
 
 export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, DashboardMsg> {
   const globalKeys = buildGlobalKeys();
+  const dashboardKeys = buildDashboardKeys();
   const roadmapKeys = buildRoadmapKeys();
   const submissionsKeys = buildSubmissionsKeys();
   const backlogKeys = buildBacklogKeys();
@@ -269,6 +303,13 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
     };
   }
 
+  function delayedQuitExpire(pressedAt: number): Cmd<DashboardMsg> {
+    return async (emit) => {
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      emit({ type: 'quit-confirm-expired', pressedAt });
+    };
+  }
+
   /** Execute a PendingWrite action. For input-based actions, value comes from inputState. */
   function executeWrite(action: PendingWrite, inputValue?: string): Cmd<DashboardMsg> {
     switch (action.kind) {
@@ -289,6 +330,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
 
   function viewKeyMap(view: ViewName): KeyMap<ViewAction> | null {
     switch (view) {
+      case 'dashboard':   return dashboardKeys;
       case 'roadmap':     return roadmapKeys;
       case 'submissions': return submissionsKeys;
       case 'backlog':     return backlogKeys;
@@ -319,6 +361,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         submissions: { table: createNavigableTableState({ columns: [], rows: [], height: 20 }), expandedId: null, detailScrollY: 0 },
         backlog: { table: createNavigableTableState({ columns: [], rows: [], height: 20 }) },
         lineage: { selectedIndex: -1, collapsedIntents: [] },
+        dashboardView: { focusPanel: 'in-progress', focusRow: 0, detailId: null },
         pulsePhase: 0,
         mode: 'normal',
         confirmState: null,
@@ -326,6 +369,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         paletteState: null,
         toast: null,
         writePending: false,
+        agentId: deps.agentId,
       };
       return [model, [
         fetchSnapshot(model.requestId),
@@ -413,6 +457,14 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         return [{ ...model, toast: null }, []];
       }
 
+      // Handle quit confirmation expiry
+      if (msg.type === 'quit-confirm-expired') {
+        if (model.quitPending === msg.pressedAt) {
+          return [{ ...model, quitPending: undefined }, []];
+        }
+        return [model, []];
+      }
+
       // Handle pulse animation
       if (msg.type === 'pulse-frame') {
         if (!model.showLanding) return [model, []];
@@ -440,6 +492,15 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         // Ctrl+C always quits, regardless of mode
         if (msg.key === 'c' && msg.ctrl) {
           return [model, [quit()]];
+        }
+
+        // ── Quit confirmation (press q twice within 2s) ──────────────
+        if (msg.key === 'q' && !msg.ctrl && !msg.alt && model.mode === 'normal') {
+          if (model.quitPending !== undefined && (Date.now() - model.quitPending) < 2000) {
+            return [model, [quit()]];
+          }
+          const pressedAt = Date.now();
+          return [{ ...model, quitPending: pressedAt }, [delayedQuitExpire(pressedAt)]];
         }
 
         // ── Confirm mode ────────────────────────────────────────────────
@@ -523,9 +584,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
 
         // ── Landing screen ──────────────────────────────────────────────
         if (model.showLanding) {
-          if (msg.key === 'q' && !msg.ctrl && !msg.alt) {
-            return [model, [quit()]];
-          }
+          // q already caught by quit confirmation above
           if (!model.loading) {
             return [{ ...model, showLanding: false }, []];
           }
@@ -534,13 +593,16 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
 
         // ── Help screen ─────────────────────────────────────────────────
         if (model.showHelp) {
-          if (msg.key === 'q' && !msg.ctrl && !msg.alt) {
-            return [model, [quit()]];
-          }
+          // q already caught by quit confirmation above
           if (msg.key === '?' || msg.key === 'escape') {
             return [{ ...model, showHelp: false }, []];
           }
           return [model, []];
+        }
+
+        // ── Dismiss dashboard detail overlay on escape ─────────────────
+        if (msg.key === 'escape' && model.activeView === 'dashboard' && model.dashboardView?.detailId) {
+          return [{ ...model, dashboardView: { ...model.dashboardView, detailId: null } }, []];
         }
 
         // ── Normal mode: global keys ────────────────────────────────────
@@ -608,7 +670,9 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
 
       // Hints line (auto-generated from keymaps — view-specific when available)
       const vk = viewKeyMap(model.activeView);
-      const hints = '  ' + (vk ? helpShort(vk) : helpShort(globalKeys));
+      const hints = model.quitPending !== undefined
+        ? '  Quit? Press q again.'
+        : '  ' + (vk ? helpShort(vk) : helpShort(globalKeys));
 
       // Status line with toast
       const statusLine = renderStatusLine(model, t);
@@ -658,6 +722,29 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
           borderToken: t.theme.border.primary,
         });
         output = composite(output, [ov]);
+      }
+
+      // Dashboard detail overlay
+      if (model.activeView === 'dashboard' && model.dashboardView?.detailId) {
+        const quest = model.snapshot?.quests.find(q => q.id === model.dashboardView?.detailId);
+        if (quest) {
+          const dl: string[] = [];
+          dl.push(styled(t.theme.semantic.primary, ` ${quest.id}`));
+          dl.push('');
+          dl.push(` Title:    ${quest.title}`);
+          dl.push(` Status:   ${styledStatus(quest.status)}`);
+          dl.push(` Hours:    ${quest.hours}`);
+          if (quest.assignedTo) dl.push(` Assigned: ${quest.assignedTo}`);
+          if (quest.campaignId) dl.push(` Campaign: ${quest.campaignId}`);
+          if (quest.intentId) dl.push(` Intent:   ${quest.intentId}`);
+          const dov = modal({
+            body: dl.join('\n'),
+            screenWidth: model.cols,
+            screenHeight: model.rows,
+            borderToken: t.theme.border.primary,
+          });
+          output = composite(output, [dov]);
+        }
       }
 
       // Toast overlay
@@ -728,6 +815,15 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
 
       case 'expand': {
         if (!snap) return [model, []];
+        if (model.activeView === 'dashboard') {
+          if (!model.dashboardView) return [model, []];
+          if (model.dashboardView.detailId !== null) {
+            return [{ ...model, dashboardView: { ...model.dashboardView, detailId: null } }, []];
+          }
+          const questId = dashboardFocusedQuestId(snap, model);
+          if (!questId) return [model, []];
+          return [{ ...model, dashboardView: { ...model.dashboardView, detailId: questId } }, []];
+        }
         if (model.activeView === 'lineage') {
           const ids = lineageIntentIds(snap);
           const intentId = ids[model.lineage.selectedIndex];
@@ -805,6 +901,34 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
           roadmap: { ...model.roadmap, dagScrollX: model.roadmap.dagScrollX + colStep },
         }, []];
       }
+
+      case 'page-down': {
+        if (model.activeView === 'submissions') {
+          return [{ ...model, submissions: { ...model.submissions, table: navTablePageDown(model.submissions.table) } }, []];
+        }
+        if (model.activeView === 'backlog') {
+          return [{ ...model, backlog: { table: navTablePageDown(model.backlog.table) } }, []];
+        }
+        if (model.activeView === 'dashboard' && model.dashboardView) {
+          const nextPanel = model.dashboardView.focusPanel === 'in-progress' ? 'my-issues' as const : 'in-progress' as const;
+          return [{ ...model, dashboardView: { ...model.dashboardView, focusPanel: nextPanel, focusRow: 0 } }, []];
+        }
+        return [model, []];
+      }
+      case 'page-up': {
+        if (model.activeView === 'submissions') {
+          return [{ ...model, submissions: { ...model.submissions, table: navTablePageUp(model.submissions.table) } }, []];
+        }
+        if (model.activeView === 'backlog') {
+          return [{ ...model, backlog: { table: navTablePageUp(model.backlog.table) } }, []];
+        }
+        if (model.activeView === 'dashboard' && model.dashboardView) {
+          const nextPanel = model.dashboardView.focusPanel === 'in-progress' ? 'my-issues' as const : 'in-progress' as const;
+          return [{ ...model, dashboardView: { ...model.dashboardView, focusPanel: nextPanel, focusRow: 0 } }, []];
+        }
+        return [model, []];
+      }
+
       default: {
         const _exhaustive: never = action; void _exhaustive;
         return [model, []];
@@ -839,6 +963,16 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         const count = lineageIntentIds(snap).length;
         const next = clampIndex(model.lineage.selectedIndex + delta, count);
         return { ...model, lineage: { ...model.lineage, selectedIndex: next } };
+      }
+      case 'dashboard': {
+        if (!model.dashboardView) {
+          return { ...model, dashboardView: { focusPanel: 'in-progress', focusRow: 0, detailId: null } };
+        }
+        const { focusPanel } = model.dashboardView;
+        const count = dashboardPanelCount(snap, model, focusPanel);
+        if (count === 0) return model;
+        const nextRow = ((model.dashboardView.focusRow + delta) % count + count) % count;
+        return { ...model, dashboardView: { ...model.dashboardView, focusRow: nextRow } };
       }
       default:
         return model;
@@ -890,24 +1024,40 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
 
 function renderStatusLine(model: DashboardModel, t: ReturnType<typeof getTheme>): string {
   const meta = model.snapshot?.graphMeta;
+  const snap = model.snapshot;
 
-  let tag: string;
+  // WARP tag
+  let tagText: string;
   if (meta) {
-    tag = `// [WARP(${meta.tipSha.slice(0, 6)}) tick: ${meta.maxTick}]`;
+    tagText = `WARP(${meta.tipSha.slice(0, 6)}) tick: ${meta.maxTick}`;
   } else {
-    tag = '// [WARP]';
+    tagText = 'WARP';
   }
 
   if (model.loading) {
-    tag += ' loading\u2026';
+    tagText += ' loading\u2026';
   } else if (model.error) {
-    tag += ` err: ${model.error.slice(0, 20)}`;
+    tagText += ` err: ${model.error.slice(0, 20)}`;
+  }
+
+  // Apply gradient to WARP tag
+  const ctx = getDefaultContext();
+  const styledTag = gradientText(tagText, t.theme.gradient.brand, { style: ctx.style });
+
+  // Right side: project stats
+  let rightStats = '';
+  if (snap) {
+    const total = snap.quests.length;
+    const done = snap.quests.filter(q => q.status === 'DONE').length;
+    const ip = snap.quests.filter(q => q.status === 'IN_PROGRESS').length;
+    rightStats = `${done}/${total} done \u00B7 ${ip} active`;
   }
 
   return statusBar({
-    left: styled(t.theme.semantic.muted, tag),
+    left: ` ${styledTag}`,
+    right: rightStats ? styled(t.theme.semantic.muted, rightStats) : undefined,
     width: model.cols,
-    fillChar: '/',
+    fillChar: '\u2500',
   });
 }
 
@@ -1052,4 +1202,30 @@ function rebuildRoadmapTable(
     t = navTableFocusNext(t);
   }
   return t;
+}
+
+// ── Dashboard panel helpers ───────────────────────────────────────────
+
+function dashboardFocusedQuestId(snap: GraphSnapshot, model: DashboardModel): string | null {
+  if (!model.dashboardView) return null;
+  const { focusPanel, focusRow } = model.dashboardView;
+  if (focusPanel === 'in-progress') {
+    const inProgress = snap.quests.filter(q => q.status === 'IN_PROGRESS');
+    return inProgress[focusRow]?.id ?? null;
+  }
+  const agentId = model.agentId;
+  const myIssues = agentId
+    ? snap.quests.filter(q => q.assignedTo === agentId && q.status !== 'DONE' && q.status !== 'GRAVEYARD')
+    : snap.quests.filter(q => q.assignedTo !== undefined && q.status !== 'DONE' && q.status !== 'GRAVEYARD');
+  return myIssues[focusRow]?.id ?? null;
+}
+
+function dashboardPanelCount(snap: GraphSnapshot, model: DashboardModel, panel: 'in-progress' | 'my-issues'): number {
+  if (panel === 'in-progress') {
+    return snap.quests.filter(q => q.status === 'IN_PROGRESS').length;
+  }
+  const agentId = model.agentId;
+  return agentId
+    ? snap.quests.filter(q => q.assignedTo === agentId && q.status !== 'DONE' && q.status !== 'GRAVEYARD').length
+    : snap.quests.filter(q => q.assignedTo !== undefined && q.status !== 'DONE' && q.status !== 'GRAVEYARD').length;
 }
