@@ -76,12 +76,14 @@ export function landingView(model: DashboardModel): string {
   // Progress bar replaces the last row during loading
   if (model.loading) {
     const lines = output.split('\n');
-    lines[lines.length - 1] = progressBar(model.loadingProgress, {
-      width: Math.max(1, model.cols),
-      gradient: t.theme.gradient.progress,
-      showPercent: true,
-    });
-    output = lines.join('\n');
+    if (lines.length > 0) {
+      lines[lines.length - 1] = progressBar(model.loadingProgress, {
+        width: Math.max(1, model.cols),
+        gradient: t.theme.gradient.progress,
+        showPercent: true,
+      });
+      output = lines.join('\n');
+    }
   }
 
   return output;

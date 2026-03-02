@@ -1,6 +1,7 @@
 import { flex, navigableTable, createPagerState, pagerScrollTo, pager } from '@flyingrobots/bijou-tui';
-import { badge, stepper, type BadgeVariant, type StepperStep } from '@flyingrobots/bijou';
+import { badge, stepper, type StepperStep } from '@flyingrobots/bijou';
 import { styled, getTheme } from '../../theme/index.js';
+import { statusVariant, formatAge } from '../../view-helpers.js';
 import type { DashboardModel } from '../DashboardApp.js';
 import type { ReviewNode, DecisionNode } from '../../../domain/models/dashboard.js';
 import { sortedSubmissions } from '../selection-order.js';
@@ -96,7 +97,7 @@ export function submissionsView(model: DashboardModel, width?: number, height?: 
     lines.push('');
     lines.push(` Quest:     ${qTitle}`);
     lines.push(` Submitter: ${sub.submittedBy}`);
-    lines.push(` Date:      ${new Date(sub.submittedAt).toLocaleDateString()}`);
+    lines.push(` Date:      ${new Date(sub.submittedAt).toISOString().slice(0, 10)}`);
     lines.push(` Age:       ${formatAge(sub.submittedAt)} ago`);
     lines.push(` Status:    ${badge(sub.status, { variant: statusVariant(sub.status) })}`);
 
@@ -170,16 +171,6 @@ export function submissionsView(model: DashboardModel, width?: number, height?: 
   );
 }
 
-function statusVariant(status: string): BadgeVariant {
-  switch (status) {
-    case 'DONE': case 'MERGED': case 'APPROVED': return 'success';
-    case 'IN_PROGRESS': case 'OPEN': return 'info';
-    case 'CHANGES_REQUESTED': case 'BLOCKED': return 'warning';
-    case 'CLOSED': case 'GRAVEYARD': return 'error';
-    default: return 'muted';
-  }
-}
-
 function stepForStatus(status: string, approvalCount: number): number {
   switch (status) {
     case 'OPEN': return approvalCount > 0 ? 1 : 0;
@@ -190,12 +181,3 @@ function stepForStatus(status: string, approvalCount: number): number {
   }
 }
 
-function formatAge(ts: number): string {
-  const diff = Math.max(0, Date.now() - ts);
-  const mins = Math.floor(diff / 60_000);
-  if (mins < 60) return `${mins}m`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h`;
-  const days = Math.floor(hours / 24);
-  return `${days}d`;
-}

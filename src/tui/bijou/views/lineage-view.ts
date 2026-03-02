@@ -89,7 +89,7 @@ export function lineageView(model: DashboardModel, _width?: number, _height?: nu
 
     // Build card subtitle lines
     const subtitleLines: string[] = [];
-    const dateStr = new Date(intent.createdAt).toLocaleDateString();
+    const dateStr = new Date(intent.createdAt).toISOString().slice(0, 10);
     subtitleLines.push(styled(t.theme.semantic.muted, `    requested-by: ${intent.requestedBy}  \u00B7  ${dateStr}`));
     if (intent.description) {
       subtitleLines.push(styled(t.theme.semantic.muted, `    ${truncate(intent.description, 72)}`));

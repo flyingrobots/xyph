@@ -281,6 +281,9 @@ export function registerWizardCommands(program: Command, ctx: CliContext): void 
 
       ctx.print(`\n  ${inboxQuests.length} item(s) in inbox.\n`);
 
+      const { WarpIntakeAdapter } = await import('../../infrastructure/adapters/WarpIntakeAdapter.js');
+      const intake = new WarpIntakeAdapter(ctx.graphPort, ctx.agentId);
+
       let processed = 0;
       let promoted = 0;
       let rejected = 0;
@@ -338,8 +341,6 @@ export function registerWizardCommands(program: Command, ctx: CliContext): void 
             }
           }
 
-          const { WarpIntakeAdapter } = await import('../../infrastructure/adapters/WarpIntakeAdapter.js');
-          const intake = new WarpIntakeAdapter(ctx.graphPort, ctx.agentId);
           await intake.promote(quest.id, intentId, campaignId);
           ctx.ok(`  [OK] ${quest.id} promoted.`);
           promoted++;
@@ -353,8 +354,6 @@ export function registerWizardCommands(program: Command, ctx: CliContext): void 
               : { valid: false, message: 'Rationale required' },
           });
 
-          const { WarpIntakeAdapter } = await import('../../infrastructure/adapters/WarpIntakeAdapter.js');
-          const intake = new WarpIntakeAdapter(ctx.graphPort, ctx.agentId);
           await intake.reject(quest.id, rationale);
           ctx.ok(`  [OK] ${quest.id} rejected.`);
           rejected++;

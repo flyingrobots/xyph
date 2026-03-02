@@ -1104,7 +1104,7 @@ function rebuildBacklogTable(
     const q = questMap.get(id);
     if (!q) return [id, '', '0', '\u2014', '\u2014'];
     const suggestedAt = q.suggestedAt !== undefined
-      ? new Date(q.suggestedAt).toLocaleDateString()
+      ? new Date(q.suggestedAt).toISOString().slice(0, 10)
       : '\u2014';
     const prevRej = q.rejectionRationale !== undefined
       ? q.rejectionRationale.slice(0, 24) + (q.rejectionRationale.length > 24 ? '\u2026' : '')

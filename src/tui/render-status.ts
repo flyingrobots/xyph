@@ -1,20 +1,10 @@
 import {
   headerBox, table, separator, badge, enumeratedList, styledStatus,
-  type BadgeVariant,
 } from '@flyingrobots/bijou';
 import type { GraphSnapshot } from '../domain/models/dashboard.js';
 import type { BlockerInfo } from '../domain/services/DepAnalysis.js';
 import { getTheme, styled } from './theme/index.js';
-
-function statusVariant(status: string): BadgeVariant {
-  switch (status) {
-    case 'DONE': case 'MERGED': case 'APPROVED': return 'success';
-    case 'IN_PROGRESS': case 'OPEN': return 'info';
-    case 'CHANGES_REQUESTED': case 'BLOCKED': return 'warning';
-    case 'CLOSED': case 'GRAVEYARD': return 'error';
-    default: return 'muted';
-  }
-}
+import { statusVariant } from './view-helpers.js';
 
 function snapshotHeader(label: string, detail: string, borderToken: 'primary' | 'secondary' | 'success' | 'warning' | 'error' | 'muted'): string {
   const t = getTheme();
@@ -220,7 +210,7 @@ export function renderAll(snapshot: GraphSnapshot): string {
       styled(t.theme.semantic.muted, intent.id),
       intent.title.slice(0, 40),
       intent.requestedBy,
-      new Date(intent.createdAt).toLocaleDateString(),
+      new Date(intent.createdAt).toISOString().slice(0, 10),
     ]);
     lines.push(table({
       columns: [
@@ -268,7 +258,7 @@ export function renderAll(snapshot: GraphSnapshot): string {
       styled(t.theme.semantic.muted, s.id),
       s.questId,
       s.sealedBy,
-      new Date(s.sealedAt).toLocaleDateString(),
+      new Date(s.sealedAt).toISOString().slice(0, 10),
       s.hasSeal ? styled(t.theme.semantic.success, '⊕') : styled(t.theme.semantic.warning, '○'),
     ]);
     lines.push(table({
@@ -323,13 +313,13 @@ export function renderInbox(snapshot: GraphSnapshot): string {
 
   lines.push(snapshotHeader(
     'Backlog',
-    `${inbox.length} task(s) awaiting triage`,
+    `${inbox.length} quest(s) awaiting triage`,
     'secondary'
   ));
 
   if (inbox.length === 0) {
     lines.push(styled(t.theme.semantic.muted,
-      '\n  No tasks in backlog.\n' +
+      '\n  No quests in backlog.\n' +
       '  Add one: xyph-actuator inbox task:ID --title "..." --suggested-by <principal>'
     ));
     return lines.join('\n');
@@ -349,7 +339,7 @@ export function renderInbox(snapshot: GraphSnapshot): string {
 
     const rows = quests.map(q => {
       const suggestedAt = q.suggestedAt !== undefined
-        ? new Date(q.suggestedAt).toLocaleDateString()
+        ? new Date(q.suggestedAt).toISOString().slice(0, 10)
         : '—';
       const prevRej = q.rejectionRationale !== undefined
         ? styled(t.theme.semantic.muted, q.rejectionRationale.slice(0, 24) + (q.rejectionRationale.length > 24 ? '…' : ''))
@@ -405,7 +395,7 @@ export function renderSubmissions(snapshot: GraphSnapshot): string {
       String(sub.approvalCount),
       headsWarning,
       sub.submittedBy,
-      new Date(sub.submittedAt).toLocaleDateString(),
+      new Date(sub.submittedAt).toISOString().slice(0, 10),
     ];
   });
 
@@ -508,8 +498,8 @@ export function renderDeps(data: DepsViewData): string {
   const lines: string[] = [];
 
   lines.push(snapshotHeader(
-    'Task Dependencies',
-    `${data.tasks.size} task(s)  ${data.frontier.length} ready  ${data.blockedBy.size} blocked`,
+    'Quest Dependencies',
+    `${data.tasks.size} quest(s)  ${data.frontier.length} ready  ${data.blockedBy.size} blocked`,
     'warning'
   ));
 
@@ -539,7 +529,7 @@ export function renderDeps(data: DepsViewData): string {
     }));
   } else {
     lines.push('');
-    lines.push(styled(t.theme.semantic.muted, '  No tasks are ready (all tasks have incomplete prerequisites or are DONE).'));
+    lines.push(styled(t.theme.semantic.muted, '  No quests are ready (all quests have incomplete prerequisites or are DONE).'));
   }
 
   // --- Blocked tasks ---

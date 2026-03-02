@@ -1,10 +1,11 @@
 import {
   headerBox, progressBar, table as bijouTable, alert,
   separator, badge, timeline, enumeratedList,
-  type BadgeVariant, type TimelineEvent, type BaseStatusKey,
+  type TimelineEvent, type BaseStatusKey,
 } from '@flyingrobots/bijou';
 import { flex } from '@flyingrobots/bijou-tui';
 import { styled, styledStatus, getTheme } from '../../theme/index.js';
+import { statusVariant, formatAge } from '../../view-helpers.js';
 import type { DashboardModel } from '../DashboardApp.js';
 import type { QuestNode } from '../../../domain/models/dashboard.js';
 import {
@@ -333,27 +334,6 @@ export function dashboardView(model: DashboardModel, width?: number, height?: nu
     { flex: 2, content: renderLeftColumn },
     { flex: 1, content: renderRightColumn },
   );
-}
-
-/** Format a timestamp as a compact relative age. */
-function formatAge(ts: number): string {
-  const diff = Math.max(0, Date.now() - ts);
-  const mins = Math.floor(diff / 60_000);
-  if (mins < 60) return `${mins}m`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h`;
-  const days = Math.floor(hours / 24);
-  return `${days}d`;
-}
-
-function statusVariant(status: string): BadgeVariant {
-  switch (status) {
-    case 'DONE': case 'MERGED': case 'APPROVED': return 'success';
-    case 'IN_PROGRESS': case 'OPEN': return 'info';
-    case 'CHANGES_REQUESTED': case 'BLOCKED': return 'warning';
-    case 'CLOSED': case 'GRAVEYARD': return 'error';
-    default: return 'muted';
-  }
 }
 
 function activityEventStatus(text: string): BaseStatusKey {

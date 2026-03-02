@@ -36,13 +36,17 @@ async function applyLink(
     throw new Error(`[NOT_FOUND] Intent ${intentId} not found in the graph`);
   }
 
-  // Discover existing belongs-to edges so move replaces rather than accumulates
+  // Discover existing edges so move/authorize replaces rather than accumulates
   const existingCampaignEdges: { nodeId: string }[] = [];
-  if (campaignId !== undefined) {
+  const existingIntentEdges: { nodeId: string }[] = [];
+  if (campaignId !== undefined || intentId !== undefined) {
     const neighbors = toNeighborEntries(await graph.neighbors(quest, 'outgoing'));
     for (const n of neighbors) {
-      if (n.label === 'belongs-to') {
+      if (campaignId !== undefined && n.label === 'belongs-to') {
         existingCampaignEdges.push({ nodeId: n.nodeId });
+      }
+      if (intentId !== undefined && n.label === 'authorized-by') {
+        existingIntentEdges.push({ nodeId: n.nodeId });
       }
     }
   }
@@ -56,6 +60,10 @@ async function applyLink(
       p.addEdge(quest, campaignId, 'belongs-to');
     }
     if (intentId !== undefined) {
+      // Remove any existing authorized-by edges first (single-intent cardinality)
+      for (const old of existingIntentEdges) {
+        p.removeEdge(quest, old.nodeId, 'authorized-by');
+      }
       p.addEdge(quest, intentId, 'authorized-by');
     }
   });
