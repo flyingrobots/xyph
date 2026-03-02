@@ -16,7 +16,6 @@ describe('RebalanceService (TDD Spec)', () => {
     
     expect(result.valid).toBe(false);
     expect(result.totalHours).toBe(170);
-    expect(result.error).toContain('exceeds 160h limit');
   });
 
   it('should pass when a campaign is within limits', () => {

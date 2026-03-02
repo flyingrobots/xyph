@@ -43,7 +43,6 @@ describe('SovereigntyService', () => {
       expect(result.valid).toBe(false);
       expect(result.intentId).toBeUndefined();
       expect(result.violation?.questId).toBe('task:HRB-001');
-      expect(result.violation?.reason).toMatch('Genealogy of Intent');
     });
 
     it('should return invalid when authorized-by edge points to a non-intent: node', async () => {

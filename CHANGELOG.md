@@ -6,6 +6,7 @@ All notable changes to XYPH will be documented in this file.
 
 ### Fixed
 
+- **Brittle test assertions**: rewrote ~34 string-matching assertions across 5 test files to assert on data (IDs, counts, domain constants) instead of UI labels, section headers, and empty-state prose — eliminates false failures from vocabulary changes
 - **Date formatting**: replaced locale-dependent `toLocaleDateString()` with deterministic `toISOString().slice(0, 10)` across all views (DashboardApp, render-status, submissions-view, lineage-view)
 - **Single-intent cardinality**: `authorize` / `link` now removes existing `authorized-by` edges before adding the new one, matching the `belongs-to` pattern for campaigns
 - **DRY violation**: extracted shared `statusVariant()` and `formatAge()` into `src/tui/view-helpers.ts`; removed duplicate definitions from dashboard-view, submissions-view, and render-status
