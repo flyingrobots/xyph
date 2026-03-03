@@ -507,7 +507,7 @@ describe('bijou views', () => {
       expect(plain).toContain('17');
     });
 
-    it('shows alert bar for orphans and forked patchsets', () => {
+    it('shows submission data for forked patchsets', () => {
       const snap = makeSnapshot({
         quests: [
           quest({ id: 'task:Q-001', title: 'Orphan', status: 'PLANNED' }),

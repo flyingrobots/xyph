@@ -122,27 +122,20 @@ describe('DashboardApp integration (full loop)', () => {
 
   // ── Navigation ────────────────────────────────────────────────────
 
-  it('tab cycles through all 5 views and renders each', () => {
+  it('number keys 1-5 jump to respective views and render each', () => {
     const { app } = buildApp();
     const m = ready(app, makeSnapshot());
 
-    const views = ['roadmap', 'submissions', 'lineage', 'backlog', 'dashboard'] as const;
-    let model = m;
-    for (const expected of views) {
-      const [next] = app.update(key('tab'), model);
-      model = next;
-      expect(model.activeView).toBe(expected);
-      const frame = app.view(model);
+    const pairs: [string, string][] = [
+      ['1', 'dashboard'], ['2', 'roadmap'], ['3', 'submissions'],
+      ['4', 'lineage'], ['5', 'backlog'],
+    ];
+    for (const [k, expected] of pairs) {
+      const [next] = app.update(key(k), m);
+      expect(next.activeView).toBe(expected);
+      const frame = app.view(next);
       expect(frame.length).toBeGreaterThan(0);
     }
-  });
-
-  it('shift+tab navigates backward', () => {
-    const { app } = buildApp();
-    const m = ready(app, makeSnapshot());
-
-    const [back] = app.update(key('tab', { shift: true }), m);
-    expect(back.activeView).toBe('backlog');
   });
 
   // ── Roadmap selection + detail drawer ─────────────────────────────
@@ -160,7 +153,7 @@ describe('DashboardApp integration (full loop)', () => {
     const m = ready(app, snap);
 
     const { model, frames } = drive(app, m, [
-      key('tab'),          // → roadmap
+      key('2'),            // → roadmap
       key('j'),            // focusRow advances 0 → 1
     ]);
 
@@ -186,7 +179,7 @@ describe('DashboardApp integration (full loop)', () => {
     const m = ready(app, snap);
 
     const { model } = drive(app, m, [
-      key('tab'),          // → roadmap (focusRow already 0 from snapshot-loaded)
+      key('2'),            // → roadmap (focusRow already 0 from snapshot-loaded)
       key('j'),            // 0 → 1
       key('j'),            // 1 → 2
     ]);
@@ -207,7 +200,7 @@ describe('DashboardApp integration (full loop)', () => {
     const m = ready(app, snap);
 
     // Navigate to roadmap (focusRow is already 0 from snapshot-loaded)
-    const [roadmap] = app.update(key('tab'), m);
+    const [roadmap] = app.update(key('2'), m);
 
     // Press c → confirm mode
     const [confirming] = app.update(key('c'), roadmap);
@@ -232,7 +225,7 @@ describe('DashboardApp integration (full loop)', () => {
     });
     const m = ready(app, snap);
 
-    const { model } = drive(app, m, [key('tab'), key('c'), key('n')]);
+    const { model } = drive(app, m, [key('2'), key('c'), key('n')]);
     expect(model.mode).toBe('normal');
     expect(model.confirmState).toBeNull();
     expect(model.writePending).toBe(false);
@@ -248,7 +241,7 @@ describe('DashboardApp integration (full loop)', () => {
     const m = ready(app, snap);
 
     const { model } = drive(app, m, [
-      key('tab'), key('tab'), key('tab'), key('tab'),   // → backlog
+      key('5'),                                            // → backlog
     ]);
     expect(model.activeView).toBe('backlog');
 
@@ -279,7 +272,7 @@ describe('DashboardApp integration (full loop)', () => {
     const m = ready(app, snap);
 
     const { model } = drive(app, m, [
-      key('tab'), key('tab'), key('tab'), key('tab'),
+      key('5'),
     ]);
 
     const [inputMode] = app.update(key('p'), model);
@@ -302,7 +295,7 @@ describe('DashboardApp integration (full loop)', () => {
     const m = ready(app, snap);
 
     const { model } = drive(app, m, [
-      key('tab'), key('tab'), key('tab'), key('tab'),
+      key('5'),
     ]);
 
     const [inputMode] = app.update(key('d'), model);
@@ -320,7 +313,7 @@ describe('DashboardApp integration (full loop)', () => {
     const m = ready(app, snap);
 
     const { model } = drive(app, m, [
-      key('tab'), key('tab'), key('tab'), key('tab'),
+      key('5'),
     ]);
 
     const [inputMode] = app.update(key('d'), model);
@@ -337,7 +330,7 @@ describe('DashboardApp integration (full loop)', () => {
     const m = ready(app, snap);
 
     const { model } = drive(app, m, [
-      key('tab'), key('tab'), key('tab'), key('tab'),
+      key('5'),
     ]);
 
     const [inputMode] = app.update(key('d'), model);
@@ -363,7 +356,7 @@ describe('DashboardApp integration (full loop)', () => {
     });
     const m = ready(app, snap);
 
-    const { model } = drive(app, m, [key('tab'), key('tab')]); // → submissions
+    const { model } = drive(app, m, [key('3')]); // → submissions
     expect(model.activeView).toBe('submissions');
 
     // focusRow is 0 from snapshot-loaded — expand
@@ -388,7 +381,7 @@ describe('DashboardApp integration (full loop)', () => {
     });
     const m = ready(app, snap);
 
-    const { model } = drive(app, m, [key('tab'), key('tab')]); // → submissions
+    const { model } = drive(app, m, [key('3')]); // → submissions
     const [approving] = app.update(key('a'), model);
     expect(approving.mode).toBe('input');
     expect(approving.inputState?.action.kind).toBe('approve');
@@ -463,11 +456,11 @@ describe('DashboardApp integration (full loop)', () => {
 
     // Visit every view and capture frames
     const { frames } = drive(app, m, [
-      key('tab'),          // roadmap
-      key('tab'),          // submissions
-      key('tab'),          // lineage
-      key('tab'),          // backlog
-      key('tab'),          // dashboard
+      key('2'),            // roadmap
+      key('3'),            // submissions
+      key('4'),            // lineage
+      key('5'),            // backlog
+      key('1'),            // dashboard
     ]);
 
     expect(frames).toHaveLength(5);

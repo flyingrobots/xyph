@@ -4,6 +4,32 @@ All notable changes to XYPH will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+**Navigation model rework:**
+- Number keys `1`–`5` now jump directly to views (dashboard/roadmap/submissions/lineage/backlog), replacing `Tab`/`Shift+Tab` view cycling
+- `Tab` is rebound on the dashboard view to switch focus between left (In Progress) and right (My Quests) panels
+- `PageDown`/`PageUp` on the dashboard now scroll the focused column instead of toggling panels
+- Command palette shortcuts updated to show `1`–`5` for view switching
+
+**Independent column scrolling:**
+- Dashboard left and right columns are now wrapped in `viewport()` from bijou-tui, enabling vertical scrolling when content overflows the terminal height
+- New `leftScrollY`/`rightScrollY` state tracks scroll position per column independently
+- Health, Top Blockers, and Activity Feed sections are now reachable via `PageDown` on tall dashboards
+
+**Confirm overlay:**
+- `confirmOverlay()` now accepts an optional custom hint string (used by quit confirmation dialog)
+
+**Quit flow redesign:**
+- Double-press `q` replaced with a modal confirmation dialog (`q` → confirm `y`/`q` or cancel `n`/`Esc`)
+
+**Activity feed enrichment:**
+- Recent Activity events now show quest titles alongside truncated IDs for better scanability
+
+### Removed
+
+- **Alert bar**: orphan/forked warning bar removed from dashboard header; diagnostic data moved to the Health section
+
 ### Fixed
 
 - **Brittle test assertions**: rewrote ~34 string-matching assertions across 5 test files to assert on data (IDs, counts, domain constants) instead of UI labels, section headers, and empty-state prose — eliminates false failures from vocabulary changes
@@ -13,6 +39,9 @@ All notable changes to XYPH will be documented in this file.
 - **Triage loop performance**: hoisted `WarpIntakeAdapter` import and instantiation outside the per-quest loop in `wizards.ts`
 - **Quest terminology**: replaced user-facing "task(s)" with "quest(s)" in backlog and deps view headers
 - **Array guard**: guarded `lines[lines.length - 1]` access in landing-view against empty arrays (strict TS)
+- **Quit confirm overlay hidden**: pressing `q` from landing or help screen now clears those views before showing the confirm overlay
+- **Non-domain terminology**: renamed internal `my-issues` panel key to `my-quests` for Digital Guild consistency
+- **Lint violation**: fixed `Array<T>` annotation to `T[]` in integration test
 
 ### Added — Dashboard Enhancement Chunk 2: Components + Data
 
