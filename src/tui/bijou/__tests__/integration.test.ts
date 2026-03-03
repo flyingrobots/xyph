@@ -126,7 +126,7 @@ describe('DashboardApp integration (full loop)', () => {
     const { app } = buildApp();
     const m = ready(app, makeSnapshot());
 
-    const pairs: Array<[string, string]> = [
+    const pairs: [string, string][] = [
       ['1', 'dashboard'], ['2', 'roadmap'], ['3', 'submissions'],
       ['4', 'lineage'], ['5', 'backlog'],
     ];
