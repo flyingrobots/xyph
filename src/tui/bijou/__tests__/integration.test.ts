@@ -25,6 +25,7 @@ function makeSnapshot(overrides?: Partial<GraphSnapshot>): GraphSnapshot {
   const base = {
     campaigns: [], quests: [], intents: [], scrolls: [],
     approvals: [], submissions: [], reviews: [], decisions: [],
+    stories: [], requirements: [], criteria: [], evidence: [],
     asOf: Date.now(), sortedTaskIds: [] as string[], sortedCampaignIds: [] as string[],
     ...overrides,
   };

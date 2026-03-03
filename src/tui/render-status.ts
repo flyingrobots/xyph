@@ -1,8 +1,9 @@
 import {
   headerBox, table, separator, badge, enumeratedList,
 } from '@flyingrobots/bijou';
-import type { GraphSnapshot } from '../domain/models/dashboard.js';
+import type { GraphSnapshot, StoryNode, RequirementNode, CriterionNode, EvidenceNode } from '../domain/models/dashboard.js';
 import type { BlockerInfo } from '../domain/services/DepAnalysis.js';
+import type { UnmetRequirement, CoverageResult } from '../domain/services/TraceabilityAnalysis.js';
 import { getTheme, styled } from './theme/index.js';
 import { statusVariant } from './view-helpers.js';
 
@@ -647,6 +648,139 @@ export function renderDeps(data: DepsViewData): string {
     }).join(styled(t.theme.semantic.muted, ' → '));
     lines.push(`    ${chain} ${styled(t.theme.semantic.muted, `= ${data.criticalPathHours}h total`)}`);
   }
+
+  return lines.join('\n');
+}
+
+// ---------------------------------------------------------------------------
+// Trace view — Traceability Chain (M11)
+// ---------------------------------------------------------------------------
+
+export interface TraceViewData {
+  stories: StoryNode[];
+  requirements: RequirementNode[];
+  criteria: CriterionNode[];
+  evidence: EvidenceNode[];
+  unmetRequirements: UnmetRequirement[];
+  untestedCriteria: string[];
+  coverage: CoverageResult;
+}
+
+/**
+ * Renders the traceability chain: stories → requirements → criteria → evidence.
+ */
+export function renderTrace(data: TraceViewData): string {
+  const t = getTheme();
+  const lines: string[] = [];
+
+  const pct = data.coverage.total > 0
+    ? `${Math.round(data.coverage.ratio * 100)}%`
+    : '—';
+
+  lines.push(snapshotHeader(
+    'Traceability',
+    `${data.stories.length} stories  ${data.requirements.length} reqs  ${data.criteria.length} criteria  coverage: ${pct}`,
+    'secondary',
+  ));
+
+  // --- Stories grouped by intent ---
+  if (data.stories.length > 0) {
+    lines.push('');
+    lines.push(separator({ label: 'Stories', borderToken: t.theme.border.secondary }));
+
+    // Group by intentId
+    const byIntent = new Map<string, StoryNode[]>();
+    for (const s of data.stories) {
+      const key = s.intentId ?? '(no intent)';
+      const arr = byIntent.get(key) ?? [];
+      arr.push(s);
+      byIntent.set(key, arr);
+    }
+
+    for (const [intentKey, storyGroup] of byIntent) {
+      lines.push('');
+      lines.push(styled(t.theme.ui.intentHeader, `  ${intentKey}`));
+      const rows = storyGroup.map((s) => {
+        const reqCount = data.requirements.filter((r) => r.storyId === s.id).length;
+        return [
+          styled(t.theme.semantic.muted, s.id.slice(0, 24)),
+          s.title.slice(0, 38),
+          s.persona.slice(0, 16),
+          String(reqCount),
+        ];
+      });
+      lines.push(table({
+        columns: [
+          { header: 'Story', width: 26 },
+          { header: 'Title', width: 40 },
+          { header: 'Persona', width: 18 },
+          { header: 'Reqs', width: 6 },
+        ],
+        rows,
+        headerToken: t.theme.ui.tableHeader,
+        borderToken: t.theme.border.primary,
+      }));
+    }
+  }
+
+  // --- Requirements with criterion counts ---
+  if (data.requirements.length > 0) {
+    lines.push('');
+    lines.push(separator({ label: 'Requirements', borderToken: t.theme.border.secondary }));
+    const rows = data.requirements.map((r) => {
+      const evCount = r.criterionIds.reduce((sum, cId) => {
+        const c = data.criteria.find((cr) => cr.id === cId);
+        return sum + (c ? c.evidenceIds.length : 0);
+      }, 0);
+      const isUnmet = data.unmetRequirements.some((u) => u.id === r.id);
+      const statusBadge = isUnmet
+        ? badge('UNMET', { variant: 'warning' })
+        : badge('MET', { variant: 'success' });
+      return [
+        styled(t.theme.semantic.muted, r.id.slice(0, 20)),
+        r.description.slice(0, 32),
+        r.kind,
+        r.priority,
+        String(r.criterionIds.length),
+        String(evCount),
+        statusBadge,
+      ];
+    });
+    lines.push(table({
+      columns: [
+        { header: 'Requirement', width: 22 },
+        { header: 'Description', width: 34 },
+        { header: 'Kind', width: 16 },
+        { header: 'Priority', width: 10 },
+        { header: 'Criteria', width: 9 },
+        { header: 'Evidence', width: 9 },
+        { header: 'Status', width: 8 },
+      ],
+      rows,
+      headerToken: t.theme.ui.tableHeader,
+      borderToken: t.theme.border.primary,
+    }));
+  }
+
+  // --- Untested criteria ---
+  if (data.untestedCriteria.length > 0) {
+    lines.push('');
+    lines.push(separator({ label: 'Untested Criteria', borderToken: t.theme.border.warning }));
+    const items = data.untestedCriteria.map((cId) => {
+      const c = data.criteria.find((cr) => cr.id === cId);
+      return `${cId}  ${c?.description.slice(0, 48) ?? '—'}`;
+    });
+    lines.push(enumeratedList(items, { style: 'arabic', indent: 4 }));
+  }
+
+  // --- Summary ---
+  lines.push('');
+  lines.push(separator({ label: 'Summary', borderToken: t.theme.border.primary }));
+  lines.push(`    ${styled(t.theme.semantic.muted, 'Stories:')} ${data.stories.length}`);
+  lines.push(`    ${styled(t.theme.semantic.muted, 'Requirements:')} ${data.requirements.length}`);
+  lines.push(`    ${styled(t.theme.semantic.muted, 'Criteria:')} ${data.criteria.length}`);
+  lines.push(`    ${styled(t.theme.semantic.muted, 'Evidenced:')} ${data.coverage.evidenced} / ${data.coverage.total}`);
+  lines.push(`    ${styled(t.theme.semantic.muted, 'Coverage:')} ${pct}`);
 
   return lines.join('\n');
 }

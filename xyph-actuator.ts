@@ -10,6 +10,7 @@ import { registerIntakeCommands } from './src/cli/commands/intake.js';
 import { registerDashboardCommands } from './src/cli/commands/dashboard.js';
 import { registerWizardCommands } from './src/cli/commands/wizards.js';
 import { registerLinkCommands } from './src/cli/commands/link.js';
+import { registerTraceabilityCommands } from './src/cli/commands/traceability.js';
 
 // Best-effort pre-scan for --json before Commander parses.
 // createCliContext() handles theme init internally based on this flag.
@@ -36,5 +37,6 @@ registerIntakeCommands(program, ctx);
 registerDashboardCommands(program, ctx);
 registerWizardCommands(program, ctx);
 registerLinkCommands(program, ctx);
+registerTraceabilityCommands(program, ctx);
 
 await program.parseAsync(process.argv);

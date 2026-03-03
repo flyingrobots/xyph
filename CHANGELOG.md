@@ -4,6 +4,21 @@ All notable changes to XYPH will be documented in this file.
 
 ## [Unreleased]
 
+### Added — M11 Traceability Phases 1 & 2
+
+- **`story:` node type** — user stories with persona/goal/benefit, `story` actuator command (TRC-001)
+- **`req:` node type** — requirements with kind (functional/non-functional) and MoSCoW priority, `requirement` actuator command (TRC-001)
+- **`criterion:` node type** — acceptance criteria attached to requirements, `criterion` actuator command (TRC-005)
+- **`evidence:` node type** — verification evidence (test/benchmark/manual/screenshot) with pass/fail result, `evidence` actuator command (TRC-005)
+- **`decomposes-to` edge type** — intent→story and story→req decomposition, `decompose` actuator command with cycle checks (TRC-002)
+- **`has-criterion` edge type** — requirement→criterion attachment (TRC-005)
+- **`verifies` edge type** — evidence→criterion verification link (TRC-005)
+- **GraphSnapshot extended** — `stories[]`, `requirements[]`, `criteria[]`, `evidence[]` fields with full edge resolution (TRC-003, TRC-006)
+- **`status --view trace`** — traceability chain renderer: stories→reqs→criteria→evidence with coverage stats (TRC-004)
+- **`xyph scan`** — test annotation parser (`// @xyph criterion:<id>`) that writes evidence nodes automatically (TRC-007)
+- **Completeness queries** — `computeUnmetRequirements`, `computeUntestedCriteria`, `computeCoverageRatio` pure functions (TRC-008)
+- **57 new tests** — 4 entity unit tests, scan parser, analysis queries, full integration round-trip
+
 ### Added — M11 Traceability Decomposition
 
 - **`intent:TRACEABILITY`** — sovereign intent for requirements, acceptance criteria, and evidence as first-class graph objects

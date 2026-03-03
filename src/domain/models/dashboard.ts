@@ -6,6 +6,8 @@
 import type { QuestStatus } from '../entities/Quest.js';
 import type { ApprovalGateStatus, ApprovalGateTrigger } from '../entities/ApprovalGate.js';
 import type { SubmissionStatus, ReviewVerdict, DecisionKind } from '../entities/Submission.js';
+import type { RequirementKind, RequirementPriority } from '../entities/Requirement.js';
+import type { EvidenceKind, EvidenceResult } from '../entities/Evidence.js';
 
 export type { ApprovalGateStatus };
 
@@ -99,6 +101,49 @@ export interface DecisionNode {
   decidedAt: number;
 }
 
+// ---------------------------------------------------------------------------
+// Traceability node types (M11)
+// ---------------------------------------------------------------------------
+
+export interface StoryNode {
+  id: string;
+  title: string;
+  persona: string;
+  goal: string;
+  benefit: string;
+  intentId?: string;       // decomposes-to edge target (intent→story, reverse lookup)
+  createdBy: string;
+  createdAt: number;
+}
+
+export interface RequirementNode {
+  id: string;
+  description: string;
+  kind: RequirementKind;
+  priority: RequirementPriority;
+  storyId?: string;        // decomposes-to edge target (story→req, reverse lookup)
+  taskIds: string[];       // implements edges (task→req, reverse lookup)
+  criterionIds: string[];  // has-criterion edges (req→criterion, outgoing)
+}
+
+export interface CriterionNode {
+  id: string;
+  description: string;
+  verifiable: boolean;
+  requirementId?: string;  // has-criterion edge target (req→criterion, reverse lookup)
+  evidenceIds: string[];   // verifies edges (evidence→criterion, reverse lookup)
+}
+
+export interface EvidenceNode {
+  id: string;
+  kind: EvidenceKind;
+  result: EvidenceResult;
+  producedAt: number;
+  producedBy: string;
+  criterionId?: string;    // verifies edge target (evidence→criterion)
+  artifactHash?: string;
+}
+
 export interface GraphMeta {
   maxTick: number;       // max(observedFrontier.values()) — global high-water mark
   myTick: number;        // observedFrontier.get(writerId) ?? 0
@@ -115,6 +160,11 @@ export interface GraphSnapshot {
   submissions: SubmissionNode[];
   reviews: ReviewNode[];
   decisions: DecisionNode[];
+  // Traceability (M11)
+  stories: StoryNode[];
+  requirements: RequirementNode[];
+  criteria: CriterionNode[];
+  evidence: EvidenceNode[];
   asOf: number;
   graphMeta?: GraphMeta;
   /** Task IDs in topological order (prerequisites first), computed by git-warp's traversal engine. */
