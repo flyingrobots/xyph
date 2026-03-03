@@ -490,6 +490,10 @@ export interface DepsViewData {
   criticalPathHours: number;
   quests: Map<string, { title: string; status: string; hours: number }>;
   topBlockers?: BlockerInfo[];
+  milestoneFrontier?: string[];
+  milestonesBlocked?: Map<string, string[]>;
+  milestones?: Map<string, { title: string; status: string }>;
+  milestoneExecutionOrder?: string[];
 }
 
 /**
@@ -568,6 +572,56 @@ export function renderDeps(data: DepsViewData): string {
       return `${blocker.id.slice(0, 20)} ${title}  direct: ${blocker.directCount}  transitive: ${blocker.transitiveCount}`;
     });
     lines.push(enumeratedList(blockerItems, { style: 'arabic', indent: 2 }));
+  }
+
+  // --- Milestone Frontier ---
+  if (data.milestoneFrontier && data.milestoneFrontier.length > 0 && data.milestones) {
+    const msMap = data.milestones;
+    lines.push('');
+    lines.push(separator({ label: 'Milestone Frontier', borderToken: t.theme.border.success }));
+    const mfRows = data.milestoneFrontier.map(id => {
+      const info = msMap.get(id);
+      return [
+        styled(t.theme.semantic.success, id),
+        info?.title ?? '—',
+        info ? badge(info.status, { variant: statusVariant(info.status) }) : '—',
+      ];
+    });
+    lines.push(table({
+      columns: [
+        { header: 'Campaign', width: 24 },
+        { header: 'Title', width: 44 },
+        { header: 'Status', width: 13 },
+      ],
+      rows: mfRows,
+      headerToken: t.theme.ui.tableHeader,
+      borderToken: t.theme.border.primary,
+    }));
+  }
+
+  // --- Milestones Blocked ---
+  if (data.milestonesBlocked && data.milestonesBlocked.size > 0 && data.milestones) {
+    const msMap2 = data.milestones;
+    lines.push('');
+    lines.push(separator({ label: 'Milestones Blocked', borderToken: t.theme.border.warning }));
+    const mbRows = [...data.milestonesBlocked.entries()].map(([id, blockers]) => {
+      const info = msMap2.get(id);
+      return [
+        styled(t.theme.semantic.warning, id),
+        info?.title ?? '—',
+        blockers.join(', '),
+      ];
+    });
+    lines.push(table({
+      columns: [
+        { header: 'Campaign', width: 24 },
+        { header: 'Title', width: 34 },
+        { header: 'Waiting On', width: 40 },
+      ],
+      rows: mbRows,
+      headerToken: t.theme.ui.tableHeader,
+      borderToken: t.theme.border.primary,
+    }));
   }
 
   // --- Execution Order ---

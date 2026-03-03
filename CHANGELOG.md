@@ -4,6 +4,42 @@ All notable changes to XYPH will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Cross-type `depend` guard** — `depend` now rejects edges between different type families (e.g. `task:` → `campaign:`); both nodes must be tasks, or both must be campaigns/milestones
+- **CHANGELOG version ordering** — restored `[Unreleased]` → `[alpha.12]` → `[alpha.11]` sequence
+- **`--json` deps output** — `milestoneExecutionOrder` now included in `status --view deps --json` output
+- **Milestone frontier with zero dep edges** — `computeFrontier` is now always called for campaigns; previously returned empty frontier when no `depends-on` edges existed, hiding actionable milestones
+
+### Changed
+
+- Replaced unsafe `as` cast in `seed-milestone-deps.ts` with `toNeighborEntries()` runtime validator
+- Removed redundant optional-chaining in `render-status.ts` milestone sections (extracted to local const for proper narrowing)
+- `Array<[string, string]>` → `[string, string][]` style fix in seed script
+
+## [1.0.0-alpha.12] — 2026-03-03
+
+### Added — Milestone Dependencies
+
+**Campaign dependency graph:**
+- `CampaignNode` now carries `description` and `dependsOn` fields
+- `GraphSnapshot` includes `sortedCampaignIds` (topological order via git-warp traversal)
+- `depend` command widened to accept `campaign:` and `milestone:` nodes alongside `task:` nodes
+- Cycle detection works across all node types
+
+**Milestone frontier in deps view:**
+- `status --view deps` now shows **Milestone Frontier** (campaigns whose deps are all DONE) and **Milestones Blocked** tables
+- `--json` output includes `milestoneFrontier`, `milestonesBlocked`, and `milestones` fields
+- Dashboard campaigns section annotates blocked campaigns with `[blocked]` indicator
+
+**Data migration:**
+- Seeded descriptions on all 13 campaigns, created missing `campaign:TRACE` (M11) and `campaign:ECOSYSTEM` nodes
+- Added 8 inter-milestone `depends-on` edges
+- Fixed `campaign:WEAVER` status from BACKLOG to DONE
+- Removed `docs/ROADMAP.md` — milestone data now lives in the WARP graph
+
+## [1.0.0-alpha.11] — 2026-03-02
+
 ### Changed
 
 **Navigation model rework:**

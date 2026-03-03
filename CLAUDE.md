@@ -81,15 +81,20 @@ XYPH plans and tracks its own development through the WARP graph.
 The `xyph-actuator.ts` CLI is the single source of truth for what's been done,
 what's next, and what's in the backlog.
 
-- **See what's next**: `npx tsx xyph-actuator.ts status --view roadmap`
-- **See everything**: `npx tsx xyph-actuator.ts status --view all`
-- **Check the inbox**: `npx tsx xyph-actuator.ts status --view inbox`
+- **See what's next**: `npx tsx xyph-actuator.ts status --view roadmap --json`
+- **See everything**: `npx tsx xyph-actuator.ts status --view all --json`
+- **Check the inbox**: `npx tsx xyph-actuator.ts status --view inbox --json`
 - **Add a backlog item**: use `quest`, `inbox`, or `promote` commands
 - **Plan work**: always consult the graph first — don't plan in your head, plan through the actuator
 
 All project planning, prioritization, and progress tracking flows through the
 actuator. If you want to know what to work on, ask the graph. If you want to add
 work, write it to the graph.
+
+**Always use `--json` when querying the graph programmatically.**
+Every command supports a global `--json` flag that emits structured
+`{ success, command, data }` envelopes instead of styled terminal output.
+Use it — it was added for agent consumption and avoids parsing ANSI/table noise.
 
 ### Command Reference
 - `npx tsx xyph-actuator.ts status --view <roadmap|lineage|all|inbox|submissions|deps>`: View the roadmap state.

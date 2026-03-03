@@ -1,19 +1,22 @@
 import type { Command } from 'commander';
 import type { CliContext } from '../context.js';
 import { createErrorHandler } from '../errorHandler.js';
-import { assertPrefix } from '../validators.js';
+import { assertPrefixOneOf } from '../validators.js';
 
 export function registerDashboardCommands(program: Command, ctx: CliContext): void {
   const withErrorHandler = createErrorHandler(ctx);
 
+  const DEPEND_PREFIXES = ['task:', 'campaign:', 'milestone:'] as const;
+  const DEPEND_TYPES = new Set(['task', 'campaign', 'milestone']);
+
   program
     .command('depend <from> <to>')
-    .description('Declare that <from> depends on <to> (both must be task: nodes)')
+    .description('Declare that <from> depends on <to> (task:, campaign:, or milestone: nodes)')
     .action(withErrorHandler(async (from: string, to: string) => {
-      assertPrefix(from, 'task:', 'from');
-      assertPrefix(to, 'task:', 'to');
+      assertPrefixOneOf(from, DEPEND_PREFIXES, 'from');
+      assertPrefixOneOf(to, DEPEND_PREFIXES, 'to');
       if (from === to) {
-        throw new Error(`[SELF_DEPENDENCY] A task cannot depend on itself: ${from}`);
+        throw new Error(`[SELF_DEPENDENCY] A node cannot depend on itself: ${from}`);
       }
 
       const graph = await ctx.graphPort.getGraph();
@@ -22,19 +25,32 @@ export function registerDashboardCommands(program: Command, ctx: CliContext): vo
         graph.hasNode(from),
         graph.hasNode(to),
       ]);
-      if (!fromExists) throw new Error(`[NOT_FOUND] Task ${from} not found in the graph`);
-      if (!toExists) throw new Error(`[NOT_FOUND] Task ${to} not found in the graph`);
+      if (!fromExists) throw new Error(`[NOT_FOUND] Node ${from} not found in the graph`);
+      if (!toExists) throw new Error(`[NOT_FOUND] Node ${to} not found in the graph`);
 
-      // Verify both nodes are actually tasks
+      // Verify both nodes have valid types for dependency edges
       const [fromProps, toProps] = await Promise.all([
         graph.getNodeProps(from),
         graph.getNodeProps(to),
       ]);
-      if (fromProps?.get('type') !== 'task') {
-        throw new Error(`[TYPE_MISMATCH] ${from} exists but is not a task (type: ${String(fromProps?.get('type') ?? 'unknown')})`);
+      const fromType = String(fromProps?.get('type') ?? 'unknown');
+      const toType = String(toProps?.get('type') ?? 'unknown');
+      if (!DEPEND_TYPES.has(fromType)) {
+        throw new Error(`[TYPE_MISMATCH] ${from} exists but is not a task/campaign/milestone (type: ${fromType})`);
       }
-      if (toProps?.get('type') !== 'task') {
-        throw new Error(`[TYPE_MISMATCH] ${to} exists but is not a task (type: ${String(toProps?.get('type') ?? 'unknown')})`);
+      if (!DEPEND_TYPES.has(toType)) {
+        throw new Error(`[TYPE_MISMATCH] ${to} exists but is not a task/campaign/milestone (type: ${toType})`);
+      }
+
+      // Cross-type family check: tasks form one family, campaigns/milestones form another
+      const CAMPAIGN_FAMILY = new Set(['campaign', 'milestone']);
+      const fromIsCampaign = CAMPAIGN_FAMILY.has(fromType);
+      const toIsCampaign = CAMPAIGN_FAMILY.has(toType);
+      if (fromIsCampaign !== toIsCampaign) {
+        throw new Error(
+          `[TYPE_MISMATCH] Cannot create cross-type dependency: ${from} (${fromType}) → ${to} (${toType}). ` +
+          `Both nodes must be tasks, or both must be campaigns/milestones.`,
+        );
       }
 
       // Cycle check
@@ -99,11 +115,27 @@ export function registerDashboardCommands(program: Command, ctx: CliContext): vo
 
           const topBlockers = computeTopBlockers(taskSummaries, depEdges, 10);
 
+          // Milestone frontier: reuse computeFrontier with campaigns mapped to TaskSummary
+          const campaignSummaries = snapshot.campaigns.map((c) => ({ id: c.id, status: c.status, hours: 0 }));
+          const campaignDepEdges = snapshot.campaigns.flatMap((c) =>
+            (c.dependsOn ?? []).map((to) => ({ from: c.id, to })),
+          );
+          const milestoneFrontierResult = computeFrontier(campaignSummaries, campaignDepEdges);
+
+          const milestones = new Map<string, { title: string; status: string }>();
+          for (const c of snapshot.campaigns) {
+            milestones.set(c.id, { title: c.title, status: c.status });
+          }
+
           if (ctx.json) {
             const blockedByObj: Record<string, string[]> = {};
             for (const [k, v] of frontierResult.blockedBy) blockedByObj[k] = v;
             const tasksObj: Record<string, { title: string; status: string; hours: number }> = {};
             for (const [k, v] of tasks) tasksObj[k] = v;
+            const milestonesBlockedObj: Record<string, string[]> = {};
+            for (const [k, v] of milestoneFrontierResult.blockedBy) milestonesBlockedObj[k] = v;
+            const milestonesObj: Record<string, { title: string; status: string }> = {};
+            for (const [k, v] of milestones) milestonesObj[k] = v;
             ctx.jsonOut({
               success: true, command: 'status',
               data: {
@@ -115,6 +147,10 @@ export function registerDashboardCommands(program: Command, ctx: CliContext): vo
                 criticalPathHours: criticalResult.totalHours,
                 tasks: tasksObj,
                 topBlockers,
+                milestoneFrontier: milestoneFrontierResult.frontier,
+                milestonesBlocked: milestonesBlockedObj,
+                milestones: milestonesObj,
+                milestoneExecutionOrder: snapshot.sortedCampaignIds,
               },
             });
             return;
@@ -129,6 +165,10 @@ export function registerDashboardCommands(program: Command, ctx: CliContext): vo
             criticalPathHours: criticalResult.totalHours,
             quests: tasks,
             topBlockers,
+            milestoneFrontier: milestoneFrontierResult.frontier,
+            milestonesBlocked: milestoneFrontierResult.blockedBy,
+            milestones,
+            milestoneExecutionOrder: snapshot.sortedCampaignIds,
           }));
           break;
         }

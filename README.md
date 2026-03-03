@@ -286,7 +286,7 @@ All commands run via `npx tsx xyph-actuator.ts <command>`.
 | `promote <id> --intent <id>`                             | Promote inbox task to backlog                          |
 | `reject <id> --rationale "..."`                          | Reject to graveyard                                    |
 | `reopen <id>`                                            | Reopen a graveyard task back to inbox                  |
-| `depend <from> <to>`                                     | Declare that `<from>` depends on `<to>`                |
+| `depend <from> <to>`                                     | Declare dependency (same-family: tasks↔tasks or campaigns↔milestones) |
 | `claim <id>`                                             | Volunteer for a quest (OCP)                            |
 | `submit <quest-id> --description "..."`                  | Submit quest for review (creates submission + patchset)|
 | `revise <submission-id> --description "..."`             | Push a new patchset superseding current tip            |
@@ -400,7 +400,12 @@ xyph-dashboard.tsx  # Interactive TUI entry point
 | 7 | WEAVER — task dependency graph, frontier, critical path | ✅ DONE |
 | 8 | ORACLE — intent classification + policy engine | ⬜ PLANNED |
 | 9 | FORGE — emit + apply phases | ⬜ PLANNED |
-| 10 | CLI TOOLING — identity, packaging, time-travel, ergonomics | ⬜ PLANNED |
+| 10 | CLI TOOLING — identity, packaging, time-travel, ergonomics | 🔧 IN PROGRESS |
+| 11 | TRACEABILITY — stories, requirements, acceptance criteria, evidence | ⬜ PLANNED |
+| 12 | AGENT PROTOCOL — structured agent interface (briefing, next, context, handoff) | ⬜ PLANNED |
+| — | ECOSYSTEM — MCP server, Web UI, IDE integration | ⬜ PLANNED |
+
+Milestone descriptions and inter-milestone dependencies are modeled in the WARP graph. Query via: `npx tsx xyph-actuator.ts status --view deps`
 
 ## Constitution
 
