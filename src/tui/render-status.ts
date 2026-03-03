@@ -1,7 +1,7 @@
 import {
   headerBox, table, separator, badge, enumeratedList,
 } from '@flyingrobots/bijou';
-import type { GraphSnapshot, StoryNode, RequirementNode, CriterionNode, EvidenceNode } from '../domain/models/dashboard.js';
+import type { GraphSnapshot, StoryNode, RequirementNode, CriterionNode, EvidenceNode, SuggestionNode } from '../domain/models/dashboard.js';
 import type { BlockerInfo } from '../domain/services/DepAnalysis.js';
 import type { UnmetRequirement, CoverageResult } from '../domain/services/TraceabilityAnalysis.js';
 import { getTheme, styled } from './theme/index.js';
@@ -781,6 +781,104 @@ export function renderTrace(data: TraceViewData): string {
   lines.push(`    ${styled(t.theme.semantic.muted, 'Criteria:')} ${data.criteria.length}`);
   lines.push(`    ${styled(t.theme.semantic.muted, 'Evidenced:')} ${data.coverage.evidenced} / ${data.coverage.total}`);
   lines.push(`    ${styled(t.theme.semantic.muted, 'Coverage:')} ${pct}`);
+
+  return lines.join('\n');
+}
+
+// ---------------------------------------------------------------------------
+// Suggestions view — Auto-linking suggestions (M11 Phase 4)
+// ---------------------------------------------------------------------------
+
+export interface SuggestionsViewData {
+  suggestions: SuggestionNode[];
+}
+
+/**
+ * Renders auto-linking suggestions grouped by status.
+ */
+export function renderSuggestions(data: SuggestionsViewData): string {
+  const t = getTheme();
+  const lines: string[] = [];
+
+  const pending = data.suggestions.filter((s) => s.status === 'PENDING');
+  const accepted = data.suggestions.filter((s) => s.status === 'ACCEPTED');
+  const rejected = data.suggestions.filter((s) => s.status === 'REJECTED');
+
+  lines.push(snapshotHeader(
+    'Auto-Link Suggestions',
+    `${pending.length} pending  ${accepted.length} accepted  ${rejected.length} rejected`,
+    'secondary',
+  ));
+
+  // --- Pending suggestions ---
+  if (pending.length > 0) {
+    lines.push('');
+    lines.push(separator({ label: 'Pending Review', borderToken: t.theme.border.warning }));
+
+    const rows = pending.map((s) => {
+      const layerBreakdown = s.layers
+        .map((l) => `${l.layer}:${l.score.toFixed(2)}`)
+        .join(' ');
+      return [
+        styled(t.theme.semantic.muted, s.id.slice(0, 28)),
+        s.testFile.slice(0, 28),
+        s.targetId.slice(0, 24),
+        s.confidence.toFixed(2),
+        layerBreakdown.slice(0, 36),
+      ];
+    });
+
+    lines.push(table({
+      columns: [
+        { header: 'Suggestion', width: 30 },
+        { header: 'Test File', width: 30 },
+        { header: 'Target', width: 26 },
+        { header: 'Conf', width: 6 },
+        { header: 'Layers', width: 38 },
+      ],
+      rows,
+      headerToken: t.theme.ui.tableHeader,
+      borderToken: t.theme.border.primary,
+    }));
+  } else {
+    lines.push('');
+    lines.push(styled(t.theme.semantic.muted, '  No pending suggestions.'));
+  }
+
+  // --- Accepted suggestions ---
+  if (accepted.length > 0) {
+    lines.push('');
+    lines.push(separator({ label: 'Accepted', borderToken: t.theme.border.success }));
+
+    const rows = accepted.map((s) => [
+      styled(t.theme.semantic.muted, s.id.slice(0, 28)),
+      s.testFile.slice(0, 28),
+      s.targetId.slice(0, 24),
+      s.confidence.toFixed(2),
+      s.resolvedBy ?? '—',
+    ]);
+
+    lines.push(table({
+      columns: [
+        { header: 'Suggestion', width: 30 },
+        { header: 'Test File', width: 30 },
+        { header: 'Target', width: 26 },
+        { header: 'Conf', width: 6 },
+        { header: 'Accepted By', width: 16 },
+      ],
+      rows,
+      headerToken: t.theme.ui.tableHeader,
+      borderToken: t.theme.border.primary,
+    }));
+  }
+
+  // --- Stats ---
+  lines.push('');
+  lines.push(separator({ label: 'Stats', borderToken: t.theme.border.primary }));
+  lines.push(`    ${styled(t.theme.semantic.muted, 'Total:')} ${data.suggestions.length}`);
+  lines.push(`    ${badge('PENDING', { variant: statusVariant('PENDING') })} ${pending.length}`);
+  lines.push(`    ${badge('ACCEPTED', { variant: statusVariant('ACCEPTED') })} ${accepted.length}`);
+  lines.push(`    ${badge('REJECTED', { variant: statusVariant('REJECTED') })} ${rejected.length}`);
 
   return lines.join('\n');
 }

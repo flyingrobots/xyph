@@ -77,11 +77,11 @@ export function registerDashboardCommands(program: Command, ctx: CliContext): vo
   program
     .command('status')
     .description('Show a snapshot of the WARP graph')
-    .option('--view <name>', 'roadmap | lineage | all | inbox | submissions | deps | trace', 'roadmap')
+    .option('--view <name>', 'roadmap | lineage | all | inbox | submissions | deps | trace | suggestions', 'roadmap')
     .option('--include-graveyard', 'include GRAVEYARD tasks in output (excluded by default)')
     .action(withErrorHandler(async (opts: { view: string; includeGraveyard?: boolean }) => {
       const view = opts.view;
-      const validViews = ['roadmap', 'lineage', 'all', 'inbox', 'submissions', 'deps', 'trace'] as const;
+      const validViews = ['roadmap', 'lineage', 'all', 'inbox', 'submissions', 'deps', 'trace', 'suggestions'] as const;
       if (!validViews.includes(view as typeof validViews[number])) {
         return ctx.fail(`Unknown --view '${view}'. Valid options: ${validViews.join(', ')}`);
       }
@@ -226,6 +226,29 @@ export function registerDashboardCommands(program: Command, ctx: CliContext): vo
             untestedCriteria,
             coverage,
           }));
+          break;
+        }
+
+        case 'suggestions': {
+          if (ctx.json) {
+            ctx.jsonOut({
+              success: true, command: 'status',
+              data: {
+                view: 'suggestions',
+                suggestions: snapshot.suggestions,
+                summary: {
+                  total: snapshot.suggestions.length,
+                  pending: snapshot.suggestions.filter((s) => s.status === 'PENDING').length,
+                  accepted: snapshot.suggestions.filter((s) => s.status === 'ACCEPTED').length,
+                  rejected: snapshot.suggestions.filter((s) => s.status === 'REJECTED').length,
+                },
+              },
+            });
+            return;
+          }
+
+          const { renderSuggestions } = await import('../../tui/render-status.js');
+          ctx.print(renderSuggestions({ suggestions: snapshot.suggestions }));
           break;
         }
 
