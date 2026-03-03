@@ -9,6 +9,7 @@ All notable changes to XYPH will be documented in this file.
 - **Cross-type `depend` guard** — `depend` now rejects edges between different type families (e.g. `task:` → `campaign:`); both nodes must be tasks, or both must be campaigns/milestones
 - **CHANGELOG version ordering** — restored `[Unreleased]` → `[alpha.12]` → `[alpha.11]` sequence
 - **`--json` deps output** — `milestoneExecutionOrder` now included in `status --view deps --json` output
+- **Milestone frontier with zero dep edges** — `computeFrontier` is now always called for campaigns; previously returned empty frontier when no `depends-on` edges existed, hiding actionable milestones
 
 ### Changed
 

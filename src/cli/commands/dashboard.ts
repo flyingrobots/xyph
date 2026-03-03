@@ -120,9 +120,7 @@ export function registerDashboardCommands(program: Command, ctx: CliContext): vo
           const campaignDepEdges = snapshot.campaigns.flatMap((c) =>
             (c.dependsOn ?? []).map((to) => ({ from: c.id, to })),
           );
-          const milestoneFrontierResult = campaignDepEdges.length > 0
-            ? computeFrontier(campaignSummaries, campaignDepEdges)
-            : { frontier: [] as string[], blockedBy: new Map<string, string[]>() };
+          const milestoneFrontierResult = computeFrontier(campaignSummaries, campaignDepEdges);
 
           const milestones = new Map<string, { title: string; status: string }>();
           for (const c of snapshot.campaigns) {
