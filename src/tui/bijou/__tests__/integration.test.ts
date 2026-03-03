@@ -25,11 +25,14 @@ function makeSnapshot(overrides?: Partial<GraphSnapshot>): GraphSnapshot {
   const base = {
     campaigns: [], quests: [], intents: [], scrolls: [],
     approvals: [], submissions: [], reviews: [], decisions: [],
-    asOf: Date.now(), sortedTaskIds: [] as string[],
+    asOf: Date.now(), sortedTaskIds: [] as string[], sortedCampaignIds: [] as string[],
     ...overrides,
   };
   if (!overrides?.sortedTaskIds && base.quests.length > 0) {
     base.sortedTaskIds = base.quests.map(q => q.id);
+  }
+  if (!overrides?.sortedCampaignIds && base.campaigns.length > 0) {
+    base.sortedCampaignIds = base.campaigns.map(c => c.id);
   }
   return base;
 }

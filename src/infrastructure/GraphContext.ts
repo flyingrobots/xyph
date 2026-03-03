@@ -223,6 +223,8 @@ class GraphContextImpl implements GraphContext {
     log('Resolving edges…');
     const neighborsNeeded = [
       ...taskNodes.map((n) => n.id),
+      ...campaignNodes.map((n) => n.id),
+      ...milestoneNodes.map((n) => n.id),
       ...scrollNodes.map((n) => n.id),
       ...patchsetNodes.map((n) => n.id),
       ...reviewNodes.map((n) => n.id),
@@ -240,14 +242,26 @@ class GraphContextImpl implements GraphContext {
       const rawType = n.props['type'];
       if (rawType !== 'campaign' && rawType !== 'milestone') continue;
       const title = n.props['title'];
+      const description = n.props['description'];
       const rawStatus = n.props['status'];
       const status = (typeof rawStatus === 'string' && VALID_CAMPAIGN_STATUSES.has(rawStatus))
         ? rawStatus as CampaignStatus
         : 'UNKNOWN' as CampaignStatus;
+
+      const neighbors = neighborsCache.get(n.id) ?? [];
+      const dependsOnIds: string[] = [];
+      for (const nb of neighbors) {
+        if (nb.label === 'depends-on' && (nb.nodeId.startsWith('campaign:') || nb.nodeId.startsWith('milestone:'))) {
+          dependsOnIds.push(nb.nodeId);
+        }
+      }
+
       campaigns.push({
         id: n.id,
         title: typeof title === 'string' ? title : n.id,
         status,
+        description: typeof description === 'string' ? description : undefined,
+        dependsOn: dependsOnIds.length > 0 ? dependsOnIds : undefined,
       });
     }
 
@@ -396,11 +410,17 @@ class GraphContextImpl implements GraphContext {
       labelFilter: 'depends-on',
     });
 
+    const campaignIds = campaigns.map((c) => c.id);
+    const { sorted: sortedCampaignIds } = await graph.traverse.topologicalSort(campaignIds, {
+      dir: 'in',
+      labelFilter: 'depends-on',
+    });
+
     log(`Snapshot ready — ${quests.length} quests, ${campaigns.length} campaigns`);
     const snap: GraphSnapshot = {
       campaigns, quests, intents, scrolls, approvals,
       submissions, reviews, decisions,
-      asOf: Date.now(), graphMeta, sortedTaskIds,
+      asOf: Date.now(), graphMeta, sortedTaskIds, sortedCampaignIds,
     };
     this.cachedSnapshot = snap;
     this.cachedFrontierKey = this.frontierKeyFromState(state);

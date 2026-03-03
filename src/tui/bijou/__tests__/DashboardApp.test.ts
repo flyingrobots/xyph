@@ -22,11 +22,15 @@ function makeSnapshot(overrides?: Partial<GraphSnapshot>): GraphSnapshot {
     decisions: [],
     asOf: Date.now(),
     sortedTaskIds: [] as string[],
+    sortedCampaignIds: [] as string[],
     ...overrides,
   };
   // Auto-populate sortedTaskIds from quests if not explicitly provided
   if (!overrides?.sortedTaskIds && base.quests.length > 0) {
     base.sortedTaskIds = base.quests.map(q => q.id);
+  }
+  if (!overrides?.sortedCampaignIds && base.campaigns.length > 0) {
+    base.sortedCampaignIds = base.campaigns.map(c => c.id);
   }
   return base;
 }

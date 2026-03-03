@@ -15,6 +15,8 @@ export interface CampaignNode {
   id: string;
   title: string;
   status: CampaignStatus;
+  description?: string;
+  dependsOn?: string[];
 }
 
 export interface QuestNode {
@@ -117,5 +119,7 @@ export interface GraphSnapshot {
   graphMeta?: GraphMeta;
   /** Task IDs in topological order (prerequisites first), computed by git-warp's traversal engine. */
   sortedTaskIds: string[];
+  /** Campaign IDs in topological order (prerequisites first), computed by git-warp's traversal engine. */
+  sortedCampaignIds: string[];
 }
 
