@@ -2,6 +2,27 @@
 
 All notable changes to XYPH will be documented in this file.
 
+## [1.0.0-alpha.12] — 2026-03-03
+
+### Added — Milestone Dependencies
+
+**Campaign dependency graph:**
+- `CampaignNode` now carries `description` and `dependsOn` fields
+- `GraphSnapshot` includes `sortedCampaignIds` (topological order via git-warp traversal)
+- `depend` command widened to accept `campaign:` and `milestone:` nodes alongside `task:` nodes
+- Cycle detection works across all node types
+
+**Milestone frontier in deps view:**
+- `status --view deps` now shows **Milestone Frontier** (campaigns whose deps are all DONE) and **Milestones Blocked** tables
+- `--json` output includes `milestoneFrontier`, `milestonesBlocked`, and `milestones` fields
+- Dashboard campaigns section annotates blocked campaigns with `[blocked]` indicator
+
+**Data migration:**
+- Seeded descriptions on all 13 campaigns, created missing `campaign:TRACE` (M11) and `campaign:ECOSYSTEM` nodes
+- Added 8 inter-milestone `depends-on` edges
+- Fixed `campaign:WEAVER` status from BACKLOG to DONE
+- Removed `docs/ROADMAP.md` — milestone data now lives in the WARP graph
+
 ## [Unreleased]
 
 ### Changed
