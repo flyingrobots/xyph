@@ -294,7 +294,7 @@ export function dashboardView(model: DashboardModel, width?: number, height?: nu
       lines.push(styled(t.theme.semantic.muted, '  (none)'));
     } else {
       for (const [i, q] of myIssues.slice(0, 6).entries()) {
-        const indicator = (dv?.focusPanel === 'my-issues' && dv.focusRow === i)
+        const indicator = (dv?.focusPanel === 'my-quests' && dv.focusRow === i)
           ? styled(t.theme.semantic.primary, '\u25B6')
           : ' ';
         const statusStr = styledStatus(q.status);

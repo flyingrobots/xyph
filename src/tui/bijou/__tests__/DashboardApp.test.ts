@@ -223,7 +223,7 @@ describe('DashboardApp', () => {
       expect(loaded.dashboardView?.focusPanel).toBe('in-progress');
 
       const [afterTab] = app.update(makeKey('tab'), loaded);
-      expect(afterTab.dashboardView?.focusPanel).toBe('my-issues');
+      expect(afterTab.dashboardView?.focusPanel).toBe('my-quests');
       expect(afterTab.dashboardView?.focusRow).toBe(0);
 
       const [afterTab2] = app.update(makeKey('tab'), afterTab);
@@ -322,7 +322,7 @@ describe('DashboardApp', () => {
       expect(updated.showLanding).toBe(false);
     });
 
-    it('q on landing enters quit confirm mode', () => {
+    it('q on landing enters quit confirm mode and clears landing', () => {
       const app = makeApp();
       const [initial] = app.init();
       const loaded: DashboardModel = { ...initial, loading: false };
@@ -330,6 +330,7 @@ describe('DashboardApp', () => {
       const [afterQ] = app.update(makeKey('q'), loaded);
       expect(afterQ.mode).toBe('confirm');
       expect(afterQ.confirmState?.action.kind).toBe('quit');
+      expect(afterQ.showLanding).toBe(false);
     });
 
     it('Ctrl+C quits from normal mode', () => {
@@ -357,7 +358,7 @@ describe('DashboardApp', () => {
       expect(cmds.length).toBeGreaterThan(0);
     });
 
-    it('q on help mode enters quit confirm mode', () => {
+    it('q on help mode enters quit confirm mode and clears help', () => {
       const app = makeApp();
       const [initial] = app.init();
       const helpMode: DashboardModel = { ...initial, showLanding: false, showHelp: true };
@@ -365,6 +366,7 @@ describe('DashboardApp', () => {
       const [afterQ] = app.update(makeKey('q'), helpMode);
       expect(afterQ.mode).toBe('confirm');
       expect(afterQ.confirmState?.action.kind).toBe('quit');
+      expect(afterQ.showHelp).toBe(false);
     });
 
     // ── Quit confirmation modal ─────────────────────────────────────

@@ -71,7 +71,7 @@ export interface LineageState {
 }
 
 export interface DashboardViewState {
-  focusPanel: 'in-progress' | 'my-issues';
+  focusPanel: 'in-progress' | 'my-quests';
   focusRow: number;
   detailId: string | null;
   leftScrollY: number;
@@ -505,6 +505,8 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
             styled(t.theme.semantic.error, 'esc') + '  cancel';
           return [{
             ...model,
+            showLanding: false,
+            showHelp: false,
             mode: 'confirm',
             confirmState: {
               prompt: 'Quit XYPH?',
@@ -928,7 +930,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
 
       case 'focus-panel': {
         if (model.activeView !== 'dashboard' || !model.dashboardView) return [model, []];
-        const nextPanel = model.dashboardView.focusPanel === 'in-progress' ? 'my-issues' as const : 'in-progress' as const;
+        const nextPanel = model.dashboardView.focusPanel === 'in-progress' ? 'my-quests' as const : 'in-progress' as const;
         return [{ ...model, dashboardView: { ...model.dashboardView, focusPanel: nextPanel, focusRow: 0 } }, []];
       }
 
@@ -1248,7 +1250,7 @@ function dashboardFocusedQuestId(snap: GraphSnapshot, model: DashboardModel): st
   return myIssues.slice(0, DASHBOARD_MY_ISSUES_VISIBLE)[focusRow]?.id ?? null;
 }
 
-function dashboardPanelCount(snap: GraphSnapshot, model: DashboardModel, panel: 'in-progress' | 'my-issues'): number {
+function dashboardPanelCount(snap: GraphSnapshot, model: DashboardModel, panel: 'in-progress' | 'my-quests'): number {
   if (panel === 'in-progress') {
     return Math.min(
       snap.quests.filter(q => q.status === 'IN_PROGRESS').length,
