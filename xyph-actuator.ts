@@ -11,6 +11,7 @@ import { registerDashboardCommands } from './src/cli/commands/dashboard.js';
 import { registerWizardCommands } from './src/cli/commands/wizards.js';
 import { registerLinkCommands } from './src/cli/commands/link.js';
 import { registerTraceabilityCommands } from './src/cli/commands/traceability.js';
+import { registerConfigCommands } from './src/cli/commands/config.js';
 
 // Best-effort pre-scan for --json before Commander parses.
 // createCliContext() handles theme init internally based on this flag.
@@ -38,5 +39,6 @@ registerDashboardCommands(program, ctx);
 registerWizardCommands(program, ctx);
 registerLinkCommands(program, ctx);
 registerTraceabilityCommands(program, ctx);
+registerConfigCommands(program, ctx);
 
 await program.parseAsync(process.argv);
