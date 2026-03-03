@@ -286,7 +286,7 @@ All commands run via `npx tsx xyph-actuator.ts <command>`.
 | `promote <id> --intent <id>`                             | Promote inbox task to backlog                          |
 | `reject <id> --rationale "..."`                          | Reject to graveyard                                    |
 | `reopen <id>`                                            | Reopen a graveyard task back to inbox                  |
-| `depend <from> <to>`                                     | Declare dependency (task, campaign, or milestone nodes) |
+| `depend <from> <to>`                                     | Declare dependency (same-family: tasks↔tasks or campaigns↔milestones) |
 | `claim <id>`                                             | Volunteer for a quest (OCP)                            |
 | `submit <quest-id> --description "..."`                  | Submit quest for review (creates submission + patchset)|
 | `revise <submission-id> --description "..."`             | Push a new patchset superseding current tip            |

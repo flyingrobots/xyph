@@ -11,6 +11,7 @@ import WarpGraph, { GitGraphAdapter } from '@git-stunts/git-warp';
 import Plumbing from '@git-stunts/plumbing';
 import chalk from 'chalk';
 import { createPatchSession } from '../src/infrastructure/helpers/createPatchSession.js';
+import { toNeighborEntries } from '../src/infrastructure/helpers/isNeighborEntry.js';
 
 const WRITER_ID = process.env['XYPH_AGENT_ID'] ?? 'agent.prime';
 const plumbing = Plumbing.createDefault({ cwd: process.cwd() });
@@ -121,7 +122,7 @@ const CAMPAIGNS: CampaignSeed[] = [
 ];
 
 // [from, to] — from depends-on to
-const DEP_EDGES: Array<[string, string]> = [
+const DEP_EDGES: [string, string][] = [
   ['campaign:CLITOOL', 'campaign:WEAVER'],
   ['campaign:AGENT', 'campaign:CLITOOL'],
   ['campaign:TRACE', 'campaign:WEAVER'],
@@ -185,10 +186,7 @@ async function main(): Promise<void> {
 
   for (const [from, to] of DEP_EDGES) {
     // Check if edge already exists
-    const neighbors = (await graph.neighbors(from, 'outgoing')) as Array<{
-      label: string;
-      nodeId: string;
-    }>;
+    const neighbors = toNeighborEntries(await graph.neighbors(from, 'outgoing'));
     const alreadyExists = neighbors.some(
       (n) => n.label === 'depends-on' && n.nodeId === to,
     );

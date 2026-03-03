@@ -493,6 +493,7 @@ export interface DepsViewData {
   milestoneFrontier?: string[];
   milestonesBlocked?: Map<string, string[]>;
   milestones?: Map<string, { title: string; status: string }>;
+  milestoneExecutionOrder?: string[];
 }
 
 /**
@@ -575,10 +576,11 @@ export function renderDeps(data: DepsViewData): string {
 
   // --- Milestone Frontier ---
   if (data.milestoneFrontier && data.milestoneFrontier.length > 0 && data.milestones) {
+    const msMap = data.milestones;
     lines.push('');
     lines.push(separator({ label: 'Milestone Frontier', borderToken: t.theme.border.success }));
     const mfRows = data.milestoneFrontier.map(id => {
-      const info = data.milestones?.get(id);
+      const info = msMap.get(id);
       return [
         styled(t.theme.semantic.success, id),
         info?.title ?? '—',
@@ -599,10 +601,11 @@ export function renderDeps(data: DepsViewData): string {
 
   // --- Milestones Blocked ---
   if (data.milestonesBlocked && data.milestonesBlocked.size > 0 && data.milestones) {
+    const msMap2 = data.milestones;
     lines.push('');
     lines.push(separator({ label: 'Milestones Blocked', borderToken: t.theme.border.warning }));
     const mbRows = [...data.milestonesBlocked.entries()].map(([id, blockers]) => {
-      const info = data.milestones?.get(id);
+      const info = msMap2.get(id);
       return [
         styled(t.theme.semantic.warning, id),
         info?.title ?? '—',

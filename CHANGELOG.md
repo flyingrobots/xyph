@@ -2,6 +2,20 @@
 
 All notable changes to XYPH will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+
+- **Cross-type `depend` guard** — `depend` now rejects edges between different type families (e.g. `task:` → `campaign:`); both nodes must be tasks, or both must be campaigns/milestones
+- **CHANGELOG version ordering** — restored `[Unreleased]` → `[alpha.12]` → `[alpha.11]` sequence
+- **`--json` deps output** — `milestoneExecutionOrder` now included in `status --view deps --json` output
+
+### Changed
+
+- Replaced unsafe `as` cast in `seed-milestone-deps.ts` with `toNeighborEntries()` runtime validator
+- Removed redundant optional-chaining in `render-status.ts` milestone sections (extracted to local const for proper narrowing)
+- `Array<[string, string]>` → `[string, string][]` style fix in seed script
+
 ## [1.0.0-alpha.12] — 2026-03-03
 
 ### Added — Milestone Dependencies
@@ -23,7 +37,7 @@ All notable changes to XYPH will be documented in this file.
 - Fixed `campaign:WEAVER` status from BACKLOG to DONE
 - Removed `docs/ROADMAP.md` — milestone data now lives in the WARP graph
 
-## [Unreleased]
+## [1.0.0-alpha.11] — 2026-03-02
 
 ### Changed
 

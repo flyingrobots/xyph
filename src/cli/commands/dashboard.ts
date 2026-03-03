@@ -42,6 +42,17 @@ export function registerDashboardCommands(program: Command, ctx: CliContext): vo
         throw new Error(`[TYPE_MISMATCH] ${to} exists but is not a task/campaign/milestone (type: ${toType})`);
       }
 
+      // Cross-type family check: tasks form one family, campaigns/milestones form another
+      const CAMPAIGN_FAMILY = new Set(['campaign', 'milestone']);
+      const fromIsCampaign = CAMPAIGN_FAMILY.has(fromType);
+      const toIsCampaign = CAMPAIGN_FAMILY.has(toType);
+      if (fromIsCampaign !== toIsCampaign) {
+        throw new Error(
+          `[TYPE_MISMATCH] Cannot create cross-type dependency: ${from} (${fromType}) → ${to} (${toType}). ` +
+          `Both nodes must be tasks, or both must be campaigns/milestones.`,
+        );
+      }
+
       // Cycle check
       const { reachable } = await graph.traverse.isReachable(to, from, { labelFilter: 'depends-on' });
       if (reachable) {
@@ -141,6 +152,7 @@ export function registerDashboardCommands(program: Command, ctx: CliContext): vo
                 milestoneFrontier: milestoneFrontierResult.frontier,
                 milestonesBlocked: milestonesBlockedObj,
                 milestones: milestonesObj,
+                milestoneExecutionOrder: snapshot.sortedCampaignIds,
               },
             });
             return;
@@ -158,6 +170,7 @@ export function registerDashboardCommands(program: Command, ctx: CliContext): vo
             milestoneFrontier: milestoneFrontierResult.frontier,
             milestonesBlocked: milestoneFrontierResult.blockedBy,
             milestones,
+            milestoneExecutionOrder: snapshot.sortedCampaignIds,
           }));
           break;
         }
