@@ -33,6 +33,7 @@ function makeSnapshot(overrides?: Partial<GraphSnapshot>): GraphSnapshot {
     requirements: [],
     criteria: [],
     evidence: [],
+    suggestions: [],
     asOf: Date.now(),
     sortedTaskIds: [] as string[],
     sortedCampaignIds: [] as string[],

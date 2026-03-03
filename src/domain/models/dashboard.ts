@@ -8,6 +8,7 @@ import type { ApprovalGateStatus, ApprovalGateTrigger } from '../entities/Approv
 import type { SubmissionStatus, ReviewVerdict, DecisionKind } from '../entities/Submission.js';
 import type { RequirementKind, RequirementPriority } from '../entities/Requirement.js';
 import type { EvidenceKind, EvidenceResult } from '../entities/Evidence.js';
+import type { SuggestionStatus, LayerScore } from '../entities/Suggestion.js';
 
 export type { ApprovalGateStatus };
 
@@ -144,6 +145,25 @@ export interface EvidenceNode {
   artifactHash?: string;
 }
 
+// ---------------------------------------------------------------------------
+// Suggestion node type (M11 Phase 4)
+// ---------------------------------------------------------------------------
+
+export interface SuggestionNode {
+  id: string;
+  testFile: string;
+  targetId: string;
+  targetType: 'criterion' | 'requirement';
+  confidence: number;
+  layers: LayerScore[];
+  status: SuggestionStatus;
+  suggestedBy: string;
+  suggestedAt: number;
+  rationale?: string;
+  resolvedBy?: string;
+  resolvedAt?: number;
+}
+
 export interface GraphMeta {
   maxTick: number;       // max(observedFrontier.values()) — global high-water mark
   myTick: number;        // observedFrontier.get(writerId) ?? 0
@@ -165,6 +185,8 @@ export interface GraphSnapshot {
   requirements: RequirementNode[];
   criteria: CriterionNode[];
   evidence: EvidenceNode[];
+  // Auto-linking suggestions (M11 Phase 4)
+  suggestions: SuggestionNode[];
   asOf: number;
   graphMeta?: GraphMeta;
   /** Task IDs in topological order (prerequisites first), computed by git-warp's traversal engine. */

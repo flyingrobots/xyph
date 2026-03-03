@@ -43,7 +43,10 @@ import type {
   ScrollNode,
   StoryNode,
   SubmissionNode,
+  SuggestionNode,
 } from '../domain/models/dashboard.js';
+import { VALID_SUGGESTION_STATUSES } from '../domain/entities/Suggestion.js';
+import type { SuggestionStatus, LayerScore } from '../domain/entities/Suggestion.js';
 import type { RequirementKind, RequirementPriority } from '../domain/entities/Requirement.js';
 import { VALID_REQUIREMENT_KINDS, VALID_REQUIREMENT_PRIORITIES } from '../domain/entities/Requirement.js';
 import type { EvidenceKind, EvidenceResult } from '../domain/entities/Evidence.js';
@@ -212,6 +215,7 @@ class GraphContextImpl implements GraphContext {
       scrollNodes, approvalNodes, submissionNodes,
       patchsetNodes, reviewNodes, decisionNodes,
       storyNodes, requirementNodes, criterionNodes, evidenceNodes,
+      suggestionNodes,
     ] = await Promise.all([
       graph.query().match('task:*').select(['id', 'props']).run().then(extractNodes),
       graph.query().match('campaign:*').select(['id', 'props']).run().then(extractNodes),
@@ -227,6 +231,7 @@ class GraphContextImpl implements GraphContext {
       graph.query().match('req:*').select(['id', 'props']).run().then(extractNodes),
       graph.query().match('criterion:*').select(['id', 'props']).run().then(extractNodes),
       graph.query().match('evidence:*').select(['id', 'props']).run().then(extractNodes),
+      graph.query().match('suggestion:*').select(['id', 'props']).run().then(extractNodes),
     ]);
 
     await yieldEventLoop();
@@ -583,6 +588,59 @@ class GraphContextImpl implements GraphContext {
       }
     }
 
+    // --- Build suggestions (M11 Phase 4) ---
+    log('Building suggestion models…');
+    const suggestions: SuggestionNode[] = [];
+    for (const n of suggestionNodes) {
+      if (n.props['type'] !== 'suggestion') continue;
+      const testFile = n.props['test_file'];
+      const targetId = n.props['target_id'];
+      const targetType = n.props['target_type'];
+      const confidence = n.props['confidence'];
+      const layersRaw = n.props['layers'];
+      const status = n.props['status'];
+      const suggestedBy = n.props['suggested_by'];
+      const suggestedAt = n.props['suggested_at'];
+
+      if (typeof testFile !== 'string' || typeof targetId !== 'string' ||
+          typeof confidence !== 'number' || typeof suggestedBy !== 'string' ||
+          typeof suggestedAt !== 'number' || typeof status !== 'string' ||
+          !VALID_SUGGESTION_STATUSES.has(status)) continue;
+
+      if (targetType !== 'criterion' && targetType !== 'requirement') continue;
+
+      let layers: LayerScore[] = [];
+      if (typeof layersRaw === 'string') {
+        try {
+          const parsed: unknown = JSON.parse(layersRaw);
+          if (Array.isArray(parsed)) {
+            layers = parsed as LayerScore[];
+          }
+        } catch {
+          // Ignore malformed JSON
+        }
+      }
+
+      const rationale = n.props['rationale'];
+      const resolvedBy = n.props['resolved_by'];
+      const resolvedAt = n.props['resolved_at'];
+
+      suggestions.push({
+        id: n.id,
+        testFile,
+        targetId,
+        targetType,
+        confidence,
+        layers,
+        status: status as SuggestionStatus,
+        suggestedBy,
+        suggestedAt,
+        rationale: typeof rationale === 'string' ? rationale : undefined,
+        resolvedBy: typeof resolvedBy === 'string' ? resolvedBy : undefined,
+        resolvedAt: typeof resolvedAt === 'number' ? resolvedAt : undefined,
+      });
+    }
+
     // --- Build graph meta ---
     log('Reading graph metadata…');
     const state = await graph.getStateSnapshot();
@@ -610,7 +668,7 @@ class GraphContextImpl implements GraphContext {
     const snap: GraphSnapshot = {
       campaigns, quests, intents, scrolls, approvals,
       submissions, reviews, decisions,
-      stories, requirements, criteria, evidence,
+      stories, requirements, criteria, evidence, suggestions,
       asOf: Date.now(), graphMeta, sortedTaskIds, sortedCampaignIds,
     };
     this.cachedSnapshot = snap;
