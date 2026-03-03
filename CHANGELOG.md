@@ -11,6 +11,16 @@ All notable changes to XYPH will be documented in this file.
 - **12 dependency edges** wiring the TRC quest execution order
 - **Rejected `task:traceability-m11`** placeholder — superseded by the concrete decomposition
 
+### Added — Orphan Campaign Assignments
+
+- **58 orphan quests assigned** to campaigns via `scripts/assign-orphan-campaigns.ts`:
+  - 22 → `campaign:DASHBOARD` (TUI, bijou, rendering)
+  - 23 → `campaign:CLITOOL` (CLI, CI, testing, theme)
+  - 6 → `campaign:ECOSYSTEM` (external integrations, scaling)
+  - 4 → `campaign:AGENT` (agent protocol)
+  - 1 → `campaign:SUBMISSION`, 1 → `campaign:BEDROCK`
+- Zero orphan quests remaining (was 30% of all quests)
+
 ### Fixed
 
 - **Cross-type `depend` guard** — `depend` now rejects edges between different type families (e.g. `task:` → `campaign:`); both nodes must be tasks, or both must be campaigns/milestones
