@@ -214,6 +214,7 @@ export function dashboardView(model: DashboardModel, width?: number, height?: nu
 
     // Campaigns with progress
     if (activeCampaigns.length > 0) {
+      const doneCampaignIds = new Set(snap.campaigns.filter(c => c.status === 'DONE').map(c => c.id));
       lines.push('');
       lines.push(separator({ label: 'Campaigns', borderToken: t.theme.border.secondary, width: pw }));
       for (const c of activeCampaigns) {
@@ -224,7 +225,9 @@ export function dashboardView(model: DashboardModel, width?: number, height?: nu
         const cBarWidth = Math.max(6, Math.min(12, pw - 40));
         const cBar = cTotal > 0 ? progressBar(cPct, { width: cBarWidth }) : '';
         const label = c.title.slice(0, Math.max(0, pw - 30));
-        lines.push(`   ${label}  ${cBar} ${cDone}/${cTotal}`);
+        const blockedDeps = (c.dependsOn ?? []).filter(dep => !doneCampaignIds.has(dep));
+        const blockedMark = blockedDeps.length > 0 ? styled(t.theme.semantic.warning, ' [blocked]') : '';
+        lines.push(`   ${label}  ${cBar} ${cDone}/${cTotal}${blockedMark}`);
       }
     }
 
