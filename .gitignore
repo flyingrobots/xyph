@@ -9,3 +9,4 @@ trust/*.sk
 coverage/
 *.tsbuildinfo
 .codex/
+.claude/
