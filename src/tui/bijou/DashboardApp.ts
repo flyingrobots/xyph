@@ -497,13 +497,19 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
 
         // ── Quit confirmation (modal dialog) ──────────────────────────
         if (msg.key === 'q' && !msg.ctrl && !msg.alt && model.mode === 'normal') {
+          const t = getTheme();
+          const quitHint =
+            styled(t.theme.semantic.info, 'q') + ' / ' +
+            styled(t.theme.semantic.info, 'y') + '  confirm · ' +
+            styled(t.theme.semantic.error, 'n') + ' / ' +
+            styled(t.theme.semantic.error, 'esc') + '  cancel';
           return [{
             ...model,
             mode: 'confirm',
             confirmState: {
               prompt: 'Quit XYPH?',
               action: { kind: 'quit' },
-              hint: 'q / y  confirm · n / esc  cancel',
+              hint: quitHint,
             },
           }, []];
         }
@@ -929,11 +935,12 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
       case 'scroll-col-down': {
         if (model.activeView !== 'dashboard' || !model.dashboardView) return [model, []];
         const step = Math.max(1, model.rows - 6);
+        const maxScroll = model.rows * 5;
         const dv = model.dashboardView;
         if (dv.focusPanel === 'in-progress') {
-          return [{ ...model, dashboardView: { ...dv, leftScrollY: dv.leftScrollY + step } }, []];
+          return [{ ...model, dashboardView: { ...dv, leftScrollY: Math.min(dv.leftScrollY + step, maxScroll) } }, []];
         }
-        return [{ ...model, dashboardView: { ...dv, rightScrollY: dv.rightScrollY + step } }, []];
+        return [{ ...model, dashboardView: { ...dv, rightScrollY: Math.min(dv.rightScrollY + step, maxScroll) } }, []];
       }
 
       case 'scroll-col-up': {

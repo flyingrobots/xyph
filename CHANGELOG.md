@@ -4,7 +4,7 @@ All notable changes to XYPH will be documented in this file.
 
 ## [Unreleased]
 
-### Changed — Dashboard Scrolling + Navigation Overhaul
+### Changed
 
 **Navigation model rework:**
 - Number keys `1`–`5` now jump directly to views (dashboard/roadmap/submissions/lineage/backlog), replacing `Tab`/`Shift+Tab` view cycling
@@ -19,6 +19,16 @@ All notable changes to XYPH will be documented in this file.
 
 **Confirm overlay:**
 - `confirmOverlay()` now accepts an optional custom hint string (used by quit confirmation dialog)
+
+**Quit flow redesign:**
+- Double-press `q` replaced with a modal confirmation dialog (`q` → confirm `y`/`q` or cancel `n`/`Esc`)
+
+**Activity feed enrichment:**
+- Recent Activity events now show quest titles alongside truncated IDs for better scanability
+
+### Removed
+
+- **Alert bar**: orphan/forked warning bar removed from dashboard header; diagnostic data moved to the Health section
 
 ### Fixed
 

@@ -252,6 +252,29 @@ describe('DashboardApp', () => {
       expect(afterPgDn2.dashboardView?.leftScrollY).toBe(0);
     });
 
+    it('PageUp scrolls the focused dashboard column back', () => {
+      const app = makeApp();
+      const [initial] = app.init();
+      const loaded: DashboardModel = {
+        ...initial,
+        showLanding: false,
+        loading: false,
+        activeView: 'dashboard',
+      };
+
+      // PageDown to scroll left column > 0
+      const [afterPgDn] = app.update(makeKey('pagedown'), loaded);
+      expect(afterPgDn.dashboardView?.leftScrollY).toBeGreaterThan(0);
+
+      // PageUp should decrease leftScrollY
+      const [afterPgUp] = app.update(makeKey('pageup'), afterPgDn);
+      expect(afterPgUp.dashboardView?.leftScrollY).toBe(0);
+
+      // PageUp from scrollY=0 stays at 0
+      const [afterPgUp2] = app.update(makeKey('pageup'), afterPgUp);
+      expect(afterPgUp2.dashboardView?.leftScrollY).toBe(0);
+    });
+
     it('toggles help with ?', () => {
       const app = makeApp();
       const [initial] = app.init();

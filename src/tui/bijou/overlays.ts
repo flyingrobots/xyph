@@ -7,8 +7,7 @@ import { styled, getTheme } from '../theme/index.js';
 export function confirmOverlay(content: string, prompt: string, cols: number, rows: number, customHint?: string): string {
   const t = getTheme();
   const hint = customHint
-    ? styled(t.theme.semantic.muted, customHint)
-    : 'y / n'.replace('y', styled(t.theme.semantic.info, 'y')).replace('n', styled(t.theme.semantic.error, 'n'));
+    ?? 'y / n'.replace('y', styled(t.theme.semantic.info, 'y')).replace('n', styled(t.theme.semantic.error, 'n'));
 
   const overlay = modal({
     body: prompt,
