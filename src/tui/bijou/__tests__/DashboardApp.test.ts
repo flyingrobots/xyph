@@ -189,37 +189,67 @@ describe('DashboardApp', () => {
       expect(updated.rows).toBe(40);
     });
 
-    it('cycles through 5 views with Tab', () => {
+    it('number keys 1-5 jump to respective views', () => {
       const app = makeApp();
       const [initial] = app.init();
       const loaded: DashboardModel = { ...initial, showLanding: false, loading: false };
 
-      const [afterTab1] = app.update(makeKey('tab'), loaded);
-      expect(afterTab1.activeView).toBe('roadmap');
+      const [after1] = app.update(makeKey('1'), loaded);
+      expect(after1.activeView).toBe('dashboard');
 
-      const [afterTab2] = app.update(makeKey('tab'), afterTab1);
-      expect(afterTab2.activeView).toBe('submissions');
+      const [after2] = app.update(makeKey('2'), loaded);
+      expect(after2.activeView).toBe('roadmap');
 
-      const [afterTab3] = app.update(makeKey('tab'), afterTab2);
-      expect(afterTab3.activeView).toBe('lineage');
+      const [after3] = app.update(makeKey('3'), loaded);
+      expect(after3.activeView).toBe('submissions');
 
-      const [afterTab4] = app.update(makeKey('tab'), afterTab3);
-      expect(afterTab4.activeView).toBe('backlog');
+      const [after4] = app.update(makeKey('4'), loaded);
+      expect(after4.activeView).toBe('lineage');
 
-      const [afterTab5] = app.update(makeKey('tab'), afterTab4);
-      expect(afterTab5.activeView).toBe('dashboard');
+      const [after5] = app.update(makeKey('5'), loaded);
+      expect(after5.activeView).toBe('backlog');
     });
 
-    it('cycles views backward with Shift+Tab', () => {
+    it('Tab on dashboard switches focusPanel', () => {
       const app = makeApp();
       const [initial] = app.init();
-      const loaded: DashboardModel = { ...initial, showLanding: false, loading: false };
+      const loaded: DashboardModel = {
+        ...initial,
+        showLanding: false,
+        loading: false,
+        activeView: 'dashboard',
+      };
 
-      const [afterShiftTab] = app.update(
-        makeKey('tab', { shift: true }),
-        loaded,
-      );
-      expect(afterShiftTab.activeView).toBe('backlog');
+      expect(loaded.dashboardView?.focusPanel).toBe('in-progress');
+
+      const [afterTab] = app.update(makeKey('tab'), loaded);
+      expect(afterTab.dashboardView?.focusPanel).toBe('my-issues');
+      expect(afterTab.dashboardView?.focusRow).toBe(0);
+
+      const [afterTab2] = app.update(makeKey('tab'), afterTab);
+      expect(afterTab2.dashboardView?.focusPanel).toBe('in-progress');
+    });
+
+    it('PageDown scrolls the focused dashboard column', () => {
+      const app = makeApp();
+      const [initial] = app.init();
+      const loaded: DashboardModel = {
+        ...initial,
+        showLanding: false,
+        loading: false,
+        activeView: 'dashboard',
+      };
+
+      // PageDown on left column (in-progress is default focus)
+      const [afterPgDn] = app.update(makeKey('pagedown'), loaded);
+      expect(afterPgDn.dashboardView?.leftScrollY).toBeGreaterThan(0);
+      expect(afterPgDn.dashboardView?.rightScrollY).toBe(0);
+
+      // Switch to right panel, then PageDown
+      const [afterTab] = app.update(makeKey('tab'), loaded);
+      const [afterPgDn2] = app.update(makeKey('pagedown'), afterTab);
+      expect(afterPgDn2.dashboardView?.rightScrollY).toBeGreaterThan(0);
+      expect(afterPgDn2.dashboardView?.leftScrollY).toBe(0);
     });
 
     it('toggles help with ?', () => {
@@ -269,13 +299,14 @@ describe('DashboardApp', () => {
       expect(updated.showLanding).toBe(false);
     });
 
-    it('q on landing returns quit command', () => {
+    it('q on landing enters quit confirm mode', () => {
       const app = makeApp();
       const [initial] = app.init();
       const loaded: DashboardModel = { ...initial, loading: false };
 
-      const [, cmds] = app.update(makeKey('q'), loaded);
-      expect(cmds.length).toBeGreaterThan(0);
+      const [afterQ] = app.update(makeKey('q'), loaded);
+      expect(afterQ.mode).toBe('confirm');
+      expect(afterQ.confirmState?.action.kind).toBe('quit');
     });
 
     it('Ctrl+C quits from normal mode', () => {
@@ -303,13 +334,95 @@ describe('DashboardApp', () => {
       expect(cmds.length).toBeGreaterThan(0);
     });
 
-    it('q quits from help mode', () => {
+    it('q on help mode enters quit confirm mode', () => {
       const app = makeApp();
       const [initial] = app.init();
       const helpMode: DashboardModel = { ...initial, showLanding: false, showHelp: true };
 
-      const [, cmds] = app.update(makeKey('q'), helpMode);
+      const [afterQ] = app.update(makeKey('q'), helpMode);
+      expect(afterQ.mode).toBe('confirm');
+      expect(afterQ.confirmState?.action.kind).toBe('quit');
+    });
+
+    // ── Quit confirmation modal ─────────────────────────────────────
+
+    it('q in normal mode enters quit confirm mode', () => {
+      const app = makeApp();
+      const [initial] = app.init();
+      const normal: DashboardModel = { ...initial, showLanding: false, loading: false };
+
+      const [afterQ, cmds] = app.update(makeKey('q'), normal);
+      expect(afterQ.mode).toBe('confirm');
+      expect(afterQ.confirmState?.action.kind).toBe('quit');
+      expect(cmds).toHaveLength(0);
+    });
+
+    it('y in quit confirm mode quits', () => {
+      const app = makeApp();
+      const [initial] = app.init();
+      const withQuitConfirm: DashboardModel = {
+        ...initial,
+        showLanding: false,
+        loading: false,
+        mode: 'confirm',
+        confirmState: { prompt: 'Quit XYPH?', action: { kind: 'quit' }, hint: 'q / y  confirm · n / esc  cancel' },
+      };
+
+      const [afterY, cmds] = app.update(makeKey('y'), withQuitConfirm);
+      expect(afterY.mode).toBe('normal');
+      expect(afterY.confirmState).toBeNull();
       expect(cmds.length).toBeGreaterThan(0);
+    });
+
+    it('q in quit confirm mode quits', () => {
+      const app = makeApp();
+      const [initial] = app.init();
+      const withQuitConfirm: DashboardModel = {
+        ...initial,
+        showLanding: false,
+        loading: false,
+        mode: 'confirm',
+        confirmState: { prompt: 'Quit XYPH?', action: { kind: 'quit' }, hint: 'q / y  confirm · n / esc  cancel' },
+      };
+
+      const [afterQ, cmds] = app.update(makeKey('q'), withQuitConfirm);
+      expect(afterQ.mode).toBe('normal');
+      expect(afterQ.confirmState).toBeNull();
+      expect(cmds.length).toBeGreaterThan(0);
+    });
+
+    it('n in quit confirm mode cancels', () => {
+      const app = makeApp();
+      const [initial] = app.init();
+      const withQuitConfirm: DashboardModel = {
+        ...initial,
+        showLanding: false,
+        loading: false,
+        mode: 'confirm',
+        confirmState: { prompt: 'Quit XYPH?', action: { kind: 'quit' }, hint: 'q / y  confirm · n / esc  cancel' },
+      };
+
+      const [afterN, cmds] = app.update(makeKey('n'), withQuitConfirm);
+      expect(afterN.mode).toBe('normal');
+      expect(afterN.confirmState).toBeNull();
+      expect(cmds).toHaveLength(0);
+    });
+
+    it('escape in quit confirm mode cancels', () => {
+      const app = makeApp();
+      const [initial] = app.init();
+      const withQuitConfirm: DashboardModel = {
+        ...initial,
+        showLanding: false,
+        loading: false,
+        mode: 'confirm',
+        confirmState: { prompt: 'Quit XYPH?', action: { kind: 'quit' }, hint: 'q / y  confirm · n / esc  cancel' },
+      };
+
+      const [afterEsc, cmds] = app.update(makeKey('escape'), withQuitConfirm);
+      expect(afterEsc.mode).toBe('normal');
+      expect(afterEsc.confirmState).toBeNull();
+      expect(cmds).toHaveLength(0);
     });
 
     // ── Selection ─────────────────────────────────────────────────────

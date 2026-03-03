@@ -45,6 +45,9 @@ export type PendingWrite =
   | { kind: 'approve'; patchsetId: string }
   | { kind: 'request-changes'; patchsetId: string };
 
+/** Actions that can be confirmed via the confirm overlay. */
+export type ConfirmAction = PendingWrite | { kind: 'quit' };
+
 export interface RoadmapState {
   table: NavigableTableState;
   dagScrollY: number;
@@ -71,6 +74,8 @@ export interface DashboardViewState {
   focusPanel: 'in-progress' | 'my-issues';
   focusRow: number;
   detailId: string | null;
+  leftScrollY: number;
+  rightScrollY: number;
 }
 
 export interface DashboardModel {
@@ -99,7 +104,7 @@ export interface DashboardModel {
 
   // Interaction mode
   mode: 'normal' | 'confirm' | 'input' | 'palette';
-  confirmState: { prompt: string; action: PendingWrite } | null;
+  confirmState: { prompt: string; action: ConfirmAction; hint?: string } | null;
   inputState: { label: string; value: string; action: PendingWrite } | null;
   paletteState: CommandPaletteState | null;
 
@@ -108,9 +113,6 @@ export interface DashboardModel {
 
   /** Guards against double-writes while a write command is in flight. */
   writePending: boolean;
-
-  /** Timestamp of first q press for quit confirmation (press q twice within 2s). */
-  quitPending?: number;
 
   /** The current user's writer ID (e.g. 'agent.james'). Used to filter personal panels. */
   agentId?: string;
@@ -126,15 +128,13 @@ export type DashboardMsg =
   | { type: 'pulse-done' }
   | { type: 'write-success'; message: string }
   | { type: 'write-error'; message: string }
-  | { type: 'dismiss-toast'; expiresAt: number }
-  | { type: 'quit-confirm-expired'; pressedAt: number };
+  | { type: 'dismiss-toast'; expiresAt: number };
 
 // ── Keybindings ─────────────────────────────────────────────────────────
 
 type GlobalAction =
   | { type: 'quit' }
-  | { type: 'next-view' }
-  | { type: 'prev-view' }
+  | { type: 'jump-view'; view: ViewName }
   | { type: 'refresh' }
   | { type: 'toggle-help' };
 
@@ -152,14 +152,20 @@ type ViewAction =
   | { type: 'scroll-dag-left' }
   | { type: 'scroll-dag-right' }
   | { type: 'page-down' }
-  | { type: 'page-up' };
+  | { type: 'page-up' }
+  | { type: 'focus-panel' }
+  | { type: 'scroll-col-down' }
+  | { type: 'scroll-col-up' };
 
 function buildGlobalKeys(): KeyMap<GlobalAction> {
   return createKeyMap<GlobalAction>()
     .group('Global', g => g
       .bind('q', 'Quit', { type: 'quit' })
-      .bind('tab', 'Next view', { type: 'next-view' })
-      .bind('shift+tab', 'Previous view', { type: 'prev-view' })
+      .bind('1', 'Dashboard', { type: 'jump-view', view: 'dashboard' })
+      .bind('2', 'Roadmap', { type: 'jump-view', view: 'roadmap' })
+      .bind('3', 'Submissions', { type: 'jump-view', view: 'submissions' })
+      .bind('4', 'Lineage', { type: 'jump-view', view: 'lineage' })
+      .bind('5', 'Backlog', { type: 'jump-view', view: 'backlog' })
       .bind('r', 'Refresh', { type: 'refresh' })
       .bind('?', 'Toggle help', { type: 'toggle-help' })
     );
@@ -214,13 +220,14 @@ function buildBacklogKeys(): KeyMap<ViewAction> {
 function buildDashboardKeys(): KeyMap<ViewAction> {
   return createKeyMap<ViewAction>()
     .group('Dashboard', g => g
+      .bind('tab', 'Switch panel', { type: 'focus-panel' })
       .bind('j', 'Select next', { type: 'select-next' })
       .bind('down', 'Select next', { type: 'select-next' })
       .bind('k', 'Select prev', { type: 'select-prev' })
       .bind('up', 'Select prev', { type: 'select-prev' })
       .bind('enter', 'Show detail', { type: 'expand' })
-      .bind('pagedown', 'Next panel', { type: 'page-down' })
-      .bind('pageup', 'Prev panel', { type: 'page-up' })
+      .bind('pagedown', 'Scroll down', { type: 'scroll-col-down' })
+      .bind('pageup', 'Scroll up', { type: 'scroll-col-up' })
     );
 }
 
@@ -303,13 +310,6 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
     };
   }
 
-  function delayedQuitExpire(pressedAt: number): Cmd<DashboardMsg> {
-    return async (emit) => {
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      emit({ type: 'quit-confirm-expired', pressedAt });
-    };
-  }
-
   /** Execute a PendingWrite action. For input-based actions, value comes from inputState. */
   function executeWrite(action: PendingWrite, inputValue?: string): Cmd<DashboardMsg> {
     switch (action.kind) {
@@ -361,7 +361,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         submissions: { table: createNavigableTableState({ columns: [], rows: [], height: 20 }), expandedId: null, detailScrollY: 0 },
         backlog: { table: createNavigableTableState({ columns: [], rows: [], height: 20 }) },
         lineage: { selectedIndex: -1, collapsedIntents: [] },
-        dashboardView: { focusPanel: 'in-progress', focusRow: 0, detailId: null },
+        dashboardView: { focusPanel: 'in-progress', focusRow: 0, detailId: null, leftScrollY: 0, rightScrollY: 0 },
         pulsePhase: 0,
         mode: 'normal',
         confirmState: null,
@@ -410,7 +410,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         if (msg.requestId !== model.requestId) return [model, []];
         const snap = msg.snapshot;
         // Clamp dashboard focusRow to visible panel size after data refresh
-        const currentDv = model.dashboardView ?? { focusPanel: 'in-progress' as const, focusRow: 0, detailId: null };
+        const currentDv = model.dashboardView ?? { focusPanel: 'in-progress' as const, focusRow: 0, detailId: null, leftScrollY: 0, rightScrollY: 0 };
         const panelCount = dashboardPanelCount(snap, model, currentDv.focusPanel);
         const clampedFocusRow = panelCount > 0 ? Math.min(currentDv.focusRow, panelCount - 1) : 0;
         return [{
@@ -466,14 +466,6 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         return [{ ...model, toast: null }, []];
       }
 
-      // Handle quit confirmation expiry
-      if (msg.type === 'quit-confirm-expired') {
-        if (model.quitPending === msg.pressedAt) {
-          return [{ ...model, quitPending: undefined }, []];
-        }
-        return [model, []];
-      }
-
       // Handle pulse animation
       if (msg.type === 'pulse-frame') {
         if (!model.showLanding) return [model, []];
@@ -503,19 +495,27 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
           return [model, [quit()]];
         }
 
-        // ── Quit confirmation (press q twice within 2s) ──────────────
+        // ── Quit confirmation (modal dialog) ──────────────────────────
         if (msg.key === 'q' && !msg.ctrl && !msg.alt && model.mode === 'normal') {
-          if (model.quitPending !== undefined && (Date.now() - model.quitPending) < 2000) {
-            return [model, [quit()]];
-          }
-          const pressedAt = Date.now();
-          return [{ ...model, quitPending: pressedAt }, [delayedQuitExpire(pressedAt)]];
+          return [{
+            ...model,
+            mode: 'confirm',
+            confirmState: {
+              prompt: 'Quit XYPH?',
+              action: { kind: 'quit' },
+              hint: 'q / y  confirm · n / esc  cancel',
+            },
+          }, []];
         }
 
         // ── Confirm mode ────────────────────────────────────────────────
         if (model.mode === 'confirm' && model.confirmState) {
-          if (msg.key === 'y') {
-            const action = model.confirmState.action;
+          const isQuitConfirm = model.confirmState.action.kind === 'quit';
+          if (msg.key === 'y' || (msg.key === 'q' && isQuitConfirm)) {
+            const { action } = model.confirmState;
+            if (action.kind === 'quit') {
+              return [{ ...model, mode: 'normal', confirmState: null }, [quit()]];
+            }
             return [{
               ...model,
               mode: 'normal',
@@ -593,7 +593,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
 
         // ── Landing screen ──────────────────────────────────────────────
         if (model.showLanding) {
-          // q already caught by quit confirmation above
+          // q caught by quit confirm dialog above
           if (!model.loading) {
             return [{ ...model, showLanding: false }, []];
           }
@@ -602,7 +602,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
 
         // ── Help screen ─────────────────────────────────────────────────
         if (model.showHelp) {
-          // q already caught by quit confirmation above
+          // q caught by quit confirm dialog above
           if (msg.key === '?' || msg.key === 'escape') {
             return [{ ...model, showHelp: false }, []];
           }
@@ -620,16 +620,8 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
           switch (globalAction.type) {
             case 'quit':
               return [model, [quit()]];
-            case 'next-view': {
-              const idx = VIEWS.indexOf(model.activeView);
-              const next = VIEWS[(idx + 1) % VIEWS.length] ?? 'roadmap';
-              return [{ ...model, activeView: next }, []];
-            }
-            case 'prev-view': {
-              const idx = VIEWS.indexOf(model.activeView);
-              const prev = VIEWS[(idx - 1 + VIEWS.length) % VIEWS.length] ?? 'roadmap';
-              return [{ ...model, activeView: prev }, []];
-            }
+            case 'jump-view':
+              return [{ ...model, activeView: globalAction.view }, []];
             case 'refresh': {
               const nextReqId = model.requestId + 1;
               return [{ ...model, loading: true, error: null, requestId: nextReqId }, [fetchSnapshot(nextReqId)]];
@@ -679,9 +671,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
 
       // Hints line (auto-generated from keymaps — view-specific when available)
       const vk = viewKeyMap(model.activeView);
-      const hints = model.quitPending !== undefined
-        ? '  Quit? Press q again.'
-        : '  ' + (vk ? helpShort(vk) : helpShort(globalKeys));
+      const hints = '  ' + (vk ? helpShort(vk) : helpShort(globalKeys));
 
       // Status line with toast
       const statusLine = renderStatusLine(model, t);
@@ -700,7 +690,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
 
         // Overlay rendering for modal modes
         if (model.mode === 'confirm' && model.confirmState) {
-          return confirmOverlay(content, model.confirmState.prompt, model.cols, h);
+          return confirmOverlay(content, model.confirmState.prompt, model.cols, h, model.confirmState.hint);
         }
         if (model.mode === 'input' && model.inputState) {
           return inputOverlay(content, model.inputState.label, model.inputState.value, model.cols, h);
@@ -918,11 +908,6 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         if (model.activeView === 'backlog') {
           return [{ ...model, backlog: { ...model.backlog, table: navTablePageDown(model.backlog.table) } }, []];
         }
-        // Toggle between dashboard panels (symmetric — both directions cycle)
-        if (model.activeView === 'dashboard' && model.dashboardView) {
-          const nextPanel = model.dashboardView.focusPanel === 'in-progress' ? 'my-issues' as const : 'in-progress' as const;
-          return [{ ...model, dashboardView: { ...model.dashboardView, focusPanel: nextPanel, focusRow: 0 } }, []];
-        }
         return [model, []];
       }
       case 'page-up': {
@@ -932,12 +917,33 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         if (model.activeView === 'backlog') {
           return [{ ...model, backlog: { ...model.backlog, table: navTablePageUp(model.backlog.table) } }, []];
         }
-        // Toggle between dashboard panels (symmetric — both directions cycle)
-        if (model.activeView === 'dashboard' && model.dashboardView) {
-          const nextPanel = model.dashboardView.focusPanel === 'in-progress' ? 'my-issues' as const : 'in-progress' as const;
-          return [{ ...model, dashboardView: { ...model.dashboardView, focusPanel: nextPanel, focusRow: 0 } }, []];
-        }
         return [model, []];
+      }
+
+      case 'focus-panel': {
+        if (model.activeView !== 'dashboard' || !model.dashboardView) return [model, []];
+        const nextPanel = model.dashboardView.focusPanel === 'in-progress' ? 'my-issues' as const : 'in-progress' as const;
+        return [{ ...model, dashboardView: { ...model.dashboardView, focusPanel: nextPanel, focusRow: 0 } }, []];
+      }
+
+      case 'scroll-col-down': {
+        if (model.activeView !== 'dashboard' || !model.dashboardView) return [model, []];
+        const step = Math.max(1, model.rows - 6);
+        const dv = model.dashboardView;
+        if (dv.focusPanel === 'in-progress') {
+          return [{ ...model, dashboardView: { ...dv, leftScrollY: dv.leftScrollY + step } }, []];
+        }
+        return [{ ...model, dashboardView: { ...dv, rightScrollY: dv.rightScrollY + step } }, []];
+      }
+
+      case 'scroll-col-up': {
+        if (model.activeView !== 'dashboard' || !model.dashboardView) return [model, []];
+        const step = Math.max(1, model.rows - 6);
+        const dv = model.dashboardView;
+        if (dv.focusPanel === 'in-progress') {
+          return [{ ...model, dashboardView: { ...dv, leftScrollY: Math.max(0, dv.leftScrollY - step) } }, []];
+        }
+        return [{ ...model, dashboardView: { ...dv, rightScrollY: Math.max(0, dv.rightScrollY - step) } }, []];
       }
 
       default: {
@@ -977,7 +983,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
       }
       case 'dashboard': {
         if (!model.dashboardView) {
-          return { ...model, dashboardView: { focusPanel: 'in-progress', focusRow: 0, detailId: null } };
+          return { ...model, dashboardView: { focusPanel: 'in-progress', focusRow: 0, detailId: null, leftScrollY: 0, rightScrollY: 0 } };
         }
         const { focusPanel } = model.dashboardView;
         const count = dashboardPanelCount(snap, model, focusPanel);
@@ -1079,11 +1085,11 @@ function buildPaletteItems(model: DashboardModel): CommandPaletteItem[] {
     { id: 'refresh',          label: 'Refresh snapshot',    category: 'Global',  shortcut: 'r' },
     { id: 'help',             label: 'Toggle help',         category: 'Global',  shortcut: '?' },
     { id: 'quit',             label: 'Quit',                category: 'Global',  shortcut: 'q' },
-    { id: 'view-dashboard',   label: 'Dashboard',           category: 'Views',   shortcut: 'Tab' },
-    { id: 'view-roadmap',     label: 'Roadmap',             category: 'Views' },
-    { id: 'view-submissions', label: 'Submissions',         category: 'Views' },
-    { id: 'view-lineage',     label: 'Lineage',             category: 'Views' },
-    { id: 'view-backlog',     label: 'Backlog',             category: 'Views' },
+    { id: 'view-dashboard',   label: 'Dashboard',           category: 'Views',   shortcut: '1' },
+    { id: 'view-roadmap',     label: 'Roadmap',             category: 'Views',   shortcut: '2' },
+    { id: 'view-submissions', label: 'Submissions',         category: 'Views',   shortcut: '3' },
+    { id: 'view-lineage',     label: 'Lineage',             category: 'Views',   shortcut: '4' },
+    { id: 'view-backlog',     label: 'Backlog',             category: 'Views',   shortcut: '5' },
   ];
 
   if (model.activeView === 'roadmap' && model.roadmap.table.rows.length > 0) {

@@ -4,10 +4,11 @@ import { styled, getTheme } from '../theme/index.js';
 /**
  * Render a confirm dialog as a centered modal overlaid on the given content.
  */
-export function confirmOverlay(content: string, prompt: string, cols: number, rows: number): string {
+export function confirmOverlay(content: string, prompt: string, cols: number, rows: number, customHint?: string): string {
   const t = getTheme();
-  const hintPlain = 'y / n';
-  const hint = hintPlain.replace('y', styled(t.theme.semantic.info, 'y')).replace('n', styled(t.theme.semantic.error, 'n'));
+  const hint = customHint
+    ? styled(t.theme.semantic.muted, customHint)
+    : 'y / n'.replace('y', styled(t.theme.semantic.info, 'y')).replace('n', styled(t.theme.semantic.error, 'n'));
 
   const overlay = modal({
     body: prompt,

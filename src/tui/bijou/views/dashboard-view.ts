@@ -1,9 +1,9 @@
 import {
-  headerBox, progressBar, table as bijouTable, alert,
+  headerBox, progressBar, table as bijouTable,
   separator, badge, timeline, enumeratedList,
   type TimelineEvent, type BaseStatusKey,
 } from '@flyingrobots/bijou';
-import { flex } from '@flyingrobots/bijou-tui';
+import { flex, viewport } from '@flyingrobots/bijou-tui';
 import { styled, styledStatus, getTheme } from '../../theme/index.js';
 import { statusVariant, formatAge } from '../../view-helpers.js';
 import type { DashboardModel } from '../DashboardApp.js';
@@ -28,13 +28,10 @@ export function dashboardView(model: DashboardModel, width?: number, height?: nu
   const totalNonBacklog = nonBacklog.length;
   const pct = totalNonBacklog > 0 ? Math.round((doneQuests.length / totalNonBacklog) * 100) : 0;
 
-  // ── Alert bar ─────────────────────────────────────────────────────
+  // ── Health stats ─────────────────────────────────────────────────
   const withIntent = nonBacklog.filter(q => q.intentId !== undefined).length;
   const orphanCount = totalNonBacklog - withIntent;
   const forkedCount = snap.submissions.filter(s => s.headsCount > 1).length;
-  const alerts: string[] = [];
-  if (orphanCount > 0) alerts.push(`${orphanCount} orphan quest${orphanCount > 1 ? 's' : ''}`);
-  if (forkedCount > 0) alerts.push(`${forkedCount} forked patchset${forkedCount > 1 ? 's' : ''}`);
 
   // ── In Progress ───────────────────────────────────────────────────
   const inProgress = snap.quests.filter(q => q.status === 'IN_PROGRESS');
@@ -94,16 +91,36 @@ export function dashboardView(model: DashboardModel, width?: number, height?: nu
     : pendingReview.slice(0, 5);
 
   // ── Activity Feed ─────────────────────────────────────────────────
+  const submissionById = new Map(snap.submissions.map(s => [s.id, s]));
+  const patchsetToQuestId = new Map<string, string>();
+  for (const s of snap.submissions) {
+    if (s.tipPatchsetId) {
+      patchsetToQuestId.set(s.tipPatchsetId, s.questId);
+    }
+  }
+
   const activity: ActivityEvent[] = [];
   for (const s of snap.submissions) {
-    activity.push({ ts: s.submittedAt, text: `${s.submittedBy} submitted ${s.id.replace(/^submission:/, '')}` });
+    const q = questById.get(s.questId);
+    const title = q ? q.title : s.questId;
+    const shortId = s.id.replace(/^submission:/, '').slice(0, 7);
+    activity.push({ ts: s.submittedAt, text: `${s.submittedBy} submitted ${title} ${shortId}` });
   }
   for (const r of snap.reviews) {
     const verb = r.verdict === 'approve' ? 'approved' : 'reviewed';
-    activity.push({ ts: r.reviewedAt, text: `${r.reviewedBy} ${verb} ${r.patchsetId.replace(/^patchset:/, '')}` });
+    const qId = patchsetToQuestId.get(r.patchsetId);
+    const q = qId ? questById.get(qId) : undefined;
+    const title = q ? q.title : r.patchsetId;
+    const shortId = r.patchsetId.replace(/^patchset:/, '').slice(0, 7);
+    activity.push({ ts: r.reviewedAt, text: `${r.reviewedBy} ${verb} ${title} ${shortId}` });
   }
   for (const d of snap.decisions) {
-    activity.push({ ts: d.decidedAt, text: `${d.decidedBy} ${d.kind}d ${d.submissionId.replace(/^submission:/, '')}` });
+    const sub = submissionById.get(d.submissionId);
+    const qId = sub ? sub.questId : undefined;
+    const q = qId ? questById.get(qId) : undefined;
+    const title = q ? q.title : d.submissionId;
+    const shortId = d.submissionId.replace(/^submission:/, '').slice(0, 7);
+    activity.push({ ts: d.decidedAt, text: `${d.decidedBy} ${d.kind}d ${title} ${shortId}` });
   }
   activity.sort((a, b) => b.ts - a.ts);
   const recentActivity = activity.slice(0, 6);
@@ -113,7 +130,7 @@ export function dashboardView(model: DashboardModel, width?: number, height?: nu
 
   // ── Left column (main content) ──────────────────────────────────
 
-  function renderLeftColumn(pw: number, _ph: number): string {
+  function renderLeftColumn(pw: number, ph: number): string {
     const lines: string[] = [];
 
     // Project header with progress bar (full-width)
@@ -124,11 +141,6 @@ export function dashboardView(model: DashboardModel, width?: number, height?: nu
       borderToken: t.theme.border.primary,
       width: pw,
     }));
-
-    // Alert bar
-    if (alerts.length > 0) {
-      lines.push(alert(alerts.join(' \u00B7 '), { variant: 'warning' }));
-    }
 
     // Graph + DAG stats (compact)
     const statParts: string[] = [];
@@ -266,12 +278,13 @@ export function dashboardView(model: DashboardModel, width?: number, height?: nu
       lines.push(styled(t.theme.semantic.muted, ` \u25B8 Graveyard (${graveyardCount} quest${graveyardCount > 1 ? 's' : ''})`));
     }
 
-    return lines.join('\n');
+    const content = lines.join('\n');
+    return viewport({ width: pw, height: ph, content, scrollY: dv?.leftScrollY ?? 0 });
   }
 
   // ── Right column (My Stuff) ─────────────────────────────────────
 
-  function renderRightColumn(pw: number, _ph: number): string {
+  function renderRightColumn(pw: number, ph: number): string {
     const lines: string[] = [];
 
     // My Issues
@@ -327,7 +340,8 @@ export function dashboardView(model: DashboardModel, width?: number, height?: nu
       lines.push(timeline(tlEvents, { lineToken: t.theme.semantic.muted }));
     }
 
-    return lines.join('\n');
+    const content = lines.join('\n');
+    return viewport({ width: pw, height: ph, content, scrollY: dv?.rightScrollY ?? 0 });
   }
 
   // ── Layout ──────────────────────────────────────────────────────────
