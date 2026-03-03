@@ -4,6 +4,13 @@ All notable changes to XYPH will be documented in this file.
 
 ## [Unreleased]
 
+### Added — M11 Traceability Decomposition
+
+- **`intent:TRACEABILITY`** — sovereign intent for requirements, acceptance criteria, and evidence as first-class graph objects
+- **13 TRC quests** (TRC-001..013) under `campaign:TRACE`, spanning 4 phases: Foundation, Criteria & Evidence, Computed Status, Intelligence
+- **12 dependency edges** wiring the TRC quest execution order
+- **Rejected `task:traceability-m11`** placeholder — superseded by the concrete decomposition
+
 ### Fixed
 
 - **Cross-type `depend` guard** — `depend` now rejects edges between different type families (e.g. `task:` → `campaign:`); both nodes must be tasks, or both must be campaigns/milestones
