@@ -4,6 +4,22 @@ All notable changes to XYPH will be documented in this file.
 
 ## [Unreleased]
 
+### Added — M11 Phase 4: Intelligent Test Auto-Linking
+
+- **Config infrastructure** — layered resolution (env > `.xyph.json` > graph > defaults), `config get/set/list` CLI commands (ALK-001)
+- **`suggestion:` node type** — auto-detected test→criterion/requirement links with PENDING/ACCEPTED/REJECTED lifecycle, LayerScore breakdown (ALK-002)
+- **Suggestion lifecycle commands** — `accept`, `reject`, `accept-all` CLI commands with evidence materialization on accept (ALK-003)
+- **Test file parser** — TypeScript Compiler API extraction of imports, describe/it blocks, function/method calls (ALK-004)
+- **Heuristic scoring framework** — ScoreCombiner with weighted averaging and automatic renormalization for missing layers (ALK-005)
+- **4 heuristic layers** — FileNameLayer (0.4–0.8), ImportDescribeLayer (0.3–0.7), AstLayer (0.7–0.9), SemanticLayer (Jaccard ×3) (ALK-006)
+- **LLM port + Vault integration** — provider-agnostic LlmPort, VaultSecretAdapter for OS keychain, AnthropicLlmAdapter (ALK-007)
+- **LLM heuristic layer** — batch test-target analysis with structured JSON matching, graceful fallback (ALK-008)
+- **`xyph analyze` command** — full orchestration: config→glob→parse→score→classify→write, with `--dry-run`, `--layers`, `--min-confidence` (ALK-009)
+- **`status --view suggestions`** — pending/accepted/rejected suggestions with confidence and layer breakdown (ALK-010)
+- **`suggests` edge type** — suggestion→target linking in graph schema
+- **107 new tests** — 10 test suites covering all new domain services, entities, and analysis layers
+- **Dependencies** — `@git-stunts/vault` 1.0.1, `@anthropic-ai/sdk` 0.78.0
+
 ### Added — M11 Traceability Phases 1 & 2
 
 - **`story:` node type** — user stories with persona/goal/benefit, `story` actuator command (TRC-001)
