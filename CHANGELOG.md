@@ -11,6 +11,10 @@ All notable changes to XYPH will be documented in this file.
 - **`npm run graph:work`** — runs the generator, outputs to `docs/work/`
 - **43 new tests** — unit tests for all DagAnalysis functions (diamond, linear, empty, single-node, isolated-node graphs)
 
+### Changed
+
+- **Upgraded bijou to v1.2.0** — `@flyingrobots/bijou`, `@flyingrobots/bijou-node`, `@flyingrobots/bijou-tui` from v0.10.0 to v1.2.0
+
 ### Fixed — PR #32 Code Review
 
 - **DONE tasks inflated scheduling makespan** — `scheduleWorkers` now treats DONE tasks as weight 0, matching `computeCriticalPath` semantics (Codex P1)
