@@ -23,18 +23,18 @@ All notable changes to XYPH will be documented in this file.
 - **DagPane always built when quests exist** — snapshot refresh now creates `roadmap.dagPane` for quest-only graphs, while critical-path computation remains gated on `dagEdges.length > 0`
 - **Defensive DagPane sizing** — DagPane width/height are clamped to positive minimums on both resize and snapshot rebuild paths
 - **Unused analysis arg removed** — dropped the unused `sorted` parameter from `buildAnalysisInputs()` in `scripts/generate-work-dag.ts` and updated call sites
-- **SVG ignore scope narrowed** — `.gitignore` now targets generated DAG artifacts (`docs/assets/work-dag*.svg`) and documents why the pattern exists
+- **SVG ignore intent documented** — `.gitignore` targets generated DAG artifacts (`docs/assets/work-dag*.svg`) and now includes inline rationale for the pattern
 
 ### Fixed — PR #32 Code Review
 
 - **DONE tasks inflated scheduling makespan** — `scheduleWorkers` now treats DONE tasks as weight 0, matching `computeCriticalPath` semantics (Codex P1)
 - **CI traceability job failure** — added `fetch-depth: 0` and git identity config to traceability workflow; shallow clones lack commit objects needed by git-warp materialization
-- **Kahn's topo sort reimplemented in userland** — `generate-work-dag.ts` now delegates to `graph.traverse.topologicalSort()` instead of hand-rolling Kahn's algorithm (P1-01)
+- **Topological sort delegated to graph traversal API** — `generate-work-dag.ts` now delegates to `graph.traverse.topologicalSort()` instead of using a hand-rolled Kahn implementation (P1-01)
 - **Unused `reverseReachability` import** — removed from `generate-work-dag.ts` (P2-01)
 - **Dead `allNodes` set in `computeProvenance`** — removed unused variable construction loop (P2-02)
 - **Non-null assertions** — replaced `!` assertions in `generate-work-dag.ts` and `DagAnalysis.test.ts` with guard patterns (P3-01/02/04)
 - **Redundant `STATUS_COLORS['BACKLOG']!`** — extracted `DEFAULT_COLORS` constant, eliminating non-null assertion (P3-03)
-- **237KB SVG tracked in repo** — removed `docs/assets/work-dag.svg` from index, added `docs/assets/*.svg` to `.gitignore` (P4-01)
+- **237KB SVG tracked in repo** — removed `docs/assets/work-dag.svg` from index and added a generated-artifact ignore rule (`docs/assets/work-dag*.svg`) to `.gitignore` (P4-01)
 
 ### Added — Workflow Infrastructure
 

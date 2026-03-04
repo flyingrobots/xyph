@@ -323,14 +323,12 @@ describe('DashboardApp', () => {
         activeView: 'roadmap',
       };
 
-      const before = app.view(loaded);
+      const beforeScrollY = loaded.roadmap.fallbackScrollY;
       const [afterPgDn] = app.update(makeKey('pagedown'), loaded);
-      const afterDown = app.view(afterPgDn);
-      expect(afterDown).not.toBe(before);
+      expect(afterPgDn.roadmap.fallbackScrollY).toBeGreaterThan(beforeScrollY);
 
       const [afterPgUp] = app.update(makeKey('pageup'), afterPgDn);
-      const afterUp = app.view(afterPgUp);
-      expect(afterUp).toBe(before);
+      expect(afterPgUp.roadmap.fallbackScrollY).toBe(beforeScrollY);
     });
 
     it('toggles help with ?', () => {
