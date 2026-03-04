@@ -1,5 +1,8 @@
 /**
- * Suggestion lifecycle CLI commands — accept, reject, accept-all.
+ * Suggestion lifecycle CLI commands — suggestion accept, suggestion reject, suggestion accept-all.
+ *
+ * Namespaced under `suggestion` parent command to avoid collision with
+ * intake's `reject` command.
  *
  * Part of M11 Phase 4 — ALK-003.
  */
@@ -12,8 +15,12 @@ import { assertPrefix } from '../validators.js';
 export function registerSuggestionCommands(program: Command, ctx: CliContext): void {
   const withErrorHandler = createErrorHandler(ctx);
 
-  // --- accept: materialize a suggestion into a real evidence + edge ---
-  program
+  const suggestionCmd = program
+    .command('suggestion')
+    .description('Manage auto-linking suggestions');
+
+  // --- suggestion accept: materialize a suggestion into a real evidence + edge ---
+  suggestionCmd
     .command('accept <id>')
     .description('Accept a suggestion — materializes evidence + verifies/implements edge')
     .option('--rationale <text>', 'Why this suggestion is correct')
@@ -73,7 +80,7 @@ export function registerSuggestionCommands(program: Command, ctx: CliContext): v
 
       if (ctx.json) {
         ctx.jsonOut({
-          success: true, command: 'accept',
+          success: true, command: 'suggestion accept',
           data: {
             suggestionId: id, evidenceId, targetId, edgeType,
             rationale: opts.rationale ?? null, patch: sha,
@@ -85,8 +92,8 @@ export function registerSuggestionCommands(program: Command, ctx: CliContext): v
       ctx.ok(`[OK] Accepted ${id} → created ${evidenceId} ${edgeType} ${targetId}. Patch: ${sha.slice(0, 7)}`);
     }));
 
-  // --- reject: mark suggestion as REJECTED ---
-  program
+  // --- suggestion reject: mark suggestion as REJECTED ---
+  suggestionCmd
     .command('reject <id>')
     .description('Reject a suggestion — prevents re-suggestion')
     .requiredOption('--rationale <text>', 'Why this suggestion is incorrect')
@@ -118,7 +125,7 @@ export function registerSuggestionCommands(program: Command, ctx: CliContext): v
 
       if (ctx.json) {
         ctx.jsonOut({
-          success: true, command: 'reject',
+          success: true, command: 'suggestion reject',
           data: { suggestionId: id, rationale: opts.rationale, patch: sha },
         });
         return;
@@ -127,8 +134,8 @@ export function registerSuggestionCommands(program: Command, ctx: CliContext): v
       ctx.ok(`[OK] Rejected ${id}. Patch: ${sha.slice(0, 7)}`);
     }));
 
-  // --- accept-all: batch accept suggestions above a threshold ---
-  program
+  // --- suggestion accept-all: batch accept suggestions above a threshold ---
+  suggestionCmd
     .command('accept-all')
     .description('Batch-accept all PENDING suggestions above a confidence threshold')
     .option('--min-confidence <n>', 'Minimum confidence to accept', '0.85')
@@ -149,7 +156,7 @@ export function registerSuggestionCommands(program: Command, ctx: CliContext): v
       if (pending.length === 0) {
         if (ctx.json) {
           ctx.jsonOut({
-            success: true, command: 'accept-all',
+            success: true, command: 'suggestion accept-all',
             data: { accepted: 0, minConfidence: minConf },
           });
           return;
@@ -192,7 +199,7 @@ export function registerSuggestionCommands(program: Command, ctx: CliContext): v
 
       if (ctx.json) {
         ctx.jsonOut({
-          success: true, command: 'accept-all',
+          success: true, command: 'suggestion accept-all',
           data: {
             accepted,
             minConfidence: minConf,
