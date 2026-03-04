@@ -53,6 +53,7 @@ export type ConfirmAction = PendingWrite | { kind: 'quit' };
 export interface RoadmapState {
   table: NavigableTableState;
   dagPane: DagPaneState | null;
+  fallbackScrollY: number;
   detailScrollY: number;
 }
 
@@ -251,6 +252,23 @@ function clampIndex(idx: number, count: number): number {
   return Math.max(0, Math.min(idx, count - 1));
 }
 
+function computeDagPaneSize(cols: number, rows: number): { dagWidth: number; dagHeight: number } {
+  const leftWidth = Math.max(28, Math.floor(cols * 0.3));
+  return {
+    dagWidth: Math.max(1, cols - leftWidth - 1),
+    dagHeight: Math.max(1, rows - 3),
+  };
+}
+
+function roadmapPageStep(rows: number): number {
+  return Math.max(1, rows - 3);
+}
+
+function snapshotHasQuestDependencies(snap: GraphSnapshot | null): boolean {
+  if (!snap) return false;
+  return snap.quests.some((q) => (q.dependsOn?.length ?? 0) > 0);
+}
+
 // ── View hints (auto-generated from keymaps) ────────────────────────────
 
 // ── Factory ─────────────────────────────────────────────────────────────
@@ -358,7 +376,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         logoText: deps.logoText,
         requestId: 1,
         loadingProgress: 0,
-        roadmap: { table: createNavigableTableState({ columns: [], rows: [], height: 20 }), dagPane: null, detailScrollY: 0 },
+        roadmap: { table: createNavigableTableState({ columns: [], rows: [], height: 20 }), dagPane: null, fallbackScrollY: 0, detailScrollY: 0 },
         submissions: { table: createNavigableTableState({ columns: [], rows: [], height: 20 }), expandedId: null, detailScrollY: 0 },
         backlog: { table: createNavigableTableState({ columns: [], rows: [], height: 20 }) },
         lineage: { selectedIndex: -1, collapsedIntents: [] },
@@ -399,9 +417,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
       if (msg.type === 'resize') {
         let newDagPane = model.roadmap.dagPane;
         if (newDagPane) {
-          const leftWidth = Math.max(28, Math.floor(msg.columns * 0.3));
-          const dagWidth = msg.columns - leftWidth - 1;
-          const dagHeight = msg.rows - 3;
+          const { dagWidth, dagHeight } = computeDagPaneSize(msg.columns, msg.rows);
           newDagPane = createDagPaneState({
             source: newDagPane.source,
             width: dagWidth,
@@ -445,13 +461,13 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
           }
         }
         let newDagPane: DagPaneState | null = null;
-        if (dagEdges.length > 0) {
-          const { path: criticalPath } = computeCriticalPath(snap.sortedTaskIds, dagTasks, dagEdges);
+        if (dagTasks.length > 0) {
+          const criticalPath = dagEdges.length > 0
+            ? computeCriticalPath(snap.sortedTaskIds, dagTasks, dagEdges).path
+            : [];
           const critSet = new Set(criticalPath);
           const source = buildDagSource(snap, critSet);
-          const leftWidth = Math.max(28, Math.floor(model.cols * 0.3));
-          const dagWidth = model.cols - leftWidth - 1;
-          const dagHeight = model.rows - 3;
+          const { dagWidth, dagHeight } = computeDagPaneSize(model.cols, model.rows);
           const t = getTheme();
           newDagPane = createDagPaneState({
             source,
@@ -477,7 +493,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
           loading: false,
           error: null,
           loadingProgress: 100,
-          roadmap: { table: newRoadmapTable, dagPane: newDagPane, detailScrollY: 0 },
+          roadmap: { table: newRoadmapTable, dagPane: newDagPane, fallbackScrollY: 0, detailScrollY: 0 },
           submissions: { ...model.submissions, table: rebuildSubmissionsTable(snap, model.submissions.table.focusRow, model.rows - 4) },
           backlog: { ...model.backlog, table: rebuildBacklogTable(snap, model.backlog.table.focusRow, model.rows - 4) },
           lineage: {
@@ -939,6 +955,15 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
       }
 
       case 'scroll-dag-down': {
+        if (!snapshotHasQuestDependencies(snap)) {
+          return [{
+            ...model,
+            roadmap: {
+              ...model.roadmap,
+              fallbackScrollY: model.roadmap.fallbackScrollY + roadmapPageStep(model.rows),
+            },
+          }, []];
+        }
         if (!model.roadmap.dagPane) return [model, []];
         return [{
           ...model,
@@ -946,6 +971,15 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         }, []];
       }
       case 'scroll-dag-up': {
+        if (!snapshotHasQuestDependencies(snap)) {
+          return [{
+            ...model,
+            roadmap: {
+              ...model.roadmap,
+              fallbackScrollY: Math.max(0, model.roadmap.fallbackScrollY - roadmapPageStep(model.rows)),
+            },
+          }, []];
+        }
         if (!model.roadmap.dagPane) return [model, []];
         return [{
           ...model,

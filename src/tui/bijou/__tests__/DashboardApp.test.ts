@@ -149,6 +149,23 @@ describe('DashboardApp', () => {
       expect(cmds).toHaveLength(0);
     });
 
+    it('creates a roadmap dagPane for snapshots with quests but no dependency edges', () => {
+      const app = makeApp();
+      const [initial] = app.init();
+      const snap = makeSnapshot({
+        quests: [
+          { id: 'task:A', title: 'Alpha', status: 'PLANNED', hours: 1 },
+          { id: 'task:B', title: 'Bravo', status: 'IN_PROGRESS', hours: 2 },
+        ],
+        sortedTaskIds: ['task:A', 'task:B'],
+      });
+      const [updated] = app.update(
+        { type: 'snapshot-loaded', snapshot: snap, requestId: initial.requestId },
+        initial,
+      );
+      expect(updated.roadmap.dagPane).not.toBeNull();
+    });
+
     it('handles snapshot-error message', () => {
       const app = makeApp();
       const [initial] = app.init();
@@ -282,6 +299,38 @@ describe('DashboardApp', () => {
       // PageUp from scrollY=0 stays at 0
       const [afterPgUp2] = app.update(makeKey('pageup'), afterPgUp);
       expect(afterPgUp2.dashboardView?.leftScrollY).toBe(0);
+    });
+
+    it('PageDown/PageUp scroll roadmap fallback content when no DAG edges exist', () => {
+      const app = makeApp();
+      const [initial] = app.init();
+      const quests = Array.from({ length: 40 }, (_, i) => ({
+        id: `task:Q-${i.toString().padStart(2, '0')}`,
+        title: `Quest ${i.toString().padStart(2, '0')} with a long title for scrolling`,
+        status: 'PLANNED' as const,
+        hours: 1,
+      }));
+      const snap = makeSnapshot({ quests });
+      const withSmallViewport: DashboardModel = { ...initial, cols: 90, rows: 14 };
+      const [withSnap] = app.update(
+        { type: 'snapshot-loaded', snapshot: snap, requestId: withSmallViewport.requestId },
+        withSmallViewport,
+      );
+      const loaded: DashboardModel = {
+        ...withSnap,
+        showLanding: false,
+        loading: false,
+        activeView: 'roadmap',
+      };
+
+      const before = app.view(loaded);
+      const [afterPgDn] = app.update(makeKey('pagedown'), loaded);
+      const afterDown = app.view(afterPgDn);
+      expect(afterDown).not.toBe(before);
+
+      const [afterPgUp] = app.update(makeKey('pageup'), afterPgDn);
+      const afterUp = app.view(afterPgUp);
+      expect(afterUp).toBe(before);
     });
 
     it('toggles help with ?', () => {

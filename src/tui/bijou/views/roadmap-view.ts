@@ -240,7 +240,12 @@ export function roadmapView(model: DashboardModel, width?: number, height?: numb
         }
       }
 
-      return viewport({ width: pw, height: ph, content: lines.join('\n'), scrollY: 0 });
+      return viewport({
+        width: pw,
+        height: ph,
+        content: lines.join('\n'),
+        scrollY: model.roadmap.fallbackScrollY,
+      });
     }
 
     if (!model.roadmap.dagPane) {
