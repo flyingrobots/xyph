@@ -96,7 +96,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Fetch WARP graph refs
-        run: git fetch origin 'refs/warp/xyph-roadmap/*:refs/warp/xyph-roadmap/*'
+        run: git fetch origin 'refs/warp/xyph-roadmap/writers/*:refs/warp/xyph-roadmap/writers/*'
 
       - uses: actions/setup-node@v4
         with:
