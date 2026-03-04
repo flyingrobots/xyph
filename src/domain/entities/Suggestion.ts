@@ -67,6 +67,18 @@ export class Suggestion {
     if (!Array.isArray(props.layers)) {
       throw new Error(`Suggestion layers must be an array`);
     }
+    for (let i = 0; i < props.layers.length; i++) {
+      const entry = props.layers[i];
+      if (!entry || typeof entry.layer !== 'string' || entry.layer.length === 0) {
+        throw new Error(`Suggestion layers[${i}].layer must be a non-empty string`);
+      }
+      if (typeof entry.score !== 'number' || !Number.isFinite(entry.score)) {
+        throw new Error(`Suggestion layers[${i}].score must be a finite number`);
+      }
+      if (typeof entry.evidence !== 'string' || entry.evidence.length === 0) {
+        throw new Error(`Suggestion layers[${i}].evidence must be a non-empty string`);
+      }
+    }
     if (!VALID_SUGGESTION_STATUSES.has(props.status)) {
       throw new Error(`Suggestion status must be one of ${[...VALID_SUGGESTION_STATUSES].join(', ')}, got: '${props.status}'`);
     }
@@ -82,7 +94,7 @@ export class Suggestion {
     this.targetId = props.targetId;
     this.targetType = props.targetType;
     this.confidence = props.confidence;
-    this.layers = Object.freeze([...props.layers]);
+    this.layers = Object.freeze(props.layers.map((l) => Object.freeze({ ...l })));
     this.status = props.status;
     this.suggestedBy = props.suggestedBy;
     this.suggestedAt = props.suggestedAt;

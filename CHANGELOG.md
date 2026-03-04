@@ -15,6 +15,9 @@ All notable changes to XYPH will be documented in this file.
 - **Inlined global regex in `TraceabilityScan`** — `CRITERION_REF` regex now local to `scanAnnotations()`, avoids stale `lastIndex` from global flag (m-4)
 - **Removed duplicate `'should'` in STOP_WORDS** — `ImportDescribeLayer` had `'should'` listed twice (N-2)
 - **Fixed `renderAll` total count** — now includes submissions, reviews, decisions, stories, requirements, criteria, evidence, and suggestions (N-3)
+- **Hardened `Suggestion` constructor** — per-entry `LayerScore` validation (layer, score, evidence shape checks) and deep-freeze of individual layer objects
+- **Hardened `GraphContext` suggestion parsing** — `Number.isFinite()` guard on confidence, per-element shape validation on parsed layer JSON
+- **Rendered rejected suggestions** — `renderSuggestions` now shows a Rejected section with rationale, parallel to Accepted
 
 ### Added — M11 Phase 4: Intelligent Test Auto-Linking
 

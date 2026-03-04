@@ -129,4 +129,37 @@ describe('Suggestion Entity', () => {
     const s = new Suggestion({ ...validProps, confidence: 1 });
     expect(s.confidence).toBe(1);
   });
+
+  it('should reject a layer entry with missing layer name', () => {
+    expect(() => new Suggestion({
+      ...validProps,
+      layers: [{ score: 0.5, evidence: 'test' } as never],
+    })).toThrow('layers[0].layer must be a non-empty string');
+  });
+
+  it('should reject a layer entry with non-finite score', () => {
+    expect(() => new Suggestion({
+      ...validProps,
+      layers: [{ layer: 'ast', score: NaN, evidence: 'test' }],
+    })).toThrow('layers[0].score must be a finite number');
+  });
+
+  it('should reject a layer entry with missing evidence', () => {
+    expect(() => new Suggestion({
+      ...validProps,
+      layers: [{ layer: 'ast', score: 0.5 } as never],
+    })).toThrow('layers[0].evidence must be a non-empty string');
+  });
+
+  it('should deep-freeze individual layer objects', () => {
+    const s = new Suggestion(validProps);
+    for (const layer of s.layers) {
+      expect(Object.isFrozen(layer)).toBe(true);
+    }
+  });
+
+  it('should accept an empty layers array', () => {
+    const s = new Suggestion({ ...validProps, layers: [] });
+    expect(s.layers).toHaveLength(0);
+  });
 });

@@ -606,7 +606,8 @@ class GraphContextImpl implements GraphContext {
       const suggestedAt = n.props['suggested_at'];
 
       if (typeof testFile !== 'string' || typeof targetId !== 'string' ||
-          typeof confidence !== 'number' || typeof suggestedBy !== 'string' ||
+          typeof confidence !== 'number' || !Number.isFinite(confidence) ||
+          typeof suggestedBy !== 'string' ||
           typeof suggestedAt !== 'number' || typeof status !== 'string' ||
           !VALID_SUGGESTION_STATUSES.has(status)) continue;
 
@@ -617,7 +618,21 @@ class GraphContextImpl implements GraphContext {
         try {
           const parsed: unknown = JSON.parse(layersRaw);
           if (Array.isArray(parsed)) {
-            layers = parsed as LayerScore[];
+            const valid: LayerScore[] = [];
+            for (const entry of parsed) {
+              if (typeof entry === 'object' && entry !== null &&
+                  typeof (entry as Record<string, unknown>)['layer'] === 'string' &&
+                  typeof (entry as Record<string, unknown>)['score'] === 'number' &&
+                  Number.isFinite((entry as Record<string, unknown>)['score']) &&
+                  typeof (entry as Record<string, unknown>)['evidence'] === 'string') {
+                valid.push({
+                  layer: (entry as Record<string, unknown>)['layer'] as string,
+                  score: (entry as Record<string, unknown>)['score'] as number,
+                  evidence: (entry as Record<string, unknown>)['evidence'] as string,
+                });
+              }
+            }
+            layers = valid;
           }
         } catch {
           // Ignore malformed JSON

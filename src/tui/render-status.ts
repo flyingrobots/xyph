@@ -880,6 +880,33 @@ export function renderSuggestions(data: SuggestionsViewData): string {
     }));
   }
 
+  // --- Rejected suggestions ---
+  if (rejected.length > 0) {
+    lines.push('');
+    lines.push(separator({ label: 'Rejected', borderToken: t.theme.border.error }));
+
+    const rows = rejected.map((s) => [
+      styled(t.theme.semantic.muted, s.id.slice(0, 28)),
+      s.testFile.slice(0, 28),
+      s.targetId.slice(0, 24),
+      s.confidence.toFixed(2),
+      s.rationale?.slice(0, 28) ?? '—',
+    ]);
+
+    lines.push(table({
+      columns: [
+        { header: 'Suggestion', width: 30 },
+        { header: 'Test File', width: 30 },
+        { header: 'Target', width: 26 },
+        { header: 'Conf', width: 6 },
+        { header: 'Rationale', width: 30 },
+      ],
+      rows,
+      headerToken: t.theme.ui.tableHeader,
+      borderToken: t.theme.border.primary,
+    }));
+  }
+
   // --- Stats ---
   lines.push('');
   lines.push(separator({ label: 'Stats', borderToken: t.theme.border.primary }));
