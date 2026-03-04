@@ -1,3 +1,9 @@
+declare module '@git-stunts/vault' {
+  export function get(key: string): Promise<string | undefined>;
+  export function set(key: string, value: string): Promise<void>;
+  export function remove(key: string): Promise<void>;
+}
+
 declare module '@git-stunts/plumbing' {
   interface StreamResult extends AsyncIterable<Uint8Array> {
     collect(opts?: { asString?: boolean }): Promise<string | Buffer>;

@@ -77,11 +77,11 @@ export function registerDashboardCommands(program: Command, ctx: CliContext): vo
   program
     .command('status')
     .description('Show a snapshot of the WARP graph')
-    .option('--view <name>', 'roadmap | lineage | all | inbox | submissions | deps', 'roadmap')
+    .option('--view <name>', 'roadmap | lineage | all | inbox | submissions | deps | trace | suggestions', 'roadmap')
     .option('--include-graveyard', 'include GRAVEYARD tasks in output (excluded by default)')
     .action(withErrorHandler(async (opts: { view: string; includeGraveyard?: boolean }) => {
       const view = opts.view;
-      const validViews = ['roadmap', 'lineage', 'all', 'inbox', 'submissions', 'deps'] as const;
+      const validViews = ['roadmap', 'lineage', 'all', 'inbox', 'submissions', 'deps', 'trace', 'suggestions'] as const;
       if (!validViews.includes(view as typeof validViews[number])) {
         return ctx.fail(`Unknown --view '${view}'. Valid options: ${validViews.join(', ')}`);
       }
@@ -172,6 +172,86 @@ export function registerDashboardCommands(program: Command, ctx: CliContext): vo
           }));
           break;
         }
+        case 'trace': {
+          const {
+            computeUnmetRequirements,
+            computeUntestedCriteria,
+            computeCoverageRatio,
+          } = await import('../../domain/services/TraceabilityAnalysis.js');
+
+          const reqSummaries = snapshot.requirements.map((r) => ({
+            id: r.id,
+            criterionIds: r.criterionIds,
+          }));
+          const critSummaries = snapshot.criteria.map((c) => ({
+            id: c.id,
+            evidenceIds: c.evidenceIds,
+          }));
+
+          const unmetReqs = computeUnmetRequirements(reqSummaries, critSummaries);
+          const untestedCriteria = computeUntestedCriteria(critSummaries);
+          const coverage = computeCoverageRatio(critSummaries);
+
+          if (ctx.json) {
+            ctx.jsonOut({
+              success: true, command: 'status',
+              data: {
+                view: 'trace',
+                stories: snapshot.stories,
+                requirements: snapshot.requirements,
+                criteria: snapshot.criteria,
+                evidence: snapshot.evidence,
+                summary: {
+                  stories: snapshot.stories.length,
+                  requirements: snapshot.requirements.length,
+                  criteria: snapshot.criteria.length,
+                  evidenced: coverage.evidenced,
+                  unevidenced: coverage.total - coverage.evidenced,
+                  coverageRatio: coverage.ratio,
+                },
+                unmetRequirements: unmetReqs,
+                untestedCriteria,
+              },
+            });
+            return;
+          }
+
+          const { renderTrace } = await import('../../tui/render-status.js');
+          ctx.print(renderTrace({
+            stories: snapshot.stories,
+            requirements: snapshot.requirements,
+            criteria: snapshot.criteria,
+            evidence: snapshot.evidence,
+            unmetRequirements: unmetReqs,
+            untestedCriteria,
+            coverage,
+          }));
+          break;
+        }
+
+        case 'suggestions': {
+          if (ctx.json) {
+            ctx.jsonOut({
+              success: true, command: 'status',
+              data: {
+                view: 'suggestions',
+                suggestions: snapshot.suggestions,
+                summary: {
+                  total: snapshot.suggestions.length,
+                  pending: snapshot.suggestions.filter((s) => s.status === 'PENDING').length,
+                  accepted: snapshot.suggestions.filter((s) => s.status === 'ACCEPTED').length,
+                  rejected: snapshot.suggestions.filter((s) => s.status === 'REJECTED').length,
+                },
+              },
+            });
+            return;
+          }
+
+          const { renderSuggestions } = await import('../../tui/render-status.js');
+          ctx.print(renderSuggestions({ suggestions: snapshot.suggestions }));
+          break;
+        }
+
         default: {
           if (ctx.json) {
             ctx.jsonOut({

@@ -4,6 +4,77 @@ All notable changes to XYPH will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed — PR #29 Code Review
+
+- **Evidence dedup uses `sourceFile`** — `EvidenceNode` now exposes `sourceFile` from graph props; `analyze` filters existing evidence by `sourceFile:criterionId` instead of `producedBy:criterionId` (C-1)
+- **Consolidated `LayerScore` interface** — single canonical definition in `analysis/types.ts`, re-exported from `Suggestion.ts`; eliminates duplicate interface (M-1)
+- **Batch graph patches in `analyze`** — auto-link and suggestion writes use one `graph.patch()` call each instead of per-item patches (M-2)
+- **Batch graph patches in `suggestion accept-all`** — single `graph.patch()` for all accepted suggestions (M-3)
+- **Removed double casts in `ConfigAdapter`** — exported `mergeWeights`/`mergeLlm` from `ConfigResolution`, used to safely parse partial JSON from graph (m-2)
+- **Type-safe `config set`** — replaced `as never` cast with exhaustive switch on config key (m-3)
+- **Inlined global regex in `TraceabilityScan`** — `CRITERION_REF` regex now local to `scanAnnotations()`, avoids stale `lastIndex` from global flag (m-4)
+- **Removed duplicate `'should'` in STOP_WORDS** — `ImportDescribeLayer` had `'should'` listed twice (N-2)
+- **Fixed `renderAll` total count** — now includes submissions, reviews, decisions, stories, requirements, criteria, evidence, and suggestions (N-3)
+- **Hardened `Suggestion` constructor** — per-entry `LayerScore` validation (layer, score, evidence shape checks) and deep-freeze of individual layer objects
+- **Hardened `GraphContext` suggestion parsing** — `Number.isFinite()` guard on confidence, per-element shape validation on parsed layer JSON
+- **Rendered rejected suggestions** — `renderSuggestions` now shows a Rejected section with rationale, parallel to Accepted
+- **Campaign cardinality in orphan script** — `assign-orphan-campaigns.ts` now validates campaign existence and skips quests already assigned to another campaign instead of adding duplicate `belongs-to` edges
+- **Hash-based evidence/suggestion IDs** — `analyze` now uses SHA-256 hash of `testFile+targetId` instead of slug truncation, preventing ID collisions across files
+- **Removed unsafe casts in config CLI** — `config get/set/list` output no longer uses `as unknown as` double casts
+- **Criterion validation in `scan`** — `scan` command now validates criterion node existence before writing evidence edges, skips missing criteria with a warning, and batches writes into a single patch
+- **TestFileParser handles modifiers** — `getCallName` now resolves `it.only`, `describe.skip`, `it.each(...)()` to their root identifier
+- **LLM adapter graceful fallback** — `AnthropicLlmAdapter.getSecret()` moved inside `try/catch` so vault errors trigger graceful degradation instead of crashing
+- **Evidence dedup for `implements` edges** — `EvidenceNode` now exposes `requirementId` from `implements` edges; `analyze` dedup filter covers both `verifies` (criterion) and `implements` (requirement) edges
+- **Synced `package-lock.json`** — lock file now includes `@anthropic-ai/sdk`, `@git-stunts/vault`, and transitive deps; fixes all CI `npm ci` failures
+
+### Added — M11 Phase 4: Intelligent Test Auto-Linking
+
+- **Config infrastructure** — layered resolution (env > `.xyph.json` > graph > defaults), `config get/set/list` CLI commands (ALK-001)
+- **`suggestion:` node type** — auto-detected test→criterion/requirement links with PENDING/ACCEPTED/REJECTED lifecycle, LayerScore breakdown (ALK-002)
+- **Suggestion lifecycle commands** — `accept`, `reject`, `accept-all` CLI commands with evidence materialization on accept (ALK-003)
+- **Test file parser** — TypeScript Compiler API extraction of imports, describe/it blocks, function/method calls (ALK-004)
+- **Heuristic scoring framework** — ScoreCombiner with weighted averaging and automatic renormalization for missing layers (ALK-005)
+- **4 heuristic layers** — FileNameLayer (0.4–0.8), ImportDescribeLayer (0.3–0.7), AstLayer (0.7–0.9), SemanticLayer (Jaccard ×3) (ALK-006)
+- **LLM port + Vault integration** — provider-agnostic LlmPort, VaultSecretAdapter for OS keychain, AnthropicLlmAdapter (ALK-007)
+- **LLM heuristic layer** — batch test-target analysis with structured JSON matching, graceful fallback (ALK-008)
+- **`xyph analyze` command** — full orchestration: config→glob→parse→score→classify→write, with `--dry-run`, `--layers`, `--min-confidence` (ALK-009)
+- **`status --view suggestions`** — pending/accepted/rejected suggestions with confidence and layer breakdown (ALK-010)
+- **`suggests` edge type** — suggestion→target linking in graph schema
+- **107 new tests** — 10 test suites covering all new domain services, entities, and analysis layers
+- **Dependencies** — `@git-stunts/vault` 1.0.1, `@anthropic-ai/sdk` 0.78.0
+
+### Added — M11 Traceability Phases 1 & 2
+
+- **`story:` node type** — user stories with persona/goal/benefit, `story` actuator command (TRC-001)
+- **`req:` node type** — requirements with kind (functional/non-functional) and MoSCoW priority, `requirement` actuator command (TRC-001)
+- **`criterion:` node type** — acceptance criteria attached to requirements, `criterion` actuator command (TRC-005)
+- **`evidence:` node type** — verification evidence (test/benchmark/manual/screenshot) with pass/fail result, `evidence` actuator command (TRC-005)
+- **`decomposes-to` edge type** — intent→story and story→req decomposition, `decompose` actuator command with cycle checks (TRC-002)
+- **`has-criterion` edge type** — requirement→criterion attachment (TRC-005)
+- **`verifies` edge type** — evidence→criterion verification link (TRC-005)
+- **GraphSnapshot extended** — `stories[]`, `requirements[]`, `criteria[]`, `evidence[]` fields with full edge resolution (TRC-003, TRC-006)
+- **`status --view trace`** — traceability chain renderer: stories→reqs→criteria→evidence with coverage stats (TRC-004)
+- **`xyph scan`** — test annotation parser (`// @xyph criterion:<id>`) that writes evidence nodes automatically (TRC-007)
+- **Completeness queries** — `computeUnmetRequirements`, `computeUntestedCriteria`, `computeCoverageRatio` pure functions (TRC-008)
+- **57 new tests** — 4 entity unit tests, scan parser, analysis queries, full integration round-trip
+
+### Added — M11 Traceability Decomposition
+
+- **`intent:TRACEABILITY`** — sovereign intent for requirements, acceptance criteria, and evidence as first-class graph objects
+- **13 TRC quests** (TRC-001..013) under `campaign:TRACE`, spanning 4 phases: Foundation, Criteria & Evidence, Computed Status, Intelligence
+- **12 dependency edges** wiring the TRC quest execution order
+- **Rejected `task:traceability-m11`** placeholder — superseded by the concrete decomposition
+
+### Added — Orphan Campaign Assignments
+
+- **58 orphan quests assigned** to campaigns via `scripts/assign-orphan-campaigns.ts`:
+  - 22 → `campaign:DASHBOARD` (TUI, bijou, rendering)
+  - 24 → `campaign:CLITOOL` (CLI, CI, testing, theme)
+  - 6 → `campaign:ECOSYSTEM` (external integrations, scaling)
+  - 4 → `campaign:AGENT` (agent protocol)
+  - 1 → `campaign:SUBMISSION`, 1 → `campaign:BEDROCK`
+- Zero orphan quests remaining (was 30% of all quests)
+
 ### Fixed
 
 - **Cross-type `depend` guard** — `depend` now rejects edges between different type families (e.g. `task:` → `campaign:`); both nodes must be tasks, or both must be campaigns/milestones

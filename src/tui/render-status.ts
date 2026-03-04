@@ -1,8 +1,9 @@
 import {
   headerBox, table, separator, badge, enumeratedList,
 } from '@flyingrobots/bijou';
-import type { GraphSnapshot } from '../domain/models/dashboard.js';
+import type { GraphSnapshot, StoryNode, RequirementNode, CriterionNode, EvidenceNode, SuggestionNode } from '../domain/models/dashboard.js';
 import type { BlockerInfo } from '../domain/services/DepAnalysis.js';
+import type { UnmetRequirement, CoverageResult } from '../domain/services/TraceabilityAnalysis.js';
 import { getTheme, styled } from './theme/index.js';
 import { statusVariant } from './view-helpers.js';
 
@@ -181,7 +182,15 @@ export function renderAll(snapshot: GraphSnapshot): string {
     snapshot.quests.length +
     snapshot.intents.length +
     snapshot.scrolls.length +
-    snapshot.approvals.length;
+    snapshot.approvals.length +
+    snapshot.submissions.length +
+    snapshot.reviews.length +
+    snapshot.decisions.length +
+    snapshot.stories.length +
+    snapshot.requirements.length +
+    snapshot.criteria.length +
+    snapshot.evidence.length +
+    snapshot.suggestions.length;
 
   lines.push(snapshotHeader('All XYPH Nodes', `${total} node(s) total`, 'success'));
 
@@ -647,6 +656,264 @@ export function renderDeps(data: DepsViewData): string {
     }).join(styled(t.theme.semantic.muted, ' → '));
     lines.push(`    ${chain} ${styled(t.theme.semantic.muted, `= ${data.criticalPathHours}h total`)}`);
   }
+
+  return lines.join('\n');
+}
+
+// ---------------------------------------------------------------------------
+// Trace view — Traceability Chain (M11)
+// ---------------------------------------------------------------------------
+
+export interface TraceViewData {
+  stories: StoryNode[];
+  requirements: RequirementNode[];
+  criteria: CriterionNode[];
+  evidence: EvidenceNode[];
+  unmetRequirements: UnmetRequirement[];
+  untestedCriteria: string[];
+  coverage: CoverageResult;
+}
+
+/**
+ * Renders the traceability chain: stories → requirements → criteria → evidence.
+ */
+export function renderTrace(data: TraceViewData): string {
+  const t = getTheme();
+  const lines: string[] = [];
+
+  const pct = data.coverage.total > 0
+    ? `${Math.round(data.coverage.ratio * 100)}%`
+    : '—';
+
+  lines.push(snapshotHeader(
+    'Traceability',
+    `${data.stories.length} stories  ${data.requirements.length} reqs  ${data.criteria.length} criteria  coverage: ${pct}`,
+    'secondary',
+  ));
+
+  // --- Stories grouped by intent ---
+  if (data.stories.length > 0) {
+    lines.push('');
+    lines.push(separator({ label: 'Stories', borderToken: t.theme.border.secondary }));
+
+    // Group by intentId
+    const byIntent = new Map<string, StoryNode[]>();
+    for (const s of data.stories) {
+      const key = s.intentId ?? '(no intent)';
+      const arr = byIntent.get(key) ?? [];
+      arr.push(s);
+      byIntent.set(key, arr);
+    }
+
+    for (const [intentKey, storyGroup] of byIntent) {
+      lines.push('');
+      lines.push(styled(t.theme.ui.intentHeader, `  ${intentKey}`));
+      const rows = storyGroup.map((s) => {
+        const reqCount = data.requirements.filter((r) => r.storyId === s.id).length;
+        return [
+          styled(t.theme.semantic.muted, s.id.slice(0, 24)),
+          s.title.slice(0, 38),
+          s.persona.slice(0, 16),
+          String(reqCount),
+        ];
+      });
+      lines.push(table({
+        columns: [
+          { header: 'Story', width: 26 },
+          { header: 'Title', width: 40 },
+          { header: 'Persona', width: 18 },
+          { header: 'Reqs', width: 6 },
+        ],
+        rows,
+        headerToken: t.theme.ui.tableHeader,
+        borderToken: t.theme.border.primary,
+      }));
+    }
+  }
+
+  // --- Requirements with criterion counts ---
+  if (data.requirements.length > 0) {
+    lines.push('');
+    lines.push(separator({ label: 'Requirements', borderToken: t.theme.border.secondary }));
+    const rows = data.requirements.map((r) => {
+      const evCount = r.criterionIds.reduce((sum, cId) => {
+        const c = data.criteria.find((cr) => cr.id === cId);
+        return sum + (c ? c.evidenceIds.length : 0);
+      }, 0);
+      const isUnmet = data.unmetRequirements.some((u) => u.id === r.id);
+      const statusBadge = isUnmet
+        ? badge('UNMET', { variant: 'warning' })
+        : badge('MET', { variant: 'success' });
+      return [
+        styled(t.theme.semantic.muted, r.id.slice(0, 20)),
+        r.description.slice(0, 32),
+        r.kind,
+        r.priority,
+        String(r.criterionIds.length),
+        String(evCount),
+        statusBadge,
+      ];
+    });
+    lines.push(table({
+      columns: [
+        { header: 'Requirement', width: 22 },
+        { header: 'Description', width: 34 },
+        { header: 'Kind', width: 16 },
+        { header: 'Priority', width: 10 },
+        { header: 'Criteria', width: 9 },
+        { header: 'Evidence', width: 9 },
+        { header: 'Status', width: 8 },
+      ],
+      rows,
+      headerToken: t.theme.ui.tableHeader,
+      borderToken: t.theme.border.primary,
+    }));
+  }
+
+  // --- Untested criteria ---
+  if (data.untestedCriteria.length > 0) {
+    lines.push('');
+    lines.push(separator({ label: 'Untested Criteria', borderToken: t.theme.border.warning }));
+    const items = data.untestedCriteria.map((cId) => {
+      const c = data.criteria.find((cr) => cr.id === cId);
+      return `${cId}  ${c?.description.slice(0, 48) ?? '—'}`;
+    });
+    lines.push(enumeratedList(items, { style: 'arabic', indent: 4 }));
+  }
+
+  // --- Summary ---
+  lines.push('');
+  lines.push(separator({ label: 'Summary', borderToken: t.theme.border.primary }));
+  lines.push(`    ${styled(t.theme.semantic.muted, 'Stories:')} ${data.stories.length}`);
+  lines.push(`    ${styled(t.theme.semantic.muted, 'Requirements:')} ${data.requirements.length}`);
+  lines.push(`    ${styled(t.theme.semantic.muted, 'Criteria:')} ${data.criteria.length}`);
+  lines.push(`    ${styled(t.theme.semantic.muted, 'Evidenced:')} ${data.coverage.evidenced} / ${data.coverage.total}`);
+  lines.push(`    ${styled(t.theme.semantic.muted, 'Coverage:')} ${pct}`);
+
+  return lines.join('\n');
+}
+
+// ---------------------------------------------------------------------------
+// Suggestions view — Auto-linking suggestions (M11 Phase 4)
+// ---------------------------------------------------------------------------
+
+export interface SuggestionsViewData {
+  suggestions: SuggestionNode[];
+}
+
+/**
+ * Renders auto-linking suggestions grouped by status.
+ */
+export function renderSuggestions(data: SuggestionsViewData): string {
+  const t = getTheme();
+  const lines: string[] = [];
+
+  const pending = data.suggestions.filter((s) => s.status === 'PENDING');
+  const accepted = data.suggestions.filter((s) => s.status === 'ACCEPTED');
+  const rejected = data.suggestions.filter((s) => s.status === 'REJECTED');
+
+  lines.push(snapshotHeader(
+    'Auto-Link Suggestions',
+    `${pending.length} pending  ${accepted.length} accepted  ${rejected.length} rejected`,
+    'secondary',
+  ));
+
+  // --- Pending suggestions ---
+  if (pending.length > 0) {
+    lines.push('');
+    lines.push(separator({ label: 'Pending Review', borderToken: t.theme.border.warning }));
+
+    const rows = pending.map((s) => {
+      const layerBreakdown = s.layers
+        .map((l) => `${l.layer}:${l.score.toFixed(2)}`)
+        .join(' ');
+      return [
+        styled(t.theme.semantic.muted, s.id.slice(0, 28)),
+        s.testFile.slice(0, 28),
+        s.targetId.slice(0, 24),
+        s.confidence.toFixed(2),
+        layerBreakdown.slice(0, 36),
+      ];
+    });
+
+    lines.push(table({
+      columns: [
+        { header: 'Suggestion', width: 30 },
+        { header: 'Test File', width: 30 },
+        { header: 'Target', width: 26 },
+        { header: 'Conf', width: 6 },
+        { header: 'Layers', width: 38 },
+      ],
+      rows,
+      headerToken: t.theme.ui.tableHeader,
+      borderToken: t.theme.border.primary,
+    }));
+  } else {
+    lines.push('');
+    lines.push(styled(t.theme.semantic.muted, '  No pending suggestions.'));
+  }
+
+  // --- Accepted suggestions ---
+  if (accepted.length > 0) {
+    lines.push('');
+    lines.push(separator({ label: 'Accepted', borderToken: t.theme.border.success }));
+
+    const rows = accepted.map((s) => [
+      styled(t.theme.semantic.muted, s.id.slice(0, 28)),
+      s.testFile.slice(0, 28),
+      s.targetId.slice(0, 24),
+      s.confidence.toFixed(2),
+      s.resolvedBy ?? '—',
+    ]);
+
+    lines.push(table({
+      columns: [
+        { header: 'Suggestion', width: 30 },
+        { header: 'Test File', width: 30 },
+        { header: 'Target', width: 26 },
+        { header: 'Conf', width: 6 },
+        { header: 'Accepted By', width: 16 },
+      ],
+      rows,
+      headerToken: t.theme.ui.tableHeader,
+      borderToken: t.theme.border.primary,
+    }));
+  }
+
+  // --- Rejected suggestions ---
+  if (rejected.length > 0) {
+    lines.push('');
+    lines.push(separator({ label: 'Rejected', borderToken: t.theme.border.error }));
+
+    const rows = rejected.map((s) => [
+      styled(t.theme.semantic.muted, s.id.slice(0, 28)),
+      s.testFile.slice(0, 28),
+      s.targetId.slice(0, 24),
+      s.confidence.toFixed(2),
+      s.rationale?.slice(0, 28) ?? '—',
+    ]);
+
+    lines.push(table({
+      columns: [
+        { header: 'Suggestion', width: 30 },
+        { header: 'Test File', width: 30 },
+        { header: 'Target', width: 26 },
+        { header: 'Conf', width: 6 },
+        { header: 'Rationale', width: 30 },
+      ],
+      rows,
+      headerToken: t.theme.ui.tableHeader,
+      borderToken: t.theme.border.primary,
+    }));
+  }
+
+  // --- Stats ---
+  lines.push('');
+  lines.push(separator({ label: 'Stats', borderToken: t.theme.border.primary }));
+  lines.push(`    ${styled(t.theme.semantic.muted, 'Total:')} ${data.suggestions.length}`);
+  lines.push(`    ${badge('PENDING', { variant: statusVariant('PENDING') })} ${pending.length}`);
+  lines.push(`    ${badge('ACCEPTED', { variant: statusVariant('ACCEPTED') })} ${accepted.length}`);
+  lines.push(`    ${badge('REJECTED', { variant: statusVariant('REJECTED') })} ${rejected.length}`);
 
   return lines.join('\n');
 }

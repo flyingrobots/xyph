@@ -3,10 +3,10 @@ import type { BadgeVariant } from '@flyingrobots/bijou';
 /** Map a quest/submission/approval status string to a badge colour variant. */
 export function statusVariant(status: string): BadgeVariant {
   switch (status) {
-    case 'DONE': case 'MERGED': case 'APPROVED': return 'success';
-    case 'IN_PROGRESS': case 'OPEN': return 'info';
+    case 'DONE': case 'MERGED': case 'APPROVED': case 'ACCEPTED': return 'success';
+    case 'IN_PROGRESS': case 'OPEN': case 'PENDING': return 'info';
     case 'CHANGES_REQUESTED': case 'BLOCKED': return 'warning';
-    case 'CLOSED': case 'GRAVEYARD': return 'error';
+    case 'CLOSED': case 'GRAVEYARD': case 'REJECTED': return 'error';
     default: return 'muted';
   }
 }

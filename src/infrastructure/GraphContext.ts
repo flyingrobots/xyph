@@ -31,15 +31,27 @@ import type {
   ApprovalNode,
   CampaignNode,
   CampaignStatus,
+  CriterionNode,
   DecisionNode,
+  EvidenceNode,
   GraphMeta,
   GraphSnapshot,
   IntentNode,
   QuestNode,
+  RequirementNode,
   ReviewNode,
   ScrollNode,
+  StoryNode,
   SubmissionNode,
+  SuggestionNode,
 } from '../domain/models/dashboard.js';
+import { VALID_SUGGESTION_STATUSES } from '../domain/entities/Suggestion.js';
+import type { SuggestionStatus } from '../domain/entities/Suggestion.js';
+import type { LayerScore } from '../domain/services/analysis/types.js';
+import type { RequirementKind, RequirementPriority } from '../domain/entities/Requirement.js';
+import { VALID_REQUIREMENT_KINDS, VALID_REQUIREMENT_PRIORITIES } from '../domain/entities/Requirement.js';
+import type { EvidenceKind, EvidenceResult } from '../domain/entities/Evidence.js';
+import { VALID_EVIDENCE_KINDS, VALID_EVIDENCE_RESULTS } from '../domain/entities/Evidence.js';
 import type { GraphPort } from '../ports/GraphPort.js';
 import { toNeighborEntries, type NeighborEntry } from './helpers/isNeighborEntry.js';
 
@@ -203,6 +215,8 @@ class GraphContextImpl implements GraphContext {
       taskNodes, campaignNodes, milestoneNodes, intentNodes,
       scrollNodes, approvalNodes, submissionNodes,
       patchsetNodes, reviewNodes, decisionNodes,
+      storyNodes, requirementNodes, criterionNodes, evidenceNodes,
+      suggestionNodes,
     ] = await Promise.all([
       graph.query().match('task:*').select(['id', 'props']).run().then(extractNodes),
       graph.query().match('campaign:*').select(['id', 'props']).run().then(extractNodes),
@@ -214,6 +228,11 @@ class GraphContextImpl implements GraphContext {
       graph.query().match('patchset:*').select(['id', 'props']).run().then(extractNodes),
       graph.query().match('review:*').select(['id', 'props']).run().then(extractNodes),
       graph.query().match('decision:*').select(['id', 'props']).run().then(extractNodes),
+      graph.query().match('story:*').select(['id', 'props']).run().then(extractNodes),
+      graph.query().match('req:*').select(['id', 'props']).run().then(extractNodes),
+      graph.query().match('criterion:*').select(['id', 'props']).run().then(extractNodes),
+      graph.query().match('evidence:*').select(['id', 'props']).run().then(extractNodes),
+      graph.query().match('suggestion:*').select(['id', 'props']).run().then(extractNodes),
     ]);
 
     await yieldEventLoop();
@@ -229,6 +248,9 @@ class GraphContextImpl implements GraphContext {
       ...patchsetNodes.map((n) => n.id),
       ...reviewNodes.map((n) => n.id),
       ...decisionNodes.map((n) => n.id),
+      ...storyNodes.map((n) => n.id),
+      ...requirementNodes.map((n) => n.id),
+      ...evidenceNodes.map((n) => n.id),
     ];
     const neighborsCache = await batchNeighbors(graph, neighborsNeeded);
 
@@ -393,6 +415,253 @@ class GraphContextImpl implements GraphContext {
       if (subId !== undefined) quest.submissionId = subId;
     }
 
+    // --- Build traceability nodes (stories, requirements, criteria, evidence) ---
+    log('Building traceability models…');
+
+    // Build reverse lookup: intent → stories via decomposes-to edges on intent nodes
+    // and story → requirements via decomposes-to edges on story nodes
+    // We look at the outgoing edges of story nodes and evidence nodes
+
+    // Build stories
+    const stories: StoryNode[] = [];
+    for (const n of storyNodes) {
+      if (n.props['type'] !== 'story') continue;
+      const title = n.props['title'];
+      const persona = n.props['persona'];
+      const goal = n.props['goal'];
+      const benefit = n.props['benefit'];
+      const createdBy = n.props['created_by'];
+      const createdAt = n.props['created_at'];
+
+      if (typeof title !== 'string' || typeof persona !== 'string' ||
+          typeof goal !== 'string' || typeof benefit !== 'string' ||
+          typeof createdBy !== 'string' || typeof createdAt !== 'number') continue;
+
+      stories.push({
+        id: n.id, title, persona, goal, benefit, createdBy, createdAt,
+      });
+    }
+
+    // Resolve intent→story decomposes-to edges (intent outgoing → story)
+    // We need to check intent neighbors, but intents aren't in neighborsNeeded.
+    // Instead, check story node neighbors for incoming decomposes-to.
+    // Since we have story outgoing neighbors, we need to find which intent
+    // points to a story. The edge is intent→story (outgoing from intent).
+    // We'll batch-fetch intent neighbors too.
+    const intentNeighbors = await batchNeighbors(graph, intentNodes.map((n) => n.id));
+    for (const intent of intentNodes) {
+      const neighbors = intentNeighbors.get(intent.id) ?? [];
+      for (const nb of neighbors) {
+        if (nb.label === 'decomposes-to' && nb.nodeId.startsWith('story:')) {
+          const story = stories.find((s) => s.id === nb.nodeId);
+          if (story) story.intentId = intent.id;
+        }
+      }
+    }
+
+    // Build requirements
+    const requirements: RequirementNode[] = [];
+    for (const n of requirementNodes) {
+      if (n.props['type'] !== 'requirement') continue;
+      const description = n.props['description'];
+      const kind = n.props['kind'];
+      const priority = n.props['priority'];
+
+      if (typeof description !== 'string' ||
+          typeof kind !== 'string' || !VALID_REQUIREMENT_KINDS.has(kind) ||
+          typeof priority !== 'string' || !VALID_REQUIREMENT_PRIORITIES.has(priority)) continue;
+
+      // Resolve has-criterion edges (req→criterion, outgoing from req)
+      const neighbors = neighborsCache.get(n.id) ?? [];
+      const criterionIds: string[] = [];
+      for (const nb of neighbors) {
+        if (nb.label === 'has-criterion' && nb.nodeId.startsWith('criterion:')) {
+          criterionIds.push(nb.nodeId);
+        }
+      }
+
+      requirements.push({
+        id: n.id,
+        description,
+        kind: kind as RequirementKind,
+        priority: priority as RequirementPriority,
+        taskIds: [],
+        criterionIds,
+      });
+    }
+
+    // Resolve story→req decomposes-to edges (story outgoing → req)
+    for (const story of stories) {
+      const neighbors = neighborsCache.get(story.id) ?? [];
+      for (const nb of neighbors) {
+        if (nb.label === 'decomposes-to' && nb.nodeId.startsWith('req:')) {
+          const req = requirements.find((r) => r.id === nb.nodeId);
+          if (req) req.storyId = story.id;
+        }
+      }
+    }
+
+    // Resolve task→req implements edges (task outgoing → req, reverse lookup)
+    for (const task of taskNodes) {
+      const neighbors = neighborsCache.get(task.id) ?? [];
+      for (const nb of neighbors) {
+        if (nb.label === 'implements' && nb.nodeId.startsWith('req:')) {
+          const req = requirements.find((r) => r.id === nb.nodeId);
+          if (req) req.taskIds.push(task.id);
+        }
+      }
+    }
+
+    // Build evidence (need to resolve verifies edges)
+    const evidence: EvidenceNode[] = [];
+    for (const n of evidenceNodes) {
+      if (n.props['type'] !== 'evidence') continue;
+      const kind = n.props['kind'];
+      const result = n.props['result'];
+      const producedAt = n.props['produced_at'];
+      const producedBy = n.props['produced_by'];
+      const artifactHash = n.props['artifact_hash'];
+
+      if (typeof kind !== 'string' || !VALID_EVIDENCE_KINDS.has(kind) ||
+          typeof result !== 'string' || !VALID_EVIDENCE_RESULTS.has(result) ||
+          typeof producedAt !== 'number' || typeof producedBy !== 'string') continue;
+
+      // Resolve outgoing edges (verifies→criterion, implements→requirement)
+      const neighbors = neighborsCache.get(n.id) ?? [];
+      let criterionId: string | undefined;
+      let requirementId: string | undefined;
+      for (const nb of neighbors) {
+        if (nb.label === 'verifies' && nb.nodeId.startsWith('criterion:')) {
+          criterionId = nb.nodeId;
+        } else if (nb.label === 'implements' && nb.nodeId.startsWith('req:')) {
+          requirementId = nb.nodeId;
+        }
+      }
+
+      const sourceFile = n.props['source_file'];
+      evidence.push({
+        id: n.id,
+        kind: kind as EvidenceKind,
+        result: result as EvidenceResult,
+        producedAt,
+        producedBy,
+        criterionId,
+        requirementId,
+        artifactHash: typeof artifactHash === 'string' ? artifactHash : undefined,
+        sourceFile: typeof sourceFile === 'string' ? sourceFile : undefined,
+      });
+    }
+
+    // Build criteria (resolve reverse verifies edges for evidenceIds)
+    const evidenceByCriterion = new Map<string, string[]>();
+    for (const e of evidence) {
+      if (e.criterionId) {
+        const arr = evidenceByCriterion.get(e.criterionId) ?? [];
+        arr.push(e.id);
+        evidenceByCriterion.set(e.criterionId, arr);
+      }
+    }
+
+    const criteria: CriterionNode[] = [];
+    for (const n of criterionNodes) {
+      if (n.props['type'] !== 'criterion') continue;
+      const description = n.props['description'];
+      const verifiable = n.props['verifiable'];
+
+      if (typeof description !== 'string') continue;
+
+      criteria.push({
+        id: n.id,
+        description,
+        verifiable: typeof verifiable === 'boolean' ? verifiable : true,
+        evidenceIds: evidenceByCriterion.get(n.id) ?? [],
+      });
+    }
+
+    // Resolve criterion→requirement reverse lookup (req→criterion has-criterion edge)
+    const criterionByReq = new Map<string, string[]>();
+    for (const req of requirements) {
+      for (const cId of req.criterionIds) {
+        const arr = criterionByReq.get(cId) ?? [];
+        arr.push(req.id);
+        criterionByReq.set(cId, arr);
+      }
+    }
+    for (const c of criteria) {
+      const reqIds = criterionByReq.get(c.id);
+      if (reqIds && reqIds.length > 0) {
+        c.requirementId = reqIds[0];
+      }
+    }
+
+    // --- Build suggestions (M11 Phase 4) ---
+    log('Building suggestion models…');
+    const suggestions: SuggestionNode[] = [];
+    for (const n of suggestionNodes) {
+      if (n.props['type'] !== 'suggestion') continue;
+      const testFile = n.props['test_file'];
+      const targetId = n.props['target_id'];
+      const targetType = n.props['target_type'];
+      const confidence = n.props['confidence'];
+      const layersRaw = n.props['layers'];
+      const status = n.props['status'];
+      const suggestedBy = n.props['suggested_by'];
+      const suggestedAt = n.props['suggested_at'];
+
+      if (typeof testFile !== 'string' || typeof targetId !== 'string' ||
+          typeof confidence !== 'number' || !Number.isFinite(confidence) ||
+          typeof suggestedBy !== 'string' ||
+          typeof suggestedAt !== 'number' || typeof status !== 'string' ||
+          !VALID_SUGGESTION_STATUSES.has(status)) continue;
+
+      if (targetType !== 'criterion' && targetType !== 'requirement') continue;
+
+      let layers: LayerScore[] = [];
+      if (typeof layersRaw === 'string') {
+        try {
+          const parsed: unknown = JSON.parse(layersRaw);
+          if (Array.isArray(parsed)) {
+            const valid: LayerScore[] = [];
+            for (const entry of parsed) {
+              if (typeof entry === 'object' && entry !== null &&
+                  typeof (entry as Record<string, unknown>)['layer'] === 'string' &&
+                  typeof (entry as Record<string, unknown>)['score'] === 'number' &&
+                  Number.isFinite((entry as Record<string, unknown>)['score']) &&
+                  typeof (entry as Record<string, unknown>)['evidence'] === 'string') {
+                valid.push({
+                  layer: (entry as Record<string, unknown>)['layer'] as string,
+                  score: (entry as Record<string, unknown>)['score'] as number,
+                  evidence: (entry as Record<string, unknown>)['evidence'] as string,
+                });
+              }
+            }
+            layers = valid;
+          }
+        } catch {
+          // Ignore malformed JSON
+        }
+      }
+
+      const rationale = n.props['rationale'];
+      const resolvedBy = n.props['resolved_by'];
+      const resolvedAt = n.props['resolved_at'];
+
+      suggestions.push({
+        id: n.id,
+        testFile,
+        targetId,
+        targetType,
+        confidence,
+        layers,
+        status: status as SuggestionStatus,
+        suggestedBy,
+        suggestedAt,
+        rationale: typeof rationale === 'string' ? rationale : undefined,
+        resolvedBy: typeof resolvedBy === 'string' ? resolvedBy : undefined,
+        resolvedAt: typeof resolvedAt === 'number' ? resolvedAt : undefined,
+      });
+    }
+
     // --- Build graph meta ---
     log('Reading graph metadata…');
     const state = await graph.getStateSnapshot();
@@ -420,6 +689,7 @@ class GraphContextImpl implements GraphContext {
     const snap: GraphSnapshot = {
       campaigns, quests, intents, scrolls, approvals,
       submissions, reviews, decisions,
+      stories, requirements, criteria, evidence, suggestions,
       asOf: Date.now(), graphMeta, sortedTaskIds, sortedCampaignIds,
     };
     this.cachedSnapshot = snap;
