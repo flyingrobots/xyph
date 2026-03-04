@@ -84,7 +84,7 @@ function collectFromDescribe(blocks: DescribeBlock[], result: ItBlock[]): void {
 function extractIdentifiers(text: string): Set<string> {
   // Extract camelCase/PascalCase words and split them, plus standalone words
   const words = new Set<string>();
-  const tokens = text.split(/[\s\-_.,:;!?()[\]{}'"\/\\]+/);
+  const tokens = text.split(/[\s\-_.,:;!?()[\]{}'"/\\]+/);
 
   for (const token of tokens) {
     if (token.length < 2) continue;

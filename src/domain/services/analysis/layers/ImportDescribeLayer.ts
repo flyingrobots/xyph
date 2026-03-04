@@ -105,7 +105,7 @@ const STOP_WORDS = new Set([
 export function extractSignificantTokens(text: string): Set<string> {
   return new Set(
     text.toLowerCase()
-      .split(/[\s\-_.,:;!?()[\]{}'"\/\\]+/)
+      .split(/[\s\-_.,:;!?()[\]{}'"/\\]+/)
       .filter((t) => t.length > 2 && !STOP_WORDS.has(t)),
   );
 }

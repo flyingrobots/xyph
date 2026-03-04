@@ -129,7 +129,7 @@ export function registerAnalyzeCommands(program: Command, ctx: CliContext): void
       for (const target of targets) {
         // Extract identifiers from description for function mapping
         const words = target.description
-          .split(/[\s\-_.,:;!?()[\]{}'"\/\\]+/)
+          .split(/[\s\-_.,:;!?()[\]{}'"/\\]+/)
           .filter((w) => /^[a-zA-Z]\w{2,}$/.test(w));
 
         for (const word of words) {
@@ -175,7 +175,7 @@ export function registerAnalyzeCommands(program: Command, ctx: CliContext): void
       }
 
       // LLM layer is handled separately (async, batch)
-      let llmScores: Map<string, Map<string, import('../../domain/services/analysis/types.js').LayerScore>> = new Map();
+      let llmScores = new Map<string, Map<string, import('../../domain/services/analysis/types.js').LayerScore>>();
       if (enabledLayers.has('llm') && config.llm.provider !== 'none') {
         try {
           const { scoreLlmBatch } = await import('../../domain/services/analysis/layers/LlmLayer.js');

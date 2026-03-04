@@ -328,7 +328,7 @@ export function registerTraceabilityCommands(program: Command, ctx: CliContext):
       }
 
       const fs = await import('node:fs/promises');
-      const allAnnotations: Array<{ criterionId: string; filePath: string; lineNumber: number }> = [];
+      const allAnnotations: { criterionId: string; filePath: string; lineNumber: number }[] = [];
 
       for (const file of files) {
         const content = await fs.readFile(file, 'utf-8');
@@ -354,7 +354,7 @@ export function registerTraceabilityCommands(program: Command, ctx: CliContext):
       let evidenceWritten = 0;
 
       // Group by criterion to avoid duplicate evidence nodes
-      const byCriterion = new Map<string, Array<{ filePath: string; lineNumber: number }>>();
+      const byCriterion = new Map<string, { filePath: string; lineNumber: number }[]>();
       for (const ann of allAnnotations) {
         const arr = byCriterion.get(ann.criterionId) ?? [];
         arr.push({ filePath: ann.filePath, lineNumber: ann.lineNumber });
@@ -362,7 +362,7 @@ export function registerTraceabilityCommands(program: Command, ctx: CliContext):
       }
 
       // Validate all criteria exist, collect valid ones
-      const validCriteria: Array<[string, Array<{ filePath: string; lineNumber: number }>]> = [];
+      const validCriteria: [string, { filePath: string; lineNumber: number }[]][] = [];
       for (const [criterionId, locations] of byCriterion) {
         const criterionExists = await graph.hasNode(criterionId);
         if (!criterionExists) {
