@@ -13,6 +13,7 @@ import { statusBar } from '@flyingrobots/bijou-tui';
 import { composite, toast as toastOverlay } from '@flyingrobots/bijou-tui';
 import { helpView, helpShort } from '@flyingrobots/bijou-tui';
 import { createNavigableTableState, navTableFocusNext, navTableFocusPrev, navTablePageDown, navTablePageUp, type NavigableTableState } from '@flyingrobots/bijou-tui';
+import { createDagPaneState, dagPaneSelectNode, dagPanePageDown, dagPanePageUp, dagPaneScrollByX, type DagPaneState } from '@flyingrobots/bijou-tui';
 import { createCommandPaletteState, cpFilter, cpFocusNext, cpFocusPrev, cpSelectedItem, commandPalette, modal, type CommandPaletteState, type CommandPaletteItem } from '@flyingrobots/bijou-tui';
 import { tabs, gradientText, getDefaultContext } from '@flyingrobots/bijou';
 import { styled, styledStatus, getTheme } from '../theme/index.js';
@@ -20,7 +21,7 @@ import type { GraphContext } from '../../infrastructure/GraphContext.js';
 import type { GraphSnapshot } from '../../domain/models/dashboard.js';
 import type { IntakePort } from '../../ports/IntakePort.js';
 import type { GraphPort } from '../../ports/GraphPort.js';
-import { roadmapView } from './views/roadmap-view.js';
+import { roadmapView, buildDagSource } from './views/roadmap-view.js';
 import { lineageView } from './views/lineage-view.js';
 import { dashboardView } from './views/dashboard-view.js';
 import { backlogView } from './views/backlog-view.js';
@@ -30,6 +31,7 @@ import { confirmOverlay, inputOverlay } from './overlays.js';
 import { claimQuest, promoteQuest, rejectQuest, reviewSubmission, type WriteDeps } from './write-cmds.js';
 import { roadmapQuestIds, submissionIds, sortedSubmissions, backlogQuestIds, lineageIntentIds } from './selection-order.js';
 import type { SubmissionPort } from '../../ports/SubmissionPort.js';
+import { computeCriticalPath, type TaskSummary, type DepEdge } from '../../domain/services/DepAnalysis.js';
 
 // ── Public types ────────────────────────────────────────────────────────
 
@@ -50,8 +52,8 @@ export type ConfirmAction = PendingWrite | { kind: 'quit' };
 
 export interface RoadmapState {
   table: NavigableTableState;
-  dagScrollY: number;
-  dagScrollX: number;
+  dagPane: DagPaneState | null;
+  fallbackScrollY: number;
   detailScrollY: number;
 }
 
@@ -250,6 +252,23 @@ function clampIndex(idx: number, count: number): number {
   return Math.max(0, Math.min(idx, count - 1));
 }
 
+function computeDagPaneSize(cols: number, rows: number): { dagWidth: number; dagHeight: number } {
+  const leftWidth = Math.max(28, Math.floor(cols * 0.3));
+  return {
+    dagWidth: Math.max(1, cols - leftWidth - 1),
+    dagHeight: Math.max(1, rows - 3),
+  };
+}
+
+function roadmapPageStep(rows: number): number {
+  return Math.max(1, rows - 3);
+}
+
+function snapshotHasQuestDependencies(snap: GraphSnapshot | null): boolean {
+  if (!snap) return false;
+  return snap.quests.some((q) => (q.dependsOn?.length ?? 0) > 0);
+}
+
 // ── View hints (auto-generated from keymaps) ────────────────────────────
 
 // ── Factory ─────────────────────────────────────────────────────────────
@@ -357,7 +376,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         logoText: deps.logoText,
         requestId: 1,
         loadingProgress: 0,
-        roadmap: { table: createNavigableTableState({ columns: [], rows: [], height: 20 }), dagScrollY: 0, dagScrollX: 0, detailScrollY: 0 },
+        roadmap: { table: createNavigableTableState({ columns: [], rows: [], height: 20 }), dagPane: null, fallbackScrollY: 0, detailScrollY: 0 },
         submissions: { table: createNavigableTableState({ columns: [], rows: [], height: 20 }), expandedId: null, detailScrollY: 0 },
         backlog: { table: createNavigableTableState({ columns: [], rows: [], height: 20 }) },
         lineage: { selectedIndex: -1, collapsedIntents: [] },
@@ -396,7 +415,24 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
     update(msg: KeyMsg | ResizeMsg | DashboardMsg, model: DashboardModel): [DashboardModel, Cmd<DashboardMsg>[]] {
       // Handle resize
       if (msg.type === 'resize') {
-        return [{ ...model, cols: msg.columns, rows: msg.rows }, []];
+        let newDagPane = model.roadmap.dagPane;
+        if (newDagPane) {
+          const { dagWidth, dagHeight } = computeDagPaneSize(msg.columns, msg.rows);
+          newDagPane = createDagPaneState({
+            source: newDagPane.source,
+            width: dagWidth,
+            height: dagHeight,
+            selectedId: newDagPane.selectedId,
+            dagOptions: newDagPane.dagOptions,
+            ctx: getDefaultContext(),
+          });
+        }
+        return [{
+          ...model,
+          cols: msg.columns,
+          rows: msg.rows,
+          roadmap: { ...model.roadmap, dagPane: newDagPane },
+        }, []];
       }
 
       // Handle loading progress animation frames
@@ -413,13 +449,51 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         const currentDv = model.dashboardView ?? { focusPanel: 'in-progress' as const, focusRow: 0, detailId: null, leftScrollY: 0, rightScrollY: 0 };
         const panelCount = dashboardPanelCount(snap, model, currentDv.focusPanel);
         const clampedFocusRow = panelCount > 0 ? Math.min(currentDv.focusRow, panelCount - 1) : 0;
+        // Build dagPane from dependency data
+        const newRoadmapTable = rebuildRoadmapTable(snap, model.roadmap.table.focusRow, model.rows - 4);
+        const dagTasks: TaskSummary[] = snap.quests.map(q => ({ id: q.id, status: q.status, hours: q.hours }));
+        const dagEdges: DepEdge[] = [];
+        for (const q of snap.quests) {
+          if (q.dependsOn) {
+            for (const dep of q.dependsOn) {
+              dagEdges.push({ from: q.id, to: dep });
+            }
+          }
+        }
+        let newDagPane: DagPaneState | null = null;
+        if (dagTasks.length > 0) {
+          const criticalPath = dagEdges.length > 0
+            ? computeCriticalPath(snap.sortedTaskIds, dagTasks, dagEdges).path
+            : [];
+          const critSet = new Set(criticalPath);
+          const source = buildDagSource(snap, critSet);
+          const { dagWidth, dagHeight } = computeDagPaneSize(model.cols, model.rows);
+          const t = getTheme();
+          newDagPane = createDagPaneState({
+            source,
+            width: dagWidth,
+            height: dagHeight,
+            dagOptions: {
+              highlightToken: t.theme.semantic.warning,
+              selectedToken: t.theme.semantic.primary,
+              direction: 'right',
+              maxWidth: Math.max(model.cols * 2, 120),
+            },
+            ctx: getDefaultContext(),
+          });
+          const ids = roadmapQuestIds(snap);
+          const selectedId = ids[newRoadmapTable.focusRow];
+          if (selectedId) {
+            newDagPane = dagPaneSelectNode(newDagPane, selectedId, getDefaultContext());
+          }
+        }
         return [{
           ...model,
           snapshot: snap,
           loading: false,
           error: null,
           loadingProgress: 100,
-          roadmap: { ...model.roadmap, table: rebuildRoadmapTable(snap, model.roadmap.table.focusRow, model.rows - 4) },
+          roadmap: { table: newRoadmapTable, dagPane: newDagPane, fallbackScrollY: 0, detailScrollY: 0 },
           submissions: { ...model.submissions, table: rebuildSubmissionsTable(snap, model.submissions.table.focusRow, model.rows - 4) },
           backlog: { ...model.backlog, table: rebuildBacklogTable(snap, model.backlog.table.focusRow, model.rows - 4) },
           lineage: {
@@ -881,31 +955,49 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
       }
 
       case 'scroll-dag-down': {
-        const pageStep = Math.max(1, model.rows - 6);
+        if (!snapshotHasQuestDependencies(snap)) {
+          return [{
+            ...model,
+            roadmap: {
+              ...model.roadmap,
+              fallbackScrollY: model.roadmap.fallbackScrollY + roadmapPageStep(model.rows),
+            },
+          }, []];
+        }
+        if (!model.roadmap.dagPane) return [model, []];
         return [{
           ...model,
-          roadmap: { ...model.roadmap, dagScrollY: model.roadmap.dagScrollY + pageStep },
+          roadmap: { ...model.roadmap, dagPane: dagPanePageDown(model.roadmap.dagPane) },
         }, []];
       }
       case 'scroll-dag-up': {
-        const pageStep = Math.max(1, model.rows - 6);
+        if (!snapshotHasQuestDependencies(snap)) {
+          return [{
+            ...model,
+            roadmap: {
+              ...model.roadmap,
+              fallbackScrollY: Math.max(0, model.roadmap.fallbackScrollY - roadmapPageStep(model.rows)),
+            },
+          }, []];
+        }
+        if (!model.roadmap.dagPane) return [model, []];
         return [{
           ...model,
-          roadmap: { ...model.roadmap, dagScrollY: Math.max(0, model.roadmap.dagScrollY - pageStep) },
+          roadmap: { ...model.roadmap, dagPane: dagPanePageUp(model.roadmap.dagPane) },
         }, []];
       }
       case 'scroll-dag-left': {
-        const colStep = 8;
+        if (!model.roadmap.dagPane) return [model, []];
         return [{
           ...model,
-          roadmap: { ...model.roadmap, dagScrollX: Math.max(0, model.roadmap.dagScrollX - colStep) },
+          roadmap: { ...model.roadmap, dagPane: dagPaneScrollByX(model.roadmap.dagPane, -8) },
         }, []];
       }
       case 'scroll-dag-right': {
-        const colStep = 8;
+        if (!model.roadmap.dagPane) return [model, []];
         return [{
           ...model,
-          roadmap: { ...model.roadmap, dagScrollX: model.roadmap.dagScrollX + colStep },
+          roadmap: { ...model.roadmap, dagPane: dagPaneScrollByX(model.roadmap.dagPane, 8) },
         }, []];
       }
 
@@ -971,7 +1063,15 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         const nextTable = delta > 0
           ? navTableFocusNext(model.roadmap.table)
           : navTableFocusPrev(model.roadmap.table);
-        return { ...model, roadmap: { ...model.roadmap, table: nextTable } };
+        let dagPaneState = model.roadmap.dagPane;
+        if (snap && dagPaneState) {
+          const ids = roadmapQuestIds(snap);
+          const selectedId = ids[nextTable.focusRow];
+          if (selectedId) {
+            dagPaneState = dagPaneSelectNode(dagPaneState, selectedId, getDefaultContext());
+          }
+        }
+        return { ...model, roadmap: { ...model.roadmap, table: nextTable, dagPane: dagPaneState } };
       }
       case 'submissions': {
         const nextTable = delta > 0

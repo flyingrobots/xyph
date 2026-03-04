@@ -11,10 +11,30 @@ All notable changes to XYPH will be documented in this file.
 - **`npm run graph:work`** — runs the generator, outputs to `docs/work/`
 - **43 new tests** — unit tests for all DagAnalysis functions (diamond, linear, empty, single-node, isolated-node graphs)
 
+### Changed
+
+- **Upgraded bijou to v1.2.0** — `@flyingrobots/bijou`, `@flyingrobots/bijou-node`, `@flyingrobots/bijou-tui` from v0.10.0 to v1.2.0
+- **Roadmap DAG panel uses `dagPane()`** — replaced ~50 lines of manual `dagLayout()` + `viewport()` + scroll-centering math with bijou v1.2.0's `dagPane()` building block; auto-scroll-to-selection, keyboard-synced DAG highlight, `DagPaneState` replaces raw `dagScrollX`/`dagScrollY`
+- **Dashboard columns use `focusArea()`** — replaced bare `viewport()` with `focusArea()` for visual focus indication; focused column shows bright `▎` gutter, unfocused shows muted gutter
+
+### Fixed — PR #33 Code Review
+
+- **Roadmap fallback paging restored** — PageDown/PageUp now scroll the right roadmap panel even when a snapshot has no dependency edges; fallback viewport scroll is stateful instead of hardcoded to row 0
+- **DagPane always built when quests exist** — snapshot refresh now creates `roadmap.dagPane` for quest-only graphs, while critical-path computation remains gated on `dagEdges.length > 0`
+- **Defensive DagPane sizing** — DagPane width/height are clamped to positive minimums on both resize and snapshot rebuild paths
+- **Unused analysis arg removed** — dropped the unused `sorted` parameter from `buildAnalysisInputs()` in `scripts/generate-work-dag.ts` and updated call sites
+- **SVG ignore intent documented** — `.gitignore` targets generated DAG artifacts (`docs/assets/work-dag*.svg`) and now includes inline rationale for the pattern
+
 ### Fixed — PR #32 Code Review
 
 - **DONE tasks inflated scheduling makespan** — `scheduleWorkers` now treats DONE tasks as weight 0, matching `computeCriticalPath` semantics (Codex P1)
 - **CI traceability job failure** — added `fetch-depth: 0` and git identity config to traceability workflow; shallow clones lack commit objects needed by git-warp materialization
+- **Topological sort delegated to graph traversal API** — `generate-work-dag.ts` now delegates to `graph.traverse.topologicalSort()` instead of using a hand-rolled Kahn implementation (P1-01)
+- **Unused `reverseReachability` import** — removed from `generate-work-dag.ts` (P2-01)
+- **Dead `allNodes` set in `computeProvenance`** — removed unused variable construction loop (P2-02)
+- **Non-null assertions** — replaced `!` assertions in `generate-work-dag.ts` and `DagAnalysis.test.ts` with guard patterns (P3-01/02/04)
+- **Redundant `STATUS_COLORS['BACKLOG']!`** — extracted `DEFAULT_COLORS` constant, eliminating non-null assertion (P3-03)
+- **237KB SVG tracked in repo** — removed `docs/assets/work-dag.svg` from index and added a generated-artifact ignore rule (`docs/assets/work-dag*.svg`) to `.gitignore` (P4-01)
 
 ### Added — Workflow Infrastructure
 

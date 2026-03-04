@@ -146,7 +146,7 @@ function makeModel(snapshot: GraphSnapshot | null): DashboardModel {
     logoText: 'XYPH',
     requestId: 1,
     loadingProgress: 100,
-    roadmap: { table: buildRoadmapTable(snapshot), dagScrollY: 0, dagScrollX: 0, detailScrollY: 0 },
+    roadmap: { table: buildRoadmapTable(snapshot), dagPane: null, fallbackScrollY: 0, detailScrollY: 0 },
     submissions: { table: buildSubmissionsTable(snapshot), expandedId: null, detailScrollY: 0 },
     backlog: { table: buildBacklogTable(snapshot) },
     lineage: { selectedIndex: -1, collapsedIntents: [] },

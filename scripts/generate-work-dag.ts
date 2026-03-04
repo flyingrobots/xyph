@@ -32,7 +32,6 @@ import {
   transitiveReduction,
   transitiveClosure,
   computeAntiChains,
-  reverseReachability,
   computeProvenance,
 } from '../src/domain/services/DagAnalysis.js';
 
@@ -53,6 +52,7 @@ const STATUS_COLORS: Record<string, { fill: string; font: string; border: string
   GRAVEYARD:   { fill: '#2a1a1a', font: '#996666', border: '#553333' },
 };
 
+const DEFAULT_COLORS = { fill: '#3a3a3a', font: '#cccccc', border: '#666666' };
 const FRONTIER_COLORS = { fill: '#5c4a00', font: '#ffd700', border: '#daa520' };
 
 const CAMPAIGN_COLORS: Record<string, string> = {
@@ -100,6 +100,7 @@ interface DotOptions {
 async function loadGraph(): Promise<{
   tasks: Map<string, TaskNode>;
   campaigns: Map<string, string>;
+  sorted: string[];
 }> {
   const plumbing = Plumbing.createDefault({ cwd: process.cwd() });
   const persistence = new GitGraphAdapter({ plumbing });
@@ -162,7 +163,14 @@ async function loadGraph(): Promise<{
     });
   }
 
-  return { tasks, campaigns };
+  // Topological sort via git-warp (prerequisites before dependents)
+  const topoResult = await graph.traverse.topologicalSort(taskIds, {
+    dir: 'in',
+    labelFilter: 'depends-on',
+  });
+  const sorted = topoResult.sorted;
+
+  return { tasks, campaigns, sorted };
 }
 
 // ---------------------------------------------------------------------------
@@ -247,7 +255,7 @@ function generateDot(
 
       const sc = isFrontier
         ? FRONTIER_COLORS
-        : STATUS_COLORS[task.status] ?? STATUS_COLORS['BACKLOG']!;
+        : STATUS_COLORS[task.status] ?? DEFAULT_COLORS;
 
       const shortId = id.replace('task:', '');
       const tags: string[] = [];
@@ -332,10 +340,11 @@ function generatePair(
 // Analysis helpers
 // ---------------------------------------------------------------------------
 
-function buildAnalysisInputs(tasks: Map<string, TaskNode>): {
+function buildAnalysisInputs(
+  tasks: Map<string, TaskNode>,
+): {
   summaries: TaskSummary[];
   edges: DepEdge[];
-  sorted: string[];
 } {
   const summaries: TaskSummary[] = [];
   const edges: DepEdge[] = [];
@@ -349,43 +358,7 @@ function buildAnalysisInputs(tasks: Map<string, TaskNode>): {
     }
   }
 
-  // Topological sort via Kahn's algorithm
-  const inDegree = new Map<string, number>();
-  const adj = new Map<string, string[]>();
-  for (const s of summaries) {
-    inDegree.set(s.id, 0);
-    adj.set(s.id, []);
-  }
-  for (const e of edges) {
-    inDegree.set(e.from, (inDegree.get(e.from) ?? 0) + 1);
-    const arr = adj.get(e.to) ?? [];
-    arr.push(e.from);
-    adj.set(e.to, arr);
-  }
-
-  const queue: string[] = [];
-  for (const [id, deg] of inDegree) {
-    if (deg === 0) queue.push(id);
-  }
-  queue.sort(); // determinism
-
-  const sorted: string[] = [];
-  while (queue.length > 0) {
-    const node = queue.shift()!;
-    sorted.push(node);
-    for (const dep of adj.get(node) ?? []) {
-      const newDeg = (inDegree.get(dep) ?? 1) - 1;
-      inDegree.set(dep, newDeg);
-      if (newDeg === 0) {
-        // Insert sorted for determinism
-        const insertIdx = queue.findIndex((q) => q > dep);
-        if (insertIdx === -1) queue.push(dep);
-        else queue.splice(insertIdx, 0, dep);
-      }
-    }
-  }
-
-  return { summaries, edges, sorted };
+  return { summaries, edges };
 }
 
 // ---------------------------------------------------------------------------
@@ -413,7 +386,8 @@ function generateWorkMd(
   lines.push('| # | Task ID | Title | Status | Campaign | Hours |');
   lines.push('|---|---------|-------|--------|----------|-------|');
   for (let i = 0; i < sorted.length; i++) {
-    const id = sorted[i]!;
+    const id = sorted[i];
+    if (!id) continue;
     const task = tasks.get(id);
     if (!task) continue;
     const campaign = task.campaignTitle ?? task.campaign?.replace(/^(campaign|milestone):/, '') ?? '—';
@@ -438,16 +412,19 @@ function generateWorkMd(
     lines.push('');
 
     // Bottleneck: the critical path task with most hours
-    const bottleneck = cp.path.reduce((max, id) => {
-      const t = tasks.get(id);
-      const h = t?.hours ?? 0;
-      const maxH = tasks.get(max)?.hours ?? 0;
-      return h > maxH ? id : max;
-    }, cp.path[0]!);
-    const btTask = tasks.get(bottleneck);
-    if (btTask) {
-      lines.push(`**Bottleneck:** \`${bottleneck}\` — ${btTask.title} (${btTask.hours}h)`);
-      lines.push('');
+    const firstPathNode = cp.path[0];
+    if (firstPathNode) {
+      const bottleneck = cp.path.reduce((max, id) => {
+        const t = tasks.get(id);
+        const h = t?.hours ?? 0;
+        const maxH = tasks.get(max)?.hours ?? 0;
+        return h > maxH ? id : max;
+      }, firstPathNode);
+      const btTask = tasks.get(bottleneck);
+      if (btTask) {
+        lines.push(`**Bottleneck:** \`${bottleneck}\` — ${btTask.title} (${btTask.hours}h)`);
+        lines.push('');
+      }
     }
   } else {
     lines.push('No critical path (no dependencies or all tasks DONE).');
@@ -533,7 +510,8 @@ function generateWorkMd(
     const impliedEdges = closure.filter((e) => !originalSet.has(`${e.from}→${e.to}`));
     const displayLimit = Math.min(impliedEdges.length, 20);
     for (let i = 0; i < displayLimit; i++) {
-      const e = impliedEdges[i]!;
+      const e = impliedEdges[i];
+      if (!e) continue;
       lines.push(`- \`${e.from}\` → \`${e.to}\``);
     }
     if (impliedEdges.length > 20) {
@@ -615,7 +593,8 @@ function generateWorkMd(
     lines.push('| Wave | Parallel Tasks | Count | Total Hours |');
     lines.push('|------|----------------|-------|-------------|');
     for (let i = 0; i < chains.length; i++) {
-      const wave = chains[i]!;
+      const wave = chains[i];
+      if (!wave) continue;
       const waveHours = wave.reduce((sum, id) => {
         const t = summaries.find((s) => s.id === id);
         return sum + (t?.hours ?? 0);
@@ -653,10 +632,10 @@ function generateWorkMd(
 
 async function main(): Promise<void> {
   console.log('Loading WARP graph...');
-  const { tasks, campaigns } = await loadGraph();
+  const { tasks, campaigns, sorted } = await loadGraph();
   console.log(`Loaded ${tasks.size} tasks, ${campaigns.size} campaigns`);
 
-  const { summaries, edges, sorted } = buildAnalysisInputs(tasks);
+  const { summaries, edges } = buildAnalysisInputs(tasks);
 
   // Compute highlights
   const { frontier } = computeFrontier(summaries, edges);

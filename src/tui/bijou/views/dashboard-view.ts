@@ -3,7 +3,7 @@ import {
   separator, badge, timeline, enumeratedList,
   type TimelineEvent, type BaseStatusKey,
 } from '@flyingrobots/bijou';
-import { flex, viewport } from '@flyingrobots/bijou-tui';
+import { flex, createFocusAreaState, focusAreaScrollTo, focusArea } from '@flyingrobots/bijou-tui';
 import { styled, styledStatus, getTheme } from '../../theme/index.js';
 import { statusVariant, formatAge } from '../../view-helpers.js';
 import type { DashboardModel } from '../DashboardApp.js';
@@ -282,7 +282,9 @@ export function dashboardView(model: DashboardModel, width?: number, height?: nu
     }
 
     const content = lines.join('\n');
-    return viewport({ width: pw, height: ph, content, scrollY: dv?.leftScrollY ?? 0 });
+    let fa = createFocusAreaState({ content, width: pw, height: ph });
+    fa = focusAreaScrollTo(fa, dv?.leftScrollY ?? 0);
+    return focusArea(fa, { focused: dv?.focusPanel === 'in-progress' });
   }
 
   // ── Right column (My Stuff) ─────────────────────────────────────
@@ -344,7 +346,9 @@ export function dashboardView(model: DashboardModel, width?: number, height?: nu
     }
 
     const content = lines.join('\n');
-    return viewport({ width: pw, height: ph, content, scrollY: dv?.rightScrollY ?? 0 });
+    let fa = createFocusAreaState({ content, width: pw, height: ph });
+    fa = focusAreaScrollTo(fa, dv?.rightScrollY ?? 0);
+    return focusArea(fa, { focused: dv?.focusPanel === 'my-quests' });
   }
 
   // ── Layout ──────────────────────────────────────────────────────────

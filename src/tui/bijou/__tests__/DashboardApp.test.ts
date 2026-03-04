@@ -119,7 +119,7 @@ describe('DashboardApp', () => {
       const [model] = app.init();
       expect(model.roadmap.table.focusRow).toBe(0);
       expect(model.roadmap.table.rows).toHaveLength(0);
-      expect(model.roadmap.dagScrollY).toBe(0);
+      expect(model.roadmap.dagPane).toBeNull();
       expect(model.submissions.table.focusRow).toBe(0);
       expect(model.submissions.table.rows).toHaveLength(0);
       expect(model.submissions.expandedId).toBeNull();
@@ -147,6 +147,23 @@ describe('DashboardApp', () => {
       expect(updated.loading).toBe(false);
       expect(updated.error).toBeNull();
       expect(cmds).toHaveLength(0);
+    });
+
+    it('creates a roadmap dagPane for snapshots with quests but no dependency edges', () => {
+      const app = makeApp();
+      const [initial] = app.init();
+      const snap = makeSnapshot({
+        quests: [
+          { id: 'task:A', title: 'Alpha', status: 'PLANNED', hours: 1 },
+          { id: 'task:B', title: 'Bravo', status: 'IN_PROGRESS', hours: 2 },
+        ],
+        sortedTaskIds: ['task:A', 'task:B'],
+      });
+      const [updated] = app.update(
+        { type: 'snapshot-loaded', snapshot: snap, requestId: initial.requestId },
+        initial,
+      );
+      expect(updated.roadmap.dagPane).not.toBeNull();
     });
 
     it('handles snapshot-error message', () => {
@@ -282,6 +299,36 @@ describe('DashboardApp', () => {
       // PageUp from scrollY=0 stays at 0
       const [afterPgUp2] = app.update(makeKey('pageup'), afterPgUp);
       expect(afterPgUp2.dashboardView?.leftScrollY).toBe(0);
+    });
+
+    it('PageDown/PageUp scroll roadmap fallback content when no DAG edges exist', () => {
+      const app = makeApp();
+      const [initial] = app.init();
+      const quests = Array.from({ length: 40 }, (_, i) => ({
+        id: `task:Q-${i.toString().padStart(2, '0')}`,
+        title: `Quest ${i.toString().padStart(2, '0')} with a long title for scrolling`,
+        status: 'PLANNED' as const,
+        hours: 1,
+      }));
+      const snap = makeSnapshot({ quests });
+      const withSmallViewport: DashboardModel = { ...initial, cols: 90, rows: 14 };
+      const [withSnap] = app.update(
+        { type: 'snapshot-loaded', snapshot: snap, requestId: withSmallViewport.requestId },
+        withSmallViewport,
+      );
+      const loaded: DashboardModel = {
+        ...withSnap,
+        showLanding: false,
+        loading: false,
+        activeView: 'roadmap',
+      };
+
+      const beforeScrollY = loaded.roadmap.fallbackScrollY;
+      const [afterPgDn] = app.update(makeKey('pagedown'), loaded);
+      expect(afterPgDn.roadmap.fallbackScrollY).toBeGreaterThan(beforeScrollY);
+
+      const [afterPgUp] = app.update(makeKey('pageup'), afterPgDn);
+      expect(afterPgUp.roadmap.fallbackScrollY).toBe(beforeScrollY);
     });
 
     it('toggles help with ?', () => {

@@ -1,6 +1,6 @@
 {
   "name": "xyph",
-  "version": "1.0.0-alpha.12",
+  "version": "1.0.0-alpha.13",
   "description": "Agent Planning and Orchestration framework powered by Causal Agents and WARP graphs.",
   "type": "module",
   "scripts": {
@@ -17,9 +17,9 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
-    "@flyingrobots/bijou": "^0.10.0",
-    "@flyingrobots/bijou-node": "^0.10.0",
-    "@flyingrobots/bijou-tui": "^0.10.0",
+    "@flyingrobots/bijou": "^1.2.0",
+    "@flyingrobots/bijou-node": "^1.2.0",
+    "@flyingrobots/bijou-tui": "^1.2.0",
     "@git-stunts/git-warp": "^12.1.0",
     "@git-stunts/plumbing": "^2.8.0",
     "@git-stunts/vault": "^1.0.1",
