@@ -12,6 +12,7 @@
     "test:local": "vitest run",
     "graph:pull": "git fetch origin 'refs/warp/xyph-roadmap/writers/*:refs/warp/xyph-roadmap/writers/*'",
     "graph:push": "git push origin 'refs/warp/xyph-roadmap/writers/*:refs/warp/xyph-roadmap/writers/*'",
+    "graph:work": "npx tsx scripts/generate-work-dag.ts",
     "postinstall": "patch-package"
   },
   "dependencies": {

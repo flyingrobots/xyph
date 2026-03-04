@@ -4,6 +4,13 @@ All notable changes to XYPH will be documented in this file.
 
 ## [Unreleased]
 
+### Added — Work DAG Analysis Suite
+
+- **`DagAnalysis.ts`** — pure functions for DAG structure analysis: level assignment, DAG width, greedy worker scheduling, transitive reduction/closure, anti-chain decomposition, reverse reachability, and provenance tracing
+- **`scripts/generate-work-dag.ts`** — generates comprehensive DAG visualization suite: full/per-campaign/backlog/graveyard SVGs in both LR and TB orientations, plus `work.md` analysis document with topological sort, critical path, parallelism, scheduling, transitive reduction/closure, ancestry/impact, campaign grouping, and anti-chain waves
+- **`npm run graph:work`** — runs the generator, outputs to `docs/work/`
+- **42 new tests** — unit tests for all DagAnalysis functions (diamond, linear, empty, single-node, isolated-node graphs)
+
 ### Added — Workflow Infrastructure
 
 - **Git hooks** — `scripts/hooks/pre-commit` (lint gate) and `scripts/hooks/pre-push` (test gate); plain shell scripts, no Husky/lint-staged
