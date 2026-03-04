@@ -17,6 +17,14 @@ All notable changes to XYPH will be documented in this file.
 - **Roadmap DAG panel uses `dagPane()`** — replaced ~50 lines of manual `dagLayout()` + `viewport()` + scroll-centering math with bijou v1.2.0's `dagPane()` building block; auto-scroll-to-selection, keyboard-synced DAG highlight, `DagPaneState` replaces raw `dagScrollX`/`dagScrollY`
 - **Dashboard columns use `focusArea()`** — replaced bare `viewport()` with `focusArea()` for visual focus indication; focused column shows bright `▎` gutter, unfocused shows muted gutter
 
+### Fixed — PR #33 Code Review
+
+- **Roadmap fallback paging restored** — PageDown/PageUp now scroll the right roadmap panel even when a snapshot has no dependency edges; fallback viewport scroll is stateful instead of hardcoded to row 0
+- **DagPane always built when quests exist** — snapshot refresh now creates `roadmap.dagPane` for quest-only graphs, while critical-path computation remains gated on `dagEdges.length > 0`
+- **Defensive DagPane sizing** — DagPane width/height are clamped to positive minimums on both resize and snapshot rebuild paths
+- **Unused analysis arg removed** — dropped the unused `sorted` parameter from `buildAnalysisInputs()` in `scripts/generate-work-dag.ts` and updated call sites
+- **SVG ignore scope narrowed** — `.gitignore` now targets generated DAG artifacts (`docs/assets/work-dag*.svg`) and documents why the pattern exists
+
 ### Fixed — PR #32 Code Review
 
 - **DONE tasks inflated scheduling makespan** — `scheduleWorkers` now treats DONE tasks as weight 0, matching `computeCriticalPath` semantics (Codex P1)
