@@ -179,11 +179,9 @@ describe('scheduleWorkers', () => {
     const dSlot = allSlots.find((s) => s.id === 'task:D');
     const bSlot = allSlots.find((s) => s.id === 'task:B');
     const cSlot = allSlots.find((s) => s.id === 'task:C');
-    expect(dSlot).toBeDefined();
-    expect(bSlot).toBeDefined();
-    expect(cSlot).toBeDefined();
-    expect(dSlot!.start).toBeGreaterThanOrEqual(bSlot!.start + bSlot!.hours);
-    expect(dSlot!.start).toBeGreaterThanOrEqual(cSlot!.start + cSlot!.hours);
+    if (!dSlot || !bSlot || !cSlot) throw new Error('slot not found');
+    expect(dSlot.start).toBeGreaterThanOrEqual(bSlot.start + bSlot.hours);
+    expect(dSlot.start).toBeGreaterThanOrEqual(cSlot.start + cSlot.hours);
   });
 
   it('treats DONE tasks as weight 0 (no worker time consumed)', () => {

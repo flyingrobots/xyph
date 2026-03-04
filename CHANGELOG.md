@@ -15,6 +15,12 @@ All notable changes to XYPH will be documented in this file.
 
 - **DONE tasks inflated scheduling makespan** — `scheduleWorkers` now treats DONE tasks as weight 0, matching `computeCriticalPath` semantics (Codex P1)
 - **CI traceability job failure** — added `fetch-depth: 0` and git identity config to traceability workflow; shallow clones lack commit objects needed by git-warp materialization
+- **Kahn's topo sort reimplemented in userland** — `generate-work-dag.ts` now delegates to `graph.traverse.topologicalSort()` instead of hand-rolling Kahn's algorithm (P1-01)
+- **Unused `reverseReachability` import** — removed from `generate-work-dag.ts` (P2-01)
+- **Dead `allNodes` set in `computeProvenance`** — removed unused variable construction loop (P2-02)
+- **Non-null assertions** — replaced `!` assertions in `generate-work-dag.ts` and `DagAnalysis.test.ts` with guard patterns (P3-01/02/04)
+- **Redundant `STATUS_COLORS['BACKLOG']!`** — extracted `DEFAULT_COLORS` constant, eliminating non-null assertion (P3-03)
+- **237KB SVG tracked in repo** — removed `docs/assets/work-dag.svg` from index, added `docs/assets/*.svg` to `.gitignore` (P4-01)
 
 ### Added — Workflow Infrastructure
 

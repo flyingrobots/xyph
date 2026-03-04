@@ -12,3 +12,4 @@ coverage/
 .claude/
 .xyph.json
 docs/work/
+docs/assets/*.svg

@@ -430,13 +430,6 @@ export function computeProvenance(
     depsOf.set(edge.from, arr);
   }
 
-  // All nodes that appear in edges (to find roots)
-  const allNodes = new Set<string>();
-  for (const edge of edges) {
-    allNodes.add(edge.from);
-    allNodes.add(edge.to);
-  }
-
   for (const taskId of frontier) {
     // BFS backwards through deps
     const visited = new Set<string>();
