@@ -94,6 +94,13 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure git identity for graph materialization
+        run: |
+          git config user.name "ci-bot"
+          git config user.email "ci@xyph.dev"
 
       - name: Fetch WARP graph refs
         run: git fetch origin 'refs/warp/xyph-roadmap/writers/*:refs/warp/xyph-roadmap/writers/*'
