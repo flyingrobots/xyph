@@ -119,7 +119,7 @@ describe('DashboardApp', () => {
       const [model] = app.init();
       expect(model.roadmap.table.focusRow).toBe(0);
       expect(model.roadmap.table.rows).toHaveLength(0);
-      expect(model.roadmap.dagScrollY).toBe(0);
+      expect(model.roadmap.dagPane).toBeNull();
       expect(model.submissions.table.focusRow).toBe(0);
       expect(model.submissions.table.rows).toHaveLength(0);
       expect(model.submissions.expandedId).toBeNull();

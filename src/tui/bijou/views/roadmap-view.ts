@@ -1,7 +1,8 @@
-import { headerBox, dagLayout, type DagLayout, type SlicedDagSource } from '@flyingrobots/bijou';
-import { flex, viewport, composite, drawer } from '@flyingrobots/bijou-tui';
+import { headerBox, type SlicedDagSource, getDefaultContext } from '@flyingrobots/bijou';
+import { flex, viewport, composite, drawer, dagPane } from '@flyingrobots/bijou-tui';
 import { styled, styledStatus, getTheme } from '../../theme/index.js';
 import type { DashboardModel } from '../DashboardApp.js';
+import type { GraphSnapshot } from '../../../domain/models/dashboard.js';
 import { computeFrontier, computeCriticalPath, computeTopBlockers, type TaskSummary, type DepEdge } from '../../../domain/services/DepAnalysis.js';
 import { roadmapQuestIds } from '../selection-order.js';
 
@@ -16,6 +17,29 @@ function statusIcon(status: string): string {
     case 'GRAVEYARD':   return '\u2620';
     default:            return '?';
   }
+}
+
+/** Build a SlicedDagSource adapter for the dagPane. Only colors critical-path nodes via token. */
+export function buildDagSource(
+  snap: GraphSnapshot,
+  critSet: Set<string>,
+): SlicedDagSource {
+  const t = getTheme();
+  const questMap = new Map(snap.quests.map(q => [q.id, q]));
+  const questIds = snap.quests.map(q => q.id);
+  return {
+    ids: () => questIds,
+    has: (id) => questMap.has(id),
+    label: (id) => id.replace(/^task:/, ''),
+    children: (id) => questMap.get(id)?.dependsOn ?? [],
+    badge: (id): string | undefined => {
+      const q = questMap.get(id);
+      return q ? styledStatus(q.status) : undefined;
+    },
+    token: (id) => critSet.has(id) ? t.theme.semantic.warning : undefined,
+    ghost: () => false,
+    ghostLabel: () => undefined,
+  };
 }
 
 export function roadmapView(model: DashboardModel, width?: number, height?: number): string {
@@ -216,55 +240,13 @@ export function roadmapView(model: DashboardModel, width?: number, height?: numb
         }
       }
 
-      return viewport({ width: pw, height: ph, content: lines.join('\n'), scrollY: model.roadmap.dagScrollY });
+      return viewport({ width: pw, height: ph, content: lines.join('\n'), scrollY: 0 });
     }
 
-    // DagSource adapter — reads directly from questMap, no intermediate array
-    const questIds = snap.quests.map(q => q.id);
-    const dagSource: SlicedDagSource = {
-      ids: () => questIds,
-      has: (id) => questMap.has(id),
-      label: (id) => id.replace(/^task:/, ''),
-      children: (id) => questMap.get(id)?.dependsOn ?? [],
-      badge: (id) => {
-        const q = questMap.get(id);
-        return q ? styledStatus(q.status) : undefined;
-      },
-      token: (id) =>
-        id === selectedQuestId ? t.theme.semantic.primary
-          : critSet.has(id) ? t.theme.semantic.warning : undefined,
-      ghost: () => false,
-      ghostLabel: () => undefined,
-    };
-
-    const layout: DagLayout = dagLayout(dagSource, {
-      highlightPath: criticalPath.length > 1 ? criticalPath : undefined,
-      highlightToken: t.theme.semantic.warning,
-      selectedId: selectedQuestId ?? undefined,
-      selectedToken: t.theme.semantic.primary,
-      direction: 'right',
-      maxWidth: Math.max(pw * 2, 120), // allow wider graph, scroll handles it
-    });
-
-    // Auto-center on selected node, with manual offset
-    let scrollX = model.roadmap.dagScrollX;
-    let scrollY = model.roadmap.dagScrollY;
-    if (selectedQuestId) {
-      const nodePos = layout.nodes.get(selectedQuestId);
-      if (nodePos) {
-        // Center the selected node in the viewport; manual scroll offsets from auto-center
-        scrollX = Math.max(0, nodePos.col - Math.floor(pw / 2) + model.roadmap.dagScrollX);
-        scrollY = Math.max(0, nodePos.row - Math.floor(ph / 2) + model.roadmap.dagScrollY);
-      }
+    if (!model.roadmap.dagPane) {
+      return styled(t.theme.semantic.muted, '  Loading DAG...');
     }
-
-    return viewport({
-      width: pw,
-      height: ph,
-      content: layout.output,
-      scrollY,
-      scrollX,
-    });
+    return dagPane(model.roadmap.dagPane, { focused: true, ctx: getDefaultContext() });
   }
 
   // ── Detail content (for drawer overlay) ────────────────────────────
