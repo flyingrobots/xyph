@@ -6,6 +6,7 @@
 
 import type { Command } from 'commander';
 import type { CliContext } from '../context.js';
+import type { HeuristicWeights, LlmConfig } from '../../ports/ConfigPort.js';
 import { createErrorHandler } from '../errorHandler.js';
 
 const VALID_KEYS = [
@@ -81,7 +82,22 @@ export function registerConfigCommands(program: Command, ctx: CliContext): void 
 
       const { ConfigAdapter } = await import('../../infrastructure/adapters/ConfigAdapter.js');
       const adapter = new ConfigAdapter(ctx.graphPort, process.cwd());
-      await adapter.set(key, parsed as never, target);
+
+      switch (key) {
+        case 'minAutoConfidence':
+        case 'suggestionFloor':
+          await adapter.set(key, parsed as number, target);
+          break;
+        case 'testGlob':
+          await adapter.set(key, parsed as string, target);
+          break;
+        case 'heuristicWeights':
+          await adapter.set(key, parsed as HeuristicWeights, target);
+          break;
+        case 'llm':
+          await adapter.set(key, parsed as LlmConfig, target);
+          break;
+      }
 
       if (ctx.json) {
         ctx.jsonOut({

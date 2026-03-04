@@ -8,7 +8,8 @@ import type { ApprovalGateStatus, ApprovalGateTrigger } from '../entities/Approv
 import type { SubmissionStatus, ReviewVerdict, DecisionKind } from '../entities/Submission.js';
 import type { RequirementKind, RequirementPriority } from '../entities/Requirement.js';
 import type { EvidenceKind, EvidenceResult } from '../entities/Evidence.js';
-import type { SuggestionStatus, LayerScore } from '../entities/Suggestion.js';
+import type { SuggestionStatus } from '../entities/Suggestion.js';
+import type { LayerScore } from '../services/analysis/types.js';
 
 export type { ApprovalGateStatus };
 
@@ -143,6 +144,7 @@ export interface EvidenceNode {
   producedBy: string;
   criterionId?: string;    // verifies edge target (evidence→criterion)
   artifactHash?: string;
+  sourceFile?: string;     // originating test file (set by auto-link)
 }
 
 // ---------------------------------------------------------------------------

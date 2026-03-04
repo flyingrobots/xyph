@@ -135,7 +135,7 @@ export function parseEnvOverrides(env: Record<string, string | undefined>): Part
 // Merge
 // ---------------------------------------------------------------------------
 
-function mergeWeights(base: HeuristicWeights, override: Partial<HeuristicWeights>): HeuristicWeights {
+export function mergeWeights(base: HeuristicWeights, override: Partial<HeuristicWeights>): HeuristicWeights {
   return {
     fileName: override.fileName ?? base.fileName,
     importDescribe: override.importDescribe ?? base.importDescribe,
@@ -145,7 +145,7 @@ function mergeWeights(base: HeuristicWeights, override: Partial<HeuristicWeights
   };
 }
 
-function mergeLlm(base: LlmConfig, override: Partial<LlmConfig>): LlmConfig {
+export function mergeLlm(base: LlmConfig, override: Partial<LlmConfig>): LlmConfig {
   return {
     provider: override.provider ?? base.provider,
     model: override.model ?? base.model,

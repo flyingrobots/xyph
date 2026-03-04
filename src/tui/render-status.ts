@@ -182,7 +182,15 @@ export function renderAll(snapshot: GraphSnapshot): string {
     snapshot.quests.length +
     snapshot.intents.length +
     snapshot.scrolls.length +
-    snapshot.approvals.length;
+    snapshot.approvals.length +
+    snapshot.submissions.length +
+    snapshot.reviews.length +
+    snapshot.decisions.length +
+    snapshot.stories.length +
+    snapshot.requirements.length +
+    snapshot.criteria.length +
+    snapshot.evidence.length +
+    snapshot.suggestions.length;
 
   lines.push(snapshotHeader('All XYPH Nodes', `${total} node(s) total`, 'success'));
 

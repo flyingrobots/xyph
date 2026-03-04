@@ -167,13 +167,15 @@ export function registerSuggestionCommands(program: Command, ctx: CliContext): v
 
       const graph = await ctx.graphPort.getGraph();
       const now = Date.now();
-      let accepted = 0;
 
-      for (const s of pending) {
-        const evidenceId = `evidence:auto-${s.id.replace('suggestion:', '')}`;
-        const edgeType = s.targetType === 'criterion' ? 'verifies' as const : 'implements' as const;
+      interface AcceptInfo { suggestionId: string; evidenceId: string; edgeType: 'verifies' | 'implements'; targetId: string; confidence: number }
+      const acceptInfos: AcceptInfo[] = [];
 
-        await graph.patch((p) => {
+      await graph.patch((p) => {
+        for (const s of pending) {
+          const evidenceId = `evidence:auto-${s.id.replace('suggestion:', '')}`;
+          const edgeType = s.targetType === 'criterion' ? 'verifies' as const : 'implements' as const;
+
           p.addNode(evidenceId)
             .setProperty(evidenceId, 'kind', 'test')
             .setProperty(evidenceId, 'result', 'pass')
@@ -188,14 +190,18 @@ export function registerSuggestionCommands(program: Command, ctx: CliContext): v
           p.setProperty(s.id, 'status', 'ACCEPTED')
             .setProperty(s.id, 'resolved_by', ctx.agentId)
             .setProperty(s.id, 'resolved_at', now);
-        });
 
-        accepted++;
+          acceptInfos.push({ suggestionId: s.id, evidenceId, edgeType, targetId: s.targetId, confidence: s.confidence });
+        }
+      });
 
-        if (!ctx.json) {
-          ctx.muted(`  ${s.id} → ${evidenceId} ${edgeType} ${s.targetId} (${s.confidence})`);
+      if (!ctx.json) {
+        for (const info of acceptInfos) {
+          ctx.muted(`  ${info.suggestionId} → ${info.evidenceId} ${info.edgeType} ${info.targetId} (${info.confidence})`);
         }
       }
+
+      const accepted = acceptInfos.length;
 
       if (ctx.json) {
         ctx.jsonOut({

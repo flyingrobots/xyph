@@ -6,9 +6,12 @@
 
 import type { ConfigPort, XyphConfig } from '../../ports/ConfigPort.js';
 import type { GraphPort } from '../../ports/GraphPort.js';
+import type { HeuristicWeights, LlmConfig } from '../../ports/ConfigPort.js';
 import {
   DEFAULT_CONFIG,
   mergeConfigs,
+  mergeLlm,
+  mergeWeights,
   parseEnvOverrides,
   validateConfig,
 } from '../../domain/services/ConfigResolution.js';
@@ -123,7 +126,10 @@ export class ConfigAdapter implements ConfigPort {
         try {
           const parsed: unknown = JSON.parse(hwRaw);
           if (typeof parsed === 'object' && parsed !== null) {
-            result.heuristicWeights = parsed as Partial<XyphConfig['heuristicWeights']> as XyphConfig['heuristicWeights'];
+            result.heuristicWeights = mergeWeights(
+              DEFAULT_CONFIG.heuristicWeights,
+              parsed as Partial<HeuristicWeights>,
+            );
           }
         } catch {
           // Ignore malformed JSON
@@ -135,7 +141,10 @@ export class ConfigAdapter implements ConfigPort {
         try {
           const parsed: unknown = JSON.parse(llmRaw);
           if (typeof parsed === 'object' && parsed !== null) {
-            result.llm = parsed as Partial<XyphConfig['llm']> as XyphConfig['llm'];
+            result.llm = mergeLlm(
+              DEFAULT_CONFIG.llm,
+              parsed as Partial<LlmConfig>,
+            );
           }
         } catch {
           // Ignore malformed JSON

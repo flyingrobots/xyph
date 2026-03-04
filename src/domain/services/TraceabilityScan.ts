@@ -18,7 +18,6 @@ export interface Annotation {
  * Matches one or more `criterion:<id>` references per comment line.
  */
 const ANNOTATION_PATTERN = /\/\/\s*@xyph\s+(.*)/;
-const CRITERION_REF = /criterion:[\w.-]+/g;
 
 /**
  * Parse `@xyph criterion:ID` annotations from file contents.
@@ -42,8 +41,8 @@ export function scanAnnotations(content: string, filePath: string): Annotation[]
     const tail = match[1];
     if (!tail) continue;
 
-    const refs = tail.match(CRITERION_REF);
-    if (!refs) continue;
+    const refs = [...tail.matchAll(/criterion:[\w.-]+/g)].map((m) => m[0]);
+    if (refs.length === 0) continue;
 
     for (const ref of refs) {
       annotations.push({

@@ -4,6 +4,18 @@ All notable changes to XYPH will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed — PR #29 Code Review
+
+- **Evidence dedup uses `sourceFile`** — `EvidenceNode` now exposes `sourceFile` from graph props; `analyze` filters existing evidence by `sourceFile:criterionId` instead of `producedBy:criterionId` (C-1)
+- **Consolidated `LayerScore` interface** — single canonical definition in `analysis/types.ts`, re-exported from `Suggestion.ts`; eliminates duplicate interface (M-1)
+- **Batch graph patches in `analyze`** — auto-link and suggestion writes use one `graph.patch()` call each instead of per-item patches (M-2)
+- **Batch graph patches in `suggestion accept-all`** — single `graph.patch()` for all accepted suggestions (M-3)
+- **Removed double casts in `ConfigAdapter`** — exported `mergeWeights`/`mergeLlm` from `ConfigResolution`, used to safely parse partial JSON from graph (m-2)
+- **Type-safe `config set`** — replaced `as never` cast with exhaustive switch on config key (m-3)
+- **Inlined global regex in `TraceabilityScan`** — `CRITERION_REF` regex now local to `scanAnnotations()`, avoids stale `lastIndex` from global flag (m-4)
+- **Removed duplicate `'should'` in STOP_WORDS** — `ImportDescribeLayer` had `'should'` listed twice (N-2)
+- **Fixed `renderAll` total count** — now includes submissions, reviews, decisions, stories, requirements, criteria, evidence, and suggestions (N-3)
+
 ### Added — M11 Phase 4: Intelligent Test Auto-Linking
 
 - **Config infrastructure** — layered resolution (env > `.xyph.json` > graph > defaults), `config get/set/list` CLI commands (ALK-001)

@@ -215,8 +215,8 @@ export function registerAnalyzeCommands(program: Command, ctx: CliContext): void
       // --- Filter existing edges and rejected suggestions ---
       const existingEdges = new Set<string>();
       for (const ev of snapshot.evidence) {
-        if (ev.criterionId) {
-          existingEdges.add(`${ev.producedBy}:${ev.criterionId}`);
+        if (ev.sourceFile && ev.criterionId) {
+          existingEdges.add(`${ev.sourceFile}:${ev.criterionId}`);
         }
       }
 
@@ -228,10 +228,12 @@ export function registerAnalyzeCommands(program: Command, ctx: CliContext): void
       }
 
       const filteredAutoLinks = result.autoLinks.filter(
-        (m) => !rejectedIds.has(`${m.testFile}:${m.targetId}`),
+        (m) => !existingEdges.has(`${m.testFile}:${m.targetId}`) &&
+               !rejectedIds.has(`${m.testFile}:${m.targetId}`),
       );
       const filteredSuggestions = result.suggestions.filter(
-        (m) => !rejectedIds.has(`${m.testFile}:${m.targetId}`),
+        (m) => !existingEdges.has(`${m.testFile}:${m.targetId}`) &&
+               !rejectedIds.has(`${m.testFile}:${m.targetId}`),
       );
 
       // --- Dry run: just report ---
@@ -267,60 +269,75 @@ export function registerAnalyzeCommands(program: Command, ctx: CliContext): void
       // --- Write results to graph ---
       const graph = await ctx.graphPort.getGraph();
       const now = Date.now();
-      let evidenceWritten = 0;
-      let suggestionsWritten = 0;
 
-      // Auto-link: create evidence + edge directly
-      for (const m of filteredAutoLinks) {
-        const slug = m.testFile.replace(/[^a-zA-Z0-9]/g, '-').slice(0, 40);
-        const evidenceId = `evidence:auto-${slug}-${m.targetId.replace(/[^a-zA-Z0-9]/g, '-')}`;
-        const edgeType = m.targetType === 'criterion' ? 'verifies' as const : 'implements' as const;
+      // Auto-link: batch all evidence nodes + edges into a single patch
+      interface AutoLinkInfo { evidenceId: string; edgeType: 'verifies' | 'implements'; targetId: string; confidence: number }
+      const autoLinkInfos: AutoLinkInfo[] = [];
 
+      if (filteredAutoLinks.length > 0) {
         await graph.patch((p) => {
-          p.addNode(evidenceId)
-            .setProperty(evidenceId, 'kind', 'test')
-            .setProperty(evidenceId, 'result', 'pass')
-            .setProperty(evidenceId, 'produced_at', now)
-            .setProperty(evidenceId, 'produced_by', ctx.agentId)
-            .setProperty(evidenceId, 'type', 'evidence')
-            .setProperty(evidenceId, 'source_file', m.testFile)
-            .setProperty(evidenceId, 'auto_confidence', m.confidence);
+          for (const m of filteredAutoLinks) {
+            const slug = m.testFile.replace(/[^a-zA-Z0-9]/g, '-').slice(0, 40);
+            const evidenceId = `evidence:auto-${slug}-${m.targetId.replace(/[^a-zA-Z0-9]/g, '-')}`;
+            const edgeType = m.targetType === 'criterion' ? 'verifies' as const : 'implements' as const;
 
-          p.addEdge(evidenceId, m.targetId, edgeType);
+            p.addNode(evidenceId)
+              .setProperty(evidenceId, 'kind', 'test')
+              .setProperty(evidenceId, 'result', 'pass')
+              .setProperty(evidenceId, 'produced_at', now)
+              .setProperty(evidenceId, 'produced_by', ctx.agentId)
+              .setProperty(evidenceId, 'type', 'evidence')
+              .setProperty(evidenceId, 'source_file', m.testFile)
+              .setProperty(evidenceId, 'auto_confidence', m.confidence);
+
+            p.addEdge(evidenceId, m.targetId, edgeType);
+            autoLinkInfos.push({ evidenceId, edgeType, targetId: m.targetId, confidence: m.confidence });
+          }
         });
+      }
 
-        evidenceWritten++;
-        if (!ctx.json) {
-          ctx.muted(`  [AUTO] ${evidenceId} ${edgeType} ${m.targetId} (${m.confidence})`);
+      if (!ctx.json) {
+        for (const info of autoLinkInfos) {
+          ctx.muted(`  [AUTO] ${info.evidenceId} ${info.edgeType} ${info.targetId} (${info.confidence})`);
         }
       }
 
-      // Suggestions: create suggestion nodes
-      for (const m of filteredSuggestions) {
-        const slug = m.testFile.replace(/[^a-zA-Z0-9]/g, '-').slice(0, 30);
-        const targetSlug = m.targetId.replace(/[^a-zA-Z0-9]/g, '-');
-        const suggestionId = `suggestion:${slug}-${targetSlug}`;
+      // Suggestions: batch all suggestion nodes + edges into a single patch
+      interface SuggestionInfo { suggestionId: string; targetId: string; confidence: number }
+      const suggestionInfos: SuggestionInfo[] = [];
 
+      if (filteredSuggestions.length > 0) {
         await graph.patch((p) => {
-          p.addNode(suggestionId)
-            .setProperty(suggestionId, 'type', 'suggestion')
-            .setProperty(suggestionId, 'test_file', m.testFile)
-            .setProperty(suggestionId, 'target_id', m.targetId)
-            .setProperty(suggestionId, 'target_type', m.targetType)
-            .setProperty(suggestionId, 'confidence', m.confidence)
-            .setProperty(suggestionId, 'layers', JSON.stringify(m.layers))
-            .setProperty(suggestionId, 'status', 'PENDING')
-            .setProperty(suggestionId, 'suggested_by', ctx.agentId)
-            .setProperty(suggestionId, 'suggested_at', now);
+          for (const m of filteredSuggestions) {
+            const slug = m.testFile.replace(/[^a-zA-Z0-9]/g, '-').slice(0, 30);
+            const targetSlug = m.targetId.replace(/[^a-zA-Z0-9]/g, '-');
+            const suggestionId = `suggestion:${slug}-${targetSlug}`;
 
-          p.addEdge(suggestionId, m.targetId, 'suggests');
+            p.addNode(suggestionId)
+              .setProperty(suggestionId, 'type', 'suggestion')
+              .setProperty(suggestionId, 'test_file', m.testFile)
+              .setProperty(suggestionId, 'target_id', m.targetId)
+              .setProperty(suggestionId, 'target_type', m.targetType)
+              .setProperty(suggestionId, 'confidence', m.confidence)
+              .setProperty(suggestionId, 'layers', JSON.stringify(m.layers))
+              .setProperty(suggestionId, 'status', 'PENDING')
+              .setProperty(suggestionId, 'suggested_by', ctx.agentId)
+              .setProperty(suggestionId, 'suggested_at', now);
+
+            p.addEdge(suggestionId, m.targetId, 'suggests');
+            suggestionInfos.push({ suggestionId, targetId: m.targetId, confidence: m.confidence });
+          }
         });
+      }
 
-        suggestionsWritten++;
-        if (!ctx.json) {
-          ctx.muted(`  [SUGGEST] ${suggestionId} → ${m.targetId} (${m.confidence})`);
+      if (!ctx.json) {
+        for (const info of suggestionInfos) {
+          ctx.muted(`  [SUGGEST] ${info.suggestionId} → ${info.targetId} (${info.confidence})`);
         }
       }
+
+      const evidenceWritten = autoLinkInfos.length;
+      const suggestionsWritten = suggestionInfos.length;
 
       if (ctx.json) {
         ctx.jsonOut({

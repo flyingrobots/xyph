@@ -99,7 +99,7 @@ const STOP_WORDS = new Set([
   'did', 'will', 'would', 'could', 'should', 'shall', 'may', 'might',
   'can', 'with', 'from', 'by', 'at', 'on', 'as', 'not', 'no', 'but',
   'if', 'then', 'else', 'when', 'that', 'this', 'these', 'those', 'all',
-  'each', 'every', 'some', 'any', 'must', 'test', 'should',
+  'each', 'every', 'some', 'any', 'must', 'test',
 ]);
 
 export function extractSignificantTokens(text: string): Set<string> {

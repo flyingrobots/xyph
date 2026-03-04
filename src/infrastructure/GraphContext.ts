@@ -46,7 +46,8 @@ import type {
   SuggestionNode,
 } from '../domain/models/dashboard.js';
 import { VALID_SUGGESTION_STATUSES } from '../domain/entities/Suggestion.js';
-import type { SuggestionStatus, LayerScore } from '../domain/entities/Suggestion.js';
+import type { SuggestionStatus } from '../domain/entities/Suggestion.js';
+import type { LayerScore } from '../domain/services/analysis/types.js';
 import type { RequirementKind, RequirementPriority } from '../domain/entities/Requirement.js';
 import { VALID_REQUIREMENT_KINDS, VALID_REQUIREMENT_PRIORITIES } from '../domain/entities/Requirement.js';
 import type { EvidenceKind, EvidenceResult } from '../domain/entities/Evidence.js';
@@ -535,6 +536,7 @@ class GraphContextImpl implements GraphContext {
         }
       }
 
+      const sourceFile = n.props['source_file'];
       evidence.push({
         id: n.id,
         kind: kind as EvidenceKind,
@@ -543,6 +545,7 @@ class GraphContextImpl implements GraphContext {
         producedBy,
         criterionId,
         artifactHash: typeof artifactHash === 'string' ? artifactHash : undefined,
+        sourceFile: typeof sourceFile === 'string' ? sourceFile : undefined,
       });
     }
 

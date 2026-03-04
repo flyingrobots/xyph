@@ -10,17 +10,14 @@
  * Part of M11 Phase 4 — ALK-002.
  */
 
+import type { LayerScore } from '../services/analysis/types.js';
+
+export type { LayerScore };
 export type SuggestionStatus = 'PENDING' | 'ACCEPTED' | 'REJECTED';
 
 export const VALID_SUGGESTION_STATUSES: ReadonlySet<string> = new Set<SuggestionStatus>([
   'PENDING', 'ACCEPTED', 'REJECTED',
 ]);
-
-export interface LayerScore {
-  layer: string;
-  score: number;
-  evidence: string;
-}
 
 export interface SuggestionProps {
   id: string;
