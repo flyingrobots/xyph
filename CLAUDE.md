@@ -32,6 +32,10 @@ Never push code that doesn't pass both checks. CI failures waste time and break 
 
 Our duty is to write **safe, correct code**. Shortcuts that compromise quality are not acceptable.
 
+**NEVER commit directly to `main`:**
+- ❌ NEVER commit to main — always create a feature branch and open a PR
+- All work goes through branches, even small changes
+
 **NEVER rewrite git history in any way:**
 - ❌ NEVER amend commits (`--amend`)
 - ❌ NEVER rebase
