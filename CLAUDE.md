@@ -80,6 +80,15 @@ If the types are hard, that means you need to understand the code better.
   before your branch — fix them. You touched the codebase; you leave it better than
   you found it.
 
+**NEVER implement graph algorithms in userland:**
+- If you find yourself implementing graph algorithms (BFS, DFS, topological sort,
+  reachability, transitive reduction/closure, level assignment, etc.), **STOP**.
+- git-warp probably already does what you need via `graph.traverse.*` or `graph.query()`.
+- If git-warp doesn't have the primitive you need, **STOP** and request the user adds
+  the desired functionality to git-warp. You must never assume that the full DAG can
+  fit in memory at once — git-warp's traversals are designed to work incrementally
+  over the commit graph.
+
 ### Project Planning via the Actuator
 XYPH plans and tracks its own development through the WARP graph.
 The `xyph-actuator.ts` CLI is the single source of truth for what's been done,
