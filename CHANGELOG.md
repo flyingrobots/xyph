@@ -7,11 +7,12 @@ All notable changes to XYPH will be documented in this file.
 ### Added — Workflow Infrastructure
 
 - **Git hooks** — `scripts/hooks/pre-commit` (lint gate) and `scripts/hooks/pre-push` (test gate); plain shell scripts, no Husky/lint-staged
+- **`npm run graph:pull`** — fetches WARP writer refs from origin for local materialization
 - **`npm run graph:push`** — pushes WARP writer refs (`refs/warp/xyph-roadmap/writers/*`) to origin for CI and collaborator access; excludes checkpoint/coverage cache refs which are rebuilt locally
 - **CI traceability job** — new `traceability` job in `.github/workflows/ci.yml` fetches WARP refs and runs `analyze --dry-run --json` for coverage reporting
 - **`.xyph.json` in `.gitignore`** — local config file excluded from version control
 - **Self-referential analyze baseline** — ran `analyze --dry-run` against XYPH's own 745-test suite; 49 files scanned, 0 graph targets (traceability chain not yet populated)
-- **Tier 2 backlog items** — 4 new inbox tasks: soft-gate merge, TUI suggestion tab, dashboard suggestion widget, roadmap coverage badge
+- **Backlog items** — 10 new inbox tasks: soft-gate merge, TUI suggestion tab, dashboard suggestion widget, roadmap coverage badge, traceability heat map, production code scan annotations, temporal traceability queries, auto graph push hook, CI graph cache, suggestion calibration
 - **M11 Phase 3 design doc** — `docs/M11-phase3-design.md` covers computed status propagation, DoD policies, hard-gate seal/merge, and gap detection
 
 ### Fixed — PR #29 Code Review

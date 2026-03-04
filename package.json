@@ -10,6 +10,7 @@
     "verify:patch-ops": "npm run build && node scripts/verify-patch-ops.mjs patches",
     "test": "docker build -t xyph-test . && docker run --rm xyph-test npm run test:local",
     "test:local": "vitest run",
+    "graph:pull": "git fetch origin 'refs/warp/xyph-roadmap/writers/*:refs/warp/xyph-roadmap/writers/*'",
     "graph:push": "git push origin 'refs/warp/xyph-roadmap/writers/*:refs/warp/xyph-roadmap/writers/*'",
     "postinstall": "patch-package"
   },
