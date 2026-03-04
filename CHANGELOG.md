@@ -10,6 +10,9 @@ All notable changes to XYPH will be documented in this file.
 - **`npm run graph:push`** — pushes WARP graph refs (`refs/warp/xyph-roadmap/*`) to origin for CI and collaborator access
 - **CI traceability job** — new `traceability` job in `.github/workflows/ci.yml` fetches WARP refs and runs `analyze --dry-run --json` for coverage reporting
 - **`.xyph.json` in `.gitignore`** — local config file excluded from version control
+- **Self-referential analyze baseline** — ran `analyze --dry-run` against XYPH's own 745-test suite; 49 files scanned, 0 graph targets (traceability chain not yet populated)
+- **Tier 2 backlog items** — 4 new inbox tasks: soft-gate merge, TUI suggestion tab, dashboard suggestion widget, roadmap coverage badge
+- **M11 Phase 3 design doc** — `docs/M11-phase3-design.md` covers computed status propagation, DoD policies, hard-gate seal/merge, and gap detection
 
 ### Fixed — PR #29 Code Review
 
