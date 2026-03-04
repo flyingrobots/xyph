@@ -185,6 +185,18 @@ describe('scheduleWorkers', () => {
     expect(dSlot!.start).toBeGreaterThanOrEqual(bSlot!.start + bSlot!.hours);
     expect(dSlot!.start).toBeGreaterThanOrEqual(cSlot!.start + cSlot!.hours);
   });
+
+  it('treats DONE tasks as weight 0 (no worker time consumed)', () => {
+    // A is DONE (8h in graph, but should cost 0), B depends on A (1h active)
+    const tasks = makeTasks(
+      { id: 'task:A', status: 'DONE', hours: 8 },
+      { id: 'task:B', hours: 1 },
+    );
+    const edges: DepEdge[] = [{ from: 'task:B', to: 'task:A' }];
+    const result = scheduleWorkers(['task:A', 'task:B'], tasks, edges, 2);
+    // DONE tasks weigh 0 → makespan should be 1, not 9
+    expect(result.makespan).toBe(1);
+  });
 });
 
 // ---------------------------------------------------------------------------

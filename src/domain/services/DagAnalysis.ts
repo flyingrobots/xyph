@@ -113,10 +113,10 @@ export function scheduleWorkers(
     return { schedule: [], makespan: 0 };
   }
 
-  // Build hours map
+  // Build hours map (DONE tasks weigh 0 — already completed)
   const hoursMap = new Map<string, number>();
   for (const t of tasks) {
-    hoursMap.set(t.id, t.hours);
+    hoursMap.set(t.id, t.status === 'DONE' ? 0 : t.hours);
   }
 
   // Build deps map: task → [prerequisites]
