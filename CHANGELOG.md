@@ -4,6 +4,13 @@ All notable changes to XYPH will be documented in this file.
 
 ## [Unreleased]
 
+### Added — Workflow Infrastructure
+
+- **Git hooks** — `scripts/hooks/pre-commit` (lint gate) and `scripts/hooks/pre-push` (test gate); plain shell scripts, no Husky/lint-staged
+- **`npm run graph:push`** — pushes WARP graph refs (`refs/warp/xyph-roadmap/*`) to origin for CI and collaborator access
+- **CI traceability job** — new `traceability` job in `.github/workflows/ci.yml` fetches WARP refs and runs `analyze --dry-run --json` for coverage reporting
+- **`.xyph.json` in `.gitignore`** — local config file excluded from version control
+
 ### Fixed — PR #29 Code Review
 
 - **Evidence dedup uses `sourceFile`** — `EvidenceNode` now exposes `sourceFile` from graph props; `analyze` filters existing evidence by `sourceFile:criterionId` instead of `producedBy:criterionId` (C-1)

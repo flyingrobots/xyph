@@ -86,3 +86,23 @@ jobs:
 
       - run: npm ci
       - run: npm audit --omit=dev
+
+  traceability:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch WARP graph refs
+        run: git fetch origin 'refs/warp/xyph-roadmap/*:refs/warp/xyph-roadmap/*'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - run: npm ci
+      - name: Analyze test-to-requirement coverage
+        run: npx tsx xyph-actuator.ts analyze --dry-run --json

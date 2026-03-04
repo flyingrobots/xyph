@@ -1,0 +1,5 @@
+#!/bin/sh
+# pre-push — test gate
+# Tests must pass locally before code leaves the machine.
+
+npm run test:local

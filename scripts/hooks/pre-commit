@@ -1,0 +1,5 @@
+#!/bin/sh
+# pre-commit — lint gate
+# Zero errors, zero warnings. A clean codebase stays clean.
+
+npm run lint

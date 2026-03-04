@@ -10,3 +10,4 @@ coverage/
 *.tsbuildinfo
 .codex/
 .claude/
+.xyph.json
