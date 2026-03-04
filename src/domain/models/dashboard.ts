@@ -143,6 +143,7 @@ export interface EvidenceNode {
   producedAt: number;
   producedBy: string;
   criterionId?: string;    // verifies edge target (evidence→criterion)
+  requirementId?: string;  // implements edge target (evidence→requirement)
   artifactHash?: string;
   sourceFile?: string;     // originating test file (set by auto-link)
 }

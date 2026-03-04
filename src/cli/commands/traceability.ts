@@ -361,24 +361,43 @@ export function registerTraceabilityCommands(program: Command, ctx: CliContext):
         byCriterion.set(ann.criterionId, arr);
       }
 
+      // Validate all criteria exist, collect valid ones
+      const validCriteria: Array<[string, Array<{ filePath: string; lineNumber: number }>]> = [];
       for (const [criterionId, locations] of byCriterion) {
-        const evidenceId = `evidence:scan-${criterionId.replace('criterion:', '')}`;
+        const criterionExists = await graph.hasNode(criterionId);
+        if (!criterionExists) {
+          if (!ctx.json) {
+            ctx.warn(`  [SKIP] ${criterionId} — criterion node not found in graph`);
+          }
+          continue;
+        }
+        validCriteria.push([criterionId, locations]);
+      }
 
-        const sha = await graph.patch((p) => {
-          p.addNode(evidenceId)
-            .setProperty(evidenceId, 'kind', 'test')
-            .setProperty(evidenceId, 'result', 'pass')
-            .setProperty(evidenceId, 'produced_at', now)
-            .setProperty(evidenceId, 'produced_by', ctx.agentId)
-            .setProperty(evidenceId, 'type', 'evidence')
-            .setProperty(evidenceId, 'scan_locations', JSON.stringify(locations));
+      // Batch all evidence into a single patch
+      if (validCriteria.length > 0) {
+        await graph.patch((p) => {
+          for (const [criterionId, locations] of validCriteria) {
+            const evidenceId = `evidence:scan-${criterionId.replace('criterion:', '')}`;
 
-          p.addEdge(evidenceId, criterionId, 'verifies');
+            p.addNode(evidenceId)
+              .setProperty(evidenceId, 'kind', 'test')
+              .setProperty(evidenceId, 'result', 'pass')
+              .setProperty(evidenceId, 'produced_at', now)
+              .setProperty(evidenceId, 'produced_by', ctx.agentId)
+              .setProperty(evidenceId, 'type', 'evidence')
+              .setProperty(evidenceId, 'scan_locations', JSON.stringify(locations));
+
+            p.addEdge(evidenceId, criterionId, 'verifies');
+            evidenceWritten++;
+          }
         });
+      }
 
-        evidenceWritten++;
-        if (!ctx.json) {
-          ctx.muted(`  ${evidenceId} → ${criterionId} (${locations.length} location(s)) patch: ${sha.slice(0, 7)}`);
+      if (!ctx.json) {
+        for (const [criterionId, locations] of validCriteria) {
+          const evidenceId = `evidence:scan-${criterionId.replace('criterion:', '')}`;
+          ctx.muted(`  ${evidenceId} → ${criterionId} (${locations.length} location(s))`);
         }
       }
 

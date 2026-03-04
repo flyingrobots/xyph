@@ -42,7 +42,7 @@ export function registerConfigCommands(program: Command, ctx: CliContext): void 
       if (ctx.json) {
         ctx.jsonOut({
           success: true, command: 'config get',
-          data: { key, value: value as Record<string, unknown> | string | number },
+          data: { key, value: typeof value === 'object' ? { ...value } : value },
         });
         return;
       }
@@ -102,7 +102,7 @@ export function registerConfigCommands(program: Command, ctx: CliContext): void 
       if (ctx.json) {
         ctx.jsonOut({
           success: true, command: 'config set',
-          data: { key, value: parsed as Record<string, unknown> | string | number, target },
+          data: { key, value: parsed, target },
         });
         return;
       }
@@ -121,7 +121,13 @@ export function registerConfigCommands(program: Command, ctx: CliContext): void 
       if (ctx.json) {
         ctx.jsonOut({
           success: true, command: 'config list',
-          data: { config: config as unknown as Record<string, unknown> },
+          data: {
+            minAutoConfidence: config.minAutoConfidence,
+            suggestionFloor: config.suggestionFloor,
+            testGlob: config.testGlob,
+            heuristicWeights: { ...config.heuristicWeights },
+            llm: { ...config.llm },
+          },
         });
         return;
       }

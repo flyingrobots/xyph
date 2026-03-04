@@ -56,11 +56,11 @@ describe('ConfigResolution', () => {
     });
 
     it('should reject non-string testGlob', () => {
-      expect(validateConfig({ testGlob: 42 as unknown as string }).valid).toBe(false);
+      expect(validateConfig({ testGlob: 42 }).valid).toBe(false);
     });
 
     it('should reject non-object heuristicWeights', () => {
-      expect(validateConfig({ heuristicWeights: 'bad' as unknown as Record<string, unknown> }).valid).toBe(false);
+      expect(validateConfig({ heuristicWeights: 'bad' }).valid).toBe(false);
     });
 
     it('should reject heuristicWeights with out-of-range values', () => {
@@ -75,7 +75,7 @@ describe('ConfigResolution', () => {
     });
 
     it('should reject non-object llm', () => {
-      expect(validateConfig({ llm: 42 as unknown as Record<string, unknown> }).valid).toBe(false);
+      expect(validateConfig({ llm: 42 }).valid).toBe(false);
     });
 
     it('should reject negative llm.maxTokens', () => {

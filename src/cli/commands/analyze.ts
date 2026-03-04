@@ -9,9 +9,15 @@
  * Part of M11 Phase 4 — ALK-009.
  */
 
+import { createHash } from 'node:crypto';
 import type { Command } from 'commander';
 import type { CliContext } from '../context.js';
 import { createErrorHandler } from '../errorHandler.js';
+
+/** Deterministic short hash of testFile+targetId to avoid slug truncation collisions. */
+function linkHash(testFile: string, targetId: string): string {
+  return createHash('sha256').update(`${testFile}\0${targetId}`).digest('hex').slice(0, 12);
+}
 
 const VALID_LAYERS = ['fileName', 'importDescribe', 'ast', 'semantic', 'llm'] as const;
 type LayerName = typeof VALID_LAYERS[number];
@@ -215,8 +221,9 @@ export function registerAnalyzeCommands(program: Command, ctx: CliContext): void
       // --- Filter existing edges and rejected suggestions ---
       const existingEdges = new Set<string>();
       for (const ev of snapshot.evidence) {
-        if (ev.sourceFile && ev.criterionId) {
-          existingEdges.add(`${ev.sourceFile}:${ev.criterionId}`);
+        if (ev.sourceFile) {
+          if (ev.criterionId) existingEdges.add(`${ev.sourceFile}:${ev.criterionId}`);
+          if (ev.requirementId) existingEdges.add(`${ev.sourceFile}:${ev.requirementId}`);
         }
       }
 
@@ -277,8 +284,7 @@ export function registerAnalyzeCommands(program: Command, ctx: CliContext): void
       if (filteredAutoLinks.length > 0) {
         await graph.patch((p) => {
           for (const m of filteredAutoLinks) {
-            const slug = m.testFile.replace(/[^a-zA-Z0-9]/g, '-').slice(0, 40);
-            const evidenceId = `evidence:auto-${slug}-${m.targetId.replace(/[^a-zA-Z0-9]/g, '-')}`;
+            const evidenceId = `evidence:auto-${linkHash(m.testFile, m.targetId)}`;
             const edgeType = m.targetType === 'criterion' ? 'verifies' as const : 'implements' as const;
 
             p.addNode(evidenceId)
@@ -309,9 +315,7 @@ export function registerAnalyzeCommands(program: Command, ctx: CliContext): void
       if (filteredSuggestions.length > 0) {
         await graph.patch((p) => {
           for (const m of filteredSuggestions) {
-            const slug = m.testFile.replace(/[^a-zA-Z0-9]/g, '-').slice(0, 30);
-            const targetSlug = m.targetId.replace(/[^a-zA-Z0-9]/g, '-');
-            const suggestionId = `suggestion:${slug}-${targetSlug}`;
+            const suggestionId = `suggestion:${linkHash(m.testFile, m.targetId)}`;
 
             p.addNode(suggestionId)
               .setProperty(suggestionId, 'type', 'suggestion')

@@ -90,9 +90,31 @@ function extractImports(sourceFile: ts.SourceFile): ImportRef[] {
 const DESCRIBE_NAMES = new Set(['describe', 'suite']);
 const IT_NAMES = new Set(['it', 'test', 'specify']);
 
+/**
+ * Resolve the root identifier of a call expression.
+ * Handles modifiers: it.only → it, describe.skip → describe,
+ * and chained calls: it.each(...)() → it.
+ */
 function getCallName(expr: ts.Expression): string | undefined {
+  // Direct identifier: describe(...), it(...)
   if (ts.isIdentifier(expr)) return expr.text;
-  if (ts.isPropertyAccessExpression(expr)) return expr.name.text;
+  // Property access: it.only(...), describe.skip(...)
+  // Walk to the leftmost identifier
+  if (ts.isPropertyAccessExpression(expr)) {
+    let current: ts.Expression = expr;
+    while (ts.isPropertyAccessExpression(current)) {
+      current = current.expression;
+    }
+    // Handle chained calls like it.each(...)() where expression is a CallExpression
+    if (ts.isCallExpression(current)) {
+      return getCallName(current.expression);
+    }
+    if (ts.isIdentifier(current)) return current.text;
+  }
+  // Chained call: it.each(...)() — outer expression is a CallExpression
+  if (ts.isCallExpression(expr)) {
+    return getCallName(expr.expression);
+  }
   return undefined;
 }
 

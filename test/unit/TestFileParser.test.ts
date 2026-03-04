@@ -152,4 +152,30 @@ describe('test', () => {
     expect(result.imports).toHaveLength(1);
     expect(result.imports[0]?.namedImports).toEqual(['QuestStatus']);
   });
+
+  it('should extract it.only and describe.skip blocks', () => {
+    const content = `
+describe.skip('skipped suite', () => {
+  it.only('focused test', () => {
+    doSomething();
+  });
+});
+`;
+    const result = parseTestFile(content, 'test.ts');
+    expect(result.describeBlocks).toHaveLength(1);
+    expect(result.describeBlocks[0]?.description).toBe('skipped suite');
+    expect(result.describeBlocks[0]?.itBlocks).toHaveLength(1);
+    expect(result.describeBlocks[0]?.itBlocks[0]?.description).toBe('focused test');
+  });
+
+  it('should extract it.each blocks', () => {
+    const content = `
+it.each([1, 2, 3])('test case %i', (n) => {
+  validate(n);
+});
+`;
+    const result = parseTestFile(content, 'test.ts');
+    expect(result.itBlocks).toHaveLength(1);
+    expect(result.itBlocks[0]?.description).toBe('test case %i');
+  });
 });

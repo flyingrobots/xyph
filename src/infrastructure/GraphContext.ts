@@ -526,13 +526,15 @@ class GraphContextImpl implements GraphContext {
           typeof result !== 'string' || !VALID_EVIDENCE_RESULTS.has(result) ||
           typeof producedAt !== 'number' || typeof producedBy !== 'string') continue;
 
-      // Resolve verifies edge (evidence→criterion, outgoing from evidence)
+      // Resolve outgoing edges (verifies→criterion, implements→requirement)
       const neighbors = neighborsCache.get(n.id) ?? [];
       let criterionId: string | undefined;
+      let requirementId: string | undefined;
       for (const nb of neighbors) {
         if (nb.label === 'verifies' && nb.nodeId.startsWith('criterion:')) {
           criterionId = nb.nodeId;
-          break;
+        } else if (nb.label === 'implements' && nb.nodeId.startsWith('req:')) {
+          requirementId = nb.nodeId;
         }
       }
 
@@ -544,6 +546,7 @@ class GraphContextImpl implements GraphContext {
         producedAt,
         producedBy,
         criterionId,
+        requirementId,
         artifactHash: typeof artifactHash === 'string' ? artifactHash : undefined,
         sourceFile: typeof sourceFile === 'string' ? sourceFile : undefined,
       });

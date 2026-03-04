@@ -20,10 +20,9 @@ export class AnthropicLlmAdapter implements LlmPort {
   async analyzeTestCoverage(request: LlmMatchRequest): Promise<LlmMatch[]> {
     if (this.config.provider === 'none') return [];
 
-    const apiKey = await this.secretAdapter.getSecret('anthropic-api-key');
-    if (!apiKey) return [];
-
     try {
+      const apiKey = await this.secretAdapter.getSecret('anthropic-api-key');
+      if (!apiKey) return [];
       const { default: Anthropic } = await import('@anthropic-ai/sdk');
       const client = new Anthropic({ apiKey });
 

@@ -134,6 +134,14 @@ async function main(): Promise<void> {
       continue;
     }
 
+    // Validate campaign node exists
+    const campaignExists = await graph.hasNode(campaign);
+    if (!campaignExists) {
+      console.log(chalk.red(`  [MISSING CAMPAIGN] ${campaign} — campaign node does not exist, skipping ${quest}`));
+      missing++;
+      continue;
+    }
+
     // Check if belongs-to edge already exists
     const neighbors = toNeighborEntries(await graph.neighbors(quest, 'outgoing'));
     const alreadyAssigned = neighbors.some(
@@ -146,12 +154,14 @@ async function main(): Promise<void> {
       continue;
     }
 
-    // Check for assignment to a different campaign
+    // Check for assignment to a different campaign — skip to preserve single-campaign cardinality
     const otherCampaign = neighbors.find((n) => n.label === 'belongs-to');
     if (otherCampaign) {
       console.log(chalk.yellow(
-        `  [WARN] ${quest} already belongs to ${otherCampaign.nodeId}, adding ${campaign}`,
+        `  [SKIP] ${quest} already belongs to ${otherCampaign.nodeId}, not re-assigning to ${campaign}`,
       ));
+      skipped++;
+      continue;
     }
 
     patch.addEdge(quest, campaign, 'belongs-to');

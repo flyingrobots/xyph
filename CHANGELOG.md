@@ -18,6 +18,14 @@ All notable changes to XYPH will be documented in this file.
 - **Hardened `Suggestion` constructor** — per-entry `LayerScore` validation (layer, score, evidence shape checks) and deep-freeze of individual layer objects
 - **Hardened `GraphContext` suggestion parsing** — `Number.isFinite()` guard on confidence, per-element shape validation on parsed layer JSON
 - **Rendered rejected suggestions** — `renderSuggestions` now shows a Rejected section with rationale, parallel to Accepted
+- **Campaign cardinality in orphan script** — `assign-orphan-campaigns.ts` now validates campaign existence and skips quests already assigned to another campaign instead of adding duplicate `belongs-to` edges
+- **Hash-based evidence/suggestion IDs** — `analyze` now uses SHA-256 hash of `testFile+targetId` instead of slug truncation, preventing ID collisions across files
+- **Removed unsafe casts in config CLI** — `config get/set/list` output no longer uses `as unknown as` double casts
+- **Criterion validation in `scan`** — `scan` command now validates criterion node existence before writing evidence edges, skips missing criteria with a warning, and batches writes into a single patch
+- **TestFileParser handles modifiers** — `getCallName` now resolves `it.only`, `describe.skip`, `it.each(...)()` to their root identifier
+- **LLM adapter graceful fallback** — `AnthropicLlmAdapter.getSecret()` moved inside `try/catch` so vault errors trigger graceful degradation instead of crashing
+- **Evidence dedup for `implements` edges** — `EvidenceNode` now exposes `requirementId` from `implements` edges; `analyze` dedup filter covers both `verifies` (criterion) and `implements` (requirement) edges
+- **Synced `package-lock.json`** — lock file now includes `@anthropic-ai/sdk`, `@git-stunts/vault`, and transitive deps; fixes all CI `npm ci` failures
 
 ### Added — M11 Phase 4: Intelligent Test Auto-Linking
 
