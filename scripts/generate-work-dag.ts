@@ -342,7 +342,6 @@ function generatePair(
 
 function buildAnalysisInputs(
   tasks: Map<string, TaskNode>,
-  sorted: string[],
 ): {
   summaries: TaskSummary[];
   edges: DepEdge[];
@@ -636,7 +635,7 @@ async function main(): Promise<void> {
   const { tasks, campaigns, sorted } = await loadGraph();
   console.log(`Loaded ${tasks.size} tasks, ${campaigns.size} campaigns`);
 
-  const { summaries, edges } = buildAnalysisInputs(tasks, sorted);
+  const { summaries, edges } = buildAnalysisInputs(tasks);
 
   // Compute highlights
   const { frontier } = computeFrontier(summaries, edges);
