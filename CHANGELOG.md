@@ -15,10 +15,10 @@ All notable changes to XYPH will be documented in this file.
 
 ### Added — Work DAG Analysis Suite
 
-- **`DagAnalysis.ts`** — pure functions for DAG structure analysis: level assignment, DAG width, greedy worker scheduling, transitive reduction/closure, anti-chain decomposition, reverse reachability, and provenance tracing
+- **`DagAnalysis.ts`** — pure functions for DAG structure analysis: DAG width, greedy worker scheduling, and anti-chain grouping
 - **`scripts/generate-work-dag.ts`** — generates comprehensive DAG visualization suite: full/per-campaign/backlog/graveyard SVGs in both LR and TB orientations, plus `work.md` analysis document with topological sort, critical path, parallelism, scheduling, transitive reduction/closure, ancestry/impact, campaign grouping, and anti-chain waves
 - **`npm run graph:work`** — runs the generator, outputs to `docs/work/`
-- **43 new tests** — unit tests for all DagAnalysis functions (diamond, linear, empty, single-node, isolated-node graphs)
+- **17 unit tests** — unit tests for remaining DagAnalysis functions (diamond, linear, empty, single-node, isolated-node graphs)
 
 ### Changed
 
@@ -28,6 +28,7 @@ All notable changes to XYPH will be documented in this file.
 - **Upgraded bijou to v1.2.0** — `@flyingrobots/bijou`, `@flyingrobots/bijou-node`, `@flyingrobots/bijou-tui` from v0.10.0 to v1.2.0
 - **Roadmap DAG panel uses `dagPane()`** — replaced ~50 lines of manual `dagLayout()` + `viewport()` + scroll-centering math with bijou v1.2.0's `dagPane()` building block; auto-scroll-to-selection, keyboard-synced DAG highlight, `DagPaneState` replaces raw `dagScrollX`/`dagScrollY`
 - **Dashboard columns use `focusArea()`** — replaced bare `viewport()` with `focusArea()` for visual focus indication; focused column shows bright `▎` gutter, unfocused shows muted gutter
+- **Default theme** — switched from `cyan-magenta` to `teal-orange-pink`
 
 ### Fixed — PR #34 Feedback
 

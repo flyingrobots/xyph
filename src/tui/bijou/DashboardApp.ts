@@ -530,6 +530,11 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         };
         return [updated, []];
       }
+      if (msg.type === 'remote-change') {
+        if (model.loading) return [model, []];
+        const nextReqId = model.requestId + 1;
+        return [{ ...model, loading: true, requestId: nextReqId }, [fetchSnapshot(nextReqId)]];
+      }
       if (msg.type === 'snapshot-error') {
         if (msg.requestId !== model.requestId) return [model, []];
         return [{ ...model, error: msg.error, loading: false }, []];

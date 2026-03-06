@@ -804,6 +804,27 @@ describe('DashboardApp', () => {
       expect(cmds).toHaveLength(0);
     });
 
+    // ── Remote change ────────────────────────────────────────────────
+
+    it('handles remote-change by triggering a refresh', () => {
+      const app = makeApp();
+      const [initial] = app.init();
+      const loaded: DashboardModel = { ...initial, showLanding: false, loading: false };
+      const [updated, cmds] = app.update({ type: 'remote-change' }, loaded);
+      expect(updated.loading).toBe(true);
+      expect(updated.requestId).toBe(loaded.requestId + 1);
+      expect(cmds).toHaveLength(1);
+    });
+
+    it('ignores remote-change while already loading', () => {
+      const app = makeApp();
+      const [initial] = app.init();
+      // initial.loading is true by default from init()
+      const [updated, cmds] = app.update({ type: 'remote-change' }, initial);
+      expect(updated.requestId).toBe(initial.requestId);
+      expect(cmds).toHaveLength(0);
+    });
+
     // ── Toast / write results ─────────────────────────────────────────
 
     it('write-success shows toast and triggers refresh', () => {
