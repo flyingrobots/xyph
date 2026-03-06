@@ -2,6 +2,7 @@ import type { Command } from 'commander';
 import type { CliContext } from '../context.js';
 import { createErrorHandler } from '../errorHandler.js';
 import { assertPrefix } from '../validators.js';
+import chalk from 'chalk';
 
 export function registerCoordinationCommands(program: Command, ctx: CliContext): void {
   const withErrorHandler = createErrorHandler(ctx);
@@ -43,6 +44,38 @@ export function registerCoordinationCommands(program: Command, ctx: CliContext):
       } else {
         const winner = props ? props['assigned_to'] : 'unknown';
         ctx.fail(`[FAIL] Lost race condition for ${id}. Current owner: ${String(winner)}`);
+      }
+    }));
+
+  program
+    .command('history <id>')
+    .description('Show provenance: all patches that touched a node (Constitution Art. III)')
+    .action(withErrorHandler(async (id: string) => {
+      const graph = await ctx.graphPort.getGraph();
+
+      if (!await graph.hasNode(id)) {
+        throw new Error(`[NOT_FOUND] Node ${id} not found in the graph`);
+      }
+
+      await graph.materialize();
+      const patches = await graph.patchesFor(id);
+
+      if (ctx.json) {
+        ctx.jsonOut({
+          success: true, command: 'history',
+          data: { id, patchCount: patches.length, patches },
+        });
+        return;
+      }
+
+      if (patches.length === 0) {
+        ctx.muted(`No patches found for ${id}`);
+        return;
+      }
+
+      ctx.ok(`[PROVENANCE] ${id} — ${patches.length} patch(es):`);
+      for (const sha of patches) {
+        ctx.muted(`  ${chalk.dim(sha.slice(0, 12))}`);
       }
     }));
 }

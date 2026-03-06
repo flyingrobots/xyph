@@ -4,6 +4,10 @@ All notable changes to XYPH will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **`history` command** — `xyph-actuator history <nodeId>` shows all patches that touched a node via git-warp's `patchesFor()` provenance API (Constitution Art. III compliance)
+
 ### Added — Work DAG Analysis Suite
 
 - **`DagAnalysis.ts`** — pure functions for DAG structure analysis: level assignment, DAG width, greedy worker scheduling, transitive reduction/closure, anti-chain decomposition, reverse reachability, and provenance tracing
