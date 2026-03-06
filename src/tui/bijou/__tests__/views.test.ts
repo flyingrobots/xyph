@@ -157,6 +157,7 @@ function makeModel(snapshot: GraphSnapshot | null): DashboardModel {
     paletteState: null,
     toast: null,
     writePending: false,
+    watching: false,
   };
 }
 

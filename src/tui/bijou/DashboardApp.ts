@@ -116,6 +116,9 @@ export interface DashboardModel {
   /** Guards against double-writes while a write command is in flight. */
   writePending: boolean;
 
+  /** True once graph.watch() polling has been started (fires after first snapshot load). */
+  watching: boolean;
+
   /** The current user's writer ID (e.g. 'agent.james'). Used to filter personal panels. */
   agentId?: string;
 }
@@ -130,7 +133,8 @@ export type DashboardMsg =
   | { type: 'pulse-done' }
   | { type: 'write-success'; message: string }
   | { type: 'write-error'; message: string }
-  | { type: 'dismiss-toast'; expiresAt: number };
+  | { type: 'dismiss-toast'; expiresAt: number }
+  | { type: 'remote-change' };
 
 // ── Keybindings ─────────────────────────────────────────────────────────
 
@@ -322,6 +326,20 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
     };
   }
 
+  function startWatching(): Cmd<DashboardMsg> {
+    return async (emit) => {
+      try {
+        const graph = await deps.graphPort.getGraph();
+        graph.watch('task:*', {
+          onChange: () => { emit({ type: 'remote-change' }); },
+          poll: 10000,
+        });
+      } catch {
+        // Best-effort: polling is a convenience, not critical
+      }
+    };
+  }
+
   function delayedDismissToast(expiresAt: number): Cmd<DashboardMsg> {
     return async (emit) => {
       await new Promise(resolve => setTimeout(resolve, 3000));
@@ -388,10 +406,12 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         paletteState: null,
         toast: null,
         writePending: false,
+        watching: false,
         agentId: deps.agentId,
       };
       return [model, [
         fetchSnapshot(model.requestId),
+        startWatching(),
         animate<DashboardMsg>({
           type: 'tween',
           from: 0,
@@ -487,12 +507,13 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
             newDagPane = dagPaneSelectNode(newDagPane, selectedId, getDefaultContext());
           }
         }
-        return [{
+        const updated: DashboardModel = {
           ...model,
           snapshot: snap,
           loading: false,
           error: null,
           loadingProgress: 100,
+          watching: true,
           roadmap: { table: newRoadmapTable, dagPane: newDagPane, fallbackScrollY: 0, detailScrollY: 0 },
           submissions: { ...model.submissions, table: rebuildSubmissionsTable(snap, model.submissions.table.focusRow, model.rows - 4) },
           backlog: { ...model.backlog, table: rebuildBacklogTable(snap, model.backlog.table.focusRow, model.rows - 4) },
@@ -506,7 +527,8 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
             focusRow: clampedFocusRow,
             detailId: currentDv.detailId && snap.quests.some(q => q.id === currentDv.detailId) ? currentDv.detailId : null,
           },
-        }, []];
+        };
+        return [updated, []];
       }
       if (msg.type === 'snapshot-error') {
         if (msg.requestId !== model.requestId) return [model, []];
