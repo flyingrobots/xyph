@@ -500,7 +500,7 @@ Compact: `tick: N · writers: N · tip: XXXXXX` — one or two lines.
 
 Derive from snapshot timestamps. Collect all timestamped events (quest claims, submissions, reviews, decisions, inbox additions), sort by recency, show latest N (5-8 items). Each entry: bullet + entity ID + action + actor.
 
-Future: if `graph.watch()` is wired into the TEA loop (task:BJU-009), this updates live.
+`graph.watch()` is now wired into the TEA loop (task:BJU-009): `startWatching()` fires from `init()`, polling every 10s and emitting `remote-change` messages for `task:*` pattern changes.
 
 #### 5k. Alert bar
 

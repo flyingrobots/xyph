@@ -8,6 +8,11 @@ All notable changes to XYPH will be documented in this file.
 
 - **`history` command** — `xyph-actuator history <nodeId>` shows all patches that touched a node via git-warp's `patchesFor()` provenance API (Constitution Art. III compliance)
 
+### Fixed
+
+- **DashboardApp watching lifecycle** — `startWatching()` (graph.watch polling) now fires from `init()` alongside the initial `fetchSnapshot()`, instead of being conditionally triggered on the first `snapshot-loaded` message; the `watching` model field still tracks state but no longer gates command emission
+- **Test fixture type completeness** — added missing `watching: false` to the `makeModel()` helper in `views.test.ts` to match the updated `DashboardModel` type
+
 ### Added — Work DAG Analysis Suite
 
 - **`DagAnalysis.ts`** — pure functions for DAG structure analysis: level assignment, DAG width, greedy worker scheduling, transitive reduction/closure, anti-chain decomposition, reverse reachability, and provenance tracing
