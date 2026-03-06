@@ -14,7 +14,7 @@ import {
   type ThemeResolver,
 } from '@flyingrobots/bijou';
 import { nodeRuntime, nodeIO, chalkStyle } from '@flyingrobots/bijou-node';
-import { XYPH_PRESETS, XYPH_CYAN_MAGENTA, type XyphTheme } from './xyph-presets.js';
+import { XYPH_PRESETS, XYPH_TEAL_ORANGE_PINK, type XyphTheme } from './xyph-presets.js';
 
 /** Resolved theme with XYPH-specific type on `theme`. */
 export interface XyphResolvedTheme extends Omit<ResolvedTheme, 'theme'> {
@@ -34,6 +34,7 @@ export function ensureXyphContext(): void {
     runtime: nodeRuntime(),
     io: nodeIO(),
     style: chalkStyle(),
+    theme: XYPH_TEAL_ORANGE_PINK,
     presets: XYPH_PRESETS,
     envVar: 'XYPH_THEME',
   });
@@ -41,7 +42,7 @@ export function ensureXyphContext(): void {
   resolver = createThemeResolver({
     presets: XYPH_PRESETS,
     envVar: 'XYPH_THEME',
-    fallback: XYPH_CYAN_MAGENTA,
+    fallback: XYPH_TEAL_ORANGE_PINK,
   });
   initialized = true;
 }

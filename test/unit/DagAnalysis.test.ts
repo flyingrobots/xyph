@@ -1,13 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
-  computeLevels,
   dagWidth,
   scheduleWorkers,
-  transitiveReduction,
-  transitiveClosure,
   computeAntiChains,
-  reverseReachability,
-  computeProvenance,
 } from '../../src/domain/services/DagAnalysis.js';
 import type { TaskSummary, DepEdge } from '../../src/domain/services/DepAnalysis.js';
 
@@ -38,6 +33,14 @@ const diamondTasks = makeTasks(
   { id: 'task:D', hours: 4 },
 );
 
+// Diamond levels: A=0, B=1, C=1, D=2
+const diamondLevels = new Map([
+  ['task:A', 0],
+  ['task:B', 1],
+  ['task:C', 1],
+  ['task:D', 2],
+]);
+
 // ---------------------------------------------------------------------------
 // Linear chain: A → B → C
 // ---------------------------------------------------------------------------
@@ -52,57 +55,25 @@ const linearTasks = makeTasks(
   { id: 'task:C', hours: 1 },
 );
 
-// ---------------------------------------------------------------------------
-// computeLevels
-// ---------------------------------------------------------------------------
-describe('computeLevels', () => {
-  it('assigns levels in diamond graph: A=0, B=1, C=1, D=2', () => {
-    const levels = computeLevels(diamondSorted, diamondEdges);
-    expect(levels.get('task:A')).toBe(0);
-    expect(levels.get('task:B')).toBe(1);
-    expect(levels.get('task:C')).toBe(1);
-    expect(levels.get('task:D')).toBe(2);
-  });
-
-  it('assigns levels in linear chain: A=0, B=1, C=2', () => {
-    const levels = computeLevels(linearSorted, linearEdges);
-    expect(levels.get('task:A')).toBe(0);
-    expect(levels.get('task:B')).toBe(1);
-    expect(levels.get('task:C')).toBe(2);
-  });
-
-  it('returns empty map for empty graph', () => {
-    const levels = computeLevels([], []);
-    expect(levels.size).toBe(0);
-  });
-
-  it('assigns level 0 to a single node', () => {
-    const levels = computeLevels(['task:A'], []);
-    expect(levels.get('task:A')).toBe(0);
-  });
-
-  it('assigns level 0 to isolated nodes', () => {
-    const levels = computeLevels(['task:A', 'task:B', 'task:C'], []);
-    expect(levels.get('task:A')).toBe(0);
-    expect(levels.get('task:B')).toBe(0);
-    expect(levels.get('task:C')).toBe(0);
-  });
-});
+// Linear levels: A=0, B=1, C=2
+const linearLevels = new Map([
+  ['task:A', 0],
+  ['task:B', 1],
+  ['task:C', 2],
+]);
 
 // ---------------------------------------------------------------------------
 // dagWidth
 // ---------------------------------------------------------------------------
 describe('dagWidth', () => {
   it('returns width=2 at level 1 for diamond graph', () => {
-    const levels = computeLevels(diamondSorted, diamondEdges);
-    const result = dagWidth(levels);
+    const result = dagWidth(diamondLevels);
     expect(result.width).toBe(2);
     expect(result.widestLevel).toBe(1);
   });
 
   it('returns width=1 for linear chain', () => {
-    const levels = computeLevels(linearSorted, linearEdges);
-    const result = dagWidth(levels);
+    const result = dagWidth(linearLevels);
     expect(result.width).toBe(1);
   });
 
@@ -198,81 +169,11 @@ describe('scheduleWorkers', () => {
 });
 
 // ---------------------------------------------------------------------------
-// transitiveReduction
-// ---------------------------------------------------------------------------
-describe('transitiveReduction', () => {
-  it('removes redundant edge in diamond+shortcut', () => {
-    const edges: DepEdge[] = [
-      ...diamondEdges,
-      { from: 'task:D', to: 'task:A' }, // shortcut — redundant
-    ];
-    const reduced = transitiveReduction(edges);
-    const hasShortcut = reduced.some((e) => e.from === 'task:D' && e.to === 'task:A');
-    expect(hasShortcut).toBe(false);
-    expect(reduced).toHaveLength(4);
-  });
-
-  it('keeps all edges in diamond without shortcuts', () => {
-    const reduced = transitiveReduction(diamondEdges);
-    expect(reduced).toHaveLength(4);
-  });
-
-  it('returns empty array for empty graph', () => {
-    expect(transitiveReduction([])).toEqual([]);
-  });
-
-  it('keeps edges in linear chain (no shortcuts)', () => {
-    const reduced = transitiveReduction(linearEdges);
-    expect(reduced).toHaveLength(2);
-  });
-
-  it('removes shortcut in linear chain with skip edge', () => {
-    const edges: DepEdge[] = [
-      ...linearEdges,
-      { from: 'task:C', to: 'task:A' }, // C→A redundant: C→B→A
-    ];
-    const reduced = transitiveReduction(edges);
-    expect(reduced).toHaveLength(2);
-    const hasShortcut = reduced.some((e) => e.from === 'task:C' && e.to === 'task:A');
-    expect(hasShortcut).toBe(false);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// transitiveClosure
-// ---------------------------------------------------------------------------
-describe('transitiveClosure', () => {
-  it('adds D→A in diamond graph', () => {
-    const closure = transitiveClosure(diamondEdges);
-    const hasTransitive = closure.some((e) => e.from === 'task:D' && e.to === 'task:A');
-    expect(hasTransitive).toBe(true);
-    expect(closure).toHaveLength(5); // 4 original + D→A
-  });
-
-  it('adds C→A in linear chain', () => {
-    const closure = transitiveClosure(linearEdges);
-    const hasTransitive = closure.some((e) => e.from === 'task:C' && e.to === 'task:A');
-    expect(hasTransitive).toBe(true);
-    expect(closure).toHaveLength(3); // 2 original + C→A
-  });
-
-  it('returns empty array for empty graph', () => {
-    expect(transitiveClosure([])).toEqual([]);
-  });
-
-  it('returns original edge when no transitives possible', () => {
-    const edges: DepEdge[] = [{ from: 'task:B', to: 'task:A' }];
-    const closure = transitiveClosure(edges);
-    expect(closure).toHaveLength(1);
-  });
-});
-
-// ---------------------------------------------------------------------------
 // computeAntiChains
 // ---------------------------------------------------------------------------
 describe('computeAntiChains', () => {
   it('produces 3 waves for diamond: [A], [B,C], [D]', () => {
-    const chains = computeAntiChains(diamondSorted, diamondEdges, diamondTasks);
+    const chains = computeAntiChains(diamondLevels);
     expect(chains).toHaveLength(3);
     expect(chains[0]).toEqual(['task:A']);
     expect(chains[1]?.sort()).toEqual(['task:B', 'task:C']);
@@ -280,7 +181,7 @@ describe('computeAntiChains', () => {
   });
 
   it('produces N waves for linear chain', () => {
-    const chains = computeAntiChains(linearSorted, linearEdges, linearTasks);
+    const chains = computeAntiChains(linearLevels);
     expect(chains).toHaveLength(3);
     expect(chains[0]).toEqual(['task:A']);
     expect(chains[1]).toEqual(['task:B']);
@@ -288,102 +189,30 @@ describe('computeAntiChains', () => {
   });
 
   it('returns empty array for empty graph', () => {
-    expect(computeAntiChains([], [], [])).toEqual([]);
+    expect(computeAntiChains(new Map())).toEqual([]);
   });
 
   it('puts all isolated nodes in one wave', () => {
-    const tasks = makeTasks(
-      { id: 'task:A' },
-      { id: 'task:B' },
-      { id: 'task:C' },
-    );
-    const chains = computeAntiChains(['task:A', 'task:B', 'task:C'], [], tasks);
+    const levels = new Map([
+      ['task:A', 0],
+      ['task:B', 0],
+      ['task:C', 0],
+    ]);
+    const chains = computeAntiChains(levels);
     expect(chains).toHaveLength(1);
     expect(chains[0]?.sort()).toEqual(['task:A', 'task:B', 'task:C']);
   });
 
-  it('excludes DONE tasks from waves', () => {
-    const tasks = makeTasks(
-      { id: 'task:A', status: 'DONE' },
-      { id: 'task:B' },
-      { id: 'task:C' },
-      { id: 'task:D' },
-    );
-    const chains = computeAntiChains(diamondSorted, diamondEdges, tasks);
-    // A is DONE → excluded. B and C deps all done → wave 0. D blocked → wave 1.
+  it('groups active tasks by pre-computed levels', () => {
+    // Simulate: A is DONE (excluded by caller), B and C at level 0, D at level 1
+    const activeLevels = new Map([
+      ['task:B', 0],
+      ['task:C', 0],
+      ['task:D', 1],
+    ]);
+    const chains = computeAntiChains(activeLevels);
     expect(chains).toHaveLength(2);
     expect(chains[0]?.sort()).toEqual(['task:B', 'task:C']);
     expect(chains[1]).toEqual(['task:D']);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// reverseReachability
-// ---------------------------------------------------------------------------
-describe('reverseReachability', () => {
-  it('returns all downstream tasks for root in diamond', () => {
-    const reach = reverseReachability('task:A', diamondEdges);
-    expect(reach.sort()).toEqual(['task:B', 'task:C', 'task:D']);
-  });
-
-  it('returns only direct dependent for leaf-adjacent node', () => {
-    const reach = reverseReachability('task:B', diamondEdges);
-    expect(reach).toEqual(['task:D']);
-  });
-
-  it('returns empty for leaf node', () => {
-    expect(reverseReachability('task:D', diamondEdges)).toEqual([]);
-  });
-
-  it('returns empty for unknown node', () => {
-    expect(reverseReachability('task:Z', diamondEdges)).toEqual([]);
-  });
-
-  it('returns empty for empty graph', () => {
-    expect(reverseReachability('task:A', [])).toEqual([]);
-  });
-
-  it('returns all downstream in linear chain', () => {
-    const reach = reverseReachability('task:A', linearEdges);
-    expect(reach.sort()).toEqual(['task:B', 'task:C']);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// computeProvenance
-// ---------------------------------------------------------------------------
-describe('computeProvenance', () => {
-  it('traces frontier task D back to root A in diamond', () => {
-    const prov = computeProvenance(['task:D'], diamondEdges);
-    expect(prov.get('task:D')).toEqual(['task:A']);
-  });
-
-  it('traces mid-level tasks to their roots', () => {
-    const prov = computeProvenance(['task:B', 'task:C'], diamondEdges);
-    expect(prov.get('task:B')).toEqual(['task:A']);
-    expect(prov.get('task:C')).toEqual(['task:A']);
-  });
-
-  it('returns self as root for root tasks', () => {
-    const prov = computeProvenance(['task:A'], diamondEdges);
-    expect(prov.get('task:A')).toEqual(['task:A']);
-  });
-
-  it('returns empty map for empty input', () => {
-    expect(computeProvenance([], diamondEdges).size).toBe(0);
-  });
-
-  it('traces through linear chain to root', () => {
-    const prov = computeProvenance(['task:C'], linearEdges);
-    expect(prov.get('task:C')).toEqual(['task:A']);
-  });
-
-  it('handles multiple roots correctly', () => {
-    const edges: DepEdge[] = [
-      { from: 'task:C', to: 'task:A' },
-      { from: 'task:C', to: 'task:B' },
-    ];
-    const prov = computeProvenance(['task:C'], edges);
-    expect(prov.get('task:C')?.sort()).toEqual(['task:A', 'task:B']);
   });
 });

@@ -1,57 +1,18 @@
 /**
- * DagAnalysis — Pure functions for DAG structure analysis.
+ * DagAnalysis — Pure domain functions for DAG structure analysis.
  *
  * Complements DepAnalysis.ts (frontier, critical path, top blockers) with
- * structural analysis: leveling, width, scheduling, transitive reduction/
- * closure, anti-chains, reverse reachability, and provenance.
+ * structural analysis: DAG width, scheduling, and anti-chain grouping.
  *
- * All functions are pure: (sorted, edges, tasks) → result.
- * Graph traversals (topo sort, BFS, reachability) are handled by git-warp
- * natively — these functions operate on the extracted DepEdge[] data.
+ * All functions are pure: (levels, tasks, edges) → result.
+ *
+ * Graph algorithms (level assignment, transitive reduction/closure,
+ * reachability, provenance) are handled by git-warp natively via
+ * graph.traverse.levels(), graph.traverse.transitiveReduction(),
+ * graph.traverse.transitiveClosure(), graph.traverse.rootAncestors().
  */
 
 import type { TaskSummary, DepEdge } from './DepAnalysis.js';
-
-// ---------------------------------------------------------------------------
-// Level assignment
-// ---------------------------------------------------------------------------
-
-/**
- * Assigns each task to its longest-path level from roots.
- * Level = max(level of prerequisites) + 1. Roots are level 0.
- */
-export function computeLevels(
-  sorted: string[],
-  edges: DepEdge[],
-): Map<string, number> {
-  const levels = new Map<string, number>();
-
-  // Build deps map: task → [prerequisites]
-  const depsOf = new Map<string, string[]>();
-  for (const edge of edges) {
-    const arr = depsOf.get(edge.from) ?? [];
-    arr.push(edge.to);
-    depsOf.set(edge.from, arr);
-  }
-
-  for (const node of sorted) {
-    const deps = depsOf.get(node) ?? [];
-    if (deps.length === 0) {
-      levels.set(node, 0);
-    } else {
-      let maxDepLevel = 0;
-      for (const dep of deps) {
-        const depLevel = levels.get(dep) ?? 0;
-        if (depLevel + 1 > maxDepLevel) {
-          maxDepLevel = depLevel + 1;
-        }
-      }
-      levels.set(node, maxDepLevel);
-    }
-  }
-
-  return levels;
-}
 
 // ---------------------------------------------------------------------------
 // DAG width
@@ -59,6 +20,7 @@ export function computeLevels(
 
 /**
  * Returns the maximum number of tasks at any single level (max parallelism).
+ * Accepts pre-computed levels from graph.traverse.levels().
  */
 export function dagWidth(
   levels: Map<string, number>,
@@ -180,176 +142,21 @@ export function scheduleWorkers(
 }
 
 // ---------------------------------------------------------------------------
-// Transitive reduction
-// ---------------------------------------------------------------------------
-
-/**
- * Removes redundant edges: A→C is redundant if a longer path A→...→C exists.
- * Uses BFS per edge to check reachability without that edge.
- */
-export function transitiveReduction(
-  edges: DepEdge[],
-): DepEdge[] {
-  if (edges.length === 0) return [];
-
-  // Build adjacency: from → [to] (dependency direction)
-  const adj = new Map<string, Set<string>>();
-  for (const edge of edges) {
-    const set = adj.get(edge.from) ?? new Set<string>();
-    set.add(edge.to);
-    adj.set(edge.from, set);
-  }
-
-  // For each edge (from → to), check if `from` can reach `to` via other edges
-  const result: DepEdge[] = [];
-  for (const edge of edges) {
-    // Temporarily remove this edge
-    const neighbors = adj.get(edge.from);
-    if (!neighbors) {
-      result.push(edge);
-      continue;
-    }
-    neighbors.delete(edge.to);
-
-    // BFS from edge.from to see if edge.to is still reachable
-    const reachable = bfsReachable(edge.from, edge.to, adj);
-    if (!reachable) {
-      result.push(edge); // edge is essential
-    }
-
-    // Restore edge
-    neighbors.add(edge.to);
-  }
-
-  return result;
-}
-
-function bfsReachable(
-  start: string,
-  target: string,
-  adj: Map<string, Set<string>>,
-): boolean {
-  const visited = new Set<string>();
-  const queue = [start];
-  visited.add(start);
-
-  while (queue.length > 0) {
-    const current = queue.shift();
-    if (current === undefined) break;
-    for (const neighbor of adj.get(current) ?? []) {
-      if (neighbor === target) return true;
-      if (!visited.has(neighbor)) {
-        visited.add(neighbor);
-        queue.push(neighbor);
-      }
-    }
-  }
-
-  return false;
-}
-
-// ---------------------------------------------------------------------------
-// Transitive closure
-// ---------------------------------------------------------------------------
-
-/**
- * Adds all implied edges: if A depends on B and B depends on C, adds A→C.
- * Returns original edges plus all transitive edges (deduped).
- */
-export function transitiveClosure(
-  edges: DepEdge[],
-): DepEdge[] {
-  if (edges.length === 0) return [];
-
-  // Build adjacency: from → Set<to>
-  const adj = new Map<string, Set<string>>();
-  for (const edge of edges) {
-    const set = adj.get(edge.from) ?? new Set<string>();
-    set.add(edge.to);
-    adj.set(edge.from, set);
-  }
-
-  // For each node, BFS to find all reachable nodes and add edges
-  const allEdges = new Set<string>();
-  for (const edge of edges) {
-    allEdges.add(`${edge.from}→${edge.to}`);
-  }
-
-  const result: DepEdge[] = [...edges];
-
-  // Derive node set from edges
-  const nodes = new Set<string>();
-  for (const edge of edges) {
-    nodes.add(edge.from);
-    nodes.add(edge.to);
-  }
-
-  for (const node of nodes) {
-    // BFS from node following dependency direction
-    const visited = new Set<string>();
-    const queue: string[] = [];
-
-    // Seed with direct deps
-    for (const dep of adj.get(node) ?? []) {
-      if (!visited.has(dep)) {
-        visited.add(dep);
-        queue.push(dep);
-      }
-    }
-
-    while (queue.length > 0) {
-      const current = queue.shift();
-      if (current === undefined) break;
-      for (const dep of adj.get(current) ?? []) {
-        if (!visited.has(dep)) {
-          visited.add(dep);
-          queue.push(dep);
-        }
-      }
-    }
-
-    // Add transitive edges
-    for (const reachable of visited) {
-      const key = `${node}→${reachable}`;
-      if (!allEdges.has(key)) {
-        allEdges.add(key);
-        result.push({ from: node, to: reachable });
-      }
-    }
-  }
-
-  return result;
-}
-
-// ---------------------------------------------------------------------------
 // Anti-chain decomposition (MECE parallel waves)
 // ---------------------------------------------------------------------------
 
 /**
- * Groups non-DONE tasks into parallel waves based on dependency levels.
+ * Groups tasks into parallel waves based on pre-computed dependency levels.
  * Each wave is an anti-chain: tasks within a wave have no dependencies
  * on each other and can run in parallel.
+ *
+ * Expects levels computed by graph.traverse.levels() — only for active
+ * (non-DONE) tasks.
  */
 export function computeAntiChains(
-  sorted: string[],
-  edges: DepEdge[],
-  tasks: TaskSummary[],
+  levels: Map<string, number>,
 ): string[][] {
-  if (sorted.length === 0) return [];
-
-  const doneSet = new Set(tasks.filter((t) => t.status === 'DONE').map((t) => t.id));
-  const activeSorted = sorted.filter((id) => !doneSet.has(id));
-
-  if (activeSorted.length === 0) return [];
-
-  // Filter edges to only include active tasks
-  const activeSet = new Set(activeSorted);
-  const activeEdges = edges.filter(
-    (e) => activeSet.has(e.from) && activeSet.has(e.to),
-  );
-
-  // Compute levels on active subgraph
-  const levels = computeLevels(activeSorted, activeEdges);
+  if (levels.size === 0) return [];
 
   // Group by level
   const byLevel = new Map<number, string[]>();
@@ -366,109 +173,4 @@ export function computeAntiChains(
     wave.sort();
     return wave;
   });
-}
-
-// ---------------------------------------------------------------------------
-// Reverse reachability
-// ---------------------------------------------------------------------------
-
-/**
- * Returns all tasks that transitively depend on the given task.
- * Uses BFS over the reverse dependency graph.
- */
-export function reverseReachability(
-  taskId: string,
-  edges: DepEdge[],
-): string[] {
-  // Build reverse map: prerequisite → [dependents]
-  const dependentsOf = new Map<string, string[]>();
-  for (const edge of edges) {
-    const arr = dependentsOf.get(edge.to) ?? [];
-    arr.push(edge.from);
-    dependentsOf.set(edge.to, arr);
-  }
-
-  const visited = new Set<string>();
-  const queue = [taskId];
-
-  while (queue.length > 0) {
-    const current = queue.shift();
-    if (current === undefined) break;
-    for (const dep of dependentsOf.get(current) ?? []) {
-      if (!visited.has(dep)) {
-        visited.add(dep);
-        queue.push(dep);
-      }
-    }
-  }
-
-  const result = [...visited];
-  result.sort();
-  return result;
-}
-
-// ---------------------------------------------------------------------------
-// Provenance
-// ---------------------------------------------------------------------------
-
-/**
- * For each frontier task, traces back through dependencies to find root
- * ancestors (tasks with no prerequisites).
- */
-export function computeProvenance(
-  frontier: string[],
-  edges: DepEdge[],
-): Map<string, string[]> {
-  const result = new Map<string, string[]>();
-  if (frontier.length === 0) return result;
-
-  // Build deps map: task → [prerequisites]
-  const depsOf = new Map<string, string[]>();
-  for (const edge of edges) {
-    const arr = depsOf.get(edge.from) ?? [];
-    arr.push(edge.to);
-    depsOf.set(edge.from, arr);
-  }
-
-  for (const taskId of frontier) {
-    // BFS backwards through deps
-    const visited = new Set<string>();
-    const queue: string[] = [];
-    const roots: string[] = [];
-
-    // Seed with task's own deps
-    const directDeps = depsOf.get(taskId) ?? [];
-    if (directDeps.length === 0) {
-      // This task IS a root
-      roots.push(taskId);
-    } else {
-      for (const dep of directDeps) {
-        if (!visited.has(dep)) {
-          visited.add(dep);
-          queue.push(dep);
-        }
-      }
-    }
-
-    while (queue.length > 0) {
-      const current = queue.shift();
-      if (current === undefined) break;
-      const currentDeps = depsOf.get(current) ?? [];
-      if (currentDeps.length === 0) {
-        roots.push(current);
-      } else {
-        for (const dep of currentDeps) {
-          if (!visited.has(dep)) {
-            visited.add(dep);
-            queue.push(dep);
-          }
-        }
-      }
-    }
-
-    roots.sort();
-    result.set(taskId, roots);
-  }
-
-  return result;
 }

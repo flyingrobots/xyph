@@ -14,6 +14,7 @@ All notable changes to XYPH will be documented in this file.
 ### Changed
 
 - **Upgraded git-warp to v13.1.0** — `@git-stunts/git-warp` from v12.1.0 to v13.1.0; migrated all `getNodeProps()` call sites from `Map<string, unknown>` (`.get()`) to `Record<string, unknown>` (bracket notation)
+- **Delegated graph algorithms to git-warp traversals** — removed userland `computeLevels()`, `transitiveReduction()`, `transitiveClosure()`, `reverseReachability()`, `computeProvenance()` from `DagAnalysis.ts`; `generate-work-dag.ts` now calls `graph.traverse.levels()`, `.transitiveReduction()`, `.transitiveClosure()`, `.rootAncestors()` directly; `computeAntiChains()` simplified to accept pre-computed levels
 - **Upgraded bijou to v1.3.0** — `@flyingrobots/bijou`, `@flyingrobots/bijou-node`, `@flyingrobots/bijou-tui` from v1.2.0 to v1.3.0
 - **Upgraded bijou to v1.2.0** — `@flyingrobots/bijou`, `@flyingrobots/bijou-node`, `@flyingrobots/bijou-tui` from v0.10.0 to v1.2.0
 - **Roadmap DAG panel uses `dagPane()`** — replaced ~50 lines of manual `dagLayout()` + `viewport()` + scroll-centering math with bijou v1.2.0's `dagPane()` building block; auto-scroll-to-selection, keyboard-synced DAG highlight, `DagPaneState` replaces raw `dagScrollX`/`dagScrollY`

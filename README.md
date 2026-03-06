@@ -69,6 +69,34 @@ Now you're all set. Let's see how we might use XYPH in our everyday workflows.
 
 ### Walkthrough: Building a Feature Together
 
+#### Walkthrough at a Glance
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Ada as Human (Ada)
+    participant Warp as WARP Graph (CRDT in Git)
+    participant Hal as Agent (Hal)
+    participant Git as Git Workspace
+
+    Ada->>Warp: Declare intent + create quests + dependencies
+    Hal->>Warp: Claim quest (OCP)
+    Hal->>Git: Implement + run quality gates
+    Hal->>Warp: Submit (submission + patchset)
+    Ada->>Warp: Review patchset
+
+    alt Approved
+        Ada->>Git: Merge branch (--no-ff)
+        Ada->>Warp: Record merge decision
+        Warp-->>Warp: Auto-seal quest (Scroll + Guild Seal + DONE)
+    else Changes requested
+        Hal->>Warp: Revise submission (new patchset tip)
+        Ada->>Warp: Re-review updated tip
+    end
+
+    Ada->>Warp: Audit lineage and sovereignty
+```
+
 #### 1. Ada Declares an Intent
 
 Every piece of work in XYPH must trace back to a human decision. Ada starts by declaring an **Intent** — a statement of _why_ something should exist. Intents are the sovereign roots of all work; agents cannot create them.

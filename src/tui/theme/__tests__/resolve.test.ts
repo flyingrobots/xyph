@@ -16,10 +16,10 @@ describe('bridge (replacing resolve)', () => {
     _resetBridgeForTesting();
   });
 
-  it('defaults to cyan-magenta theme', () => {
+  it('defaults to teal-orange-pink theme', () => {
     ensureXyphContext();
     const t = getXyphTheme();
-    expect(t.theme.name).toBe('cyan-magenta');
+    expect(t.theme.name).toBe('teal-orange-pink');
     expect(t.noColor).toBe(false);
   });
 
@@ -30,13 +30,13 @@ describe('bridge (replacing resolve)', () => {
     expect(t.theme.name).toBe('teal-orange-pink');
   });
 
-  it('falls back to cyan-magenta for unknown theme name', () => {
+  it('falls back to teal-orange-pink for unknown theme name', () => {
     process.env['XYPH_THEME'] = 'nonexistent-theme';
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation((_msg: string): void => { /* suppress */ });
     try {
       ensureXyphContext();
       const t = getXyphTheme();
-      expect(t.theme.name).toBe('cyan-magenta');
+      expect(t.theme.name).toBe('teal-orange-pink');
     } finally {
       warnSpy.mockRestore();
     }

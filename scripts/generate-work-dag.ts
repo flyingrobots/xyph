@@ -26,13 +26,9 @@ import {
   type DepEdge,
 } from '../src/domain/services/DepAnalysis.js';
 import {
-  computeLevels,
   dagWidth,
   scheduleWorkers,
-  transitiveReduction,
-  transitiveClosure,
   computeAntiChains,
-  computeProvenance,
 } from '../src/domain/services/DagAnalysis.js';
 
 // ---------------------------------------------------------------------------
@@ -98,6 +94,7 @@ interface DotOptions {
 // ---------------------------------------------------------------------------
 
 async function loadGraph(): Promise<{
+  graph: InstanceType<typeof WarpGraph>;
   tasks: Map<string, TaskNode>;
   campaigns: Map<string, string>;
   sorted: string[];
@@ -123,7 +120,7 @@ async function loadGraph(): Promise<{
   for (const cid of campaignIds) {
     const props = await graph.getNodeProps(cid);
     if (props) {
-      campaigns.set(cid, (props.get('title') as string) ?? cid.replace(/^(campaign|milestone):/, ''));
+      campaigns.set(cid, (props['title'] as string) ?? cid.replace(/^(campaign|milestone):/, ''));
     }
   }
 
@@ -133,10 +130,10 @@ async function loadGraph(): Promise<{
     const props = await graph.getNodeProps(id);
     if (!props) continue;
 
-    const rawStatus = (props.get('status') as string) ?? 'BACKLOG';
+    const rawStatus = (props['status'] as string) ?? 'BACKLOG';
     const status = normalizeQuestStatus(rawStatus);
-    const title = (props.get('title') as string) ?? id;
-    const hours = Number(props.get('hours') ?? 1);
+    const title = (props['title'] as string) ?? id;
+    const hours = Number(props['hours'] ?? 1);
 
     const neighbors = (await graph.neighbors(id, 'outgoing')) as Array<{
       label: string;
@@ -170,7 +167,7 @@ async function loadGraph(): Promise<{
   });
   const sorted = topoResult.sorted;
 
-  return { tasks, campaigns, sorted };
+  return { graph, tasks, campaigns, sorted };
 }
 
 // ---------------------------------------------------------------------------
@@ -365,12 +362,13 @@ function buildAnalysisInputs(
 // work.md generation
 // ---------------------------------------------------------------------------
 
-function generateWorkMd(
+async function generateWorkMd(
+  graph: InstanceType<typeof WarpGraph>,
   tasks: Map<string, TaskNode>,
   summaries: TaskSummary[],
   edges: DepEdge[],
   sorted: string[],
-): string {
+): Promise<string> {
   const lines: string[] = [];
   const now = new Date().toISOString().slice(0, 10);
 
@@ -432,7 +430,7 @@ function generateWorkMd(
   }
 
   // --- Parallelism and Leveling ---
-  const levels = computeLevels(sorted, edges);
+  const { levels } = await graph.traverse.levels(sorted, { dir: 'in', labelFilter: 'depends-on' });
   const width = dagWidth(levels);
   lines.push('## Parallelism and Leveling');
   lines.push('');
@@ -484,14 +482,14 @@ function generateWorkMd(
   lines.push('## Transitive Reduction and Closure');
   lines.push('');
 
-  const reduced = transitiveReduction(edges);
-  const redundantCount = edges.length - reduced.length;
+  const reductionResult = await graph.traverse.transitiveReduction(sorted, { dir: 'in', labelFilter: 'depends-on' });
+  const redundantCount = reductionResult.removed;
   lines.push('### Transitive Reduction');
   lines.push('');
   lines.push(`**Redundant edges:** ${redundantCount} of ${edges.length}`);
   lines.push('');
   if (redundantCount > 0) {
-    const reducedSet = new Set(reduced.map((e) => `${e.from}→${e.to}`));
+    const reducedSet = new Set(reductionResult.edges.map((e) => `${e.from}→${e.to}`));
     const removedEdges = edges.filter((e) => !reducedSet.has(`${e.from}→${e.to}`));
     for (const e of removedEdges) {
       lines.push(`- \`${e.from}\` → \`${e.to}\` (redundant)`);
@@ -499,15 +497,15 @@ function generateWorkMd(
     lines.push('');
   }
 
-  const closure = transitiveClosure(edges);
-  const impliedCount = closure.length - edges.length;
+  const closureResult = await graph.traverse.transitiveClosure(sorted, { dir: 'in', labelFilter: 'depends-on' });
+  const impliedCount = closureResult.edges.length - edges.length;
   lines.push('### Transitive Closure');
   lines.push('');
   lines.push(`**Implied dependencies:** ${impliedCount}`);
   lines.push('');
   if (impliedCount > 0) {
     const originalSet = new Set(edges.map((e) => `${e.from}→${e.to}`));
-    const impliedEdges = closure.filter((e) => !originalSet.has(`${e.from}→${e.to}`));
+    const impliedEdges = closureResult.edges.filter((e) => !originalSet.has(`${e.from}→${e.to}`));
     const displayLimit = Math.min(impliedEdges.length, 20);
     for (let i = 0; i < displayLimit; i++) {
       const e = impliedEdges[i];
@@ -544,7 +542,11 @@ function generateWorkMd(
   lines.push('### Provenance');
   lines.push('');
   const { frontier } = computeFrontier(summaries, edges);
-  const prov = computeProvenance(frontier, edges);
+  const prov = new Map<string, string[]>();
+  for (const id of frontier) {
+    const { roots } = await graph.traverse.rootAncestors(id, { labelFilter: 'depends-on' });
+    prov.set(id, roots.length > 0 ? roots.sort() : [id]);
+  }
   if (prov.size > 0) {
     lines.push('| Frontier Task | Title | Root Ancestors |');
     lines.push('|---------------|-------|----------------|');
@@ -588,7 +590,13 @@ function generateWorkMd(
   // --- Anti-chains ---
   lines.push('## Anti-chains (Parallel Waves)');
   lines.push('');
-  const chains = computeAntiChains(sorted, edges, summaries);
+  // Compute anti-chains on active (non-DONE) tasks only
+  const doneSet = new Set(summaries.filter((t) => t.status === 'DONE').map((t) => t.id));
+  const activeSorted = sorted.filter((id) => !doneSet.has(id));
+  const { levels: activeLevels } = activeSorted.length > 0
+    ? await graph.traverse.levels(activeSorted, { dir: 'in', labelFilter: 'depends-on' })
+    : { levels: new Map<string, number>() };
+  const chains = computeAntiChains(activeLevels);
   if (chains.length > 0) {
     lines.push('| Wave | Parallel Tasks | Count | Total Hours |');
     lines.push('|------|----------------|-------|-------------|');
@@ -632,7 +640,7 @@ function generateWorkMd(
 
 async function main(): Promise<void> {
   console.log('Loading WARP graph...');
-  const { tasks, campaigns, sorted } = await loadGraph();
+  const { graph, tasks, campaigns, sorted } = await loadGraph();
   console.log(`Loaded ${tasks.size} tasks, ${campaigns.size} campaigns`);
 
   const { summaries, edges } = buildAnalysisInputs(tasks);
@@ -696,7 +704,7 @@ async function main(): Promise<void> {
 
   // 5. Analysis document
   console.log('\nGenerating work.md...');
-  const workMd = generateWorkMd(tasks, summaries, edges, sorted);
+  const workMd = await generateWorkMd(graph, tasks, summaries, edges, sorted);
   writeFileSync(join(OUTPUT_DIR, 'work.md'), workMd);
   console.log(`  MD: ${join(OUTPUT_DIR, 'work.md')}`);
 
