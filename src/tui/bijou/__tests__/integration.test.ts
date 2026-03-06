@@ -113,7 +113,7 @@ describe('DashboardApp integration (full loop)', () => {
     _resetThemeForTesting();
     _resetBridgeForTesting();
     vi.stubEnv('NO_COLOR', '1');
-    vi.stubEnv('XYPH_THEME', '');
+    vi.stubEnv('XYPH_THEME', 'cyan-magenta');
     ensureXyphContext();
   });
 
