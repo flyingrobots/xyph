@@ -17,6 +17,11 @@ All notable changes to XYPH will be documented in this file.
 - **Roadmap DAG panel uses `dagPane()`** — replaced ~50 lines of manual `dagLayout()` + `viewport()` + scroll-centering math with bijou v1.2.0's `dagPane()` building block; auto-scroll-to-selection, keyboard-synced DAG highlight, `DagPaneState` replaces raw `dagScrollX`/`dagScrollY`
 - **Dashboard columns use `focusArea()`** — replaced bare `viewport()` with `focusArea()` for visual focus indication; focused column shows bright `▎` gutter, unfocused shows muted gutter
 
+### Fixed — PR #34 Feedback
+
+- **Vitest config simplification** — removed explicit `include` globs from `vitest.config.ts` and retained focused `exclude` rules, using Vitest default test discovery for future `*.spec.*` / `*.test.tsx` compatibility
+- **CI audit vulnerability (`tar`)** — updated lockfile resolution from `tar@7.5.8` to `tar@7.5.10` (via transitive `@mapbox/node-pre-gyp`/`node-gyp`) so `npm audit --omit=dev` passes with zero vulnerabilities
+
 ### Fixed — PR #33 Code Review
 
 - **Roadmap fallback paging restored** — PageDown/PageUp now scroll the right roadmap panel even when a snapshot has no dependency edges; fallback viewport scroll is stateful instead of hardcoded to row 0
