@@ -11,11 +11,11 @@ export class WarpRoadmapAdapter implements RoadmapPort {
     private readonly graphPort: GraphPort,
   ) {}
 
-  private buildQuestFromProps(id: string, props: Map<string, unknown>): Quest | null {
-    const title = props.get('title');
-    const status = props.get('status');
-    const hours = props.get('hours');
-    const type = props.get('type');
+  private buildQuestFromProps(id: string, props: Record<string, unknown>): Quest | null {
+    const title = props['title'];
+    const status = props['status'];
+    const hours = props['hours'];
+    const type = props['type'];
 
     if (typeof title !== 'string' || title.length < 5) return null;
     if (typeof status !== 'string' || !VALID_RAW_STATUSES.has(status)) return null;
@@ -24,10 +24,10 @@ export class WarpRoadmapAdapter implements RoadmapPort {
 
     const parsedHours = typeof hours === 'number' && Number.isFinite(hours) && hours >= 0 ? hours : 0;
 
-    const assignedTo = props.get('assigned_to');
-    const claimedAt = props.get('claimed_at');
-    const completedAt = props.get('completed_at');
-    const originContext = props.get('origin_context');
+    const assignedTo = props['assigned_to'];
+    const claimedAt = props['claimed_at'];
+    const completedAt = props['completed_at'];
+    const originContext = props['origin_context'];
 
     return new Quest({
       id,
@@ -50,9 +50,7 @@ export class WarpRoadmapAdapter implements RoadmapPort {
     const quests: Quest[] = [];
     for (const node of result.nodes) {
       if (typeof node.id !== 'string' || !node.props) continue;
-      // query returns Record<string, unknown>; buildQuestFromProps expects Map
-      const props = new Map(Object.entries(node.props));
-      const quest = this.buildQuestFromProps(node.id, props);
+      const quest = this.buildQuestFromProps(node.id, node.props);
       if (quest) quests.push(quest);
     }
     return quests;

@@ -112,16 +112,16 @@ export class ConfigAdapter implements ConfigPort {
 
       const result: Partial<XyphConfig> = {};
 
-      const minAuto = props.get('minAutoConfidence');
+      const minAuto = props['minAutoConfidence'];
       if (typeof minAuto === 'number') result.minAutoConfidence = minAuto;
 
-      const floor = props.get('suggestionFloor');
+      const floor = props['suggestionFloor'];
       if (typeof floor === 'number') result.suggestionFloor = floor;
 
-      const glob = props.get('testGlob');
+      const glob = props['testGlob'];
       if (typeof glob === 'string') result.testGlob = glob;
 
-      const hwRaw = props.get('heuristicWeights');
+      const hwRaw = props['heuristicWeights'];
       if (typeof hwRaw === 'string') {
         try {
           const parsed: unknown = JSON.parse(hwRaw);
@@ -136,7 +136,7 @@ export class ConfigAdapter implements ConfigPort {
         }
       }
 
-      const llmRaw = props.get('llm');
+      const llmRaw = props['llm'];
       if (typeof llmRaw === 'string') {
         try {
           const parsed: unknown = JSON.parse(llmRaw);

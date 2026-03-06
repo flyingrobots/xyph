@@ -33,8 +33,8 @@ export function registerDashboardCommands(program: Command, ctx: CliContext): vo
         graph.getNodeProps(from),
         graph.getNodeProps(to),
       ]);
-      const fromType = String(fromProps?.get('type') ?? 'unknown');
-      const toType = String(toProps?.get('type') ?? 'unknown');
+      const fromType = String(fromProps?.['type'] ?? 'unknown');
+      const toType = String(toProps?.['type'] ?? 'unknown');
       if (!DEPEND_TYPES.has(fromType)) {
         throw new Error(`[TYPE_MISMATCH] ${from} exists but is not a task/campaign/milestone (type: ${fromType})`);
       }

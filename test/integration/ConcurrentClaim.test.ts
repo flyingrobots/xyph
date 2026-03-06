@@ -100,8 +100,8 @@ describe('Concurrent OCP Claim — LWW determinism', () => {
     await graphB.materialize();
     const propsB = await graphB.getNodeProps(questId);
 
-    const winnerFromA = propsA?.get('assigned_to');
-    const winnerFromB = propsB?.get('assigned_to');
+    const winnerFromA = propsA?.['assigned_to'];
+    const winnerFromB = propsB?.['assigned_to'];
 
     // Both replicas MUST agree
     expect(winnerFromA).toBeDefined();

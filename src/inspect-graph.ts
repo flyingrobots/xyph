@@ -26,7 +26,7 @@ async function inspect(): Promise<void> {
     const props = await graph.getNodeProps(id);
     if (!props) continue;
     console.log(styled(t.semantic.info, `\nNode: ${id}`));
-    console.log(JSON.stringify(Object.fromEntries(props), null, 2));
+    console.log(JSON.stringify(props, null, 2));
 
     const neighbors = toNeighborEntries(await graph.neighbors(id, 'outgoing'));
     if (neighbors.length > 0) {

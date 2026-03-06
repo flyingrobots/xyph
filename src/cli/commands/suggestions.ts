@@ -36,15 +36,15 @@ export function registerSuggestionCommands(program: Command, ctx: CliContext): v
       const props = await graph.getNodeProps(id);
       if (!props) throw new Error(`[NOT_FOUND] Suggestion ${id} has no properties`);
 
-      const status = props.get('status');
+      const status = props['status'];
       if (status !== 'PENDING') {
         throw new Error(`[INVALID_STATE] Suggestion ${id} is ${String(status)}, not PENDING`);
       }
 
-      const targetId = props.get('target_id');
-      const targetType = props.get('target_type');
-      const testFile = props.get('test_file');
-      const confidence = props.get('confidence');
+      const targetId = props['target_id'];
+      const targetType = props['target_type'];
+      const testFile = props['test_file'];
+      const confidence = props['confidence'];
 
       if (typeof targetId !== 'string' || typeof targetType !== 'string' || typeof testFile !== 'string') {
         throw new Error(`[CORRUPT] Suggestion ${id} is missing required properties`);
@@ -109,7 +109,7 @@ export function registerSuggestionCommands(program: Command, ctx: CliContext): v
       const props = await graph.getNodeProps(id);
       if (!props) throw new Error(`[NOT_FOUND] Suggestion ${id} has no properties`);
 
-      const status = props.get('status');
+      const status = props['status'];
       if (status !== 'PENDING') {
         throw new Error(`[INVALID_STATE] Suggestion ${id} is ${String(status)}, not PENDING`);
       }
