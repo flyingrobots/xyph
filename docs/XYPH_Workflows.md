@@ -380,12 +380,17 @@ npx tsx xyph-actuator.ts seal task:notif-001 \
 
 ### Status Lifecycle
 
-```
-INBOX ──promote──→ BACKLOG ──claim──→ IN_PROGRESS ──seal/merge──→ DONE
-  │                                        │
-  └──reject──→ GRAVEYARD ←────────────── BLOCKED
-                  │
-                  └──reopen──→ INBOX
+```mermaid
+stateDiagram-v2
+    direction LR
+    [*] --> INBOX
+    INBOX --> BACKLOG : promote
+    INBOX --> GRAVEYARD : reject
+    BACKLOG --> IN_PROGRESS : claim
+    IN_PROGRESS --> DONE : seal / merge
+    IN_PROGRESS --> BLOCKED
+    BLOCKED --> GRAVEYARD
+    GRAVEYARD --> INBOX : reopen
 ```
 
 ### The Genealogy of Intent

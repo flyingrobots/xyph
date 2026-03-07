@@ -33,3 +33,20 @@
 - **Identity**: `agent:<skill>-<uuid>`
 - **MUST**: Use optimistic claim → verify ownership post-materialize → perform work
 - **Forbidden**: Touch any task they do not own, alter estimates
+
+## Agent Role Pipeline
+
+```mermaid
+flowchart LR
+    Parser["Parser Agent\n(Ingest → Normalize)"]
+    Planner["Planner Agent\n(Classify → Merge)"]
+    Graph["Graph Agent\n(Rebalance → Schedule)"]
+    QA["QA Agent\n(Review Gate)"]
+    Coordinator["Coordinator Agent\n(Triage / Janitor)"]
+    Worker["Worker Agent\n(Specialized Execution)"]
+
+    Parser --> Planner --> Graph --> QA
+    Coordinator -.-> Worker
+    QA -.-> Coordinator
+    Graph -.-> Coordinator
+```

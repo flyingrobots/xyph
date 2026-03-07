@@ -16,6 +16,59 @@
  └──────────────┘
 ```
 
+```mermaid
+graph LR
+    subgraph Driving["Driving Adapters"]
+        CLI["xyph-actuator (CLI)"]
+        TUI["xyph-dashboard (TUI/TEA)"]
+        DAEMON["coordinator (daemon)"]
+    end
+
+    subgraph Ports_In["Inbound Ports"]
+        GP_IN["GraphPort"]
+        IP["IntakePort"]
+        SP["SubmissionPort"]
+        RP["RoadmapPort"]
+    end
+
+    subgraph Domain["Domain Core"]
+        ENT["domain/entities"]
+        SVC["domain/services"]
+        MOD["domain/models"]
+    end
+
+    subgraph Ports_Out["Outbound Ports"]
+        GP_OUT["GraphPort"]
+        WP["WorkspacePort"]
+    end
+
+    subgraph Driven["Driven Adapters"]
+        WGA["WarpGraphAdapter"]
+        WIA["WarpIntakeAdapter"]
+        WSA["WarpSubmissionAdapter"]
+        WRA["WarpRoadmapAdapter"]
+        GWA["GitWorkspaceAdapter"]
+    end
+
+    CLI --> GP_IN
+    TUI --> RP
+    DAEMON --> GP_IN
+
+    GP_IN --> Domain
+    IP --> Domain
+    SP --> Domain
+    RP --> Domain
+
+    Domain --> GP_OUT
+    Domain --> WP
+
+    GP_OUT --> WGA
+    GP_OUT --> WIA
+    GP_OUT --> WSA
+    GP_OUT --> WRA
+    WP --> GWA
+```
+
 ### Layers
 
 - **`src/domain/entities/`** — Core business objects: `Quest`, `Intent`, `Submission`, `ApprovalGate`, `Orchestration`.
