@@ -3,7 +3,7 @@
  * xyph-dashboard — Interactive bijou-tui TUI for the WARP Graph.
  *
  * Usage:
- *   XYPH_AGENT_ID=human.james ./xyph-dashboard.tsx
+ *   XYPH_AGENT_ID=human.james ./xyph-dashboard.ts
  *
  * Keys:
  *   Tab   — cycle views (roadmap → submissions → lineage → overview → inbox)

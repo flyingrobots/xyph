@@ -22,7 +22,6 @@ import {
   setDefaultContext,
   createBijou,
   type TokenValue,
-  type BijouContext,
 } from '@flyingrobots/bijou';
 import { nodeRuntime, nodeIO, chalkStyle } from '@flyingrobots/bijou-node';
 import {
@@ -48,9 +47,9 @@ type LabMsg = never; // all interaction via KeyMsg
 
 const PANELS: PanelName[] = ['surfaces', 'status', 'semantic', 'tabs', 'borders'];
 
-// ── Styling that bypasses the bridge ─────────────────────────────────────
-// The bridge's ensureXyphContext() would re-initialize and overwrite our
-// hot-swapped context. Instead, we style through bijou's default context
+// ── Styling via bijou's default context (not StylePort) ──────────────────
+// StylePort snapshots a single theme at creation time, so it can't support
+// live theme cycling. Instead, we style through bijou's default context
 // directly, which we control via setDefaultContext().
 
 function labStyled(token: TokenValue, text: string): string {

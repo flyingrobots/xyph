@@ -30,8 +30,9 @@ function parseInterval(style: StylePort): number {
   return parsed;
 }
 
+const style = createStylePort();
+
 async function main(): Promise<void> {
-  const style = createStylePort();
   const INTERVAL_MS = parseInterval(style);
   const t = style.theme;
   console.log(style.styled({ ...t.semantic.success, modifiers: [...(t.semantic.success.modifiers ?? []), 'bold'] }, 'XYPH Coordinator Daemon starting...'));
@@ -87,7 +88,6 @@ async function main(): Promise<void> {
 }
 
 main().catch(err => {
-  const style = createStylePort();
   console.error(style.styled(style.theme.semantic.error, '[FATAL] Daemon failed to start:'), err);
   process.exit(1);
 });

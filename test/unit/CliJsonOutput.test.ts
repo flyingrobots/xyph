@@ -6,31 +6,12 @@ vi.mock('../../src/infrastructure/adapters/WarpGraphAdapter.js', () => ({
   WarpGraphAdapter: class WarpGraphAdapter {},
 }));
 
-// Stub style adapters so they don't require bijou context
-const stubStylePort = {
-  theme: {
-    name: 'stub',
-    semantic: { success: { hex: '#0f0' }, warning: { hex: '#ff0' }, muted: { hex: '#888' }, error: { hex: '#f00' }, primary: { hex: '#0ff' }, info: { hex: '#0af' } },
-    status: {},
-    border: { primary: { hex: '#888' }, secondary: { hex: '#666' }, success: { hex: '#0f0' }, warning: { hex: '#ff0' }, error: { hex: '#f00' } },
-    ui: { sectionHeader: { hex: '#fff' }, tableHeader: { hex: '#ccc' }, intentHeader: { hex: '#0ff' } },
-    surface: { primary: { hex: '#000' }, secondary: { hex: '#111' }, elevated: { hex: '#222' }, overlay: { hex: '#333' }, muted: { hex: '#444' } },
-    gradient: { brand: [] },
-  },
-  noColor: true,
-  styled: (_token: unknown, text: string) => text,
-  styledStatus: (_status: string, text?: string) => text ?? _status,
-  gradient: (text: string) => text,
-  ink: () => undefined,
-  hex: () => '#000',
-};
+// Stub BijouStyleAdapter to avoid bijou context initialization.
+// PlainStyleAdapter needs no mocking — it's a pure identity adapter.
+import { createPlainStylePort } from '../../src/infrastructure/adapters/PlainStyleAdapter.js';
 
 vi.mock('../../src/infrastructure/adapters/BijouStyleAdapter.js', () => ({
-  createStylePort: () => ({ ...stubStylePort }),
-}));
-
-vi.mock('../../src/infrastructure/adapters/PlainStyleAdapter.js', () => ({
-  createPlainStylePort: () => ({ ...stubStylePort }),
+  createStylePort: () => createPlainStylePort(),
 }));
 
 describe('CliContext JSON mode', () => {
