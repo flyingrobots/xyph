@@ -75,7 +75,10 @@ export class GuildSealService {
   public keyIdForAgent(agentId: string): string {
     const keyringPath = path.join(this.trustDir, 'keyring.json');
     const keyring = loadKeyring(keyringPath);
+    const seen = new Set<string>();
     for (const entry of keyring.values()) {
+      if (seen.has(entry.keyId)) continue;
+      seen.add(entry.keyId);
       if (entry.agentId === agentId) {
         return publicKeyToDidKey(entry.publicKeyHex);
       }
