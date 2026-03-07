@@ -7,16 +7,28 @@ All notable changes to XYPH will be documented in this file.
 ### Added
 
 - **`history` command** — `xyph-actuator history <nodeId>` shows all patches that touched a node via git-warp's `patchesFor()` provenance API (Constitution Art. III compliance)
+- **StylePort interface** — dependency-injected styling abstraction (`StylePort`) with `ProductionStyleAdapter` (chalk-based) and `PlainStyleAdapter` (no-color) implementations; replaces the global theme singleton with explicit wiring through the composition root
+- **Theme lab TUI** — interactive design token exploration tool (`xyph-theme-lab.ts`) for cycling through theme palettes in real time
+- **Dark + light theme variants** — automatic terminal background detection with distinct dark and light palettes; theme selection adapts to the user's terminal
+
+### Changed
+
+- **CLI pipeline uses StylePort DI** — all CLI commands and TUI views receive `StylePort` via the composition root instead of importing a global theme module; threading flows from `xyph-actuator.ts` → commands → render functions
 
 ### Removed
 
 - **Ink / React / JSX** — removed `ink`, `react`, `@types/react`, `boxen`, and `cli-table3` dependencies (all replaced by bijou). Removed JSX compiler options (`jsx`, `jsxImportSource`) from tsconfig. Renamed `xyph-dashboard.tsx` → `xyph-dashboard.ts`. No JSX or React code remains in the codebase.
 - **Global theme bridge** — deleted `src/tui/theme/bridge.ts` and its tests. All styling now flows through the dependency-injected `StylePort` interface.
+- **Dead theme barrel module** — deleted orphaned `src/tui/theme/index.ts` barrel re-export
 
 ### Fixed
 
 - **DashboardApp watching lifecycle** — `startWatching()` (graph.watch polling) now fires from `init()` alongside the initial `fetchSnapshot()`, instead of being conditionally triggered on the first `snapshot-loaded` message; the `watching` model field still tracks state but no longer gates command emission
 - **Test fixture type completeness** — added missing `watching: false` to the `makeModel()` helper in `views.test.ts` to match the updated `DashboardModel` type
+- **graph.watch() process hang** — `stopWatching()` now clears the poll interval on quit, preventing the Node process from hanging after dashboard exit
+- **Theme lab bridge bypass** — theme lab creates its own `StylePort` instances directly instead of routing through the (now-deleted) global bridge
+- **Stale .tsx doc comment** — fixed leftover `.tsx` reference in `xyph-dashboard.ts`
+- **Coordinator daemon StylePort hoisting** — `StylePort` instance lifted to module level in `coordinator-daemon.ts` to avoid repeated construction
 
 ### Added — Work DAG Analysis Suite
 
