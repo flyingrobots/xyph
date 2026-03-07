@@ -7,7 +7,29 @@
 - **BLOCKED**: Blocked by an incomplete dependency.
 - **DONE**: Acceptance criteria met, evidence attached.
 
+```mermaid
+stateDiagram-v2
+    direction LR
+    [*] --> BACKLOG
+    BACKLOG --> PLANNED
+    BACKLOG --> GRAVEYARD
+    PLANNED --> IN_PROGRESS
+    PLANNED --> GRAVEYARD
+    IN_PROGRESS --> BLOCKED
+    IN_PROGRESS --> DONE
+    BLOCKED --> IN_PROGRESS
+    GRAVEYARD --> BACKLOG
+```
+
 ## Milestone Transitions
 - **OPEN**: Accepting new tasks.
 - **LOCKED**: No new scope without approval.
 - **SHIPPED**: All mandatory features DONE.
+
+```mermaid
+stateDiagram-v2
+    direction LR
+    [*] --> OPEN
+    OPEN --> LOCKED
+    LOCKED --> SHIPPED
+```

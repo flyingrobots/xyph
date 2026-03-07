@@ -264,6 +264,30 @@ intent: ←authorized-by← task: ─belongs-to─→ campaign:
                            ←fulfills── artifact: (scroll)
 ```
 
+```mermaid
+graph LR
+    intent["Intent"]
+    task["Quest (task)"]
+    campaign["Campaign"]
+    artifact["Scroll (artifact)"]
+    approval["Approval Gate"]
+    submission["Submission"]
+    patchset["Patchset"]
+    review["Review"]
+    decision["Decision"]
+
+    task -->|belongs-to| campaign
+    task -->|authorized-by| intent
+    task -->|depends-on| task
+    artifact -->|fulfills| task
+    submission -->|submits| task
+    patchset -->|has-patchset| submission
+    patchset -->|supersedes| patchset
+    review -->|reviews| patchset
+    decision -->|decides| submission
+    approval -->|approves| task
+```
+
 ## 6. Conflict Resolution (LWW)
 
 XYPH uses **Last-Writer-Wins (LWW)** for all node properties.
