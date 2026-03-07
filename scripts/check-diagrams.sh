@@ -18,7 +18,9 @@ errors=0
 # ── Check 1: No inline mermaid blocks ──────────────────────────────────
 
 echo "Checking for inline mermaid blocks..."
-if grep -rn '```mermaid' "$PROJECT_ROOT"/{README.md,CONTRIBUTING.md} "$PROJECT_ROOT/docs/" \
+# Match lines that START with ```mermaid (fenced code block opening).
+# Ignore mentions of ```mermaid in prose (e.g., documentation about the rule itself).
+if grep -rn '^```mermaid' "$PROJECT_ROOT"/{README.md,CONTRIBUTING.md} "$PROJECT_ROOT/docs/" \
     --include='*.md' 2>/dev/null; then
   echo ""
   echo "::error::Found inline \`\`\`mermaid blocks. Extract to docs/diagrams/*.mmd and render with scripts/render-diagrams.sh"
