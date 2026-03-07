@@ -264,37 +264,7 @@ intent: ←authorized-by← task: ─belongs-to─→ campaign:
                            ←fulfills── artifact: (scroll)
 ```
 
-```mermaid
-graph LR
-    intent["Intent"]
-    task["Quest (task)"]
-    campaign["Campaign"]
-    artifact["Scroll (artifact)"]
-    approval["Approval Gate"]
-    submission["Submission"]
-    patchset["Patchset"]
-    review["Review"]
-    decision["Decision"]
-    story["Story"]
-    req["Requirement"]
-    criterion["Criterion"]
-    evidence["Evidence"]
-
-    task -->|belongs-to| campaign
-    task -->|authorized-by| intent
-    task -->|depends-on| task
-    artifact -->|fulfills| task
-    submission -->|submits| task
-    patchset -->|has-patchset| submission
-    patchset -->|supersedes| patchset
-    review -->|reviews| patchset
-    decision -->|decides| submission
-    approval -->|approves| task
-    intent -->|decomposes-to| story
-    story -->|decomposes-to| req
-    req -->|has-criterion| criterion
-    evidence -->|verifies| criterion
-```
+![Entity-relationship diagram](../diagrams/entity-relationship.svg)
 
 ## 6. Conflict Resolution (LWW)
 

@@ -139,29 +139,7 @@ Violation => transaction abort, no commit (`11` or `10` based on rule source).
 
 If any step fails before commit: rollback `TXN`.
 
-```mermaid
-flowchart TD
-    S1["1. Acquire namespace apply lock"] --> S2["2. Re-read live snapshot digest"]
-    S2 --> S3["3. Validate preconditions"]
-    S3 -->|"snapshot mismatch"| E14["EXIT 14: concurrency drift"]
-    S3 -->|"approval fail"| E12["EXIT 12: approval failure"]
-    S3 -->|"trust/sig fail"| E13["EXIT 13: signature/trust failure"]
-    S3 -->|"pass"| S4["4. Start TXN"]
-    S4 --> S5["5. Apply operations in order"]
-    S5 -->|"unknown op"| E16["EXIT 16: unknown op type"]
-    S5 -->|"success"| S6["6. Validate postconditions\n(schema, DAG acyclicity, reachability)"]
-    S6 -->|"ref integrity fail"| ROLL_10["Rollback TXN → EXIT 10"]
-    S6 -->|"DAG cycle / dangling ref"| ROLL_11["Rollback TXN → EXIT 11"]
-    S6 -->|"pass"| S7["7. Compute newSnapshotDigest"]
-    S7 --> S8["8. Persist snapshot + ApplyReceipt"]
-    S8 --> S9["9. Commit TXN"]
-    S9 -->|"success"| S10["10. Release lock → EXIT 0"]
-    S9 -->|"partial side-effect"| COMP["Apply rollbackOperations[]"]
-    COMP -->|"compensation ok"| E17["EXIT 17: rollback attempted"]
-    COMP -->|"compensation fail"| E18["EXIT 18: rollback failed (critical)"]
-
-    S1 -->|"lock timeout"| E15["EXIT 15: lock timeout"]
-```
+![Transaction lifecycle with rollback branches](../diagrams/transaction-lifecycle.svg)
 
 ---
 

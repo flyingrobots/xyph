@@ -40,24 +40,7 @@ XYPH may use Git today, but Git is not "the product."
 
 Swapping the settlement layer is allowed long-term; the invariants are not.
 
-```mermaid
-graph TB
-    subgraph L4["Experience Layer"]
-        EXP["CLI / TUI / Observer Views\n(status, diff, slice, provenance)"]
-    end
-    subgraph L3["Runtime"]
-        RT["JIT Graph Execution\n(SWS, promotion, collapse, receipts)"]
-    end
-    subgraph L2["Causal Substrate"]
-        CS["WARP Graph\n+ Multi-Writer Convergence"]
-    end
-    subgraph L1["Settlement / Object Store"]
-        GIT["Git CAS\n(content-addressed storage)"]
-    end
-    L4 --> L3
-    L3 --> L2
-    L2 --> L1
-```
+![Vision layer stack](../diagrams/vision-layer-stack.svg)
 
 ## 5. Digital Guild Integration (Squadron)
 XYPH adopts the Digital Guild model to govern humans and agents:

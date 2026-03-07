@@ -45,31 +45,7 @@ All planning, prioritization, and progress tracking flows through the actuator. 
 
 For solo work without review, you can still **seal directly** with `xyph-actuator.ts seal <id> --artifact <hash> --rationale "..."`.
 
-```mermaid
-sequenceDiagram
-    autonumber
-    participant Dev as Developer
-    participant Warp as WARP Graph
-    participant Rev as Reviewer
-    participant Git as Git Workspace
-
-    Dev->>Warp: Check graph for available work
-    Dev->>Warp: Claim quest (OCP)
-    Dev->>Git: Implement on feature branch
-    Dev->>Git: Run build + tests (quality gates)
-    Dev->>Warp: Submit (submission + patchset)
-    Rev->>Warp: Review patchset
-
-    alt Approved
-        Rev->>Warp: Merge (auto-seals quest)
-        Warp-->>Warp: Guild Seal + DONE
-    else Changes requested
-        loop Until approved
-            Dev->>Warp: Revise (new patchset tip)
-            Rev->>Warp: Re-review updated tip
-        end
-    end
-```
+![Development workflow](docs/diagrams/contribution-workflow.svg)
 
 ## Quality Gates
 

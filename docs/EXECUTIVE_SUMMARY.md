@@ -86,40 +86,7 @@ What's next:
 
 ## Architecture
 
-```mermaid
-graph TB
-    subgraph Experience["Experience Layer"]
-        CLI["CLI"]
-        TUI["TUI"]
-        WebUI["Web UI / IDE / MCP"]
-    end
-
-    subgraph Domain["Domain Layer"]
-        Entities["Entities, Services, Policies"]
-    end
-
-    subgraph Ports["Ports Layer"]
-        Interfaces["Abstract Interfaces"]
-    end
-
-    subgraph Adapters["Adapters Layer"]
-        Mapping["WARP Graph to Domain Mapping"]
-    end
-
-    subgraph WARP["WARP Graph"]
-        CRDT["Multi-writer CRDT with Causal Ordering"]
-    end
-
-    subgraph Settlement["Settlement Layer"]
-        Git["Git (content-addressed object store)"]
-    end
-
-    Experience --> Domain
-    Domain --> Ports
-    Ports --> Adapters
-    Adapters --> WARP
-    WARP --> Settlement
-```
+![Architecture layer stack](diagrams/architecture-stack.svg)
 
 Hexagonal architecture. The domain layer is pure — no infrastructure concerns. The WARP graph handles convergence. Git handles persistence. Everything above the graph is a projection.
 

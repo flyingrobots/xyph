@@ -1,0 +1,23 @@
+sequenceDiagram
+    autonumber
+    participant Ada as Human (Ada)
+    participant Warp as WARP Graph (CRDT in Git)
+    participant Hal as Agent (Hal)
+    participant Git as Git Workspace
+
+    Ada->>Warp: Declare intent + create quests + dependencies
+    Hal->>Warp: Claim quest (OCP)
+    Hal->>Git: Implement + run quality gates
+    Hal->>Warp: Submit (submission + patchset)
+    Ada->>Warp: Review patchset
+
+    alt Approved
+        Ada->>Git: Merge branch (--no-ff)
+        Ada->>Warp: Record merge decision
+        Warp-->>Warp: Auto-seal quest (Scroll + Guild Seal + DONE)
+    else Changes requested
+        Hal->>Warp: Revise submission (new patchset tip)
+        Ada->>Warp: Re-review updated tip
+    end
+
+    Ada->>Warp: Audit lineage and sovereignty

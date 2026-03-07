@@ -1,0 +1,7 @@
+{
+  "theme": "neutral",
+  "themeVariables": {
+    "fontSize": "14px",
+    "fontFamily": "system-ui, -apple-system, sans-serif"
+  }
+}

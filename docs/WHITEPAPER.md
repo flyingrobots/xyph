@@ -23,18 +23,7 @@ In XYPH, work is a transaction.
 3. **Settle**: The graph merges patches. If the Worker’s claim survives the merge, they execute.
 4. **Proof**: Worker commits the result (code/text) and links it to the Task.
 
-```mermaid
-sequenceDiagram
-    autonumber
-    participant Coord as Coordinator
-    participant Graph as WARP Graph
-    participant Worker as Worker Agent
-
-    Coord->>Graph: Post Task node (Bid)
-    Worker->>Graph: Write assigned_to edge (Claim)
-    Graph->>Graph: Merge patches — resolve conflicts (Settle)
-    Worker->>Graph: Commit result + link artifact (Proof)
-```
+![Economy of work cycle](diagrams/economy-of-work.svg)
 
 ## 4. Architecture
 ### 4.1 The Core: git-warp

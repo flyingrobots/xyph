@@ -20,17 +20,4 @@
 4.1. **The Kill Switch:** A human Approver can override ANY agent decision.
 4.2. **Approval Gates:** Any patch that alters the `Critical Path` or increases `Total Scope` by >5% requires explicit human sign-off.
 
-```mermaid
-flowchart TD
-    A["Mutation received"] --> B{"DAG intact?"}
-    B -->|No cycle| C{"Signed by Actor?"}
-    B -->|Cycle detected| REJECT["REJECT"]
-    C -->|Yes| D{"Intent lineage?"}
-    C -->|No| REJECT
-    D -->|Valid| E{"Critical path or scope >5%?"}
-    D -->|Missing| REJECT
-    E -->|No| ACCEPT["ACCEPT"]
-    E -->|Yes| F{"Human approval?"}
-    F -->|Approved| ACCEPT
-    F -->|Denied| REJECT
-```
+![Approval gate decision tree](../diagrams/approval-gate.svg)

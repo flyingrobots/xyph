@@ -14,13 +14,4 @@
 
 ## Trust Pipeline
 
-```mermaid
-flowchart LR
-    A["writerId\n(agent identity)"] --> B["sign()\nEd25519 signature"]
-    B --> C["Content-address\nGit SHA / BLAKE3"]
-    C --> D["Audit Receipt\nWARP patch with\nLamport tick"]
-    D --> E["RBAC Check\ngraph-state roles"]
-    E --> F{"Approval\nGate"}
-    F -->|approved| G["Mutation\ncommitted"]
-    F -->|rejected| H["Mutation\nblocked"]
-```
+![Trust pipeline](../diagrams/trust-pipeline.svg)

@@ -16,57 +16,7 @@
  └──────────────┘
 ```
 
-```mermaid
-graph LR
-    subgraph Driving["Driving Adapters"]
-        CLI["xyph-actuator (CLI)"]
-        TUI["xyph-dashboard (TUI/TEA)"]
-        DAEMON["coordinator (daemon)"]
-    end
-
-    subgraph Ports["Ports (interfaces)"]
-        GP["GraphPort"]
-        IP["IntakePort"]
-        SP["SubmissionPort"]
-        RP["RoadmapPort"]
-        WP["WorkspacePort"]
-    end
-
-    subgraph Domain["Domain Core"]
-        ENT["domain/entities"]
-        SVC["domain/services"]
-        MOD["domain/models"]
-    end
-
-    subgraph Driven["Driven Adapters"]
-        WGA["WarpGraphAdapter"]
-        WIA["WarpIntakeAdapter"]
-        WSA["WarpSubmissionAdapter"]
-        WRA["WarpRoadmapAdapter"]
-        GWA["GitWorkspaceAdapter"]
-    end
-
-    CLI --> GP
-    CLI --> IP
-    CLI --> SP
-    TUI --> RP
-    TUI --> GP
-    DAEMON --> GP
-
-    GP --> Domain
-    IP --> Domain
-    SP --> Domain
-    RP --> Domain
-
-    Domain --> GP
-    Domain --> WP
-
-    GP -.-> WGA
-    IP -.-> WIA
-    SP -.-> WSA
-    RP -.-> WRA
-    WP -.-> GWA
-```
+![Hexagonal architecture](../diagrams/hexagonal-architecture.svg)
 
 ### Layers
 

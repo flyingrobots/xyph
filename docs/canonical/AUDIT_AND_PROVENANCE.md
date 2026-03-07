@@ -20,14 +20,4 @@ Every accepted PlanPatch MUST reference inverse operations or snapshot rollback 
 
 ## Audit Chain
 
-```mermaid
-flowchart LR
-    A["Mutation Request"] --> B["PlanPatch"]
-    B --> C{"Validate"}
-    C -->|Pass| D["Apply"]
-    C -->|Fail| E["Reject"]
-    D --> F["ApplyReceipt"]
-    F --> G["Audit Trail"]
-    G -.-> H["Rollback Target"]
-    F -.-> H
-```
+![Audit chain](../diagrams/audit-chain.svg)

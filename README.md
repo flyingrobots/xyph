@@ -71,31 +71,7 @@ Now you're all set. Let's see how we might use XYPH in our everyday workflows.
 
 #### Walkthrough at a Glance
 
-```mermaid
-sequenceDiagram
-    autonumber
-    participant Ada as Human (Ada)
-    participant Warp as WARP Graph (CRDT in Git)
-    participant Hal as Agent (Hal)
-    participant Git as Git Workspace
-
-    Ada->>Warp: Declare intent + create quests + dependencies
-    Hal->>Warp: Claim quest (OCP)
-    Hal->>Git: Implement + run quality gates
-    Hal->>Warp: Submit (submission + patchset)
-    Ada->>Warp: Review patchset
-
-    alt Approved
-        Ada->>Git: Merge branch (--no-ff)
-        Ada->>Warp: Record merge decision
-        Warp-->>Warp: Auto-seal quest (Scroll + Guild Seal + DONE)
-    else Changes requested
-        Hal->>Warp: Revise submission (new patchset tip)
-        Ada->>Warp: Re-review updated tip
-    end
-
-    Ada->>Warp: Audit lineage and sovereignty
-```
+![Development workflow sequence](docs/diagrams/dev-workflow.svg)
 
 #### 1. Ada Declares an Intent
 
@@ -346,32 +322,7 @@ XYPH uses a **Digital Guild** metaphor to structure collaboration:
 
 The planning compiler processes work through a deterministic state machine:
 
-```mermaid
-stateDiagram-v2
-    direction LR
-    [*] --> INGEST
-    INGEST --> NORMALIZE
-    NORMALIZE --> CLASSIFY
-    CLASSIFY --> VALIDATE
-    VALIDATE --> MERGE
-    MERGE --> REBALANCE
-    REBALANCE --> SCHEDULE
-    SCHEDULE --> REVIEW
-    REVIEW --> EMIT
-    EMIT --> APPLY
-    APPLY --> DONE
-    APPLY --> ROLLED_BACK
-    INGEST --> FAILED
-    NORMALIZE --> FAILED
-    CLASSIFY --> FAILED
-    VALIDATE --> FAILED
-    MERGE --> FAILED
-    REBALANCE --> FAILED
-    SCHEDULE --> FAILED
-    REVIEW --> FAILED
-    EMIT --> FAILED
-    APPLY --> FAILED
-```
+![Planning compiler pipeline](docs/diagrams/planning-pipeline.svg)
 
 Every state transition emits a typed artifact and an immutable audit record. The pipeline is **fail-closed** — if any phase fails, execution halts. Only the APPLY phase can mutate the graph, and it enforces **all-or-nothing atomicity** with automatic rollback.
 

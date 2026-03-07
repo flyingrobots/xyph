@@ -6,7 +6,7 @@ All notable changes to XYPH will be documented in this file.
 
 ### Added
 
-- **Mermaid diagrams across all documentation** — 21 diagrams added to 19 files: entity-relationship (`graph LR`), state machines (`stateDiagram-v2`), pipelines (`flowchart TD/LR`), sequence workflows (`sequenceDiagram`), and architecture stacks (`graph TB`). Covers graph schema, task/milestone lifecycles, approval gates, hexagonal architecture, transaction specs, patch invariants, scheduling DAG, contribution workflow, audit chain, guild seal migration, trust pipeline, policy engine, agent charter, traceability chain, economy of work, and CLI phase dependencies (WVR-006)
+- **Pre-rendered SVG diagrams** — 24 diagrams across 22 documentation files, rendered from Mermaid source (`.mmd`) to SVG via `mmdc`. Source files in `docs/diagrams/*.mmd`, rendered output in `docs/diagrams/*.svg`. Render script: `scripts/render-diagrams.sh`. Covers entity relationships, state machines, flowcharts, sequence diagrams, and architecture stacks (WVR-006)
 - **`history` command** — `xyph-actuator history <nodeId>` shows all patches that touched a node via git-warp's `patchesFor()` provenance API (Constitution Art. III compliance)
 - **Multibase DID key encoding** — `encodeBase58btc()` and `publicKeyToDidKey()` in `crypto.ts`; Ed25519 public keys are now encoded as spec-compliant `did:key:z6Mk...` identifiers using the multicodec prefix `0xed01` + base58btc multibase encoding (WVR-006)
 - **Versioned keyring migration pipeline** — `loadKeyring()` transparently migrates older keyring formats on read via a sequential migration chain (`v1 → v2 → ...`); future schema changes (key rotation, expiry, multi-algorithm) slot in by appending a migration function (WVR-006)

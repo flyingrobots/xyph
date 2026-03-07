@@ -1,0 +1,11 @@
+stateDiagram-v2
+    direction LR
+    [*] --> BACKLOG
+    BACKLOG --> PLANNED
+    BACKLOG --> GRAVEYARD
+    PLANNED --> IN_PROGRESS
+    PLANNED --> GRAVEYARD
+    IN_PROGRESS --> BLOCKED
+    IN_PROGRESS --> DONE
+    BLOCKED --> IN_PROGRESS
+    GRAVEYARD --> BACKLOG

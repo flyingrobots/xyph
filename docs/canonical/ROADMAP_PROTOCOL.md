@@ -10,29 +10,11 @@
 
 > **Note:** `INBOX` exists as a raw graph state for newly suggested tasks. It is normalized to `BACKLOG` on read. See `normalizeQuestStatus()` in `Quest.ts`.
 
-```mermaid
-stateDiagram-v2
-    direction LR
-    [*] --> BACKLOG
-    BACKLOG --> PLANNED
-    BACKLOG --> GRAVEYARD
-    PLANNED --> IN_PROGRESS
-    PLANNED --> GRAVEYARD
-    IN_PROGRESS --> BLOCKED
-    IN_PROGRESS --> DONE
-    BLOCKED --> IN_PROGRESS
-    GRAVEYARD --> BACKLOG
-```
+![Task lifecycle](../diagrams/task-lifecycle.svg)
 
 ## Milestone Transitions
 - **OPEN**: Accepting new tasks.
 - **LOCKED**: No new scope without approval.
 - **SHIPPED**: All mandatory features DONE.
 
-```mermaid
-stateDiagram-v2
-    direction LR
-    [*] --> OPEN
-    OPEN --> LOCKED
-    LOCKED --> SHIPPED
-```
+![Milestone lifecycle](../diagrams/milestone-lifecycle.svg)

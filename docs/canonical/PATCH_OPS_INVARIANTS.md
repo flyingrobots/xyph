@@ -15,27 +15,7 @@ Status: HARD REJECT
    - rollback path must match op.invertibility.inversePath
    - rollback value must deep-equal op.invertibility.inverseValue
 
-```mermaid
-flowchart TD
-    subgraph OPS["operations[] (forward order)"]
-        direction TB
-        OP0["ops[0]\nopId: A"] --> OP1["ops[1]\nopId: B"] --> OP2["ops[2]\nopId: C"] --> OPN["ops[n-1]\nopId: Z"]
-    end
-
-    subgraph ROLLBACK["rollbackOperations[] (reverse order)"]
-        direction TB
-        RB0["rollback[0]\nrevertsOpId: Z"] --> RB1["rollback[1]\nrevertsOpId: C"] --> RB2["rollback[2]\nrevertsOpId: B"] --> RBN["rollback[n-1]\nrevertsOpId: A"]
-    end
-
-    OPN -.->|"revertsOpId"| RB0
-    OP2 -.->|"revertsOpId"| RB1
-    OP1 -.->|"revertsOpId"| RB2
-    OP0 -.->|"revertsOpId"| RBN
-
-    MATCH["Each rollback op must match:\n- inverseOpType\n- inversePath\n- inverseValue"]
-
-    RBN -.-> MATCH
-```
+![Operations and rollback mirror](../diagrams/ops-rollback-mirror.svg)
 
 4. Canonical sort check:
    operations[] must already be sorted by:

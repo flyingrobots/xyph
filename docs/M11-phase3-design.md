@@ -9,14 +9,7 @@ heuristic — it's a deterministic query over the traceability chain.
 
 ## Traceability Chain (established in Phases 1–2)
 
-```mermaid
-graph BT
-    Evidence["evidence"] -->|verifies| Criterion["criterion"]
-    Criterion -->|part-of| Requirement["requirement"]
-    Requirement -->|part-of| Story["story"]
-    Story -->|part-of| Quest["quest"]
-    Quest -->|authorized-by| Intent["intent"]
-```
+![Traceability chain](diagrams/traceability-chain.svg)
 
 Each layer rolls up to the one above. Status propagates bottom-up:
 evidence → criterion → requirement → story → quest.

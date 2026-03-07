@@ -356,44 +356,7 @@ No audit record = invalid run.
 
 ## 10) Mermaid State Diagram
 
-```mermaid
-stateDiagram-v2
-    [*] --> INGEST
-    INGEST --> NORMALIZE: ok
-    INGEST --> FAILED: fail
-
-    NORMALIZE --> CLASSIFY: ok
-    NORMALIZE --> FAILED: fail
-
-    CLASSIFY --> VALIDATE: ok
-    CLASSIFY --> FAILED: fail
-
-    VALIDATE --> MERGE: must_pass
-    VALIDATE --> FAILED: must_fail
-
-    MERGE --> REBALANCE: ok
-    MERGE --> FAILED: fail
-
-    REBALANCE --> SCHEDULE: ok
-    REBALANCE --> FAILED: fail
-
-    SCHEDULE --> REVIEW: ok
-    SCHEDULE --> FAILED: fail
-
-    REVIEW --> EMIT: approvals_resolved
-    REVIEW --> FAILED: fail
-
-    EMIT --> APPLY: signed_patch
-    EMIT --> FAILED: fail
-
-    APPLY --> DONE: committed
-    APPLY --> FAILED: fail
-    APPLY --> ROLLED_BACK: partial_apply
-
-    DONE --> [*]
-    FAILED --> [*]
-    ROLLED_BACK --> [*]
-```
+![Orchestration FSM](../diagrams/orchestration-fsm.svg)
 
 ---
 

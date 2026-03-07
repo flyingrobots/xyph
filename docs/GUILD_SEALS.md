@@ -265,19 +265,7 @@ explicit writes (`generateKeypair()`).
 
 ### Migration Pipeline
 
-```mermaid
-flowchart TD
-    A["loadKeyring()"] --> B["Read JSON & validate raw entries\n(alg, hex format)"]
-    B --> C["Detect version field"]
-    C --> D{"version ==\nCURRENT?"}
-    D -- No --> E["Run migration chain\nv1 → v2 → ... → CURRENT"]
-    D -- Yes --> F["Build Map‹string, KeyringEntry›"]
-    E --> F
-    F --> G["Index by canonical keyId\n(derived did:key:z6Mk...)"]
-    F --> H["Index by legacy keyId aliases\n(old values that differ)"]
-    G --> I["Return Map\n(all consumers use this)"]
-    H --> I
-```
+![Keyring migration pipeline](diagrams/keyring-migration.svg)
 
 The migration pipeline is defined in `src/validation/crypto.ts`:
 
