@@ -8,6 +8,11 @@ All notable changes to XYPH will be documented in this file.
 
 - **`history` command** — `xyph-actuator history <nodeId>` shows all patches that touched a node via git-warp's `patchesFor()` provenance API (Constitution Art. III compliance)
 
+### Removed
+
+- **Ink / React / JSX** — removed `ink`, `react`, `@types/react`, `boxen`, and `cli-table3` dependencies (all replaced by bijou). Removed JSX compiler options (`jsx`, `jsxImportSource`) from tsconfig. Renamed `xyph-dashboard.tsx` → `xyph-dashboard.ts`. No JSX or React code remains in the codebase.
+- **Global theme bridge** — deleted `src/tui/theme/bridge.ts` and its tests. All styling now flows through the dependency-injected `StylePort` interface.
+
 ### Fixed
 
 - **DashboardApp watching lifecycle** — `startWatching()` (graph.watch polling) now fires from `init()` alongside the initial `fetchSnapshot()`, instead of being conditionally triggered on the first `snapshot-loaded` message; the `watching` model field still tracks state but no longer gates command emission

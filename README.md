@@ -254,7 +254,7 @@ Both paths (merge and seal) independently lead to quest DONE.
 Ada opens the dashboard to see the full picture:
 
 ```bash
-XYPH_AGENT_ID=human.ada ./xyph-dashboard.tsx
+XYPH_AGENT_ID=human.ada ./xyph-dashboard.ts
 ```
 
 She can see the campaign, its quests, who claimed them, and the sealed scrolls — all traceable back to her original intent. The submissions view shows computed review status:
@@ -282,7 +282,7 @@ npx tsx xyph-actuator.ts audit-sovereignty
 XYPH has an interactive TUI that provides a visual browser for your project and its XYPH artifacts.
 
 ```bash
-XYPH_AGENT_ID=human.yourname ./xyph-dashboard.tsx
+XYPH_AGENT_ID=human.yourname ./xyph-dashboard.ts
 ```
 
 | Key     | Context      | Action                                        |
@@ -387,7 +387,7 @@ Every mutation is evaluated against a three-tier rule system:
 
 XYPH is built using hexagonal architecture patterns. Domain models remain pure, while ports and adapters act as interfaces with the outside world.
 
-XYPH exposes two entry points: the `xyph-actuator.ts` CLI for graph mutations, and the `xyph-dashboard.tsx` interactive TUI. Both are executable directly (via shebang) or through `npx tsx`. The CLI commands fall into three access categories: **read-only**, **authorized mutations**, and **sovereign** commands.
+XYPH exposes two entry points: the `xyph-actuator.ts` CLI for graph mutations, and the `xyph-dashboard.ts` interactive TUI. Both are executable directly (via shebang) or through `npx tsx`. The CLI commands fall into three access categories: **read-only**, **authorized mutations**, and **sovereign** commands.
 
 ```text
 src/
@@ -411,7 +411,7 @@ src/
 
 # Root entry points
 xyph-actuator.ts    # CLI for graph mutations (quest, intent, seal, ...)
-xyph-dashboard.tsx  # Interactive TUI entry point
+xyph-dashboard.ts  # Interactive TUI entry point
 ```
 
 ## Milestones

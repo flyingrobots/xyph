@@ -24,7 +24,7 @@
 - **`src/ports/`** — Boundary interfaces: `GraphPort`, `RoadmapPort`, `IntakePort`, `SubmissionPort`, `WorkspacePort`.
 - **`src/infrastructure/adapters/`** — Concrete implementations backed by git-warp and git: `WarpGraphAdapter`, `WarpIntakeAdapter`, `WarpSubmissionAdapter`, `WarpRoadmapAdapter`, `GitWorkspaceAdapter`.
 - **`src/infrastructure/GraphContext.ts`** — Shared gateway to the WARP graph. Replaces the old dashboard adapter with `graph.query()` for typed node fetching and frontier-based cache invalidation.
-- **`src/tui/`** — Ink (React) TUI: `Dashboard.tsx`, view components, `GraphProvider.tsx` (React context), theming system.
+- **`src/tui/`** — bijou-tui TUI: `DashboardApp.ts` (TEA app), view functions, theme presets, `StylePort`-based styling.
 - **`src/validation/`** — Cross-cutting concerns: cryptographic utilities, invariant enforcement.
 
 ## Shared Graph Architecture
