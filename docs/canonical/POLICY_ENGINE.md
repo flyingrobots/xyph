@@ -14,10 +14,10 @@
 
 ```mermaid
 flowchart TD
-    A["1. Contract Validity\n🔴 MUST"] --> B["2. DAG Integrity\n🔴 MUST"]
-    B --> C["3. Capacity Constraints\n🟡 SHOULD"]
-    C --> D["4. Rebalance Rules\n🟡 SHOULD"]
-    D --> E["5. Emission Constraints\n🔵 COULD"]
+    A["1. Contract Validity\n[MUST]"] --> B["2. DAG Integrity\n[MUST]"]
+    B --> C["3. Capacity Constraints\n[SHOULD]"]
+    C --> D["4. Rebalance Rules\n[SHOULD]"]
+    D --> E["5. Emission Constraints\n[COULD]"]
     A -. "hard reject" .-> FAIL["REJECT\nCompiler Error"]
     B -. "hard reject" .-> FAIL
     C -. "warning + penalty" .-> WARN["WARNING\nCompiler Warning"]

@@ -24,22 +24,18 @@ graph LR
         DAEMON["coordinator (daemon)"]
     end
 
-    subgraph Ports_In["Inbound Ports"]
-        GP_IN["GraphPort"]
+    subgraph Ports["Ports (interfaces)"]
+        GP["GraphPort"]
         IP["IntakePort"]
         SP["SubmissionPort"]
         RP["RoadmapPort"]
+        WP["WorkspacePort"]
     end
 
     subgraph Domain["Domain Core"]
         ENT["domain/entities"]
         SVC["domain/services"]
         MOD["domain/models"]
-    end
-
-    subgraph Ports_Out["Outbound Ports"]
-        GP_OUT["GraphPort"]
-        WP["WorkspacePort"]
     end
 
     subgraph Driven["Driven Adapters"]
@@ -50,23 +46,26 @@ graph LR
         GWA["GitWorkspaceAdapter"]
     end
 
-    CLI --> GP_IN
+    CLI --> GP
+    CLI --> IP
+    CLI --> SP
     TUI --> RP
-    DAEMON --> GP_IN
+    TUI --> GP
+    DAEMON --> GP
 
-    GP_IN --> Domain
+    GP --> Domain
     IP --> Domain
     SP --> Domain
     RP --> Domain
 
-    Domain --> GP_OUT
+    Domain --> GP
     Domain --> WP
 
-    GP_OUT --> WGA
-    GP_OUT --> WIA
-    GP_OUT --> WSA
-    GP_OUT --> WRA
-    WP --> GWA
+    GP -.-> WGA
+    IP -.-> WIA
+    SP -.-> WSA
+    RP -.-> WRA
+    WP -.-> GWA
 ```
 
 ### Layers

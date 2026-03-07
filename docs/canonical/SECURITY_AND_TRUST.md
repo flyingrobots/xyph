@@ -21,6 +21,6 @@ flowchart LR
     C --> D["Audit Receipt\nWARP patch with\nLamport tick"]
     D --> E["RBAC Check\ngraph-state roles"]
     E --> F{"Approval\nGate"}
-    F -- approved --> G["Mutation\ncommitted"]
-    F -- rejected --> H["Mutation\nblocked"]
+    F -->|approved| G["Mutation\ncommitted"]
+    F -->|rejected| H["Mutation\nblocked"]
 ```

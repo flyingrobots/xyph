@@ -64,8 +64,10 @@ sequenceDiagram
         Rev->>Warp: Merge (auto-seals quest)
         Warp-->>Warp: Guild Seal + DONE
     else Changes requested
-        Dev->>Warp: Revise (new patchset tip)
-        Rev->>Warp: Re-review updated tip
+        loop Until approved
+            Dev->>Warp: Revise (new patchset tip)
+            Rev->>Warp: Re-review updated tip
+        end
     end
 ```
 

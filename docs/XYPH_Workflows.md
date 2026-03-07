@@ -386,10 +386,11 @@ stateDiagram-v2
     [*] --> INBOX
     INBOX --> BACKLOG : promote
     INBOX --> GRAVEYARD : reject
-    BACKLOG --> IN_PROGRESS : claim
+    BACKLOG --> PLANNED
+    PLANNED --> IN_PROGRESS : claim
     IN_PROGRESS --> DONE : seal / merge
     IN_PROGRESS --> BLOCKED
-    BLOCKED --> GRAVEYARD
+    BLOCKED --> IN_PROGRESS
     GRAVEYARD --> INBOX : reopen
 ```
 

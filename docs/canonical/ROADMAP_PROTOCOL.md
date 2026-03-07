@@ -6,6 +6,9 @@
 - **IN_PROGRESS**: Claimed by a worker.
 - **BLOCKED**: Blocked by an incomplete dependency.
 - **DONE**: Acceptance criteria met, evidence attached.
+- **GRAVEYARD**: Rejected or abandoned.
+
+> **Note:** `INBOX` exists as a raw graph state for newly suggested tasks. It is normalized to `BACKLOG` on read. See `normalizeQuestStatus()` in `Quest.ts`.
 
 ```mermaid
 stateDiagram-v2

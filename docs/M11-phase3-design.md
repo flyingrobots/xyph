@@ -12,9 +12,10 @@ heuristic — it's a deterministic query over the traceability chain.
 ```mermaid
 graph BT
     Evidence["evidence"] -->|verifies| Criterion["criterion"]
-    Criterion -->|has-criterion| Requirement["requirement"]
-    Requirement -->|decomposes-to| Story["story"]
-    Story -->|decomposes-to| Intent["intent"]
+    Criterion -->|part-of| Requirement["requirement"]
+    Requirement -->|part-of| Story["story"]
+    Story -->|part-of| Quest["quest"]
+    Quest -->|authorized-by| Intent["intent"]
 ```
 
 Each layer rolls up to the one above. Status propagates bottom-up:

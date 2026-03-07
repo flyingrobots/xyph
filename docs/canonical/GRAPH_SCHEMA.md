@@ -275,6 +275,10 @@ graph LR
     patchset["Patchset"]
     review["Review"]
     decision["Decision"]
+    story["Story"]
+    req["Requirement"]
+    criterion["Criterion"]
+    evidence["Evidence"]
 
     task -->|belongs-to| campaign
     task -->|authorized-by| intent
@@ -286,6 +290,10 @@ graph LR
     review -->|reviews| patchset
     decision -->|decides| submission
     approval -->|approves| task
+    intent -->|decomposes-to| story
+    story -->|decomposes-to| req
+    req -->|has-criterion| criterion
+    evidence -->|verifies| criterion
 ```
 
 ## 6. Conflict Resolution (LWW)

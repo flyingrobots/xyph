@@ -24,7 +24,7 @@ flowchart LR
     end
 
     subgraph S2["Stage 2: Critical Path"]
-        CRIT["Dijkstra longest path\nidentify delay risks"]
+        CRIT["DP longest path\nidentify delay risks"]
     end
 
     subgraph S3["Stage 3: Anti-Chains"]
