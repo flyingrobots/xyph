@@ -16,6 +16,67 @@ export interface KeyringEntry {
   keyId: string;
   alg: "ed25519";
   publicKeyHex: string;
+  agentId?: string;
+}
+
+// ── Base58btc (multibase) ───────────────────────────────────────────────
+
+const BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+
+/**
+ * Encode bytes as base58btc (Bitcoin alphabet).
+ * Used for did:key multibase encoding.
+ */
+export function encodeBase58btc(bytes: Uint8Array): string {
+  if (bytes.length === 0) return "";
+
+  // Count leading zeros → each maps to '1'
+  let leadingZeros = 0;
+  for (const b of bytes) {
+    if (b !== 0) break;
+    leadingZeros++;
+  }
+
+  // Convert bytes to a BigInt
+  let num = 0n;
+  for (const b of bytes) {
+    num = num * 256n + BigInt(b);
+  }
+
+  // Repeatedly divide by 58
+  const chars: string[] = [];
+  while (num > 0n) {
+    const remainder = Number(num % 58n);
+    chars.push(BASE58_ALPHABET[remainder] ?? "1");
+    num = num / 58n;
+  }
+
+  chars.reverse();
+  return "1".repeat(leadingZeros) + chars.join("");
+}
+
+/** Ed25519 multicodec prefix: varint 0xed = [0xed, 0x01] */
+const ED25519_MULTICODEC_PREFIX = new Uint8Array([0xed, 0x01]);
+
+/**
+ * Encode an Ed25519 public key as a did:key identifier.
+ *
+ * Format: `did:key:z<base58btc(0xed01 + pubKeyBytes)>`
+ *
+ * The `z` prefix is the multibase identifier for base58btc.
+ * The `0xed01` prefix is the unsigned varint multicodec for Ed25519-pub.
+ * All Ed25519 did:key identifiers start with `z6Mk`.
+ */
+export function publicKeyToDidKey(publicKeyHex: string): string {
+  const clean = publicKeyHex.trim().toLowerCase();
+  if (!/^[0-9a-f]{64}$/.test(clean)) {
+    throw new Error(`Invalid Ed25519 public key hex: must be 64 hex chars, got ${clean.length}`);
+  }
+  const pubBytes = hexToBytes(clean);
+  const prefixed = new Uint8Array(ED25519_MULTICODEC_PREFIX.length + pubBytes.length);
+  prefixed.set(ED25519_MULTICODEC_PREFIX, 0);
+  prefixed.set(pubBytes, ED25519_MULTICODEC_PREFIX.length);
+  return `did:key:z${encodeBase58btc(prefixed)}`;
 }
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
@@ -92,7 +153,8 @@ export function loadKeyring(keyringPath = path.resolve(process.cwd(), "trust/key
       throw new Error(`Invalid Ed25519 publicKeyHex for keyId ${keyId}; must be 64 hex chars`);
     }
 
-    map.set(keyId, { keyId, alg: "ed25519", publicKeyHex });
+    const agentId = typeof k['agentId'] === 'string' ? k['agentId'] : undefined;
+    map.set(keyId, { keyId, alg: "ed25519", publicKeyHex, agentId });
   }
 
   return map;
