@@ -54,6 +54,16 @@ jobs:
       - run: npm ci
       - run: npm run test:local
 
+  diagrams:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check diagram integrity
+        run: bash scripts/check-diagrams.sh
+
   strict-policy:
     runs-on: ubuntu-latest
     timeout-minutes: 5

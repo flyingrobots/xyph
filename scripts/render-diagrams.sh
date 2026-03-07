@@ -4,6 +4,9 @@
 #
 # Requires: npx mmdc (mermaid-cli)
 # Config:   docs/diagrams/mermaid.json
+#
+# After rendering, writes a .mmd.sha256 sidecar for each source file.
+# CI uses these to detect stale SVGs without re-rendering.
 
 set -euo pipefail
 
@@ -23,9 +26,12 @@ errors=0
 for mmd in "$DIAGRAMS_DIR"/*.mmd; do
   [ -f "$mmd" ] || continue
   svg="${mmd%.mmd}.svg"
+  sha="${mmd}.sha256"
   name="$(basename "$mmd")"
 
   if npx mmdc -q -i "$mmd" -o "$svg" -b transparent -c "$CONFIG" 2>/dev/null; then
+    # Write source hash sidecar (CI freshness check)
+    shasum -a 256 "$mmd" | awk '{print $1}' > "$sha"
     printf "  %-45s -> %s\n" "$name" "$(basename "$svg")"
     count=$((count + 1))
   else
