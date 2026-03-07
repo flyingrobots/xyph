@@ -69,7 +69,6 @@ export function createStylePort(): StylePort {
 
   const resolver = createThemeResolver({
     presets: XYPH_PRESETS,
-    envVar: 'XYPH_THEME',
     fallback: theme,
   });
   const resolved = resolver.getTheme();

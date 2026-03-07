@@ -89,7 +89,13 @@ export function renderLineage(snapshot: GraphSnapshot, style: StylePort): string
     'secondary'
   ));
 
-  if (snapshot.intents.length === 0) {
+  // Collect orphan quests (no intentId) early so the zero-intents branch can render them
+  // BACKLOG tasks genuinely lack an intent (not yet promoted) — exclude from orphan list
+  const orphans = snapshot.quests.filter(
+    (q) => q.intentId === undefined && q.status !== 'BACKLOG'
+  );
+
+  if (snapshot.intents.length === 0 && orphans.length === 0) {
     lines.push(style.styled(style.theme.semantic.muted,
       '\n  No intents declared yet.\n' +
       '  xyph-actuator intent <id> --title "..." --requested-by human.<name>'
@@ -110,12 +116,6 @@ export function renderLineage(snapshot: GraphSnapshot, style: StylePort): string
       questsByIntent.set(q.intentId, arr);
     }
   }
-
-  // Collect orphan quests (no intentId)
-  // BACKLOG tasks genuinely lack an intent (not yet promoted) — exclude from orphan list
-  const orphans = snapshot.quests.filter(
-    (q) => q.intentId === undefined && q.status !== 'BACKLOG'
-  );
 
   for (const intent of snapshot.intents) {
     lines.push('');

@@ -118,10 +118,17 @@ describe('xyph-presets', () => {
     const lightBg = XYPH_TEAL_ORANGE_PINK_LIGHT.surface.primary.bg;
     expect(darkBg).toBeDefined();
     expect(lightBg).toBeDefined();
-    // Light bg hex value should be numerically higher (brighter)
-    const darkVal = parseInt(darkBg?.slice(1) ?? '0', 16);
-    const lightVal = parseInt(lightBg?.slice(1) ?? '0', 16);
-    expect(lightVal).toBeGreaterThan(darkVal);
+
+    // Compare by relative luminance (W3C formula) rather than packed RGB value
+    function luminance(hex: string): number {
+      const r = parseInt(hex.slice(1, 3), 16) / 255;
+      const g = parseInt(hex.slice(3, 5), 16) / 255;
+      const b = parseInt(hex.slice(5, 7), 16) / 255;
+      const toLinear = (c: number): number => c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+      return 0.2126 * toLinear(r) + 0.7152 * toLinear(g) + 0.0722 * toLinear(b);
+    }
+
+    expect(luminance(lightBg ?? '')).toBeGreaterThan(luminance(darkBg ?? ''));
   });
 
   it('light themes have different status colors than dark variants', () => {

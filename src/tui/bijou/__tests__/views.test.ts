@@ -158,6 +158,7 @@ function makeModel(snapshot: GraphSnapshot | null): DashboardModel {
     toast: null,
     writePending: false,
     watching: false,
+    refreshPending: false,
   };
 }
 
@@ -386,8 +387,7 @@ describe('bijou views', () => {
         quests: [quest({ id: 'task:Q-001', title: 'Not backlog', status: 'PLANNED' })],
       });
       const plain = strip(backlogView(makeModel(snap), style));
-      expect(plain).toContain('Backlog');
-      // Assert on count (0 items), not display vocabulary
+      // Assert on count (0 items) and absence of non-backlog quest — not display vocabulary
       expect(plain).toContain('0');
       expect(plain).not.toContain('task:Q-001');
     });

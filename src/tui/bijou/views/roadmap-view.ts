@@ -111,7 +111,7 @@ export function roadmapView(model: DashboardModel, style: StylePort, width?: num
       lines.push('');
 
       if (frontier.length === 0) {
-        lines.push(style.styled(style.theme.semantic.muted, '  (all tasks blocked)'));
+        lines.push(style.styled(style.theme.semantic.muted, '  (all Quests blocked)'));
       } else {
         for (const id of frontier) {
           const q = questMap.get(id);
@@ -159,7 +159,7 @@ export function roadmapView(model: DashboardModel, style: StylePort, width?: num
             ? style.styled(style.theme.semantic.primary, q.title.slice(0, leftWidth - 11))
             : q.title.slice(0, leftWidth - 11);
           lines.push(`${sel}${style.styled(style.theme.semantic.muted, '\u25CB')} ${titleStyle}`);
-          lines.push(`   ${style.styled(style.theme.semantic.muted, `waits on ${deps.length} task(s)`)}`);
+          lines.push(`   ${style.styled(style.theme.semantic.muted, `waits on ${deps.length} Quest(s)`)}`);
         }
       }
     } else {

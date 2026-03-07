@@ -2,8 +2,6 @@ import type { Command } from 'commander';
 import type { CliContext } from '../context.js';
 import { createErrorHandler } from '../errorHandler.js';
 import { assertPrefix } from '../validators.js';
-import chalk from 'chalk';
-
 export function registerCoordinationCommands(program: Command, ctx: CliContext): void {
   const withErrorHandler = createErrorHandler(ctx);
 
@@ -75,7 +73,7 @@ export function registerCoordinationCommands(program: Command, ctx: CliContext):
 
       ctx.ok(`[PROVENANCE] ${id} — ${patches.length} patch(es):`);
       for (const sha of patches) {
-        ctx.muted(`  ${chalk.dim(sha.slice(0, 12))}`);
+        ctx.muted(`  ${sha.slice(0, 12)}`);
       }
     }));
 }

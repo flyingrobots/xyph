@@ -14,7 +14,7 @@ export default tseslint.config(
     ignores: ['dist/**', 'build/**', 'scripts/**'],
   },
   {
-    files: ['src/**/*.ts', 'xyph-actuator.ts', 'xyph-dashboard.ts'],
+    files: ['src/**/*.ts', 'xyph-actuator.ts', 'xyph-dashboard.ts', 'xyph-theme-lab.ts'],
     languageOptions: {
       parserOptions: {
         project: './tsconfig.json',

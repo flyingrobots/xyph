@@ -119,6 +119,9 @@ export interface DashboardModel {
   /** True once graph.watch() polling has been started (fires after first snapshot load). */
   watching: boolean;
 
+  /** True when a remote-change arrived while a fetch was in-flight; triggers follow-up refresh. */
+  refreshPending: boolean;
+
   /** The current user's writer ID (e.g. 'agent.james'). Used to filter personal panels. */
   agentId?: string;
 }
@@ -421,6 +424,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         toast: null,
         writePending: false,
         watching: false,
+        refreshPending: false,
         agentId: deps.agentId,
       };
       return [model, [
@@ -520,13 +524,18 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
             newDagPane = dagPaneSelectNode(newDagPane, selectedId, getDefaultContext());
           }
         }
+        // If a remote-change arrived while we were loading, schedule a follow-up fetch
+        const pendingRefresh = model.refreshPending;
+        const followUpReqId = pendingRefresh ? model.requestId + 1 : model.requestId;
         const updated: DashboardModel = {
           ...model,
           snapshot: snap,
-          loading: false,
+          loading: pendingRefresh,
           error: null,
           loadingProgress: 100,
           watching: true,
+          refreshPending: false,
+          requestId: followUpReqId,
           roadmap: { table: newRoadmapTable, dagPane: newDagPane, fallbackScrollY: 0, detailScrollY: 0 },
           submissions: { ...model.submissions, table: rebuildSubmissionsTable(snap, model.submissions.table.focusRow, model.rows - 4) },
           backlog: { ...model.backlog, table: rebuildBacklogTable(snap, model.backlog.table.focusRow, model.rows - 4) },
@@ -541,12 +550,13 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
             detailId: currentDv.detailId && snap.quests.some(q => q.id === currentDv.detailId) ? currentDv.detailId : null,
           },
         };
-        return [updated, []];
+        const cmds: Cmd<DashboardMsg>[] = pendingRefresh ? [fetchSnapshot(followUpReqId)] : [];
+        return [updated, cmds];
       }
       if (msg.type === 'remote-change') {
-        if (model.loading) return [model, []];
+        if (model.loading) return [{ ...model, refreshPending: true }, []];
         const nextReqId = model.requestId + 1;
-        return [{ ...model, loading: true, requestId: nextReqId }, [fetchSnapshot(nextReqId)]];
+        return [{ ...model, loading: true, requestId: nextReqId, refreshPending: false }, [fetchSnapshot(nextReqId)]];
       }
       if (msg.type === 'snapshot-error') {
         if (msg.requestId !== model.requestId) return [model, []];

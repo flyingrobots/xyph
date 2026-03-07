@@ -4,7 +4,7 @@
  * Uses bijou's `extendTheme()` to add XYPH-specific status and UI keys
  * to both built-in presets. Each palette ships as a dark + light pair;
  * bare names (`teal-orange-pink`, `cyan-magenta`) are aliases resolved
- * at runtime by `detectColorScheme()` in bridge.ts.
+ * at runtime by `detectColorScheme()` in `BijouStyleAdapter.ts`.
  */
 
 import {
@@ -242,7 +242,7 @@ export const XYPH_PRESETS: Record<string, XyphTheme> = {
   'cyan-magenta-light':       XYPH_CYAN_MAGENTA_LIGHT,
   'teal-orange-pink-dark':    XYPH_TEAL_ORANGE_PINK_DARK,
   'teal-orange-pink-light':   XYPH_TEAL_ORANGE_PINK_LIGHT,
-  // Bare aliases — resolved to dark/light by bridge.ts at runtime
+  // Bare aliases — resolved to dark/light by BijouStyleAdapter at runtime
   'cyan-magenta':             XYPH_CYAN_MAGENTA_DARK,
   'teal-orange-pink':         XYPH_TEAL_ORANGE_PINK_DARK,
 };

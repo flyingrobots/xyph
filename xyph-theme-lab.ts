@@ -146,14 +146,15 @@ function renderSemantic(theme: XyphTheme, w: number, h: number): string {
   lines.push('', labStyled(theme.semantic.muted, '  Gradients:'));
   const ctx = getDefaultContext();
   for (const [key, stops] of Object.entries(theme.gradient)) {
-    const sample = gradientText(`${'#'.repeat(Math.min(40, w - 20))}`, stops, { style: ctx.style });
+    const sampleWidth = Math.max(0, Math.min(40, w - 20));
+    const sample = gradientText('#'.repeat(sampleWidth), stops, { style: ctx.style });
     lines.push(`  ${key.padEnd(12)} ${sample}`);
   }
   while (lines.length < h) lines.push('');
   return lines.slice(0, h).join('\n');
 }
 
-function renderTabs(theme: XyphTheme, w: number, h: number): string {
+function renderTabs(theme: XyphTheme, _w: number, h: number): string {
   const ctx = getDefaultContext();
   const lines: string[] = [
     '',
@@ -205,7 +206,7 @@ function renderTabs(theme: XyphTheme, w: number, h: number): string {
   return lines.slice(0, h).join('\n');
 }
 
-function renderBorders(theme: XyphTheme, w: number, h: number): string {
+function renderBorders(theme: XyphTheme, _w: number, h: number): string {
   const lines: string[] = [
     '',
     labStyled(theme.semantic.primary, '  BORDER TOKENS'),
