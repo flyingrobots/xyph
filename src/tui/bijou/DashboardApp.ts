@@ -326,16 +326,29 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
     };
   }
 
+  // Capture the watcher unsubscribe handle so we can tear it down on quit
+  let watcherUnsub: (() => void) | null = null;
+
   function startWatching(): Cmd<DashboardMsg> {
     return async (emit) => {
       try {
         const graph = await deps.graphPort.getGraph();
-        graph.watch('task:*', {
+        const { unsubscribe } = graph.watch('task:*', {
           onChange: () => { emit({ type: 'remote-change' }); },
           poll: 10000,
         });
+        watcherUnsub = unsubscribe;
       } catch {
         // Best-effort: polling is a convenience, not critical
+      }
+    };
+  }
+
+  function stopWatching(): Cmd<DashboardMsg> {
+    return async () => {
+      if (watcherUnsub) {
+        watcherUnsub();
+        watcherUnsub = null;
       }
     };
   }
@@ -593,7 +606,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
       if (msg.type === 'key') {
         // Ctrl+C always quits, regardless of mode
         if (msg.key === 'c' && msg.ctrl) {
-          return [model, [quit()]];
+          return [model, [stopWatching(), quit()]];
         }
 
         // ── Quit confirmation (modal dialog) ──────────────────────────
@@ -623,7 +636,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
           if (msg.key === 'y' || (msg.key === 'q' && isQuitConfirm)) {
             const { action } = model.confirmState;
             if (action.kind === 'quit') {
-              return [{ ...model, mode: 'normal', confirmState: null }, [quit()]];
+              return [{ ...model, mode: 'normal', confirmState: null }, [stopWatching(), quit()]];
             }
             return [{
               ...model,
@@ -728,7 +741,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         if (globalAction) {
           switch (globalAction.type) {
             case 'quit':
-              return [model, [quit()]];
+              return [model, [stopWatching(), quit()]];
             case 'jump-view':
               return [{ ...model, activeView: globalAction.view }, []];
             case 'refresh': {
@@ -1143,7 +1156,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
   ): [DashboardModel, Cmd<DashboardMsg>[]] {
     switch (actionId) {
       case 'quit':
-        return [model, [quit()]];
+        return [model, [stopWatching(), quit()]];
       case 'refresh': {
         const nextReqId = model.requestId + 1;
         return [{ ...model, loading: true, error: null, requestId: nextReqId }, [fetchSnapshot(nextReqId)]];
