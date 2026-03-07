@@ -8,6 +8,7 @@ import {
   publicKeyToDidKey,
   loadKeyring,
   verifyEd25519DetachedHex,
+  CURRENT_KEYRING_VERSION,
   type Json,
 } from '../../validation/crypto.js';
 
@@ -128,7 +129,7 @@ export class GuildSealService {
           keys.push({ keyId: entry.keyId, alg: entry.alg, publicKeyHex: entry.publicKeyHex, agentId: entry.agentId });
         }
         keys.push({ keyId, alg: 'ed25519', publicKeyHex, agentId });
-        fs.writeFileSync(keyringPath, JSON.stringify({ version: 'v1', keys }, null, 2) + '\n');
+        fs.writeFileSync(keyringPath, JSON.stringify({ version: CURRENT_KEYRING_VERSION, keys }, null, 2) + '\n');
       }
     } catch (err) {
       // Roll back: remove the private key so the agent is not stuck with an orphaned .sk

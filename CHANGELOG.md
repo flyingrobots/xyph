@@ -8,12 +8,14 @@ All notable changes to XYPH will be documented in this file.
 
 - **`history` command** — `xyph-actuator history <nodeId>` shows all patches that touched a node via git-warp's `patchesFor()` provenance API (Constitution Art. III compliance)
 - **Multibase DID key encoding** — `encodeBase58btc()` and `publicKeyToDidKey()` in `crypto.ts`; Ed25519 public keys are now encoded as spec-compliant `did:key:z6Mk...` identifiers using the multicodec prefix `0xed01` + base58btc multibase encoding (WVR-006)
+- **Versioned keyring migration pipeline** — `loadKeyring()` transparently migrates older keyring formats on read via a sequential migration chain (`v1 → v2 → ...`); future schema changes (key rotation, expiry, multi-algorithm) slot in by appending a migration function (WVR-006)
 
 ### Changed
 
+- **Keyring schema v2** — `KeyringEntry` gains `agentId` (agent→key lookup) and `legacyKeyIds` (alias resolution for backward-compatible verification); `loadKeyring()` indexes the Map by both canonical derived keyId and legacy aliases so old patches and new seals both resolve correctly (WVR-006)
 - **`keyIdForAgent()` derives real DID keys** — `GuildSealService.keyIdForAgent()` now looks up the agent's public key from the keyring and derives a proper multibase-encoded `did:key` instead of the previous `did:key:<agentId>` placeholder (WVR-006)
-- **Keyring schema extended** — `KeyringEntry` now includes an optional `agentId` field to support agent→key lookup; backward-compatible with existing v1 keyrings
 - **`sign()` derives keyId from private key** — `GuildSealService.sign()` now computes the public key from the private key at sign time and derives the DID key directly, ensuring the seal's `keyId` always matches the signing key
+- **`generateKeypair()` writes v2 keyrings** — new keypairs are written with the derived `did:key:z6Mk...` as the canonical keyId and include the `agentId` field (WVR-006)
 - **StylePort interface** — dependency-injected styling abstraction (`StylePort`) with `BijouStyleAdapter` (chalk-based) and `PlainStyleAdapter` (no-color) implementations; replaces the global theme singleton with explicit wiring through the composition root
 - **Theme lab TUI** — interactive design token exploration tool (`xyph-theme-lab.ts`) for cycling through theme palettes in real time
 - **Dark + light theme variants** — automatic terminal background detection with distinct dark and light palettes; theme selection adapts to the user's terminal
