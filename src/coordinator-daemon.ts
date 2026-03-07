@@ -4,7 +4,8 @@ import { CoordinatorService } from './domain/services/CoordinatorService.js';
 import { IngestService } from './domain/services/IngestService.js';
 import { NormalizeService } from './domain/services/NormalizeService.js';
 import { RebalanceService } from './domain/services/RebalanceService.js';
-import { getTheme, styled } from './tui/theme/index.js';
+import { createStylePort } from './infrastructure/adapters/BijouStyleAdapter.js';
+import type { StylePort } from './ports/StylePort.js';
 
 /**
  * Coordinator Daemon
@@ -18,22 +19,22 @@ const MIN_INTERVAL_MS = 1000;
 const DEFAULT_INTERVAL_MS = 60000;
 const MAX_CONSECUTIVE_FAILURES = 10;
 
-function parseInterval(): number {
+function parseInterval(style: StylePort): number {
   const raw = process.env['XYPH_INTERVAL_MS'];
   if (raw === undefined) return DEFAULT_INTERVAL_MS;
   const parsed = parseInt(raw, 10);
   if (!Number.isFinite(parsed) || parsed < MIN_INTERVAL_MS) {
-    console.warn(styled(getTheme().theme.semantic.warning, `[WARN] Invalid XYPH_INTERVAL_MS="${raw}", using default ${DEFAULT_INTERVAL_MS}ms`));
+    console.warn(style.styled(style.theme.semantic.warning, `[WARN] Invalid XYPH_INTERVAL_MS="${raw}", using default ${DEFAULT_INTERVAL_MS}ms`));
     return DEFAULT_INTERVAL_MS;
   }
   return parsed;
 }
 
-const INTERVAL_MS = parseInterval();
-
 async function main(): Promise<void> {
-  const t = getTheme().theme;
-  console.log(styled({ ...t.semantic.success, modifiers: [...(t.semantic.success.modifiers ?? []), 'bold'] }, 'XYPH Coordinator Daemon starting...'));
+  const style = createStylePort();
+  const INTERVAL_MS = parseInterval(style);
+  const t = style.theme;
+  console.log(style.styled({ ...t.semantic.success, modifiers: [...(t.semantic.success.modifiers ?? []), 'bold'] }, 'XYPH Coordinator Daemon starting...'));
 
   const graphPort = new WarpGraphAdapter(REPO_PATH, GRAPH_NAME, AGENT_ID);
   const roadmap = new WarpRoadmapAdapter(graphPort);
@@ -44,7 +45,7 @@ async function main(): Promise<void> {
   await coordinator.heartbeat();
 
   // Schedule loop
-  console.log(styled(t.semantic.muted, `[*] Heartbeat interval set to ${INTERVAL_MS}ms`));
+  console.log(style.styled(t.semantic.muted, `[*] Heartbeat interval set to ${INTERVAL_MS}ms`));
 
   let consecutiveFailures = 0;
   let heartbeatTimer: ReturnType<typeof setTimeout> | null = null;
@@ -55,9 +56,9 @@ async function main(): Promise<void> {
         .then(() => { consecutiveFailures = 0; })
         .catch(err => {
           consecutiveFailures++;
-          console.error(styled(t.semantic.error, `[CRITICAL] Heartbeat failure ${consecutiveFailures}/${MAX_CONSECUTIVE_FAILURES}:`), err);
+          console.error(style.styled(t.semantic.error, `[CRITICAL] Heartbeat failure ${consecutiveFailures}/${MAX_CONSECUTIVE_FAILURES}:`), err);
           if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-            console.error(styled(t.semantic.error, '[FATAL] Max consecutive failures reached, exiting.'));
+            console.error(style.styled(t.semantic.error, '[FATAL] Max consecutive failures reached, exiting.'));
             process.exit(1);
           }
         })
@@ -73,7 +74,7 @@ async function main(): Promise<void> {
   function shutdown(): void {
     if (shuttingDown) return;
     shuttingDown = true;
-    console.log(styled(t.semantic.warning, '\n[*] Shutting down coordinator daemon...'));
+    console.log(style.styled(t.semantic.warning, '\n[*] Shutting down coordinator daemon...'));
     if (heartbeatTimer !== null) {
       clearTimeout(heartbeatTimer);
     }
@@ -86,6 +87,7 @@ async function main(): Promise<void> {
 }
 
 main().catch(err => {
-  console.error(styled(getTheme().theme.semantic.error, '[FATAL] Daemon failed to start:'), err);
+  const style = createStylePort();
+  console.error(style.styled(style.theme.semantic.error, '[FATAL] Daemon failed to start:'), err);
   process.exit(1);
 });

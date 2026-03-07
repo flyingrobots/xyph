@@ -1,4 +1,6 @@
-import { getTheme, styled, ensureXyphContext } from '../tui/theme/index.js';
+import { createStylePort } from '../infrastructure/adapters/BijouStyleAdapter.js';
+import { createPlainStylePort } from '../infrastructure/adapters/PlainStyleAdapter.js';
+import type { StylePort } from '../ports/StylePort.js';
 import { WarpGraphAdapter } from '../infrastructure/adapters/WarpGraphAdapter.js';
 
 export const DEFAULT_AGENT_ID = 'agent.prime';
@@ -21,6 +23,7 @@ export interface CliContext {
   readonly agentId: string;
   readonly json: boolean;
   readonly graphPort: WarpGraphAdapter;
+  readonly style: StylePort;
   ok(msg: string): void;
   warn(msg: string): void;
   muted(msg: string): void;
@@ -43,12 +46,7 @@ export function createCliContext(
   const agentId = envAgentId ? envAgentId : DEFAULT_AGENT_ID;
   const graphPort = new WarpGraphAdapter(cwd, graphName, agentId);
   const jsonMode = opts?.json ?? false;
-
-  // Initialize bijou theme context eagerly in non-JSON mode.
-  // ensureXyphContext() is idempotent — safe to call multiple times.
-  if (!jsonMode) {
-    ensureXyphContext();
-  }
+  const style = jsonMode ? createPlainStylePort() : createStylePort();
 
   const emitJsonError = (error: string, data?: Record<string, unknown>): void => {
     const envelope: JsonErrorEnvelope = data === undefined
@@ -61,17 +59,18 @@ export function createCliContext(
     agentId,
     json: jsonMode,
     graphPort,
+    style,
     ok(msg: string): void {
       if (jsonMode) return;
-      console.log(styled(getTheme().theme.semantic.success, msg));
+      console.log(style.styled(style.theme.semantic.success, msg));
     },
     warn(msg: string): void {
       if (jsonMode) return;
-      console.log(styled(getTheme().theme.semantic.warning, msg));
+      console.log(style.styled(style.theme.semantic.warning, msg));
     },
     muted(msg: string): void {
       if (jsonMode) return;
-      console.log(styled(getTheme().theme.semantic.muted, msg));
+      console.log(style.styled(style.theme.semantic.muted, msg));
     },
     print(msg: string): void {
       if (jsonMode) return;
@@ -81,7 +80,7 @@ export function createCliContext(
       if (jsonMode) {
         emitJsonError(msg);
       } else {
-        console.error(styled(getTheme().theme.semantic.error, msg));
+        console.error(style.styled(style.theme.semantic.error, msg));
       }
       process.exit(1);
     },
@@ -89,7 +88,7 @@ export function createCliContext(
       if (jsonMode) {
         emitJsonError(msg, data);
       } else {
-        console.error(styled(getTheme().theme.semantic.error, msg));
+        console.error(style.styled(style.theme.semantic.error, msg));
       }
       process.exit(1);
     },

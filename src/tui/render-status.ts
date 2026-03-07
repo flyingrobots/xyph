@@ -4,34 +4,32 @@ import {
 import type { GraphSnapshot, StoryNode, RequirementNode, CriterionNode, EvidenceNode, SuggestionNode } from '../domain/models/dashboard.js';
 import type { BlockerInfo } from '../domain/services/DepAnalysis.js';
 import type { UnmetRequirement, CoverageResult } from '../domain/services/TraceabilityAnalysis.js';
-import { getTheme, styled } from './theme/index.js';
+import type { StylePort } from '../ports/StylePort.js';
 import { statusVariant } from './view-helpers.js';
 
-type BorderKey = keyof ReturnType<typeof getTheme>['theme']['border'];
+type BorderKey = keyof StylePort['theme']['border'];
 
-function snapshotHeader(label: string, detail: string, borderToken: BorderKey): string {
-  const t = getTheme();
+function snapshotHeader(style: StylePort, label: string, detail: string, borderToken: BorderKey): string {
   return headerBox(label, {
-    detail: styled(t.theme.semantic.muted, detail),
-    borderToken: t.theme.border[borderToken],
+    detail: style.styled(style.theme.semantic.muted, detail),
+    borderToken: style.theme.border[borderToken],
   });
 }
 
 /**
  * Renders quests grouped by campaign — the Roadmap view.
  */
-export function renderRoadmap(snapshot: GraphSnapshot): string {
-  const t = getTheme();
+export function renderRoadmap(snapshot: GraphSnapshot, style: StylePort): string {
   const lines: string[] = [];
 
-  lines.push(snapshotHeader(
+  lines.push(snapshotHeader(style,
     'XYPH Roadmap',
     `snapshot at ${new Date(snapshot.asOf).toISOString()}`,
     'primary'
   ));
 
   if (snapshot.quests.length === 0) {
-    lines.push(styled(t.theme.semantic.muted, '\n  No quests yet.'));
+    lines.push(style.styled(style.theme.semantic.muted, '\n  No quests yet.'));
     return lines.join('\n');
   }
 
@@ -52,10 +50,10 @@ export function renderRoadmap(snapshot: GraphSnapshot): string {
   for (const [key, quests] of grouped) {
     const heading = campaignTitle.get(key) ?? key;
     lines.push('');
-    lines.push(styled(t.theme.ui.sectionHeader, `  ${heading}`));
+    lines.push(style.styled(style.theme.ui.sectionHeader, `  ${heading}`));
 
     const rows = quests.map(q => [
-      styled(t.theme.semantic.muted, q.id.slice(0, 20)),
+      style.styled(style.theme.semantic.muted, q.id.slice(0, 20)),
       q.title.slice(0, 42),
       badge(q.status, { variant: statusVariant(q.status) }),
       String(q.hours),
@@ -71,8 +69,8 @@ export function renderRoadmap(snapshot: GraphSnapshot): string {
         { header: 'Assigned', width: 16 },
       ],
       rows,
-      headerToken: t.theme.ui.tableHeader,
-      borderToken: t.theme.border.primary,
+      headerToken: style.theme.ui.tableHeader,
+      borderToken: style.theme.border.primary,
     }));
   }
 
@@ -82,18 +80,17 @@ export function renderRoadmap(snapshot: GraphSnapshot): string {
 /**
  * Renders the intent → quest → scroll lineage tree.
  */
-export function renderLineage(snapshot: GraphSnapshot): string {
-  const t = getTheme();
+export function renderLineage(snapshot: GraphSnapshot, style: StylePort): string {
   const lines: string[] = [];
 
-  lines.push(snapshotHeader(
+  lines.push(snapshotHeader(style,
     'Genealogy of Intent',
     `${snapshot.intents.length} intent(s)  ${snapshot.quests.length} quest(s)`,
     'secondary'
   ));
 
   if (snapshot.intents.length === 0) {
-    lines.push(styled(t.theme.semantic.muted,
+    lines.push(style.styled(style.theme.semantic.muted,
       '\n  No intents declared yet.\n' +
       '  xyph-actuator intent <id> --title "..." --requested-by human.<name>'
     ));
@@ -123,14 +120,14 @@ export function renderLineage(snapshot: GraphSnapshot): string {
   for (const intent of snapshot.intents) {
     lines.push('');
     lines.push(
-      styled(t.theme.ui.intentHeader, `  ◆ ${intent.id}`) +
-      styled(t.theme.semantic.muted, `  ${intent.title}`)
+      style.styled(style.theme.ui.intentHeader, `  ◆ ${intent.id}`) +
+      style.styled(style.theme.semantic.muted, `  ${intent.title}`)
     );
-    lines.push(styled(t.theme.semantic.muted, `     requested-by: ${intent.requestedBy}`));
+    lines.push(style.styled(style.theme.semantic.muted, `     requested-by: ${intent.requestedBy}`));
 
     const quests = questsByIntent.get(intent.id) ?? [];
     if (quests.length === 0) {
-      lines.push(styled(t.theme.semantic.muted, '     └─ (no quests)'));
+      lines.push(style.styled(style.theme.semantic.muted, '     └─ (no quests)'));
       continue;
     }
 
@@ -141,17 +138,17 @@ export function renderLineage(snapshot: GraphSnapshot): string {
       const branch = isLast ? '└─' : '├─';
       const scrollEntry = scrollByQuestId.get(q.id);
       const scrollMark = scrollEntry !== undefined
-        ? (scrollEntry.hasSeal ? styled(t.theme.semantic.success, ' ✓') : styled(t.theme.semantic.warning, ' ○'))
+        ? (scrollEntry.hasSeal ? style.styled(style.theme.semantic.success, ' ✓') : style.styled(style.theme.semantic.warning, ' ○'))
         : '';
 
       lines.push(
-        `     ${branch} ${styled(t.theme.semantic.muted, q.id)}  ${q.title.slice(0, 38)}  [${badge(q.status, { variant: statusVariant(q.status) })}]${scrollMark}`
+        `     ${branch} ${style.styled(style.theme.semantic.muted, q.id)}  ${q.title.slice(0, 38)}  [${badge(q.status, { variant: statusVariant(q.status) })}]${scrollMark}`
       );
 
       if (scrollEntry !== undefined) {
         const indent = isLast ? '   ' : '│  ';
         lines.push(
-          `     ${indent}  ${styled(t.theme.semantic.muted, 'scroll:')} ${styled(t.theme.semantic.muted, scrollEntry.id)}`
+          `     ${indent}  ${style.styled(style.theme.semantic.muted, 'scroll:')} ${style.styled(style.theme.semantic.muted, scrollEntry.id)}`
         );
       }
     }
@@ -159,12 +156,12 @@ export function renderLineage(snapshot: GraphSnapshot): string {
 
   if (orphans.length > 0) {
     lines.push('');
-    lines.push(styled(t.theme.semantic.error, '  ⚠ Orphan quests (no intent — Constitution violation)'));
+    lines.push(style.styled(style.theme.semantic.error, '  ⚠ Orphan quests (no intent — Constitution violation)'));
     for (let i = 0; i < orphans.length; i++) {
       const q = orphans[i];
       if (!q) continue;
       const branch = i === orphans.length - 1 ? '└─' : '├─';
-      lines.push(`     ${branch} ${styled(t.theme.semantic.muted, q.id)}  ${q.title.slice(0, 38)}  [${badge(q.status, { variant: statusVariant(q.status) })}]`);
+      lines.push(`     ${branch} ${style.styled(style.theme.semantic.muted, q.id)}  ${q.title.slice(0, 38)}  [${badge(q.status, { variant: statusVariant(q.status) })}]`);
     }
   }
 
@@ -174,8 +171,7 @@ export function renderLineage(snapshot: GraphSnapshot): string {
 /**
  * Renders all nodes in separate tables — the All Nodes view.
  */
-export function renderAll(snapshot: GraphSnapshot): string {
-  const t = getTheme();
+export function renderAll(snapshot: GraphSnapshot, style: StylePort): string {
   const lines: string[] = [];
   const total =
     snapshot.campaigns.length +
@@ -192,13 +188,13 @@ export function renderAll(snapshot: GraphSnapshot): string {
     snapshot.evidence.length +
     snapshot.suggestions.length;
 
-  lines.push(snapshotHeader('All XYPH Nodes', `${total} node(s) total`, 'success'));
+  lines.push(snapshotHeader(style, 'All XYPH Nodes', `${total} node(s) total`, 'success'));
 
   if (snapshot.campaigns.length > 0) {
     lines.push('');
-    lines.push(separator({ label: 'Campaigns / Milestones', borderToken: t.theme.border.secondary }));
+    lines.push(separator({ label: 'Campaigns / Milestones', borderToken: style.theme.border.secondary }));
     const rows = snapshot.campaigns.map(c => [
-      styled(t.theme.semantic.muted, c.id),
+      style.styled(style.theme.semantic.muted, c.id),
       c.title,
       badge(c.status, { variant: statusVariant(c.status) }),
     ]);
@@ -209,16 +205,16 @@ export function renderAll(snapshot: GraphSnapshot): string {
         { header: 'Status' },
       ],
       rows,
-      headerToken: t.theme.ui.tableHeader,
-      borderToken: t.theme.border.primary,
+      headerToken: style.theme.ui.tableHeader,
+      borderToken: style.theme.border.primary,
     }));
   }
 
   if (snapshot.intents.length > 0) {
     lines.push('');
-    lines.push(separator({ label: 'Intents', borderToken: t.theme.border.secondary }));
+    lines.push(separator({ label: 'Intents', borderToken: style.theme.border.secondary }));
     const rows = snapshot.intents.map(intent => [
-      styled(t.theme.semantic.muted, intent.id),
+      style.styled(style.theme.semantic.muted, intent.id),
       intent.title.slice(0, 40),
       intent.requestedBy,
       new Date(intent.createdAt).toISOString().slice(0, 10),
@@ -231,21 +227,21 @@ export function renderAll(snapshot: GraphSnapshot): string {
         { header: 'Created' },
       ],
       rows,
-      headerToken: t.theme.ui.tableHeader,
-      borderToken: t.theme.border.primary,
+      headerToken: style.theme.ui.tableHeader,
+      borderToken: style.theme.border.primary,
     }));
   }
 
   if (snapshot.quests.length > 0) {
     lines.push('');
-    lines.push(separator({ label: 'Quests', borderToken: t.theme.border.secondary }));
+    lines.push(separator({ label: 'Quests', borderToken: style.theme.border.secondary }));
     const rows = snapshot.quests.map(q => [
-      styled(t.theme.semantic.muted, q.id),
+      style.styled(style.theme.semantic.muted, q.id),
       q.title.slice(0, 35),
       badge(q.status, { variant: statusVariant(q.status) }),
       String(q.hours),
       q.campaignId ?? '—',
-      q.scrollId ? styled(t.theme.semantic.success, '✓') : '—',
+      q.scrollId ? style.styled(style.theme.semantic.success, '✓') : '—',
     ]);
     lines.push(table({
       columns: [
@@ -257,20 +253,20 @@ export function renderAll(snapshot: GraphSnapshot): string {
         { header: 'Scroll' },
       ],
       rows,
-      headerToken: t.theme.ui.tableHeader,
-      borderToken: t.theme.border.primary,
+      headerToken: style.theme.ui.tableHeader,
+      borderToken: style.theme.border.primary,
     }));
   }
 
   if (snapshot.scrolls.length > 0) {
     lines.push('');
-    lines.push(separator({ label: 'Scrolls', borderToken: t.theme.border.secondary }));
+    lines.push(separator({ label: 'Scrolls', borderToken: style.theme.border.secondary }));
     const rows = snapshot.scrolls.map(s => [
-      styled(t.theme.semantic.muted, s.id),
+      style.styled(style.theme.semantic.muted, s.id),
       s.questId,
       s.sealedBy,
       new Date(s.sealedAt).toISOString().slice(0, 10),
-      s.hasSeal ? styled(t.theme.semantic.success, '⊕') : styled(t.theme.semantic.warning, '○'),
+      s.hasSeal ? style.styled(style.theme.semantic.success, '⊕') : style.styled(style.theme.semantic.warning, '○'),
     ]);
     lines.push(table({
       columns: [
@@ -281,16 +277,16 @@ export function renderAll(snapshot: GraphSnapshot): string {
         { header: 'Guild Seal' },
       ],
       rows,
-      headerToken: t.theme.ui.tableHeader,
-      borderToken: t.theme.border.primary,
+      headerToken: style.theme.ui.tableHeader,
+      borderToken: style.theme.border.primary,
     }));
   }
 
   if (snapshot.approvals.length > 0) {
     lines.push('');
-    lines.push(separator({ label: 'Approval Gates', borderToken: t.theme.border.secondary }));
+    lines.push(separator({ label: 'Approval Gates', borderToken: style.theme.border.secondary }));
     const rows = snapshot.approvals.map(a => [
-      styled(t.theme.semantic.muted, a.id),
+      style.styled(style.theme.semantic.muted, a.id),
       badge(a.status, { variant: statusVariant(a.status) }),
       a.trigger,
       a.approver,
@@ -305,8 +301,8 @@ export function renderAll(snapshot: GraphSnapshot): string {
         { header: 'Requester' },
       ],
       rows,
-      headerToken: t.theme.ui.tableHeader,
-      borderToken: t.theme.border.primary,
+      headerToken: style.theme.ui.tableHeader,
+      borderToken: style.theme.border.primary,
     }));
   }
 
@@ -317,19 +313,18 @@ export function renderAll(snapshot: GraphSnapshot): string {
  * Renders INBOX tasks grouped by suggested_by — the Intake view.
  * GRAVEYARD tasks are never shown here; use renderAll with --include-graveyard for those.
  */
-export function renderInbox(snapshot: GraphSnapshot): string {
-  const t = getTheme();
+export function renderInbox(snapshot: GraphSnapshot, style: StylePort): string {
   const lines: string[] = [];
   const inbox = snapshot.quests.filter((q) => q.status === 'BACKLOG');
 
-  lines.push(snapshotHeader(
+  lines.push(snapshotHeader(style,
     'Backlog',
     `${inbox.length} quest(s) awaiting triage`,
     'secondary'
   ));
 
   if (inbox.length === 0) {
-    lines.push(styled(t.theme.semantic.muted,
+    lines.push(style.styled(style.theme.semantic.muted,
       '\n  No quests in backlog.\n' +
       '  Add one: xyph-actuator inbox task:ID --title "..." --suggested-by <principal>'
     ));
@@ -346,16 +341,16 @@ export function renderInbox(snapshot: GraphSnapshot): string {
 
   for (const [suggester, quests] of bySuggester) {
     lines.push('');
-    lines.push(styled(t.theme.ui.intentHeader, `  ${suggester}`));
+    lines.push(style.styled(style.theme.ui.intentHeader, `  ${suggester}`));
 
     const rows = quests.map(q => {
       const suggestedAt = q.suggestedAt !== undefined
         ? new Date(q.suggestedAt).toISOString().slice(0, 10)
         : '—';
       const prevRej = q.rejectionRationale !== undefined
-        ? styled(t.theme.semantic.muted, q.rejectionRationale.slice(0, 24) + (q.rejectionRationale.length > 24 ? '…' : ''))
+        ? style.styled(style.theme.semantic.muted, q.rejectionRationale.slice(0, 24) + (q.rejectionRationale.length > 24 ? '…' : ''))
         : '—';
-      return [styled(t.theme.semantic.muted, q.id), q.title.slice(0, 38), String(q.hours), suggestedAt, prevRej];
+      return [style.styled(style.theme.semantic.muted, q.id), q.title.slice(0, 38), String(q.hours), suggestedAt, prevRej];
     });
 
     lines.push(table({
@@ -367,8 +362,8 @@ export function renderInbox(snapshot: GraphSnapshot): string {
         { header: 'Prev rejection' },
       ],
       rows,
-      headerToken: t.theme.ui.tableHeader,
-      borderToken: t.theme.border.primary,
+      headerToken: style.theme.ui.tableHeader,
+      borderToken: style.theme.border.primary,
     }));
   }
 
@@ -378,19 +373,18 @@ export function renderInbox(snapshot: GraphSnapshot): string {
 /**
  * Renders submissions with their computed status — the Submissions view.
  */
-export function renderSubmissions(snapshot: GraphSnapshot): string {
-  const t = getTheme();
+export function renderSubmissions(snapshot: GraphSnapshot, style: StylePort): string {
   const lines: string[] = [];
   const subs = snapshot.submissions;
 
-  lines.push(snapshotHeader(
+  lines.push(snapshotHeader(style,
     'Submissions',
     `${subs.length} submission(s)`,
     'warning'
   ));
 
   if (subs.length === 0) {
-    lines.push(styled(t.theme.semantic.muted,
+    lines.push(style.styled(style.theme.semantic.muted,
       '\n  No submissions yet.\n' +
       '  Create one: xyph-actuator submit <quest-id> --description "..."'
     ));
@@ -398,10 +392,10 @@ export function renderSubmissions(snapshot: GraphSnapshot): string {
   }
 
   const subRows = subs.map(sub => {
-    const headsWarning = sub.headsCount > 1 ? styled(t.theme.semantic.warning, `${sub.headsCount} ⚠`) : String(sub.headsCount);
+    const headsWarning = sub.headsCount > 1 ? style.styled(style.theme.semantic.warning, `${sub.headsCount} ⚠`) : String(sub.headsCount);
     return [
-      styled(t.theme.semantic.muted, sub.id.slice(0, 26)),
-      styled(t.theme.semantic.muted, sub.questId.slice(0, 18)),
+      style.styled(style.theme.semantic.muted, sub.id.slice(0, 26)),
+      style.styled(style.theme.semantic.muted, sub.questId.slice(0, 18)),
       badge(sub.status, { variant: statusVariant(sub.status) }),
       String(sub.approvalCount),
       headsWarning,
@@ -421,8 +415,8 @@ export function renderSubmissions(snapshot: GraphSnapshot): string {
       { header: 'Date', width: 12 },
     ],
     rows: subRows,
-    headerToken: t.theme.ui.tableHeader,
-    borderToken: t.theme.border.primary,
+    headerToken: style.theme.ui.tableHeader,
+    borderToken: style.theme.border.primary,
   }));
 
   // Show recent reviews (sorted by most recent first)
@@ -431,12 +425,12 @@ export function renderSubmissions(snapshot: GraphSnapshot): string {
     .slice(0, 10);
   if (recentReviews.length > 0) {
     lines.push('');
-    lines.push(separator({ label: 'Recent Reviews', borderToken: t.theme.border.secondary }));
+    lines.push(separator({ label: 'Recent Reviews', borderToken: style.theme.border.secondary }));
     const reviewRows = recentReviews.map(r => {
       const mappedVerdict = r.verdict === 'approve' ? 'APPROVED' : r.verdict === 'request-changes' ? 'CHANGES_REQUESTED' : 'PENDING';
       return [
-        styled(t.theme.semantic.muted, r.id.slice(0, 26)),
-        styled(t.theme.semantic.muted, r.patchsetId.slice(0, 26)),
+        style.styled(style.theme.semantic.muted, r.id.slice(0, 26)),
+        style.styled(style.theme.semantic.muted, r.patchsetId.slice(0, 26)),
         badge(mappedVerdict, { variant: statusVariant(mappedVerdict) }),
         r.reviewedBy,
         r.comment.slice(0, 28),
@@ -451,20 +445,20 @@ export function renderSubmissions(snapshot: GraphSnapshot): string {
         { header: 'Comment', width: 30 },
       ],
       rows: reviewRows,
-      headerToken: t.theme.ui.tableHeader,
-      borderToken: t.theme.border.primary,
+      headerToken: style.theme.ui.tableHeader,
+      borderToken: style.theme.border.primary,
     }));
   }
 
   // Show decisions
   if (snapshot.decisions.length > 0) {
     lines.push('');
-    lines.push(separator({ label: 'Decisions', borderToken: t.theme.border.secondary }));
+    lines.push(separator({ label: 'Decisions', borderToken: style.theme.border.secondary }));
     const decisionRows = snapshot.decisions.map(d => {
       const mappedKind = d.kind === 'merge' ? 'MERGED' : 'CLOSED';
       return [
-        styled(t.theme.semantic.muted, d.id.slice(0, 26)),
-        styled(t.theme.semantic.muted, d.submissionId.slice(0, 26)),
+        style.styled(style.theme.semantic.muted, d.id.slice(0, 26)),
+        style.styled(style.theme.semantic.muted, d.submissionId.slice(0, 26)),
         badge(mappedKind, { variant: statusVariant(mappedKind) }),
         d.decidedBy,
         d.rationale.slice(0, 28),
@@ -479,8 +473,8 @@ export function renderSubmissions(snapshot: GraphSnapshot): string {
         { header: 'Rationale', width: 30 },
       ],
       rows: decisionRows,
-      headerToken: t.theme.ui.tableHeader,
-      borderToken: t.theme.border.primary,
+      headerToken: style.theme.ui.tableHeader,
+      borderToken: style.theme.border.primary,
     }));
   }
 
@@ -508,11 +502,10 @@ export interface DepsViewData {
 /**
  * Renders the task dependency graph: frontier, blocked tasks, execution order, and critical path.
  */
-export function renderDeps(data: DepsViewData): string {
-  const t = getTheme();
+export function renderDeps(data: DepsViewData, style: StylePort): string {
   const lines: string[] = [];
 
-  lines.push(snapshotHeader(
+  lines.push(snapshotHeader(style,
     'Quest Dependencies',
     `${data.quests.size} quest(s)  ${data.frontier.length} ready  ${data.blockedBy.size} blocked`,
     'warning'
@@ -521,11 +514,11 @@ export function renderDeps(data: DepsViewData): string {
   // --- Frontier (ready tasks) ---
   if (data.frontier.length > 0) {
     lines.push('');
-    lines.push(separator({ label: 'Ready (Frontier)', borderToken: t.theme.border.success }));
+    lines.push(separator({ label: 'Ready (Frontier)', borderToken: style.theme.border.success }));
     const frontierRows = data.frontier.map(id => {
       const info = data.quests.get(id);
       return [
-        styled(t.theme.semantic.success, id.slice(0, 20)),
+        style.styled(style.theme.semantic.success, id.slice(0, 20)),
         info?.title.slice(0, 42) ?? '—',
         info ? badge(info.status, { variant: statusVariant(info.status) }) : '—',
         String(info?.hours ?? 0),
@@ -539,22 +532,22 @@ export function renderDeps(data: DepsViewData): string {
         { header: 'h', width: 5 },
       ],
       rows: frontierRows,
-      headerToken: t.theme.ui.tableHeader,
-      borderToken: t.theme.border.primary,
+      headerToken: style.theme.ui.tableHeader,
+      borderToken: style.theme.border.primary,
     }));
   } else {
     lines.push('');
-    lines.push(styled(t.theme.semantic.muted, '  No quests are ready (all quests have incomplete prerequisites or are DONE).'));
+    lines.push(style.styled(style.theme.semantic.muted, '  No quests are ready (all quests have incomplete prerequisites or are DONE).'));
   }
 
   // --- Blocked tasks ---
   if (data.blockedBy.size > 0) {
     lines.push('');
-    lines.push(separator({ label: 'Blocked', borderToken: t.theme.border.warning }));
+    lines.push(separator({ label: 'Blocked', borderToken: style.theme.border.warning }));
     const blockedRows = [...data.blockedBy.entries()].map(([id, blockers]) => {
       const info = data.quests.get(id);
       return [
-        styled(t.theme.semantic.warning, id.slice(0, 20)),
+        style.styled(style.theme.semantic.warning, id.slice(0, 20)),
         info?.title.slice(0, 32) ?? '—',
         blockers.map((b) => b.slice(0, 18)).join(', '),
       ];
@@ -566,15 +559,15 @@ export function renderDeps(data: DepsViewData): string {
         { header: 'Waiting On', width: 40 },
       ],
       rows: blockedRows,
-      headerToken: t.theme.ui.tableHeader,
-      borderToken: t.theme.border.primary,
+      headerToken: style.theme.ui.tableHeader,
+      borderToken: style.theme.border.primary,
     }));
   }
 
   // --- Top Blockers ---
   if (data.topBlockers && data.topBlockers.length > 0) {
     lines.push('');
-    lines.push(separator({ label: 'Top Blockers', borderToken: t.theme.border.error }));
+    lines.push(separator({ label: 'Top Blockers', borderToken: style.theme.border.error }));
     const blockerItems = data.topBlockers.map(blocker => {
       const info = data.quests.get(blocker.id);
       const title = info?.title.slice(0, 38) ?? '—';
@@ -587,11 +580,11 @@ export function renderDeps(data: DepsViewData): string {
   if (data.milestoneFrontier && data.milestoneFrontier.length > 0 && data.milestones) {
     const msMap = data.milestones;
     lines.push('');
-    lines.push(separator({ label: 'Milestone Frontier', borderToken: t.theme.border.success }));
+    lines.push(separator({ label: 'Milestone Frontier', borderToken: style.theme.border.success }));
     const mfRows = data.milestoneFrontier.map(id => {
       const info = msMap.get(id);
       return [
-        styled(t.theme.semantic.success, id),
+        style.styled(style.theme.semantic.success, id),
         info?.title ?? '—',
         info ? badge(info.status, { variant: statusVariant(info.status) }) : '—',
       ];
@@ -603,8 +596,8 @@ export function renderDeps(data: DepsViewData): string {
         { header: 'Status', width: 13 },
       ],
       rows: mfRows,
-      headerToken: t.theme.ui.tableHeader,
-      borderToken: t.theme.border.primary,
+      headerToken: style.theme.ui.tableHeader,
+      borderToken: style.theme.border.primary,
     }));
   }
 
@@ -612,11 +605,11 @@ export function renderDeps(data: DepsViewData): string {
   if (data.milestonesBlocked && data.milestonesBlocked.size > 0 && data.milestones) {
     const msMap2 = data.milestones;
     lines.push('');
-    lines.push(separator({ label: 'Milestones Blocked', borderToken: t.theme.border.warning }));
+    lines.push(separator({ label: 'Milestones Blocked', borderToken: style.theme.border.warning }));
     const mbRows = [...data.milestonesBlocked.entries()].map(([id, blockers]) => {
       const info = msMap2.get(id);
       return [
-        styled(t.theme.semantic.warning, id),
+        style.styled(style.theme.semantic.warning, id),
         info?.title ?? '—',
         blockers.join(', '),
       ];
@@ -628,15 +621,15 @@ export function renderDeps(data: DepsViewData): string {
         { header: 'Waiting On', width: 40 },
       ],
       rows: mbRows,
-      headerToken: t.theme.ui.tableHeader,
-      borderToken: t.theme.border.primary,
+      headerToken: style.theme.ui.tableHeader,
+      borderToken: style.theme.border.primary,
     }));
   }
 
   // --- Execution Order ---
   if (data.executionOrder.length > 0) {
     lines.push('');
-    lines.push(separator({ label: 'Execution Order', borderToken: t.theme.border.primary }));
+    lines.push(separator({ label: 'Execution Order', borderToken: style.theme.border.primary }));
     const orderItems = data.executionOrder.map(id => {
       const info = data.quests.get(id);
       const statusStr = info ? ` [${badge(info.status, { variant: statusVariant(info.status) })}]` : '';
@@ -648,13 +641,13 @@ export function renderDeps(data: DepsViewData): string {
   // --- Critical Path ---
   if (data.criticalPath.length > 0) {
     lines.push('');
-    lines.push(separator({ label: 'Critical Path', borderToken: t.theme.border.error }));
+    lines.push(separator({ label: 'Critical Path', borderToken: style.theme.border.error }));
     const chain = data.criticalPath.map((id) => {
       const info = data.quests.get(id);
       const h = info?.hours ?? 0;
       return `${id}(${h}h)`;
-    }).join(styled(t.theme.semantic.muted, ' → '));
-    lines.push(`    ${chain} ${styled(t.theme.semantic.muted, `= ${data.criticalPathHours}h total`)}`);
+    }).join(style.styled(style.theme.semantic.muted, ' → '));
+    lines.push(`    ${chain} ${style.styled(style.theme.semantic.muted, `= ${data.criticalPathHours}h total`)}`);
   }
 
   return lines.join('\n');
@@ -677,15 +670,14 @@ export interface TraceViewData {
 /**
  * Renders the traceability chain: stories → requirements → criteria → evidence.
  */
-export function renderTrace(data: TraceViewData): string {
-  const t = getTheme();
+export function renderTrace(data: TraceViewData, style: StylePort): string {
   const lines: string[] = [];
 
   const pct = data.coverage.total > 0
     ? `${Math.round(data.coverage.ratio * 100)}%`
     : '—';
 
-  lines.push(snapshotHeader(
+  lines.push(snapshotHeader(style,
     'Traceability',
     `${data.stories.length} stories  ${data.requirements.length} reqs  ${data.criteria.length} criteria  coverage: ${pct}`,
     'secondary',
@@ -694,7 +686,7 @@ export function renderTrace(data: TraceViewData): string {
   // --- Stories grouped by intent ---
   if (data.stories.length > 0) {
     lines.push('');
-    lines.push(separator({ label: 'Stories', borderToken: t.theme.border.secondary }));
+    lines.push(separator({ label: 'Stories', borderToken: style.theme.border.secondary }));
 
     // Group by intentId
     const byIntent = new Map<string, StoryNode[]>();
@@ -707,11 +699,11 @@ export function renderTrace(data: TraceViewData): string {
 
     for (const [intentKey, storyGroup] of byIntent) {
       lines.push('');
-      lines.push(styled(t.theme.ui.intentHeader, `  ${intentKey}`));
+      lines.push(style.styled(style.theme.ui.intentHeader, `  ${intentKey}`));
       const rows = storyGroup.map((s) => {
         const reqCount = data.requirements.filter((r) => r.storyId === s.id).length;
         return [
-          styled(t.theme.semantic.muted, s.id.slice(0, 24)),
+          style.styled(style.theme.semantic.muted, s.id.slice(0, 24)),
           s.title.slice(0, 38),
           s.persona.slice(0, 16),
           String(reqCount),
@@ -725,8 +717,8 @@ export function renderTrace(data: TraceViewData): string {
           { header: 'Reqs', width: 6 },
         ],
         rows,
-        headerToken: t.theme.ui.tableHeader,
-        borderToken: t.theme.border.primary,
+        headerToken: style.theme.ui.tableHeader,
+        borderToken: style.theme.border.primary,
       }));
     }
   }
@@ -734,7 +726,7 @@ export function renderTrace(data: TraceViewData): string {
   // --- Requirements with criterion counts ---
   if (data.requirements.length > 0) {
     lines.push('');
-    lines.push(separator({ label: 'Requirements', borderToken: t.theme.border.secondary }));
+    lines.push(separator({ label: 'Requirements', borderToken: style.theme.border.secondary }));
     const rows = data.requirements.map((r) => {
       const evCount = r.criterionIds.reduce((sum, cId) => {
         const c = data.criteria.find((cr) => cr.id === cId);
@@ -745,7 +737,7 @@ export function renderTrace(data: TraceViewData): string {
         ? badge('UNMET', { variant: 'warning' })
         : badge('MET', { variant: 'success' });
       return [
-        styled(t.theme.semantic.muted, r.id.slice(0, 20)),
+        style.styled(style.theme.semantic.muted, r.id.slice(0, 20)),
         r.description.slice(0, 32),
         r.kind,
         r.priority,
@@ -765,15 +757,15 @@ export function renderTrace(data: TraceViewData): string {
         { header: 'Status', width: 8 },
       ],
       rows,
-      headerToken: t.theme.ui.tableHeader,
-      borderToken: t.theme.border.primary,
+      headerToken: style.theme.ui.tableHeader,
+      borderToken: style.theme.border.primary,
     }));
   }
 
   // --- Untested criteria ---
   if (data.untestedCriteria.length > 0) {
     lines.push('');
-    lines.push(separator({ label: 'Untested Criteria', borderToken: t.theme.border.warning }));
+    lines.push(separator({ label: 'Untested Criteria', borderToken: style.theme.border.warning }));
     const items = data.untestedCriteria.map((cId) => {
       const c = data.criteria.find((cr) => cr.id === cId);
       return `${cId}  ${c?.description.slice(0, 48) ?? '—'}`;
@@ -783,12 +775,12 @@ export function renderTrace(data: TraceViewData): string {
 
   // --- Summary ---
   lines.push('');
-  lines.push(separator({ label: 'Summary', borderToken: t.theme.border.primary }));
-  lines.push(`    ${styled(t.theme.semantic.muted, 'Stories:')} ${data.stories.length}`);
-  lines.push(`    ${styled(t.theme.semantic.muted, 'Requirements:')} ${data.requirements.length}`);
-  lines.push(`    ${styled(t.theme.semantic.muted, 'Criteria:')} ${data.criteria.length}`);
-  lines.push(`    ${styled(t.theme.semantic.muted, 'Evidenced:')} ${data.coverage.evidenced} / ${data.coverage.total}`);
-  lines.push(`    ${styled(t.theme.semantic.muted, 'Coverage:')} ${pct}`);
+  lines.push(separator({ label: 'Summary', borderToken: style.theme.border.primary }));
+  lines.push(`    ${style.styled(style.theme.semantic.muted, 'Stories:')} ${data.stories.length}`);
+  lines.push(`    ${style.styled(style.theme.semantic.muted, 'Requirements:')} ${data.requirements.length}`);
+  lines.push(`    ${style.styled(style.theme.semantic.muted, 'Criteria:')} ${data.criteria.length}`);
+  lines.push(`    ${style.styled(style.theme.semantic.muted, 'Evidenced:')} ${data.coverage.evidenced} / ${data.coverage.total}`);
+  lines.push(`    ${style.styled(style.theme.semantic.muted, 'Coverage:')} ${pct}`);
 
   return lines.join('\n');
 }
@@ -804,15 +796,14 @@ export interface SuggestionsViewData {
 /**
  * Renders auto-linking suggestions grouped by status.
  */
-export function renderSuggestions(data: SuggestionsViewData): string {
-  const t = getTheme();
+export function renderSuggestions(data: SuggestionsViewData, style: StylePort): string {
   const lines: string[] = [];
 
   const pending = data.suggestions.filter((s) => s.status === 'PENDING');
   const accepted = data.suggestions.filter((s) => s.status === 'ACCEPTED');
   const rejected = data.suggestions.filter((s) => s.status === 'REJECTED');
 
-  lines.push(snapshotHeader(
+  lines.push(snapshotHeader(style,
     'Auto-Link Suggestions',
     `${pending.length} pending  ${accepted.length} accepted  ${rejected.length} rejected`,
     'secondary',
@@ -821,14 +812,14 @@ export function renderSuggestions(data: SuggestionsViewData): string {
   // --- Pending suggestions ---
   if (pending.length > 0) {
     lines.push('');
-    lines.push(separator({ label: 'Pending Review', borderToken: t.theme.border.warning }));
+    lines.push(separator({ label: 'Pending Review', borderToken: style.theme.border.warning }));
 
     const rows = pending.map((s) => {
       const layerBreakdown = s.layers
         .map((l) => `${l.layer}:${l.score.toFixed(2)}`)
         .join(' ');
       return [
-        styled(t.theme.semantic.muted, s.id.slice(0, 28)),
+        style.styled(style.theme.semantic.muted, s.id.slice(0, 28)),
         s.testFile.slice(0, 28),
         s.targetId.slice(0, 24),
         s.confidence.toFixed(2),
@@ -845,21 +836,21 @@ export function renderSuggestions(data: SuggestionsViewData): string {
         { header: 'Layers', width: 38 },
       ],
       rows,
-      headerToken: t.theme.ui.tableHeader,
-      borderToken: t.theme.border.primary,
+      headerToken: style.theme.ui.tableHeader,
+      borderToken: style.theme.border.primary,
     }));
   } else {
     lines.push('');
-    lines.push(styled(t.theme.semantic.muted, '  No pending suggestions.'));
+    lines.push(style.styled(style.theme.semantic.muted, '  No pending suggestions.'));
   }
 
   // --- Accepted suggestions ---
   if (accepted.length > 0) {
     lines.push('');
-    lines.push(separator({ label: 'Accepted', borderToken: t.theme.border.success }));
+    lines.push(separator({ label: 'Accepted', borderToken: style.theme.border.success }));
 
     const rows = accepted.map((s) => [
-      styled(t.theme.semantic.muted, s.id.slice(0, 28)),
+      style.styled(style.theme.semantic.muted, s.id.slice(0, 28)),
       s.testFile.slice(0, 28),
       s.targetId.slice(0, 24),
       s.confidence.toFixed(2),
@@ -875,18 +866,18 @@ export function renderSuggestions(data: SuggestionsViewData): string {
         { header: 'Accepted By', width: 16 },
       ],
       rows,
-      headerToken: t.theme.ui.tableHeader,
-      borderToken: t.theme.border.primary,
+      headerToken: style.theme.ui.tableHeader,
+      borderToken: style.theme.border.primary,
     }));
   }
 
   // --- Rejected suggestions ---
   if (rejected.length > 0) {
     lines.push('');
-    lines.push(separator({ label: 'Rejected', borderToken: t.theme.border.error }));
+    lines.push(separator({ label: 'Rejected', borderToken: style.theme.border.error }));
 
     const rows = rejected.map((s) => [
-      styled(t.theme.semantic.muted, s.id.slice(0, 28)),
+      style.styled(style.theme.semantic.muted, s.id.slice(0, 28)),
       s.testFile.slice(0, 28),
       s.targetId.slice(0, 24),
       s.confidence.toFixed(2),
@@ -902,15 +893,15 @@ export function renderSuggestions(data: SuggestionsViewData): string {
         { header: 'Rationale', width: 30 },
       ],
       rows,
-      headerToken: t.theme.ui.tableHeader,
-      borderToken: t.theme.border.primary,
+      headerToken: style.theme.ui.tableHeader,
+      borderToken: style.theme.border.primary,
     }));
   }
 
   // --- Stats ---
   lines.push('');
-  lines.push(separator({ label: 'Stats', borderToken: t.theme.border.primary }));
-  lines.push(`    ${styled(t.theme.semantic.muted, 'Total:')} ${data.suggestions.length}`);
+  lines.push(separator({ label: 'Stats', borderToken: style.theme.border.primary }));
+  lines.push(`    ${style.styled(style.theme.semantic.muted, 'Total:')} ${data.suggestions.length}`);
   lines.push(`    ${badge('PENDING', { variant: statusVariant('PENDING') })} ${pending.length}`);
   lines.push(`    ${badge('ACCEPTED', { variant: statusVariant('ACCEPTED') })} ${accepted.length}`);
   lines.push(`    ${badge('REJECTED', { variant: statusVariant('REJECTED') })} ${rejected.length}`);

@@ -169,7 +169,7 @@ export function registerDashboardCommands(program: Command, ctx: CliContext): vo
             milestonesBlocked: milestoneFrontierResult.blockedBy,
             milestones,
             milestoneExecutionOrder: snapshot.sortedCampaignIds,
-          }));
+          }, ctx.style));
           break;
         }
         case 'trace': {
@@ -225,7 +225,7 @@ export function registerDashboardCommands(program: Command, ctx: CliContext): vo
             unmetRequirements: unmetReqs,
             untestedCriteria,
             coverage,
-          }));
+          }, ctx.style));
           break;
         }
 
@@ -248,7 +248,7 @@ export function registerDashboardCommands(program: Command, ctx: CliContext): vo
           }
 
           const { renderSuggestions } = await import('../../tui/render-status.js');
-          ctx.print(renderSuggestions({ suggestions: snapshot.suggestions }));
+          ctx.print(renderSuggestions({ suggestions: snapshot.suggestions }, ctx.style));
           break;
         }
 
@@ -264,11 +264,11 @@ export function registerDashboardCommands(program: Command, ctx: CliContext): vo
           const { renderRoadmap, renderLineage, renderAll, renderInbox, renderSubmissions } = await import('../../tui/render-status.js');
 
           switch (view) {
-            case 'lineage': ctx.print(renderLineage(snapshot)); break;
-            case 'all': ctx.print(renderAll(snapshot)); break;
-            case 'inbox': ctx.print(renderInbox(snapshot)); break;
-            case 'submissions': ctx.print(renderSubmissions(snapshot)); break;
-            default: ctx.print(renderRoadmap(snapshot)); break;
+            case 'lineage': ctx.print(renderLineage(snapshot, ctx.style)); break;
+            case 'all': ctx.print(renderAll(snapshot, ctx.style)); break;
+            case 'inbox': ctx.print(renderInbox(snapshot, ctx.style)); break;
+            case 'submissions': ctx.print(renderSubmissions(snapshot, ctx.style)); break;
+            default: ctx.print(renderRoadmap(snapshot, ctx.style)); break;
           }
         }
       }
