@@ -30,6 +30,20 @@ All notable changes to XYPH will be documented in this file.
 - **Stale .tsx doc comment** — fixed leftover `.tsx` reference in `xyph-dashboard.ts`
 - **Coordinator daemon StylePort hoisting** — `StylePort` instance lifted to module level in `coordinator-daemon.ts` to avoid repeated construction
 
+### Fixed — PR #36 Code Review
+
+- **Lineage view hid orphan quests** — `renderLineage` returned early when `snapshot.intents.length === 0`, skipping orphan quest rendering; orphan detection now runs before the early return so sovereignty violations are always visible
+- **Remote-change events dropped during fetch** — `DashboardApp` now sets `refreshPending: true` when a `remote-change` arrives while a snapshot fetch is in-flight, triggering a follow-up refresh on completion
+- **Theme resolver read env var twice** — `BijouStyleAdapter` created a second `createThemeResolver` that re-read `XYPH_THEME`; now uses the already-resolved theme as fallback without re-reading
+- **Gradient sample RangeError** — `xyph-theme-lab.ts` could pass negative value to `'#'.repeat()` on narrow terminals; clamped to `Math.max(0, ...)`
+- **Double-styling in history command** — removed `chalk.dim()` inside `ctx.muted()` in `coordination.ts`; styling now flows exclusively through `StylePort`
+- **Guild terminology in roadmap** — replaced "tasks" with "Quests" in frontier blocked/waiting messages
+- **ARCHITECTURE.md diagram** — updated `(TUI/Ink)` label to `(TUI/TEA)` to match the bijou migration
+- **Lint scope** — added `xyph-theme-lab.ts` to ESLint config, lint script, and `tsconfig.json` includes; fixed unused `w` parameters surfaced by strict compilation
+- **Stale bridge.ts references** — updated comments in `xyph-presets.ts` to reference `BijouStyleAdapter`
+- **Theme brightness test** — replaced packed-RGB comparison with W3C relative luminance formula
+- **Test header assertion** — removed `toContain('Backlog')` header text assertion per project test guidelines
+
 ### Added — Work DAG Analysis Suite
 
 - **`DagAnalysis.ts`** — pure functions for DAG structure analysis: DAG width, greedy worker scheduling, and anti-chain grouping
