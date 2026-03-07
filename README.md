@@ -166,7 +166,9 @@ export XYPH_AGENT_ID=agent.hal
 npx tsx xyph-actuator.ts generate-key
 ```
 
-This creates an Ed25519 private key in `trust/agent.hal.sk` (gitignored) and registers the public key. Hal's completed work will carry a verifiable **Guild Seal** — a cryptographic signature proving who did the work.
+This creates an Ed25519 private key in `trust/agent.hal.sk` (gitignored) and registers the public key in `trust/keyring.json`. Hal's identity becomes a spec-compliant `did:key:z6Mk...` identifier derived from his public key. His completed work will carry a verifiable **Guild Seal** — a cryptographic signature proving who did the work.
+
+See [Guild Seals: Cryptographic Identity and Signing](docs/GUILD_SEALS.md) for the full deep-dive on key generation, DID encoding, signing, verification, and keyring migration.
 
 #### 4. Hal Claims a Quest
 
@@ -471,6 +473,7 @@ The `docs/canonical/` directory contains the foundational specifications:
 
 **Security & Audit**
 
+- [GUILD_SEALS.md](docs/GUILD_SEALS.md) — Guild Seal system: Ed25519 key generation, DID key encoding, signing, verification, keyring versioning, and migration pipeline
 - [SECURITY_AND_TRUST.md](docs/canonical/SECURITY_AND_TRUST.md) — Cryptographic identity and trust model
 - [AUDIT_AND_PROVENANCE.md](docs/canonical/AUDIT_AND_PROVENANCE.md) — Provenance tracking requirements
 - [AUDIT_EVENT_SCHEMA.json](docs/canonical/AUDIT_EVENT_SCHEMA.json) — Audit record JSON Schema

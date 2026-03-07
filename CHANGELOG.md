@@ -9,6 +9,7 @@ All notable changes to XYPH will be documented in this file.
 - **`history` command** — `xyph-actuator history <nodeId>` shows all patches that touched a node via git-warp's `patchesFor()` provenance API (Constitution Art. III compliance)
 - **Multibase DID key encoding** — `encodeBase58btc()` and `publicKeyToDidKey()` in `crypto.ts`; Ed25519 public keys are now encoded as spec-compliant `did:key:z6Mk...` identifiers using the multicodec prefix `0xed01` + base58btc multibase encoding (WVR-006)
 - **Versioned keyring migration pipeline** — `loadKeyring()` transparently migrates older keyring formats on read via a sequential migration chain (`v1 → v2 → ...`); future schema changes (key rotation, expiry, multi-algorithm) slot in by appending a migration function (WVR-006)
+- **Guild Seals documentation** — `docs/GUILD_SEALS.md` covers the full signing system top-to-bottom: key generation, DID key encoding, signing flow, verification, keyring schema, versioning, migration pipeline, trust directory layout, security considerations, and FAQ (WVR-006)
 
 ### Changed
 
