@@ -26,7 +26,7 @@ process.stderr.write = function (chunk: string | Uint8Array, ...args: StderrWrit
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { run } from '@flyingrobots/bijou-tui';
-import { ensureXyphContext } from './src/tui/theme/index.js';
+import { createStylePort } from './src/infrastructure/adapters/BijouStyleAdapter.js';
 import { createGraphContext } from './src/infrastructure/GraphContext.js';
 import { WarpGraphAdapter } from './src/infrastructure/adapters/WarpGraphAdapter.js';
 import { WarpIntakeAdapter } from './src/infrastructure/adapters/WarpIntakeAdapter.js';
@@ -35,8 +35,8 @@ import { createDashboardApp } from './src/tui/bijou/DashboardApp.js';
 import { loadRandomLogo, selectLogoSize } from './src/tui/logo-loader.js';
 import { TuiLogger } from './src/tui/TuiLogger.js';
 
-// Initialize bijou context with XYPH presets.
-ensureXyphContext();
+// Initialize bijou context with XYPH presets via StylePort.
+const style = createStylePort();
 
 const DEFAULT_AGENT_ID = 'agent.prime';
 const agentId = process.env['XYPH_AGENT_ID'] ?? DEFAULT_AGENT_ID;
@@ -65,6 +65,7 @@ const app = createDashboardApp({
   intake,
   graphPort,
   submissionPort,
+  style,
   agentId,
   logoText: splash.text,
 });

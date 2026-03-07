@@ -1,6 +1,6 @@
 import { headerBox, tree, type TreeNode, type AccordionSection, progressBar } from '@flyingrobots/bijou';
 import { interactiveAccordion, type AccordionState } from '@flyingrobots/bijou-tui';
-import { styled, styledStatus, getTheme } from '../../theme/index.js';
+import type { StylePort } from '../../../ports/StylePort.js';
 import type { DashboardModel } from '../DashboardApp.js';
 import type { QuestNode } from '../../../domain/models/dashboard.js';
 
@@ -29,16 +29,15 @@ function computeIntentStats(quests: QuestNode[]): IntentStats {
   return { questCount: quests.length, doneCount, totalHours, doneHours };
 }
 
-export function lineageView(model: DashboardModel, _width?: number, _height?: number): string {
-  const t = getTheme();
+export function lineageView(model: DashboardModel, style: StylePort, _width?: number, _height?: number): string {
   const snap = model.snapshot;
-  if (!snap) return styled(t.theme.semantic.muted, '  No snapshot loaded.');
+  if (!snap) return style.styled(style.theme.semantic.muted, '  No snapshot loaded.');
 
   const lines: string[] = [];
 
   lines.push(headerBox('Genealogy of Intent', {
     detail: `${snap.intents.length} intent(s)  ${snap.quests.length} quest(s)`,
-    borderToken: t.theme.border.secondary,
+    borderToken: style.theme.border.secondary,
   }));
 
   // Build lookup maps
@@ -62,7 +61,7 @@ export function lineageView(model: DashboardModel, _width?: number, _height?: nu
   );
 
   if (snap.intents.length === 0) {
-    lines.push(styled(t.theme.semantic.muted,
+    lines.push(style.styled(style.theme.semantic.muted,
       '\n  No intents declared yet.\n' +
       '  xyph-actuator intent <id> --title "..." --requested-by human.<name>',
     ));
@@ -77,42 +76,42 @@ export function lineageView(model: DashboardModel, _width?: number, _height?: nu
     const stats = computeIntentStats(quests);
 
     // Card title: ◆ intent:ID  Title
-    const titleStyle = isSelected ? t.theme.semantic.primary : t.theme.ui.intentHeader;
+    const titleStyle = isSelected ? style.theme.semantic.primary : style.theme.ui.intentHeader;
     const pct = stats.questCount > 0 ? Math.round((stats.doneCount / stats.questCount) * 100) : 0;
     const bar = stats.questCount > 0 ? '  ' + progressBar(pct, { width: 18 }) : '';
     const statsLine = stats.questCount > 0
       ? `  ${stats.doneCount}/${stats.questCount} quests  \u00B7  ${stats.doneHours}h / ${stats.totalHours}h`
       : '';
-    const title = styled(titleStyle, `\u25C6 ${intent.id}`) +
-      styled(t.theme.semantic.muted, `  ${intent.title}`) +
-      bar + styled(t.theme.semantic.muted, statsLine);
+    const title = style.styled(titleStyle, `\u25C6 ${intent.id}`) +
+      style.styled(style.theme.semantic.muted, `  ${intent.title}`) +
+      bar + style.styled(style.theme.semantic.muted, statsLine);
 
     // Build card subtitle lines
     const subtitleLines: string[] = [];
     const dateStr = new Date(intent.createdAt).toISOString().slice(0, 10);
-    subtitleLines.push(styled(t.theme.semantic.muted, `    requested-by: ${intent.requestedBy}  \u00B7  ${dateStr}`));
+    subtitleLines.push(style.styled(style.theme.semantic.muted, `    requested-by: ${intent.requestedBy}  \u00B7  ${dateStr}`));
     if (intent.description) {
-      subtitleLines.push(styled(t.theme.semantic.muted, `    ${truncate(intent.description, 72)}`));
+      subtitleLines.push(style.styled(style.theme.semantic.muted, `    ${truncate(intent.description, 72)}`));
     }
 
     // Content: subtitle + quest tree
     const contentParts: string[] = [...subtitleLines];
 
     if (quests.length === 0) {
-      contentParts.push(styled(t.theme.semantic.muted, '    (no quests)'));
+      contentParts.push(style.styled(style.theme.semantic.muted, '    (no quests)'));
     } else {
       const treeNodes: TreeNode[] = quests.map(q => {
         const scrollEntry = scrollByQuestId.get(q.id);
         const scrollMark = scrollEntry !== undefined
-          ? (scrollEntry.hasSeal ? styled(t.theme.semantic.success, ' \u2713') : styled(t.theme.semantic.warning, ' \u25CB'))
+          ? (scrollEntry.hasSeal ? style.styled(style.theme.semantic.success, ' \u2713') : style.styled(style.theme.semantic.warning, ' \u25CB'))
           : '';
 
-        const label = `${styled(t.theme.semantic.muted, q.id)}  ${truncate(q.title, 38)}  [${styledStatus(q.status)}]${scrollMark}`;
+        const label = `${style.styled(style.theme.semantic.muted, q.id)}  ${truncate(q.title, 38)}  [${style.styledStatus(q.status)}]${scrollMark}`;
 
         const children: TreeNode[] = [];
         if (scrollEntry !== undefined) {
           children.push({
-            label: `${styled(t.theme.semantic.muted, 'scroll:')} ${styled(t.theme.semantic.muted, scrollEntry.id)}`,
+            label: `${style.styled(style.theme.semantic.muted, 'scroll:')} ${style.styled(style.theme.semantic.muted, scrollEntry.id)}`,
           });
         }
 
@@ -120,7 +119,7 @@ export function lineageView(model: DashboardModel, _width?: number, _height?: nu
       });
 
       // Indent tree output
-      const rendered = tree(treeNodes, { guideToken: t.theme.semantic.muted });
+      const rendered = tree(treeNodes, { guideToken: style.theme.semantic.muted });
       contentParts.push(rendered.split('\n').map(l => `    ${l}`).join('\n'));
     }
 
@@ -134,7 +133,7 @@ export function lineageView(model: DashboardModel, _width?: number, _height?: nu
       focusIndex: Math.max(0, model.lineage.selectedIndex),
     };
     lines.push(interactiveAccordion(accState, {
-      indicatorToken: t.theme.semantic.primary,
+      indicatorToken: style.theme.semantic.primary,
       focusChar: '\u25B6',
     }));
   }
@@ -142,13 +141,13 @@ export function lineageView(model: DashboardModel, _width?: number, _height?: nu
   // Orphan quests section
   if (orphans.length > 0) {
     lines.push('');
-    lines.push(styled(t.theme.semantic.error, '  \u26A0 Orphan quests (no intent \u2014 Constitution violation)'));
+    lines.push(style.styled(style.theme.semantic.error, '  \u26A0 Orphan quests (no intent \u2014 Constitution violation)'));
 
     const orphanNodes: TreeNode[] = orphans.map(q => ({
-      label: `${styled(t.theme.semantic.muted, q.id)}  ${truncate(q.title, 38)}  [${styledStatus(q.status)}]`,
+      label: `${style.styled(style.theme.semantic.muted, q.id)}  ${truncate(q.title, 38)}  [${style.styledStatus(q.status)}]`,
     }));
 
-    const rendered = tree(orphanNodes, { guideToken: t.theme.semantic.error });
+    const rendered = tree(orphanNodes, { guideToken: style.theme.semantic.error });
     for (const line of rendered.split('\n')) {
       lines.push(`     ${line}`);
     }

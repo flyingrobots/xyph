@@ -4,7 +4,7 @@ import {
   type TimelineEvent, type BaseStatusKey,
 } from '@flyingrobots/bijou';
 import { flex, createFocusAreaState, focusAreaScrollTo, focusArea } from '@flyingrobots/bijou-tui';
-import { styled, styledStatus, getTheme } from '../../theme/index.js';
+import type { StylePort } from '../../../ports/StylePort.js';
 import { statusVariant, formatAge } from '../../view-helpers.js';
 import type { DashboardModel } from '../DashboardApp.js';
 import type { QuestNode } from '../../../domain/models/dashboard.js';
@@ -15,11 +15,10 @@ import {
 
 interface ActivityEvent { ts: number; text: string }
 
-export function dashboardView(model: DashboardModel, width?: number, height?: number): string {
-  const t = getTheme();
+export function dashboardView(model: DashboardModel, style: StylePort, width?: number, height?: number): string {
   const w = width ?? model.cols;
   const h = height ?? (model.rows - 3);
-  if (!model.snapshot) return styled(t.theme.semantic.muted, '  No snapshot loaded.');
+  if (!model.snapshot) return style.styled(style.theme.semantic.muted, '  No snapshot loaded.');
   const snap = model.snapshot;
 
   // ── Compute project-wide stats ─────────────────────────────────────
@@ -135,10 +134,10 @@ export function dashboardView(model: DashboardModel, width?: number, height?: nu
 
     // Project header with progress bar (full-width)
     const barWidth = Math.max(10, Math.min(30, pw - 44));
-    const barStr = progressBar(pct, { width: barWidth, gradient: t.theme.gradient.progress });
+    const barStr = progressBar(pct, { width: barWidth, gradient: style.theme.gradient.progress });
     lines.push(headerBox('XYPH Dashboard', {
-      detail: `${barStr}  ${styled(t.theme.semantic.primary, `${pct}%`)}  ${doneQuests.length}/${totalNonBacklog} complete`,
-      borderToken: t.theme.border.primary,
+      detail: `${barStr}  ${style.styled(style.theme.semantic.primary, `${pct}%`)}  ${doneQuests.length}/${totalNonBacklog} complete`,
+      borderToken: style.theme.border.primary,
       width: pw,
     }));
 
@@ -152,17 +151,17 @@ export function dashboardView(model: DashboardModel, width?: number, height?: nu
       statParts.push(`tick: ${meta.maxTick}`);
     }
     lines.push('');
-    lines.push(styled(t.theme.semantic.muted, `  Graph  ${statParts.join(' \u00B7 ')}`));
+    lines.push(style.styled(style.theme.semantic.muted, `  Graph  ${statParts.join(' \u00B7 ')}`));
 
     // In Progress (table)
     lines.push('');
-    lines.push(separator({ label: `In Progress (${inProgress.length})`, borderToken: t.theme.border.secondary, width: pw }));
+    lines.push(separator({ label: `In Progress (${inProgress.length})`, borderToken: style.theme.border.secondary, width: pw }));
     if (inProgress.length === 0) {
-      lines.push(styled(t.theme.semantic.muted, '   (none)'));
+      lines.push(style.styled(style.theme.semantic.muted, '   (none)'));
     } else {
       const ipRows = inProgress.slice(0, 8).map((q, i) => {
         const indicator = (dv?.focusPanel === 'in-progress' && dv.focusRow === i)
-          ? styled(t.theme.semantic.primary, '\u25B6 ')
+          ? style.styled(style.theme.semantic.primary, '\u25B6 ')
           : '  ';
         return [
           indicator + q.id.replace(/^task:/, ''),
@@ -177,38 +176,38 @@ export function dashboardView(model: DashboardModel, width?: number, height?: nu
           { header: 'Owner', width: 14 },
         ],
         rows: ipRows,
-        headerToken: t.theme.ui.tableHeader,
-        borderToken: t.theme.border.primary,
+        headerToken: style.theme.ui.tableHeader,
+        borderToken: style.theme.border.primary,
       }));
       if (inProgress.length > 8) {
-        lines.push(styled(t.theme.semantic.muted, `   +${inProgress.length - 8} more`));
+        lines.push(style.styled(style.theme.semantic.muted, `   +${inProgress.length - 8} more`));
       }
     }
 
     // Blocked quests
     if (dagResult && dagResult.blockedBy.size > 0) {
       lines.push('');
-      lines.push(separator({ label: `Blocked (${dagResult.blockedBy.size})`, borderToken: t.theme.border.secondary, width: pw }));
+      lines.push(separator({ label: `Blocked (${dagResult.blockedBy.size})`, borderToken: style.theme.border.secondary, width: pw }));
       for (const [id, blockers] of [...dagResult.blockedBy.entries()].slice(0, 4)) {
         const q = snap.quests.find(quest => quest.id === id);
         const title = q ? q.title.slice(0, pw - 35) : id;
         const deps = blockers.map(b => b.replace(/^task:/, '')).join(', ');
-        lines.push(`  ${styled(t.theme.semantic.muted, id.replace(/^task:/, ''))} ${title}`);
-        lines.push(styled(t.theme.semantic.warning, `    waits on: ${deps.slice(0, pw - 14)}`));
+        lines.push(`  ${style.styled(style.theme.semantic.muted, id.replace(/^task:/, ''))} ${title}`);
+        lines.push(style.styled(style.theme.semantic.warning, `    waits on: ${deps.slice(0, pw - 14)}`));
       }
       if (dagResult.blockedBy.size > 4) {
-        lines.push(styled(t.theme.semantic.muted, `  +${dagResult.blockedBy.size - 4} more`));
+        lines.push(style.styled(style.theme.semantic.muted, `  +${dagResult.blockedBy.size - 4} more`));
       }
     }
 
     // Pending Review
     if (pendingReview.length > 0) {
       lines.push('');
-      lines.push(separator({ label: `Pending Review (${pendingReview.length})`, borderToken: t.theme.border.secondary, width: pw }));
+      lines.push(separator({ label: `Pending Review (${pendingReview.length})`, borderToken: style.theme.border.secondary, width: pw }));
       for (const s of pendingReview.slice(0, 5)) {
         const q = questById.get(s.questId);
         const title = q ? q.title.slice(0, Math.max(0, pw - 30)) : s.questId;
-        lines.push(`   ${styled(t.theme.semantic.muted, s.id.replace(/^submission:/, ''))} ${title}  ${badge(s.status, { variant: statusVariant(s.status) })}`);
+        lines.push(`   ${style.styled(style.theme.semantic.muted, s.id.replace(/^submission:/, ''))} ${title}  ${badge(s.status, { variant: statusVariant(s.status) })}`);
       }
     }
 
@@ -216,7 +215,7 @@ export function dashboardView(model: DashboardModel, width?: number, height?: nu
     if (activeCampaigns.length > 0) {
       const doneCampaignIds = new Set(snap.campaigns.filter(c => c.status === 'DONE').map(c => c.id));
       lines.push('');
-      lines.push(separator({ label: 'Campaigns', borderToken: t.theme.border.secondary, width: pw }));
+      lines.push(separator({ label: 'Campaigns', borderToken: style.theme.border.secondary, width: pw }));
       for (const c of activeCampaigns) {
         const cQuests = questsByCampaign.get(c.id) ?? [];
         const cDone = cQuests.filter(q => q.status === 'DONE').length;
@@ -226,22 +225,22 @@ export function dashboardView(model: DashboardModel, width?: number, height?: nu
         const cBar = cTotal > 0 ? progressBar(cPct, { width: cBarWidth }) : '';
         const label = c.title.slice(0, Math.max(0, pw - 30));
         const blockedDeps = (c.dependsOn ?? []).filter(dep => !doneCampaignIds.has(dep));
-        const blockedMark = blockedDeps.length > 0 ? styled(t.theme.semantic.warning, ' [blocked]') : '';
+        const blockedMark = blockedDeps.length > 0 ? style.styled(style.theme.semantic.warning, ' [blocked]') : '';
         lines.push(`   ${label}  ${cBar} ${cDone}/${cTotal}${blockedMark}`);
       }
     }
 
     // Health
     lines.push('');
-    lines.push(separator({ label: 'Health', borderToken: t.theme.border.secondary, width: pw }));
+    lines.push(separator({ label: 'Health', borderToken: style.theme.border.secondary, width: pw }));
     lines.push(`  Sovereignty: ${withIntent}/${totalNonBacklog}`);
     if (orphanCount > 0) {
-      lines.push(styled(t.theme.semantic.warning, `  Orphans: ${orphanCount}`));
+      lines.push(style.styled(style.theme.semantic.warning, `  Orphans: ${orphanCount}`));
     } else {
       lines.push(`  Orphans: 0`);
     }
     if (forkedCount > 0) {
-      lines.push(styled(t.theme.semantic.error, `  Forked: ${forkedCount}`));
+      lines.push(style.styled(style.theme.semantic.error, `  Forked: ${forkedCount}`));
     } else {
       lines.push(`  Forked: 0`);
     }
@@ -251,7 +250,7 @@ export function dashboardView(model: DashboardModel, width?: number, height?: nu
       const topBlockers = computeTopBlockers(tasks, depEdges, 3);
       if (topBlockers.length > 0) {
         lines.push('');
-        lines.push(separator({ label: 'Top Blockers', borderToken: t.theme.border.secondary, width: pw }));
+        lines.push(separator({ label: 'Top Blockers', borderToken: style.theme.border.secondary, width: pw }));
         const blockerItems = topBlockers.map(b => {
           const q = snap.quests.find(quest => quest.id === b.id);
           const title = q ? q.title.slice(0, pw - 30) : b.id;
@@ -266,19 +265,19 @@ export function dashboardView(model: DashboardModel, width?: number, height?: nu
       const cp = computeCriticalPath(snap.sortedTaskIds, tasks, depEdges);
       if (cp.path.length > 1) {
         const cpLabel = `Critical Path  ${cp.path.length} quests \u00B7 ${cp.totalHours}h`;
-        lines.push(styled(t.theme.semantic.muted, `  ${cpLabel}`));
+        lines.push(style.styled(style.theme.semantic.muted, `  ${cpLabel}`));
       }
     }
 
     // Completed campaigns fold
     if (doneCampaigns.length > 0) {
       lines.push('');
-      lines.push(styled(t.theme.semantic.success, ` \u25B8 Completed (${doneCampaigns.length} campaign${doneCampaigns.length > 1 ? 's' : ''})`));
+      lines.push(style.styled(style.theme.semantic.success, ` \u25B8 Completed (${doneCampaigns.length} campaign${doneCampaigns.length > 1 ? 's' : ''})`));
     }
 
     // Graveyard fold
     if (graveyardCount > 0) {
-      lines.push(styled(t.theme.semantic.muted, ` \u25B8 Graveyard (${graveyardCount} quest${graveyardCount > 1 ? 's' : ''})`));
+      lines.push(style.styled(style.theme.semantic.muted, ` \u25B8 Graveyard (${graveyardCount} quest${graveyardCount > 1 ? 's' : ''})`));
     }
 
     const content = lines.join('\n');
@@ -294,55 +293,55 @@ export function dashboardView(model: DashboardModel, width?: number, height?: nu
 
     // My Issues
     const issueLabel = agentId ? 'My Quests' : 'Assigned Quests';
-    lines.push(separator({ label: `${issueLabel} (${myIssues.length})`, borderToken: t.theme.border.secondary, width: pw }));
+    lines.push(separator({ label: `${issueLabel} (${myIssues.length})`, borderToken: style.theme.border.secondary, width: pw }));
     if (myIssues.length === 0) {
-      lines.push(styled(t.theme.semantic.muted, '  (none)'));
+      lines.push(style.styled(style.theme.semantic.muted, '  (none)'));
     } else {
       for (const [i, q] of myIssues.slice(0, 6).entries()) {
         const indicator = (dv?.focusPanel === 'my-quests' && dv.focusRow === i)
-          ? styled(t.theme.semantic.primary, '\u25B6')
+          ? style.styled(style.theme.semantic.primary, '\u25B6')
           : ' ';
-        const statusStr = styledStatus(q.status);
-        lines.push(`  ${indicator} ${styled(t.theme.semantic.muted, q.id.replace(/^task:/, ''))} ${q.title.slice(0, Math.max(0, pw - 22))} ${statusStr}`);
+        const statusStr = style.styledStatus(q.status);
+        lines.push(`  ${indicator} ${style.styled(style.theme.semantic.muted, q.id.replace(/^task:/, ''))} ${q.title.slice(0, Math.max(0, pw - 22))} ${statusStr}`);
       }
       if (myIssues.length > 6) {
-        lines.push(styled(t.theme.semantic.muted, `  +${myIssues.length - 6} more`));
+        lines.push(style.styled(style.theme.semantic.muted, `  +${myIssues.length - 6} more`));
       }
     }
 
     // My Submissions
     lines.push('');
     const subLabel = agentId ? 'My Submissions' : 'Pending Submissions';
-    lines.push(separator({ label: `${subLabel} (${mySubmissions.length})`, borderToken: t.theme.border.secondary, width: pw }));
+    lines.push(separator({ label: `${subLabel} (${mySubmissions.length})`, borderToken: style.theme.border.secondary, width: pw }));
     if (mySubmissions.length === 0) {
-      lines.push(styled(t.theme.semantic.muted, '  (none pending)'));
+      lines.push(style.styled(style.theme.semantic.muted, '  (none pending)'));
     } else {
       for (const s of mySubmissions.slice(0, 4)) {
         const q = questById.get(s.questId);
         const title = q ? q.title.slice(0, Math.max(0, pw - 20)) : s.questId;
-        lines.push(`  ${styled(t.theme.semantic.muted, s.id.replace(/^submission:/, ''))} ${title}  ${badge(s.status, { variant: statusVariant(s.status) })}`);
+        lines.push(`  ${style.styled(style.theme.semantic.muted, s.id.replace(/^submission:/, ''))} ${title}  ${badge(s.status, { variant: statusVariant(s.status) })}`);
       }
       if (mySubmissions.length > 4) {
-        lines.push(styled(t.theme.semantic.muted, `  +${mySubmissions.length - 4} more`));
+        lines.push(style.styled(style.theme.semantic.muted, `  +${mySubmissions.length - 4} more`));
       }
     }
 
     // Inbox pressure
     if (backlogCount > 0) {
       lines.push('');
-      lines.push(styled(t.theme.semantic.info, ` Inbox (${backlogCount} quest${backlogCount > 1 ? 's' : ''})`));
-      lines.push(styled(t.theme.semantic.muted, '  Quests awaiting triage'));
+      lines.push(style.styled(style.theme.semantic.info, ` Inbox (${backlogCount} quest${backlogCount > 1 ? 's' : ''})`));
+      lines.push(style.styled(style.theme.semantic.muted, '  Quests awaiting triage'));
     }
 
     // Activity Feed
     if (recentActivity.length > 0) {
       lines.push('');
-      lines.push(separator({ label: 'Recent Activity', borderToken: t.theme.border.secondary, width: pw }));
+      lines.push(separator({ label: 'Recent Activity', borderToken: style.theme.border.secondary, width: pw }));
       const tlEvents: TimelineEvent[] = recentActivity.map(ev => ({
         label: `${formatAge(ev.ts)}  ${ev.text.slice(0, Math.max(0, pw - 10))}`,
         status: activityEventStatus(ev.text),
       }));
-      lines.push(timeline(tlEvents, { lineToken: t.theme.semantic.muted }));
+      lines.push(timeline(tlEvents, { lineToken: style.theme.semantic.muted }));
     }
 
     const content = lines.join('\n');

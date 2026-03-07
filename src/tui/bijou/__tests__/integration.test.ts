@@ -6,9 +6,8 @@
  * The snapshot is injected synchronously via the snapshot-loaded message.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { _resetThemeForTesting } from '@flyingrobots/bijou';
 import type { App, KeyMsg } from '@flyingrobots/bijou-tui';
-import { ensureXyphContext, _resetBridgeForTesting } from '../../theme/bridge.js';
+import { createPlainStylePort, ensurePlainBijouContext } from '../../../infrastructure/adapters/PlainStyleAdapter.js';
 import { createDashboardApp, type DashboardModel, type DashboardMsg } from '../DashboardApp.js';
 import type { GraphContext } from '../../../infrastructure/GraphContext.js';
 import type { GraphSnapshot } from '../../../domain/models/dashboard.js';
@@ -70,7 +69,8 @@ function buildApp(): { app: App<DashboardModel, DashboardMsg>; mockIntake: Intak
 
   const app = createDashboardApp({
     ctx: mockCtx, intake: mockIntake, graphPort: mockGraphPort,
-    submissionPort: mockSubmissionPort, agentId: 'agent.test', logoText: 'XYPH',
+    submissionPort: mockSubmissionPort, style: createPlainStylePort(),
+    agentId: 'agent.test', logoText: 'XYPH',
   });
 
   return { app, mockIntake, mockGraphPort, mockSubmissionPort };
@@ -108,20 +108,17 @@ function drive(
 
 // ── Tests ─────────────────────────────────────────────────────────────
 
+ensurePlainBijouContext();
+
 describe('DashboardApp integration (full loop)', () => {
   beforeEach(() => {
-    _resetThemeForTesting();
-    _resetBridgeForTesting();
-    vi.stubEnv('NO_COLOR', '1');
-    vi.stubEnv('XYPH_THEME', 'cyan-magenta');
-    ensureXyphContext();
+    delete process.env['NO_COLOR'];
+    delete process.env['XYPH_THEME'];
   });
 
   afterEach(() => {
     vi.unstubAllEnvs();
     vi.clearAllMocks();
-    _resetThemeForTesting();
-    _resetBridgeForTesting();
   });
 
   // ── Navigation ────────────────────────────────────────────────────

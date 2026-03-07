@@ -1,42 +1,39 @@
 import { flex, navigableTable, createPagerState, pagerScrollTo, pager } from '@flyingrobots/bijou-tui';
 import { badge, stepper, type StepperStep } from '@flyingrobots/bijou';
-import { styled, getTheme } from '../../theme/index.js';
+import type { StylePort } from '../../../ports/StylePort.js';
 import { statusVariant, formatAge } from '../../view-helpers.js';
 import type { DashboardModel } from '../DashboardApp.js';
 import type { ReviewNode, DecisionNode } from '../../../domain/models/dashboard.js';
 import { sortedSubmissions } from '../selection-order.js';
 
-function verdictIcon(verdict: string): string {
-  const t = getTheme();
+function verdictIcon(verdict: string, style: StylePort): string {
   switch (verdict) {
-    case 'approve':         return styled(t.theme.semantic.success, '\u2713');
-    case 'request-changes': return styled(t.theme.semantic.error, '\u2718');
-    case 'comment':         return styled(t.theme.semantic.muted, '\u25CB');
+    case 'approve':         return style.styled(style.theme.semantic.success, '\u2713');
+    case 'request-changes': return style.styled(style.theme.semantic.error, '\u2718');
+    case 'comment':         return style.styled(style.theme.semantic.muted, '\u25CB');
     default:                return '?';
   }
 }
 
-function decisionIcon(kind: string): string {
-  const t = getTheme();
+function decisionIcon(kind: string, style: StylePort): string {
   switch (kind) {
-    case 'merge': return styled(t.theme.semantic.success, '\u2295 MERGED');
-    case 'close': return styled(t.theme.semantic.error, '\u2297 CLOSED');
+    case 'merge': return style.styled(style.theme.semantic.success, '\u2295 MERGED');
+    case 'close': return style.styled(style.theme.semantic.error, '\u2297 CLOSED');
     default:      return kind;
   }
 }
 
-export function submissionsView(model: DashboardModel, width?: number, height?: number): string {
-  const t = getTheme();
+export function submissionsView(model: DashboardModel, style: StylePort, width?: number, height?: number): string {
   const w = width ?? model.cols;
   const h = height ?? (model.rows - 3);
   const snap = model.snapshot;
-  if (!snap) return styled(t.theme.semantic.muted, '  No snapshot loaded.');
+  if (!snap) return style.styled(style.theme.semantic.muted, '  No snapshot loaded.');
 
   if (snap.submissions.length === 0) {
     const lines: string[] = [];
-    lines.push(styled(t.theme.semantic.primary, ' Submissions'));
+    lines.push(style.styled(style.theme.semantic.primary, ' Submissions'));
     lines.push('');
-    lines.push(styled(t.theme.semantic.muted,
+    lines.push(style.styled(style.theme.semantic.muted,
       '  No submissions yet.\n' +
       '  Submit work: xyph-actuator submit <quest-id> --description "..."',
     ));
@@ -68,10 +65,10 @@ export function submissionsView(model: DashboardModel, width?: number, height?: 
 
   function renderList(_pw: number, _ph: number): string {
     const lines: string[] = [];
-    lines.push(styled(t.theme.semantic.primary, ` Submissions (${sorted.length})`));
+    lines.push(style.styled(style.theme.semantic.primary, ` Submissions (${sorted.length})`));
     lines.push('');
     lines.push(navigableTable(model.submissions.table, {
-      focusIndicator: styled(t.theme.semantic.primary, '\u25B6'),
+      focusIndicator: style.styled(style.theme.semantic.primary, '\u25B6'),
     }));
     return lines.join('\n');
   }
@@ -82,18 +79,18 @@ export function submissionsView(model: DashboardModel, width?: number, height?: 
 
   function renderDetail(pw: number, ph: number): string {
     if (expandedId === null) {
-      return styled(t.theme.semantic.muted, '  Select a submission and press Enter to view details.');
+      return style.styled(style.theme.semantic.muted, '  Select a submission and press Enter to view details.');
     }
 
     const sub = submissionById.get(expandedId);
     if (!sub) {
-      return styled(t.theme.semantic.muted, '  Submission not found.');
+      return style.styled(style.theme.semantic.muted, '  Submission not found.');
     }
 
     const lines: string[] = [];
     const qTitle = questTitle.get(sub.questId) ?? sub.questId;
 
-    lines.push(styled(t.theme.semantic.primary, ` ${sub.id}`));
+    lines.push(style.styled(style.theme.semantic.primary, ` ${sub.id}`));
     lines.push('');
     lines.push(` Quest:     ${qTitle}`);
     lines.push(` Submitter: ${sub.submittedBy}`);
@@ -111,31 +108,31 @@ export function submissionsView(model: DashboardModel, width?: number, height?: 
     const currentStep = stepForStatus(sub.status, sub.approvalCount);
     lines.push(stepper(steps, { current: currentStep }));
     if (sub.headsCount > 1) {
-      lines.push(styled(t.theme.semantic.warning, ` \u26A0 Forked: ${sub.headsCount} heads`));
+      lines.push(style.styled(style.theme.semantic.warning, ` \u26A0 Forked: ${sub.headsCount} heads`));
     }
 
     // Patchset chain
     lines.push('');
-    lines.push(styled(t.theme.semantic.primary, ' Patchset Chain'));
+    lines.push(style.styled(style.theme.semantic.primary, ' Patchset Chain'));
     if (sub.tipPatchsetId) {
-      lines.push(` tip: ${styled(t.theme.semantic.info, sub.tipPatchsetId)}`);
+      lines.push(` tip: ${style.styled(style.theme.semantic.info, sub.tipPatchsetId)}`);
     } else {
-      lines.push(styled(t.theme.semantic.muted, '  (no patchsets)'));
+      lines.push(style.styled(style.theme.semantic.muted, '  (no patchsets)'));
     }
 
     // Reviews on tip patchset
     if (sub.tipPatchsetId) {
       const reviews = reviewsByPatchset.get(sub.tipPatchsetId) ?? [];
       lines.push('');
-      lines.push(styled(t.theme.semantic.primary, ' Reviews'));
+      lines.push(style.styled(style.theme.semantic.primary, ' Reviews'));
       if (reviews.length === 0) {
-        lines.push(styled(t.theme.semantic.muted, '  (no reviews)'));
+        lines.push(style.styled(style.theme.semantic.muted, '  (no reviews)'));
       } else {
         for (const r of reviews) {
-          const icon = verdictIcon(r.verdict);
+          const icon = verdictIcon(r.verdict, style);
           lines.push(` ${icon} ${r.verdict.padEnd(16)} ${r.reviewedBy}`);
           if (r.comment) {
-            lines.push(styled(t.theme.semantic.muted, `   ${r.comment.slice(0, pw - 6)}`));
+            lines.push(style.styled(style.theme.semantic.muted, `   ${r.comment.slice(0, pw - 6)}`));
           }
         }
       }
@@ -145,14 +142,14 @@ export function submissionsView(model: DashboardModel, width?: number, height?: 
     const decisions = decisionsBySub.get(sub.id) ?? [];
     if (decisions.length > 0) {
       lines.push('');
-      lines.push(styled(t.theme.semantic.primary, ' Decision'));
+      lines.push(style.styled(style.theme.semantic.primary, ' Decision'));
       for (const d of decisions) {
-        lines.push(` ${decisionIcon(d.kind)}  by ${d.decidedBy}`);
+        lines.push(` ${decisionIcon(d.kind, style)}  by ${d.decidedBy}`);
         if (d.rationale) {
-          lines.push(styled(t.theme.semantic.muted, `   ${d.rationale.slice(0, pw - 6)}`));
+          lines.push(style.styled(style.theme.semantic.muted, `   ${d.rationale.slice(0, pw - 6)}`));
         }
         if (d.mergeCommit) {
-          lines.push(` merge: ${styled(t.theme.semantic.info, d.mergeCommit)}`);
+          lines.push(` merge: ${style.styled(style.theme.semantic.info, d.mergeCommit)}`);
         }
       }
     }
@@ -180,4 +177,3 @@ function stepForStatus(status: string, approvalCount: number): number {
     default: return 0;
   }
 }
-

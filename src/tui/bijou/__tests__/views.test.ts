@@ -1,7 +1,7 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { _resetThemeForTesting } from '@flyingrobots/bijou';
+import { describe, it, expect } from 'vitest';
 import { createNavigableTableState, navTableFocusNext, type NavigableTableState } from '@flyingrobots/bijou-tui';
-import { ensureXyphContext, _resetBridgeForTesting } from '../../theme/bridge.js';
+import { createPlainStylePort, ensurePlainBijouContext } from '../../../infrastructure/adapters/PlainStyleAdapter.js';
+import type { StylePort } from '../../../ports/StylePort.js';
 import type { DashboardModel } from '../DashboardApp.js';
 import type { GraphSnapshot, QuestNode, IntentNode, CampaignNode, ScrollNode, SubmissionNode, ReviewNode, DecisionNode } from '../../../domain/models/dashboard.js';
 import { SUBMISSION_STATUS_ORDER } from '../../../domain/entities/Submission.js';
@@ -225,35 +225,27 @@ function decision(overrides: Partial<DecisionNode> & { id: string; submissionId:
   };
 }
 
-// ── Setup / teardown ───────────────────────────────────────────────────
+// ── Setup ───────────────────────────────────────────────────────────────
+
+const style: StylePort = createPlainStylePort();
+
+// Bijou's own components (headerBox, tabs, tree, table) read the default context.
+ensurePlainBijouContext();
 
 describe('bijou views', () => {
-  beforeEach(() => {
-    _resetThemeForTesting();
-    _resetBridgeForTesting();
-    vi.stubEnv('NO_COLOR', '1');
-    vi.stubEnv('XYPH_THEME', 'cyan-magenta');
-    ensureXyphContext();
-  });
-
-  afterEach(() => {
-    vi.unstubAllEnvs();
-    _resetThemeForTesting();
-    _resetBridgeForTesting();
-  });
 
   // ── Roadmap View ───────────────────────────────────────────────────────
 
   describe('roadmapView', () => {
     it('returns muted text when snapshot is null', () => {
-      const out = roadmapView(makeModel(null));
+      const out = roadmapView(makeModel(null), style);
       const plain = strip(out);
       expect(plain.length).toBeGreaterThan(0);
       expect(plain).not.toContain('task:');
     });
 
     it('shows empty message when no quests', () => {
-      const out = roadmapView(makeModel(makeSnapshot()));
+      const out = roadmapView(makeModel(makeSnapshot()), style);
       const plain = strip(out);
       expect(plain).not.toContain('task:');
     });
@@ -266,7 +258,7 @@ describe('bijou views', () => {
           quest({ id: 'task:A-002', title: 'Second quest', campaignId: 'campaign:M1', status: 'IN_PROGRESS' }),
         ],
       });
-      const plain = strip(roadmapView(makeModel(snap)));
+      const plain = strip(roadmapView(makeModel(snap), style));
       expect(plain).toContain('Milestone 1');
       expect(plain).toContain('task:A-001');
       expect(plain).toContain('First quest');
@@ -278,7 +270,7 @@ describe('bijou views', () => {
       const snap = makeSnapshot({
         quests: [quest({ id: 'task:X-001', title: 'Orphan quest' })],
       });
-      const plain = strip(roadmapView(makeModel(snap)));
+      const plain = strip(roadmapView(makeModel(snap), style));
       expect(plain).not.toContain('campaign:');
     });
 
@@ -291,7 +283,7 @@ describe('bijou views', () => {
       });
       const model = makeModel(snap);
       // focusRow defaults to 0 — first quest is focused
-      const plain = strip(roadmapView(model));
+      const plain = strip(roadmapView(model, style));
       // The selected quest should have a selection indicator
       expect(plain).toContain('\u25B6');
     });
@@ -307,7 +299,7 @@ describe('bijou views', () => {
       });
       const model = makeModel(snap);
       // focusRow defaults to 0 — first quest is focused
-      const plain = strip(roadmapView(model, 120, 30));
+      const plain = strip(roadmapView(model, style, 120, 30));
       expect(plain).toContain('task:A');
       expect(plain).toContain('Alpha Quest');
       expect(plain).toContain('PLANNED');
@@ -325,7 +317,7 @@ describe('bijou views', () => {
       });
       const model = makeModel(snap);
       // focusRow defaults to 0 — task:B is the only non-DONE quest (index 0 in selectable list)
-      const plain = strip(roadmapView(model, 120, 30));
+      const plain = strip(roadmapView(model, style, 120, 30));
       expect(plain).toContain('Alpha');
     });
 
@@ -340,7 +332,7 @@ describe('bijou views', () => {
       });
       const model = makeModel(snap);
       // focusRow defaults to 0 — first quest is focused
-      const plain = strip(roadmapView(model, 120, 30));
+      const plain = strip(roadmapView(model, style, 120, 30));
       expect(plain).toContain('OPEN');
     });
 
@@ -356,7 +348,7 @@ describe('bijou views', () => {
       });
       const model = makeModel(snap);
       // focusRow defaults to 0 — should select first frontier item
-      const plain = strip(roadmapView(model, 120, 30));
+      const plain = strip(roadmapView(model, style, 120, 30));
       // The selection indicator should be next to a frontier item, not task:C
       const lines = plain.split('\n');
       const selectedLine = lines.find(l => l.includes('\u25B6'));
@@ -373,7 +365,7 @@ describe('bijou views', () => {
       });
       const model = makeModel(snap);
       // All quests are DONE → no selectable items → focusRow=0 maps to nothing
-      const plain = strip(roadmapView(model, 120, 30));
+      const plain = strip(roadmapView(model, style, 120, 30));
       // Should NOT contain detail-panel-specific fields like "Hours:" or "Campaign:"
       expect(plain).not.toContain('Hours:');
     });
@@ -383,7 +375,7 @@ describe('bijou views', () => {
 
   describe('backlogView', () => {
     it('returns muted text when snapshot is null', () => {
-      const out = backlogView(makeModel(null));
+      const out = backlogView(makeModel(null), style);
       const plain = strip(out);
       expect(plain.length).toBeGreaterThan(0);
       expect(plain).not.toContain('task:');
@@ -393,7 +385,7 @@ describe('bijou views', () => {
       const snap = makeSnapshot({
         quests: [quest({ id: 'task:Q-001', title: 'Not backlog', status: 'PLANNED' })],
       });
-      const plain = strip(backlogView(makeModel(snap)));
+      const plain = strip(backlogView(makeModel(snap), style));
       expect(plain).toContain('Backlog');
       // Assert on count (0 items), not display vocabulary
       expect(plain).toContain('0');
@@ -408,7 +400,7 @@ describe('bijou views', () => {
           quest({ id: 'task:I-003', title: 'Another from agent', status: 'BACKLOG', suggestedBy: 'agent.claude' }),
         ],
       });
-      const plain = strip(backlogView(makeModel(snap)));
+      const plain = strip(backlogView(makeModel(snap), style));
       expect(plain).toContain('agent.claude');
       expect(plain).toContain('human.james');
       expect(plain).toContain('task:I-001');
@@ -428,7 +420,7 @@ describe('bijou views', () => {
           }),
         ],
       });
-      const plain = strip(backlogView(makeModel(snap)));
+      const plain = strip(backlogView(makeModel(snap), style));
       // 24 chars + ellipsis
       expect(plain).toContain('This was rejected becau');
       expect(plain).toContain('\u2026');
@@ -438,7 +430,7 @@ describe('bijou views', () => {
       const snap = makeSnapshot({
         quests: [quest({ id: 'task:I-020', title: 'Mystery task', status: 'BACKLOG' })],
       });
-      const plain = strip(backlogView(makeModel(snap)));
+      const plain = strip(backlogView(makeModel(snap), style));
       expect(plain).toContain('task:I-020');
     });
 
@@ -451,7 +443,7 @@ describe('bijou views', () => {
       });
       const model = makeModel(snap);
       // focusRow starts at 0 by default — first item is focused
-      const plain = strip(backlogView(model));
+      const plain = strip(backlogView(model, style));
       expect(plain).toContain('\u25B6');
     });
   });
@@ -460,7 +452,7 @@ describe('bijou views', () => {
 
   describe('dashboardView', () => {
     it('returns muted text when snapshot is null', () => {
-      const out = dashboardView(makeModel(null));
+      const out = dashboardView(makeModel(null), style);
       const plain = strip(out);
       expect(plain.length).toBeGreaterThan(0);
       expect(plain).not.toContain('task:');
@@ -473,7 +465,7 @@ describe('bijou views', () => {
           quest({ id: 'task:Q-002', title: 'Q2', status: 'PLANNED' }),
         ],
       });
-      const plain = strip(dashboardView(makeModel(snap)));
+      const plain = strip(dashboardView(makeModel(snap), style));
       expect(plain).toContain('50%');
       expect(plain).toContain('1/2');
     });
@@ -487,7 +479,7 @@ describe('bijou views', () => {
           quest({ id: 'task:I-001', title: 'Backlog item', status: 'BACKLOG' }), // excluded from sovereignty
         ],
       });
-      const plain = strip(dashboardView(makeModel(snap)));
+      const plain = strip(dashboardView(makeModel(snap), style));
       // 1 with intent out of 2 non-backlog quests
       expect(plain).toContain('1/2');
     });
@@ -503,7 +495,7 @@ describe('bijou views', () => {
           quest({ id: 'task:Q-002', title: 'Q2', status: 'PLANNED', campaignId: 'campaign:M2' }),
         ],
       });
-      const plain = strip(dashboardView(makeModel(snap)));
+      const plain = strip(dashboardView(makeModel(snap), style));
       expect(plain).toContain('DASHBOARD');
       expect(plain).toContain('1/2');
     });
@@ -512,7 +504,7 @@ describe('bijou views', () => {
       const snap = makeSnapshot({
         graphMeta: { maxTick: 147, myTick: 44, writerCount: 17, tipSha: 'abc1234' },
       });
-      const plain = strip(dashboardView(makeModel(snap)));
+      const plain = strip(dashboardView(makeModel(snap), style));
       expect(plain).toContain('147');
       expect(plain).toContain('17');
     });
@@ -526,7 +518,7 @@ describe('bijou views', () => {
           submission({ id: 'submission:S1', questId: 'task:Q1', headsCount: 2 }),
         ],
       });
-      const plain = strip(dashboardView(makeModel(snap)));
+      const plain = strip(dashboardView(makeModel(snap), style));
       expect(plain).toContain('S1');
     });
 
@@ -536,7 +528,7 @@ describe('bijou views', () => {
           quest({ id: 'task:Q-001', title: 'Active work', status: 'IN_PROGRESS', assignedTo: 'agent.james' }),
         ],
       });
-      const plain = strip(dashboardView(makeModel(snap)));
+      const plain = strip(dashboardView(makeModel(snap), style));
       expect(plain).toContain('Active work');
       expect(plain).toContain('agent.james');
     });
@@ -546,14 +538,14 @@ describe('bijou views', () => {
 
   describe('submissionsView', () => {
     it('returns muted text when snapshot is null', () => {
-      const out = submissionsView(makeModel(null));
+      const out = submissionsView(makeModel(null), style);
       const plain = strip(out);
       expect(plain.length).toBeGreaterThan(0);
       expect(plain).not.toContain('submission:');
     });
 
     it('shows empty message when no submissions', () => {
-      const plain = strip(submissionsView(makeModel(makeSnapshot())));
+      const plain = strip(submissionsView(makeModel(makeSnapshot()), style));
       expect(plain).not.toContain('submission:');
     });
 
@@ -570,7 +562,7 @@ describe('bijou views', () => {
       });
       const model = makeModel(snap);
       model.activeView = 'submissions';
-      const plain = strip(submissionsView(model));
+      const plain = strip(submissionsView(model, style));
       // OPEN should appear before MERGED
       const s1Pos = plain.indexOf('S1');
       const s2Pos = plain.indexOf('S2');
@@ -591,7 +583,7 @@ describe('bijou views', () => {
       model.activeView = 'submissions';
       // focusRow defaults to 0 — first submission is focused
       model.submissions.expandedId = 'submission:S1';
-      const plain = strip(submissionsView(model));
+      const plain = strip(submissionsView(model, style));
       expect(plain).toContain('Quest A');
       expect(plain).toContain('patchset:P1');
       expect(plain).toContain('approve');
@@ -610,7 +602,7 @@ describe('bijou views', () => {
       });
       const model = makeModel(snap);
       model.submissions.expandedId = 'submission:S1';
-      const plain = strip(submissionsView(model));
+      const plain = strip(submissionsView(model, style));
       expect(plain).toContain('MERGED');
       expect(plain).toContain('Ship it');
     });
@@ -624,7 +616,7 @@ describe('bijou views', () => {
       });
       const model = makeModel(snap);
       // focusRow defaults to 0 — first submission is focused
-      const plain = strip(submissionsView(model));
+      const plain = strip(submissionsView(model, style));
       expect(plain).toContain('\u25B6');
     });
   });
@@ -633,14 +625,14 @@ describe('bijou views', () => {
 
   describe('lineageView', () => {
     it('returns muted text when snapshot is null', () => {
-      const out = lineageView(makeModel(null));
+      const out = lineageView(makeModel(null), style);
       const plain = strip(out);
       expect(plain.length).toBeGreaterThan(0);
       expect(plain).not.toContain('intent:');
     });
 
     it('shows empty message when no intents', () => {
-      const plain = strip(lineageView(makeModel(makeSnapshot())));
+      const plain = strip(lineageView(makeModel(makeSnapshot()), style));
       expect(plain).not.toContain('intent:');
     });
 
@@ -652,7 +644,7 @@ describe('bijou views', () => {
           quest({ id: 'task:SOV-002', title: 'Second quest', intentId: 'intent:SOV', status: 'IN_PROGRESS' }),
         ],
       });
-      const plain = strip(lineageView(makeModel(snap)));
+      const plain = strip(lineageView(makeModel(snap), style));
       expect(plain).toContain('\u25C6 intent:SOV');
       expect(plain).toContain('Sovereignty');
       expect(plain).toContain('task:SOV-001');
@@ -664,7 +656,7 @@ describe('bijou views', () => {
       const snap = makeSnapshot({
         intents: [intent({ id: 'intent:EMPTY', title: 'Empty intent' })],
       });
-      const plain = strip(lineageView(makeModel(snap)));
+      const plain = strip(lineageView(makeModel(snap), style));
       expect(plain).not.toContain('task:');
     });
 
@@ -676,7 +668,7 @@ describe('bijou views', () => {
         ],
         scrolls: [scroll({ id: 'artifact:task:SOV-001', questId: 'task:SOV-001' })],
       });
-      const plain = strip(lineageView(makeModel(snap)));
+      const plain = strip(lineageView(makeModel(snap), style));
       expect(plain).toContain('\u2713'); // sealed scroll mark
       expect(plain).toContain('scroll:');
       expect(plain).toContain('artifact:task:SOV-001');
@@ -690,7 +682,7 @@ describe('bijou views', () => {
         ],
         scrolls: [scroll({ id: 'artifact:task:SOV-001', questId: 'task:SOV-001', hasSeal: false })],
       });
-      const plain = strip(lineageView(makeModel(snap)));
+      const plain = strip(lineageView(makeModel(snap), style));
       expect(plain).toContain('\u25CB'); // unsealed scroll mark
     });
 
@@ -702,7 +694,7 @@ describe('bijou views', () => {
           quest({ id: 'task:BL-001', title: 'Backlog task', status: 'BACKLOG' }),
         ],
       });
-      const plain = strip(lineageView(makeModel(snap)));
+      const plain = strip(lineageView(makeModel(snap), style));
       expect(plain).toContain('task:ORPHAN-001');
       // BACKLOG tasks should NOT appear in orphan section
       expect(plain).not.toContain('task:BL-001');
@@ -714,7 +706,7 @@ describe('bijou views', () => {
           quest({ id: 'task:ORPHAN-001', title: 'Orphan quest', status: 'PLANNED' }),
         ],
       });
-      const plain = strip(lineageView(makeModel(snap)));
+      const plain = strip(lineageView(makeModel(snap), style));
       expect(plain).not.toContain('intent:');
       expect(plain).toContain('task:ORPHAN-001');
     });

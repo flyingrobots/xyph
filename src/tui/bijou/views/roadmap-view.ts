@@ -1,6 +1,6 @@
 import { headerBox, type SlicedDagSource, getDefaultContext } from '@flyingrobots/bijou';
 import { flex, viewport, composite, drawer, dagPane } from '@flyingrobots/bijou-tui';
-import { styled, styledStatus, getTheme } from '../../theme/index.js';
+import type { StylePort } from '../../../ports/StylePort.js';
 import type { DashboardModel } from '../DashboardApp.js';
 import type { GraphSnapshot } from '../../../domain/models/dashboard.js';
 import { computeFrontier, computeCriticalPath, computeTopBlockers, type TaskSummary, type DepEdge } from '../../../domain/services/DepAnalysis.js';
@@ -23,8 +23,8 @@ function statusIcon(status: string): string {
 export function buildDagSource(
   snap: GraphSnapshot,
   critSet: Set<string>,
+  style: StylePort,
 ): SlicedDagSource {
-  const t = getTheme();
   const questMap = new Map(snap.quests.map(q => [q.id, q]));
   const questIds = snap.quests.map(q => q.id);
   return {
@@ -34,20 +34,19 @@ export function buildDagSource(
     children: (id) => questMap.get(id)?.dependsOn ?? [],
     badge: (id): string | undefined => {
       const q = questMap.get(id);
-      return q ? styledStatus(q.status) : undefined;
+      return q ? style.styledStatus(q.status) : undefined;
     },
-    token: (id) => critSet.has(id) ? t.theme.semantic.warning : undefined,
+    token: (id) => critSet.has(id) ? style.theme.semantic.warning : undefined,
     ghost: () => false,
     ghostLabel: () => undefined,
   };
 }
 
-export function roadmapView(model: DashboardModel, width?: number, height?: number): string {
-  const t = getTheme();
+export function roadmapView(model: DashboardModel, style: StylePort, width?: number, height?: number): string {
   const w = width ?? model.cols;
   const h = height ?? (model.rows - 3);
 
-  if (!model.snapshot) return styled(t.theme.semantic.muted, '  No snapshot loaded.');
+  if (!model.snapshot) return style.styled(style.theme.semantic.muted, '  No snapshot loaded.');
   // Bind after null guard so closures see the narrowed type.
   const snap = model.snapshot;
 
@@ -55,9 +54,9 @@ export function roadmapView(model: DashboardModel, width?: number, height?: numb
     const lines: string[] = [];
     lines.push(headerBox('XYPH Roadmap', {
       detail: `snapshot at ${new Date(snap.asOf).toISOString()}`,
-      borderToken: t.theme.border.primary,
+      borderToken: style.theme.border.primary,
     }));
-    lines.push(styled(t.theme.semantic.muted, '\n  No quests yet.'));
+    lines.push(style.styled(style.theme.semantic.muted, '\n  No quests yet.'));
     return lines.join('\n');
   }
 
@@ -104,43 +103,43 @@ export function roadmapView(model: DashboardModel, width?: number, height?: numb
     let selectedLine = -1;
 
     // Drawer header (item 7)
-    lines.push(styled(t.theme.semantic.info, '\u2500\u2500 Frontier \u2500\u2500'));
+    lines.push(style.styled(style.theme.semantic.info, '\u2500\u2500 Frontier \u2500\u2500'));
     lines.push('');
 
     if (hasDeps) {
-      lines.push(styled(t.theme.semantic.primary, ' \u25B6 Ready'));
+      lines.push(style.styled(style.theme.semantic.primary, ' \u25B6 Ready'));
       lines.push('');
 
       if (frontier.length === 0) {
-        lines.push(styled(t.theme.semantic.muted, '  (all tasks blocked)'));
+        lines.push(style.styled(style.theme.semantic.muted, '  (all tasks blocked)'));
       } else {
         for (const id of frontier) {
           const q = questMap.get(id);
           if (!q) continue;
           const icon = statusIcon(q.status);
-          const mark = critSet.has(id) ? styled(t.theme.semantic.warning, ' \u2605') : '';
+          const mark = critSet.has(id) ? style.styled(style.theme.semantic.warning, ' \u2605') : '';
           if (id === selectedQuestId) selectedLine = lines.length;
-          const sel = id === selectedQuestId ? styled(t.theme.semantic.primary, '\u25B6') : ' ';
+          const sel = id === selectedQuestId ? style.styled(style.theme.semantic.primary, '\u25B6') : ' ';
           const titleStyle = id === selectedQuestId
-            ? styled(t.theme.semantic.primary, q.title.slice(0, leftWidth - 15))
+            ? style.styled(style.theme.semantic.primary, q.title.slice(0, leftWidth - 15))
             : q.title.slice(0, leftWidth - 15);
-          lines.push(`${sel}${icon} ${styledStatus(q.status, q.status.padEnd(4))} ${titleStyle}${mark}`);
+          lines.push(`${sel}${icon} ${style.styledStatus(q.status, q.status.padEnd(4))} ${titleStyle}${mark}`);
         }
       }
 
       // Top Blockers section
       if (topBlockers.length > 0) {
         lines.push('');
-        lines.push(styled(t.theme.semantic.error, ' \u26A1 Top Blockers'));
+        lines.push(style.styled(style.theme.semantic.error, ' \u26A1 Top Blockers'));
         lines.push('');
         for (const b of topBlockers) {
           const q = questMap.get(b.id);
           const shortId = b.id.replace('task:', '');
           const title = q ? q.title.slice(0, leftWidth - 20) : shortId;
           if (b.id === selectedQuestId) selectedLine = lines.length;
-          const sel = b.id === selectedQuestId ? styled(t.theme.semantic.primary, '\u25B6') : ' ';
-          lines.push(`${sel}${styled(t.theme.semantic.error, shortId.slice(0, 14).padEnd(14))} ${styled(t.theme.semantic.muted, `\u2193${b.transitiveCount}`)}`);
-          lines.push(`   ${styled(t.theme.semantic.muted, title)}`);
+          const sel = b.id === selectedQuestId ? style.styled(style.theme.semantic.primary, '\u25B6') : ' ';
+          lines.push(`${sel}${style.styled(style.theme.semantic.error, shortId.slice(0, 14).padEnd(14))} ${style.styled(style.theme.semantic.muted, `\u2193${b.transitiveCount}`)}`);
+          lines.push(`   ${style.styled(style.theme.semantic.muted, title)}`);
         }
       }
 
@@ -148,24 +147,24 @@ export function roadmapView(model: DashboardModel, width?: number, height?: numb
       const blockedIds = [...blockedBy.keys()].sort();
       if (blockedIds.length > 0) {
         lines.push('');
-        lines.push(styled(t.theme.semantic.error, ' \u2718 Blocked'));
+        lines.push(style.styled(style.theme.semantic.error, ' \u2718 Blocked'));
         lines.push('');
         for (const id of blockedIds) {
           const q = questMap.get(id);
           if (!q) continue;
           const deps = blockedBy.get(id) ?? [];
           if (id === selectedQuestId) selectedLine = lines.length;
-          const sel = id === selectedQuestId ? styled(t.theme.semantic.primary, '\u25B6') : ' ';
+          const sel = id === selectedQuestId ? style.styled(style.theme.semantic.primary, '\u25B6') : ' ';
           const titleStyle = id === selectedQuestId
-            ? styled(t.theme.semantic.primary, q.title.slice(0, leftWidth - 11))
+            ? style.styled(style.theme.semantic.primary, q.title.slice(0, leftWidth - 11))
             : q.title.slice(0, leftWidth - 11);
-          lines.push(`${sel}${styled(t.theme.semantic.muted, '\u25CB')} ${titleStyle}`);
-          lines.push(`   ${styled(t.theme.semantic.muted, `waits on ${deps.length} task(s)`)}`);
+          lines.push(`${sel}${style.styled(style.theme.semantic.muted, '\u25CB')} ${titleStyle}`);
+          lines.push(`   ${style.styled(style.theme.semantic.muted, `waits on ${deps.length} task(s)`)}`);
         }
       }
     } else {
       // No dependencies — group by status
-      lines.push(styled(t.theme.semantic.primary, ' Quests'));
+      lines.push(style.styled(style.theme.semantic.primary, ' Quests'));
       lines.push('');
 
       const byStatus = new Map<string, typeof snap.quests>();
@@ -177,12 +176,12 @@ export function roadmapView(model: DashboardModel, width?: number, height?: numb
       }
 
       for (const [status, quests] of byStatus) {
-        lines.push(` ${styledStatus(status)}`);
+        lines.push(` ${style.styledStatus(status)}`);
         for (const q of quests) {
           if (q.id === selectedQuestId) selectedLine = lines.length;
-          const sel = q.id === selectedQuestId ? styled(t.theme.semantic.primary, '\u25B6') : ' ';
+          const sel = q.id === selectedQuestId ? style.styled(style.theme.semantic.primary, '\u25B6') : ' ';
           const titleStyle = q.id === selectedQuestId
-            ? styled(t.theme.semantic.primary, q.title.slice(0, leftWidth - 9))
+            ? style.styled(style.theme.semantic.primary, q.title.slice(0, leftWidth - 9))
             : q.title.slice(0, leftWidth - 9);
           lines.push(` ${sel}${statusIcon(q.status)} ${titleStyle}`);
         }
@@ -192,7 +191,7 @@ export function roadmapView(model: DashboardModel, width?: number, height?: numb
       // Done count
       const doneCount = snap.quests.filter(q => q.status === 'DONE').length;
       if (doneCount > 0) {
-        lines.push(styled(t.theme.semantic.success, ` \u2713 ${doneCount} done`));
+        lines.push(style.styled(style.theme.semantic.success, ` \u2713 ${doneCount} done`));
       }
     }
 
@@ -215,7 +214,7 @@ export function roadmapView(model: DashboardModel, width?: number, height?: numb
       const lines: string[] = [];
       lines.push(headerBox('XYPH Roadmap', {
         detail: `snapshot at ${new Date(snap.asOf).toISOString()}`,
-        borderToken: t.theme.border.primary,
+        borderToken: style.theme.border.primary,
       }));
 
       const campaignTitle = new Map<string, string>();
@@ -234,9 +233,9 @@ export function roadmapView(model: DashboardModel, width?: number, height?: numb
       for (const [key, quests] of grouped) {
         const heading = campaignTitle.get(key) ?? key;
         lines.push('');
-        lines.push(styled(t.theme.ui.sectionHeader, `  ${heading}`));
+        lines.push(style.styled(style.theme.ui.sectionHeader, `  ${heading}`));
         for (const q of quests) {
-          lines.push(`  ${statusIcon(q.status)} ${styled(t.theme.semantic.muted, q.id.slice(0, 16))}  ${q.title.slice(0, 40)}  ${styledStatus(q.status)}`);
+          lines.push(`  ${statusIcon(q.status)} ${style.styled(style.theme.semantic.muted, q.id.slice(0, 16))}  ${q.title.slice(0, 40)}  ${style.styledStatus(q.status)}`);
         }
       }
 
@@ -249,7 +248,7 @@ export function roadmapView(model: DashboardModel, width?: number, height?: numb
     }
 
     if (!model.roadmap.dagPane) {
-      return styled(t.theme.semantic.muted, '  Loading DAG...');
+      return style.styled(style.theme.semantic.muted, '  Loading DAG...');
     }
     return dagPane(model.roadmap.dagPane, { focused: true, ctx: getDefaultContext() });
   }
@@ -257,13 +256,13 @@ export function roadmapView(model: DashboardModel, width?: number, height?: numb
   // ── Detail content (for drawer overlay) ────────────────────────────
   function renderDetailContent(questId: string, pw: number): string {
     const q = questMap.get(questId);
-    if (!q) return styled(t.theme.semantic.muted, '  Quest not found.');
+    if (!q) return style.styled(style.theme.semantic.muted, '  Quest not found.');
 
     const lines: string[] = [];
-    lines.push(styled(t.theme.semantic.primary, ` ${q.id}`));
+    lines.push(style.styled(style.theme.semantic.primary, ` ${q.id}`));
     lines.push(` ${q.title.slice(0, pw - 2)}`);
     lines.push('');
-    lines.push(` Status: ${styledStatus(q.status)}`);
+    lines.push(` Status: ${style.styledStatus(q.status)}`);
     if (q.hours !== undefined) lines.push(` Hours:  ${q.hours}`);
     if (q.assignedTo) lines.push(` Owner:  ${q.assignedTo}`);
 
@@ -282,7 +281,7 @@ export function roadmapView(model: DashboardModel, width?: number, height?: numb
     const deps = q.dependsOn ?? [];
     if (deps.length > 0) {
       lines.push('');
-      lines.push(styled(t.theme.semantic.info, ` Deps (${deps.length})`));
+      lines.push(style.styled(style.theme.semantic.info, ` Deps (${deps.length})`));
       for (const depId of deps) {
         const depQ = questMap.get(depId);
         const icon = depQ ? statusIcon(depQ.status) : '?';
@@ -295,9 +294,9 @@ export function roadmapView(model: DashboardModel, width?: number, height?: numb
     const sub = snap.submissions.find(s => s.questId === q.id);
     if (sub) {
       lines.push('');
-      lines.push(` Sub: ${styledStatus(sub.status)}`);
+      lines.push(` Sub: ${style.styledStatus(sub.status)}`);
       if (sub.tipPatchsetId) {
-        lines.push(styled(t.theme.semantic.muted, ` tip: ${sub.tipPatchsetId.slice(0, pw - 7)}`));
+        lines.push(style.styled(style.theme.semantic.muted, ` tip: ${sub.tipPatchsetId.slice(0, pw - 7)}`));
       }
     }
 
@@ -305,7 +304,7 @@ export function roadmapView(model: DashboardModel, width?: number, height?: numb
     const sc = snap.scrolls.find(s => s.questId === q.id);
     if (sc) {
       lines.push('');
-      lines.push(styled(t.theme.semantic.success, ` \u2713 Scroll: ${sc.id.slice(0, pw - 12)}`));
+      lines.push(style.styled(style.theme.semantic.success, ` \u2713 Scroll: ${sc.id.slice(0, pw - 12)}`));
     }
 
     // Apply scroll offset by slicing content lines
@@ -316,7 +315,7 @@ export function roadmapView(model: DashboardModel, width?: number, height?: numb
 
   // ── Vertical separator (item 7) ────────────────────────────────────
   function renderSeparator(_pw: number, ph: number): string {
-    const sep = styled(t.theme.semantic.muted, '\u2502');
+    const sep = style.styled(style.theme.semantic.muted, '\u2502');
     return Array.from({ length: ph }, () => sep).join('\n');
   }
 
@@ -340,7 +339,7 @@ export function roadmapView(model: DashboardModel, width?: number, height?: numb
     screenWidth: w,
     screenHeight: h,
     title: selectedQuestId,
-    borderToken: t.theme.border.primary,
+    borderToken: style.theme.border.primary,
   });
   return composite(base, [panel]);
 }

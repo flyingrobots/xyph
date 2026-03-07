@@ -1,8 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { _resetThemeForTesting } from '@flyingrobots/bijou';
 import type { App, KeyMsg, ResizeMsg } from '@flyingrobots/bijou-tui';
 
-import { ensureXyphContext, _resetBridgeForTesting } from '../../theme/bridge.js';
+import { createPlainStylePort, ensurePlainBijouContext } from '../../../infrastructure/adapters/PlainStyleAdapter.js';
 import { createDashboardApp, type DashboardModel, type DashboardMsg } from '../DashboardApp.js';
 import type { GraphContext } from '../../../infrastructure/GraphContext.js';
 import type { GraphSnapshot } from '../../../domain/models/dashboard.js';
@@ -48,6 +47,8 @@ function makeResize(cols: number, rows: number): ResizeMsg {
   return { type: 'resize', columns: cols, rows: rows };
 }
 
+ensurePlainBijouContext();
+
 describe('DashboardApp', () => {
   const mockCtx: GraphContext = {
     get graph(): never { throw new Error('not initialized'); },
@@ -77,19 +78,16 @@ describe('DashboardApp', () => {
     decide: vi.fn().mockResolvedValue({ patchSha: 'sha-d' }) as SubmissionPort['decide'],
   };
 
+  const style = createPlainStylePort();
+
   beforeEach(() => {
-    _resetThemeForTesting();
-    _resetBridgeForTesting();
     delete process.env['NO_COLOR'];
     delete process.env['XYPH_THEME'];
-    ensureXyphContext();
   });
 
   afterEach(() => {
     vi.unstubAllEnvs();
     vi.clearAllMocks();
-    _resetThemeForTesting();
-    _resetBridgeForTesting();
   });
 
   function makeApp(): App<DashboardModel, DashboardMsg> {
@@ -98,6 +96,7 @@ describe('DashboardApp', () => {
       intake: mockIntake,
       graphPort: mockGraphPort,
       submissionPort: mockSubmissionPort,
+      style,
       agentId: 'agent.test',
       logoText: 'XYPH TEST LOGO',
     });
