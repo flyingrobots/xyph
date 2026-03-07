@@ -6,7 +6,7 @@ import {
 } from '../../src/domain/services/DagAnalysis.js';
 import type { TaskSummary, DepEdge } from '../../src/domain/services/DepAnalysis.js';
 
-function makeTasks(...specs: Array<{ id: string; status?: string; hours?: number }>): TaskSummary[] {
+function makeTasks(...specs: { id: string; status?: string; hours?: number }[]): TaskSummary[] {
   return specs.map((s) => ({
     id: s.id,
     status: s.status ?? 'PLANNED',

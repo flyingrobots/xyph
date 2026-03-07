@@ -39,7 +39,7 @@ describe("Invariant #12 — Signature Verification", () => {
   it("corrupted sig bytes (flip last nibble) → INV_012_SIG_FAILED", async () => {
     const patch = clonePatch(loadGoldenFixture());
     const sig = (patch as any).signature.sig as string;
-    const lastChar = sig[sig.length - 1]!;
+    const lastChar = sig[sig.length - 1] ?? '0';
     const flipped = lastChar === "0" ? "f" : "0";
     (patch as any).signature.sig = sig.slice(0, -1) + flipped;
     const result = await validatePatchOpsDocument(patch);

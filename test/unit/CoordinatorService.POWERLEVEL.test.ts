@@ -39,7 +39,7 @@ describe('CoordinatorService [POWERLEVEL™]', () => {
       await service.orchestrate(input, contextHash);
 
       expect(mockRoadmap.upsertQuest).toHaveBeenCalledTimes(1);
-      const quest = vi.mocked(mockRoadmap.upsertQuest).mock.calls[0]![0] as Quest;
+      const quest = vi.mocked(mockRoadmap.upsertQuest).mock.calls[0]?.[0] as Quest;
       expect(quest.id).toBe('task:TST-001');
       expect(quest.originContext).toBe(contextHash);
       expect(quest.hours).toBe(10);
@@ -55,8 +55,8 @@ describe('CoordinatorService [POWERLEVEL™]', () => {
       await service.orchestrate(input, contextHash);
 
       expect(mockRoadmap.upsertQuest).toHaveBeenCalledTimes(2);
-      const q1 = vi.mocked(mockRoadmap.upsertQuest).mock.calls[0]![0] as Quest;
-      const q2 = vi.mocked(mockRoadmap.upsertQuest).mock.calls[1]![0] as Quest;
+      const q1 = vi.mocked(mockRoadmap.upsertQuest).mock.calls[0]?.[0] as Quest;
+      const q2 = vi.mocked(mockRoadmap.upsertQuest).mock.calls[1]?.[0] as Quest;
       
       expect(q1.originContext).toBe(contextHash);
       expect(q2.originContext).toBe(contextHash);
@@ -98,7 +98,7 @@ describe('CoordinatorService [POWERLEVEL™]', () => {
       expect(mockRoadmap.upsertQuest).toHaveBeenCalledTimes(2);
 
       // First quest should have been upserted successfully before the failure
-      const firstQuest = vi.mocked(mockRoadmap.upsertQuest).mock.calls[0]![0] as Quest;
+      const firstQuest = vi.mocked(mockRoadmap.upsertQuest).mock.calls[0]?.[0] as Quest;
       expect(firstQuest.id).toBe('task:OK-001');
       expect(firstQuest.title).toBe('Good Quest');
     });
@@ -109,7 +109,7 @@ describe('CoordinatorService [POWERLEVEL™]', () => {
       const input = `- [ ] task:LEG-001 Legacy Quest #1`;
       await service.orchestrate(input);
 
-      const quest = vi.mocked(mockRoadmap.upsertQuest).mock.calls[0]![0] as Quest;
+      const quest = vi.mocked(mockRoadmap.upsertQuest).mock.calls[0]?.[0] as Quest;
       expect(quest.originContext).toBeUndefined();
     });
 
@@ -128,14 +128,14 @@ describe('CoordinatorService [POWERLEVEL™]', () => {
     it('should handle quests with zero hours', async () => {
       const input = `- [ ] task:FREE-001 Zero Hour Quest #0`;
       await service.orchestrate(input);
-      const quest = vi.mocked(mockRoadmap.upsertQuest).mock.calls[0]![0] as Quest;
+      const quest = vi.mocked(mockRoadmap.upsertQuest).mock.calls[0]?.[0] as Quest;
       expect(quest.hours).toBe(0);
     });
 
     it('should handle fractional hours', async () => {
       const input = `- [ ] task:FRAC-001 Micro Quest #0.5`;
       await service.orchestrate(input);
-      const quest = vi.mocked(mockRoadmap.upsertQuest).mock.calls[0]![0] as Quest;
+      const quest = vi.mocked(mockRoadmap.upsertQuest).mock.calls[0]?.[0] as Quest;
       expect(quest.hours).toBe(0.5);
     });
   });
@@ -151,7 +151,7 @@ describe('CoordinatorService [POWERLEVEL™]', () => {
       await service.orchestrate(lines.join('\n'), 'blake3:swarm-hash');
 
       expect(mockRoadmap.upsertQuest).toHaveBeenCalledTimes(count);
-      const firstQuest = vi.mocked(mockRoadmap.upsertQuest).mock.calls[0]![0] as Quest;
+      const firstQuest = vi.mocked(mockRoadmap.upsertQuest).mock.calls[0]?.[0] as Quest;
       expect(firstQuest.originContext).toBe('blake3:swarm-hash');
     });
 
@@ -159,7 +159,7 @@ describe('CoordinatorService [POWERLEVEL™]', () => {
       const longTitle = 'A'.repeat(500);
       const input = `- [ ] task:LNG-001 ${longTitle} #1`;
       await service.orchestrate(input);
-      const quest = vi.mocked(mockRoadmap.upsertQuest).mock.calls[0]![0] as Quest;
+      const quest = vi.mocked(mockRoadmap.upsertQuest).mock.calls[0]?.[0] as Quest;
       expect(quest.title).toBe(longTitle);
     });
   });

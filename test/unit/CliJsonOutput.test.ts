@@ -3,7 +3,8 @@ import { createCliContext } from '../../src/cli/context.js';
 
 // Stub WarpGraphAdapter so we don't need a real git repo
 vi.mock('../../src/infrastructure/adapters/WarpGraphAdapter.js', () => ({
-  WarpGraphAdapter: class WarpGraphAdapter {},
+  // Stub: no real git repo needed for CLI output tests
+  WarpGraphAdapter: class WarpGraphAdapter { readonly stub = true; },
 }));
 
 // Stub BijouStyleAdapter to avoid bijou context initialization.
@@ -20,8 +21,8 @@ describe('CliContext JSON mode', () => {
   let exitSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
-    logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-    errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    logSpy = vi.spyOn(console, 'log').mockImplementation(() => { /* suppress */ });
+    errorSpy = vi.spyOn(console, 'error').mockImplementation(() => { /* suppress */ });
     exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
   });
 

@@ -109,7 +109,7 @@ describe('SemanticLayer', () => {
     const target = makeTarget({ description: 'story entity prefix title validation persona goal benefit' });
     const result = scoreSemantic(test, target);
     expect(result).not.toBeNull();
-    expect(result!.score).toBeLessThanOrEqual(1.0);
+    expect(result?.score).toBeLessThanOrEqual(1.0);
   });
 
   it('should include matching tokens in evidence', () => {

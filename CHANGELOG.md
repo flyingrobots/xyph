@@ -7,11 +7,11 @@ All notable changes to XYPH will be documented in this file.
 ### Added
 
 - **`history` command** — `xyph-actuator history <nodeId>` shows all patches that touched a node via git-warp's `patchesFor()` provenance API (Constitution Art. III compliance)
-- **StylePort interface** — dependency-injected styling abstraction (`StylePort`) with `ProductionStyleAdapter` (chalk-based) and `PlainStyleAdapter` (no-color) implementations; replaces the global theme singleton with explicit wiring through the composition root
+- **StylePort interface** — dependency-injected styling abstraction (`StylePort`) with `BijouStyleAdapter` (chalk-based) and `PlainStyleAdapter` (no-color) implementations; replaces the global theme singleton with explicit wiring through the composition root
 - **Theme lab TUI** — interactive design token exploration tool (`xyph-theme-lab.ts`) for cycling through theme palettes in real time
 - **Dark + light theme variants** — automatic terminal background detection with distinct dark and light palettes; theme selection adapts to the user's terminal
 
-### Changed
+### Changed — StylePort Migration
 
 - **CLI pipeline uses StylePort DI** — all CLI commands and TUI views receive `StylePort` via the composition root instead of importing a global theme module; threading flows from `xyph-actuator.ts` → commands → render functions
 

@@ -349,7 +349,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
   }
 
   function stopWatching(): Cmd<DashboardMsg> {
-    return async () => {
+    return () => {
       if (watcherUnsub) {
         watcherUnsub();
         watcherUnsub = null;
@@ -1202,11 +1202,11 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
 
 // ── Render helpers ──────────────────────────────────────────────────────
 
-/** Pad a line to `width` visible chars and apply a surface bg token. */
+/** Pad a line to `width` visible chars and apply a token (foreground + optional bg). */
 function chromeLine(text: string, width: number, token: TokenValue, style: StylePort): string {
   const vis = visibleLength(text);
   const padded = vis < width ? text + ' '.repeat(width - vis) : text;
-  return token.bg ? style.styled(token, padded) : padded;
+  return style.styled(token, padded);
 }
 
 function renderStatusLine(model: DashboardModel, style: StylePort): string {

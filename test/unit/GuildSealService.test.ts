@@ -36,7 +36,7 @@ describe('GuildSealService', () => {
   it('should generate a keypair and register the public key in keyring', () => {
     const keyring = JSON.parse(
       fs.readFileSync(path.join(trustDir, 'keyring.json'), 'utf8')
-    ) as { keys: Array<{ keyId: string; alg: string; publicKeyHex: string }> };
+    ) as { keys: { keyId: string; alg: string; publicKeyHex: string }[] };
 
     const entry = keyring.keys.find(k => k.keyId === service.keyIdForAgent(agentId));
     expect(entry).toBeDefined();
@@ -77,20 +77,25 @@ describe('GuildSealService', () => {
   it('should verify a valid seal', async () => {
     const seal = await service.sign(scrollPayload, agentId);
     expect(seal).not.toBeNull();
-    const ok = await service.verify(seal!, scrollPayload);
+    if (!seal) return;
+    const ok = await service.verify(seal, scrollPayload);
     expect(ok).toBe(true);
   });
 
   it('should reject a seal with a tampered payload', async () => {
     const seal = await service.sign(scrollPayload, agentId);
+    expect(seal).not.toBeNull();
+    if (!seal) return;
     const tampered = { ...scrollPayload, rationale: 'Tampered!' };
-    const ok = await service.verify(seal!, tampered);
+    const ok = await service.verify(seal, tampered);
     expect(ok).toBe(false);
   });
 
   it('should reject a seal with a tampered signature', async () => {
     const seal = await service.sign(scrollPayload, agentId);
-    const badSeal = { ...seal!, sig: 'a'.repeat(128) };
+    expect(seal).not.toBeNull();
+    if (!seal) return;
+    const badSeal = { ...seal, sig: 'a'.repeat(128) };
     const ok = await service.verify(badSeal, scrollPayload);
     expect(ok).toBe(false);
   });
@@ -102,7 +107,9 @@ describe('GuildSealService', () => {
 
   it('should return false for verification when keyId is unknown', async () => {
     const seal = await service.sign(scrollPayload, agentId);
-    const badSeal = { ...seal!, keyId: 'did:key:nonexistent' };
+    expect(seal).not.toBeNull();
+    if (!seal) return;
+    const badSeal = { ...seal, keyId: 'did:key:nonexistent' };
     const ok = await service.verify(badSeal, scrollPayload);
     expect(ok).toBe(false);
   });

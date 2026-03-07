@@ -99,7 +99,12 @@ describe('xyph-presets', () => {
     expect(XYPH_TEAL_ORANGE_PINK).toBe(XYPH_TEAL_ORANGE_PINK_DARK);
   });
 
-  it('XYPH_PRESETS registry includes all 6 entries', () => {
+  it('XYPH_PRESETS registry includes exactly 6 entries', () => {
+    const expectedKeys = [
+      'cyan-magenta', 'cyan-magenta-dark', 'cyan-magenta-light',
+      'teal-orange-pink', 'teal-orange-pink-dark', 'teal-orange-pink-light',
+    ];
+    expect(Object.keys(XYPH_PRESETS).sort()).toEqual(expectedKeys.sort());
     expect(XYPH_PRESETS['cyan-magenta']).toBe(XYPH_CYAN_MAGENTA_DARK);
     expect(XYPH_PRESETS['cyan-magenta-dark']).toBe(XYPH_CYAN_MAGENTA_DARK);
     expect(XYPH_PRESETS['cyan-magenta-light']).toBe(XYPH_CYAN_MAGENTA_LIGHT);
@@ -114,12 +119,7 @@ describe('xyph-presets', () => {
   });
 
   it('light themes have lighter surface backgrounds than dark variants', () => {
-    const darkBg = XYPH_TEAL_ORANGE_PINK_DARK.surface.primary.bg;
-    const lightBg = XYPH_TEAL_ORANGE_PINK_LIGHT.surface.primary.bg;
-    expect(darkBg).toBeDefined();
-    expect(lightBg).toBeDefined();
-
-    // Compare by relative luminance (W3C formula) rather than packed RGB value
+    // W3C relative luminance formula
     function luminance(hex: string): number {
       const r = parseInt(hex.slice(1, 3), 16) / 255;
       const g = parseInt(hex.slice(3, 5), 16) / 255;
@@ -128,7 +128,19 @@ describe('xyph-presets', () => {
       return 0.2126 * toLinear(r) + 0.7152 * toLinear(g) + 0.0722 * toLinear(b);
     }
 
-    expect(luminance(lightBg ?? '')).toBeGreaterThan(luminance(darkBg ?? ''));
+    const pairs: [typeof XYPH_TEAL_ORANGE_PINK_LIGHT, typeof XYPH_TEAL_ORANGE_PINK_DARK][] = [
+      [XYPH_TEAL_ORANGE_PINK_LIGHT, XYPH_TEAL_ORANGE_PINK_DARK],
+      [XYPH_CYAN_MAGENTA_LIGHT, XYPH_CYAN_MAGENTA_DARK],
+    ];
+
+    for (const [light, dark] of pairs) {
+      for (const slot of Object.keys(light.surface) as (keyof typeof light.surface)[]) {
+        const lightBg = light.surface[slot]?.bg;
+        const darkBg = dark.surface[slot]?.bg;
+        if (!lightBg || !darkBg || lightBg === darkBg) continue;
+        expect(luminance(lightBg)).toBeGreaterThan(luminance(darkBg));
+      }
+    }
   });
 
   it('light themes have different status colors than dark variants', () => {

@@ -28,7 +28,7 @@ describe('CoordinatorService', () => {
     await service.orchestrate(input);
 
     expect(mockRoadmap.upsertQuest).toHaveBeenCalled();
-    const calledQuest = vi.mocked(mockRoadmap.upsertQuest).mock.calls[0]![0];
+    const calledQuest = vi.mocked(mockRoadmap.upsertQuest).mock.calls[0]?.[0];
     expect(calledQuest.id).toBe('task:TST-001');
     expect(calledQuest.hours).toBe(5);
   });
