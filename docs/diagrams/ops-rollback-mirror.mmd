@@ -14,6 +14,9 @@ flowchart TD
     OP1 -.->|"revertsOpId"| RB2
     OP0 -.->|"revertsOpId"| RBN
 
-    MATCH["Each rollback op must match:\n- inverseOpType\n- inversePath\n- inverseValue"]
+    MATCH["Invariant: each rollback op must match\ninverseOpType · inversePath · inverseValue"]
 
+    RB0 -.-> MATCH
+    RB1 -.-> MATCH
+    RB2 -.-> MATCH
     RBN -.-> MATCH

@@ -1005,13 +1005,13 @@ Model promotions like submissions — a multi-step reviewed process:
 
 **Current flow:**
 
-```
+```text
 INBOX → promote(intentId) → BACKLOG (instant, single actor)
 ```
 
 **New flow:**
 
-```
+```text
 INBOX → propose(intentId, campaignId, rationale)
       → PROPOSED (new status)
       → reviewers approve/reject the proposal

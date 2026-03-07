@@ -8,7 +8,7 @@
 - **DONE**: Acceptance criteria met, evidence attached.
 - **GRAVEYARD**: Rejected or abandoned.
 
-> **Note:** `INBOX` exists as a raw graph state for newly suggested tasks. It is normalized to `BACKLOG` on read. See `normalizeQuestStatus()` in `Quest.ts`.
+> **Note:** `normalizeQuestStatus()` in `Quest.ts` remaps legacy graph values on read: `INBOX` → `BACKLOG`, legacy `BACKLOG` → `PLANNED`. New code writes canonical status values directly.
 
 ![Task lifecycle](../diagrams/task-lifecycle.svg)
 

@@ -144,7 +144,7 @@ Legacy: `INBOX` is normalized to `BACKLOG` at read time.
 | `sealed_by` | string | seal/merge | Principal ID. |
 | `sealed_at` | number | seal/merge | Timestamp. |
 | `payload_digest` | string | GuildSealService | Hash for signing. |
-| `guild_seal_alg` | string | GuildSealService | `'Ed25519'` if signed. |
+| `guild_seal_alg` | string | GuildSealService | `'ed25519'` if signed. |
 | `guild_seal_key_id` | string | GuildSealService | Public key ID. |
 | `guild_seal_sig` | string | GuildSealService | Signature. |
 

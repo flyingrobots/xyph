@@ -35,7 +35,7 @@ that keeps it all backward-compatible.
 
 ## Overview
 
-```
+```text
                      ┌──────────────┐
                      │  generate-key │
                      └──────┬───────┘
@@ -110,7 +110,7 @@ across sessions.
 
 Agent identities use the [W3C DID Key Method][did-key-spec]:
 
-```
+```text
 did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK
         ─┬─ ─────────────────────┬──────────────────────────
          │                       │
@@ -120,7 +120,7 @@ did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK
 
 The encoding pipeline:
 
-```
+```text
 Ed25519 public key (32 bytes)
     │
     ▼
@@ -252,7 +252,7 @@ verification.
 | `keys[].keyId` | Yes | Canonical `did:key:z6Mk...` identifier (v2: derived from public key) |
 | `keys[].alg` | Yes | Algorithm identifier. Currently only `"ed25519"` is supported |
 | `keys[].publicKeyHex` | Yes | 32-byte Ed25519 public key as 64 lowercase hex chars |
-| `keys[].agentId` | No | The agent identity this key belongs to (e.g., `"agent.hal"`) |
+| `keys[].agentId` | No | The agent identity this key belongs to (e.g., `"agent.hal"`). Must be unique across entries — `generateKeypair()` enforces this via `O_EXCL` on the `.sk` file, and `keyIdForAgent()` relies on at-most-one match. |
 | `keys[].legacyKeyIds` | No | Previous `keyId` values that should alias to this entry (migration artifact) |
 
 ---
@@ -326,7 +326,7 @@ After migration, the v1 entry above becomes:
 The in-memory Map returned by `loadKeyring()` is indexed by **both** the
 canonical `keyId` and any `legacyKeyIds`:
 
-```
+```text
 Map {
   "did:key:z6Mk..."        → entry,   // canonical (derived)
   "did:key:agent.james"    → entry,   // legacy alias → same object
@@ -379,7 +379,7 @@ The pipeline runs `v1 → v2 → v3` automatically. Old v1 keyrings still work.
 
 ## Trust Directory Layout
 
-```
+```text
 trust/
 ├── keyring.json        # Public key registry (committed to Git)
 ├── agent.hal.sk        # Hal's Ed25519 private key (gitignored)
