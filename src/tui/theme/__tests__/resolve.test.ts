@@ -42,6 +42,28 @@ describe('bridge (replacing resolve)', () => {
     }
   });
 
+  it('selects light variant when COLORFGBG indicates light terminal', () => {
+    process.env['COLORFGBG'] = '0;15';
+    ensureXyphContext();
+    const t = getXyphTheme();
+    expect(t.theme.name).toBe('teal-orange-pink-light');
+  });
+
+  it('explicit -dark suffix overrides COLORFGBG detection', () => {
+    process.env['COLORFGBG'] = '0;15';
+    process.env['XYPH_THEME'] = 'teal-orange-pink-dark';
+    ensureXyphContext();
+    const t = getXyphTheme();
+    expect(t.theme.name).toBe('teal-orange-pink');
+  });
+
+  it('explicit -light suffix works without COLORFGBG', () => {
+    process.env['XYPH_THEME'] = 'cyan-magenta-light';
+    ensureXyphContext();
+    const t = getXyphTheme();
+    expect(t.theme.name).toBe('cyan-magenta-light');
+  });
+
   it('caches the theme singleton', () => {
     ensureXyphContext();
     const t1 = getXyphTheme();

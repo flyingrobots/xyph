@@ -4,6 +4,10 @@ import {
   XYPH_PRESETS,
   XYPH_CYAN_MAGENTA,
   XYPH_TEAL_ORANGE_PINK,
+  XYPH_CYAN_MAGENTA_DARK,
+  XYPH_CYAN_MAGENTA_LIGHT,
+  XYPH_TEAL_ORANGE_PINK_DARK,
+  XYPH_TEAL_ORANGE_PINK_LIGHT,
   type XyphStatusKey,
   type XyphTheme,
 } from '../xyph-presets.js';
@@ -85,16 +89,45 @@ function validateTheme(theme: XyphTheme): void {
 }
 
 describe('xyph-presets', () => {
-  validateTheme(XYPH_CYAN_MAGENTA);
-  validateTheme(XYPH_TEAL_ORANGE_PINK);
+  validateTheme(XYPH_CYAN_MAGENTA_DARK);
+  validateTheme(XYPH_CYAN_MAGENTA_LIGHT);
+  validateTheme(XYPH_TEAL_ORANGE_PINK_DARK);
+  validateTheme(XYPH_TEAL_ORANGE_PINK_LIGHT);
 
-  it('XYPH_PRESETS registry includes both themes', () => {
-    expect(XYPH_PRESETS['cyan-magenta']).toBe(XYPH_CYAN_MAGENTA);
-    expect(XYPH_PRESETS['teal-orange-pink']).toBe(XYPH_TEAL_ORANGE_PINK);
+  it('backward-compat aliases point to dark variants', () => {
+    expect(XYPH_CYAN_MAGENTA).toBe(XYPH_CYAN_MAGENTA_DARK);
+    expect(XYPH_TEAL_ORANGE_PINK).toBe(XYPH_TEAL_ORANGE_PINK_DARK);
+  });
+
+  it('XYPH_PRESETS registry includes all 6 entries', () => {
+    expect(XYPH_PRESETS['cyan-magenta']).toBe(XYPH_CYAN_MAGENTA_DARK);
+    expect(XYPH_PRESETS['cyan-magenta-dark']).toBe(XYPH_CYAN_MAGENTA_DARK);
+    expect(XYPH_PRESETS['cyan-magenta-light']).toBe(XYPH_CYAN_MAGENTA_LIGHT);
+    expect(XYPH_PRESETS['teal-orange-pink']).toBe(XYPH_TEAL_ORANGE_PINK_DARK);
+    expect(XYPH_PRESETS['teal-orange-pink-dark']).toBe(XYPH_TEAL_ORANGE_PINK_DARK);
+    expect(XYPH_PRESETS['teal-orange-pink-light']).toBe(XYPH_TEAL_ORANGE_PINK_LIGHT);
   });
 
   it('extended themes have 21 total status keys (7 base + 14 XYPH)', () => {
-    const keys = Object.keys(XYPH_CYAN_MAGENTA.status);
+    const keys = Object.keys(XYPH_CYAN_MAGENTA_DARK.status);
     expect(keys.length).toBe(21);
+  });
+
+  it('light themes have lighter surface backgrounds than dark variants', () => {
+    const darkBg = XYPH_TEAL_ORANGE_PINK_DARK.surface.primary.bg;
+    const lightBg = XYPH_TEAL_ORANGE_PINK_LIGHT.surface.primary.bg;
+    expect(darkBg).toBeDefined();
+    expect(lightBg).toBeDefined();
+    // Light bg hex value should be numerically higher (brighter)
+    const darkVal = parseInt(darkBg?.slice(1) ?? '0', 16);
+    const lightVal = parseInt(lightBg?.slice(1) ?? '0', 16);
+    expect(lightVal).toBeGreaterThan(darkVal);
+  });
+
+  it('light themes have different status colors than dark variants', () => {
+    expect(XYPH_TEAL_ORANGE_PINK_LIGHT.status.DONE.hex)
+      .not.toBe(XYPH_TEAL_ORANGE_PINK_DARK.status.DONE.hex);
+    expect(XYPH_CYAN_MAGENTA_LIGHT.status.DONE.hex)
+      .not.toBe(XYPH_CYAN_MAGENTA_DARK.status.DONE.hex);
   });
 });

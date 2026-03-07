@@ -9,14 +9,14 @@ import type { App, Cmd, KeyMsg, ResizeMsg } from '@flyingrobots/bijou-tui';
 import { quit, animate, EASINGS } from '@flyingrobots/bijou-tui';
 import { flex } from '@flyingrobots/bijou-tui';
 import { createKeyMap, type KeyMap } from '@flyingrobots/bijou-tui';
-import { statusBar } from '@flyingrobots/bijou-tui';
+import { statusBar, visibleLength } from '@flyingrobots/bijou-tui';
 import { composite, toast as toastOverlay } from '@flyingrobots/bijou-tui';
 import { helpView, helpShort } from '@flyingrobots/bijou-tui';
 import { createNavigableTableState, navTableFocusNext, navTableFocusPrev, navTablePageDown, navTablePageUp, type NavigableTableState } from '@flyingrobots/bijou-tui';
 import { createDagPaneState, dagPaneSelectNode, dagPanePageDown, dagPanePageUp, dagPaneScrollByX, type DagPaneState } from '@flyingrobots/bijou-tui';
 import { createCommandPaletteState, cpFilter, cpFocusNext, cpFocusPrev, cpSelectedItem, commandPalette, modal, type CommandPaletteState, type CommandPaletteItem } from '@flyingrobots/bijou-tui';
 import { tabs, gradientText, getDefaultContext } from '@flyingrobots/bijou';
-import { styled, styledStatus, getTheme } from '../theme/index.js';
+import { styled, styledStatus, getTheme, type TokenValue } from '../theme/index.js';
 import type { GraphContext } from '../../infrastructure/GraphContext.js';
 import type { GraphSnapshot } from '../../domain/models/dashboard.js';
 import type { IntakePort } from '../../ports/IntakePort.js';
@@ -807,13 +807,18 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         return content;
       };
 
+      // Apply surface backgrounds to chrome lines
+      const tabLine = chromeLine(`  ${tabBar}`, model.cols, t.theme.surface.elevated);
+      const statusBg = chromeLine(statusLine, model.cols, t.theme.surface.secondary);
+      const hintLine = chromeLine(hints, model.cols, t.theme.surface.muted);
+
       // Layout: tabBar → content → WARP gutter → hints
       let output = flex(
         { direction: 'column', width: model.cols, height: model.rows },
-        { basis: 1, content: `  ${tabBar}` },
+        { basis: 1, content: tabLine },
         { flex: 1, content: viewRenderer },
-        { basis: 1, content: statusLine },
-        { basis: 1, content: hints },
+        { basis: 1, content: statusBg },
+        { basis: 1, content: hintLine },
       );
 
       // Command palette overlay
@@ -1174,6 +1179,13 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
 }
 
 // ── Render helpers ──────────────────────────────────────────────────────
+
+/** Pad a line to `width` visible chars and apply a surface bg token. */
+function chromeLine(text: string, width: number, token: TokenValue): string {
+  const vis = visibleLength(text);
+  const padded = vis < width ? text + ' '.repeat(width - vis) : text;
+  return token.bg ? styled(token, padded) : padded;
+}
 
 function renderStatusLine(model: DashboardModel, t: ReturnType<typeof getTheme>): string {
   const meta = model.snapshot?.graphMeta;
