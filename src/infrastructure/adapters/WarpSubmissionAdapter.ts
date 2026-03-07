@@ -169,7 +169,7 @@ export class WarpSubmissionAdapter implements SubmissionPort, SubmissionReadMode
     const graph = await this.graphPort.getGraph();
     const props = await graph.getNodeProps(questId);
     if (!props) return null;
-    const status = props.get('status');
+    const status = props['status'];
     if (typeof status !== 'string' || !VALID_QUEST_STATUSES.has(status)) return null;
     return status as QuestStatus;
   }
@@ -178,7 +178,7 @@ export class WarpSubmissionAdapter implements SubmissionPort, SubmissionReadMode
     const graph = await this.graphPort.getGraph();
     const props = await graph.getNodeProps(submissionId);
     if (!props) return null;
-    const questId = props.get('quest_id');
+    const questId = props['quest_id'];
     return typeof questId === 'string' ? questId : null;
   }
 
@@ -191,7 +191,7 @@ export class WarpSubmissionAdapter implements SubmissionPort, SubmissionReadMode
     const open: string[] = [];
     for (const n of submissionNeighbors) {
       const props = await graph.getNodeProps(n.nodeId);
-      if (!props || props.get('type') !== 'submission') continue;
+      if (!props || props['type'] !== 'submission') continue;
 
       const decisions = await this._getDecisionsFromGraph(graph, n.nodeId);
       const isTerminal = decisions.some((d) => d.kind === 'merge' || d.kind === 'close');
@@ -212,9 +212,9 @@ export class WarpSubmissionAdapter implements SubmissionPort, SubmissionReadMode
     const refs: PatchsetRef[] = [];
     for (const n of patchsetNeighbors) {
       const props = await graph.getNodeProps(n.nodeId);
-      if (!props || props.get('type') !== 'patchset') continue;
+      if (!props || props['type'] !== 'patchset') continue;
 
-      const authoredAt = props.get('authored_at');
+      const authoredAt = props['authored_at'];
       if (typeof authoredAt !== 'number') continue;
 
       const outgoing = toNeighborEntries(await graph.neighbors(n.nodeId, 'outgoing', 'supersedes'));
@@ -244,7 +244,7 @@ export class WarpSubmissionAdapter implements SubmissionPort, SubmissionReadMode
     const graph = await this.graphPort.getGraph();
     const props = await graph.getNodeProps(patchsetId);
     if (!props) return null;
-    const workspaceRef = props.get('workspace_ref');
+    const workspaceRef = props['workspace_ref'];
     return typeof workspaceRef === 'string' ? workspaceRef : null;
   }
 
@@ -257,11 +257,11 @@ export class WarpSubmissionAdapter implements SubmissionPort, SubmissionReadMode
     const reviews: ReviewRef[] = [];
     for (const n of reviewNeighbors) {
       const props = await graph.getNodeProps(n.nodeId);
-      if (!props || props.get('type') !== 'review') continue;
+      if (!props || props['type'] !== 'review') continue;
 
-      const verdict = props.get('verdict');
-      const reviewedBy = props.get('reviewed_by');
-      const reviewedAt = props.get('reviewed_at');
+      const verdict = props['verdict'];
+      const reviewedBy = props['reviewed_by'];
+      const reviewedAt = props['reviewed_at'];
       if (
         typeof verdict !== 'string' ||
         typeof reviewedBy !== 'string' ||
@@ -299,12 +299,12 @@ export class WarpSubmissionAdapter implements SubmissionPort, SubmissionReadMode
     const decisions: DecisionProps[] = [];
     for (const n of decisionNeighbors) {
       const props = await graph.getNodeProps(n.nodeId);
-      if (!props || props.get('type') !== 'decision') continue;
+      if (!props || props['type'] !== 'decision') continue;
 
-      const kind = props.get('kind');
-      const decidedBy = props.get('decided_by');
-      const decidedAt = props.get('decided_at');
-      const rationale = props.get('rationale');
+      const kind = props['kind'];
+      const decidedBy = props['decided_by'];
+      const decidedAt = props['decided_at'];
+      const rationale = props['rationale'];
       if (
         typeof kind !== 'string' ||
         typeof decidedBy !== 'string' ||
@@ -315,7 +315,7 @@ export class WarpSubmissionAdapter implements SubmissionPort, SubmissionReadMode
       }
       if (kind !== 'merge' && kind !== 'close') continue;
 
-      const mergeCommit = props.get('merge_commit');
+      const mergeCommit = props['merge_commit'];
       decisions.push({
         id: n.nodeId,
         submissionId,

@@ -4,7 +4,7 @@
   "description": "Agent Planning and Orchestration framework powered by Causal Agents and WARP graphs.",
   "type": "module",
   "scripts": {
-    "lint": "eslint \"src/**/*.{ts,tsx}\" xyph-actuator.ts xyph-dashboard.tsx",
+    "lint": "eslint \"src/**/*.ts\" \"test/**/*.ts\" xyph-actuator.ts xyph-dashboard.ts xyph-theme-lab.ts",
     "build": "tsc",
     "coordinator": "node dist/src/coordinator-daemon.js",
     "verify:patch-ops": "npm run build && node scripts/verify-patch-ops.mjs patches",
@@ -17,10 +17,10 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
-    "@flyingrobots/bijou": "^1.2.0",
-    "@flyingrobots/bijou-node": "^1.2.0",
-    "@flyingrobots/bijou-tui": "^1.2.0",
-    "@git-stunts/git-warp": "^12.1.0",
+    "@flyingrobots/bijou": "^1.3.0",
+    "@flyingrobots/bijou-node": "^1.3.0",
+    "@flyingrobots/bijou-tui": "^1.3.0",
+    "@git-stunts/git-warp": "^13.1.0",
     "@git-stunts/plumbing": "^2.8.0",
     "@git-stunts/vault": "^1.0.1",
     "@noble/ed25519": "^3.0.0",
@@ -28,12 +28,8 @@
     "ajv": "^8.18.0",
     "ajv-errors": "^3.0.0",
     "ajv-formats": "^3.0.1",
-    "boxen": "^8.0.1",
     "chalk": "^5.6.2",
-    "cli-table3": "^0.6.5",
     "commander": "^14.0.3",
-    "ink": "^5.2.0",
-    "react": "^18.3.1",
     "zod": "^4.3.6"
   },
   "overrides": {
@@ -41,7 +37,6 @@
   },
   "devDependencies": {
     "@types/node": "^25.2.3",
-    "@types/react": "^18.3.0",
     "@vitest/coverage-v8": "^4.0.18",
     "eslint": "^9.39.2",
     "eslint-plugin-import": "^2.32.0",

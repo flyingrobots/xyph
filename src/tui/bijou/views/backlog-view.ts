@@ -1,23 +1,22 @@
 import { headerBox } from '@flyingrobots/bijou';
 import { navigableTable } from '@flyingrobots/bijou-tui';
-import { styled, getTheme } from '../../theme/index.js';
+import type { StylePort } from '../../../ports/StylePort.js';
 import type { DashboardModel } from '../DashboardApp.js';
 
-export function backlogView(model: DashboardModel, _width?: number, _height?: number): string {
-  const t = getTheme();
+export function backlogView(model: DashboardModel, style: StylePort, _width?: number, _height?: number): string {
   const snap = model.snapshot;
-  if (!snap) return styled(t.theme.semantic.muted, '  No snapshot loaded.');
+  if (!snap) return style.styled(style.theme.semantic.muted, '  No snapshot loaded.');
 
   const backlog = snap.quests.filter(q => q.status === 'BACKLOG');
   const lines: string[] = [];
 
   lines.push(headerBox('Backlog', {
     detail: `${backlog.length} quest(s) awaiting triage`,
-    borderToken: t.theme.border.secondary,
+    borderToken: style.theme.border.secondary,
   }));
 
   if (backlog.length === 0) {
-    lines.push(styled(t.theme.semantic.muted,
+    lines.push(style.styled(style.theme.semantic.muted,
       '\n  No quests in backlog.\n' +
       '  Add one: xyph-actuator inbox task:ID --title "..." --suggested-by <principal>',
     ));
@@ -32,12 +31,12 @@ export function backlogView(model: DashboardModel, _width?: number, _height?: nu
   }
 
   for (const [suggester, count] of bySuggester) {
-    lines.push(styled(t.theme.ui.intentHeader, `  ${suggester}`) + styled(t.theme.semantic.muted, ` (${count})`));
+    lines.push(style.styled(style.theme.ui.intentHeader, `  ${suggester}`) + style.styled(style.theme.semantic.muted, ` (${count})`));
   }
 
   lines.push('');
   lines.push(navigableTable(model.backlog.table, {
-    focusIndicator: styled(t.theme.semantic.primary, '\u25B6'),
+    focusIndicator: style.styled(style.theme.semantic.primary, '\u25B6'),
   }));
 
   return lines.join('\n');

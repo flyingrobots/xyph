@@ -164,7 +164,11 @@ describe('AnalysisOrchestrator', () => {
     );
 
     expect(result.autoLinks).toHaveLength(2);
-    expect(result.autoLinks[0]!.confidence >= result.autoLinks[1]!.confidence).toBe(true);
+    const first = result.autoLinks[0];
+    const second = result.autoLinks[1];
+    expect(first).toBeDefined();
+    expect(second).toBeDefined();
+    expect((first?.confidence ?? 0) >= (second?.confidence ?? 0)).toBe(true);
   });
 
   it('should handle empty inputs gracefully', () => {

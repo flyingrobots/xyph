@@ -184,7 +184,7 @@ Simple confirm dialog and text input rendered as centered box over the view cont
 
 ### 1i. Entry Point Changes
 
-**File: `xyph-dashboard.tsx`**
+**File: `xyph-dashboard.ts`**
 
 Wire `GraphPort` (for direct graph patches in claim) into `DashboardDeps`. The `IntakePort` is already wired.
 
@@ -239,7 +239,7 @@ After bijou ships `scrollX` (spec 1), `dagLayout` (spec 2), `createPanelGroup` (
 | `src/tui/bijou/DashboardApp.ts` | ViewName expansion, per-view state, InputStack, modal modes, write flow, toast, overlay rendering |
 | `src/tui/bijou/views/roadmap-view.ts` | Accept selectedIndex, highlight in frontier |
 | `src/tui/bijou/views/inbox-view.ts` | Accept selectedIndex, highlight selected item |
-| `xyph-dashboard.tsx` | Wire GraphPort into deps |
+| `xyph-dashboard.ts` | Wire GraphPort into deps |
 | `src/tui/bijou/__tests__/DashboardApp.test.ts` | New view switching, write flows, modal tests |
 | `src/tui/bijou/__tests__/views.test.ts` | Updated for overview-view (replacing all-view) |
 
@@ -255,7 +255,7 @@ After bijou ships `scrollX` (spec 1), `dagLayout` (spec 2), `createPanelGroup` (
 ```bash
 npx tsc --noEmit           # TypeScript compilation
 npm run test:local          # Full test suite
-./xyph-dashboard.tsx        # Visual check — cycle through all 5 views
+./xyph-dashboard.ts        # Visual check — cycle through all 5 views
 ```
 
 Manual checks:
@@ -387,7 +387,7 @@ Keep existing orphan warning but enhance: show count prominently at top as a "so
 ```bash
 npx tsc --noEmit
 npm run test:local
-./xyph-dashboard.tsx   # Tab to lineage — verify cards, expand/collapse, progress bars
+./xyph-dashboard.ts   # Tab to lineage — verify cards, expand/collapse, progress bars
 ```
 
 Manual checks:
@@ -500,7 +500,7 @@ Compact: `tick: N · writers: N · tip: XXXXXX` — one or two lines.
 
 Derive from snapshot timestamps. Collect all timestamped events (quest claims, submissions, reviews, decisions, inbox additions), sort by recency, show latest N (5-8 items). Each entry: bullet + entity ID + action + actor.
 
-Future: if `graph.watch()` is wired into the TEA loop (task:BJU-009), this updates live.
+`graph.watch()` is now wired into the TEA loop (task:BJU-009): `startWatching()` fires from `init()`, polling every 10s and emitting `remote-change` messages for `task:*` pattern changes.
 
 #### 5k. Alert bar
 
@@ -569,7 +569,7 @@ In `DashboardApp.ts` `init()`, change `activeView: 'roadmap'` → `activeView: '
 | `src/domain/models/dashboard.ts` | (none — all data already in snapshot) |
 | `src/tui/bijou/DashboardApp.ts` | Rename view, default view, DashboardViewState, keybindings, quick actions |
 | `src/tui/bijou/views/dashboard-view.ts` | Full rewrite (renamed from overview-view.ts) |
-| `xyph-dashboard.tsx` | Pass `projectName` from git repo name |
+| `xyph-dashboard.ts` | Pass `projectName` from git repo name |
 | `src/tui/bijou/__tests__/DashboardApp.test.ts` | Default view assertion, DashboardViewState |
 | `src/tui/bijou/__tests__/views.test.ts` | Updated assertions |
 
@@ -578,7 +578,7 @@ In `DashboardApp.ts` `init()`, change `activeView: 'roadmap'` → `activeView: '
 ```bash
 npx tsc --noEmit
 npm run test:local
-./xyph-dashboard.tsx   # Should open to dashboard, not roadmap
+./xyph-dashboard.ts   # Should open to dashboard, not roadmap
 ```
 
 Manual checks:
@@ -1161,7 +1161,7 @@ npm run test:local
 npx tsx xyph-actuator.ts triage-report --format text
 npx tsx xyph-actuator.ts propose task:OVR-001 --intent intent:DASHBOARD --campaign campaign:DASHBOARD --rationale "test"
 npx tsx xyph-actuator.ts review-proposal proposal:P1 --verdict approve --comment "LGTM"
-./xyph-dashboard.tsx   # Tab to triage view
+./xyph-dashboard.ts   # Tab to triage view
 ```
 
 ---
@@ -1246,7 +1246,7 @@ Add to `DashboardModel`. Add `'graveyard'` to `ViewName`. Wire keybindings.
 ```bash
 npx tsc --noEmit
 npm run test:local
-./xyph-dashboard.tsx   # Tab to graveyard view
+./xyph-dashboard.ts   # Tab to graveyard view
 ```
 
 Manual checks:
@@ -1371,5 +1371,5 @@ npx tsc --noEmit
 npm run test:local
 npx tsx xyph-actuator.ts status --view roadmap   # Should show PLANNED not BACKLOG
 npx tsx xyph-actuator.ts status --view inbox      # Should show "backlog" terminology
-./xyph-dashboard.tsx                               # Tab labels updated
+./xyph-dashboard.ts                               # Tab labels updated
 ```

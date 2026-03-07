@@ -45,10 +45,10 @@ export function claimQuest(deps: WriteDeps, questId: string): Cmd<DashboardMsg> 
       // OCP post-check: reads local state only (remote sync happens on next snapshot refresh).
       // True cross-writer verification requires a full materialize with remote patches.
       const props = await graph.getNodeProps(questId);
-      if (props && props.get('assigned_to') === deps.agentId) {
+      if (props && props['assigned_to'] === deps.agentId) {
         emit({ type: 'write-success', message: `Claimed ${questId}` });
       } else {
-        const winner = props ? String(props.get('assigned_to') ?? 'unknown') : 'unknown';
+        const winner = props ? String(props['assigned_to'] ?? 'unknown') : 'unknown';
         emit({ type: 'write-error', message: `Lost claim race for ${questId}. Owner: ${winner}` });
       }
     } catch (err: unknown) {

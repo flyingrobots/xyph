@@ -34,7 +34,7 @@ export class WarpIntakeAdapter implements IntakePort {
     if (props === null) {
       throw new Error(`[NOT_FOUND] Quest ${questId} not found in the graph`);
     }
-    const status = props.get('status');
+    const status = props['status'];
     if (status !== 'INBOX') {
       throw new Error(
         `[INVALID_FROM] promote requires status INBOX, quest ${questId} is ${String(status)}`
@@ -68,7 +68,7 @@ export class WarpIntakeAdapter implements IntakePort {
     if (props === null) {
       throw new Error(`[NOT_FOUND] Quest ${questId} not found in the graph`);
     }
-    const status = props.get('status');
+    const status = props['status'];
     if (status !== 'INBOX') {
       throw new Error(
         `[INVALID_FROM] reject requires status INBOX, quest ${questId} is ${String(status)}`
@@ -98,7 +98,7 @@ export class WarpIntakeAdapter implements IntakePort {
     if (props === null) {
       throw new Error(`[NOT_FOUND] Quest ${questId} not found in the graph`);
     }
-    const status = props.get('status');
+    const status = props['status'];
     if (status !== 'GRAVEYARD') {
       throw new Error(
         `[INVALID_FROM] reopen requires status GRAVEYARD, quest ${questId} is ${String(status)}`

@@ -9,14 +9,14 @@ import type { App, Cmd, KeyMsg, ResizeMsg } from '@flyingrobots/bijou-tui';
 import { quit, animate, EASINGS } from '@flyingrobots/bijou-tui';
 import { flex } from '@flyingrobots/bijou-tui';
 import { createKeyMap, type KeyMap } from '@flyingrobots/bijou-tui';
-import { statusBar } from '@flyingrobots/bijou-tui';
+import { statusBar, visibleLength } from '@flyingrobots/bijou-tui';
 import { composite, toast as toastOverlay } from '@flyingrobots/bijou-tui';
 import { helpView, helpShort } from '@flyingrobots/bijou-tui';
 import { createNavigableTableState, navTableFocusNext, navTableFocusPrev, navTablePageDown, navTablePageUp, type NavigableTableState } from '@flyingrobots/bijou-tui';
 import { createDagPaneState, dagPaneSelectNode, dagPanePageDown, dagPanePageUp, dagPaneScrollByX, type DagPaneState } from '@flyingrobots/bijou-tui';
 import { createCommandPaletteState, cpFilter, cpFocusNext, cpFocusPrev, cpSelectedItem, commandPalette, modal, type CommandPaletteState, type CommandPaletteItem } from '@flyingrobots/bijou-tui';
-import { tabs, gradientText, getDefaultContext } from '@flyingrobots/bijou';
-import { styled, styledStatus, getTheme } from '../theme/index.js';
+import { tabs, getDefaultContext, type TokenValue } from '@flyingrobots/bijou';
+import type { StylePort } from '../../ports/StylePort.js';
 import type { GraphContext } from '../../infrastructure/GraphContext.js';
 import type { GraphSnapshot } from '../../domain/models/dashboard.js';
 import type { IntakePort } from '../../ports/IntakePort.js';
@@ -116,6 +116,12 @@ export interface DashboardModel {
   /** Guards against double-writes while a write command is in flight. */
   writePending: boolean;
 
+  /** True once graph.watch() polling has been started (fires after first snapshot load). */
+  watching: boolean;
+
+  /** True when a remote-change arrived while a fetch was in-flight; triggers follow-up refresh. */
+  refreshPending: boolean;
+
   /** The current user's writer ID (e.g. 'agent.james'). Used to filter personal panels. */
   agentId?: string;
 }
@@ -130,7 +136,8 @@ export type DashboardMsg =
   | { type: 'pulse-done' }
   | { type: 'write-success'; message: string }
   | { type: 'write-error'; message: string }
-  | { type: 'dismiss-toast'; expiresAt: number };
+  | { type: 'dismiss-toast'; expiresAt: number }
+  | { type: 'remote-change' };
 
 // ── Keybindings ─────────────────────────────────────────────────────────
 
@@ -278,6 +285,7 @@ export interface DashboardDeps {
   intake: IntakePort;
   graphPort: GraphPort;
   submissionPort: SubmissionPort;
+  style: StylePort;
   agentId: string;
   logoText: string;
 }
@@ -318,6 +326,34 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         emit({ type: 'snapshot-loaded', snapshot, requestId });
       } catch (err: unknown) {
         emit({ type: 'snapshot-error', error: err instanceof Error ? err.message : String(err), requestId });
+      }
+    };
+  }
+
+  // Capture the watcher unsubscribe handle so we can tear it down on quit
+  let watcherUnsub: (() => void) | null = null;
+
+  function startWatching(): Cmd<DashboardMsg> {
+    return async (emit) => {
+      try {
+        const graph = await deps.graphPort.getGraph();
+        const { unsubscribe } = graph.watch('task:*', {
+          onChange: () => { emit({ type: 'remote-change' }); },
+          poll: 10000,
+        });
+        watcherUnsub = unsubscribe;
+      } catch {
+        // Best-effort: polling is a convenience, not critical
+      }
+    };
+  }
+
+  // Cmd<T> requires an async return — watcher cleanup is sync but must conform to the type
+  function stopWatching(): Cmd<DashboardMsg> {
+    return async () => {
+      if (watcherUnsub) {
+        watcherUnsub();
+        watcherUnsub = null;
       }
     };
   }
@@ -388,10 +424,13 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         paletteState: null,
         toast: null,
         writePending: false,
+        watching: false,
+        refreshPending: false,
         agentId: deps.agentId,
       };
       return [model, [
         fetchSnapshot(model.requestId),
+        startWatching(),
         animate<DashboardMsg>({
           type: 'tween',
           from: 0,
@@ -466,16 +505,15 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
             ? computeCriticalPath(snap.sortedTaskIds, dagTasks, dagEdges).path
             : [];
           const critSet = new Set(criticalPath);
-          const source = buildDagSource(snap, critSet);
+          const source = buildDagSource(snap, critSet, deps.style);
           const { dagWidth, dagHeight } = computeDagPaneSize(model.cols, model.rows);
-          const t = getTheme();
           newDagPane = createDagPaneState({
             source,
             width: dagWidth,
             height: dagHeight,
             dagOptions: {
-              highlightToken: t.theme.semantic.warning,
-              selectedToken: t.theme.semantic.primary,
+              highlightToken: deps.style.theme.semantic.warning,
+              selectedToken: deps.style.theme.semantic.primary,
               direction: 'right',
               maxWidth: Math.max(model.cols * 2, 120),
             },
@@ -487,12 +525,18 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
             newDagPane = dagPaneSelectNode(newDagPane, selectedId, getDefaultContext());
           }
         }
-        return [{
+        // If a remote-change arrived while we were loading, schedule a follow-up fetch
+        const pendingRefresh = model.refreshPending;
+        const followUpReqId = pendingRefresh ? model.requestId + 1 : model.requestId;
+        const updated: DashboardModel = {
           ...model,
           snapshot: snap,
-          loading: false,
+          loading: pendingRefresh,
           error: null,
           loadingProgress: 100,
+          watching: true,
+          refreshPending: false,
+          requestId: followUpReqId,
           roadmap: { table: newRoadmapTable, dagPane: newDagPane, fallbackScrollY: 0, detailScrollY: 0 },
           submissions: { ...model.submissions, table: rebuildSubmissionsTable(snap, model.submissions.table.focusRow, model.rows - 4) },
           backlog: { ...model.backlog, table: rebuildBacklogTable(snap, model.backlog.table.focusRow, model.rows - 4) },
@@ -506,7 +550,14 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
             focusRow: clampedFocusRow,
             detailId: currentDv.detailId && snap.quests.some(q => q.id === currentDv.detailId) ? currentDv.detailId : null,
           },
-        }, []];
+        };
+        const cmds: Cmd<DashboardMsg>[] = pendingRefresh ? [fetchSnapshot(followUpReqId)] : [];
+        return [updated, cmds];
+      }
+      if (msg.type === 'remote-change') {
+        if (model.loading) return [{ ...model, refreshPending: true }, []];
+        const nextReqId = model.requestId + 1;
+        return [{ ...model, loading: true, requestId: nextReqId, refreshPending: false }, [fetchSnapshot(nextReqId)]];
       }
       if (msg.type === 'snapshot-error') {
         if (msg.requestId !== model.requestId) return [model, []];
@@ -566,17 +617,16 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
       if (msg.type === 'key') {
         // Ctrl+C always quits, regardless of mode
         if (msg.key === 'c' && msg.ctrl) {
-          return [model, [quit()]];
+          return [model, [stopWatching(), quit()]];
         }
 
         // ── Quit confirmation (modal dialog) ──────────────────────────
         if (msg.key === 'q' && !msg.ctrl && !msg.alt && model.mode === 'normal') {
-          const t = getTheme();
           const quitHint =
-            styled(t.theme.semantic.info, 'q') + ' / ' +
-            styled(t.theme.semantic.info, 'y') + '  confirm · ' +
-            styled(t.theme.semantic.error, 'n') + ' / ' +
-            styled(t.theme.semantic.error, 'esc') + '  cancel';
+            deps.style.styled(deps.style.theme.semantic.info, 'q') + ' / ' +
+            deps.style.styled(deps.style.theme.semantic.info, 'y') + '  confirm · ' +
+            deps.style.styled(deps.style.theme.semantic.error, 'n') + ' / ' +
+            deps.style.styled(deps.style.theme.semantic.error, 'esc') + '  cancel';
           return [{
             ...model,
             showLanding: false,
@@ -596,7 +646,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
           if (msg.key === 'y' || (msg.key === 'q' && isQuitConfirm)) {
             const { action } = model.confirmState;
             if (action.kind === 'quit') {
-              return [{ ...model, mode: 'normal', confirmState: null }, [quit()]];
+              return [{ ...model, mode: 'normal', confirmState: null }, [stopWatching(), quit()]];
             }
             return [{
               ...model,
@@ -701,7 +751,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         if (globalAction) {
           switch (globalAction.type) {
             case 'quit':
-              return [model, [quit()]];
+              return [model, [stopWatching(), quit()]];
             case 'jump-view':
               return [{ ...model, activeView: globalAction.view }, []];
             case 'refresh': {
@@ -732,11 +782,11 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
     },
 
     view(model: DashboardModel): string {
-      const t = getTheme();
+      const { style } = deps;
 
       // Landing view
       if (model.showLanding) {
-        return landingView(model);
+        return landingView(model, style);
       }
 
       // Help view (auto-generated from keymaps)
@@ -756,37 +806,42 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
       const hints = '  ' + (vk ? helpShort(vk) : helpShort(globalKeys));
 
       // Status line with toast
-      const statusLine = renderStatusLine(model, t);
+      const statusLine = renderStatusLine(model, style);
 
       // Active view content
       const viewRenderer = (w: number, h: number): string => {
         let content: string;
         switch (model.activeView) {
-          case 'dashboard':   content = dashboardView(model, w, h); break;
-          case 'roadmap':     content = roadmapView(model, w, h); break;
-          case 'submissions': content = submissionsView(model, w, h); break;
-          case 'lineage':     content = lineageView(model, w, h); break;
-          case 'backlog':     content = backlogView(model, w, h); break;
+          case 'dashboard':   content = dashboardView(model, style, w, h); break;
+          case 'roadmap':     content = roadmapView(model, style, w, h); break;
+          case 'submissions': content = submissionsView(model, style, w, h); break;
+          case 'lineage':     content = lineageView(model, style, w, h); break;
+          case 'backlog':     content = backlogView(model, style, w, h); break;
           default: { const _exhaustive: never = model.activeView; void _exhaustive; content = ''; break; }
         }
 
         // Overlay rendering for modal modes
         if (model.mode === 'confirm' && model.confirmState) {
-          return confirmOverlay(content, model.confirmState.prompt, model.cols, h, model.confirmState.hint);
+          return confirmOverlay(content, model.confirmState.prompt, model.cols, h, style, model.confirmState.hint);
         }
         if (model.mode === 'input' && model.inputState) {
-          return inputOverlay(content, model.inputState.label, model.inputState.value, model.cols, h);
+          return inputOverlay(content, model.inputState.label, model.inputState.value, model.cols, h, style);
         }
         return content;
       };
 
+      // Apply surface backgrounds to chrome lines
+      const tabLine = chromeLine(`  ${tabBar}`, model.cols, style.theme.surface.elevated, style);
+      const statusBg = chromeLine(statusLine, model.cols, style.theme.surface.secondary, style);
+      const hintLine = chromeLine(hints, model.cols, style.theme.surface.muted, style);
+
       // Layout: tabBar → content → WARP gutter → hints
       let output = flex(
         { direction: 'column', width: model.cols, height: model.rows },
-        { basis: 1, content: `  ${tabBar}` },
+        { basis: 1, content: tabLine },
         { flex: 1, content: viewRenderer },
-        { basis: 1, content: statusLine },
-        { basis: 1, content: hints },
+        { basis: 1, content: statusBg },
+        { basis: 1, content: hintLine },
       );
 
       // Command palette overlay
@@ -800,7 +855,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
           body: rendered,
           screenWidth: model.cols,
           screenHeight: model.rows,
-          borderToken: t.theme.border.primary,
+          borderToken: style.theme.border.primary,
         });
         output = composite(output, [ov]);
       }
@@ -810,10 +865,10 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         const quest = model.snapshot?.quests.find(q => q.id === model.dashboardView?.detailId);
         if (quest) {
           const dl: string[] = [];
-          dl.push(styled(t.theme.semantic.primary, ` ${quest.id}`));
+          dl.push(style.styled(style.theme.semantic.primary, ` ${quest.id}`));
           dl.push('');
           dl.push(` Title:    ${quest.title}`);
-          dl.push(` Status:   ${styledStatus(quest.status)}`);
+          dl.push(` Status:   ${style.styledStatus(quest.status)}`);
           dl.push(` Hours:    ${quest.hours}`);
           if (quest.assignedTo) dl.push(` Assigned: ${quest.assignedTo}`);
           if (quest.campaignId) dl.push(` Campaign: ${quest.campaignId}`);
@@ -822,7 +877,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
             body: dl.join('\n'),
             screenWidth: model.cols,
             screenHeight: model.rows,
-            borderToken: t.theme.border.primary,
+            borderToken: style.theme.border.primary,
           });
           output = composite(output, [dov]);
         }
@@ -1111,7 +1166,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
   ): [DashboardModel, Cmd<DashboardMsg>[]] {
     switch (actionId) {
       case 'quit':
-        return [model, [quit()]];
+        return [model, [stopWatching(), quit()]];
       case 'refresh': {
         const nextReqId = model.requestId + 1;
         return [{ ...model, loading: true, error: null, requestId: nextReqId }, [fetchSnapshot(nextReqId)]];
@@ -1148,7 +1203,14 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
 
 // ── Render helpers ──────────────────────────────────────────────────────
 
-function renderStatusLine(model: DashboardModel, t: ReturnType<typeof getTheme>): string {
+/** Pad a line to `width` visible chars and apply a token (foreground + optional bg). */
+function chromeLine(text: string, width: number, token: TokenValue, style: StylePort): string {
+  const vis = visibleLength(text);
+  const padded = vis < width ? text + ' '.repeat(width - vis) : text;
+  return style.styled(token, padded);
+}
+
+function renderStatusLine(model: DashboardModel, style: StylePort): string {
   const meta = model.snapshot?.graphMeta;
   const snap = model.snapshot;
 
@@ -1167,8 +1229,7 @@ function renderStatusLine(model: DashboardModel, t: ReturnType<typeof getTheme>)
   }
 
   // Apply gradient to WARP tag
-  const ctx = getDefaultContext();
-  const styledTag = gradientText(tagText, t.theme.gradient.brand, { style: ctx.style });
+  const styledTag = style.gradient(tagText, style.theme.gradient.brand);
 
   // Right side: project stats
   let rightStats = '';
@@ -1181,7 +1242,7 @@ function renderStatusLine(model: DashboardModel, t: ReturnType<typeof getTheme>)
 
   return statusBar({
     left: ` ${styledTag}`,
-    right: rightStats ? styled(t.theme.semantic.muted, rightStats) : undefined,
+    right: rightStats ? style.styled(style.theme.semantic.muted, rightStats) : undefined,
     width: model.cols,
     fillChar: '\u2500',
   });

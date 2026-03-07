@@ -1,17 +1,15 @@
-import { progressBar, gradientText, getDefaultContext } from '@flyingrobots/bijou';
+import { progressBar } from '@flyingrobots/bijou';
 import { canvas, composite, modal } from '@flyingrobots/bijou-tui';
-import { styled, getTheme } from '../../theme/index.js';
+import type { StylePort } from '../../../ports/StylePort.js';
 import { spiralShader, spiralFrame } from '../shaders/spiral.js';
 import type { DashboardModel } from '../DashboardApp.js';
 
 /** A foreground content line with its pre-ANSI visual width. */
 interface FgLine { text: string; width: number }
 
-export function landingView(model: DashboardModel): string {
-  const t = getTheme();
-  const ctx = getDefaultContext();
-  const muted = t.theme.semantic.muted;
-  const border = t.theme.border.primary;
+export function landingView(model: DashboardModel, style: StylePort): string {
+  const muted = style.theme.semantic.muted;
+  const border = style.theme.border.primary;
 
   // ── Spiral background ────────────────────────────────────────────────
   // canvas() returns empty string in pipe mode — fall back to spiralFrame
@@ -19,7 +17,7 @@ export function landingView(model: DashboardModel): string {
   if (!bg) {
     bg = spiralFrame(model.cols, model.rows, Date.now()).join('\n');
   }
-  const styledBg = styled(muted, bg);
+  const styledBg = style.styled(muted, bg);
 
   // ── Foreground content ───────────────────────────────────────────────
   const fg: FgLine[] = [];
@@ -30,7 +28,7 @@ export function landingView(model: DashboardModel): string {
   const padded = logoLines.map(l => l.padEnd(maxW));
   for (const line of padded) {
     fg.push({
-      text: gradientText(line, t.theme.gradient.brand, { style: ctx.style }),
+      text: style.gradient(line, style.theme.gradient.brand),
       width: line.length,
     });
   }
@@ -38,7 +36,7 @@ export function landingView(model: DashboardModel): string {
 
   // Copyright
   const copyright = 'Copyright \u00a9 2026 FlyingRobots';
-  fg.push({ text: styled(muted, copyright), width: copyright.length });
+  fg.push({ text: style.styled(muted, copyright), width: copyright.length });
   fg.push({ text: '', width: 0 });
 
   // Status text
@@ -46,18 +44,18 @@ export function landingView(model: DashboardModel): string {
     // no status text — progress bar at bottom
   } else if (model.error) {
     const errText = `Error: ${model.error}`;
-    fg.push({ text: styled(t.theme.semantic.error, errText), width: errText.length });
+    fg.push({ text: style.styled(style.theme.semantic.error, errText), width: errText.length });
     fg.push({ text: '', width: 0 });
     const press = 'Press any key to continue\u2026';
-    fg.push({ text: styled(muted, press), width: press.length });
+    fg.push({ text: style.styled(muted, press), width: press.length });
   } else if (model.snapshot) {
     const snap = model.snapshot;
     const stats = `${snap.quests.length} quests, ${snap.campaigns.length} campaigns`;
-    fg.push({ text: styled(muted, stats), width: stats.length });
+    fg.push({ text: style.styled(muted, stats), width: stats.length });
     fg.push({ text: '', width: 0 });
     const press = 'Press any key to continue\u2026';
-    const pulseToken = model.pulsePhase >= 50 ? t.theme.semantic.primary : muted;
-    fg.push({ text: styled(pulseToken, press), width: press.length });
+    const pulseToken = model.pulsePhase >= 50 ? style.theme.semantic.primary : muted;
+    fg.push({ text: style.styled(pulseToken, press), width: press.length });
   }
 
   // ── Center each line within the widest line ──────────────────────────
@@ -79,7 +77,7 @@ export function landingView(model: DashboardModel): string {
     if (lines.length > 0) {
       lines[lines.length - 1] = progressBar(model.loadingProgress, {
         width: Math.max(1, model.cols),
-        gradient: t.theme.gradient.progress,
+        gradient: style.theme.gradient.progress,
         showPercent: true,
       });
       output = lines.join('\n');

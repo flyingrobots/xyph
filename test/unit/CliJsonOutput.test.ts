@@ -3,23 +3,16 @@ import { createCliContext } from '../../src/cli/context.js';
 
 // Stub WarpGraphAdapter so we don't need a real git repo
 vi.mock('../../src/infrastructure/adapters/WarpGraphAdapter.js', () => ({
-  WarpGraphAdapter: class WarpGraphAdapter {},
+  // Stub: no real git repo needed for CLI output tests
+  WarpGraphAdapter: class WarpGraphAdapter { readonly stub = true; },
 }));
 
-// Stub theme so it doesn't require bijou context
-vi.mock('../../src/tui/theme/index.js', () => ({
-  getTheme: () => ({
-    theme: {
-      semantic: {
-        success: (s: string) => s,
-        warning: (s: string) => s,
-        muted: (s: string) => s,
-        error: (s: string) => s,
-      },
-    },
-  }),
-  styled: (_fn: unknown, s: string) => s,
-  ensureXyphContext: () => {},
+// Stub BijouStyleAdapter to avoid bijou context initialization.
+// PlainStyleAdapter needs no mocking — it's a pure identity adapter.
+import { createPlainStylePort } from '../../src/infrastructure/adapters/PlainStyleAdapter.js';
+
+vi.mock('../../src/infrastructure/adapters/BijouStyleAdapter.js', () => ({
+  createStylePort: () => createPlainStylePort(),
 }));
 
 describe('CliContext JSON mode', () => {
@@ -28,8 +21,8 @@ describe('CliContext JSON mode', () => {
   let exitSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
-    logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-    errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    logSpy = vi.spyOn(console, 'log').mockImplementation(() => { /* suppress */ });
+    errorSpy = vi.spyOn(console, 'error').mockImplementation(() => { /* suppress */ });
     exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
   });
 

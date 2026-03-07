@@ -14,10 +14,8 @@
     "noImplicitOverride": true,
     "noPropertyAccessFromIndexSignature": true,
     "skipLibCheck": true,
-    "outDir": "dist",
-    "jsx": "react-jsx",
-    "jsxImportSource": "react"
+    "outDir": "dist"
   },
-  "include": ["src/**/*", "xyph-actuator.ts", "xyph-dashboard.tsx"],
+  "include": ["src/**/*", "xyph-actuator.ts", "xyph-dashboard.ts", "xyph-theme-lab.ts"],
   "exclude": ["node_modules", "dist"]
 }

@@ -4,18 +4,62 @@ All notable changes to XYPH will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **`history` command** — `xyph-actuator history <nodeId>` shows all patches that touched a node via git-warp's `patchesFor()` provenance API (Constitution Art. III compliance)
+- **StylePort interface** — dependency-injected styling abstraction (`StylePort`) with `BijouStyleAdapter` (chalk-based) and `PlainStyleAdapter` (no-color) implementations; replaces the global theme singleton with explicit wiring through the composition root
+- **Theme lab TUI** — interactive design token exploration tool (`xyph-theme-lab.ts`) for cycling through theme palettes in real time
+- **Dark + light theme variants** — automatic terminal background detection with distinct dark and light palettes; theme selection adapts to the user's terminal
+
+### Changed — StylePort Migration
+
+- **CLI pipeline uses StylePort DI** — all CLI commands and TUI views receive `StylePort` via the composition root instead of importing a global theme module; threading flows from `xyph-actuator.ts` → commands → render functions
+
+### Removed
+
+- **Ink / React / JSX** — removed `ink`, `react`, `@types/react`, `boxen`, and `cli-table3` dependencies (all replaced by bijou). Removed JSX compiler options (`jsx`, `jsxImportSource`) from tsconfig. Renamed `xyph-dashboard.tsx` → `xyph-dashboard.ts`. No JSX or React code remains in the codebase.
+- **Global theme bridge** — deleted `src/tui/theme/bridge.ts` and its tests. All styling now flows through the dependency-injected `StylePort` interface.
+- **Dead theme barrel module** — deleted orphaned `src/tui/theme/index.ts` barrel re-export
+
+### Fixed
+
+- **DashboardApp watching lifecycle** — `startWatching()` (graph.watch polling) now fires from `init()` alongside the initial `fetchSnapshot()`, instead of being conditionally triggered on the first `snapshot-loaded` message; the `watching` model field still tracks state but no longer gates command emission
+- **Test fixture type completeness** — added missing `watching: false` to the `makeModel()` helper in `views.test.ts` to match the updated `DashboardModel` type
+- **graph.watch() process hang** — `stopWatching()` now clears the poll interval on quit, preventing the Node process from hanging after dashboard exit
+- **Theme lab bridge bypass** — theme lab creates its own `StylePort` instances directly instead of routing through the (now-deleted) global bridge
+- **Stale .tsx doc comment** — fixed leftover `.tsx` reference in `xyph-dashboard.ts`
+- **Coordinator daemon StylePort hoisting** — `StylePort` instance lifted to module level in `coordinator-daemon.ts` to avoid repeated construction
+
+### Fixed — PR #36 Code Review
+
+- **Lineage view hid orphan quests** — `renderLineage` returned early when `snapshot.intents.length === 0`, skipping orphan quest rendering; orphan detection now runs before the early return so sovereignty violations are always visible
+- **Remote-change events dropped during fetch** — `DashboardApp` now sets `refreshPending: true` when a `remote-change` arrives while a snapshot fetch is in-flight, triggering a follow-up refresh on completion
+- **Theme resolver read env var twice** — `BijouStyleAdapter` created a second `createThemeResolver` that re-read `XYPH_THEME`; now uses the already-resolved theme as fallback without re-reading
+- **Gradient sample RangeError** — `xyph-theme-lab.ts` could pass negative value to `'#'.repeat()` on narrow terminals; clamped to `Math.max(0, ...)`
+- **Double-styling in history command** — removed `chalk.dim()` inside `ctx.muted()` in `coordination.ts`; styling now flows exclusively through `StylePort`
+- **Guild terminology in roadmap** — replaced "tasks" with "Quests" in frontier blocked/waiting messages
+- **ARCHITECTURE.md diagram** — updated `(TUI/Ink)` label to `(TUI/TEA)` to match the bijou migration
+- **Lint scope** — added `xyph-theme-lab.ts` to ESLint config, lint script, and `tsconfig.json` includes; fixed unused `w` parameters surfaced by strict compilation
+- **Stale bridge.ts references** — updated comments in `xyph-presets.ts` to reference `BijouStyleAdapter`
+- **Theme brightness test** — replaced packed-RGB comparison with W3C relative luminance formula
+- **Test header assertion** — removed `toContain('Backlog')` header text assertion per project test guidelines
+
 ### Added — Work DAG Analysis Suite
 
-- **`DagAnalysis.ts`** — pure functions for DAG structure analysis: level assignment, DAG width, greedy worker scheduling, transitive reduction/closure, anti-chain decomposition, reverse reachability, and provenance tracing
+- **`DagAnalysis.ts`** — pure functions for DAG structure analysis: DAG width, greedy worker scheduling, and anti-chain grouping
 - **`scripts/generate-work-dag.ts`** — generates comprehensive DAG visualization suite: full/per-campaign/backlog/graveyard SVGs in both LR and TB orientations, plus `work.md` analysis document with topological sort, critical path, parallelism, scheduling, transitive reduction/closure, ancestry/impact, campaign grouping, and anti-chain waves
 - **`npm run graph:work`** — runs the generator, outputs to `docs/work/`
-- **43 new tests** — unit tests for all DagAnalysis functions (diamond, linear, empty, single-node, isolated-node graphs)
+- **17 unit tests** — unit tests for remaining DagAnalysis functions (diamond, linear, empty, single-node, isolated-node graphs)
 
 ### Changed
 
+- **Upgraded git-warp to v13.1.0** — `@git-stunts/git-warp` from v12.1.0 to v13.1.0; migrated all `getNodeProps()` call sites from `Map<string, unknown>` (`.get()`) to `Record<string, unknown>` (bracket notation)
+- **Delegated graph algorithms to git-warp traversals** — removed userland `computeLevels()`, `transitiveReduction()`, `transitiveClosure()`, `reverseReachability()`, `computeProvenance()` from `DagAnalysis.ts`; `generate-work-dag.ts` now calls `graph.traverse.levels()`, `.transitiveReduction()`, `.transitiveClosure()`, `.rootAncestors()` directly; `computeAntiChains()` simplified to accept pre-computed levels
+- **Upgraded bijou to v1.3.0** — `@flyingrobots/bijou`, `@flyingrobots/bijou-node`, `@flyingrobots/bijou-tui` from v1.2.0 to v1.3.0
 - **Upgraded bijou to v1.2.0** — `@flyingrobots/bijou`, `@flyingrobots/bijou-node`, `@flyingrobots/bijou-tui` from v0.10.0 to v1.2.0
 - **Roadmap DAG panel uses `dagPane()`** — replaced ~50 lines of manual `dagLayout()` + `viewport()` + scroll-centering math with bijou v1.2.0's `dagPane()` building block; auto-scroll-to-selection, keyboard-synced DAG highlight, `DagPaneState` replaces raw `dagScrollX`/`dagScrollY`
 - **Dashboard columns use `focusArea()`** — replaced bare `viewport()` with `focusArea()` for visual focus indication; focused column shows bright `▎` gutter, unfocused shows muted gutter
+- **Default theme** — switched from `cyan-magenta` to `teal-orange-pink`
 
 ### Fixed — PR #34 Feedback
 

@@ -29,8 +29,8 @@ describe('TriageService', () => {
     await service.linkIntent('task:TST-001', 'blake3:hash');
 
     expect(mockRoadmap.upsertQuest).toHaveBeenCalled();
-    const mockUpsert = mockRoadmap.upsertQuest as unknown as { mock: { calls: Array<[Quest]> } };
-    expect(mockUpsert.mock.calls[0]![0].originContext).toBe('blake3:hash');
+    const mockUpsert = mockRoadmap.upsertQuest as unknown as { mock: { calls: [Quest][] } };
+    expect(mockUpsert.mock.calls[0]?.[0].originContext).toBe('blake3:hash');
   });
 
   it('should identify quests missing origin context', async () => {

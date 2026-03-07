@@ -65,8 +65,8 @@ jobs:
       - name: Ban inline lint/typecheck bypass comments
         run: |
           PATTERNS='eslint-disable|@ts-ignore|@ts-expect-error|@ts-nocheck'
-          if grep -rn --include='*.ts' --include='*.tsx' --include='*.js' --include='*.jsx' \
-            -E "$PATTERNS" src/ test/ xyph-actuator.ts xyph-dashboard.tsx; then
+          if grep -rn --include='*.ts' --include='*.js' \
+            -E "$PATTERNS" src/ test/ xyph-actuator.ts xyph-dashboard.ts; then
             echo "::error::Found forbidden bypass comments. Fix the code, don't silence the linter."
             exit 1
           fi

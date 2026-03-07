@@ -4,7 +4,6 @@ import {
   type SubmissionReadModel,
 } from '../../src/domain/services/SubmissionService.js';
 import type { PatchsetRef, ReviewRef, DecisionProps } from '../../src/domain/entities/Submission.js';
-import type { QuestStatus } from '../../src/domain/entities/Quest.js';
 
 // ---------------------------------------------------------------------------
 // Helpers

@@ -262,7 +262,7 @@ Add `--include-graveyard` to any view to see rejected items.
 ### Interactive TUI Dashboard
 
 ```bash
-./xyph-dashboard.tsx
+./xyph-dashboard.ts
 ```
 
 | Key | Context | Action |
