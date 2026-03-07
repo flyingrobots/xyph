@@ -29,7 +29,7 @@ import {
   XYPH_PRESETS,
   type XyphTheme,
 } from './src/tui/theme/xyph-presets.js';
-import { ensureXyphContext, getTheme } from './src/tui/theme/index.js';
+import { createStylePort } from './src/infrastructure/adapters/BijouStyleAdapter.js';
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -247,7 +247,8 @@ function createThemeLab(): App<LabModel, LabMsg> {
   const themeNames = Object.keys(XYPH_PRESETS).filter(n =>
     n.endsWith('-dark') || n.endsWith('-light'),
   );
-  const initialName = getTheme().theme.name;
+  const initialStyle = createStylePort();
+  const initialName = initialStyle.theme.name;
   // Match the initial theme to a variant name
   let initialIdx = themeNames.indexOf(initialName);
   if (initialIdx < 0) {
@@ -344,6 +345,5 @@ function createThemeLab(): App<LabModel, LabMsg> {
 
 // ── Main ─────────────────────────────────────────────────────────────────
 
-ensureXyphContext();
 const app = createThemeLab();
 await run(app, { altScreen: true, hideCursor: true });

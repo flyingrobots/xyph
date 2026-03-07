@@ -6,20 +6,31 @@ vi.mock('../../src/infrastructure/adapters/WarpGraphAdapter.js', () => ({
   WarpGraphAdapter: class WarpGraphAdapter {},
 }));
 
-// Stub theme so it doesn't require bijou context
-vi.mock('../../src/tui/theme/index.js', () => ({
-  getTheme: () => ({
-    theme: {
-      semantic: {
-        success: (s: string) => s,
-        warning: (s: string) => s,
-        muted: (s: string) => s,
-        error: (s: string) => s,
-      },
-    },
-  }),
-  styled: (_fn: unknown, s: string) => s,
-  ensureXyphContext: () => {},
+// Stub style adapters so they don't require bijou context
+const stubStylePort = {
+  theme: {
+    name: 'stub',
+    semantic: { success: { hex: '#0f0' }, warning: { hex: '#ff0' }, muted: { hex: '#888' }, error: { hex: '#f00' }, primary: { hex: '#0ff' }, info: { hex: '#0af' } },
+    status: {},
+    border: { primary: { hex: '#888' }, secondary: { hex: '#666' }, success: { hex: '#0f0' }, warning: { hex: '#ff0' }, error: { hex: '#f00' } },
+    ui: { sectionHeader: { hex: '#fff' }, tableHeader: { hex: '#ccc' }, intentHeader: { hex: '#0ff' } },
+    surface: { primary: { hex: '#000' }, secondary: { hex: '#111' }, elevated: { hex: '#222' }, overlay: { hex: '#333' }, muted: { hex: '#444' } },
+    gradient: { brand: [] },
+  },
+  noColor: true,
+  styled: (_token: unknown, text: string) => text,
+  styledStatus: (_status: string, text?: string) => text ?? _status,
+  gradient: (text: string) => text,
+  ink: () => undefined,
+  hex: () => '#000',
+};
+
+vi.mock('../../src/infrastructure/adapters/BijouStyleAdapter.js', () => ({
+  createStylePort: () => ({ ...stubStylePort }),
+}));
+
+vi.mock('../../src/infrastructure/adapters/PlainStyleAdapter.js', () => ({
+  createPlainStylePort: () => ({ ...stubStylePort }),
 }));
 
 describe('CliContext JSON mode', () => {
