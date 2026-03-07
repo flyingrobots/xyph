@@ -365,3 +365,16 @@ $ xyph batch seal task:A task:B --artifact <sha> --rationale "..."
 12. `xyph assign` / `xyph move` — directed work management
 13. `xyph batch` — multi-item operations
 14. `xyph diff` — graph change detection
+
+```mermaid
+graph LR
+    A["Phase A\nFoundation"]
+    B["Phase B\nAgent Protocol"]
+    C["Phase C\nInteractive Wizards"]
+    D["Phase D\nUtilities"]
+
+    A --> B
+    A --> C
+    B --> D
+    C --> D
+```

@@ -12,6 +12,20 @@
 4. Rebalance rules
 5. Emission constraints
 
+```mermaid
+flowchart TD
+    A["1. Contract Validity\n🔴 MUST"] --> B["2. DAG Integrity\n🔴 MUST"]
+    B --> C["3. Capacity Constraints\n🟡 SHOULD"]
+    C --> D["4. Rebalance Rules\n🟡 SHOULD"]
+    D --> E["5. Emission Constraints\n🔵 COULD"]
+    A -. "hard reject" .-> FAIL["REJECT\nCompiler Error"]
+    B -. "hard reject" .-> FAIL
+    C -. "warning + penalty" .-> WARN["WARNING\nCompiler Warning"]
+    D -. "warning + penalty" .-> WARN
+    E -. "optimization hint" .-> HINT["HINT\nLinter Hint"]
+    E -- "all passed" --> ACCEPT["ACCEPT"]
+```
+
 ## LEVEL 1: MUST (Compiler Errors)
 1. **Schema Compliance**: Payload must validate against `Task Schema v1.0`.
 2. **Milestone Existence**: `milestoneId` must exist in the active Roadmap.
