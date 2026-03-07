@@ -348,8 +348,9 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
     };
   }
 
+  // Cmd<T> requires an async return — watcher cleanup is sync but must conform to the type
   function stopWatching(): Cmd<DashboardMsg> {
-    return () => {
+    return async () => {
       if (watcherUnsub) {
         watcherUnsub();
         watcherUnsub = null;
