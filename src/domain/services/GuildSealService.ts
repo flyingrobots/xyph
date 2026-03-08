@@ -21,10 +21,7 @@ import type { KeyringStoragePort } from '../../ports/KeyringStoragePort.js';
  * "The output of every quest is a Scroll. These are stored in the graph as
  *  content-addressed nodes, signed with the Guild Seal of the executing agent."
  *
- * Private keys are stored at trust/<agentId>.sk (gitignored).
- * Public keys are registered in trust/keyring.json.
- *
- * Infrastructure concerns (filesystem, crypto RNG) are delegated to KeyringStoragePort.
+ * Key storage and retrieval are delegated to KeyringStoragePort.
  */
 
 export interface ScrollPayload {
