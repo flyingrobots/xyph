@@ -58,11 +58,18 @@ Status: HARD REJECT
     signature.payloadDigest must be computed over canonicalized patch body
     excluding signature object itself.
 
-12. Content-addressed deduplication:
+12. `baseSnapshotDigest` semantics:
+    This field records the materialized state fingerprint at pipeline start
+    time — a blake3 hash of the graph state the compiler saw when planning.
+    It is advisory for audit correlation ("what did the pipeline see when it
+    planned?"), NOT a concurrency precondition. It is never checked against
+    a live snapshot at apply time.
+
+13. Content-addressed deduplication:
     git-warp patches are Git commits. Identical operations produce the same
     SHA and naturally deduplicate. No application-level idempotency key
     is strictly necessary, but `patchId` is retained for audit correlation.
 
-13. Rationale floor:
+14. Rationale floor:
     metadata.rationale length >= 11 and each operation.rationale length >= 11
     for non-system actors.

@@ -12,7 +12,7 @@
 
 ### 2. Planner Agent (Classify → Merge)
 - **Input**: Normalized Tasks
-- **Output**: Tasks with milestoneId + tentative blockedBy/blocking
+- **Output**: Tasks with campaign + tentative depends-on edges
 - **Forbidden**: Set estimates, create new milestones
 
 ### 3. Graph Agent (Rebalance → Schedule)

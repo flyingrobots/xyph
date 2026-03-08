@@ -324,7 +324,7 @@ The planning compiler processes work through a deterministic state machine:
 
 ![Planning compiler pipeline](docs/diagrams/planning-pipeline.svg)
 
-Every state transition emits a typed artifact and an immutable audit record. The pipeline is **fail-closed** — if any phase fails, execution halts. Only the APPLY phase can mutate the graph, and it enforces **all-or-nothing atomicity** with automatic rollback.
+Every state transition emits a typed artifact and an immutable audit record. The pipeline is **fail-closed** — if any phase fails, execution halts. Only the APPLY phase can mutate the graph, and each `graph.patch()` call is atomic — either the entire patch commits as a single Git object, or nothing is written.
 
 ### The Policy Engine
 
@@ -394,7 +394,7 @@ Every mutation must obey the [CONSTITUTION.md](docs/canonical/CONSTITUTION.md):
 
 - **Art. I — Law of Determinism** — Same input always produces same output; no silent state
 - **Art. II — Law of DAG Integrity** — No cycles in the dependency graph; every task reachable from a milestone; dependencies must complete before dependents start
-- **Art. III — Law of Provenance** — Every mutation is signed; every decision carries a rationale (≥ 10 chars) and confidence score; every patch has an inverse for rollback
+- **Art. III — Law of Provenance** — Every mutation is signed; every decision carries a rationale (≥ 10 chars) and confidence score; corrections are made via compensating patches (LWW overrides), not transactional rollback
 - **Art. IV — Law of Human Sovereignty** — Humans can override any agent decision; every quest must have a Genealogy of Intent; critical path changes require an ApprovalGate signed by a human
 
 ### Canonical Docs

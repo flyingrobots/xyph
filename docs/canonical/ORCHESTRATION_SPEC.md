@@ -187,7 +187,7 @@ Exit requires:
 - no conflicting ops on same field without resolution rule
 Failure reasons:
 - unresolved conflicting updates
-- snapshot mismatch
+- unresolvable entity conflict
 
 ---
 

@@ -9,7 +9,7 @@ Every task, requirement, decision, and test result lives in a single data struct
 - **Deterministic** — given the same inputs, every participant computes the same state.
 - **Decentralized** — no central server. Participants sync via Git, work offline, and converge automatically.
 - **Time-travelable** — the entire history is preserved. You can rewind to any prior state, fork reality, and replay forward.
-- **Cryptographically auditable** — every mutation is signed, timestamped, and traceable to its author.
+- **Cryptographically auditable** — every mutation is attributed to its author, content-addressed by Git, and traceable through the patch history.
 
 ## The Problem
 
@@ -75,7 +75,7 @@ XYPH is in alpha. What works today:
 - Cryptographic Guild Seals (Ed25519 signing of completed work)
 - TUI dashboard for browsing the roadmap
 - CLI actuator for all graph mutations
-- 900+ tests, strict TypeScript, clean CI
+- 650+ tests, strict TypeScript, clean CI
 
 What's next:
 

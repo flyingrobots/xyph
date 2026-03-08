@@ -34,6 +34,7 @@ All notable changes to XYPH will be documented in this file.
 
 ### Fixed
 
+- **Prose alignment with CRDT reality** — replaced centralized-database vocabulary in README (atomicity/rollback), WHITEPAPER ("work is a transaction"), EXECUTIVE_SUMMARY (signed → attributed, 900→650 tests), AGENT_CHARTER (blockedBy → depends-on), ORCHESTRATION_SPEC (snapshot mismatch → entity conflict), PATCH_OPS_INVARIANTS (baseSnapshotDigest advisory note) (WVR-006)
 - **DashboardApp watching lifecycle** — `startWatching()` (graph.watch polling) now fires from `init()` alongside the initial `fetchSnapshot()`, instead of being conditionally triggered on the first `snapshot-loaded` message; the `watching` model field still tracks state but no longer gates command emission
 - **Test fixture type completeness** — added missing `watching: false` to the `makeModel()` helper in `views.test.ts` to match the updated `DashboardModel` type
 - **graph.watch() process hang** — `stopWatching()` now clears the poll interval on quit, preventing the Node process from hanging after dashboard exit
