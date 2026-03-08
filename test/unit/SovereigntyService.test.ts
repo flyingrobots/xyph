@@ -1,16 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { SovereigntyService } from '../../src/domain/services/SovereigntyService.js';
-import { RoadmapPort } from '../../src/ports/RoadmapPort.js';
+import type { RoadmapQueryPort } from '../../src/ports/RoadmapPort.js';
 import { Quest } from '../../src/domain/entities/Quest.js';
 
 describe('SovereigntyService', () => {
-  const mockRoadmap: RoadmapPort = {
+  const mockRoadmap: RoadmapQueryPort = {
     getQuests: vi.fn(),
     getQuest: vi.fn(),
-    upsertQuest: vi.fn(),
-    addEdge: vi.fn(),
     getOutgoingEdges: vi.fn(),
-    sync: vi.fn(),
   };
 
   const service = new SovereigntyService(mockRoadmap);

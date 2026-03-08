@@ -1,4 +1,4 @@
-import { RoadmapPort } from '../../ports/RoadmapPort.js';
+import type { RoadmapPort } from '../../ports/RoadmapPort.js';
 import { IngestService } from './IngestService.js';
 import { NormalizeService } from './NormalizeService.js';
 import { RebalanceService } from './RebalanceService.js';

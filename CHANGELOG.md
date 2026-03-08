@@ -10,6 +10,7 @@ All notable changes to XYPH will be documented in this file.
 - **Shared view helpers** (`src/tui/view-helpers.ts`) — `sliceDate()`, `groupBy()`, `indexBy()`, `stripPrefix()` eliminate repeated date formatting, array grouping, and Map construction patterns across render-status.ts and bijou view files
 - **`assertNodeExists()` validator** (`src/cli/validators.ts`) — shared graph node existence check replacing 15 inline `hasNode() + throw NOT_FOUND` patterns across 5 command files
 - **`SecretPort` interface** (`src/ports/SecretPort.ts`) — extracted `SecretAdapter` interface from infrastructure to ports layer, fixing hexagonal architecture boundary violation (H3)
+- **RoadmapPort split** — `RoadmapQueryPort` (reads), `RoadmapMutationPort` (writes), `RoadmapSyncPort` (sync) with `RoadmapPort` as their union for backward compat (S6/ISP)
 - **`scripts/` under lint + typecheck** — `tsconfig.scripts.json` and ESLint config now cover all TypeScript scripts; `npm run lint` checks scripts alongside src/test
 - **Consolidated `wire-deps.ts`** — single idempotent dependency-wiring script replacing wave2/wave3/fixup; gracefully skips missing nodes, detects cycles and duplicates
 - **`migrate-voc-001.ts`** — one-shot graph migration script, patched 116 legacy `INBOX` nodes to `BACKLOG`

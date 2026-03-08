@@ -1,4 +1,4 @@
-import type { RoadmapPort } from '../../ports/RoadmapPort.js';
+import type { RoadmapQueryPort } from '../../ports/RoadmapPort.js';
 import type { Quest, QuestStatus } from '../entities/Quest.js';
 
 /**
@@ -28,13 +28,13 @@ export const TRANSITION_TABLE: readonly TransitionRule[] = [
 /**
  * IntakeService validates intake transitions against the graph.
  *
- * It is a pure domain service — it reads graph state via RoadmapPort but
+ * It is a pure domain service — it reads graph state via RoadmapQueryPort but
  * does NOT write mutations. The driving adapter (WarpIntakeAdapter or
  * xyph-actuator) calls validate*() first, then issues its own patch.
  * This separation keeps domain logic free of infrastructure concerns.
  */
 export class IntakeService {
-  constructor(private readonly roadmap: RoadmapPort) {}
+  constructor(private readonly roadmap: RoadmapQueryPort) {}
 
   /**
    * Defense-in-depth only — checks the `human.` prefix convention.
