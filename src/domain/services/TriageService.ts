@@ -1,5 +1,5 @@
 import { Quest } from '../entities/Quest.js';
-import { RoadmapPort } from '../../ports/RoadmapPort.js';
+import type { RoadmapQueryPort, RoadmapMutationPort } from '../../ports/RoadmapPort.js';
 
 /**
  * TriageService
@@ -8,7 +8,7 @@ import { RoadmapPort } from '../../ports/RoadmapPort.js';
  */
 export class TriageService {
   constructor(
-    private readonly roadmap: RoadmapPort
+    private readonly roadmap: RoadmapQueryPort & RoadmapMutationPort
   ) {}
 
   /**

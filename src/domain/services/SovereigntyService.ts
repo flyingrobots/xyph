@@ -1,4 +1,4 @@
-import { RoadmapPort } from '../../ports/RoadmapPort.js';
+import type { RoadmapQueryPort } from '../../ports/RoadmapPort.js';
 
 /**
  * SovereigntyService
@@ -21,7 +21,7 @@ export interface AncestryResult {
 }
 
 export class SovereigntyService {
-  constructor(private readonly roadmap: RoadmapPort) {}
+  constructor(private readonly roadmap: RoadmapQueryPort) {}
 
   /**
    * Checks whether a quest has a valid authorized-by edge to an intent: node.

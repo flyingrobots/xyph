@@ -1,20 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { IntakeService, TRANSITION_TABLE } from '../../src/domain/services/IntakeService.js';
-import type { RoadmapPort } from '../../src/ports/RoadmapPort.js';
+import type { RoadmapQueryPort } from '../../src/ports/RoadmapPort.js';
 import { Quest } from '../../src/domain/entities/Quest.js';
 
 function makeQuest(status: Quest['status']): Quest {
   return new Quest({ id: 'task:TST-001', title: 'Test quest title', status, hours: 4, type: 'task' });
 }
 
-function makePort(quest: Quest | null = null): RoadmapPort {
+function makePort(quest: Quest | null = null): RoadmapQueryPort {
   return {
     getQuests: vi.fn(),
     getQuest: vi.fn().mockResolvedValue(quest),
-    upsertQuest: vi.fn(),
-    addEdge: vi.fn(),
     getOutgoingEdges: vi.fn(),
-    sync: vi.fn(),
   };
 }
 

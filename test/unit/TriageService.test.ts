@@ -1,16 +1,15 @@
 import { describe, it, expect, vi } from 'vitest';
 import { TriageService } from '../../src/domain/services/TriageService.js';
-import { RoadmapPort } from '../../src/ports/RoadmapPort.js';
+import type { RoadmapQueryPort, RoadmapMutationPort } from '../../src/ports/RoadmapPort.js';
 import { Quest } from '../../src/domain/entities/Quest.js';
 
 describe('TriageService', () => {
-  const mockRoadmap: RoadmapPort = {
+  const mockRoadmap: RoadmapQueryPort & RoadmapMutationPort = {
     getQuests: vi.fn(),
     getQuest: vi.fn(),
+    getOutgoingEdges: vi.fn().mockResolvedValue([]),
     upsertQuest: vi.fn().mockResolvedValue('patch-sha'),
     addEdge: vi.fn(),
-    getOutgoingEdges: vi.fn().mockResolvedValue([]),
-    sync: vi.fn()
   };
 
   const service = new TriageService(mockRoadmap);
