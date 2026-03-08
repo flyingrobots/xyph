@@ -1,4 +1,4 @@
-import { RoadmapPort } from '../../ports/RoadmapPort.js';
+import type { RoadmapPort } from '../../ports/RoadmapPort.js';
 import { Quest, QuestType, VALID_STATUSES, normalizeQuestStatus } from '../../domain/entities/Quest.js';
 import { EdgeType } from '../../schema.js';
 import type { GraphPort } from '../../ports/GraphPort.js';

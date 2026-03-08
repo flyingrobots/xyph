@@ -10,7 +10,6 @@ All notable changes to XYPH will be documented in this file.
 - **Shared view helpers** (`src/tui/view-helpers.ts`) — `sliceDate()`, `groupBy()` eliminate repeated date formatting and array grouping patterns across render-status.ts and bijou view files
 - **`assertNodeExists()` validator** (`src/cli/validators.ts`) — shared graph node existence check replacing 15 inline `hasNode() + throw NOT_FOUND` patterns across 5 command files
 - **`SecretPort` interface** (`src/ports/SecretPort.ts`) — extracted `SecretAdapter` interface from infrastructure to ports layer, fixing hexagonal architecture boundary violation (H3)
-- **RoadmapPort split** — `RoadmapQueryPort` (reads), `RoadmapMutationPort` (writes), `RoadmapSyncPort` (sync) with `RoadmapPort` as their union for backward compat (S6/ISP)
 - **`KeyringStoragePort`** — new port abstracting keyring and private-key persistence (`src/ports/KeyringStoragePort.ts`), decoupling `GuildSealService` from `node:fs`, `node:path`, and `node:crypto`
 - **`FsKeyringAdapter`** — filesystem-backed implementation of `KeyringStoragePort` (`src/infrastructure/adapters/FsKeyringAdapter.ts`)
 - **`TestParserPort`** — new port abstracting test-file parsing (`src/ports/TestParserPort.ts`), decoupling analysis pipeline from the TypeScript Compiler API
@@ -21,6 +20,7 @@ All notable changes to XYPH will be documented in this file.
 
 ### Changed
 
+- **RoadmapPort split** — `RoadmapQueryPort` (reads), `RoadmapMutationPort` (writes), `RoadmapSyncPort` (sync) with `RoadmapPort` as their union for backward compat (S6/ISP)
 - **GuildSealService refactored to port-based architecture** — all filesystem and crypto RNG operations extracted to `KeyringStoragePort`; domain service is now pure, depending only on the port interface (hex audit H1 fix)
 - **TestFileParser moved to infrastructure layer** — implementation relocated from `src/domain/services/analysis/` to `TsCompilerTestParserAdapter`; domain file replaced with deprecation tombstone (hex audit H2 fix)
 - **Keybindings standardized to bijou v1.6.0 vim conventions** — all views now use `d`/`u` for half-page scroll, `g`/`G` for jump-to-top/bottom, `space` toggles accordion in lineage view. Reject in backlog rebound from `d` to `D` (shift+d) to avoid conflict with page-down. Command palette navigation changed from `j`/`k` to `Ctrl+N`/`Down` and `Ctrl+P`/`Up` (j/k now type filter characters). All view keymaps built on bijou preconfigured factories (`navTableKeyMap`, `accordionKeyMap`, `commandPaletteKeyMap`)
