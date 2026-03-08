@@ -6,6 +6,12 @@ All notable changes to XYPH will be documented in this file.
 
 ### Added
 
+- **Transactional `updateKeyring` API** (`KeyringStoragePort`) — new `updateKeyring(mutator)` method with `KeyOps` handle; adapter records an undo log and rolls back private-key side-effects in reverse order on failure (KSP-001)
+
+### Changed
+
+- **`GuildSealService` simplified** — `generateKeypair()` and `rotateKey()` now delegate rollback to `updateKeyring()`, removing hand-written try/catch rollback choreography from the domain layer
+
 - **Shared test helpers** (`test/helpers/`) — `makeSnapshot()`, entity builders (`quest`, `intent`, `campaign`, `scroll`, `submission`, `review`, `decision`), `strip()` ANSI helper, `makeKey()`/`makeResize()` keyboard factories, and mock port factories (`mockGraphContext`, `mockIntakePort`, `mockGraphPort`, `mockSubmissionPort`). Eliminates duplication across TUI test files
 - **Shared view helpers** (`src/tui/view-helpers.ts`) — `sliceDate()`, `groupBy()` eliminate repeated date formatting and array grouping patterns across render-status.ts and bijou view files
 - **`assertNodeExists()` validator** (`src/cli/validators.ts`) — shared graph node existence check replacing 15 inline `hasNode() + throw NOT_FOUND` patterns across 5 command files

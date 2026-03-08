@@ -14,6 +14,33 @@ export interface Keyring {
   entries: Map<string, KeyringEntry>;
 }
 
+/**
+ * KeyOps — Handle for recording private-key side-effects inside an
+ * `updateKeyring` mutator. Each call is recorded so that the adapter
+ * can roll them back in reverse order if the mutator or the subsequent
+ * keyring save fails.
+ */
+export interface KeyOps {
+  /** Write a new private key. Fails if one already exists (no overwrite). */
+  writePrivateKey(agentId: string, hex: string): void;
+
+  /** Write a private key, overwriting any existing file. */
+  writePrivateKeyOverwrite(agentId: string, hex: string): void;
+
+  /**
+   * Retire a private key to an archived location.
+   * Returns true if the retirement happened, false if no key existed.
+   */
+  retirePrivateKey(agentId: string, suffix: string): boolean;
+}
+
+/**
+ * KeyringMutator — Callback that receives the current keyring and a
+ * KeyOps handle, and returns the new keyring state. If the mutator
+ * throws, all KeyOps side-effects are rolled back.
+ */
+export type KeyringMutator = (keyring: Keyring, ops: KeyOps) => Keyring;
+
 export interface KeyringStoragePort {
   /** Load the full keyring. Returns an empty map if no keyring exists yet. */
   loadKeyring(): Keyring;
@@ -60,6 +87,15 @@ export interface KeyringStoragePort {
    * Used during key rotation to write the new key after retiring the old one.
    */
   writePrivateKeyOverwrite(agentId: string, privateKeyHex: string): void;
+
+  /**
+   * Atomically apply a keyring mutation with private-key side-effects.
+   *
+   * The adapter calls `mutator(currentKeyring, ops)` and persists the
+   * returned keyring. If the mutator throws or the keyring save fails,
+   * all KeyOps side-effects are rolled back in reverse order.
+   */
+  updateKeyring(mutator: KeyringMutator): void;
 
   /** Generate cryptographically secure random bytes. */
   randomBytes(length: number): Uint8Array;
