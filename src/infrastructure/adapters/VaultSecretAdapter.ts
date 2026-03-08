@@ -6,11 +6,12 @@
  * Part of M11 Phase 4 — ALK-007.
  */
 
-export interface SecretAdapter {
-  getSecret(key: string): Promise<string | null>;
-}
+import type { SecretPort } from '../../ports/SecretPort.js';
 
-export class VaultSecretAdapter implements SecretAdapter {
+/** @deprecated Use `SecretPort` from `../../ports/SecretPort.js` directly. */
+export type { SecretPort as SecretAdapter };
+
+export class VaultSecretAdapter implements SecretPort {
   async getSecret(key: string): Promise<string | null> {
     try {
       const vault = await import('@git-stunts/vault');
@@ -26,7 +27,7 @@ export class VaultSecretAdapter implements SecretAdapter {
 /**
  * In-memory mock for testing.
  */
-export class InMemorySecretAdapter implements SecretAdapter {
+export class InMemorySecretAdapter implements SecretPort {
   private readonly secrets: Map<string, string>;
 
   constructor(secrets: Record<string, string> = {}) {

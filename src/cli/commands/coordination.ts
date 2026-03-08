@@ -1,7 +1,7 @@
 import type { Command } from 'commander';
 import type { CliContext } from '../context.js';
 import { createErrorHandler } from '../errorHandler.js';
-import { assertPrefix } from '../validators.js';
+import { assertPrefix, assertNodeExists } from '../validators.js';
 export function registerCoordinationCommands(program: Command, ctx: CliContext): void {
   const withErrorHandler = createErrorHandler(ctx);
 
@@ -51,9 +51,7 @@ export function registerCoordinationCommands(program: Command, ctx: CliContext):
     .action(withErrorHandler(async (id: string) => {
       const graph = await ctx.graphPort.getGraph();
 
-      if (!await graph.hasNode(id)) {
-        throw new Error(`[NOT_FOUND] Node ${id} not found in the graph`);
-      }
+      await assertNodeExists(graph, id, 'Node');
 
       await graph.materialize();
       const patches = await graph.patchesFor(id);

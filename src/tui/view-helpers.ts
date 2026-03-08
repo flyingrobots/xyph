@@ -22,3 +22,24 @@ export function formatAge(ts: number): string {
   const days = Math.floor(hours / 24);
   return `${days}d`;
 }
+
+/** Extract YYYY-MM-DD from an epoch timestamp. Returns '—' for non-finite values. */
+export function sliceDate(ts: number): string {
+  if (!Number.isFinite(ts)) return '—';
+  return new Date(ts).toISOString().slice(0, 10);
+}
+
+/** Group an array into a Map keyed by `keyFn`. */
+export function groupBy<T>(arr: readonly T[], keyFn: (item: T) => string): Map<string, T[]> {
+  const map = new Map<string, T[]>();
+  for (const item of arr) {
+    const key = keyFn(item);
+    const group = map.get(key);
+    if (group) {
+      group.push(item);
+    } else {
+      map.set(key, [item]);
+    }
+  }
+  return map;
+}

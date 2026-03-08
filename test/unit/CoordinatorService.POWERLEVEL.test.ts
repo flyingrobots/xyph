@@ -3,7 +3,7 @@ import { CoordinatorService } from '../../src/domain/services/CoordinatorService
 import { IngestService } from '../../src/domain/services/IngestService.js';
 import { NormalizeService } from '../../src/domain/services/NormalizeService.js';
 import { RebalanceService } from '../../src/domain/services/RebalanceService.js';
-import { RoadmapPort } from '../../src/ports/RoadmapPort.js';
+import type { RoadmapPort } from '../../src/ports/RoadmapPort.js';
 import { Quest } from '../../src/domain/entities/Quest.js';
 
 describe('CoordinatorService [POWERLEVEL™]', () => {

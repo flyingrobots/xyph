@@ -1,16 +1,12 @@
-import fs from 'node:fs';
-import path from 'node:path';
-import { randomBytes } from 'node:crypto';
 import * as ed from '@noble/ed25519';
 import {
   canonicalize,
   prefixedBlake3,
   publicKeyToDidKey,
-  loadKeyring,
   verifyEd25519DetachedHex,
-  CURRENT_KEYRING_VERSION,
   type Json,
 } from '../../validation/crypto.js';
+import type { KeyringStoragePort } from '../../ports/KeyringStoragePort.js';
 
 // sha512 polyfill for @noble/ed25519 is initialized in crypto.ts (imported above)
 
@@ -25,8 +21,7 @@ import {
  * "The output of every quest is a Scroll. These are stored in the graph as
  *  content-addressed nodes, signed with the Guild Seal of the executing agent."
  *
- * Private keys are stored at trust/<agentId>.sk (gitignored).
- * Public keys are registered in trust/keyring.json.
+ * Key storage and retrieval are delegated to KeyringStoragePort.
  */
 
 export interface ScrollPayload {
@@ -45,35 +40,8 @@ export interface GuildSeal {
   sealedAt: number;
 }
 
-/** Shape written to keyring.json — mirrors KeyringEntry but without the parsed Map index. */
-interface KeyringEntryJson {
-  keyId: string;
-  alg: string;
-  publicKeyHex: string;
-  active: boolean;
-  agentId?: string;
-  legacyKeyIds?: string[];
-}
-
 export class GuildSealService {
-  /**
-   * @param trustDir Absolute path to the trust directory containing keyring.json
-   *   and agent private keys. Defaults to `<cwd>/trust` — callers in non-standard
-   *   CWD contexts should pass an explicit absolute path (L-18).
-   */
-  constructor(
-    private readonly trustDir: string = path.resolve(process.cwd(), 'trust')
-  ) {}
-
-  /**
-   * Returns the path to an agent's private key file.
-   */
-  private skPath(agentId: string): string {
-    if (!/^[a-zA-Z0-9._-]+$/.test(agentId)) {
-      throw new Error(`Invalid agentId: must match /^[a-zA-Z0-9._-]+$/, got: '${agentId}'`);
-    }
-    return path.join(this.trustDir, `${agentId}.sk`);
-  }
+  constructor(private readonly storage: KeyringStoragePort) {}
 
   /**
    * Returns the multibase-encoded did:key identifier for an agent.
@@ -83,10 +51,9 @@ export class GuildSealService {
    * Throws if no key is registered for the agent.
    */
   public keyIdForAgent(agentId: string): string {
-    const keyringPath = path.join(this.trustDir, 'keyring.json');
-    const keyring = loadKeyring(keyringPath);
+    const keyring = this.storage.loadKeyring();
     const seen = new Set<string>();
-    for (const entry of keyring.values()) {
+    for (const entry of keyring.entries.values()) {
       if (seen.has(entry.keyId)) continue;
       seen.add(entry.keyId);
       if (entry.agentId === agentId && entry.active) {
@@ -100,61 +67,52 @@ export class GuildSealService {
    * Checks whether a private key exists for the given agent.
    */
   public hasPrivateKey(agentId: string): boolean {
-    return fs.existsSync(this.skPath(agentId));
+    return this.storage.hasPrivateKey(agentId);
   }
 
   /**
-   * Generates an Ed25519 keypair for an agent, writes the private key to
-   * trust/<agentId>.sk, and registers the public key in trust/keyring.json.
+   * Generates an Ed25519 keypair for an agent, writes the private key via
+   * the storage port, and registers the public key in the keyring.
    * Throws if a key already exists for this agent.
    */
   public async generateKeypair(agentId: string): Promise<{ keyId: string; publicKeyHex: string }> {
-    const skFile = this.skPath(agentId);
-
-    const priv = randomBytes(32);
+    const priv = this.storage.randomBytes(32);
     const pub = await ed.getPublicKey(priv);
 
     const privateKeyHex = Buffer.from(priv).toString('hex');
     const publicKeyHex = Buffer.from(pub).toString('hex');
     const keyId = publicKeyToDidKey(publicKeyHex);
 
-    // Write private key atomically (O_EXCL prevents overwriting an existing key)
-    try {
-      fs.writeFileSync(skFile, privateKeyHex, { mode: 0o600, flag: 'wx' });
-    } catch (err: unknown) {
-      if ((err as NodeJS.ErrnoException).code === 'EEXIST') {
-        throw new Error(`Private key already exists for agent '${agentId}' at ${skFile}`);
+    // Check keyring for existing active key before writing anything.
+    // Protects against the case where the .sk file was manually deleted but
+    // the keyring still contains an active entry for this agent.
+    const keyring = this.storage.loadKeyring();
+    for (const entry of keyring.entries.values()) {
+      if (entry.agentId === agentId && entry.active) {
+        throw new Error(`Key already exists for agent '${agentId}' in keyring`);
       }
-      throw err;
     }
 
-    // Register public key in keyring — uses loadKeyring() for validation parity with verify().
+    // Write private key atomically (adapter enforces no-overwrite semantics)
+    this.storage.writePrivateKey(agentId, privateKeyHex);
+
+    // Register public key in keyring.
     // Wrapped in try/catch to roll back the .sk file if keyring update fails,
     // preventing permanently broken state (orphaned .sk with no keyring entry).
     try {
-      const keyringPath = path.join(this.trustDir, 'keyring.json');
-      const existingKeys = loadKeyring(keyringPath); // strict validation, returns empty Map for ENOENT
-
-      if (!existingKeys.has(keyId)) {
-        // Reconstruct the JSON structure from the validated Map + the new entry
-        const keys: KeyringEntryJson[] = [];
-        const seen = new Set<string>();
-        for (const entry of existingKeys.values()) {
-          if (seen.has(entry.keyId)) continue;
-          seen.add(entry.keyId);
-          keys.push({
-            keyId: entry.keyId, alg: entry.alg, publicKeyHex: entry.publicKeyHex,
-            active: entry.active,
-            ...(entry.agentId !== undefined ? { agentId: entry.agentId } : {}),
-            ...(entry.legacyKeyIds !== undefined ? { legacyKeyIds: entry.legacyKeyIds } : {}),
-          });
-        }
-        keys.push({ keyId, alg: 'ed25519', publicKeyHex, active: true, agentId });
-        fs.writeFileSync(keyringPath, JSON.stringify({ version: CURRENT_KEYRING_VERSION, keys }, null, 2) + '\n');
+      if (!keyring.entries.has(keyId)) {
+        keyring.entries.set(keyId, {
+          keyId,
+          alg: 'ed25519',
+          publicKeyHex,
+          active: true,
+          agentId,
+        });
+        this.storage.saveKeyring(keyring);
       }
     } catch (err) {
       // Roll back: remove the private key so the agent is not stuck with an orphaned .sk
-      try { fs.unlinkSync(skFile); } catch { /* best-effort cleanup */ }
+      this.storage.removePrivateKey(agentId);
       throw err;
     }
 
@@ -174,13 +132,12 @@ export class GuildSealService {
    * Throws if no existing key is registered for the agent.
    */
   public async rotateKey(agentId: string): Promise<{ keyId: string; publicKeyHex: string }> {
-    const keyringPath = path.join(this.trustDir, 'keyring.json');
-    const existingKeys = loadKeyring(keyringPath);
+    const keyring = this.storage.loadKeyring();
 
     // Find the current active key for this agent
     let currentKeyId: string | undefined;
     const seen = new Set<string>();
-    for (const entry of existingKeys.values()) {
+    for (const entry of keyring.entries.values()) {
       if (seen.has(entry.keyId)) continue;
       seen.add(entry.keyId);
       if (entry.agentId === agentId && entry.active) {
@@ -192,49 +149,38 @@ export class GuildSealService {
     }
 
     // Generate a new keypair
-    const priv = randomBytes(32);
+    const priv = this.storage.randomBytes(32);
     const pub = await ed.getPublicKey(priv);
     const privateKeyHex = Buffer.from(priv).toString('hex');
     const publicKeyHex = Buffer.from(pub).toString('hex');
     const newKeyId = publicKeyToDidKey(publicKeyHex);
 
-    // Retire the old private key file by renaming it
-    const oldSkPath = this.skPath(agentId);
+    // Retire the old private key by renaming it
     const suffix = currentKeyId.slice(-8);
-    const retiredPath = `${oldSkPath}.retired.${suffix}`;
-    let didRename = false;
-    if (fs.existsSync(oldSkPath)) {
-      fs.renameSync(oldSkPath, retiredPath);
-      didRename = true;
-    }
+    const didRename = this.storage.retirePrivateKey(agentId, suffix);
 
-    // Write the new private key
-    fs.writeFileSync(oldSkPath, privateKeyHex, { mode: 0o600 });
-
-    // Rebuild keyring: retire old key, add new active key.
-    // Wrapped in try/catch to roll back filesystem changes if the keyring
-    // write fails, preventing an orphaned private key with no keyring entry.
+    // Write the new private key and rebuild keyring inside a single try/catch
+    // so that any failure (write, keyring save) rolls back all changes.
     try {
-      const keys: KeyringEntryJson[] = [];
-      const rebuilt = new Set<string>();
-      for (const entry of existingKeys.values()) {
-        if (rebuilt.has(entry.keyId)) continue;
-        rebuilt.add(entry.keyId);
-        const isOldKey = entry.keyId === currentKeyId;
-        keys.push({
-          keyId: entry.keyId, alg: entry.alg, publicKeyHex: entry.publicKeyHex,
-          active: isOldKey ? false : entry.active,
-          ...(entry.agentId !== undefined ? { agentId: entry.agentId } : {}),
-          ...(entry.legacyKeyIds !== undefined ? { legacyKeyIds: entry.legacyKeyIds } : {}),
-        });
+      this.storage.writePrivateKeyOverwrite(agentId, privateKeyHex);
+
+      const currentEntry = keyring.entries.get(currentKeyId);
+      if (currentEntry) {
+        keyring.entries.set(currentKeyId, { ...currentEntry, active: false });
       }
-      keys.push({ keyId: newKeyId, alg: 'ed25519', publicKeyHex, active: true, agentId });
-      fs.writeFileSync(keyringPath, JSON.stringify({ version: CURRENT_KEYRING_VERSION, keys }, null, 2) + '\n');
+      keyring.entries.set(newKeyId, {
+        keyId: newKeyId,
+        alg: 'ed25519',
+        publicKeyHex,
+        active: true,
+        agentId,
+      });
+      this.storage.saveKeyring(keyring);
     } catch (err) {
       // Roll back: delete the new .sk and restore the old one
-      try { fs.unlinkSync(oldSkPath); } catch { /* best-effort */ }
+      this.storage.removePrivateKey(agentId);
       if (didRename) {
-        try { fs.renameSync(retiredPath, oldSkPath); } catch { /* best-effort */ }
+        this.storage.restoreRetiredPrivateKey(agentId, suffix);
       }
       throw err;
     }
@@ -265,13 +211,12 @@ export class GuildSealService {
    * Returns null if no private key is found (unsigned scroll is still valid but unverifiable).
    */
   public async sign(scroll: ScrollPayload, agentId: string): Promise<GuildSeal | null> {
-    const skFile = this.skPath(agentId);
-    if (!fs.existsSync(skFile)) return null;
+    const privateKeyHex = this.storage.readPrivateKey(agentId);
+    if (privateKeyHex === null) return null;
 
     // KNOWN LIMITATION (L-19): Private key material stays in memory as a JS string
     // until garbage collected. Node.js strings are immutable and cannot be zeroed.
     // For production use, consider a native crypto module with secure memory handling.
-    const privateKeyHex = fs.readFileSync(skFile, 'utf8').trim();
     const canonical = this.serializePayload(scroll);
     const digest = prefixedBlake3(canonical);
 
@@ -300,15 +245,14 @@ export class GuildSealService {
 
     if (seal.payloadDigest !== expectedDigest) return false;
 
-    const keyringPath = path.join(this.trustDir, 'keyring.json');
-    let keyring: Map<string, { keyId: string; alg: 'ed25519'; publicKeyHex: string }>;
+    let keyring: ReturnType<KeyringStoragePort['loadKeyring']>;
     try {
-      keyring = loadKeyring(keyringPath);
+      keyring = this.storage.loadKeyring();
     } catch {
       // Malformed or missing keyring — verification fails gracefully
       return false;
     }
-    const entry = keyring.get(seal.keyId);
+    const entry = keyring.entries.get(seal.keyId);
     if (!entry) return false;
 
     return verifyEd25519DetachedHex(seal.sig, canonical, entry.publicKeyHex);

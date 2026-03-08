@@ -5,6 +5,7 @@ import type { DashboardModel } from '../DashboardApp.js';
 import type { GraphSnapshot } from '../../../domain/models/dashboard.js';
 import { computeFrontier, computeCriticalPath, computeTopBlockers, type TaskSummary, type DepEdge } from '../../../domain/services/DepAnalysis.js';
 import { roadmapQuestIds } from '../selection-order.js';
+import { groupBy } from '../../view-helpers.js';
 
 /** Map quest status to a single-char token for DAG badges. */
 function statusIcon(status: string): string {
@@ -167,13 +168,10 @@ export function roadmapView(model: DashboardModel, style: StylePort, width?: num
       lines.push(style.styled(style.theme.semantic.primary, ' Quests'));
       lines.push('');
 
-      const byStatus = new Map<string, typeof snap.quests>();
-      for (const q of snap.quests) {
-        if (q.status === 'DONE') continue;
-        const arr = byStatus.get(q.status) ?? [];
-        arr.push(q);
-        byStatus.set(q.status, arr);
-      }
+      const byStatus = groupBy(
+        snap.quests.filter(q => q.status !== 'DONE'),
+        q => q.status,
+      );
 
       for (const [status, quests] of byStatus) {
         lines.push(` ${style.styledStatus(status)}`);
@@ -217,18 +215,8 @@ export function roadmapView(model: DashboardModel, style: StylePort, width?: num
         borderToken: style.theme.border.primary,
       }));
 
-      const campaignTitle = new Map<string, string>();
-      for (const c of snap.campaigns) {
-        campaignTitle.set(c.id, c.title);
-      }
-
-      const grouped = new Map<string, typeof snap.quests>();
-      for (const q of snap.quests) {
-        const key = q.campaignId ?? '(no campaign)';
-        const arr = grouped.get(key) ?? [];
-        arr.push(q);
-        grouped.set(key, arr);
-      }
+      const campaignTitle = new Map(snap.campaigns.map(c => [c.id, c.title]));
+      const grouped = groupBy(snap.quests, q => q.campaignId ?? '(no campaign)');
 
       for (const [key, quests] of grouped) {
         const heading = campaignTitle.get(key) ?? key;

@@ -8,12 +8,12 @@
  */
 
 import type { LlmPort, LlmMatchRequest, LlmMatch } from '../../ports/LlmPort.js';
-import type { SecretAdapter } from './VaultSecretAdapter.js';
+import type { SecretPort } from '../../ports/SecretPort.js';
 import type { LlmConfig } from '../../ports/ConfigPort.js';
 
 export class AnthropicLlmAdapter implements LlmPort {
   constructor(
-    private readonly secretAdapter: SecretAdapter,
+    private readonly secretPort: SecretPort,
     private readonly config: LlmConfig,
   ) {}
 
@@ -21,7 +21,7 @@ export class AnthropicLlmAdapter implements LlmPort {
     if (this.config.provider === 'none') return [];
 
     try {
-      const apiKey = await this.secretAdapter.getSecret('anthropic-api-key');
+      const apiKey = await this.secretPort.getSecret('anthropic-api-key');
       if (!apiKey) return [];
       const { default: Anthropic } = await import('@anthropic-ai/sdk');
       const client = new Anthropic({ apiKey });

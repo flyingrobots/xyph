@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { GuildSealService } from '../../src/domain/services/GuildSealService.js';
+import { FsKeyringAdapter } from '../../src/infrastructure/adapters/FsKeyringAdapter.js';
 
 describe('GuildSealService', () => {
   let trustDir: string;
@@ -25,7 +26,7 @@ describe('GuildSealService', () => {
       path.join(trustDir, 'keyring.json'),
       JSON.stringify({ version: 'v1', keys: [] }, null, 2)
     );
-    service = new GuildSealService(trustDir);
+    service = new GuildSealService(new FsKeyringAdapter(trustDir));
     await service.generateKeypair(agentId);
   });
 

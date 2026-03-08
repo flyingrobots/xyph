@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { encodeBase58btc, publicKeyToDidKey, loadKeyring } from '../../src/validation/crypto.js';
 import { GuildSealService } from '../../src/domain/services/GuildSealService.js';
+import { FsKeyringAdapter } from '../../src/infrastructure/adapters/FsKeyringAdapter.js';
 
 describe('multibase encoding', () => {
   describe('encodeBase58btc', () => {
@@ -185,7 +186,7 @@ describe('multibase encoding', () => {
     it('signs with derived keyId and verifies against a v1 legacy keyring', async () => {
       // Set up a trust dir with a v1 legacy keyring + matching private key
       trustDir = fs.mkdtempSync(path.join(os.tmpdir(), 'xyph-legacy-seal-'));
-      const service = new GuildSealService(trustDir);
+      const service = new GuildSealService(new FsKeyringAdapter(trustDir));
 
       // Generate a real keypair — this writes v2 format
       const agentId = 'agent.legacy-test';

@@ -35,6 +35,7 @@ export interface ImportRef {
   moduleSpecifier: string;
   namedImports: string[];
   defaultImport?: string;
+  namespaceImport?: string;
 }
 
 // ---------------------------------------------------------------------------

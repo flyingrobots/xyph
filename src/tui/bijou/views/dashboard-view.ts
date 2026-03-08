@@ -5,9 +5,8 @@ import {
 } from '@flyingrobots/bijou';
 import { flex, createFocusAreaState, focusAreaScrollTo, focusArea } from '@flyingrobots/bijou-tui';
 import type { StylePort } from '../../../ports/StylePort.js';
-import { statusVariant, formatAge } from '../../view-helpers.js';
+import { statusVariant, formatAge, groupBy } from '../../view-helpers.js';
 import type { DashboardModel } from '../DashboardApp.js';
-import type { QuestNode } from '../../../domain/models/dashboard.js';
 import {
   computeFrontier, computeTopBlockers, computeCriticalPath,
   type TaskSummary, type DepEdge,
@@ -42,14 +41,10 @@ export function dashboardView(model: DashboardModel, style: StylePort, width?: n
   );
 
   // ── Campaigns with progress ───────────────────────────────────────
-  const questsByCampaign = new Map<string, QuestNode[]>();
-  for (const q of snap.quests) {
-    if (q.campaignId) {
-      const arr = questsByCampaign.get(q.campaignId) ?? [];
-      arr.push(q);
-      questsByCampaign.set(q.campaignId, arr);
-    }
-  }
+  const questsByCampaign = groupBy(
+    snap.quests.filter(q => q.campaignId !== undefined),
+    q => q.campaignId as string,
+  );
 
   const activeCampaigns = snap.campaigns.filter(c => c.status !== 'DONE');
   const doneCampaigns = snap.campaigns.filter(c => c.status === 'DONE');
