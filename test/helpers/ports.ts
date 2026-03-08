@@ -36,7 +36,7 @@ export function mockGraphPort(): GraphPort {
   return {
     getGraph: vi.fn().mockResolvedValue({
       patch: vi.fn(),
-      getNodeProps: vi.fn().mockResolvedValue(new Map([['assigned_to', 'agent.test']])),
+      getNodeProps: vi.fn().mockResolvedValue({ assigned_to: 'agent.test' }),
     }),
     reset: vi.fn(),
   };
