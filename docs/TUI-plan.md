@@ -65,7 +65,7 @@ Add new message types: `write-success`, `write-error`, `dismiss-toast`, `confirm
 
 Summary dashboard with box panels, not raw tables:
 
-```
+```text
 ┌ Quest Status ────┐  ┌ Submissions ─────┐  ┌ Health ──────────────┐
 │ DONE         12  │  │ OPEN          3  │  │ Sovereignty: 14/15   │
 │ IN_PROGRESS   4  │  │ APPROVED      1  │  │ Orphan quests: 1     │
@@ -360,7 +360,7 @@ Build in `lineage-view.ts` by grouping `snap.quests` and `snap.submissions` by `
 
 Each intent renders as a card when collapsed:
 
-```
+```text
 ▶ ◆ intent:DASHBOARD  Build the WARP Dashboard
   requested-by: human.james  ·  2026-01-15
   Interactive TUI for graph navigation, triage, and observability.
@@ -376,7 +376,7 @@ Card shows:
 
 When expanded (Enter), the quest tree appears below the card:
 
-```
+```text
 ▼ ◆ intent:DASHBOARD  Build the WARP Dashboard
   requested-by: human.james  ·  2026-01-15
   Interactive TUI for graph navigation, triage, and observability.
@@ -449,7 +449,7 @@ Start with option 2 (git repo name) as the default. Add a `config:project` node 
 
 ### Layout
 
-```
+```text
   XYPH — xyph                                        ████████████░░░░░░░  61% (72/118)
   ─────────────────────────────────────────────────────────────────────────────────────
 
@@ -530,7 +530,7 @@ Derive from snapshot timestamps. Collect all timestamped events (quest claims, s
 
 Compact line at the top surfacing actionable problems:
 
-```
+```text
 ⚠ 2 orphan quests · 1 stale claim (14d) · 1 approval gate pending
 ```
 
@@ -716,7 +716,7 @@ xyph agent-briefing [--format json|text|markdown]
 
 **Text mode** (`--format text`): Same data, rendered as a readable briefing document for human debugging:
 
-```
+```text
 ═══ AGENT BRIEFING ═══════════════════════════════════════
 Project: xyph — Causal Operating System for Agent Planning
 Identity: agent.claude (capabilities: claim, submit, revise, review)
@@ -829,7 +829,7 @@ Reads patches from the agent's writer ref and summarizes actions chronologically
 
 ### Architecture
 
-```
+```text
 xyph-actuator.ts (CLI)
   ├── existing commands (quest, claim, submit, review, ...)
   └── agent-* commands (NEW)
@@ -1140,7 +1140,7 @@ Start with heuristic matching (string similarity, keyword overlap with campaign/
 xyph triage-report [--format json|text|markdown]
 ```
 
-```
+```text
 ═══ TRIAGE REPORT ═══════════════════════════════════════
 37 items in INBOX · oldest: 12 days · 3 proposals pending
 
@@ -1235,7 +1235,7 @@ New view in the tab bar: `dashboard → roadmap → submissions → lineage → 
 
 #### 8a. Layout
 
-```
+```text
   ── Graveyard (3 quests) ──────────────────────────────────────────────────────
 
   ▶ task:I-042  "Add WebSocket live updates"
@@ -1335,7 +1335,7 @@ The promotion ceremony gains weight: you're not flipping a status label, you're 
 
 ### Status Lifecycle (new)
 
-```
+```text
 BACKLOG → propose/promote → PLANNED → claim → IN_PROGRESS → submit/seal → DONE
                                   ↘ BLOCKED (by dependencies)
             reject ↘

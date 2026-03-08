@@ -1,34 +1,34 @@
 stateDiagram-v2
     [*] --> INGEST
-    INGEST --> NORMALIZE: ok
-    INGEST --> FAILED: fail
+    INGEST --> NORMALIZE
+    INGEST --> FAILED
 
-    NORMALIZE --> CLASSIFY: ok
-    NORMALIZE --> FAILED: fail
+    NORMALIZE --> CLASSIFY
+    NORMALIZE --> FAILED
 
-    CLASSIFY --> VALIDATE: ok
-    CLASSIFY --> FAILED: fail
+    CLASSIFY --> VALIDATE
+    CLASSIFY --> FAILED
 
-    VALIDATE --> MERGE: ok
-    VALIDATE --> FAILED: reject
+    VALIDATE --> MERGE
+    VALIDATE --> FAILED
 
-    MERGE --> REBALANCE: ok
-    MERGE --> FAILED: fail
+    MERGE --> REBALANCE
+    MERGE --> FAILED
 
-    REBALANCE --> SCHEDULE: ok
-    REBALANCE --> FAILED: fail
+    REBALANCE --> SCHEDULE
+    REBALANCE --> FAILED
 
-    SCHEDULE --> REVIEW: ok
-    SCHEDULE --> FAILED: fail
+    SCHEDULE --> REVIEW
+    SCHEDULE --> FAILED
 
-    REVIEW --> EMIT: approved
-    REVIEW --> FAILED: fail
+    REVIEW --> EMIT
+    REVIEW --> FAILED
 
-    EMIT --> APPLY: ok
-    EMIT --> FAILED: fail
+    EMIT --> APPLY
+    EMIT --> FAILED
 
-    APPLY --> DONE: ok
-    APPLY --> FAILED: fail
+    APPLY --> DONE
+    APPLY --> FAILED
 
     DONE --> [*]
     FAILED --> [*]

@@ -162,13 +162,18 @@ produces a `GuildSeal`:
 
 ```typescript
 interface GuildSeal {
-  alg: 'ed25519';          // Algorithm identifier
+  alg: 'ed25519';          // Algorithm identifier (lowercase literal — see note below)
   keyId: string;            // did:key:z6Mk... of the signer
   payloadDigest: string;    // blake3:<hex> of the canonical payload
   sig: string;              // 128 hex chars (64-byte Ed25519 signature)
   sealedAt: number;         // Unix timestamp
 }
 ```
+
+> **Convention:** The `alg` field stores the lowercase string `"ed25519"`,
+> matching the graph schema (`guild_seal_alg` in `GRAPH_SCHEMA.md`) and all
+> code paths. Prose in this document uses the proper algorithm name `Ed25519`
+> (capitalized) when referring to the algorithm itself, not the serialized value.
 
 ### Signing Process
 

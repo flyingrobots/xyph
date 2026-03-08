@@ -85,7 +85,7 @@ vim docs/diagrams/my-diagram.mmd
 **Why pre-rendered SVGs?** Inline Mermaid depends on the viewer's renderer — GitHub, Obsidian, and VS Code all have different Mermaid versions with different feature support. Pre-rendered SVGs look identical everywhere.
 
 **CI enforces:**
-- No inline ` ```mermaid ` blocks in any `.md` file
+- No inline Mermaid code fences in any `.md` file
 - Every `.mmd` has a corresponding `.svg` and `.mmd.sha256`
 - Source hash freshness — if you edit a `.mmd` without re-rendering, CI fails
 
