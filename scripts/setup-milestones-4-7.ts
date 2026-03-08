@@ -132,12 +132,12 @@ async function main() {
 
   for (const { campaignId, title, quests } of milestones) {
     const props = await graph.getNodeProps(campaignId);
-    const status = props?.get('status') ?? 'MISSING';
+    const status = (props?.['status'] as string | undefined) ?? 'MISSING';
     console.log(`\n  ${chalk.bold(title)}`);
     console.log(`  ${campaignId}  [${status}]`);
     for (const { id, title: qt, hours } of quests) {
       const qp = await graph.getNodeProps(id);
-      const qs = qp?.get('status') ?? 'MISSING';
+      const qs = (qp?.['status'] as string | undefined) ?? 'MISSING';
       const icon = qs === 'BACKLOG' ? chalk.yellow('·') : qs === 'DONE' ? chalk.green('✓') : chalk.red('?');
       console.log(`    ${icon} ${id.padEnd(16)}  ${String(hours).padStart(2)}h  ${qt}`);
     }

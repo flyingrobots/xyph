@@ -170,7 +170,7 @@ async function main() {
 
   for (const id of ids) {
     const props = await graph.getNodeProps(id);
-    const status = props?.get('status') ?? 'MISSING';
+    const status = (props?.['status'] as string | undefined) ?? 'MISSING';
     const icon = status === 'DONE' ? chalk.green('✓') : status === 'BACKLOG' ? chalk.yellow('·') : chalk.red('?');
     console.log(`  ${icon} ${id.padEnd(22)}  ${status}`);
   }

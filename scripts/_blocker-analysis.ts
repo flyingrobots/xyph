@@ -5,6 +5,7 @@
 
 import WarpGraph, { GitGraphAdapter } from '@git-stunts/git-warp';
 import Plumbing from '@git-stunts/plumbing';
+import { toNeighborEntries } from '../src/infrastructure/helpers/isNeighborEntry.js';
 
 async function main(): Promise<void> {
   const plumbing = Plumbing.createDefault({ cwd: process.cwd() });
@@ -20,7 +21,7 @@ async function main(): Promise<void> {
   // First build adjacency: task → list of tasks that directly depend on it
   const dependents = new Map<string, string[]>();
   for (const id of taskIds) {
-    const neighbors = await graph.neighbors(id, 'outgoing') as Array<{label: string; nodeId: string}>;
+    const neighbors = toNeighborEntries(await graph.neighbors(id, 'outgoing'));
     for (const n of neighbors) {
       if (n.label === 'depends-on') {
         // id depends on n.nodeId, so n.nodeId blocks id
@@ -51,9 +52,9 @@ async function main(): Promise<void> {
   const results: Array<{id: string; title: string; status: string; direct: number; transitive: number}> = [];
   for (const id of taskIds) {
     const p = await graph.getNodeProps(id);
-    const status = (p?.get('status') as string) ?? 'BACKLOG';
+    const status = (p?.['status'] as string | undefined) ?? 'BACKLOG';
     if (status === 'DONE') continue;
-    const title = (p?.get('title') as string) ?? id;
+    const title = (p?.['title'] as string | undefined) ?? id;
     const direct = (dependents.get(id) ?? []).length;
     const transitive = countTransitiveDownstream(id);
     if (direct > 0) {

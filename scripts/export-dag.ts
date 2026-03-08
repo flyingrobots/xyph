@@ -11,6 +11,7 @@ import { execSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { normalizeQuestStatus } from '../src/domain/entities/Quest.js';
 import { computeTopBlockers, type TaskSummary, type DepEdge } from '../src/domain/services/DepAnalysis.js';
+import { toNeighborEntries } from '../src/infrastructure/helpers/isNeighborEntry.js';
 
 const WRITER_ID = process.env['XYPH_AGENT_ID'] ?? 'agent.prime';
 const outputFile = process.argv[2] ?? 'roadmap-dag.svg';
@@ -69,15 +70,12 @@ async function main(): Promise<void> {
     const props = await graph.getNodeProps(id);
     if (!props) continue;
 
-    const rawStatus = (props.get('status') as string) ?? 'BACKLOG';
+    const rawStatus = (props['status'] as string | undefined) ?? 'BACKLOG';
     const status = normalizeQuestStatus(rawStatus);
-    const title = (props.get('title') as string) ?? id;
+    const title = (props['title'] as string | undefined) ?? id;
 
     // Find campaign via belongs-to edge
-    const neighbors = (await graph.neighbors(id, 'outgoing')) as Array<{
-      label: string;
-      nodeId: string;
-    }>;
+    const neighbors = toNeighborEntries(await graph.neighbors(id, 'outgoing'));
     const campaignEdge = neighbors.find(
       (n) => n.label === 'belongs-to' && n.nodeId.startsWith('campaign:'),
     );

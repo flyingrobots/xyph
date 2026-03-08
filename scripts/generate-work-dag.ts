@@ -18,6 +18,7 @@ import { execSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { normalizeQuestStatus } from '../src/domain/entities/Quest.js';
+import { toNeighborEntries } from '../src/infrastructure/helpers/isNeighborEntry.js';
 import {
   computeFrontier,
   computeTopBlockers,
@@ -135,10 +136,7 @@ async function loadGraph(): Promise<{
     const title = (props['title'] as string) ?? id;
     const hours = Number(props['hours'] ?? 1);
 
-    const neighbors = (await graph.neighbors(id, 'outgoing')) as Array<{
-      label: string;
-      nodeId: string;
-    }>;
+    const neighbors = toNeighborEntries(await graph.neighbors(id, 'outgoing'));
 
     const campaignEdge = neighbors.find(
       (n) => n.label === 'belongs-to' && (n.nodeId.startsWith('campaign:') || n.nodeId.startsWith('milestone:')),

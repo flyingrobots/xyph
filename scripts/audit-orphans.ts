@@ -1,5 +1,6 @@
 import WarpGraph, { GitGraphAdapter } from '@git-stunts/git-warp';
 import Plumbing from '@git-stunts/plumbing';
+import { toNeighborEntries } from '../src/infrastructure/helpers/isNeighborEntry.js';
 
 const plumbing = Plumbing.createDefault({ cwd: process.cwd() });
 const persistence = new GitGraphAdapter({ plumbing });
@@ -19,11 +20,11 @@ let problemCount = 0;
 
 for (const id of nodes) {
   const props = await graph.getNodeProps(id);
-  const outgoing = (await graph.neighbors(id, 'outgoing')) as Array<{ label: string; nodeId: string }>;
-  const incoming = (await graph.neighbors(id, 'incoming')) as Array<{ label: string; nodeId: string }>;
-  const type = props?.get('type') ?? 'unknown';
-  const title = props?.get('title') ?? '';
-  const status = props?.get('status') ?? '';
+  const outgoing = toNeighborEntries(await graph.neighbors(id, 'outgoing'));
+  const incoming = toNeighborEntries(await graph.neighbors(id, 'incoming'));
+  const type = (props?.['type'] as string | undefined) ?? 'unknown';
+  const title = (props?.['title'] as string | undefined) ?? '';
+  const status = (props?.['status'] as string | undefined) ?? '';
 
   const issues: string[] = [];
 
@@ -81,10 +82,10 @@ const knownPrefixes = ['task:', 'artifact:', 'campaign:', 'milestone:', 'intent:
 for (const id of nodes) {
   if (!knownPrefixes.some((p) => id.startsWith(p))) {
     const props = await graph.getNodeProps(id);
-    const nodeStatus = props?.get('status');
+    const nodeStatus = props?.['status'];
     if (nodeStatus === 'GRAVEYARD') continue;
     problemCount++;
-    console.log(`UNKNOWN PREFIX: ${id} (type="${props?.get('type')}")\n`);
+    console.log(`UNKNOWN PREFIX: ${id} (type="${props?.['type']}")\n`);
   }
 }
 

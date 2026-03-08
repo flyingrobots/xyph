@@ -12,6 +12,7 @@ import WarpGraph, { GitGraphAdapter } from '@git-stunts/git-warp';
 import Plumbing from '@git-stunts/plumbing';
 import chalk from 'chalk';
 import { createPatchSession } from '../src/infrastructure/helpers/createPatchSession.js';
+import { toNeighborEntries } from '../src/infrastructure/helpers/isNeighborEntry.js';
 
 const WRITER_ID = process.env['XYPH_AGENT_ID'] ?? 'human.james';
 
@@ -80,7 +81,7 @@ for (const id of CAMPAIGNS) {
     console.log(chalk.yellow(`  [SKIP] ${id} — node not found`));
     continue;
   }
-  const currentType = props.get('type');
+  const currentType = props['type'];
   if (currentType === 'campaign') {
     console.log(chalk.dim(`  [SKIP] ${id} — already type="campaign"`));
     continue;
@@ -120,7 +121,7 @@ for (const id of QUESTS_NEEDING_INTENT) {
     console.log(chalk.yellow(`  [SKIP] ${id} — node not found`));
     continue;
   }
-  const outgoing = (await edgeGraph.neighbors(id, 'outgoing')) as Array<{ label: string; nodeId: string }>;
+  const outgoing = toNeighborEntries(await edgeGraph.neighbors(id, 'outgoing'));
   const hasAuth = outgoing.some((e) => e.label === 'authorized-by');
   if (hasAuth) {
     console.log(chalk.dim(`  [SKIP] ${id} — already has authorized-by edge`));
@@ -164,7 +165,7 @@ let failed = 0;
 
 for (const id of CAMPAIGNS) {
   const props = await verifyGraph.getNodeProps(id);
-  const type = props?.get('type');
+  const type = props?.['type'];
   if (type === 'campaign') {
     console.log(chalk.green(`  ✓ ${id} type="campaign"`));
     verified++;
@@ -181,7 +182,7 @@ for (const id of QUESTS_NEEDING_INTENT) {
     failed++;
     continue;
   }
-  const outgoing = (await verifyGraph.neighbors(id, 'outgoing')) as Array<{ label: string; nodeId: string }>;
+  const outgoing = toNeighborEntries(await verifyGraph.neighbors(id, 'outgoing'));
   const hasAuth = outgoing.some((e) => e.label === 'authorized-by');
   if (hasAuth) {
     console.log(chalk.green(`  ✓ ${id} has authorized-by edge`));

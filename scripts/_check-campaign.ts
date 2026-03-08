@@ -5,6 +5,7 @@
 
 import WarpGraph, { GitGraphAdapter } from '@git-stunts/git-warp';
 import Plumbing from '@git-stunts/plumbing';
+import { toNeighborEntries } from '../src/infrastructure/helpers/isNeighborEntry.js';
 
 async function main(): Promise<void> {
   const plumbing = Plumbing.createDefault({ cwd: process.cwd() });
@@ -14,7 +15,7 @@ async function main(): Promise<void> {
   await graph.materialize();
   const ids = ['task:AGT-002', 'task:agent-briefing', 'task:OVR-001', 'task:LIN-001', 'task:cli-api'];
   for (const id of ids) {
-    const neighbors = await graph.neighbors(id, 'outgoing') as Array<{label: string; nodeId: string}>;
+    const neighbors = toNeighborEntries(await graph.neighbors(id, 'outgoing'));
     const campaign = neighbors.find(n => n.label === 'belongs-to' && n.nodeId.startsWith('campaign:'));
     console.log(id.padEnd(25), campaign?.nodeId ?? '(none)');
   }
