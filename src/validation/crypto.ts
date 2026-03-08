@@ -43,7 +43,7 @@ interface KeyringMigration {
  * v1 → v2: Derive canonical did:key from publicKeyHex.
  *
  * v1 entries used placeholder keyIds like `did:key:agent.james` or
- * hand-crafted `did:key:z6MkhTestSigner01`. v2 derives the real
+ * hand-crafted keyIds like `did:key:z6MkhTestSigner01`. v2 derives the real
  * multibase-encoded did:key from the Ed25519 public key bytes.
  *
  * - Recovers `agentId` from legacy `did:key:<agentId>` patterns

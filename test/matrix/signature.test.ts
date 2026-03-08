@@ -31,7 +31,7 @@ describe("Invariant #11 — Payload Digest", () => {
 describe("Invariant #12 — Signature Verification", () => {
   it("unknown keyId → INV_012_UNKNOWN_KEY", async () => {
     const patch = clonePatch(loadGoldenFixture());
-    (patch as any).signature.keyId = "did:key:z6MkhUnknownKey99";
+    (patch as any).signature.keyId = "did:key:z6MkhUnknownKeyXXXXXXXXXXX";
     const result = await validatePatchOpsDocument(patch);
     assertInvariantFail(result, InvariantCode.INV_012_UNKNOWN_KEY);
   });
@@ -49,7 +49,7 @@ describe("Invariant #12 — Signature Verification", () => {
   it("signed with wrong key (valid sig, wrong public key in keyring) → INV_012_SIG_FAILED", async () => {
     const patch = clonePatch(loadGoldenFixture());
     // Use a different keyId that exists in keyring but has a different public key
-    (patch as any).signature.keyId = "did:key:z6MkhExampleSigner01";
+    (patch as any).signature.keyId = "did:key:z6MkqB6ZiuSBAfRM7kFu7c2djSYuKwhFvD9KGx1FoK82FaZY";
     const result = await validatePatchOpsDocument(patch);
     assertInvariantFail(result, InvariantCode.INV_012_SIG_FAILED);
   });

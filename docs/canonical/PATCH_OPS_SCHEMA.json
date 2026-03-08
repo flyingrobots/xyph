@@ -33,7 +33,8 @@
     },
     "baseSnapshotDigest": {
       "type": "string",
-      "pattern": "^blake3:[a-f0-9]{64}$"
+      "pattern": "^blake3:[a-f0-9]{64}$",
+      "description": "Advisory fingerprint of the materialized graph state at pipeline start. Used for audit correlation — not enforced as a concurrency precondition."
     },
     "policyPackRef": {
       "type": "string",
