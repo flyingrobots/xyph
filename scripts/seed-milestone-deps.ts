@@ -162,8 +162,8 @@ async function main(): Promise<void> {
     } else {
       // Update description (always — idempotent)
       const props = await graph.getNodeProps(c.id);
-      const currentDesc = props?.get('description');
-      const currentStatus = props?.get('status');
+      const currentDesc = props?.['description'];
+      const currentStatus = props?.['status'];
 
       if (currentDesc !== c.description) {
         patch.setProperty(c.id, 'description', c.description);

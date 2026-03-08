@@ -8,7 +8,7 @@ export function registerIntakeCommands(program: Command, ctx: CliContext): void 
 
   program
     .command('inbox <id>')
-    .description('Suggest a task for triage — adds to INBOX with provenance tracking')
+    .description('Suggest a task for triage — adds to BACKLOG with provenance tracking')
     .requiredOption('--title <text>', 'Task description')
     .requiredOption('--suggested-by <principal>', 'Who is suggesting this task (human.* or agent.*)')
     .option('--hours <number>', 'Estimated hours', parseHours)
@@ -23,7 +23,7 @@ export function registerIntakeCommands(program: Command, ctx: CliContext): void 
       const sha = await graph.patch((p) => {
         p.addNode(id)
           .setProperty(id, 'title', opts.title)
-          .setProperty(id, 'status', 'INBOX')
+          .setProperty(id, 'status', 'BACKLOG')
           .setProperty(id, 'hours', opts.hours ?? 0)
           .setProperty(id, 'type', 'task')
           .setProperty(id, 'suggested_by', opts.suggestedBy)
@@ -33,19 +33,19 @@ export function registerIntakeCommands(program: Command, ctx: CliContext): void 
       if (ctx.json) {
         ctx.jsonOut({
           success: true, command: 'inbox',
-          data: { id, title: opts.title, status: 'INBOX', suggestedBy: opts.suggestedBy, hours: opts.hours ?? 0, patch: sha },
+          data: { id, title: opts.title, status: 'BACKLOG', suggestedBy: opts.suggestedBy, hours: opts.hours ?? 0, patch: sha },
         });
         return;
       }
 
-      ctx.ok(`[OK] Task ${id} added to INBOX.`);
+      ctx.ok(`[OK] Task ${id} added to BACKLOG.`);
       ctx.muted(`  Suggested by: ${opts.suggestedBy}`);
       ctx.muted(`  Patch: ${sha}`);
     }));
 
   program
     .command('promote <id>')
-    .description('Promote an INBOX task to BACKLOG — human authority + sovereign intent required')
+    .description('Promote a BACKLOG task to PLANNED — human authority + sovereign intent required')
     .requiredOption('--intent <id>', 'Sovereign Intent ID (intent:* prefix)')
     .option('--campaign <id>', 'Campaign to assign (optional, assignable later)')
     .action(withErrorHandler(async (id: string, opts: { intent: string; campaign?: string }) => {
@@ -62,7 +62,7 @@ export function registerIntakeCommands(program: Command, ctx: CliContext): void 
         return;
       }
 
-      ctx.ok(`[OK] Task ${id} promoted to BACKLOG.`);
+      ctx.ok(`[OK] Task ${id} promoted to PLANNED.`);
       ctx.muted(`  Intent:   ${opts.intent}`);
       if (opts.campaign !== undefined) ctx.muted(`  Campaign: ${opts.campaign}`);
       ctx.muted(`  Patch: ${sha}`);
@@ -70,7 +70,7 @@ export function registerIntakeCommands(program: Command, ctx: CliContext): void 
 
   program
     .command('reject <id>')
-    .description('Reject an INBOX task to GRAVEYARD — rationale required')
+    .description('Reject a BACKLOG or PLANNED task to GRAVEYARD — rationale required')
     .requiredOption('--rationale <text>', 'Reason for rejection (non-empty)')
     .action(withErrorHandler(async (id: string, opts: { rationale: string }) => {
       const { WarpIntakeAdapter } = await import('../../infrastructure/adapters/WarpIntakeAdapter.js');
@@ -94,7 +94,7 @@ export function registerIntakeCommands(program: Command, ctx: CliContext): void 
 
   program
     .command('reopen <id>')
-    .description('Reopen a GRAVEYARD task back to INBOX — human authority required, history preserved')
+    .description('Reopen a GRAVEYARD task back to BACKLOG — human authority required, history preserved')
     .action(withErrorHandler(async (id: string) => {
       const { WarpIntakeAdapter } = await import('../../infrastructure/adapters/WarpIntakeAdapter.js');
 
@@ -109,7 +109,7 @@ export function registerIntakeCommands(program: Command, ctx: CliContext): void 
         return;
       }
 
-      ctx.ok(`[OK] Task ${id} reopened to INBOX.`);
+      ctx.ok(`[OK] Task ${id} reopened to BACKLOG.`);
       ctx.muted(`  Reopened by: ${ctx.agentId}`);
       ctx.muted(`  Note: rejection history preserved in graph.`);
       ctx.muted(`  Patch: ${sha}`);

@@ -40,7 +40,7 @@ describe('Cross-Adapter Visibility (GraphContext sees Intake mutations)', () => 
     await graph.patch((p) => {
       p.addNode('task:XVIS-001')
         .setProperty('task:XVIS-001', 'title', 'Promote visibility target')
-        .setProperty('task:XVIS-001', 'status', 'INBOX')
+        .setProperty('task:XVIS-001', 'status', 'BACKLOG')
         .setProperty('task:XVIS-001', 'hours', 2)
         .setProperty('task:XVIS-001', 'type', 'task');
     });
@@ -48,7 +48,7 @@ describe('Cross-Adapter Visibility (GraphContext sees Intake mutations)', () => 
     await graph.patch((p) => {
       p.addNode('task:XVIS-002')
         .setProperty('task:XVIS-002', 'title', 'Reject visibility target')
-        .setProperty('task:XVIS-002', 'status', 'INBOX')
+        .setProperty('task:XVIS-002', 'status', 'BACKLOG')
         .setProperty('task:XVIS-002', 'hours', 1)
         .setProperty('task:XVIS-002', 'type', 'task');
     });
@@ -56,7 +56,7 @@ describe('Cross-Adapter Visibility (GraphContext sees Intake mutations)', () => 
     await graph.patch((p) => {
       p.addNode('task:XVIS-003')
         .setProperty('task:XVIS-003', 'title', 'GraphMeta tick target')
-        .setProperty('task:XVIS-003', 'status', 'INBOX')
+        .setProperty('task:XVIS-003', 'status', 'BACKLOG')
         .setProperty('task:XVIS-003', 'hours', 1)
         .setProperty('task:XVIS-003', 'type', 'task');
     });
@@ -73,7 +73,6 @@ describe('Cross-Adapter Visibility (GraphContext sees Intake mutations)', () => 
     const before = await ctx.fetchSnapshot();
     const questBefore = before.quests.find((q) => q.id === 'task:XVIS-001');
     expect(questBefore).toBeDefined();
-    // Graph stores INBOX, read-time normalization converts to BACKLOG
     expect(questBefore?.status).toBe('BACKLOG');
 
     const intake = new WarpIntakeAdapter(graphPort, writerId);
@@ -82,7 +81,6 @@ describe('Cross-Adapter Visibility (GraphContext sees Intake mutations)', () => 
     const after = await ctx.fetchSnapshot();
     const questAfter = after.quests.find((q) => q.id === 'task:XVIS-001');
     expect(questAfter).toBeDefined();
-    // Graph stores BACKLOG (post-promote), read-time normalization converts to PLANNED
     expect(questAfter?.status).toBe('PLANNED');
     expect(questAfter?.intentId).toBe('intent:cross-test');
   });
@@ -92,7 +90,6 @@ describe('Cross-Adapter Visibility (GraphContext sees Intake mutations)', () => 
     const before = await ctx.fetchSnapshot();
     const questBefore = before.quests.find((q) => q.id === 'task:XVIS-002');
     expect(questBefore).toBeDefined();
-    // Graph stores INBOX, read-time normalization converts to BACKLOG
     expect(questBefore?.status).toBe('BACKLOG');
 
     const intake = new WarpIntakeAdapter(graphPort, writerId);
@@ -114,7 +111,6 @@ describe('Cross-Adapter Visibility (GraphContext sees Intake mutations)', () => 
     expect(before.graphMeta?.tipSha).toBeTruthy();
 
     const questBefore = before.quests.find((q) => q.id === 'task:XVIS-003');
-    // Graph stores INBOX, read-time normalization converts to BACKLOG
     expect(questBefore?.status).toBe('BACKLOG');
 
     const intake = new WarpIntakeAdapter(graphPort, writerId);

@@ -150,7 +150,7 @@ async function linkTasksToCampaigns(graph: WarpGraph): Promise<void> {
 // ── Step 3: Wire dependency edges ──
 
 // Convention: [from, to] means `from` depends on `to` (to is the prerequisite)
-const DEPENDENCY_EDGES: Array<[string, string]> = [
+const DEPENDENCY_EDGES: [string, string][] = [
   // M10 CLI Tooling: BX-001 is prerequisite for BX-002, etc.
   ['task:BX-002', 'task:BX-001'],
   ['task:BX-003', 'task:BX-002'],
@@ -207,7 +207,7 @@ async function wireDependencies(graph: WarpGraph): Promise<void> {
   }
 
   // Cycle detection: check each edge won't create a cycle
-  const safe: Array<[string, string]> = [];
+  const safe: [string, string][] = [];
   for (const [from, to] of DEPENDENCY_EDGES) {
     const { reachable } = await graph.traverse.isReachable(to, from, {
       labelFilter: 'depends-on',

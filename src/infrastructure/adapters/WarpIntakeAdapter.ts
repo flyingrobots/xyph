@@ -2,6 +2,12 @@ import type { IntakePort } from '../../ports/IntakePort.js';
 import type { GraphPort } from '../../ports/GraphPort.js';
 
 export class WarpIntakeAdapter implements IntakePort {
+  /** Raw statuses from which promote is allowed (includes legacy INBOX for unmigrated graphs). */
+  private static readonly PROMOTABLE: ReadonlySet<string> = new Set(['BACKLOG', 'INBOX']);
+
+  /** Raw statuses from which reject is allowed (includes legacy INBOX for unmigrated graphs). */
+  private static readonly REJECTABLE: ReadonlySet<string> = new Set(['BACKLOG', 'PLANNED', 'INBOX']);
+
   constructor(
     private readonly graphPort: GraphPort,
     private readonly agentId: string,
@@ -34,10 +40,10 @@ export class WarpIntakeAdapter implements IntakePort {
     if (props === null) {
       throw new Error(`[NOT_FOUND] Quest ${questId} not found in the graph`);
     }
-    const status = props['status'];
-    if (status !== 'INBOX') {
+    const status = props['status'] as string | undefined;
+    if (status === undefined || !WarpIntakeAdapter.PROMOTABLE.has(status)) {
       throw new Error(
-        `[INVALID_FROM] promote requires status INBOX, quest ${questId} is ${String(status)}`
+        `[INVALID_FROM] promote requires status BACKLOG, quest ${questId} is ${String(status)}`
       );
     }
 
@@ -49,7 +55,7 @@ export class WarpIntakeAdapter implements IntakePort {
     }
 
     return graph.patch((p) => {
-      p.setProperty(questId, 'status', 'BACKLOG').addEdge(questId, intentId, 'authorized-by');
+      p.setProperty(questId, 'status', 'PLANNED').addEdge(questId, intentId, 'authorized-by');
       if (campaignId !== undefined) {
         p.addEdge(questId, campaignId, 'belongs-to');
       }
@@ -68,10 +74,10 @@ export class WarpIntakeAdapter implements IntakePort {
     if (props === null) {
       throw new Error(`[NOT_FOUND] Quest ${questId} not found in the graph`);
     }
-    const status = props['status'];
-    if (status !== 'INBOX') {
+    const status = props['status'] as string | undefined;
+    if (status === undefined || !WarpIntakeAdapter.REJECTABLE.has(status)) {
       throw new Error(
-        `[INVALID_FROM] reject requires status INBOX, quest ${questId} is ${String(status)}`
+        `[INVALID_FROM] reject requires status BACKLOG or PLANNED, quest ${questId} is ${String(status)}`
       );
     }
 
@@ -107,7 +113,7 @@ export class WarpIntakeAdapter implements IntakePort {
 
     const now = Date.now();
     return graph.patch((p) => {
-      p.setProperty(questId, 'status', 'INBOX')
+      p.setProperty(questId, 'status', 'BACKLOG')
         .setProperty(questId, 'reopened_by', this.agentId)
         .setProperty(questId, 'reopened_at', now);
     });

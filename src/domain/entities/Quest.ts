@@ -15,16 +15,17 @@ export const VALID_STATUSES: ReadonlySet<string> = new Set<QuestStatus>([
   'BACKLOG', 'PLANNED', 'IN_PROGRESS', 'BLOCKED', 'DONE', 'GRAVEYARD',
 ]);
 
-/** Accept both legacy and current status values from the graph. */
-export const VALID_RAW_STATUSES: ReadonlySet<string> = new Set([
-  'INBOX', 'BACKLOG', 'PLANNED', 'IN_PROGRESS', 'BLOCKED', 'DONE', 'GRAVEYARD',
-]);
-
-/** Normalize legacy status strings at read time (vocabulary rename Phase 9). */
+/**
+ * Normalize legacy status strings from the raw graph.
+ *
+ * Pre-VOC rename, the graph stored INBOX (now BACKLOG) and BACKLOG (now
+ * PLANNED). This function handles both legacy and current values so
+ * un-migrated nodes are still readable.
+ */
 export function normalizeQuestStatus(raw: string): QuestStatus {
   switch (raw) {
-    case 'INBOX':       return 'BACKLOG';       // old INBOX → new BACKLOG (suggestion pool)
-    case 'BACKLOG':     return 'PLANNED';       // old BACKLOG → new PLANNED (vetted work)
+    case 'INBOX':       return 'BACKLOG';       // legacy INBOX → BACKLOG
+    case 'BACKLOG':     return 'BACKLOG';
     case 'PLANNED':     return 'PLANNED';
     case 'IN_PROGRESS': return 'IN_PROGRESS';
     case 'BLOCKED':     return 'BLOCKED';

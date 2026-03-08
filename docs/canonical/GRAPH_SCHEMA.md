@@ -97,7 +97,7 @@ All properties use **snake_case** in the WARP graph. Timestamps are Unix epoch n
 
 **Valid QuestStatus values:** `BACKLOG`, `PLANNED`, `IN_PROGRESS`, `BLOCKED`, `DONE`, `GRAVEYARD`
 
-Legacy: `INBOX` is normalized to `BACKLOG` at read time.
+Legacy: Pre-VOC-001 `INBOX` values are normalized to `BACKLOG` at read time.
 
 **Edges:**
 - `belongs-to` → campaign:/milestone: (optional)

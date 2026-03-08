@@ -6,6 +6,29 @@ All notable changes to XYPH will be documented in this file.
 
 ### Added
 
+- **`scripts/` under lint + typecheck** — `tsconfig.scripts.json` and ESLint config now cover all TypeScript scripts; `npm run lint` checks scripts alongside src/test
+- **Consolidated `wire-deps.ts`** — single idempotent dependency-wiring script replacing wave2/wave3/fixup; gracefully skips missing nodes, detects cycles and duplicates
+- **`migrate-voc-001.ts`** — one-shot graph migration script, patched 116 legacy `INBOX` nodes to `BACKLOG`
+
+### Changed
+
+- **VOC-001: Vocabulary rename** — raw graph statuses now match the domain model. `inbox` command writes `BACKLOG` (was `INBOX`), `promote` writes `PLANNED` (was `BACKLOG`), `quest`/`quest-wizard` write `PLANNED` (was `BACKLOG`), `reopen` writes `BACKLOG` (was `INBOX`). `normalizeQuestStatus()` retained as legacy shim for un-migrated nodes only
+- **Reject from BACKLOG or PLANNED** — `reject` command now accepts quests in BACKLOG or PLANNED status; adapter and domain service aligned
+- **Scripts migrated to git-warp v13 API** — all `props.get('key')` calls in `scripts/` replaced with Record bracket notation `props['key']`; `Array<T>` → `T[]`, unused imports removed
+- **Quest status lifecycle diagram** — updated to reflect VOC-001 rename (no more INBOX state)
+
+### Fixed
+
+- **WarpIntakeAdapter promote/reject guards** — adapter and domain service now use the same status vocabulary; promote checks `BACKLOG`, reject accepts `BACKLOG|PLANNED`
+
+### Removed
+
+- **`VALID_RAW_STATUSES`** — no longer needed; `normalizeQuestStatus()` handles legacy values
+- **task:BX-017 (HistoryPort)** — graveyarded as redundant; git-warp v13 natively provides `patchesFor()`, `materializeSlice({ receipts: true })`, and `materialize({ ceiling })`. Downstream quests (BX-009–016) call git-warp directly
+- **14 obsolete/duplicate quests graveyarded** — VOC-002 (normalization already done), cli-backlog-add (duplicate of inbox), upstream-ink-fullscreen & bijou-v09-title-refactor & bijou-type-guards & e2e-dashboard-smoke (Ink removed), BKL-PRESET-SOT & inline-color-status (already satisfied), suggestion-calibrate & IDEA-TEMPORAL-TRACE & temporal-traceability-queries & IDEA-HEATMAP & traceability-heat-map & IDEA-SCAN-IMPL (duplicates)
+
+### Previously Added
+
 - **Key rotation** — `GuildSealService.rotateKey(agentId)` generates a new Ed25519 keypair, marks the previous key as retired (`active: false`), and registers the new key as the sole active key for the agent. Retired keys stay in the keyring for verification of historical signatures (WVR-006)
 - **Pre-rendered SVG diagrams** — 24 diagrams across 22 documentation files, rendered from Mermaid source (`.mmd`) to SVG via `mmdc`. Source files in `docs/diagrams/*.mmd`, rendered output in `docs/diagrams/*.svg`. Render script: `scripts/render-diagrams.sh`. Covers entity relationships, state machines, flowcharts, sequence diagrams, and architecture stacks (WVR-006)
 - **`history` command** — `xyph-actuator history <nodeId>` shows all patches that touched a node via git-warp's `patchesFor()` provenance API (Constitution Art. III compliance)

@@ -1,5 +1,5 @@
 import { RoadmapPort } from '../../ports/RoadmapPort.js';
-import { Quest, QuestType, VALID_RAW_STATUSES, normalizeQuestStatus } from '../../domain/entities/Quest.js';
+import { Quest, QuestType, VALID_STATUSES, normalizeQuestStatus } from '../../domain/entities/Quest.js';
 import { EdgeType } from '../../schema.js';
 import type { GraphPort } from '../../ports/GraphPort.js';
 import { toNeighborEntries } from '../helpers/isNeighborEntry.js';
@@ -18,7 +18,8 @@ export class WarpRoadmapAdapter implements RoadmapPort {
     const type = props['type'];
 
     if (typeof title !== 'string' || title.length < 5) return null;
-    if (typeof status !== 'string' || !VALID_RAW_STATUSES.has(status)) return null;
+    const normalized = typeof status === 'string' ? normalizeQuestStatus(status) : undefined;
+    if (normalized === undefined || !VALID_STATUSES.has(normalized)) return null;
     if (typeof type !== 'string' || !VALID_TYPES.has(type)) return null;
     if (!id.startsWith('task:')) return null;
 
@@ -32,7 +33,7 @@ export class WarpRoadmapAdapter implements RoadmapPort {
     return new Quest({
       id,
       title,
-      status: normalizeQuestStatus(status),
+      status: normalized,
       hours: parsedHours,
       assignedTo: typeof assignedTo === 'string' ? assignedTo : undefined,
       claimedAt: typeof claimedAt === 'number' ? claimedAt : undefined,

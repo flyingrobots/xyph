@@ -11,7 +11,7 @@ export default tseslint.config(
     },
   },
   {
-    ignores: ['dist/**', 'build/**', 'scripts/**'],
+    ignores: ['dist/**', 'build/**'],
   },
   {
     files: ['src/**/*.ts', 'xyph-actuator.ts', 'xyph-dashboard.ts', 'xyph-theme-lab.ts'],
@@ -38,6 +38,20 @@ export default tseslint.config(
     rules: {
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/explicit-function-return-type': 'off',
+      'no-console': 'off',
+    },
+  },
+  {
+    files: ['scripts/**/*.ts', 'scripts/**/*.mts'],
+    languageOptions: {
+      parserOptions: {
+        project: './tsconfig.scripts.json',
+      },
+    },
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'error',
+      '@typescript-eslint/explicit-function-return-type': 'off',
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
       'no-console': 'off',
     },
   }

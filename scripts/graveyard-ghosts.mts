@@ -11,7 +11,7 @@ import { createPatchSession } from '../src/infrastructure/helpers/createPatchSes
 const agentId = process.env['XYPH_AGENT_ID'] ?? 'human.james';
 const now = Date.now();
 
-const GHOSTS: Array<{ id: string; rationale: string }> = [
+const GHOSTS: { id: string; rationale: string }[] = [
   { id: 'task:INBOX-TEST-001', rationale: 'Test artifact — promoted from INBOX without sovereign intent, no production value' },
   { id: 'task:INBOX-TEST-002', rationale: 'Test artifact — INBOX test task, no production value' },
   { id: 'roadmap:ROOT',        rationale: 'Obsolete bootstrapping root node, superseded by intent-anchored graph structure' },
@@ -30,14 +30,14 @@ const graph = await WarpGraph.open({
 await graph.syncCoverage();
 await graph.materialize();
 
-const toMutate: Array<{ id: string; rationale: string }> = [];
+const toMutate: { id: string; rationale: string }[] = [];
 for (const { id, rationale } of GHOSTS) {
   const props = await graph.getNodeProps(id);
   if (!props) {
     console.log(chalk.yellow(`  [SKIP] ${id} — node not found`));
     continue;
   }
-  const current: unknown = props.get('status');
+  const current: unknown = props['status'];
   if (current === 'GRAVEYARD') {
     console.log(chalk.dim(`  [SKIP] ${id} — already GRAVEYARD`));
     continue;

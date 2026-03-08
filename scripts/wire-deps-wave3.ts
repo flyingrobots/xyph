@@ -4,10 +4,11 @@
  * sitting in the frontier that logically need prerequisites.
  */
 
-import WarpGraph, { GitGraphAdapter, PatchSession } from '@git-stunts/git-warp';
+import WarpGraph, { GitGraphAdapter } from '@git-stunts/git-warp';
 import Plumbing from '@git-stunts/plumbing';
 import chalk from 'chalk';
 import { createPatchSession } from '../src/infrastructure/helpers/createPatchSession.js';
+import { toNeighborEntries } from '../src/infrastructure/helpers/isNeighborEntry.js';
 
 const WRITER_ID = process.env['XYPH_AGENT_ID'] ?? 'agent.prime';
 const plumbing = Plumbing.createDefault({ cwd: process.cwd() });
@@ -26,7 +27,7 @@ async function openGraph(): Promise<WarpGraph> {
 }
 
 // [from, to, reason] — from depends on to
-const WAVE3_EDGES: Array<[string, string, string]> = [
+const WAVE3_EDGES: [string, string, string][] = [
   // dag-visualization needs bijou-dag-renderer built first
   ['task:dag-visualization', 'task:bijou-dag-renderer', 'dag viz uses bijou dag component'],
 
@@ -136,7 +137,7 @@ async function main(): Promise<void> {
 
   // Cycle detection
   console.log(chalk.cyan('\n── Cycle detection ──'));
-  const safe: Array<[string, string]> = [];
+  const safe: [string, string][] = [];
   let skipped = 0;
 
   for (const [from, to, reason] of validEdges) {
@@ -169,18 +170,15 @@ async function main(): Promise<void> {
   let blockedCount = 0;
   for (const taskId of tasks) {
     const props = await graph.getNodeProps(taskId);
-    const status = props?.get('status') as string | undefined;
+    const status = props?.['status'] as string | undefined;
     if (status === 'DONE') continue;
 
-    const neighbors = (await graph.neighbors(taskId, 'outgoing')) as Array<{
-      label: string;
-      nodeId: string;
-    }>;
+    const neighbors = toNeighborEntries(await graph.neighbors(taskId, 'outgoing'));
     const deps = neighbors.filter((n) => n.label === 'depends-on');
     let blocked = false;
     for (const dep of deps) {
       const depProps = await graph.getNodeProps(dep.nodeId);
-      const depStatus = depProps?.get('status') as string | undefined;
+      const depStatus = depProps?.['status'] as string | undefined;
       if (depStatus !== 'DONE') {
         blocked = true;
         break;

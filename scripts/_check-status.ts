@@ -15,7 +15,7 @@ async function main(): Promise<void> {
   const ids = ['task:BX-001', 'task:BJU-009', 'task:ORC-001', 'task:cli-api', 'task:OVR-012', 'task:GRV-001', 'task:FRG-001', 'task:DSH-002'];
   for (const id of ids) {
     const props = await graph.getNodeProps(id);
-    const status = props?.get('status');
+    const status = props?.['status'];
     console.log(id.padEnd(20), typeof status, JSON.stringify(status));
   }
 }

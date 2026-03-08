@@ -12,7 +12,7 @@ const WRITER_ID = process.env['XYPH_AGENT_ID'] ?? 'agent.prime';
 const plumbing = Plumbing.createDefault({ cwd: process.cwd() });
 const persistence = new GitGraphAdapter({ plumbing });
 
-const EDGES: Array<[string, string]> = [
+const EDGES: [string, string][] = [
   ['task:snapshot-render-regression', 'task:BJU-002'],
   ['task:inline-color-status', 'task:theme-shared-module'],
   ['task:lint-unused-interface-fields', 'task:coverage-threshold'],
@@ -30,7 +30,7 @@ async function main(): Promise<void> {
   await graph.syncCoverage();
   await graph.materialize();
 
-  const safe: Array<[string, string]> = [];
+  const safe: [string, string][] = [];
   for (const [from, to] of EDGES) {
     const fromExists = await graph.hasNode(from);
     const toExists = await graph.hasNode(to);

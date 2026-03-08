@@ -78,7 +78,7 @@ async function main() {
   // ─────────────────────────────────────────────────────────────────────────
   console.log(chalk.cyan('\n── Fix 2: Seal HEARTBEAT tasks ──'));
 
-  const heartbeatSeals: Array<{ id: string; sha: string; rationale: string }> = [
+  const heartbeatSeals: { id: string; sha: string; rationale: string }[] = [
     {
       id: 'task:HRB-001',
       sha: 'f895b27',
@@ -122,7 +122,7 @@ async function main() {
   // ─────────────────────────────────────────────────────────────────────────
   console.log(chalk.cyan('\n── Fix 3: Seal TRIAGE tasks ──'));
 
-  const triageSeals: Array<{ id: string; sha: string; rationale: string }> = [
+  const triageSeals: { id: string; sha: string; rationale: string }[] = [
     {
       id: 'task:TRG-001',
       sha: 'dfeb0cc',
@@ -170,7 +170,7 @@ async function main() {
 
   for (const id of ids) {
     const props = await graph.getNodeProps(id);
-    const status = props?.get('status') ?? 'MISSING';
+    const status = (props?.['status'] as string | undefined) ?? 'MISSING';
     const icon = status === 'DONE' ? chalk.green('✓') : status === 'BACKLOG' ? chalk.yellow('·') : chalk.red('?');
     console.log(`  ${icon} ${id.padEnd(22)}  ${status}`);
   }
