@@ -3,51 +3,17 @@ import { createNavigableTableState, navTableFocusNext, type NavigableTableState 
 import { createPlainStylePort, ensurePlainBijouContext } from '../../../infrastructure/adapters/PlainStyleAdapter.js';
 import type { StylePort } from '../../../ports/StylePort.js';
 import type { DashboardModel } from '../DashboardApp.js';
-import type { GraphSnapshot, QuestNode, IntentNode, CampaignNode, ScrollNode, SubmissionNode, ReviewNode, DecisionNode } from '../../../domain/models/dashboard.js';
+import type { GraphSnapshot } from '../../../domain/models/dashboard.js';
 import { SUBMISSION_STATUS_ORDER } from '../../../domain/entities/Submission.js';
 import { roadmapView } from '../views/roadmap-view.js';
 import { lineageView } from '../views/lineage-view.js';
 import { dashboardView } from '../views/dashboard-view.js';
 import { backlogView } from '../views/backlog-view.js';
 import { submissionsView } from '../views/submissions-view.js';
+import { strip } from '../../../../test/helpers/ansi.js';
+import { makeSnapshot, quest, intent, campaign, scroll, submission, review, decision } from '../../../../test/helpers/snapshot.js';
 
 // ── Helpers ────────────────────────────────────────────────────────────
-
-/** Strip ANSI escape codes for assertion matching. */
-const ANSI_RE = new RegExp(String.fromCharCode(0x1b) + '\\[[0-9;]*m', 'g');
-function strip(s: string): string {
-  return s.replace(ANSI_RE, '');
-}
-
-function makeSnapshot(overrides?: Partial<GraphSnapshot>): GraphSnapshot {
-  const base = {
-    campaigns: [],
-    quests: [],
-    intents: [],
-    scrolls: [],
-    approvals: [],
-    submissions: [],
-    reviews: [],
-    decisions: [],
-    stories: [],
-    requirements: [],
-    criteria: [],
-    evidence: [],
-    suggestions: [],
-    asOf: Date.now(),
-    sortedTaskIds: [] as string[],
-    sortedCampaignIds: [] as string[],
-    ...overrides,
-  };
-  // Auto-populate sortedTaskIds from quests if not explicitly provided
-  if (!overrides?.sortedTaskIds && base.quests.length > 0) {
-    base.sortedTaskIds = base.quests.map(q => q.id);
-  }
-  if (!overrides?.sortedCampaignIds && base.campaigns.length > 0) {
-    base.sortedCampaignIds = base.campaigns.map(c => c.id);
-  }
-  return base;
-}
 
 function buildBacklogTable(snapshot: GraphSnapshot | null, focusRow = 0): NavigableTableState {
   if (!snapshot) {
@@ -162,69 +128,6 @@ function makeModel(snapshot: GraphSnapshot | null): DashboardModel {
   };
 }
 
-function quest(overrides: Partial<QuestNode> & { id: string; title: string }): QuestNode {
-  return {
-    status: 'PLANNED',
-    hours: 2,
-    ...overrides,
-  };
-}
-
-function intent(overrides: Partial<IntentNode> & { id: string; title: string }): IntentNode {
-  return {
-    requestedBy: 'human.james',
-    createdAt: Date.now(),
-    ...overrides,
-  };
-}
-
-function campaign(overrides: Partial<CampaignNode> & { id: string; title: string }): CampaignNode {
-  return {
-    status: 'IN_PROGRESS',
-    ...overrides,
-  };
-}
-
-function scroll(overrides: Partial<ScrollNode> & { id: string; questId: string }): ScrollNode {
-  return {
-    artifactHash: 'abc123',
-    sealedBy: 'agent.james',
-    sealedAt: Date.now(),
-    hasSeal: true,
-    ...overrides,
-  };
-}
-
-function submission(overrides: Partial<SubmissionNode> & { id: string; questId: string }): SubmissionNode {
-  return {
-    status: 'OPEN',
-    headsCount: 1,
-    approvalCount: 0,
-    submittedBy: 'agent.james',
-    submittedAt: Date.now(),
-    ...overrides,
-  };
-}
-
-function review(overrides: Partial<ReviewNode> & { id: string; patchsetId: string }): ReviewNode {
-  return {
-    verdict: 'approve',
-    comment: '',
-    reviewedBy: 'human.james',
-    reviewedAt: Date.now(),
-    ...overrides,
-  };
-}
-
-function decision(overrides: Partial<DecisionNode> & { id: string; submissionId: string }): DecisionNode {
-  return {
-    kind: 'merge',
-    decidedBy: 'human.james',
-    rationale: 'Looks good',
-    decidedAt: Date.now(),
-    ...overrides,
-  };
-}
 
 // ── Setup ───────────────────────────────────────────────────────────────
 

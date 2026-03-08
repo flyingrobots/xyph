@@ -6,6 +6,7 @@ All notable changes to XYPH will be documented in this file.
 
 ### Added
 
+- **Shared test helpers** (`test/helpers/`) — `makeSnapshot()`, entity builders (`quest`, `intent`, `campaign`, `scroll`, `submission`, `review`, `decision`), `strip()` ANSI helper, `makeKey()`/`makeResize()` keyboard factories, and mock port factories (`mockGraphContext`, `mockIntakePort`, `mockGraphPort`, `mockSubmissionPort`). Eliminates duplication across TUI test files
 - **`scripts/` under lint + typecheck** — `tsconfig.scripts.json` and ESLint config now cover all TypeScript scripts; `npm run lint` checks scripts alongside src/test
 - **Consolidated `wire-deps.ts`** — single idempotent dependency-wiring script replacing wave2/wave3/fixup; gracefully skips missing nodes, detects cycles and duplicates
 - **`migrate-voc-001.ts`** — one-shot graph migration script, patched 116 legacy `INBOX` nodes to `BACKLOG`

@@ -9,71 +9,30 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { App, KeyMsg } from '@flyingrobots/bijou-tui';
 import { createPlainStylePort, ensurePlainBijouContext } from '../../../infrastructure/adapters/PlainStyleAdapter.js';
 import { createDashboardApp, type DashboardModel, type DashboardMsg } from '../DashboardApp.js';
-import type { GraphContext } from '../../../infrastructure/GraphContext.js';
 import type { GraphSnapshot } from '../../../domain/models/dashboard.js';
 import type { IntakePort } from '../../../ports/IntakePort.js';
 import type { GraphPort } from '../../../ports/GraphPort.js';
 import type { SubmissionPort } from '../../../ports/SubmissionPort.js';
+import { strip } from '../../../../test/helpers/ansi.js';
+import { makeSnapshot } from '../../../../test/helpers/snapshot.js';
+import { makeKey as key } from '../../../../test/helpers/keys.js';
+import { mockGraphContext, mockIntakePort, mockGraphPort as createMockGraphPort, mockSubmissionPort } from '../../../../test/helpers/ports.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
-const ANSI_RE = new RegExp(String.fromCharCode(0x1b) + '\\[[0-9;]*m', 'g');
-function strip(s: string): string { return s.replace(ANSI_RE, ''); }
-
-function makeSnapshot(overrides?: Partial<GraphSnapshot>): GraphSnapshot {
-  const base = {
-    campaigns: [], quests: [], intents: [], scrolls: [],
-    approvals: [], submissions: [], reviews: [], decisions: [],
-    stories: [], requirements: [], criteria: [], evidence: [], suggestions: [],
-    asOf: Date.now(), sortedTaskIds: [] as string[], sortedCampaignIds: [] as string[],
-    ...overrides,
-  };
-  if (!overrides?.sortedTaskIds && base.quests.length > 0) {
-    base.sortedTaskIds = base.quests.map(q => q.id);
-  }
-  if (!overrides?.sortedCampaignIds && base.campaigns.length > 0) {
-    base.sortedCampaignIds = base.campaigns.map(c => c.id);
-  }
-  return base;
-}
-
-function key(k: string, mods?: Partial<Pick<KeyMsg, 'ctrl' | 'alt' | 'shift'>>): KeyMsg {
-  return { type: 'key', key: k, ctrl: false, alt: false, shift: false, ...mods };
-}
-
 function buildApp(): { app: App<DashboardModel, DashboardMsg>; mockIntake: IntakePort; mockGraphPort: GraphPort; mockSubmissionPort: SubmissionPort } {
-  const mockCtx: GraphContext = {
-    get graph(): never { throw new Error('not initialized'); },
-    fetchSnapshot: vi.fn().mockResolvedValue(makeSnapshot()) as GraphContext['fetchSnapshot'],
-    filterSnapshot: vi.fn((s: GraphSnapshot) => s),
-    invalidateCache: vi.fn(),
-  };
-  const mockIntake: IntakePort = {
-    promote: vi.fn().mockResolvedValue('sha-1') as IntakePort['promote'],
-    reject: vi.fn().mockResolvedValue('sha-2') as IntakePort['reject'],
-    reopen: vi.fn().mockResolvedValue('sha-3') as IntakePort['reopen'],
-  };
-  const mockGraphPort: GraphPort = {
-    getGraph: vi.fn().mockResolvedValue({
-      patch: vi.fn(),
-      getNodeProps: vi.fn().mockResolvedValue(new Map([['assigned_to', 'agent.test']])),
-    }),
-    reset: vi.fn(),
-  };
-  const mockSubmissionPort: SubmissionPort = {
-    submit: vi.fn().mockResolvedValue({ patchSha: 'sha-s' }) as SubmissionPort['submit'],
-    revise: vi.fn().mockResolvedValue({ patchSha: 'sha-r' }) as SubmissionPort['revise'],
-    review: vi.fn().mockResolvedValue({ patchSha: 'sha-v' }) as SubmissionPort['review'],
-    decide: vi.fn().mockResolvedValue({ patchSha: 'sha-d' }) as SubmissionPort['decide'],
-  };
+  const mockCtx = mockGraphContext();
+  const mockIntake = mockIntakePort();
+  const mockGraph = createMockGraphPort();
+  const mockSubmission = mockSubmissionPort();
 
   const app = createDashboardApp({
-    ctx: mockCtx, intake: mockIntake, graphPort: mockGraphPort,
-    submissionPort: mockSubmissionPort, style: createPlainStylePort(),
+    ctx: mockCtx, intake: mockIntake, graphPort: mockGraph,
+    submissionPort: mockSubmission, style: createPlainStylePort(),
     agentId: 'agent.test', logoText: 'XYPH',
   });
 
-  return { app, mockIntake, mockGraphPort, mockSubmissionPort };
+  return { app, mockIntake, mockGraphPort: mockGraph, mockSubmissionPort: mockSubmission };
 }
 
 /** Shortcut: init → inject snapshot → dismiss landing → return ready model. */
