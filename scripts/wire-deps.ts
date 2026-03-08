@@ -61,9 +61,9 @@ const EDGES: [string, string, string][] = [
   ['task:TRG-004', 'task:TRG-003', 'recommendation engine needs triage view'],
   ['task:TRG-005', 'task:TRG-004', 'report command needs recommendation engine'],
 
-  // ─── VOC: Vocabulary rename (Phase 9) — sequential ───
-  ['task:VOC-002', 'task:VOC-001', 'normalization layer needs rename done'],
-  ['task:VOC-003', 'task:VOC-002', 'DAG insertion needs normalization layer'],
+  // ─── VOC: Vocabulary rename (Phase 9) ───
+  // VOC-002 graveyarded (normalization already done); VOC-003 depends on VOC-002
+  ['task:VOC-003', 'task:VOC-001', 'DAG insertion needs rename done'],
 
   // ─── AGT: Agent commands (M12) — service layer then commands ───
   ['task:AGT-002', 'task:AGT-006', 'status command needs service layer'],
@@ -86,7 +86,7 @@ const EDGES: [string, string, string][] = [
   ['task:DSH-008', 'task:BJU-002', 'typeahead search needs bijou port done'],
   ['task:DSH-009', 'task:GRV-001', 'graveyard toggle needs graveyard view'],
   ['task:DSH-010', 'task:DSH-002', 'auto-status needs campaign command'],
-  ['task:e2e-dashboard-smoke', 'task:BJU-002', 'e2e smoke needs bijou port done'],
+  // e2e-dashboard-smoke graveyarded (Ink removed)
   ['task:statusline-graph-health', 'task:BJU-002', 'statusline needs bijou port done'],
 
   // ─── Wave 3: cross-milestone dependencies ───
@@ -100,7 +100,7 @@ const EDGES: [string, string, string][] = [
   ['task:dashboard-adapter-error-isolation', 'task:BJU-002', 'error isolation for bijou adapter'],
   ['task:dashboard-resize-handler', 'task:BJU-002', 'resize handler for bijou TUI'],
   ['task:snapshot-render-regression', 'task:BJU-002', 'snapshot tests need bijou views'],
-  ['task:inline-color-status', 'task:theme-shared-module', 'inline colors replaced by shared theme'],
+  // inline-color-status graveyarded (already inlined)
   ['task:actuator-theme-destructure', 'task:theme-shared-module', 'destructure uses shared theme tokens'],
   ['task:tui-submission-stepper', 'task:BJU-002', 'stepper built with bijou components'],
   ['task:tui-min-size-guard', 'task:BJU-002', 'min size guard for bijou TUI'],

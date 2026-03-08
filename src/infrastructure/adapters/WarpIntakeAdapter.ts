@@ -2,6 +2,9 @@ import type { IntakePort } from '../../ports/IntakePort.js';
 import type { GraphPort } from '../../ports/GraphPort.js';
 
 export class WarpIntakeAdapter implements IntakePort {
+  /** Statuses from which reject is allowed (matches IntakeService.REJECTABLE). */
+  private static readonly REJECTABLE: ReadonlySet<string> = new Set(['BACKLOG', 'PLANNED']);
+
   constructor(
     private readonly graphPort: GraphPort,
     private readonly agentId: string,
@@ -69,8 +72,7 @@ export class WarpIntakeAdapter implements IntakePort {
       throw new Error(`[NOT_FOUND] Quest ${questId} not found in the graph`);
     }
     const status = props['status'] as string | undefined;
-    const rejectable = new Set(['BACKLOG', 'PLANNED']);
-    if (status === undefined || !rejectable.has(status)) {
+    if (status === undefined || !WarpIntakeAdapter.REJECTABLE.has(status)) {
       throw new Error(
         `[INVALID_FROM] reject requires status BACKLOG or PLANNED, quest ${questId} is ${String(status)}`
       );
