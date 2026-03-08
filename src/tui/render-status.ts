@@ -5,7 +5,7 @@ import type { GraphSnapshot, StoryNode, RequirementNode, CriterionNode, Evidence
 import type { BlockerInfo } from '../domain/services/DepAnalysis.js';
 import type { UnmetRequirement, CoverageResult } from '../domain/services/TraceabilityAnalysis.js';
 import type { StylePort } from '../ports/StylePort.js';
-import { statusVariant } from './view-helpers.js';
+import { statusVariant, sliceDate, groupBy } from './view-helpers.js';
 
 type BorderKey = keyof StylePort['theme']['border'];
 
@@ -33,19 +33,10 @@ export function renderRoadmap(snapshot: GraphSnapshot, style: StylePort): string
     return lines.join('\n');
   }
 
-  const campaignTitle = new Map<string, string>();
-  for (const c of snapshot.campaigns) {
-    campaignTitle.set(c.id, c.title);
-  }
+  const campaignTitle = new Map(snapshot.campaigns.map(c => [c.id, c.title]));
 
   // Group quests by campaignId
-  const grouped = new Map<string, typeof snapshot.quests>();
-  for (const q of snapshot.quests) {
-    const key = q.campaignId ?? '(no campaign)';
-    const arr = grouped.get(key) ?? [];
-    arr.push(q);
-    grouped.set(key, arr);
-  }
+  const grouped = groupBy(snapshot.quests, q => q.campaignId ?? '(no campaign)');
 
   for (const [key, quests] of grouped) {
     const heading = campaignTitle.get(key) ?? key;
@@ -108,14 +99,10 @@ export function renderLineage(snapshot: GraphSnapshot, style: StylePort): string
     scrollByQuestId.set(s.questId, { id: s.id, hasSeal: s.hasSeal });
   }
 
-  const questsByIntent = new Map<string, typeof snapshot.quests>();
-  for (const q of snapshot.quests) {
-    if (q.intentId !== undefined) {
-      const arr = questsByIntent.get(q.intentId) ?? [];
-      arr.push(q);
-      questsByIntent.set(q.intentId, arr);
-    }
-  }
+  const questsByIntent = groupBy(
+    snapshot.quests.filter(q => q.intentId !== undefined),
+    q => q.intentId as string,
+  );
 
   for (const intent of snapshot.intents) {
     lines.push('');
@@ -217,7 +204,7 @@ export function renderAll(snapshot: GraphSnapshot, style: StylePort): string {
       style.styled(style.theme.semantic.muted, intent.id),
       intent.title.slice(0, 40),
       intent.requestedBy,
-      new Date(intent.createdAt).toISOString().slice(0, 10),
+      sliceDate(intent.createdAt),
     ]);
     lines.push(table({
       columns: [
@@ -265,7 +252,7 @@ export function renderAll(snapshot: GraphSnapshot, style: StylePort): string {
       style.styled(style.theme.semantic.muted, s.id),
       s.questId,
       s.sealedBy,
-      new Date(s.sealedAt).toISOString().slice(0, 10),
+      sliceDate(s.sealedAt),
       s.hasSeal ? style.styled(style.theme.semantic.success, '⊕') : style.styled(style.theme.semantic.warning, '○'),
     ]);
     lines.push(table({
@@ -331,13 +318,7 @@ export function renderInbox(snapshot: GraphSnapshot, style: StylePort): string {
     return lines.join('\n');
   }
 
-  const bySuggester = new Map<string, typeof inbox>();
-  for (const q of inbox) {
-    const key = q.suggestedBy ?? '(unknown suggester)';
-    const arr = bySuggester.get(key) ?? [];
-    arr.push(q);
-    bySuggester.set(key, arr);
-  }
+  const bySuggester = groupBy(inbox, q => q.suggestedBy ?? '(unknown suggester)');
 
   for (const [suggester, quests] of bySuggester) {
     lines.push('');
@@ -345,7 +326,7 @@ export function renderInbox(snapshot: GraphSnapshot, style: StylePort): string {
 
     const rows = quests.map(q => {
       const suggestedAt = q.suggestedAt !== undefined
-        ? new Date(q.suggestedAt).toISOString().slice(0, 10)
+        ? sliceDate(q.suggestedAt)
         : '—';
       const prevRej = q.rejectionRationale !== undefined
         ? style.styled(style.theme.semantic.muted, q.rejectionRationale.slice(0, 24) + (q.rejectionRationale.length > 24 ? '…' : ''))
@@ -400,7 +381,7 @@ export function renderSubmissions(snapshot: GraphSnapshot, style: StylePort): st
       String(sub.approvalCount),
       headsWarning,
       sub.submittedBy,
-      new Date(sub.submittedAt).toISOString().slice(0, 10),
+      sliceDate(sub.submittedAt),
     ];
   });
 
@@ -689,13 +670,7 @@ export function renderTrace(data: TraceViewData, style: StylePort): string {
     lines.push(separator({ label: 'Stories', borderToken: style.theme.border.secondary }));
 
     // Group by intentId
-    const byIntent = new Map<string, StoryNode[]>();
-    for (const s of data.stories) {
-      const key = s.intentId ?? '(no intent)';
-      const arr = byIntent.get(key) ?? [];
-      arr.push(s);
-      byIntent.set(key, arr);
-    }
+    const byIntent = groupBy(data.stories, s => s.intentId ?? '(no intent)');
 
     for (const [intentKey, storyGroup] of byIntent) {
       lines.push('');

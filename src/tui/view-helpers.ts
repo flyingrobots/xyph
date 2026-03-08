@@ -22,3 +22,33 @@ export function formatAge(ts: number): string {
   const days = Math.floor(hours / 24);
   return `${days}d`;
 }
+
+/** Extract YYYY-MM-DD from an epoch timestamp. */
+export function sliceDate(ts: number): string {
+  return new Date(ts).toISOString().slice(0, 10);
+}
+
+/** Remove a prefix from an ID string (e.g. `stripPrefix('task:X', 'task:')` → `'X'`). */
+export function stripPrefix(id: string, prefix: string): string {
+  return id.startsWith(prefix) ? id.slice(prefix.length) : id;
+}
+
+/** Group an array into a Map keyed by `keyFn`. */
+export function groupBy<T>(arr: readonly T[], keyFn: (item: T) => string): Map<string, T[]> {
+  const map = new Map<string, T[]>();
+  for (const item of arr) {
+    const key = keyFn(item);
+    const group = map.get(key);
+    if (group) {
+      group.push(item);
+    } else {
+      map.set(key, [item]);
+    }
+  }
+  return map;
+}
+
+/** Build a lookup Map from an array using `keyFn` for the key. */
+export function indexBy<T>(arr: readonly T[], keyFn: (item: T) => string): Map<string, T> {
+  return new Map(arr.map(item => [keyFn(item), item]));
+}
