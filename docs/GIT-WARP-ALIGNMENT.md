@@ -97,112 +97,70 @@ These fixes were applied in this audit session.
 
 ---
 
-## 3. Remaining Issues (Not Yet Fixed)
+## 3. Remaining Issues — RESOLVED
 
-The following items were identified but not fixed in this session. They
-require either design decisions or are lower priority.
+All items from Section 3 have been resolved. §3.10 is deferred (low-priority
+mockup) — it will be updated when the compiler TUI is built.
 
-### 3.1 ORCHESTRATION_SPEC.md §4.5 MERGE — "snapshot mismatch" failure reason
+### 3.1 ✅ ORCHESTRATION_SPEC.md §4.5 MERGE — "snapshot mismatch"
 
-**Location:** `docs/canonical/ORCHESTRATION_SPEC.md` line 190
-**Issue:** The MERGE phase lists "snapshot mismatch" as a failure reason. In a
-CRDT, there is no authoritative snapshot to mismatch against. The MERGE phase
-merges candidate operations with the *currently materialized* graph state, but
-"snapshot mismatch" implies a precondition check that doesn't exist.
-**Recommendation:** Replace with "unresolvable entity conflict" or similar
-domain-level terminology. The MERGE phase detects collisions (two operations
-modifying the same field without a resolution rule), not snapshot divergence.
+Replaced "snapshot mismatch" with "unresolvable entity conflict" in
+`docs/canonical/ORCHESTRATION_SPEC.md`.
 
-### 3.2 `PATCH_OPS_SCHEMA.json` — `baseSnapshotDigest` field
+### 3.2 ✅ `PATCH_OPS_SCHEMA.json` — `baseSnapshotDigest` field
 
-**Location:** `docs/canonical/PATCH_OPS_SCHEMA.json` line 12, 34;
-`schemas/PATCH_OPS_SCHEMA.v1.json` same; `src/validation/validatePatchOps.ts`
-**Issue:** The PlanPatchArtifact schema requires a `baseSnapshotDigest` field
-that implies snapshot-based optimistic concurrency. In practice, this field is
-never checked against a live snapshot (there is no live snapshot in git-warp).
-**Options:**
-  - **(a) Repurpose as advisory:** Keep the field but document it as a
-    "materialized state fingerprint at pipeline start time" — useful for audit
-    correlation, not for precondition enforcement.
-  - **(b) Remove:** Drop from the required fields. Breaking schema change.
-**Recommendation:** Option (a). The field has audit value ("what did the
-pipeline see when it planned?") even though it's not a concurrency gate.
-Document this clearly in `PATCH_OPS_INVARIANTS.md`.
+Option (a) applied: field retained as advisory. Added `description` to
+`docs/canonical/PATCH_OPS_SCHEMA.json` and invariant 12 to
+`PATCH_OPS_INVARIANTS.md` documenting it as an audit correlation
+fingerprint, not a concurrency precondition.
 
-### 3.3 `AUDIT_EVENT_SCHEMA.json` — `rollbackPatchDigest` field
+### 3.3 ✅ `AUDIT_EVENT_SCHEMA.json` — `rollbackPatchDigest` field
 
-**Location:** `docs/canonical/AUDIT_EVENT_SCHEMA.json` line 193
-**Issue:** The `artifacts.rollbackPatchDigest` field exists in the audit event
-schema. Since we no longer generate RollbackPatchArtifacts, this field is
-vestigial.
-**Recommendation:** Make it optional (it already is — it's inside the
-non-required `artifacts` object). Add a deprecation note or remove entirely
-when the schema is next versioned.
+Added `"deprecated": true` and `"description"` noting this is vestigial
+from the pre-CRDT transaction model. Field remains optional for backward
+compatibility with existing audit records.
 
-### 3.4 `README.md` — Planning pipeline description
+### 3.4 ✅ `README.md` — Planning pipeline description
 
-**Location:** `README.md` line 327
-**Text:** "Only the APPLY phase can mutate the graph, and it enforces
-**all-or-nothing atomicity** with automatic rollback."
-**Issue:** "Automatic rollback" is incorrect. `graph.patch()` is atomic (one
-Git commit), but there is no rollback mechanism. If the commit fails, nothing
-was written. If it succeeds, it's permanent.
-**Recommendation:** Replace with: "Only the APPLY phase can mutate the graph,
-and each `graph.patch()` call is atomic — either the entire patch commits as a
-single Git object, or nothing is written."
+Replaced "all-or-nothing atomicity with automatic rollback" with
+`graph.patch()` atomicity description.
 
-### 3.5 `README.md` — Constitution summary
+### 3.5 ✅ `README.md` — Constitution summary
 
-**Location:** `README.md` line 397
-**Text:** "every patch has an inverse for rollback"
-**Issue:** Same issue as Constitution Art. III §3.3 (which was already fixed).
-This README summary still references the old wording.
-**Recommendation:** Replace with: "corrections are made via compensating
-patches (LWW overrides), not transactional rollback"
+Replaced "every patch has an inverse for rollback" with "corrections are
+made via compensating patches (LWW overrides), not transactional rollback".
 
-### 3.6 `WHITEPAPER.md` — "work is a transaction"
+### 3.6 ✅ `WHITEPAPER.md` — "work is a transaction"
 
-**Location:** `docs/WHITEPAPER.md` line 20
-**Text:** "In XYPH, work is a transaction."
-**Issue:** Metaphorical use of "transaction" in a system where the word has
-specific (incorrect) connotations.
-**Recommendation:** Replace with: "In XYPH, work is a causal chain." or
-"In XYPH, work is a patch sequence."
+Replaced with "In XYPH, work is a causal chain."
 
-### 3.7 `EXECUTIVE_SUMMARY.md` — "cryptographically auditable"
+### 3.7 ✅ `EXECUTIVE_SUMMARY.md` — "cryptographically auditable"
 
-**Location:** `docs/EXECUTIVE_SUMMARY.md` line 12
-**Text:** "every mutation is signed, timestamped, and traceable to its author"
-**Issue:** Regular `graph.patch()` mutations are **not cryptographically
-signed**. They are attributed by writerId and content-addressed by Git SHA.
-Only Guild Seals (Scroll completion artifacts) carry Ed25519 signatures.
-**Recommendation:** Replace with: "every mutation is attributed to its author,
-content-addressed by Git, and traceable through the patch history"
+Replaced "signed, timestamped" with "attributed to its author,
+content-addressed by Git, and traceable through the patch history".
 
-### 3.8 `EXECUTIVE_SUMMARY.md` — test count
+### 3.8 ✅ `EXECUTIVE_SUMMARY.md` — test count
 
-**Location:** `docs/EXECUTIVE_SUMMARY.md` line 78
-**Text:** "900+ tests"
-**Issue:** Current test count is 650. The 900+ count was from a previous
-era that included Docker-only integration tests.
-**Recommendation:** Update to "650+ tests" or "600+ tests".
+Updated "900+ tests" to "650+ tests".
 
-### 3.9 `AGENT_CHARTER.md` — `blockedBy/blocking` terminology
+### 3.9 ✅ `AGENT_CHARTER.md` — `blockedBy/blocking` terminology
 
-**Location:** `docs/canonical/AGENT_CHARTER.md` line 15
-**Text:** "Tasks with milestoneId + tentative blockedBy/blocking"
-**Issue:** XYPH uses `depends-on` edges, not `blockedBy` arrays.
-**Recommendation:** Replace with "Tasks with campaign + tentative depends-on
-edges". Note: this doc is already marked DRAFT and tracked by
-`task:doc-agent-charter`.
+Replaced "milestoneId + tentative blockedBy/blocking" with "campaign +
+tentative depends-on edges".
 
-### 3.10 `tui_6_compiler.svg` mockup — `baseSnapshotDigest` / `newSnapshotDigest`
+### 3.10 ⏳ `tui_6_compiler.svg` mockup — DEFERRED
 
-**Location:** `docs/mockups/tui_6_compiler.svg` lines 69-70
-**Issue:** Mockup shows `baseSnapshotDigest` and `newSnapshotDigest` in a
-compiler output panel. These are vestiges of the centralized snapshot model.
-**Recommendation:** Update the mockup when the compiler TUI is built. Low
-priority — mockups are aspirational, not normative.
+Low-priority mockup. Will be updated when the compiler TUI is built.
+Mockups are aspirational, not normative.
+
+### 3.11 ✅ `schemas/PATCH_OPS_SCHEMA.v1.json` — `keyId` pattern divergence
+
+Runtime schema `keyId` pattern synced to the canonical multibase Base58btc
+pattern: `^(?:KEY-[A-Z0-9]{6,24}|did:key:z[1-9A-HJ-NP-Za-km-z]{10,100})$`.
+The old pattern (`z6[A-Za-z0-9]+`) accepted invalid Base58btc characters
+(`0`, `O`, `I`, `l`) and had no length bounds. Test fixtures, keyring, and
+fixture-generation scripts updated to use properly derived `did:key`
+identifiers.
 
 ---
 
