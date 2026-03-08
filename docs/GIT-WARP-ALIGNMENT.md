@@ -155,12 +155,21 @@ Mockups are aspirational, not normative.
 
 ### 3.11 ✅ `schemas/PATCH_OPS_SCHEMA.v1.json` — `keyId` pattern divergence
 
-Runtime schema `keyId` pattern synced to the canonical multibase Base58btc
-pattern: `^(?:KEY-[A-Z0-9]{6,24}|did:key:z[1-9A-HJ-NP-Za-km-z]{10,100})$`.
+Runtime schema `keyId` pattern synced to the multibase Base58btc spec:
+`^(?:KEY-[A-Z0-9]{6,24}|did:key:z[1-9A-HJ-NP-Za-km-z]{10,100})$`.
 The old pattern (`z6[A-Za-z0-9]+`) accepted invalid Base58btc characters
 (`0`, `O`, `I`, `l`) and had no length bounds. Test fixtures, keyring, and
 fixture-generation scripts updated to use properly derived `did:key`
 identifiers.
+
+### 3.12 ✅ Schema deduplication — single source of truth
+
+`docs/canonical/PATCH_OPS_SCHEMA.json` was a never-compiled documentation
+copy that had diverged from the runtime schema (`schemas/PATCH_OPS_SCHEMA.v1.json`)
+in multiple ways: missing `"type": "object"` annotations required by AJV strict
+mode, different sig pattern case sensitivity, missing `edge`/`revertsOpId` fields
+in base op definition. Replaced the canonical copy with a symlink to the runtime
+schema. One file, two paths — no more drift.
 
 ---
 

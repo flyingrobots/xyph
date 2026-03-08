@@ -34,8 +34,9 @@ All notable changes to XYPH will be documented in this file.
 
 ### Fixed
 
-- **Schema keyId pattern sync** — `schemas/PATCH_OPS_SCHEMA.v1.json` keyId regex now matches the canonical schema's multibase Base58btc pattern (`z[1-9A-HJ-NP-Za-km-z]{10,100}`), replacing the loose `z6[A-Za-z0-9]+` that accepted invalid multibase characters (WVR-006)
-- **Schema documentation** — added `description` to `baseSnapshotDigest` in canonical schema (advisory, not a concurrency gate); added `deprecated` + `description` to `rollbackPatchDigest` in AUDIT_EVENT_SCHEMA.json (WVR-006)
+- **Schema keyId pattern sync** — `schemas/PATCH_OPS_SCHEMA.v1.json` keyId regex now matches the multibase Base58btc spec (`z[1-9A-HJ-NP-Za-km-z]{10,100}`), replacing the loose `z6[A-Za-z0-9]+` that accepted invalid multibase characters (WVR-006)
+- **Schema deduplication** — `docs/canonical/PATCH_OPS_SCHEMA.json` replaced with a symlink to `schemas/PATCH_OPS_SCHEMA.v1.json`; the runtime schema is now the single source of truth, eliminating a persistent drift trap (WVR-006)
+- **Schema documentation** — added `description` to `baseSnapshotDigest` in the schema (advisory, not a concurrency gate); added `deprecated` + `description` to `rollbackPatchDigest` in AUDIT_EVENT_SCHEMA.json (WVR-006)
 - **Prose alignment with CRDT reality** — replaced centralized-database vocabulary in README (atomicity/rollback), WHITEPAPER ("work is a transaction"), EXECUTIVE_SUMMARY (signed → attributed, 900→650 tests), AGENT_CHARTER (blockedBy → depends-on), ORCHESTRATION_SPEC (snapshot mismatch → entity conflict), PATCH_OPS_INVARIANTS (baseSnapshotDigest advisory note) (WVR-006)
 - **DashboardApp watching lifecycle** — `startWatching()` (graph.watch polling) now fires from `init()` alongside the initial `fetchSnapshot()`, instead of being conditionally triggered on the first `snapshot-loaded` message; the `watching` model field still tracks state but no longer gates command emission
 - **Test fixture type completeness** — added missing `watching: false` to the `makeModel()` helper in `views.test.ts` to match the updated `DashboardModel` type
