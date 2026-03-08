@@ -1,7 +1,7 @@
 import type { Command } from 'commander';
 import type { CliContext } from '../context.js';
 import { createErrorHandler } from '../errorHandler.js';
-import { assertPrefix } from '../validators.js';
+import { assertPrefix, assertPrefixOneOf, assertNodeExists } from '../validators.js';
 import { toNeighborEntries } from '../../infrastructure/helpers/isNeighborEntry.js';
 
 /**
@@ -26,15 +26,9 @@ async function applyLink(
 
   const graph = await ctx.graphPort.getGraph();
 
-  if (!await graph.hasNode(quest)) {
-    throw new Error(`[NOT_FOUND] Quest ${quest} not found in the graph`);
-  }
-  if (campaignId !== undefined && !await graph.hasNode(campaignId)) {
-    throw new Error(`[NOT_FOUND] Campaign ${campaignId} not found in the graph`);
-  }
-  if (intentId !== undefined && !await graph.hasNode(intentId)) {
-    throw new Error(`[NOT_FOUND] Intent ${intentId} not found in the graph`);
-  }
+  await assertNodeExists(graph, quest, 'Quest');
+  if (campaignId !== undefined) await assertNodeExists(graph, campaignId, 'Campaign');
+  if (intentId !== undefined) await assertNodeExists(graph, intentId, 'Intent');
 
   // Discover existing edges so move/authorize replaces rather than accumulates
   const existingCampaignEdges: { nodeId: string }[] = [];
@@ -71,10 +65,9 @@ async function applyLink(
   return { campaign: campaignId ?? null, intent: intentId ?? null, patch: sha };
 }
 
+const CAMPAIGN_PREFIXES = ['campaign:', 'milestone:'] as const;
 function assertCampaignPrefix(id: string): void {
-  if (!id.startsWith('campaign:') && !id.startsWith('milestone:')) {
-    throw new Error(`--campaign must start with 'campaign:' or 'milestone:', got: '${id}'`);
-  }
+  assertPrefixOneOf(id, CAMPAIGN_PREFIXES, '--campaign');
 }
 
 export function registerLinkCommands(program: Command, ctx: CliContext): void {

@@ -21,6 +21,20 @@ export function assertPrefixOneOf(value: string, prefixes: readonly string[], la
   }
 }
 
+/**
+ * Asserts that a node exists in the graph, or throws [NOT_FOUND].
+ * Eliminates the repeated `hasNode() + throw` pattern in CLI commands.
+ */
+export async function assertNodeExists(
+  graph: { hasNode(id: string): Promise<boolean> },
+  id: string,
+  label: string,
+): Promise<void> {
+  if (!await graph.hasNode(id)) {
+    throw new Error(`[NOT_FOUND] ${label} ${id} not found in the graph`);
+  }
+}
+
 /** Commander option parser for non-negative finite hours. */
 export function parseHours(val: string): number {
   const parsed = Number(val);
