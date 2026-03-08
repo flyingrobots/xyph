@@ -674,7 +674,7 @@ describe('DashboardApp', () => {
 
     // ── Input mode ────────────────────────────────────────────────────
 
-    it('d on backlog enters input mode for reject', () => {
+    it('D (shift+d) on backlog enters input mode for reject', () => {
       const app = makeApp();
       const [initial] = app.init();
       const snap = makeSnapshot({
@@ -692,9 +692,33 @@ describe('DashboardApp', () => {
         activeView: 'backlog',
       };
 
-      const [afterD] = app.update(makeKey('d'), loaded);
+      const [afterD] = app.update(makeKey('d', { shift: true }), loaded);
       expect(afterD.mode).toBe('input');
       expect(afterD.inputState?.action.kind).toBe('reject');
+    });
+
+    it('d on backlog triggers page-down (not reject)', () => {
+      const app = makeApp();
+      const [initial] = app.init();
+      const snap = makeSnapshot({
+        quests: [
+          { id: 'task:I1', title: 'Backlog 1', status: 'BACKLOG', hours: 1, suggestedBy: 'agent.test' },
+          { id: 'task:I2', title: 'Backlog 2', status: 'BACKLOG', hours: 1, suggestedBy: 'agent.test' },
+        ],
+      });
+      const [withSnap] = app.update(
+        { type: 'snapshot-loaded', snapshot: snap, requestId: initial.requestId },
+        initial,
+      );
+      const loaded: DashboardModel = {
+        ...withSnap,
+        showLanding: false,
+        activeView: 'backlog',
+      };
+
+      const [afterD] = app.update(makeKey('d'), loaded);
+      // d triggers page-down, not reject — mode stays normal
+      expect(afterD.mode).toBe('normal');
     });
 
     it('p on backlog enters input mode for promote', () => {
@@ -980,6 +1004,120 @@ describe('DashboardApp', () => {
       const [afterA] = app.update(makeKey('a'), loaded);
       expect(afterA.mode).toBe('normal');
       expect(afterA.toast?.variant).toBe('error');
+    });
+
+    // ── Vim-standard keybindings (bijou v1.6.0 factories) ────────────
+
+    it('d/u on roadmap triggers scroll-dag-down/up', () => {
+      const app = makeApp();
+      const [initial] = app.init();
+      const quests = Array.from({ length: 20 }, (_, i) => ({
+        id: `task:Q-${i.toString().padStart(2, '0')}`,
+        title: `Quest ${i}`,
+        status: 'PLANNED' as const,
+        hours: 1,
+        dependsOn: i > 0 ? [`task:Q-${(i - 1).toString().padStart(2, '0')}`] : [],
+      }));
+      const snap = makeSnapshot({ quests });
+      const [withSnap] = app.update(
+        { type: 'snapshot-loaded', snapshot: snap, requestId: initial.requestId },
+        initial,
+      );
+      const loaded: DashboardModel = {
+        ...withSnap,
+        showLanding: false,
+        activeView: 'roadmap',
+      };
+
+      // d scrolls DAG down
+      const [afterD] = app.update(makeKey('d'), loaded);
+      expect(afterD.roadmap.dagPane).not.toBeNull();
+      // u scrolls DAG up (back)
+      const [afterU] = app.update(makeKey('u'), afterD);
+      expect(afterU.roadmap.dagPane).not.toBeNull();
+    });
+
+    it('g jumps to first item on roadmap', () => {
+      const app = makeApp();
+      const [initial] = app.init();
+      const snap = makeSnapshot({
+        quests: [
+          { id: 'task:A', title: 'A', status: 'PLANNED', hours: 1 },
+          { id: 'task:B', title: 'B', status: 'IN_PROGRESS', hours: 2 },
+          { id: 'task:C', title: 'C', status: 'PLANNED', hours: 3 },
+        ],
+      });
+      const [withSnap] = app.update(
+        { type: 'snapshot-loaded', snapshot: snap, requestId: initial.requestId },
+        initial,
+      );
+      const loaded: DashboardModel = {
+        ...withSnap,
+        showLanding: false,
+        activeView: 'roadmap',
+      };
+
+      // Move to last row
+      const [m1] = app.update(makeKey('j'), loaded);
+      const [m2] = app.update(makeKey('j'), m1);
+      expect(m2.roadmap.table.focusRow).toBe(2);
+
+      // g jumps to first
+      const [afterG] = app.update(makeKey('g'), m2);
+      expect(afterG.roadmap.table.focusRow).toBe(0);
+    });
+
+    it('G (shift+g) jumps to last item on roadmap', () => {
+      const app = makeApp();
+      const [initial] = app.init();
+      const snap = makeSnapshot({
+        quests: [
+          { id: 'task:A', title: 'A', status: 'PLANNED', hours: 1 },
+          { id: 'task:B', title: 'B', status: 'IN_PROGRESS', hours: 2 },
+          { id: 'task:C', title: 'C', status: 'PLANNED', hours: 3 },
+        ],
+      });
+      const [withSnap] = app.update(
+        { type: 'snapshot-loaded', snapshot: snap, requestId: initial.requestId },
+        initial,
+      );
+      const loaded: DashboardModel = {
+        ...withSnap,
+        showLanding: false,
+        activeView: 'roadmap',
+      };
+
+      expect(loaded.roadmap.table.focusRow).toBe(0);
+      const [afterG] = app.update(makeKey('g', { shift: true }), loaded);
+      expect(afterG.roadmap.table.focusRow).toBe(2);
+    });
+
+    it('space on lineage toggles accordion (expand/collapse)', () => {
+      const app = makeApp();
+      const [initial] = app.init();
+      const snap = makeSnapshot({
+        intents: [
+          { id: 'intent:SOV', title: 'Sovereignty', requestedBy: 'human.james', createdAt: 0 },
+        ],
+      });
+      const [withSnap] = app.update(
+        { type: 'snapshot-loaded', snapshot: snap, requestId: initial.requestId },
+        initial,
+      );
+      const loaded: DashboardModel = {
+        ...withSnap,
+        showLanding: false,
+        activeView: 'lineage',
+        lineage: { selectedIndex: 0, collapsedIntents: [] },
+      };
+
+      // space toggles (collapse)
+      const [afterSpace] = app.update(makeKey('space'), loaded);
+      expect(afterSpace.lineage.collapsedIntents).toContain('intent:SOV');
+
+      // space again toggles (expand)
+      const [afterSpace2] = app.update(makeKey('space'), afterSpace);
+      expect(afterSpace2.lineage.collapsedIntents).not.toContain('intent:SOV');
     });
 
     it('review approve input submits write command', () => {

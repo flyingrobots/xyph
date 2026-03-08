@@ -9,6 +9,9 @@ import type { App, Cmd, KeyMsg, ResizeMsg } from '@flyingrobots/bijou-tui';
 import { quit, animate, EASINGS } from '@flyingrobots/bijou-tui';
 import { flex } from '@flyingrobots/bijou-tui';
 import { createKeyMap, type KeyMap } from '@flyingrobots/bijou-tui';
+import { navTableKeyMap } from '@flyingrobots/bijou-tui';
+import { accordionKeyMap } from '@flyingrobots/bijou-tui';
+import { commandPaletteKeyMap, cpPageDown, cpPageUp } from '@flyingrobots/bijou-tui';
 import { statusBar, visibleLength } from '@flyingrobots/bijou-tui';
 import { composite, toast as toastOverlay } from '@flyingrobots/bijou-tui';
 import { helpView, helpShort } from '@flyingrobots/bijou-tui';
@@ -164,7 +167,9 @@ type ViewAction =
   | { type: 'page-up' }
   | { type: 'focus-panel' }
   | { type: 'scroll-col-down' }
-  | { type: 'scroll-col-up' };
+  | { type: 'scroll-col-up' }
+  | { type: 'top' }
+  | { type: 'bottom' };
 
 function buildGlobalKeys(): KeyMap<GlobalAction> {
   return createKeyMap<GlobalAction>()
@@ -181,74 +186,89 @@ function buildGlobalKeys(): KeyMap<GlobalAction> {
 }
 
 function buildRoadmapKeys(): KeyMap<ViewAction> {
-  return createKeyMap<ViewAction>()
-    .group('Roadmap', g => g
-      .bind('j', 'Select next', { type: 'select-next' })
-      .bind('down', 'Select next', { type: 'select-next' })
-      .bind('k', 'Select prev', { type: 'select-prev' })
-      .bind('up', 'Select prev', { type: 'select-prev' })
-      .bind('c', 'Claim quest', { type: 'claim' })
-      .bind('pagedown', 'Scroll DAG down', { type: 'scroll-dag-down' })
-      .bind('pageup', 'Scroll DAG up', { type: 'scroll-dag-up' })
-      .bind('h', 'Scroll DAG left', { type: 'scroll-dag-left' })
-      .bind('left', 'Scroll DAG left', { type: 'scroll-dag-left' })
-      .bind('l', 'Scroll DAG right', { type: 'scroll-dag-right' })
-      .bind('right', 'Scroll DAG right', { type: 'scroll-dag-right' })
-    );
+  const km = navTableKeyMap<ViewAction>({
+    focusNext: { type: 'select-next' },
+    focusPrev: { type: 'select-prev' },
+    pageDown:  { type: 'scroll-dag-down' },
+    pageUp:    { type: 'scroll-dag-up' },
+    quit:      { type: 'top' }, // placeholder — global handles quit
+  });
+  km.disable('Quit');
+  return km.group('Roadmap', g => g
+    .bind('c', 'Claim quest', { type: 'claim' })
+    .bind('h', 'Scroll DAG left', { type: 'scroll-dag-left' })
+    .bind('left', 'Scroll DAG left', { type: 'scroll-dag-left' })
+    .bind('l', 'Scroll DAG right', { type: 'scroll-dag-right' })
+    .bind('right', 'Scroll DAG right', { type: 'scroll-dag-right' })
+    .bind('g', 'Jump to first', { type: 'top' })
+    .bind('shift+g', 'Jump to last', { type: 'bottom' })
+  );
 }
 
 function buildSubmissionsKeys(): KeyMap<ViewAction> {
-  return createKeyMap<ViewAction>()
-    .group('Submissions', g => g
-      .bind('j', 'Select next', { type: 'select-next' })
-      .bind('down', 'Select next', { type: 'select-next' })
-      .bind('k', 'Select prev', { type: 'select-prev' })
-      .bind('up', 'Select prev', { type: 'select-prev' })
-      .bind('enter', 'Expand/collapse', { type: 'expand' })
-      .bind('a', 'Approve', { type: 'approve' })
-      .bind('x', 'Request changes', { type: 'request-changes' })
-      .bind('pagedown', 'Page down', { type: 'page-down' })
-      .bind('pageup', 'Page up', { type: 'page-up' })
-    );
+  const km = navTableKeyMap<ViewAction>({
+    focusNext: { type: 'select-next' },
+    focusPrev: { type: 'select-prev' },
+    pageDown:  { type: 'page-down' },
+    pageUp:    { type: 'page-up' },
+    quit:      { type: 'top' },
+  });
+  km.disable('Quit');
+  return km.group('Submissions', g => g
+    .bind('enter', 'Expand/collapse', { type: 'expand' })
+    .bind('a', 'Approve', { type: 'approve' })
+    .bind('x', 'Request changes', { type: 'request-changes' })
+    .bind('g', 'Jump to first', { type: 'top' })
+    .bind('shift+g', 'Jump to last', { type: 'bottom' })
+  );
 }
 
 function buildBacklogKeys(): KeyMap<ViewAction> {
-  return createKeyMap<ViewAction>()
-    .group('Backlog', g => g
-      .bind('j', 'Select next', { type: 'select-next' })
-      .bind('down', 'Select next', { type: 'select-next' })
-      .bind('k', 'Select prev', { type: 'select-prev' })
-      .bind('up', 'Select prev', { type: 'select-prev' })
-      .bind('p', 'Promote', { type: 'promote' })
-      .bind('d', 'Reject', { type: 'reject' })
-      .bind('pagedown', 'Page down', { type: 'page-down' })
-      .bind('pageup', 'Page up', { type: 'page-up' })
-    );
+  const km = navTableKeyMap<ViewAction>({
+    focusNext: { type: 'select-next' },
+    focusPrev: { type: 'select-prev' },
+    pageDown:  { type: 'page-down' },
+    pageUp:    { type: 'page-up' },
+    quit:      { type: 'top' },
+  });
+  km.disable('Quit');
+  return km.group('Backlog', g => g
+    .bind('p', 'Promote', { type: 'promote' })
+    .bind('shift+d', 'Reject', { type: 'reject' })
+    .bind('g', 'Jump to first', { type: 'top' })
+    .bind('shift+g', 'Jump to last', { type: 'bottom' })
+  );
 }
 
 function buildDashboardKeys(): KeyMap<ViewAction> {
-  return createKeyMap<ViewAction>()
-    .group('Dashboard', g => g
-      .bind('tab', 'Switch panel', { type: 'focus-panel' })
-      .bind('j', 'Select next', { type: 'select-next' })
-      .bind('down', 'Select next', { type: 'select-next' })
-      .bind('k', 'Select prev', { type: 'select-prev' })
-      .bind('up', 'Select prev', { type: 'select-prev' })
-      .bind('enter', 'Show detail', { type: 'expand' })
-      .bind('pagedown', 'Scroll down', { type: 'scroll-col-down' })
-      .bind('pageup', 'Scroll up', { type: 'scroll-col-up' })
-    );
+  const km = navTableKeyMap<ViewAction>({
+    focusNext: { type: 'select-next' },
+    focusPrev: { type: 'select-prev' },
+    pageDown:  { type: 'scroll-col-down' },
+    pageUp:    { type: 'scroll-col-up' },
+    quit:      { type: 'top' },
+  });
+  km.disable('Quit');
+  return km.group('Dashboard', g => g
+    .bind('tab', 'Switch panel', { type: 'focus-panel' })
+    .bind('enter', 'Show detail', { type: 'expand' })
+    .bind('g', 'Jump to first', { type: 'top' })
+    .bind('shift+g', 'Jump to last', { type: 'bottom' })
+  );
 }
 
 function buildLineageKeys(): KeyMap<ViewAction> {
-  return createKeyMap<ViewAction>()
-    .group('Lineage', g => g
-      .bind('j', 'Select next', { type: 'select-next' })
-      .bind('down', 'Select next', { type: 'select-next' })
-      .bind('k', 'Select prev', { type: 'select-prev' })
-      .bind('up', 'Select prev', { type: 'select-prev' })
-      .bind('enter', 'Expand/collapse', { type: 'expand' })
-    );
+  const km = accordionKeyMap<ViewAction>({
+    focusNext: { type: 'select-next' },
+    focusPrev: { type: 'select-prev' },
+    toggle:    { type: 'expand' },
+    quit:      { type: 'top' },
+  });
+  km.disable('Quit');
+  return km.group('Lineage', g => g
+    .bind('g', 'Jump to first', { type: 'top' })
+    .bind('shift+g', 'Jump to last', { type: 'bottom' })
+  );
 }
 
 // ── Selection helpers ───────────────────────────────────────────────────
@@ -297,6 +317,16 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
   const submissionsKeys = buildSubmissionsKeys();
   const backlogKeys = buildBacklogKeys();
   const lineageKeys = buildLineageKeys();
+
+  type PaletteAction = 'next' | 'prev' | 'page-down' | 'page-up' | 'select' | 'close';
+  const paletteKeys = commandPaletteKeyMap<PaletteAction>({
+    focusNext: 'next',
+    focusPrev: 'prev',
+    pageDown: 'page-down',
+    pageUp: 'page-up',
+    select: 'select',
+    close: 'close',
+  });
 
   const writeDeps: WriteDeps = {
     graphPort: deps.graphPort,
@@ -698,20 +728,27 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
 
         // ── Palette mode ──────────────────────────────────────────────
         if (model.mode === 'palette' && model.paletteState) {
-          if (msg.key === 'escape') {
-            return [{ ...model, mode: 'normal', paletteState: null }, []];
+          const paletteAction = paletteKeys.handle(msg);
+          if (paletteAction) {
+            switch (paletteAction) {
+              case 'next':
+                return [{ ...model, paletteState: cpFocusNext(model.paletteState) }, []];
+              case 'prev':
+                return [{ ...model, paletteState: cpFocusPrev(model.paletteState) }, []];
+              case 'page-down':
+                return [{ ...model, paletteState: cpPageDown(model.paletteState) }, []];
+              case 'page-up':
+                return [{ ...model, paletteState: cpPageUp(model.paletteState) }, []];
+              case 'select': {
+                const item = cpSelectedItem(model.paletteState);
+                if (!item) return [{ ...model, mode: 'normal', paletteState: null }, []];
+                return dispatchPaletteAction(item.id, { ...model, mode: 'normal', paletteState: null });
+              }
+              case 'close':
+                return [{ ...model, mode: 'normal', paletteState: null }, []];
+            }
           }
-          if (msg.key === 'enter' || msg.key === 'return') {
-            const item = cpSelectedItem(model.paletteState);
-            if (!item) return [{ ...model, mode: 'normal', paletteState: null }, []];
-            return dispatchPaletteAction(item.id, { ...model, mode: 'normal', paletteState: null });
-          }
-          if (msg.key === 'j' || msg.key === 'down') {
-            return [{ ...model, paletteState: cpFocusNext(model.paletteState) }, []];
-          }
-          if (msg.key === 'k' || msg.key === 'up') {
-            return [{ ...model, paletteState: cpFocusPrev(model.paletteState) }, []];
-          }
+          // Fall through to character typing
           if (msg.key === 'backspace' || msg.key === 'delete') {
             const q = model.paletteState.query.slice(0, -1);
             return [{ ...model, paletteState: cpFilter(model.paletteState, q) }, []];
@@ -1102,6 +1139,12 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         return [{ ...model, dashboardView: { ...dv, rightScrollY: Math.max(0, dv.rightScrollY - step) } }, []];
       }
 
+      case 'top':
+        return [jumpToEdge(model, 'top'), []];
+
+      case 'bottom':
+        return [jumpToEdge(model, 'bottom'), []];
+
       default: {
         const _exhaustive: never = action; void _exhaustive;
         return [model, []];
@@ -1154,6 +1197,55 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         if (count === 0) return model;
         const nextRow = ((model.dashboardView.focusRow + delta) % count + count) % count;
         return { ...model, dashboardView: { ...model.dashboardView, focusRow: nextRow } };
+      }
+      default:
+        return model;
+    }
+  }
+
+  function jumpToEdge(model: DashboardModel, edge: 'top' | 'bottom'): DashboardModel {
+    const snap = model.snapshot;
+    if (!snap) return model;
+
+    switch (model.activeView) {
+      case 'roadmap': {
+        const ids = roadmapQuestIds(snap);
+        if (ids.length === 0) return model;
+        const targetRow = edge === 'top' ? 0 : ids.length - 1;
+        const newTable = rebuildRoadmapTable(snap, targetRow, model.rows - 4);
+        let dagPaneState = model.roadmap.dagPane;
+        if (dagPaneState) {
+          const selectedId = ids[targetRow];
+          if (selectedId) {
+            dagPaneState = dagPaneSelectNode(dagPaneState, selectedId, getDefaultContext());
+          }
+        }
+        return { ...model, roadmap: { ...model.roadmap, table: newTable, dagPane: dagPaneState } };
+      }
+      case 'submissions': {
+        const subs = sortedSubmissions(snap);
+        if (subs.length === 0) return model;
+        const targetRow = edge === 'top' ? 0 : subs.length - 1;
+        return { ...model, submissions: { ...model.submissions, table: rebuildSubmissionsTable(snap, targetRow, model.rows - 4) } };
+      }
+      case 'backlog': {
+        const ids = backlogQuestIds(snap);
+        if (ids.length === 0) return model;
+        const targetRow = edge === 'top' ? 0 : ids.length - 1;
+        return { ...model, backlog: { ...model.backlog, table: rebuildBacklogTable(snap, targetRow, model.rows - 4) } };
+      }
+      case 'lineage': {
+        const count = lineageIntentIds(snap).length;
+        if (count === 0) return model;
+        const targetIdx = edge === 'top' ? 0 : count - 1;
+        return { ...model, lineage: { ...model.lineage, selectedIndex: targetIdx } };
+      }
+      case 'dashboard': {
+        if (!model.dashboardView) return model;
+        const count = dashboardPanelCount(snap, model, model.dashboardView.focusPanel);
+        if (count === 0) return model;
+        const targetRow = edge === 'top' ? 0 : count - 1;
+        return { ...model, dashboardView: { ...model.dashboardView, focusRow: targetRow } };
       }
       default:
         return model;
@@ -1267,7 +1359,7 @@ function buildPaletteItems(model: DashboardModel): CommandPaletteItem[] {
   }
   if (model.activeView === 'backlog' && model.backlog.table.rows.length > 0) {
     items.push({ id: 'promote', label: 'Promote selected', category: 'Backlog', shortcut: 'p' });
-    items.push({ id: 'reject',  label: 'Reject selected',  category: 'Backlog', shortcut: 'd' });
+    items.push({ id: 'reject',  label: 'Reject selected',  category: 'Backlog', shortcut: 'D' });
   }
   if (model.activeView === 'submissions' && model.submissions.table.rows.length > 0) {
     items.push({ id: 'expand',          label: 'Expand/collapse detail', category: 'Submissions', shortcut: 'Enter' });
