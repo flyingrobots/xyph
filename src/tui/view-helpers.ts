@@ -23,14 +23,10 @@ export function formatAge(ts: number): string {
   return `${days}d`;
 }
 
-/** Extract YYYY-MM-DD from an epoch timestamp. */
+/** Extract YYYY-MM-DD from an epoch timestamp. Returns '—' for non-finite values. */
 export function sliceDate(ts: number): string {
+  if (!Number.isFinite(ts)) return '—';
   return new Date(ts).toISOString().slice(0, 10);
-}
-
-/** Remove a prefix from an ID string (e.g. `stripPrefix('task:X', 'task:')` → `'X'`). */
-export function stripPrefix(id: string, prefix: string): string {
-  return id.startsWith(prefix) ? id.slice(prefix.length) : id;
 }
 
 /** Group an array into a Map keyed by `keyFn`. */
@@ -46,9 +42,4 @@ export function groupBy<T>(arr: readonly T[], keyFn: (item: T) => string): Map<s
     }
   }
   return map;
-}
-
-/** Build a lookup Map from an array using `keyFn` for the key. */
-export function indexBy<T>(arr: readonly T[], keyFn: (item: T) => string): Map<string, T> {
-  return new Map(arr.map(item => [keyFn(item), item]));
 }
