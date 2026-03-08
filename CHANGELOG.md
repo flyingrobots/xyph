@@ -25,6 +25,7 @@ All notable changes to XYPH will be documented in this file.
 
 - **`VALID_RAW_STATUSES`** — no longer needed; `normalizeQuestStatus()` handles legacy values
 - **task:BX-017 (HistoryPort)** — graveyarded as redundant; git-warp v13 natively provides `patchesFor()`, `materializeSlice({ receipts: true })`, and `materialize({ ceiling })`. Downstream quests (BX-009–016) call git-warp directly
+- **14 obsolete/duplicate quests graveyarded** — VOC-002 (normalization already done), cli-backlog-add (duplicate of inbox), upstream-ink-fullscreen & bijou-v09-title-refactor & bijou-type-guards & e2e-dashboard-smoke (Ink removed), BKL-PRESET-SOT & inline-color-status (already satisfied), suggestion-calibrate & IDEA-TEMPORAL-TRACE & temporal-traceability-queries & IDEA-HEATMAP & traceability-heat-map & IDEA-SCAN-IMPL (duplicates)
 
 ### Previously Added
 
