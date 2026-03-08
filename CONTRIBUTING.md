@@ -91,6 +91,20 @@ vim docs/diagrams/my-diagram.mmd
 
 The pre-commit hook catches inline mermaid blocks locally. The pre-push hook runs the full freshness check.
 
+## Design Doc Accuracy
+
+XYPH's canonical design documents (`docs/canonical/`) describe the planning compiler pipeline and domain rules. When writing or updating these docs, remember:
+
+**git-warp is a CRDT, not a database.** The substrate has no locks, no transactions, no centralized snapshots, and no rollback. All writes go through `graph.patch()`, which produces a single atomic Git commit. Multiple writers can emit patches concurrently without coordination — convergence is deterministic.
+
+- Use "emit a patch" or "call `graph.patch()`", not "commit a transaction".
+- Use "compensating patch" (new forward-only correction via LWW), not "rollback".
+- Use "domain validation before `graph.patch()`", not "optimistic concurrency check" or "snapshot precondition".
+- Use `graph.traverse.weightedLongestPath()` for critical path, not Dijkstra (which finds shortest paths).
+- Never describe userland graph algorithms — reference `graph.traverse.*` primitives.
+
+If a design doc contradicts how git-warp actually works, the doc is wrong — fix it. Always cross-reference against the [git-warp README](https://github.com/git-stunts/git-warp) and ARCHITECTURE.md for ground truth.
+
 ## Constitution
 
 Every mutation must obey the [CONSTITUTION.md](docs/canonical/CONSTITUTION.md). Key rules:
