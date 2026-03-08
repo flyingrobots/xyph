@@ -2,8 +2,11 @@ import type { IntakePort } from '../../ports/IntakePort.js';
 import type { GraphPort } from '../../ports/GraphPort.js';
 
 export class WarpIntakeAdapter implements IntakePort {
-  /** Statuses from which reject is allowed (matches IntakeService.REJECTABLE). */
-  private static readonly REJECTABLE: ReadonlySet<string> = new Set(['BACKLOG', 'PLANNED']);
+  /** Raw statuses from which promote is allowed (includes legacy INBOX for unmigrated graphs). */
+  private static readonly PROMOTABLE: ReadonlySet<string> = new Set(['BACKLOG', 'INBOX']);
+
+  /** Raw statuses from which reject is allowed (includes legacy INBOX for unmigrated graphs). */
+  private static readonly REJECTABLE: ReadonlySet<string> = new Set(['BACKLOG', 'PLANNED', 'INBOX']);
 
   constructor(
     private readonly graphPort: GraphPort,
@@ -37,8 +40,8 @@ export class WarpIntakeAdapter implements IntakePort {
     if (props === null) {
       throw new Error(`[NOT_FOUND] Quest ${questId} not found in the graph`);
     }
-    const status = props['status'];
-    if (status !== 'BACKLOG') {
+    const status = props['status'] as string | undefined;
+    if (status === undefined || !WarpIntakeAdapter.PROMOTABLE.has(status)) {
       throw new Error(
         `[INVALID_FROM] promote requires status BACKLOG, quest ${questId} is ${String(status)}`
       );
