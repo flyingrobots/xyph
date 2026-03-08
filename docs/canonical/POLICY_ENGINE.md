@@ -17,7 +17,7 @@
 ## LEVEL 1: MUST (Compiler Errors)
 1. **Schema Compliance**: Payload must validate against `Task Schema v1.0`.
 2. **Milestone Existence**: `milestoneId` must exist in the active Roadmap.
-3. **No Self-References**: A task cannot appear in its own `blockedBy` array.
+3. **No Self-References**: A task cannot have a `depends-on` edge to itself.
 4. **Story Format**: `userStory` must strictly follow the "As a/I want/So that" regex.
 
 ## LEVEL 2: SHOULD (Compiler Warnings)

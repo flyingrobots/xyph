@@ -1,9 +1,7 @@
 flowchart LR
-    A["Mutation Request"] --> B["PlanPatch"]
-    B --> C{"Validate"}
-    C -->|Pass| D["Apply"]
-    C -->|Fail| E["Reject"]
-    D --> F["ApplyReceipt"]
-    F --> G["Audit Trail"]
-    G -.-> H["Rollback Target"]
-    F -.-> H
+    A["Domain operations"] --> B["Pre-patch validation"]
+    B --> C["graph.patch()"]
+    C --> D["Git commit SHA\n(immutable)"]
+    D --> E["Audit record\n(graph node)"]
+    E -.-> F["graph.patchesFor()\nprovenance trail"]
+    D -.-> G["Compensating patch\n(if correction needed)"]

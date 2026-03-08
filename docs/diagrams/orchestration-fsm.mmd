@@ -29,8 +29,6 @@ stateDiagram-v2
 
     APPLY --> DONE: committed
     APPLY --> FAILED: fail
-    APPLY --> ROLLED_BACK: partial_apply
 
     DONE --> [*]
     FAILED --> [*]
-    ROLLED_BACK --> [*]

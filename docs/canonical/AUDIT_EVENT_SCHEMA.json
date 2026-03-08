@@ -59,8 +59,7 @@
         "EMIT",
         "APPLY",
         "FAILED",
-        "DONE",
-        "ROLLED_BACK"
+        "DONE"
       ]
     },
     "toState": {
@@ -77,8 +76,7 @@
         "EMIT",
         "APPLY",
         "FAILED",
-        "DONE",
-        "ROLLED_BACK"
+        "DONE"
       ]
     },
     "actor": {
