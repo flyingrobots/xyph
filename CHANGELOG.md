@@ -6,6 +6,7 @@ All notable changes to XYPH will be documented in this file.
 
 ### Added
 
+- **Key rotation** — `GuildSealService.rotateKey(agentId)` generates a new Ed25519 keypair, marks the previous key as retired (`active: false`), and registers the new key as the sole active key for the agent. Retired keys stay in the keyring for verification of historical signatures (WVR-006)
 - **Pre-rendered SVG diagrams** — 24 diagrams across 22 documentation files, rendered from Mermaid source (`.mmd`) to SVG via `mmdc`. Source files in `docs/diagrams/*.mmd`, rendered output in `docs/diagrams/*.svg`. Render script: `scripts/render-diagrams.sh`. Covers entity relationships, state machines, flowcharts, sequence diagrams, and architecture stacks (WVR-006)
 - **`history` command** — `xyph-actuator history <nodeId>` shows all patches that touched a node via git-warp's `patchesFor()` provenance API (Constitution Art. III compliance)
 - **Multibase DID key encoding** — `encodeBase58btc()` and `publicKeyToDidKey()` in `crypto.ts`; Ed25519 public keys are now encoded as spec-compliant `did:key:z6Mk...` identifiers using the multicodec prefix `0xed01` + base58btc multibase encoding (WVR-006)
@@ -14,6 +15,7 @@ All notable changes to XYPH will be documented in this file.
 
 ### Changed
 
+- **Keyring schema v3** — `KeyringEntry` gains `active` boolean for key rotation support; `loadKeyring()` validates at-most-one active key per agent (multiple retired keys allowed); v2→v3 migration defaults all existing entries to `active: true` (WVR-006)
 - **Keyring schema v2** — `KeyringEntry` gains `agentId` (agent→key lookup) and `legacyKeyIds` (alias resolution for backward-compatible verification); `loadKeyring()` indexes the Map by both canonical derived keyId and legacy aliases so old patches and new seals both resolve correctly (WVR-006)
 - **`keyIdForAgent()` derives real DID keys** — `GuildSealService.keyIdForAgent()` now looks up the agent's public key from the keyring and derives a proper multibase-encoded `did:key` instead of the previous `did:key:<agentId>` placeholder (WVR-006)
 - **`sign()` derives keyId from private key** — `GuildSealService.sign()` now computes the public key from the private key at sign time and derives the DID key directly, ensuring the seal's `keyId` always matches the signing key

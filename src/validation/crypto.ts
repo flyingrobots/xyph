@@ -18,6 +18,8 @@ export interface KeyringEntry {
   publicKeyHex: string;
   agentId?: string;
   legacyKeyIds?: string[];
+  /** Whether this key is the current signing key for its agent. Defaults to true. */
+  active: boolean;
 }
 
 // ── Keyring versioning ────────────────────────────────────────────────
@@ -26,7 +28,7 @@ export interface KeyringEntry {
  * Current keyring schema version. New keyrings are written at this version.
  * `loadKeyring()` transparently migrates older versions on read.
  */
-export const CURRENT_KEYRING_VERSION = "v2";
+export const CURRENT_KEYRING_VERSION = "v3";
 
 interface KeyringJson {
   version: string;
@@ -83,11 +85,27 @@ function migrateV1ToV2(json: KeyringJson): KeyringJson {
 }
 
 /**
+ * v2 → v3: Add `active` boolean to each key entry.
+ *
+ * v2 entries have no `active` field — every key is implicitly the sole key
+ * for its agent. v3 makes this explicit: all existing keys default to
+ * `active: true`. This enables key rotation where multiple keys can share
+ * an agentId (one active, rest retired with `active: false`).
+ */
+function migrateV2ToV3(json: KeyringJson): KeyringJson {
+  const keys = json.keys.map((k) => ({
+    ...k,
+    active: typeof k["active"] === "boolean" ? k["active"] : true,
+  }));
+  return { version: "v3", keys };
+}
+
+/**
  * Ordered migration registry. Each entry advances the version by one step.
- * To add a future migration (e.g. v2→v3), append to this array.
  */
 const KEYRING_MIGRATIONS: readonly KeyringMigration[] = [
   { from: "v1", to: "v2", migrate: migrateV1ToV2 },
+  { from: "v2", to: "v3", migrate: migrateV2ToV3 },
 ];
 
 /**
@@ -251,7 +269,7 @@ export function loadKeyring(keyringPath = path.resolve(process.cwd(), "trust/key
 
   // Build Map indexed by canonical keyId + legacy aliases
   const map = new Map<string, KeyringEntry>();
-  const seenAgentIds = new Set<string>();
+  const activeAgentIds = new Set<string>();
 
   for (const k of migrated.keys) {
     const keyId = String(k["keyId"]);
@@ -260,19 +278,22 @@ export function loadKeyring(keyringPath = path.resolve(process.cwd(), "trust/key
     const legacyKeyIds = Array.isArray(k["legacyKeyIds"])
       ? (k["legacyKeyIds"] as string[])
       : undefined;
+    const active = typeof k["active"] === "boolean" ? k["active"] : true;
 
-    // Reject duplicate agentIds — keyIdForAgent() relies on at-most-one match
-    if (agentId !== undefined) {
-      if (seenAgentIds.has(agentId)) {
-        throw new Error(`Duplicate agentId '${agentId}' in keyring — each agent must have exactly one active key`);
+    // Reject duplicate *active* agentIds — keyIdForAgent() relies on at-most-one active match.
+    // Multiple retired keys for the same agent are fine (needed to verify old signatures).
+    if (agentId !== undefined && active) {
+      if (activeAgentIds.has(agentId)) {
+        throw new Error(`Duplicate active agentId '${agentId}' in keyring — each agent must have exactly one active key`);
       }
-      seenAgentIds.add(agentId);
+      activeAgentIds.add(agentId);
     }
 
     const entry: KeyringEntry = {
       keyId,
       alg: "ed25519",
       publicKeyHex,
+      active,
       ...(agentId !== undefined ? { agentId } : {}),
       ...(legacyKeyIds !== undefined ? { legacyKeyIds } : {}),
     };

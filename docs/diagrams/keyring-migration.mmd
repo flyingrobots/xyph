@@ -7,5 +7,7 @@ flowchart TD
     E --> F
     F --> G["Index by canonical keyId\n(derived did:key:z6Mk...)"]
     F --> H["Index by legacy keyId aliases\n(old values that differ)"]
+    F --> J["Validate: at-most-one active\nkey per agentId"]
     G --> I["Return Map\n(all consumers use this)"]
     H --> I
+    J --> I

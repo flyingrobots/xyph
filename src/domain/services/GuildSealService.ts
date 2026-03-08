@@ -79,11 +79,11 @@ export class GuildSealService {
     for (const entry of keyring.values()) {
       if (seen.has(entry.keyId)) continue;
       seen.add(entry.keyId);
-      if (entry.agentId === agentId) {
+      if (entry.agentId === agentId && entry.active) {
         return publicKeyToDidKey(entry.publicKeyHex);
       }
     }
-    throw new Error(`No key registered for agent '${agentId}' in keyring`);
+    throw new Error(`No active key registered for agent '${agentId}' in keyring`);
   }
 
   /**
@@ -127,11 +127,19 @@ export class GuildSealService {
 
       if (!existingKeys.has(keyId)) {
         // Reconstruct the JSON structure from the validated Map + the new entry
-        const keys: { keyId: string; alg: string; publicKeyHex: string; agentId?: string }[] = [];
+        const keys: { keyId: string; alg: string; publicKeyHex: string; active: boolean; agentId?: string; legacyKeyIds?: string[] }[] = [];
+        const seen = new Set<string>();
         for (const entry of existingKeys.values()) {
-          keys.push({ keyId: entry.keyId, alg: entry.alg, publicKeyHex: entry.publicKeyHex, agentId: entry.agentId });
+          if (seen.has(entry.keyId)) continue;
+          seen.add(entry.keyId);
+          keys.push({
+            keyId: entry.keyId, alg: entry.alg, publicKeyHex: entry.publicKeyHex,
+            active: entry.active,
+            ...(entry.agentId !== undefined ? { agentId: entry.agentId } : {}),
+            ...(entry.legacyKeyIds !== undefined ? { legacyKeyIds: entry.legacyKeyIds } : {}),
+          });
         }
-        keys.push({ keyId, alg: 'ed25519', publicKeyHex, agentId });
+        keys.push({ keyId, alg: 'ed25519', publicKeyHex, active: true, agentId });
         fs.writeFileSync(keyringPath, JSON.stringify({ version: CURRENT_KEYRING_VERSION, keys }, null, 2) + '\n');
       }
     } catch (err) {
@@ -141,6 +149,74 @@ export class GuildSealService {
     }
 
     return { keyId, publicKeyHex };
+  }
+
+  /**
+   * Rotates an agent's key: generates a new Ed25519 keypair, marks the
+   * previous key as retired (`active: false`), and registers the new key
+   * as the sole active key for the agent.
+   *
+   * The old private key file is renamed to `<agentId>.sk.retired.<keyId-suffix>`
+   * so it remains available for debugging but is no longer used for signing.
+   * The old public key stays in the keyring for signature verification of
+   * historical patches.
+   *
+   * Throws if no existing key is registered for the agent.
+   */
+  public async rotateKey(agentId: string): Promise<{ keyId: string; publicKeyHex: string }> {
+    const keyringPath = path.join(this.trustDir, 'keyring.json');
+    const existingKeys = loadKeyring(keyringPath);
+
+    // Find the current active key for this agent
+    let currentKeyId: string | undefined;
+    const seen = new Set<string>();
+    for (const entry of existingKeys.values()) {
+      if (seen.has(entry.keyId)) continue;
+      seen.add(entry.keyId);
+      if (entry.agentId === agentId && entry.active) {
+        currentKeyId = entry.keyId;
+      }
+    }
+    if (currentKeyId === undefined) {
+      throw new Error(`No key registered for agent '${agentId}' — cannot rotate`);
+    }
+
+    // Generate a new keypair
+    const priv = randomBytes(32);
+    const pub = await ed.getPublicKey(priv);
+    const privateKeyHex = Buffer.from(priv).toString('hex');
+    const publicKeyHex = Buffer.from(pub).toString('hex');
+    const newKeyId = publicKeyToDidKey(publicKeyHex);
+
+    // Retire the old private key file by renaming it
+    const oldSkPath = this.skPath(agentId);
+    if (fs.existsSync(oldSkPath)) {
+      const suffix = currentKeyId.slice(-8);
+      const retiredPath = `${oldSkPath}.retired.${suffix}`;
+      fs.renameSync(oldSkPath, retiredPath);
+    }
+
+    // Write the new private key
+    fs.writeFileSync(oldSkPath, privateKeyHex, { mode: 0o600 });
+
+    // Rebuild keyring: retire old key, add new active key
+    const keys: { keyId: string; alg: string; publicKeyHex: string; active: boolean; agentId?: string; legacyKeyIds?: string[] }[] = [];
+    const rebuilt = new Set<string>();
+    for (const entry of existingKeys.values()) {
+      if (rebuilt.has(entry.keyId)) continue;
+      rebuilt.add(entry.keyId);
+      const isOldKey = entry.keyId === currentKeyId;
+      keys.push({
+        keyId: entry.keyId, alg: entry.alg, publicKeyHex: entry.publicKeyHex,
+        active: isOldKey ? false : entry.active,
+        ...(entry.agentId !== undefined ? { agentId: entry.agentId } : {}),
+        ...(entry.legacyKeyIds !== undefined ? { legacyKeyIds: entry.legacyKeyIds } : {}),
+      });
+    }
+    keys.push({ keyId: newKeyId, alg: 'ed25519', publicKeyHex, active: true, agentId });
+    fs.writeFileSync(keyringPath, JSON.stringify({ version: CURRENT_KEYRING_VERSION, keys }, null, 2) + '\n');
+
+    return { keyId: newKeyId, publicKeyHex };
   }
 
   /**

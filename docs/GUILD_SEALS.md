@@ -227,17 +227,18 @@ The keyring is a JSON file at `trust/keyring.json` that maps key identifiers to
 Ed25519 public keys. It is the single source of trust for signature
 verification.
 
-### Keyring Schema (v2)
+### Keyring Schema (v3)
 
 ```json
 {
-  "version": "v2",
+  "version": "v3",
   "keys": [
     {
       "keyId": "did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK",
       "alg": "ed25519",
       "publicKeyHex": "03dee5df0ac6c7e82d002ae6c8e525017647ff12f7a11c897c32c7732d9bb992",
-      "agentId": "agent.hal"
+      "agentId": "agent.hal",
+      "active": true
     }
   ]
 }
@@ -247,12 +248,13 @@ verification.
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `version` | Yes | Schema version string (`"v1"`, `"v2"`, ...) |
+| `version` | Yes | Schema version string (`"v1"`, `"v2"`, `"v3"`, ...) |
 | `keys` | Yes | Array of key entries |
-| `keys[].keyId` | Yes | Canonical `did:key:z6Mk...` identifier (v2: derived from public key) |
+| `keys[].keyId` | Yes | Canonical `did:key:z6Mk...` identifier (v2+: derived from public key) |
 | `keys[].alg` | Yes | Algorithm identifier. Currently only `"ed25519"` is supported |
 | `keys[].publicKeyHex` | Yes | 32-byte Ed25519 public key as 64 lowercase hex chars |
-| `keys[].agentId` | No | The agent identity this key belongs to (e.g., `"agent.hal"`). Must be unique across entries — `generateKeypair()` enforces this via `O_EXCL` on the `.sk` file, and `keyIdForAgent()` relies on at-most-one match. |
+| `keys[].agentId` | No | The agent identity this key belongs to (e.g., `"agent.hal"`). Multiple entries may share an `agentId` (for key rotation), but at most one may be `active: true` per agent. |
+| `keys[].active` | Yes | Whether this is the current signing key for its agent. `keyIdForAgent()` returns only active keys. Retired keys (`false`) remain for verification of historical signatures. |
 | `keys[].legacyKeyIds` | No | Previous `keyId` values that should alias to this entry (migration artifact) |
 
 ---
@@ -272,7 +274,7 @@ The migration pipeline is defined in `src/validation/crypto.ts`:
 ```typescript
 const KEYRING_MIGRATIONS: readonly KeyringMigration[] = [
   { from: "v1", to: "v2", migrate: migrateV1ToV2 },
-  // Future: { from: "v2", to: "v3", migrate: migrateV2ToV3 },
+  { from: "v2", to: "v3", migrate: migrateV2ToV3 },
 ];
 ```
 
@@ -342,38 +344,51 @@ key entry.
 Every consumer of `loadKeyring()` — `verify()`, `keyIdForAgent()`,
 `validatePatchOps` — gets this backward compatibility for free.
 
+### v2 → v3 Migration
+
+Version 2 keyrings had no concept of key activity — every key was implicitly the
+sole key for its agent. Version 3 adds an `active` boolean to each entry,
+enabling key rotation where multiple keys can share an `agentId`.
+
+The `migrateV2ToV3` function adds `active: true` to every existing entry (since
+all v2 keys are the sole key for their agent, they are implicitly active).
+
+After migration, a v2 entry gains the field:
+
+```json
+{
+  "keyId": "did:key:z6Mk...",
+  "alg": "ed25519",
+  "publicKeyHex": "03dee5...",
+  "agentId": "agent.james",
+  "active": true
+}
+```
+
+### Key Rotation
+
+When an agent needs a new key (compromise, expiration, periodic rotation), use
+`GuildSealService.rotateKey(agentId)`:
+
+1. The current active key is marked `active: false` in the keyring.
+2. A new Ed25519 keypair is generated and registered as `active: true`.
+3. The old private key file is renamed to `<agentId>.sk.retired.<suffix>`.
+4. The old public key stays in the keyring for verification of historical
+   signatures.
+
+**Important**: `keyIdForAgent()` only returns active keys. `verify()` works with
+any key in the keyring (active or retired) — old signatures remain verifiable
+after rotation.
+
 ### Adding Future Migrations
 
-To add a new keyring version (e.g., adding key expiration in v3):
+To add a new keyring version (e.g., v4 for key expiration):
 
-1. Define the migration function:
+1. Define the migration function in `src/validation/crypto.ts`.
+2. Append to `KEYRING_MIGRATIONS`.
+3. Update `CURRENT_KEYRING_VERSION`.
 
-   ```typescript
-   function migrateV2ToV3(json: KeyringJson): KeyringJson {
-     const keys = json.keys.map((k) => ({
-       ...k,
-       validUntil: k["validUntil"] ?? null, // new field with default
-     }));
-     return { version: "v3", keys };
-   }
-   ```
-
-2. Append to the migration registry:
-
-   ```typescript
-   const KEYRING_MIGRATIONS: readonly KeyringMigration[] = [
-     { from: "v1", to: "v2", migrate: migrateV1ToV2 },
-     { from: "v2", to: "v3", migrate: migrateV2ToV3 },
-   ];
-   ```
-
-3. Update the constant:
-
-   ```typescript
-   export const CURRENT_KEYRING_VERSION = "v3";
-   ```
-
-The pipeline runs `v1 → v2 → v3` automatically. Old v1 keyrings still work.
+The pipeline runs `v1 → v2 → v3 → ...` automatically. Old v1 keyrings still work.
 
 ---
 
@@ -417,14 +432,21 @@ trust/
 | `src/validation/validatePatchOps.ts` | Patch validation: invariant #12 uses keyring for signature verification |
 | `test/unit/multibase.test.ts` | Tests: base58btc encoding, did:key derivation, migration pipeline, legacy round-trip |
 | `test/unit/GuildSealService.test.ts` | Tests: keypair generation, sign/verify, tamper detection |
+| `test/unit/key-rotation.test.ts` | Tests: active/retired keys, rotation lifecycle, cross-rotation verification |
 
 ---
 
 ## FAQ
 
 **Q: What happens if I lose my private key?**
-A: Generate a new keypair with `generate-key`. The old key entry stays in the
-keyring (old seals remain verifiable), and the new entry is added alongside it.
+A: Use `rotateKey()` (or generate a new keypair with `generate-key`). The old key
+entry stays in the keyring as `active: false` (old seals remain verifiable), and
+the new entry is added as the active key.
+
+**Q: How do I rotate a key?**
+A: Call `GuildSealService.rotateKey(agentId)`. This generates a new keypair,
+marks the old key as retired, and updates the keyring atomically. Old signatures
+remain verifiable because retired keys stay in the keyring.
 
 **Q: Can two agents share a keypair?**
 A: Technically yes, but it defeats the purpose. Each agent should have its own

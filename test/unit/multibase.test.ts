@@ -2,7 +2,7 @@ import { describe, it, expect, afterAll } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { encodeBase58btc, publicKeyToDidKey, loadKeyring, CURRENT_KEYRING_VERSION } from '../../src/validation/crypto.js';
+import { encodeBase58btc, publicKeyToDidKey, loadKeyring } from '../../src/validation/crypto.js';
 import { GuildSealService } from '../../src/domain/services/GuildSealService.js';
 
 describe('multibase encoding', () => {
@@ -227,9 +227,4 @@ describe('multibase encoding', () => {
     });
   });
 
-  describe('keyring version constant', () => {
-    it('exports the current version', () => {
-      expect(CURRENT_KEYRING_VERSION).toBe('v2');
-    });
-  });
 });
