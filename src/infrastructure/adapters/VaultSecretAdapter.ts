@@ -8,6 +8,7 @@
 
 import type { SecretPort } from '../../ports/SecretPort.js';
 
+/** @deprecated Use `SecretPort` from `../../ports/SecretPort.js` directly. */
 export type { SecretPort as SecretAdapter };
 
 export class VaultSecretAdapter implements SecretPort {
