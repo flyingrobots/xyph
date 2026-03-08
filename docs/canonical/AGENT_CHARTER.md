@@ -12,7 +12,7 @@
 
 ### 2. Planner Agent (Classify → Merge)
 - **Input**: Normalized Tasks
-- **Output**: Tasks with milestoneId + tentative blockedBy/blocking
+- **Output**: Tasks with campaign + tentative depends-on edges
 - **Forbidden**: Set estimates, create new milestones
 
 ### 3. Graph Agent (Rebalance → Schedule)
@@ -33,3 +33,7 @@
 - **Identity**: `agent:<skill>-<uuid>`
 - **MUST**: Use optimistic claim → verify ownership post-materialize → perform work
 - **Forbidden**: Touch any task they do not own, alter estimates
+
+## Agent Role Pipeline
+
+![Agent role pipeline](../diagrams/agent-role-pipeline.svg)

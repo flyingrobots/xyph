@@ -1,0 +1,10 @@
+sequenceDiagram
+    autonumber
+    participant Coord as Coordinator
+    participant Graph as WARP Graph
+    participant Worker as Worker Agent
+
+    Coord->>Graph: Post Task node (Bid)
+    Worker->>Graph: Write assigned_to edge (Claim)
+    Graph->>Graph: Merge patches — resolve conflicts (Settle)
+    Worker->>Graph: Commit result + link artifact (Proof)

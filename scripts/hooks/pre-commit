@@ -3,3 +3,10 @@
 # Zero errors, zero warnings. A clean codebase stays clean.
 
 npm run lint
+
+# No inline mermaid blocks — use docs/diagrams/*.mmd + render-diagrams.sh
+# Match lines starting with ```mermaid (code fence), not prose mentions.
+if grep -rn '^```mermaid' README.md CONTRIBUTING.md docs/ --include='*.md' 2>/dev/null; then
+  echo "Error: Found inline \`\`\`mermaid blocks. Extract to docs/diagrams/*.mmd and run scripts/render-diagrams.sh"
+  exit 1
+fi

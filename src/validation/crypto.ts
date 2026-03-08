@@ -16,6 +16,175 @@ export interface KeyringEntry {
   keyId: string;
   alg: "ed25519";
   publicKeyHex: string;
+  agentId?: string;
+  legacyKeyIds?: string[];
+  /** Whether this key is the current signing key for its agent. Defaults to true. */
+  active: boolean;
+}
+
+// ── Keyring versioning ────────────────────────────────────────────────
+
+/**
+ * Current keyring schema version. New keyrings are written at this version.
+ * `loadKeyring()` transparently migrates older versions on read.
+ */
+export const CURRENT_KEYRING_VERSION = "v3";
+
+interface KeyringJson {
+  version: string;
+  keys: Record<string, unknown>[];
+}
+
+interface KeyringMigration {
+  readonly from: string;
+  readonly to: string;
+  readonly migrate: (json: KeyringJson) => KeyringJson;
+}
+
+/**
+ * v1 → v2: Derive canonical did:key from publicKeyHex.
+ *
+ * v1 entries used placeholder keyIds like `did:key:agent.james` or
+ * hand-crafted keyIds like `did:key:z6MkhTestSigner01`. v2 derives the real
+ * multibase-encoded did:key from the Ed25519 public key bytes.
+ *
+ * - Recovers `agentId` from legacy `did:key:<agentId>` patterns
+ * - Stores mismatched old keyIds in `legacyKeyIds` for alias lookups
+ */
+function migrateV1ToV2(json: KeyringJson): KeyringJson {
+  const keys = json.keys.map((k) => {
+    const publicKeyHex = String(k["publicKeyHex"] ?? "").toLowerCase();
+    const oldKeyId = String(k["keyId"] ?? "");
+    const derivedKeyId = publicKeyToDidKey(publicKeyHex);
+
+    const legacyKeyIds: string[] = [];
+    if (oldKeyId !== derivedKeyId) {
+      legacyKeyIds.push(oldKeyId);
+    }
+
+    // Recover agentId: explicit field wins, else parse from legacy did:key:<agentId>
+    let agentId = typeof k["agentId"] === "string" ? k["agentId"] : undefined;
+    if (!agentId && oldKeyId.startsWith("did:key:")) {
+      const suffix = oldKeyId.slice("did:key:".length);
+      // If the suffix doesn't look like a multibase value, it's a legacy agentId
+      if (suffix.length > 0 && !suffix.startsWith("z6Mk")) {
+        agentId = suffix;
+      }
+    }
+
+    return {
+      keyId: derivedKeyId,
+      alg: k["alg"],
+      publicKeyHex,
+      ...(agentId !== undefined ? { agentId } : {}),
+      ...(legacyKeyIds.length > 0 ? { legacyKeyIds } : {}),
+    };
+  });
+
+  return { version: "v2", keys };
+}
+
+/**
+ * v2 → v3: Add `active` boolean to each key entry.
+ *
+ * v2 entries have no `active` field — every key is implicitly the sole key
+ * for its agent. v3 makes this explicit: all existing keys default to
+ * `active: true`. This enables key rotation where multiple keys can share
+ * an agentId (one active, rest retired with `active: false`).
+ */
+function migrateV2ToV3(json: KeyringJson): KeyringJson {
+  const keys = json.keys.map((k) => ({
+    ...k,
+    active: typeof k["active"] === "boolean" ? k["active"] : true,
+  }));
+  return { version: "v3", keys };
+}
+
+/**
+ * Ordered migration registry. Each entry advances the version by one step.
+ */
+const KEYRING_MIGRATIONS: readonly KeyringMigration[] = [
+  { from: "v1", to: "v2", migrate: migrateV1ToV2 },
+  { from: "v2", to: "v3", migrate: migrateV2ToV3 },
+];
+
+/**
+ * Run the migration pipeline: apply migrations sequentially until the
+ * keyring reaches `CURRENT_KEYRING_VERSION`.
+ */
+function migrateKeyring(json: KeyringJson): KeyringJson {
+  let current = json;
+  for (const m of KEYRING_MIGRATIONS) {
+    if (current.version === m.from) {
+      current = m.migrate(current);
+    }
+  }
+  if (current.version !== CURRENT_KEYRING_VERSION) {
+    throw new Error(
+      `Keyring migration failed: reached version '${current.version}', expected '${CURRENT_KEYRING_VERSION}'`
+    );
+  }
+  return current;
+}
+
+// ── Base58btc (multibase) ───────────────────────────────────────────────
+
+const BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+
+/**
+ * Encode bytes as base58btc (Bitcoin alphabet).
+ * Used for did:key multibase encoding.
+ */
+export function encodeBase58btc(bytes: Uint8Array): string {
+  if (bytes.length === 0) return "";
+
+  // Count leading zeros → each maps to '1'
+  let leadingZeros = 0;
+  for (const b of bytes) {
+    if (b !== 0) break;
+    leadingZeros++;
+  }
+
+  // Convert bytes to a BigInt
+  let num = 0n;
+  for (const b of bytes) {
+    num = num * 256n + BigInt(b);
+  }
+
+  // Repeatedly divide by 58
+  const chars: string[] = [];
+  while (num > 0n) {
+    const remainder = Number(num % 58n);
+    chars.push(BASE58_ALPHABET[remainder] ?? "1");
+    num = num / 58n;
+  }
+
+  chars.reverse();
+  return "1".repeat(leadingZeros) + chars.join("");
+}
+
+/** Ed25519 multicodec prefix: varint 0xed = [0xed, 0x01] */
+const ED25519_MULTICODEC_PREFIX = new Uint8Array([0xed, 0x01]);
+
+/**
+ * Encode an Ed25519 public key as a did:key identifier.
+ *
+ * Format: `did:key:z<base58btc(0xed01 + pubKeyBytes)>`
+ *
+ * The `z` prefix is the multibase identifier for base58btc.
+ * The `0xed01` prefix is the unsigned varint multicodec for Ed25519-pub.
+ * All Ed25519 did:key identifiers start with `z6Mk`.
+ */
+export function publicKeyToDidKey(publicKeyHex: string): string {
+  const clean = publicKeyHex.trim().toLowerCase();
+  if (!/^[0-9a-f]{64}$/.test(clean)) {
+    throw new Error(`Invalid Ed25519 public key hex: must be 64 hex chars, got ${clean.length}`);
+  }
+  const pubBytes = hexToBytes(clean);
+  const prefixed = new Uint8Array(ED25519_MULTICODEC_PREFIX.length + pubBytes.length);
+  prefixed.set(ED25519_MULTICODEC_PREFIX, 0);
+  prefixed.set(pubBytes, ED25519_MULTICODEC_PREFIX.length);
+  return `did:key:z${encodeBase58btc(prefixed)}`;
 }
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
@@ -74,25 +243,70 @@ export function loadKeyring(keyringPath = path.resolve(process.cwd(), "trust/key
   const raw = fs.readFileSync(keyringPath, "utf8");
   const parsed = JSON.parse(raw) as unknown;
 
-  if (!isPlainObject(parsed) || parsed['version'] !== "v1" || !Array.isArray(parsed['keys'])) {
+  if (!isPlainObject(parsed) || typeof parsed["version"] !== "string" || !Array.isArray(parsed["keys"])) {
     throw new Error("Invalid keyring.json structure");
   }
 
-  const map = new Map<string, KeyringEntry>();
-
-  for (const k of parsed['keys'] as unknown[]) {
+  // Validate raw entries before migration
+  for (const k of parsed["keys"] as unknown[]) {
     if (!isPlainObject(k)) throw new Error("Invalid key entry in keyring");
-    const keyId = String(k['keyId'] ?? "");
-    const alg = String(k['alg'] ?? "");
-    const publicKeyHex = String(k['publicKeyHex'] ?? "").toLowerCase();
+    const keyId = String(k["keyId"] ?? "");
+    const alg = String(k["alg"] ?? "");
+    const publicKeyHex = String(k["publicKeyHex"] ?? "").toLowerCase();
 
     if (!keyId) throw new Error("Key entry missing keyId");
     if (alg !== "ed25519") throw new Error(`Unsupported alg '${alg}' for keyId ${keyId}`);
     if (!/^[0-9a-f]{64}$/.test(publicKeyHex)) {
       throw new Error(`Invalid Ed25519 publicKeyHex for keyId ${keyId}; must be 64 hex chars`);
     }
+  }
 
-    map.set(keyId, { keyId, alg: "ed25519", publicKeyHex });
+  // Run migration pipeline (v1 → v2 → ... → current)
+  const migrated = migrateKeyring({
+    version: parsed["version"] as string,
+    keys: parsed["keys"] as Record<string, unknown>[],
+  });
+
+  // Build Map indexed by canonical keyId + legacy aliases
+  const map = new Map<string, KeyringEntry>();
+  const activeAgentIds = new Set<string>();
+
+  for (const k of migrated.keys) {
+    const keyId = String(k["keyId"]);
+    const publicKeyHex = String(k["publicKeyHex"]);
+    const agentId = typeof k["agentId"] === "string" ? k["agentId"] : undefined;
+    const legacyKeyIds = Array.isArray(k["legacyKeyIds"])
+      ? (k["legacyKeyIds"] as string[])
+      : undefined;
+    const active = typeof k["active"] === "boolean" ? k["active"] : true;
+
+    // Reject duplicate *active* agentIds — keyIdForAgent() relies on at-most-one active match.
+    // Multiple retired keys for the same agent are fine (needed to verify old signatures).
+    if (agentId !== undefined && active) {
+      if (activeAgentIds.has(agentId)) {
+        throw new Error(`Duplicate active agentId '${agentId}' in keyring — each agent must have exactly one active key`);
+      }
+      activeAgentIds.add(agentId);
+    }
+
+    const entry: KeyringEntry = {
+      keyId,
+      alg: "ed25519",
+      publicKeyHex,
+      active,
+      ...(agentId !== undefined ? { agentId } : {}),
+      ...(legacyKeyIds !== undefined ? { legacyKeyIds } : {}),
+    };
+
+    // Primary index: canonical derived keyId
+    map.set(keyId, entry);
+
+    // Alias index: legacy keyIds resolve to the same entry
+    for (const legacy of legacyKeyIds ?? []) {
+      if (!map.has(legacy)) {
+        map.set(legacy, entry);
+      }
+    }
   }
 
   return map;

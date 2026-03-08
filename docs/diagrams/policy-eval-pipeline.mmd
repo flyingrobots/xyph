@@ -1,0 +1,11 @@
+flowchart TD
+    A["1. Contract Validity\n[MUST]"] --> B["2. DAG Integrity\n[MUST]"]
+    B --> C["3. Capacity Constraints\n[SHOULD]"]
+    C --> D["4. Rebalance Rules\n[SHOULD]"]
+    D --> E["5. Emission Constraints\n[COULD]"]
+    A -. "hard reject" .-> FAIL["REJECT\nCompiler Error"]
+    B -. "hard reject" .-> FAIL
+    C -. "emit warning" .-> C
+    D -. "emit warning" .-> D
+    E -. "emit hint" .-> E
+    E --> ACCEPT["ACCEPT\n(may carry warnings/hints)"]

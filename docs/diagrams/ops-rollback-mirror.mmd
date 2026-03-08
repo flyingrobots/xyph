@@ -1,0 +1,22 @@
+flowchart TD
+    subgraph OPS["operations[] (forward order)"]
+        direction TB
+        OP0["ops[0]\nopId: A"] --> OP1["ops[1]\nopId: B"] --> OP2["ops[2]\nopId: C"] --> OPN["ops[n-1]\nopId: Z"]
+    end
+
+    subgraph ROLLBACK["rollbackOperations[] (reverse order)"]
+        direction TB
+        RB0["rollback[0]\nrevertsOpId: Z"] --> RB1["rollback[1]\nrevertsOpId: C"] --> RB2["rollback[2]\nrevertsOpId: B"] --> RBN["rollback[n-1]\nrevertsOpId: A"]
+    end
+
+    OPN -.->|"revertsOpId"| RB0
+    OP2 -.->|"revertsOpId"| RB1
+    OP1 -.->|"revertsOpId"| RB2
+    OP0 -.->|"revertsOpId"| RBN
+
+    MATCH["Invariant: each rollback op must match\ninverseOpType · inversePath · inverseValue"]
+
+    RB0 -.-> MATCH
+    RB1 -.-> MATCH
+    RB2 -.-> MATCH
+    RBN -.-> MATCH

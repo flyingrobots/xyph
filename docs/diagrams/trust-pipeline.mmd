@@ -1,0 +1,9 @@
+flowchart LR
+    A["writerId\n(agent identity)"] --> B["Domain validation\n(pre-patch checks)"]
+    B --> C{"Approval\ngate needed?"}
+    C -->|no| D["graph.patch()\natomic Git commit"]
+    C -->|yes| E{"Human\napproval?"}
+    E -->|approved| D
+    E -->|rejected| F["Mutation\nblocked"]
+    D --> G["Content-addressed\nGit SHA"]
+    G --> H["Guild Seal\n(Ed25519, Scrolls only)"]

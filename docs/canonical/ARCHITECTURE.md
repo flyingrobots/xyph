@@ -16,6 +16,8 @@
  └──────────────┘
 ```
 
+![Hexagonal architecture](../diagrams/hexagonal-architecture.svg)
+
 ### Layers
 
 - **`src/domain/entities/`** — Core business objects: `Quest`, `Intent`, `Submission`, `ApprovalGate`, `Orchestration`.

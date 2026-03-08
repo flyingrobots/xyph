@@ -1,0 +1,34 @@
+stateDiagram-v2
+    [*] --> INGEST
+    INGEST --> NORMALIZE
+    INGEST --> FAILED
+
+    NORMALIZE --> CLASSIFY
+    NORMALIZE --> FAILED
+
+    CLASSIFY --> VALIDATE
+    CLASSIFY --> FAILED
+
+    VALIDATE --> MERGE
+    VALIDATE --> FAILED
+
+    MERGE --> REBALANCE
+    MERGE --> FAILED
+
+    REBALANCE --> SCHEDULE
+    REBALANCE --> FAILED
+
+    SCHEDULE --> REVIEW
+    SCHEDULE --> FAILED
+
+    REVIEW --> EMIT
+    REVIEW --> FAILED
+
+    EMIT --> APPLY
+    EMIT --> FAILED
+
+    APPLY --> DONE
+    APPLY --> FAILED
+
+    DONE --> [*]
+    FAILED --> [*]

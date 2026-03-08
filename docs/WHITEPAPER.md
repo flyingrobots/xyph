@@ -17,11 +17,13 @@ XYPH treats the `git-warp` graph as the shared memory space.
 - **Cryptographic Identity**: Every agent is a Writer with a public key. Every pixel of work is signed.
 
 ## 3. The Economy of Work
-In XYPH, work is a transaction.
+In XYPH, work is a causal chain.
 1. **Bid**: Coordinator posts a Task node.
 2. **Claim**: Worker writes an `assigned_to` edge.
 3. **Settle**: The graph merges patches. If the Worker’s claim survives the merge, they execute.
 4. **Proof**: Worker commits the result (code/text) and links it to the Task.
+
+![Economy of work cycle](diagrams/economy-of-work.svg)
 
 ## 4. Architecture
 ### 4.1 The Core: git-warp

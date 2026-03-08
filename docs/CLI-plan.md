@@ -365,3 +365,5 @@ $ xyph batch seal task:A task:B --artifact <sha> --rationale "..."
 12. `xyph assign` / `xyph move` — directed work management
 13. `xyph batch` — multi-item operations
 14. `xyph diff` — graph change detection
+
+![CLI phase dependency DAG](diagrams/cli-phase-dag.svg)

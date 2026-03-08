@@ -1,5 +1,8 @@
 #!/bin/sh
-# pre-push — test gate
+# pre-push — test gate + diagram freshness
 # Tests must pass locally before code leaves the machine.
 
 npm run test:local
+
+# Diagram integrity: no inline mermaid, no stale SVGs
+bash scripts/check-diagrams.sh

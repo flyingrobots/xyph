@@ -36,6 +36,7 @@
     "minimatch": "^10.2.1"
   },
   "devDependencies": {
+    "@mermaid-js/mermaid-cli": "^11.4.2",
     "@types/node": "^25.2.3",
     "@vitest/coverage-v8": "^4.0.18",
     "eslint": "^9.39.2",

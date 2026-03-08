@@ -52,6 +52,7 @@ interface DashboardModel {
 ```
 
 Replace single `KeyMap` with `createInputStack` for layered keymaps:
+
 - Base layer (passthrough): quit, tab, shift+tab, r, ?, Esc
 - View layer (swapped on view change): view-specific j/k/Enter/action keys
 - Modal layer (opaque, pushed for confirm/input): y/n/Enter/Esc
@@ -64,7 +65,7 @@ Add new message types: `write-success`, `write-error`, `dismiss-toast`, `confirm
 
 Summary dashboard with box panels, not raw tables:
 
-```
+```text
 ┌ Quest Status ────┐  ┌ Submissions ─────┐  ┌ Health ──────────────┐
 │ DONE         12  │  │ OPEN          3  │  │ Sovereignty: 14/15   │
 │ IN_PROGRESS   4  │  │ APPROVED      1  │  │ Orphan quests: 1     │
@@ -82,6 +83,7 @@ Summary dashboard with box panels, not raw tables:
 ```
 
 Data sources:
+
 - Quest status counts: group `snap.quests` by status
 - Submission status counts: group `snap.submissions` by status
 - Sovereignty: quests with `intentId` vs without (exclude INBOX)
@@ -96,17 +98,20 @@ Data sources:
 Master-detail layout (30/70 split via flex):
 
 **Left panel — submission list:**
+
 - Sorted: OPEN first, then CHANGES_REQUESTED, APPROVED, then MERGED/CLOSED
 - Each entry: submission ID, quest ID, submitter, approval count, status badge
 - Selected item highlighted (bold/inverse)
 
 **Right panel — detail (when expanded):**
+
 - Submission metadata: quest title, submitter, date, computed status
 - Patchset chain: vertical list showing tip → supersedes → ... chain
 - Reviews on tip patchset: verdict + reviewer + comment
 - Decision (if any): kind + rationale + merge commit
 
 Data sources:
+
 - `snap.submissions` for list
 - `snap.reviews` filtered by tip patchset ID
 - `snap.decisions` filtered by submission ID
@@ -121,6 +126,7 @@ Data sources:
 ### 1e. Keybinding Scheme
 
 **Global (base layer, passthrough):**
+
 | Key | Action |
 |-----|--------|
 | `q` | Quit |
@@ -132,6 +138,7 @@ Data sources:
 | `Esc` | Cancel modal / back |
 
 **Roadmap view layer:**
+
 | Key | Action |
 |-----|--------|
 | `j` / `↓` | Select next quest |
@@ -140,6 +147,7 @@ Data sources:
 | `PgDn` / `PgUp` | Scroll DAG |
 
 **Submissions view layer:**
+
 | Key | Action |
 |-----|--------|
 | `j` / `↓` | Select next submission |
@@ -147,6 +155,7 @@ Data sources:
 | `Enter` | Expand/collapse detail |
 
 **Inbox view layer:**
+
 | Key | Action |
 |-----|--------|
 | `j` / `↓` | Select next item |
@@ -159,11 +168,13 @@ Data sources:
 **New file: `src/tui/bijou/write-cmds.ts`**
 
 Cmd factories for write operations. Each returns `Cmd<DashboardMsg>` that:
+
 1. Performs the write via the appropriate port
 2. Emits `write-success` or `write-error`
 3. Chains a snapshot refresh (with incremented requestId)
 
 Operations for Phase 1:
+
 - `claimQuest(questId)` — via direct graph patch (set status, assignedTo, claimedAt)
 - `promoteQuest(questId, intentId, campaignId?)` — via `IntakePort.promote()`
 - `rejectQuest(questId, rationale)` — via `IntakePort.reject()`
@@ -224,6 +235,7 @@ After bijou ships `scrollX` (spec 1), `dagLayout` (spec 2), `createPanelGroup` (
 ## Files Summary
 
 ### New files
+
 | File | Purpose |
 |------|---------|
 | `src/tui/bijou/views/overview-view.ts` | Summary dashboard (replaces all-view) |
@@ -234,6 +246,7 @@ After bijou ships `scrollX` (spec 1), `dagLayout` (spec 2), `createPanelGroup` (
 | `src/tui/bijou/__tests__/submissions-view.test.ts` | Submissions tests |
 
 ### Modified files
+
 | File | Changes |
 |------|---------|
 | `src/tui/bijou/DashboardApp.ts` | ViewName expansion, per-view state, InputStack, modal modes, write flow, toast, overlay rendering |
@@ -244,6 +257,7 @@ After bijou ships `scrollX` (spec 1), `dagLayout` (spec 2), `createPanelGroup` (
 | `src/tui/bijou/__tests__/views.test.ts` | Updated for overview-view (replacing all-view) |
 
 ### Deleted files
+
 | File | Reason |
 |------|--------|
 | `src/tui/bijou/views/all-view.ts` | Replaced by overview-view |
@@ -259,6 +273,7 @@ npm run test:local          # Full test suite
 ```
 
 Manual checks:
+
 - Tab cycles: roadmap → submissions → lineage → overview → inbox
 - j/k selects in roadmap frontier, submissions list, inbox list
 - `c` on roadmap shows confirm → `y` claims quest → toast
@@ -297,6 +312,7 @@ As a human user, intents are your sovereignty anchor — every quest traces back
 ### Data Gaps
 
 **IntentNode today:**
+
 ```typescript
 interface IntentNode {
   id: string;
@@ -307,9 +323,11 @@ interface IntentNode {
 ```
 
 **Missing from snapshot (but stored in graph):**
+
 - `description?: string` — the Intent entity supports it, the actuator stores it via `--description`, but `GraphContext.fetchSnapshot()` doesn't read it
 
 **Missing entirely (needs derivation):**
+
 - Quest count per intent
 - Completion ratio (done / total)
 - Total hours allocated & completed
@@ -342,7 +360,7 @@ Build in `lineage-view.ts` by grouping `snap.quests` and `snap.submissions` by `
 
 Each intent renders as a card when collapsed:
 
-```
+```text
 ▶ ◆ intent:DASHBOARD  Build the WARP Dashboard
   requested-by: human.james  ·  2026-01-15
   Interactive TUI for graph navigation, triage, and observability.
@@ -350,6 +368,7 @@ Each intent renders as a card when collapsed:
 ```
 
 Card shows:
+
 - Title + ID (existing)
 - requestedBy + createdAt formatted as date (existing data)
 - Description (new — from graph)
@@ -357,7 +376,7 @@ Card shows:
 
 When expanded (Enter), the quest tree appears below the card:
 
-```
+```text
 ▼ ◆ intent:DASHBOARD  Build the WARP Dashboard
   requested-by: human.james  ·  2026-01-15
   Interactive TUI for graph navigation, triage, and observability.
@@ -391,6 +410,7 @@ npm run test:local
 ```
 
 Manual checks:
+
 - Cards show description when present, graceful when absent
 - Progress bar reflects actual done/total ratio
 - Expanded view still shows quest tree with scroll marks
@@ -403,6 +423,7 @@ Manual checks:
 ### Problem
 
 Overview is currently a data dump: raw status counts, a big campaign table, graph meta. It doesn't answer the questions a user actually has when opening the dashboard:
+
 - What's happening right now?
 - What needs my attention?
 - How far along is the project?
@@ -419,6 +440,7 @@ Layout issues: doesn't fill screen width, header box truncates, completed milest
 ### Project Name Source
 
 Options (in priority order):
+
 1. Graph property on a well-known config node (e.g., `config:project` → `name` prop) — most "XYPH native"
 2. Git repo name from remote URL or directory basename — zero config
 3. Fallback: `"XYPH"` literal
@@ -427,7 +449,7 @@ Start with option 2 (git repo name) as the default. Add a `config:project` node 
 
 ### Layout
 
-```
+```text
   XYPH — xyph                                        ████████████░░░░░░░  61% (72/118)
   ─────────────────────────────────────────────────────────────────────────────────────
 
@@ -468,6 +490,7 @@ Open/changes-requested submissions. Show submission ID, quest title, status badg
 #### 5d. Campaigns with progress bars
 
 Group by status: active (IN_PROGRESS) first, then BACKLOG, then completed under a fold. Each campaign shows:
+
 - Short ID + title
 - `progressBar()` showing done/total quest ratio for that campaign
 - Quest fraction label
@@ -485,6 +508,7 @@ Collapsed by default. Shows count of graveyard quests. Expand to see IDs + rejec
 #### 5g. My Issues (right column)
 
 Personalized section based on `agentId`:
+
 - Assigned tasks: quests where `assignedTo === agentId` and status is non-terminal
 - Submissions awaiting review: submissions where I'm NOT the submitter and status is OPEN/CHANGES_REQUESTED (i.e., things I might need to review)
 
@@ -506,11 +530,12 @@ Derive from snapshot timestamps. Collect all timestamped events (quest claims, s
 
 Compact line at the top surfacing actionable problems:
 
-```
+```text
 ⚠ 2 orphan quests · 1 stale claim (14d) · 1 approval gate pending
 ```
 
 Sources:
+
 - Sovereignty violations (orphan quests without intent lineage)
 - Stale claims: IN_PROGRESS quests with no submission and `claimedAt` older than N days
 - Forked patchsets needing resolution
@@ -531,6 +556,7 @@ Who's contributing: `agent.james: 12 patches · human.james: 3 patches · last 7
 #### 5o. Quick actions
 
 Keyboard shortcuts available directly from the dashboard:
+
 - `c` claim next frontier quest (auto-selects top frontier item)
 - `p` promote top inbox item
 - Jump-to-view shortcuts for deeper drill-down
@@ -542,6 +568,7 @@ Select a campaign to filter the entire dashboard to just that milestone's quests
 ### Naming
 
 Rename "overview" → "dashboard" everywhere:
+
 - `ViewName` type: `'dashboard'` replaces `'overview'`
 - Tab bar label
 - File name: `dashboard-view.ts` (rename from `overview-view.ts`)
@@ -582,6 +609,7 @@ npm run test:local
 ```
 
 Manual checks:
+
 - Dashboard fills terminal width
 - Alert bar shows actionable issues at top
 - Overall progress bar matches quest completion ratio
@@ -628,6 +656,7 @@ xyph agent-briefing [--format json|text|markdown]
 ```
 
 **JSON output:**
+
 ```json
 {
   "project": {
@@ -687,7 +716,7 @@ xyph agent-briefing [--format json|text|markdown]
 
 **Text mode** (`--format text`): Same data, rendered as a readable briefing document for human debugging:
 
-```
+```text
 ═══ AGENT BRIEFING ═══════════════════════════════════════
 Project: xyph — Causal Operating System for Agent Planning
 Identity: agent.claude (capabilities: claim, submit, revise, review)
@@ -755,6 +784,7 @@ xyph agent-next [--format json|text]
 ```
 
 Priority logic:
+
 1. Stale assignments (submit or release)
 2. Pending reviews (unblock others)
 3. Frontier work (claim and execute)
@@ -799,7 +829,7 @@ Reads patches from the agent's writer ref and summarizes actions chronologically
 
 ### Architecture
 
-```
+```text
 xyph-actuator.ts (CLI)
   ├── existing commands (quest, claim, submit, review, ...)
   └── agent-* commands (NEW)
@@ -838,6 +868,7 @@ The agent CLI commands are the **immediate** solution — any agent with shell a
 Agents are equal participants. They need to contribute ideas, report bugs, and collaborate — not just execute assigned work.
 
 **Enhanced `inbox` command:**
+
 ```bash
 xyph inbox task:BUG-001 \
   --title "GraphContext.fetchSnapshot crashes on empty graph" \
@@ -849,9 +880,11 @@ xyph inbox task:BUG-001 \
 Add `--description` and `--labels` to the inbox command. The description is stored as a graph property — same mechanism as intent descriptions.
 
 **`xyph comment <id> --message "..."` command:**
+
 Add comments to any entity (quest, submission, intent). Stored as a new `comment:` node type with edges. Agents can add context, flag concerns, or explain their reasoning without formal review.
 
 **`xyph flag <id> --reason "..."` command:**
+
 Mark an entity as needing human attention. Creates a `flag:` node visible in the dashboard alert bar. Agents can self-report uncertainty: "I claimed this but I'm stuck — human review requested."
 
 #### 6g. Agent Submission & Review Workflow
@@ -859,6 +892,7 @@ Mark an entity as needing human attention. Creates a `flag:` node visible in the
 Agents need first-class access to the full submission lifecycle — not just executing commands, but understanding context, providing structured reviews, and participating in discussion.
 
 **`xyph agent-submissions` — Structured submission view:**
+
 ```bash
 xyph agent-submissions [--filter mine|reviewable|all] [--format json|text]
 ```
@@ -897,11 +931,13 @@ xyph agent-submissions [--filter mine|reviewable|all] [--format json|text]
 ```
 
 **`xyph agent-review <patchset-id>` — Structured review with context:**
+
 ```bash
 xyph agent-review patchset:P3 --verdict approve --comment "LGTM" [--format json]
 ```
 
 Pre-validates:
+
 - Patchset exists and belongs to an OPEN/CHANGES_REQUESTED submission
 - Reviewer is not the submitter (can't self-approve)
 - Shows what changed since last review if this is a re-review
@@ -909,6 +945,7 @@ Pre-validates:
 Response includes the review's effect on submission status (e.g., "submission now has 1 approval, needs 0 more for merge eligibility").
 
 **`xyph agent-submit <quest-id>` — Submit with structured metadata:**
+
 ```bash
 xyph agent-submit task:DSH-001 \
   --description "Fixed campaign node type resolution" \
@@ -920,6 +957,7 @@ xyph agent-submit task:DSH-001 \
 Structured response confirms submission created, shows next steps ("awaiting review from human.james or another agent").
 
 **Submission comments:**
+
 Agents should be able to discuss submissions — ask questions about review feedback, explain design decisions, request clarification:
 
 ```bash
@@ -929,7 +967,9 @@ xyph comment submission:S1 --message "Re: missing error handling — the adapter
 This uses the same `comment` command from 6f but scoped to submissions. Comments are visible in both the human TUI (submissions detail panel) and the agent briefing.
 
 **Participation in the agent briefing:**
+
 The `agent-briefing` output should include a "contribution opportunities" section:
+
 - Inbox items this agent suggested (track their impact)
 - Comments/flags this agent has filed
 - Suggestions for what to inbox based on patterns the agent notices
@@ -964,12 +1004,14 @@ Meanwhile, the inbox grows unchecked. There's no guidance on which items belong 
 Model promotions like submissions — a multi-step reviewed process:
 
 **Current flow:**
-```
+
+```text
 INBOX → promote(intentId) → BACKLOG (instant, single actor)
 ```
 
 **New flow:**
-```
+
+```text
 INBOX → propose(intentId, campaignId, rationale)
       → PROPOSED (new status)
       → reviewers approve/reject the proposal
@@ -977,6 +1019,7 @@ INBOX → propose(intentId, campaignId, rationale)
 ```
 
 **New graph nodes:**
+
 - `proposal:` node type — like `submission:` but for promotions
 - Links: `proposal:P1 --proposes--> task:I-001`
 - Links: `proposal:P1 --targets-intent--> intent:DASHBOARD`
@@ -986,6 +1029,7 @@ INBOX → propose(intentId, campaignId, rationale)
 **New quest status:** `PROPOSED` — between INBOX and BACKLOG. Visible in both triage view and inbox view. Quest stays in PROPOSED until promotion is approved.
 
 **CLI commands:**
+
 ```bash
 # Propose promotion (replaces instant promote for reviewed mode)
 xyph propose task:I-001 \
@@ -1003,6 +1047,7 @@ xyph accept-proposal proposal:P1
 ```
 
 **Policy configuration:**
+
 Stored in the WARP graph on a `config:triage-policy` node:
 
 ```json
@@ -1030,19 +1075,24 @@ When `promotionApprovals: 0`, the existing `xyph promote` command works as-is (b
 New dedicated view — or enhanced inbox — for triaging work. Shows:
 
 **Left panel — Triage queue:**
+
 Three sections:
+
 1. **Pending proposals** — PROPOSED items awaiting approval (most urgent)
 2. **Inbox items** — raw INBOX items awaiting triage
 3. **Recently decided** — last N items promoted/rejected (context)
 
 **Right panel — Item detail + recommendations:**
+
 For the selected item:
+
 - Full title, description, suggested-by, age in inbox
 - AI-generated recommendations (see 7c)
 - Available actions: propose, reject, approve proposal
 - Review history if PROPOSED
 
 **Keybindings:**
+
 | Key | Action |
 |-----|--------|
 | `j/k` | Navigate items |
@@ -1056,34 +1106,41 @@ For the selected item:
 Generate structured recommendations for each inbox item to accelerate triage:
 
 **Campaign suggestion:**
+
 Analyze item title against existing campaign titles and quest titles. Suggest the best-fit campaign with confidence:
-```
+
+```text
 Suggested campaign: campaign:DASHBOARD (high confidence)
   Reason: 5 similar quests already in this campaign
 ```
 
 **Intent suggestion:**
+
 Match against existing intents:
-```
+
+```text
 Suggested intent: intent:DASHBOARD (medium confidence)
   Reason: Title mentions "TUI" which aligns with dashboard intent
 ```
 
 **Priority signal:**
+
 - Is this a blocker for other work? (dependency analysis)
 - How long has it been in inbox? (staleness)
 - Who suggested it? (agent suggestions might need more scrutiny)
 - Is it a duplicate of existing work? (title similarity check)
 
 **Implementation approach:**
+
 Start with heuristic matching (string similarity, keyword overlap with campaign/intent titles). This doesn't need AI — simple TF-IDF or even substring matching gets you 80% of the way. Future: integrate with agent briefing to provide AI-powered recommendations.
 
 **CLI output:**
+
 ```bash
 xyph triage-report [--format json|text|markdown]
 ```
 
-```
+```text
 ═══ TRIAGE REPORT ═══════════════════════════════════════
 37 items in INBOX · oldest: 12 days · 3 proposals pending
 
@@ -1178,7 +1235,7 @@ New view in the tab bar: `dashboard → roadmap → submissions → lineage → 
 
 #### 8a. Layout
 
-```
+```text
   ── Graveyard (3 quests) ──────────────────────────────────────────────────────
 
   ▶ task:I-042  "Add WebSocket live updates"
@@ -1198,6 +1255,7 @@ New view in the tab bar: `dashboard → roadmap → submissions → lineage → 
 ```
 
 Each entry shows:
+
 - Quest ID + title
 - Who rejected it and when
 - Rejection rationale (full text, not truncated)
@@ -1217,6 +1275,7 @@ Reopening a quest is the "second chance" mechanism. The quest returns to INBOX w
 #### 8c. Patterns section
 
 At the top of the view, show aggregate insights:
+
 - Total graveyard count
 - Top rejector (who rejects the most?)
 - Top suggester whose items get rejected (is one agent suggesting bad work?)
@@ -1250,6 +1309,7 @@ npm run test:local
 ```
 
 Manual checks:
+
 - Shows all GRAVEYARD quests with full rejection rationale
 - j/k navigates, Enter expands detail
 - `r` reopens quest (returns to INBOX, toast confirms)
@@ -1262,10 +1322,12 @@ Manual checks:
 ### Rationale
 
 The current terms don't match how they feel:
+
 - **"Inbox"** feels personal ("my tasks") — but it's really a communal suggestion pool
 - **"Backlog"** feels vague ("unplanned stuff") — but these items are promoted, have intent lineage, and are authorized work
 
 Better vocabulary:
+
 - **Backlog** = ideas, suggestions, proposals awaiting triage. "Should we do this?"
 - **Planned** = officially on the roadmap, in the DAG with dependencies vetted. "We're doing this."
 
@@ -1273,7 +1335,7 @@ The promotion ceremony gains weight: you're not flipping a status label, you're 
 
 ### Status Lifecycle (new)
 
-```
+```text
 BACKLOG → propose/promote → PLANNED → claim → IN_PROGRESS → submit/seal → DONE
                                   ↘ BLOCKED (by dependencies)
             reject ↘
@@ -1311,16 +1373,19 @@ This is the triage engine's job (Phase 7). The `propose` command captures all of
 This is a codebase-wide rename touching:
 
 **Domain layer:**
+
 - `QuestStatus` enum in `Quest.ts` — rename values
 - `IntakePort` / `IntakeService` — `promote()` becomes `plan()` or stays but terminology in docs changes
 - `SovereigntyService` — audit checks reference BACKLOG (becomes PLANNED)
 
 **Infrastructure:**
+
 - `GraphContext.fetchSnapshot()` — status string mapping
 - `WarpIntakeAdapter` — writes `status: 'BACKLOG'` (becomes `'PLANNED'`)
 - Existing graph data — **migration needed** for existing `INBOX` → `BACKLOG` and `BACKLOG`/`PLANNED` → `PLANNED` nodes
 
 **TUI:**
+
 - Tab labels: "inbox" tab → "backlog" tab
 - `ViewName` type: `'inbox'` → `'backlog'`
 - `inboxView` → `backlogView` (file rename)
@@ -1328,13 +1393,16 @@ This is a codebase-wide rename touching:
 - `styledStatus()` mapping
 
 **CLI:**
+
 - `xyph-actuator.ts` — `inbox` command becomes `backlog`, help text updates
 - All command descriptions referencing "inbox" or "backlog"
 
 **Tests:**
+
 - Every test asserting on `'INBOX'` or `'BACKLOG'` status strings
 
 **Documentation:**
+
 - CLAUDE.md command reference
 - CONSTITUTION.md if it references status names
 - docs/TUI-plan.md (this file)

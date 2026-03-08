@@ -1,0 +1,5 @@
+graph BT
+    Evidence["evidence"] -->|verifies| Criterion["criterion"]
+    Criterion -->|part-of| Requirement["requirement"]
+    Requirement -->|part-of| Story["story"]
+    Story -->|part-of| Quest["quest"]

@@ -90,7 +90,6 @@ All artifacts MUST include:
 10. APPLY
 11. DONE
 12. FAILED
-13. ROLLED_BACK (reachable only from APPLY failure with partial mutation risk)
 
 ---
 
@@ -104,10 +103,9 @@ All artifacts MUST include:
 - SCHEDULE -> REVIEW | FAILED
 - REVIEW -> EMIT | FAILED
 - EMIT -> APPLY | FAILED
-- APPLY -> DONE | FAILED | ROLLED_BACK
+- APPLY -> DONE | FAILED
 - FAILED -> (terminal)
 - DONE -> (terminal)
-- ROLLED_BACK -> (terminal)
 
 Any other transition is invalid and MUST be rejected.
 
@@ -189,7 +187,7 @@ Exit requires:
 - no conflicting ops on same field without resolution rule
 Failure reasons:
 - unresolved conflicting updates
-- snapshot mismatch
+- unresolvable entity conflict
 
 ---
 
@@ -244,31 +242,31 @@ Failure reasons:
 ### 4.9 EMIT
 Entry requires: ReviewArtifact
 Actions:
-- generate PlanPatchArtifact (ordered operations)
-- generate RollbackPatchArtifact
+- generate PlanPatchArtifact (ordered domain operations)
 - sign artifact envelope (agent/human signature policy)
 Exit requires:
-- patch + rollback patch hash-linked
 - all ops reference valid entities
+- signature attached (if required by policy)
 Failure reasons:
 - unsigned patch when required
-- rollback cannot be generated
+- ops reference non-existent entities
 
 ---
 
 ### 4.10 APPLY
 Entry requires: PlanPatchArtifact, approvals satisfied
 Actions:
-- optimistic concurrency check against roadmap snapshot
-- apply operations atomically
-- emit apply receipt
+- validate domain integrity (referential integrity, DAG acyclicity)
+- verify signature envelope against keyring (if present)
+- emit operations as a single `graph.patch()` call (one atomic Git commit)
+- record audit trail entry
 Exit requires:
-- commit success + new snapshot digest
+- successful `graph.patch()` commit (returns Git SHA)
 - immutable audit chain entry
 Failure reasons:
-- snapshot drift
-- partial apply risk (must trigger rollback path)
+- domain validation failure (dangling refs, cycle introduction)
 - signature verification failure
+- Git I/O error during patch commit
 
 ---
 
@@ -301,11 +299,9 @@ Over-budget => fail with timeout code.
 - 11 = DAG integrity failure
 - 12 = approval missing/invalid
 - 13 = signature/trust failure
-- 14 = concurrency/snapshot drift
+- 14 = (reserved, unused — git-warp CRDT has no snapshot drift)
 - 15 = timeout budget exceeded
 - 16 = unknown transition/state corruption
-- 17 = apply partial failure (rollback attempted)
-- 18 = rollback failure (critical incident)
 
 ---
 
@@ -335,9 +331,21 @@ No audit record = invalid run.
 ---
 
 ## 8) Concurrency Model
-- Single active APPLY per roadmap namespace.
-- Parallel runs allowed through SCHEDULE, but APPLY requires snapshot match.
-- Snapshot drift at APPLY returns exit code 14 and suggests rebase/re-run from MERGE.
+
+git-warp is a CRDT — multiple writers can emit patches concurrently without
+coordination. There are no namespace locks and no snapshot preconditions.
+
+- Parallel pipeline runs are safe. Each run emits its own patch via
+  `graph.patch()`. Patches converge deterministically at materialization
+  (OR-Set for existence, LWW for properties).
+- If two concurrent runs modify the same entity, the write with the higher
+  Lamport timestamp wins (ties broken by writerId, then patchSha, then opIndex).
+- The planning compiler MAY perform a post-apply consistency check
+  (re-materialize and verify expectations). CRDT convergence guarantees
+  storage-level consistency, but concurrent APPLY runs can still produce
+  domain-level conflicts (e.g., a dependency cycle created by two
+  independent patches). Post-apply checks SHOULD detect such conflicts
+  and emit compensating patches if remediation is needed.
 
 ---
 
@@ -356,44 +364,7 @@ No audit record = invalid run.
 
 ## 10) Mermaid State Diagram
 
-```mermaid
-stateDiagram-v2
-    [*] --> INGEST
-    INGEST --> NORMALIZE: ok
-    INGEST --> FAILED: fail
-
-    NORMALIZE --> CLASSIFY: ok
-    NORMALIZE --> FAILED: fail
-
-    CLASSIFY --> VALIDATE: ok
-    CLASSIFY --> FAILED: fail
-
-    VALIDATE --> MERGE: must_pass
-    VALIDATE --> FAILED: must_fail
-
-    MERGE --> REBALANCE: ok
-    MERGE --> FAILED: fail
-
-    REBALANCE --> SCHEDULE: ok
-    REBALANCE --> FAILED: fail
-
-    SCHEDULE --> REVIEW: ok
-    SCHEDULE --> FAILED: fail
-
-    REVIEW --> EMIT: approvals_resolved
-    REVIEW --> FAILED: fail
-
-    EMIT --> APPLY: signed_patch
-    EMIT --> FAILED: fail
-
-    APPLY --> DONE: committed
-    APPLY --> FAILED: fail
-    APPLY --> ROLLED_BACK: partial_apply
-
-    DONE --> [*]
-    FAILED --> [*]
-    ROLLED_BACK --> [*]
-```
+![Orchestration FSM](../diagrams/orchestration-fsm.svg)
 
 ---
 
@@ -402,9 +373,8 @@ stateDiagram-v2
 2. Transition attempted not in allowed transition table
 3. MUST rule violation ignored
 4. Unsatisfied approval gate entering APPLY
-5. Missing rollback patch at EMIT
-6. Audit record omission at any state
-7. Direct state mutation attempted outside APPLY
+5. Audit record omission at any state
+6. Direct state mutation attempted outside APPLY (runtime compiler flows; bootstrap/migration scripts may use low-level graph primitives directly)
 
 ---
 

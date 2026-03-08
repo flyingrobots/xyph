@@ -1,0 +1,22 @@
+flowchart LR
+    subgraph S1["Stage 1: Topological Sort"]
+        TOPO["Kahn's algorithm\nlinearize DAG"]
+    end
+
+    subgraph S2["Stage 2: Critical Path"]
+        CRIT["DP longest path\nidentify delay risks"]
+    end
+
+    subgraph S3["Stage 3: Anti-Chains"]
+        ANTI["Greedy coloring\nMECE parallel sets\n(Dilworth's theorem)"]
+    end
+
+    subgraph S4["Stage 4: Capacity Bundling"]
+        LANE["Bin-packing\nassign to lanes\nrespect capacity"]
+    end
+
+    DAG["Rebalanced DAG"] --> S1
+    S1 -->|"execution order"| S2
+    S2 -->|"annotated priorities"| S3
+    S3 -->|"parallel groups"| S4
+    S4 --> OUT["Executable Lanes"]

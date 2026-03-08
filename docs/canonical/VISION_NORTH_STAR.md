@@ -40,6 +40,8 @@ XYPH may use Git today, but Git is not "the product."
 
 Swapping the settlement layer is allowed long-term; the invariants are not.
 
+![Vision layer stack](../diagrams/vision-layer-stack.svg)
+
 ## 5. Digital Guild Integration (Squadron)
 XYPH adopts the Digital Guild model to govern humans and agents:
 

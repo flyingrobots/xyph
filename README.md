@@ -71,31 +71,7 @@ Now you're all set. Let's see how we might use XYPH in our everyday workflows.
 
 #### Walkthrough at a Glance
 
-```mermaid
-sequenceDiagram
-    autonumber
-    participant Ada as Human (Ada)
-    participant Warp as WARP Graph (CRDT in Git)
-    participant Hal as Agent (Hal)
-    participant Git as Git Workspace
-
-    Ada->>Warp: Declare intent + create quests + dependencies
-    Hal->>Warp: Claim quest (OCP)
-    Hal->>Git: Implement + run quality gates
-    Hal->>Warp: Submit (submission + patchset)
-    Ada->>Warp: Review patchset
-
-    alt Approved
-        Ada->>Git: Merge branch (--no-ff)
-        Ada->>Warp: Record merge decision
-        Warp-->>Warp: Auto-seal quest (Scroll + Guild Seal + DONE)
-    else Changes requested
-        Hal->>Warp: Revise submission (new patchset tip)
-        Ada->>Warp: Re-review updated tip
-    end
-
-    Ada->>Warp: Audit lineage and sovereignty
-```
+![Development workflow sequence](docs/diagrams/dev-workflow.svg)
 
 #### 1. Ada Declares an Intent
 
@@ -166,7 +142,9 @@ export XYPH_AGENT_ID=agent.hal
 npx tsx xyph-actuator.ts generate-key
 ```
 
-This creates an Ed25519 private key in `trust/agent.hal.sk` (gitignored) and registers the public key. Hal's completed work will carry a verifiable **Guild Seal** — a cryptographic signature proving who did the work.
+This creates an Ed25519 private key in `trust/agent.hal.sk` (gitignored) and registers the public key in `trust/keyring.json`. Hal's agent identity remains `agent.hal` (`XYPH_AGENT_ID`), but his Guild Seal signing `keyId` is a spec-compliant `did:key:z6Mk...` derived from his public key. His completed work will carry a verifiable **Guild Seal** — a cryptographic signature proving who did the work.
+
+See [Guild Seals: Cryptographic Identity and Signing](docs/GUILD_SEALS.md) for the full deep-dive on key generation, DID encoding, signing, verification, and keyring migration.
 
 #### 4. Hal Claims a Quest
 
@@ -344,34 +322,9 @@ XYPH uses a **Digital Guild** metaphor to structure collaboration:
 
 The planning compiler processes work through a deterministic state machine:
 
-```mermaid
-stateDiagram-v2
-    direction LR
-    [*] --> INGEST
-    INGEST --> NORMALIZE
-    NORMALIZE --> CLASSIFY
-    CLASSIFY --> VALIDATE
-    VALIDATE --> MERGE
-    MERGE --> REBALANCE
-    REBALANCE --> SCHEDULE
-    SCHEDULE --> REVIEW
-    REVIEW --> EMIT
-    EMIT --> APPLY
-    APPLY --> DONE
-    APPLY --> ROLLED_BACK
-    INGEST --> FAILED
-    NORMALIZE --> FAILED
-    CLASSIFY --> FAILED
-    VALIDATE --> FAILED
-    MERGE --> FAILED
-    REBALANCE --> FAILED
-    SCHEDULE --> FAILED
-    REVIEW --> FAILED
-    EMIT --> FAILED
-    APPLY --> FAILED
-```
+![Planning compiler pipeline](docs/diagrams/planning-pipeline.svg)
 
-Every state transition emits a typed artifact and an immutable audit record. The pipeline is **fail-closed** — if any phase fails, execution halts. Only the APPLY phase can mutate the graph, and it enforces **all-or-nothing atomicity** with automatic rollback.
+Every state transition emits a typed artifact and an immutable audit record. The pipeline is **fail-closed** — if any phase fails, execution halts. Only the APPLY phase can mutate the graph, and each `graph.patch()` call is atomic — either the entire patch commits as a single Git object, or nothing is written.
 
 ### The Policy Engine
 
@@ -441,7 +394,7 @@ Every mutation must obey the [CONSTITUTION.md](docs/canonical/CONSTITUTION.md):
 
 - **Art. I — Law of Determinism** — Same input always produces same output; no silent state
 - **Art. II — Law of DAG Integrity** — No cycles in the dependency graph; every task reachable from a milestone; dependencies must complete before dependents start
-- **Art. III — Law of Provenance** — Every mutation is signed; every decision carries a rationale (≥ 10 chars) and confidence score; every patch has an inverse for rollback
+- **Art. III — Law of Provenance** — Every mutation is signed; every decision carries a rationale (≥ 10 chars) and confidence score; corrections are made via compensating patches (LWW overrides), not transactional rollback
 - **Art. IV — Law of Human Sovereignty** — Humans can override any agent decision; every quest must have a Genealogy of Intent; critical path changes require an ApprovalGate signed by a human
 
 ### Canonical Docs
@@ -467,10 +420,11 @@ The `docs/canonical/` directory contains the foundational specifications:
 - [DATA_CONTRACTS.md](docs/canonical/DATA_CONTRACTS.md) — Canonical data structures (Task, PlanPatch)
 - [PATCH_OPS_INVARIANTS.md](docs/canonical/PATCH_OPS_INVARIANTS.md) — Patch operation invariants
 - [PATCH_OPS_SCHEMA.json](docs/canonical/PATCH_OPS_SCHEMA.json) — PlanPatch JSON Schema
-- [APPLY_TRANSACTION_SPEC.md](docs/canonical/APPLY_TRANSACTION_SPEC.md) — Atomic mutation gate
+- [APPLY_TRANSACTION_SPEC.md](docs/canonical/APPLY_TRANSACTION_SPEC.md) — Graph mutation gate (APPLY phase)
 
 **Security & Audit**
 
+- [GUILD_SEALS.md](docs/GUILD_SEALS.md) — Guild Seal system: Ed25519 key generation, DID key encoding, signing, verification, keyring versioning, and migration pipeline
 - [SECURITY_AND_TRUST.md](docs/canonical/SECURITY_AND_TRUST.md) — Cryptographic identity and trust model
 - [AUDIT_AND_PROVENANCE.md](docs/canonical/AUDIT_AND_PROVENANCE.md) — Provenance tracking requirements
 - [AUDIT_EVENT_SCHEMA.json](docs/canonical/AUDIT_EVENT_SCHEMA.json) — Audit record JSON Schema

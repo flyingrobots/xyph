@@ -6,7 +6,20 @@ All notable changes to XYPH will be documented in this file.
 
 ### Added
 
+- **Key rotation** — `GuildSealService.rotateKey(agentId)` generates a new Ed25519 keypair, marks the previous key as retired (`active: false`), and registers the new key as the sole active key for the agent. Retired keys stay in the keyring for verification of historical signatures (WVR-006)
+- **Pre-rendered SVG diagrams** — 24 diagrams across 22 documentation files, rendered from Mermaid source (`.mmd`) to SVG via `mmdc`. Source files in `docs/diagrams/*.mmd`, rendered output in `docs/diagrams/*.svg`. Render script: `scripts/render-diagrams.sh`. Covers entity relationships, state machines, flowcharts, sequence diagrams, and architecture stacks (WVR-006)
 - **`history` command** — `xyph-actuator history <nodeId>` shows all patches that touched a node via git-warp's `patchesFor()` provenance API (Constitution Art. III compliance)
+- **Multibase DID key encoding** — `encodeBase58btc()` and `publicKeyToDidKey()` in `crypto.ts`; Ed25519 public keys are now encoded as spec-compliant `did:key:z6Mk...` identifiers using the multicodec prefix `0xed01` + base58btc multibase encoding (WVR-006)
+- **Versioned keyring migration pipeline** — `loadKeyring()` transparently migrates older keyring formats on read via a sequential migration chain (`v1 → v2 → ...`); future schema changes (key rotation, expiry, multi-algorithm) slot in by appending a migration function (WVR-006)
+- **Guild Seals documentation** — `docs/GUILD_SEALS.md` covers the full signing system top-to-bottom: key generation, DID key encoding, signing flow, verification, keyring schema, versioning, migration pipeline, trust directory layout, security considerations, and FAQ (WVR-006)
+
+### Changed
+
+- **Keyring schema v3** — `KeyringEntry` gains `active` boolean for key rotation support; `loadKeyring()` validates at-most-one active key per agent (multiple retired keys allowed); v2→v3 migration defaults all existing entries to `active: true` (WVR-006)
+- **Keyring schema v2** — `KeyringEntry` gains `agentId` (agent→key lookup) and `legacyKeyIds` (alias resolution for backward-compatible verification); `loadKeyring()` indexes the Map by both canonical derived keyId and legacy aliases so old patches and new seals both resolve correctly (WVR-006)
+- **`keyIdForAgent()` derives real DID keys** — `GuildSealService.keyIdForAgent()` now looks up the agent's public key from the keyring and derives a proper multibase-encoded `did:key` instead of the previous `did:key:<agentId>` placeholder (WVR-006)
+- **`sign()` derives keyId from private key** — `GuildSealService.sign()` now computes the public key from the private key at sign time and derives the DID key directly, ensuring the seal's `keyId` always matches the signing key
+- **`generateKeypair()` writes v2 keyrings** — new keypairs are written with the derived `did:key:z6Mk...` as the canonical keyId and include the `agentId` field (WVR-006)
 - **StylePort interface** — dependency-injected styling abstraction (`StylePort`) with `BijouStyleAdapter` (chalk-based) and `PlainStyleAdapter` (no-color) implementations; replaces the global theme singleton with explicit wiring through the composition root
 - **Theme lab TUI** — interactive design token exploration tool (`xyph-theme-lab.ts`) for cycling through theme palettes in real time
 - **Dark + light theme variants** — automatic terminal background detection with distinct dark and light palettes; theme selection adapts to the user's terminal
@@ -23,6 +36,10 @@ All notable changes to XYPH will be documented in this file.
 
 ### Fixed
 
+- **Schema keyId pattern sync** — `schemas/PATCH_OPS_SCHEMA.v1.json` keyId regex now matches the multibase Base58btc spec (`z[1-9A-HJ-NP-Za-km-z]{10,100}`), replacing the loose `z6[A-Za-z0-9]+` that accepted invalid multibase characters (WVR-006)
+- **Schema deduplication** — `docs/canonical/PATCH_OPS_SCHEMA.json` replaced with a symlink to `schemas/PATCH_OPS_SCHEMA.v1.json`; the runtime schema is now the single source of truth, eliminating a persistent drift trap (WVR-006)
+- **Schema documentation** — added `description` to `baseSnapshotDigest` in the schema (advisory, not a concurrency gate); added `deprecated` + `description` to `rollbackPatchDigest` in AUDIT_EVENT_SCHEMA.json (WVR-006)
+- **Prose alignment with CRDT reality** — replaced centralized-database vocabulary in README (atomicity/rollback), WHITEPAPER ("work is a transaction"), EXECUTIVE_SUMMARY (signed → attributed, 900→650 tests), AGENT_CHARTER (blockedBy → depends-on), ORCHESTRATION_SPEC (snapshot mismatch → entity conflict), PATCH_OPS_INVARIANTS (baseSnapshotDigest advisory note) (WVR-006)
 - **DashboardApp watching lifecycle** — `startWatching()` (graph.watch polling) now fires from `init()` alongside the initial `fetchSnapshot()`, instead of being conditionally triggered on the first `snapshot-loaded` message; the `watching` model field still tracks state but no longer gates command emission
 - **Test fixture type completeness** — added missing `watching: false` to the `makeModel()` helper in `views.test.ts` to match the updated `DashboardModel` type
 - **graph.watch() process hang** — `stopWatching()` now clears the poll interval on quit, preventing the Node process from hanging after dashboard exit

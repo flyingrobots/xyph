@@ -5,8 +5,10 @@ import * as ed from '@noble/ed25519';
 import {
   canonicalize,
   prefixedBlake3,
+  publicKeyToDidKey,
   loadKeyring,
   verifyEd25519DetachedHex,
+  CURRENT_KEYRING_VERSION,
   type Json,
 } from '../../validation/crypto.js';
 
@@ -43,6 +45,16 @@ export interface GuildSeal {
   sealedAt: number;
 }
 
+/** Shape written to keyring.json — mirrors KeyringEntry but without the parsed Map index. */
+interface KeyringEntryJson {
+  keyId: string;
+  alg: string;
+  publicKeyHex: string;
+  active: boolean;
+  agentId?: string;
+  legacyKeyIds?: string[];
+}
+
 export class GuildSealService {
   /**
    * @param trustDir Absolute path to the trust directory containing keyring.json
@@ -64,10 +76,24 @@ export class GuildSealService {
   }
 
   /**
-   * Returns the key ID for an agent (DID format).
+   * Returns the multibase-encoded did:key identifier for an agent.
+   * Looks up the agent's public key from the keyring and derives the DID key
+   * using the Ed25519 multicodec prefix + base58btc encoding.
+   *
+   * Throws if no key is registered for the agent.
    */
   public keyIdForAgent(agentId: string): string {
-    return `did:key:${agentId}`;
+    const keyringPath = path.join(this.trustDir, 'keyring.json');
+    const keyring = loadKeyring(keyringPath);
+    const seen = new Set<string>();
+    for (const entry of keyring.values()) {
+      if (seen.has(entry.keyId)) continue;
+      seen.add(entry.keyId);
+      if (entry.agentId === agentId && entry.active) {
+        return publicKeyToDidKey(entry.publicKeyHex);
+      }
+    }
+    throw new Error(`No active key registered for agent '${agentId}' in keyring`);
   }
 
   /**
@@ -90,7 +116,7 @@ export class GuildSealService {
 
     const privateKeyHex = Buffer.from(priv).toString('hex');
     const publicKeyHex = Buffer.from(pub).toString('hex');
-    const keyId = this.keyIdForAgent(agentId);
+    const keyId = publicKeyToDidKey(publicKeyHex);
 
     // Write private key atomically (O_EXCL prevents overwriting an existing key)
     try {
@@ -111,12 +137,20 @@ export class GuildSealService {
 
       if (!existingKeys.has(keyId)) {
         // Reconstruct the JSON structure from the validated Map + the new entry
-        const keys: { keyId: string; alg: string; publicKeyHex: string }[] = [];
+        const keys: KeyringEntryJson[] = [];
+        const seen = new Set<string>();
         for (const entry of existingKeys.values()) {
-          keys.push({ keyId: entry.keyId, alg: entry.alg, publicKeyHex: entry.publicKeyHex });
+          if (seen.has(entry.keyId)) continue;
+          seen.add(entry.keyId);
+          keys.push({
+            keyId: entry.keyId, alg: entry.alg, publicKeyHex: entry.publicKeyHex,
+            active: entry.active,
+            ...(entry.agentId !== undefined ? { agentId: entry.agentId } : {}),
+            ...(entry.legacyKeyIds !== undefined ? { legacyKeyIds: entry.legacyKeyIds } : {}),
+          });
         }
-        keys.push({ keyId, alg: 'ed25519', publicKeyHex });
-        fs.writeFileSync(keyringPath, JSON.stringify({ version: 'v1', keys }, null, 2) + '\n');
+        keys.push({ keyId, alg: 'ed25519', publicKeyHex, active: true, agentId });
+        fs.writeFileSync(keyringPath, JSON.stringify({ version: CURRENT_KEYRING_VERSION, keys }, null, 2) + '\n');
       }
     } catch (err) {
       // Roll back: remove the private key so the agent is not stuck with an orphaned .sk
@@ -125,6 +159,87 @@ export class GuildSealService {
     }
 
     return { keyId, publicKeyHex };
+  }
+
+  /**
+   * Rotates an agent's key: generates a new Ed25519 keypair, marks the
+   * previous key as retired (`active: false`), and registers the new key
+   * as the sole active key for the agent.
+   *
+   * The old private key file is renamed to `<agentId>.sk.retired.<keyId-suffix>`
+   * so it remains available for debugging but is no longer used for signing.
+   * The old public key stays in the keyring for signature verification of
+   * historical patches.
+   *
+   * Throws if no existing key is registered for the agent.
+   */
+  public async rotateKey(agentId: string): Promise<{ keyId: string; publicKeyHex: string }> {
+    const keyringPath = path.join(this.trustDir, 'keyring.json');
+    const existingKeys = loadKeyring(keyringPath);
+
+    // Find the current active key for this agent
+    let currentKeyId: string | undefined;
+    const seen = new Set<string>();
+    for (const entry of existingKeys.values()) {
+      if (seen.has(entry.keyId)) continue;
+      seen.add(entry.keyId);
+      if (entry.agentId === agentId && entry.active) {
+        currentKeyId = entry.keyId;
+      }
+    }
+    if (currentKeyId === undefined) {
+      throw new Error(`No key registered for agent '${agentId}' — cannot rotate`);
+    }
+
+    // Generate a new keypair
+    const priv = randomBytes(32);
+    const pub = await ed.getPublicKey(priv);
+    const privateKeyHex = Buffer.from(priv).toString('hex');
+    const publicKeyHex = Buffer.from(pub).toString('hex');
+    const newKeyId = publicKeyToDidKey(publicKeyHex);
+
+    // Retire the old private key file by renaming it
+    const oldSkPath = this.skPath(agentId);
+    const suffix = currentKeyId.slice(-8);
+    const retiredPath = `${oldSkPath}.retired.${suffix}`;
+    let didRename = false;
+    if (fs.existsSync(oldSkPath)) {
+      fs.renameSync(oldSkPath, retiredPath);
+      didRename = true;
+    }
+
+    // Write the new private key
+    fs.writeFileSync(oldSkPath, privateKeyHex, { mode: 0o600 });
+
+    // Rebuild keyring: retire old key, add new active key.
+    // Wrapped in try/catch to roll back filesystem changes if the keyring
+    // write fails, preventing an orphaned private key with no keyring entry.
+    try {
+      const keys: KeyringEntryJson[] = [];
+      const rebuilt = new Set<string>();
+      for (const entry of existingKeys.values()) {
+        if (rebuilt.has(entry.keyId)) continue;
+        rebuilt.add(entry.keyId);
+        const isOldKey = entry.keyId === currentKeyId;
+        keys.push({
+          keyId: entry.keyId, alg: entry.alg, publicKeyHex: entry.publicKeyHex,
+          active: isOldKey ? false : entry.active,
+          ...(entry.agentId !== undefined ? { agentId: entry.agentId } : {}),
+          ...(entry.legacyKeyIds !== undefined ? { legacyKeyIds: entry.legacyKeyIds } : {}),
+        });
+      }
+      keys.push({ keyId: newKeyId, alg: 'ed25519', publicKeyHex, active: true, agentId });
+      fs.writeFileSync(keyringPath, JSON.stringify({ version: CURRENT_KEYRING_VERSION, keys }, null, 2) + '\n');
+    } catch (err) {
+      // Roll back: delete the new .sk and restore the old one
+      try { fs.unlinkSync(oldSkPath); } catch { /* best-effort */ }
+      if (didRename) {
+        try { fs.renameSync(retiredPath, oldSkPath); } catch { /* best-effort */ }
+      }
+      throw err;
+    }
+
+    return { keyId: newKeyId, publicKeyHex };
   }
 
   /**
@@ -162,9 +277,10 @@ export class GuildSealService {
 
     const msg = new TextEncoder().encode(canonical);
     const priv = Buffer.from(privateKeyHex, 'hex');
+    const pub = await ed.getPublicKey(priv);
     const sig = await ed.sign(msg, priv);
     const sigHex = Buffer.from(sig).toString('hex');
-    const keyId = this.keyIdForAgent(agentId);
+    const keyId = publicKeyToDidKey(Buffer.from(pub).toString('hex'));
 
     return {
       alg: 'ed25519',
