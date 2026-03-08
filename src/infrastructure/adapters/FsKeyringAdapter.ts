@@ -11,7 +11,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomBytes as nodeRandomBytes } from 'node:crypto';
-import type { KeyringStoragePort, Keyring } from '../../ports/KeyringStoragePort.js';
+import type { KeyringStoragePort, Keyring, KeyringMutator, KeyOps } from '../../ports/KeyringStoragePort.js';
 import {
   loadKeyring as loadKeyringFromFile,
   CURRENT_KEYRING_VERSION,
@@ -122,6 +122,71 @@ export class FsKeyringAdapter implements KeyringStoragePort {
 
   writePrivateKeyOverwrite(agentId: string, privateKeyHex: string): void {
     fs.writeFileSync(this.skPath(agentId), privateKeyHex, { mode: 0o600 });
+  }
+
+  updateKeyring(mutator: KeyringMutator): void {
+    type UndoEntry =
+      | { tag: 'wrote'; agentId: string }
+      | { tag: 'overwrote'; agentId: string; previous: string | null }
+      | { tag: 'retired'; agentId: string; suffix: string };
+
+    const undoLog: UndoEntry[] = [];
+
+    const ops: KeyOps = {
+      writePrivateKey: (agentId: string, hex: string): void => {
+        this.writePrivateKey(agentId, hex);
+        undoLog.push({ tag: 'wrote', agentId });
+      },
+      writePrivateKeyOverwrite: (agentId: string, hex: string): void => {
+        const previous = this.readPrivateKey(agentId);
+        this.writePrivateKeyOverwrite(agentId, hex);
+        undoLog.push({ tag: 'overwrote', agentId, previous });
+      },
+      retirePrivateKey: (agentId: string, suffix: string): boolean => {
+        const didRetire = this.retirePrivateKey(agentId, suffix);
+        if (didRetire) {
+          undoLog.push({ tag: 'retired', agentId, suffix });
+        }
+        return didRetire;
+      },
+    };
+
+    const rollback = (): void => {
+      for (let i = undoLog.length - 1; i >= 0; i--) {
+        const entry = undoLog[i];
+        if (!entry) continue;
+        switch (entry.tag) {
+          case 'wrote':
+            this.removePrivateKey(entry.agentId);
+            break;
+          case 'overwrote':
+            if (entry.previous !== null) {
+              this.writePrivateKeyOverwrite(entry.agentId, entry.previous);
+            } else {
+              this.removePrivateKey(entry.agentId);
+            }
+            break;
+          case 'retired':
+            this.restoreRetiredPrivateKey(entry.agentId, entry.suffix);
+            break;
+        }
+      }
+    };
+
+    const keyring = this.loadKeyring();
+    let newKeyring: Keyring;
+    try {
+      newKeyring = mutator(keyring, ops);
+    } catch (err) {
+      rollback();
+      throw err;
+    }
+    try {
+      this.saveKeyring(newKeyring);
+    } catch (err) {
+      rollback();
+      throw err;
+    }
   }
 
   randomBytes(length: number): Uint8Array {

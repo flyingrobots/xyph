@@ -83,23 +83,13 @@ export class GuildSealService {
     const publicKeyHex = Buffer.from(pub).toString('hex');
     const keyId = publicKeyToDidKey(publicKeyHex);
 
-    // Check keyring for existing active key before writing anything.
-    // Protects against the case where the .sk file was manually deleted but
-    // the keyring still contains an active entry for this agent.
-    const keyring = this.storage.loadKeyring();
-    for (const entry of keyring.entries.values()) {
-      if (entry.agentId === agentId && entry.active) {
-        throw new Error(`Key already exists for agent '${agentId}' in keyring`);
+    this.storage.updateKeyring((keyring, ops) => {
+      for (const entry of keyring.entries.values()) {
+        if (entry.agentId === agentId && entry.active) {
+          throw new Error(`Key already exists for agent '${agentId}' in keyring`);
+        }
       }
-    }
-
-    // Write private key atomically (adapter enforces no-overwrite semantics)
-    this.storage.writePrivateKey(agentId, privateKeyHex);
-
-    // Register public key in keyring.
-    // Wrapped in try/catch to roll back the .sk file if keyring update fails,
-    // preventing permanently broken state (orphaned .sk with no keyring entry).
-    try {
+      ops.writePrivateKey(agentId, privateKeyHex);
       if (!keyring.entries.has(keyId)) {
         keyring.entries.set(keyId, {
           keyId,
@@ -108,13 +98,9 @@ export class GuildSealService {
           active: true,
           agentId,
         });
-        this.storage.saveKeyring(keyring);
       }
-    } catch (err) {
-      // Roll back: remove the private key so the agent is not stuck with an orphaned .sk
-      this.storage.removePrivateKey(agentId);
-      throw err;
-    }
+      return keyring;
+    });
 
     return { keyId, publicKeyHex };
   }
@@ -132,37 +118,29 @@ export class GuildSealService {
    * Throws if no existing key is registered for the agent.
    */
   public async rotateKey(agentId: string): Promise<{ keyId: string; publicKeyHex: string }> {
-    const keyring = this.storage.loadKeyring();
-
-    // Find the current active key for this agent
-    let currentKeyId: string | undefined;
-    const seen = new Set<string>();
-    for (const entry of keyring.entries.values()) {
-      if (seen.has(entry.keyId)) continue;
-      seen.add(entry.keyId);
-      if (entry.agentId === agentId && entry.active) {
-        currentKeyId = entry.keyId;
-      }
-    }
-    if (currentKeyId === undefined) {
-      throw new Error(`No key registered for agent '${agentId}' — cannot rotate`);
-    }
-
-    // Generate a new keypair
     const priv = this.storage.randomBytes(32);
     const pub = await ed.getPublicKey(priv);
     const privateKeyHex = Buffer.from(priv).toString('hex');
     const publicKeyHex = Buffer.from(pub).toString('hex');
     const newKeyId = publicKeyToDidKey(publicKeyHex);
 
-    // Retire the old private key by renaming it
-    const suffix = currentKeyId.slice(-8);
-    const didRename = this.storage.retirePrivateKey(agentId, suffix);
+    this.storage.updateKeyring((keyring, ops) => {
+      let currentKeyId: string | undefined;
+      const seen = new Set<string>();
+      for (const entry of keyring.entries.values()) {
+        if (seen.has(entry.keyId)) continue;
+        seen.add(entry.keyId);
+        if (entry.agentId === agentId && entry.active) {
+          currentKeyId = entry.keyId;
+        }
+      }
+      if (currentKeyId === undefined) {
+        throw new Error(`No key registered for agent '${agentId}' — cannot rotate`);
+      }
 
-    // Write the new private key and rebuild keyring inside a single try/catch
-    // so that any failure (write, keyring save) rolls back all changes.
-    try {
-      this.storage.writePrivateKeyOverwrite(agentId, privateKeyHex);
+      const suffix = currentKeyId.slice(-8);
+      ops.retirePrivateKey(agentId, suffix);
+      ops.writePrivateKeyOverwrite(agentId, privateKeyHex);
 
       const currentEntry = keyring.entries.get(currentKeyId);
       if (currentEntry) {
@@ -175,15 +153,8 @@ export class GuildSealService {
         active: true,
         agentId,
       });
-      this.storage.saveKeyring(keyring);
-    } catch (err) {
-      // Roll back: delete the new .sk and restore the old one
-      this.storage.removePrivateKey(agentId);
-      if (didRename) {
-        this.storage.restoreRetiredPrivateKey(agentId, suffix);
-      }
-      throw err;
-    }
+      return keyring;
+    });
 
     return { keyId: newKeyId, publicKeyHex };
   }
