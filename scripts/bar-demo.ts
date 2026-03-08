@@ -52,7 +52,7 @@ async function runDemo(): Promise<void> {
   const width = 50;
   const trackChar = '⠐';
 
-  const gradients: Array<[string, GradientStop[]]> = [
+  const gradients: [string, GradientStop[]][] = [
     ['A: cyan → magenta (current)', CYAN_MAGENTA.gradient.brand],
     ['B: teal → orange → pink (candidate)', TEAL_ORANGE_PINK.gradient.brand],
   ];

@@ -101,7 +101,7 @@ await commit(`Wire authorized-by: ${forgeQuests.length} FORGE quests → intent:
 
 // ─── 4. New backlog quests ─────────────────────────────────────────────────────
 
-type QuestDef = { id: string; title: string; hours: number; campaign: string; intent: string };
+interface QuestDef { id: string; title: string; hours: number; campaign: string; intent: string }
 
 const newQuests: QuestDef[] = [
   // Bugs / jank found during M5

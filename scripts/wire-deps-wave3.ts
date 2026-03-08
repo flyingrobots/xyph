@@ -4,7 +4,7 @@
  * sitting in the frontier that logically need prerequisites.
  */
 
-import WarpGraph, { GitGraphAdapter, PatchSession } from '@git-stunts/git-warp';
+import WarpGraph, { GitGraphAdapter } from '@git-stunts/git-warp';
 import Plumbing from '@git-stunts/plumbing';
 import chalk from 'chalk';
 import { createPatchSession } from '../src/infrastructure/helpers/createPatchSession.js';
@@ -27,7 +27,7 @@ async function openGraph(): Promise<WarpGraph> {
 }
 
 // [from, to, reason] — from depends on to
-const WAVE3_EDGES: Array<[string, string, string]> = [
+const WAVE3_EDGES: [string, string, string][] = [
   // dag-visualization needs bijou-dag-renderer built first
   ['task:dag-visualization', 'task:bijou-dag-renderer', 'dag viz uses bijou dag component'],
 
@@ -137,7 +137,7 @@ async function main(): Promise<void> {
 
   // Cycle detection
   console.log(chalk.cyan('\n── Cycle detection ──'));
-  const safe: Array<[string, string]> = [];
+  const safe: [string, string][] = [];
   let skipped = 0;
 
   for (const [from, to, reason] of validEdges) {

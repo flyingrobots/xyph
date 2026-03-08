@@ -37,7 +37,8 @@ async function main(): Promise<void> {
     const visited = new Set<string>();
     const queue = [startId];
     while (queue.length > 0) {
-      const current = queue.shift()!;
+      const current = queue.shift();
+      if (current === undefined) break;
       const downs = dependents.get(current) ?? [];
       for (const d of downs) {
         if (!visited.has(d)) {
@@ -49,7 +50,7 @@ async function main(): Promise<void> {
     return [...visited];
   }
 
-  const results: Array<{id: string; title: string; status: string; direct: number; transitive: number}> = [];
+  const results: {id: string; title: string; status: string; direct: number; transitive: number}[] = [];
   for (const id of taskIds) {
     const p = await graph.getNodeProps(id);
     const status = (p?.['status'] as string | undefined) ?? 'BACKLOG';

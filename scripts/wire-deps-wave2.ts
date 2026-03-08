@@ -43,7 +43,7 @@ async function commitPatch(
 
 // ── Convention: [from, to] = `from` depends on `to` (to is prerequisite) ──
 
-const WAVE2_EDGES: Array<[string, string, string]> = [
+const WAVE2_EDGES: [string, string, string][] = [
   // ─── BX: HistoryPort is the shared infra for time-travel commands ───
   // BX-017 (HistoryPort) must exist before history/receipts/seek/diff/provenance
   ['task:BX-009',  'task:BX-017',  'history needs HistoryPort'],
@@ -166,7 +166,7 @@ async function main(): Promise<void> {
   // Cycle detection
   console.log(chalk.cyan('\n── Cycle detection ──'));
   const skipped: string[] = [];
-  const safe: Array<[string, string]> = [];
+  const safe: [string, string][] = [];
 
   for (const [from, to, reason] of WAVE2_EDGES) {
     const { reachable } = await graph.traverse.isReachable(to, from, {
