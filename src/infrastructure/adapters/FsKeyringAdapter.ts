@@ -155,20 +155,26 @@ export class FsKeyringAdapter implements KeyringStoragePort {
       for (let i = undoLog.length - 1; i >= 0; i--) {
         const entry = undoLog[i];
         if (!entry) continue;
-        switch (entry.tag) {
-          case 'wrote':
-            this.removePrivateKey(entry.agentId);
-            break;
-          case 'overwrote':
-            if (entry.previous !== null) {
-              this.writePrivateKeyOverwrite(entry.agentId, entry.previous);
-            } else {
+        // Each undo op is best-effort — a failure must not abort the loop
+        // or mask the original error that triggered rollback.
+        try {
+          switch (entry.tag) {
+            case 'wrote':
               this.removePrivateKey(entry.agentId);
-            }
-            break;
-          case 'retired':
-            this.restoreRetiredPrivateKey(entry.agentId, entry.suffix);
-            break;
+              break;
+            case 'overwrote':
+              if (entry.previous !== null) {
+                this.writePrivateKeyOverwrite(entry.agentId, entry.previous);
+              } else {
+                this.removePrivateKey(entry.agentId);
+              }
+              break;
+            case 'retired':
+              this.restoreRetiredPrivateKey(entry.agentId, entry.suffix);
+              break;
+          }
+        } catch {
+          // best-effort: continue rolling back remaining entries
         }
       }
     };

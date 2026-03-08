@@ -141,6 +141,44 @@ describe('FsKeyringAdapter.updateKeyring', () => {
     ]);
   });
 
+  it('rollback continues when an individual undo operation throws', () => {
+    adapter.writePrivateKey('agent.kappa', 'kappa_original');
+
+    const rollbackOrder: string[] = [];
+    const origRemove = adapter.removePrivateKey.bind(adapter);
+    const origRestore = adapter.restoreRetiredPrivateKey.bind(adapter);
+
+    adapter.removePrivateKey = (agentId: string): void => {
+      rollbackOrder.push(`remove:${agentId}`);
+      if (agentId === 'agent.kappa') {
+        throw new Error('disk on fire');
+      }
+      origRemove(agentId);
+    };
+    adapter.restoreRetiredPrivateKey = (agentId: string, suffix: string): void => {
+      rollbackOrder.push(`restore:${agentId}`);
+      origRestore(agentId, suffix);
+    };
+
+    // op 0: retire kappa, op 1: overwrite kappa (previous=null), op 2: write lambda
+    // Rollback: undo op 2 (remove lambda), undo op 1 (remove kappa → THROWS), undo op 0 (restore kappa)
+    expect(() => {
+      adapter.updateKeyring((_keyring, ops) => {
+        ops.retirePrivateKey('agent.kappa', 'suf1');
+        ops.writePrivateKeyOverwrite('agent.kappa', 'new_kappa');
+        ops.writePrivateKey('agent.lambda', 'lambda_key');
+        throw new Error('original error');
+      });
+    }).toThrow('original error');
+
+    // All three rollback ops attempted despite the throw on op 1
+    expect(rollbackOrder).toEqual([
+      'remove:agent.lambda',        // undo op 2 — succeeds
+      'remove:agent.kappa',         // undo op 1 — throws, but rollback continues
+      'restore:agent.kappa',        // undo op 0 — still runs
+    ]);
+  });
+
   it('mutator receives current keyring state', () => {
     seedKeyring([{
       keyId: 'did:key:preexisting',
