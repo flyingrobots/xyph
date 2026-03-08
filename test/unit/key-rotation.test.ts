@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { loadKeyring, publicKeyToDidKey } from '../../src/validation/crypto.js';
 import { GuildSealService } from '../../src/domain/services/GuildSealService.js';
+import { FsKeyringAdapter } from '../../src/infrastructure/adapters/FsKeyringAdapter.js';
 
 describe('key rotation', () => {
   const tmpDirs: string[] = [];
@@ -134,7 +135,7 @@ describe('key rotation', () => {
           { keyId: id2, alg: 'ed25519', publicKeyHex: pub2, agentId: 'agent.rotated', active: true },
         ],
       });
-      const service = new GuildSealService(dir);
+      const service = new GuildSealService(new FsKeyringAdapter(dir));
       expect(service.keyIdForAgent('agent.rotated')).toBe(id2);
     });
 
@@ -146,7 +147,7 @@ describe('key rotation', () => {
           { keyId: publicKeyToDidKey(pub1), alg: 'ed25519', publicKeyHex: pub1, agentId: 'agent.retired', active: false },
         ],
       });
-      const service = new GuildSealService(dir);
+      const service = new GuildSealService(new FsKeyringAdapter(dir));
       expect(() => service.keyIdForAgent('agent.retired')).toThrow(/no.*active.*key/i);
     });
   });
@@ -156,7 +157,7 @@ describe('key rotation', () => {
   describe('GuildSealService.rotateKey()', () => {
     it('generates a new active key and retires the old one', async () => {
       const dir = makeTrustDir({ version: 'v3', keys: [] });
-      const service = new GuildSealService(dir);
+      const service = new GuildSealService(new FsKeyringAdapter(dir));
       const agentId = 'agent.rotate-test';
 
       // Generate initial key
@@ -190,7 +191,7 @@ describe('key rotation', () => {
 
     it('old key still verifies signatures made before rotation', async () => {
       const dir = makeTrustDir({ version: 'v3', keys: [] });
-      const service = new GuildSealService(dir);
+      const service = new GuildSealService(new FsKeyringAdapter(dir));
       const agentId = 'agent.verify-rotation';
 
       await service.generateKeypair(agentId);
@@ -217,7 +218,7 @@ describe('key rotation', () => {
 
     it('new key signs after rotation', async () => {
       const dir = makeTrustDir({ version: 'v3', keys: [] });
-      const service = new GuildSealService(dir);
+      const service = new GuildSealService(new FsKeyringAdapter(dir));
       const agentId = 'agent.sign-after-rotate';
 
       await service.generateKeypair(agentId);
@@ -241,7 +242,7 @@ describe('key rotation', () => {
 
     it('throws when rotating a key for an agent with no existing key', async () => {
       const dir = makeTrustDir({ version: 'v3', keys: [] });
-      const service = new GuildSealService(dir);
+      const service = new GuildSealService(new FsKeyringAdapter(dir));
       await expect(service.rotateKey('agent.nobody')).rejects.toThrow(/no.*key.*registered/i);
     });
   });

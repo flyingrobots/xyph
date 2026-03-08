@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseTestFile } from '../../src/domain/services/analysis/TestFileParser.js';
+import { parseTestFile } from '../../src/infrastructure/adapters/TsCompilerTestParserAdapter.js';
 
 describe('TestFileParser', () => {
   it('should extract file name from path', () => {

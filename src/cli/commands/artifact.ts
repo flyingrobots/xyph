@@ -12,7 +12,8 @@ export function registerArtifactCommands(program: Command, ctx: CliContext): voi
     .requiredOption('--rationale <text>', 'Brief explanation of the solution')
     .action(withErrorHandler(async (id: string, opts: { artifact: string; rationale: string }) => {
       const { GuildSealService } = await import('../../domain/services/GuildSealService.js');
-      const sealService = new GuildSealService();
+      const { FsKeyringAdapter } = await import('../../infrastructure/adapters/FsKeyringAdapter.js');
+      const sealService = new GuildSealService(new FsKeyringAdapter());
 
       // Guard: warn if a non-terminal submission exists for this quest
       let openSubWarning: string | undefined;
@@ -95,7 +96,8 @@ export function registerArtifactCommands(program: Command, ctx: CliContext): voi
     .description('Generate an Ed25519 Guild Seal keypair for this agent')
     .action(withErrorHandler(async () => {
       const { GuildSealService } = await import('../../domain/services/GuildSealService.js');
-      const sealService = new GuildSealService();
+      const { FsKeyringAdapter } = await import('../../infrastructure/adapters/FsKeyringAdapter.js');
+      const sealService = new GuildSealService(new FsKeyringAdapter());
 
       const { keyId, publicKeyHex } = await sealService.generateKeypair(ctx.agentId);
 

@@ -184,6 +184,7 @@ export function registerSubmissionCommands(program: Command, ctx: CliContext): v
       const { SubmissionService } = await import('../../domain/services/SubmissionService.js');
       const { GitWorkspaceAdapter } = await import('../../infrastructure/adapters/GitWorkspaceAdapter.js');
       const { GuildSealService } = await import('../../domain/services/GuildSealService.js');
+      const { FsKeyringAdapter } = await import('../../infrastructure/adapters/FsKeyringAdapter.js');
 
       const adapter = new WarpSubmissionAdapter(ctx.graphPort, ctx.agentId);
       const service = new SubmissionService(adapter);
@@ -230,7 +231,7 @@ export function registerSubmissionCommands(program: Command, ctx: CliContext): v
           ctx.warn(`[WARN] Quest ${questId} is already DONE — skipping auto-seal.`);
         } else {
           const now = Date.now();
-          const sealService = new GuildSealService();
+          const sealService = new GuildSealService(new FsKeyringAdapter());
           const scrollPayload = {
             artifactHash: mergeCommit ?? 'unknown',
             questId,
