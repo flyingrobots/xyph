@@ -4,7 +4,7 @@
   "description": "Agent Planning and Orchestration framework powered by Causal Agents and WARP graphs.",
   "type": "module",
   "scripts": {
-    "lint": "eslint \"src/**/*.ts\" \"test/**/*.ts\" xyph-actuator.ts xyph-dashboard.ts xyph-theme-lab.ts",
+    "lint": "eslint \"src/**/*.ts\" \"test/**/*.ts\" \"scripts/**/*.ts\" \"scripts/**/*.mts\" xyph-actuator.ts xyph-dashboard.ts xyph-theme-lab.ts",
     "build": "tsc",
     "coordinator": "node dist/src/coordinator-daemon.js",
     "verify:patch-ops": "npm run build && node scripts/verify-patch-ops.mjs patches",

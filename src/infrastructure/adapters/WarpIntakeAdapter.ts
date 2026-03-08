@@ -68,10 +68,11 @@ export class WarpIntakeAdapter implements IntakePort {
     if (props === null) {
       throw new Error(`[NOT_FOUND] Quest ${questId} not found in the graph`);
     }
-    const status = props['status'];
-    if (status !== 'INBOX') {
+    const status = props['status'] as string | undefined;
+    const rejectable = new Set(['INBOX', 'BACKLOG', 'PLANNED']);
+    if (status === undefined || !rejectable.has(status)) {
       throw new Error(
-        `[INVALID_FROM] reject requires status INBOX, quest ${questId} is ${String(status)}`
+        `[INVALID_FROM] reject requires status INBOX, BACKLOG, or PLANNED, quest ${questId} is ${String(status)}`
       );
     }
 

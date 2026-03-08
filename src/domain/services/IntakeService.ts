@@ -4,8 +4,9 @@ import type { Quest, QuestStatus } from '../entities/Quest.js';
 /**
  * Canonical state-machine for the intake pipeline.
  *
- * BACKLOG  ──promote (human only)──▶  PLANNED
- *          └──reject  (any actor) ──▶  GRAVEYARD
+ * BACKLOG    ──promote (human only)──▶  PLANNED
+ * BACKLOG  ┬──reject  (any actor) ──▶  GRAVEYARD
+ * PLANNED  ┘
  * GRAVEYARD  ──reopen (human only)──▶  BACKLOG
  *
  * All existing PLANNED→IN_PROGRESS→DONE transitions are unchanged.
@@ -20,6 +21,7 @@ export interface TransitionRule {
 export const TRANSITION_TABLE: readonly TransitionRule[] = [
   { from: 'BACKLOG', to: 'PLANNED', requiresHuman: true, command: 'promote' },
   { from: 'BACKLOG', to: 'GRAVEYARD', requiresHuman: false, command: 'reject' },
+  { from: 'PLANNED', to: 'GRAVEYARD', requiresHuman: false, command: 'reject' },
   { from: 'GRAVEYARD', to: 'BACKLOG', requiresHuman: true, command: 'reopen' },
 ];
 
@@ -77,18 +79,24 @@ export class IntakeService {
     }
   }
 
+  /** Statuses from which reject is allowed (post-normalization). */
+  private static readonly REJECTABLE: ReadonlySet<string> = new Set([
+    'BACKLOG', 'PLANNED',
+  ]);
+
   /**
    * Validates that reject can proceed.
-   * Any principal (human or agent) may reject.
+   * Any principal (human or agent) may reject from BACKLOG or PLANNED.
+   * Note: raw INBOX is normalized to BACKLOG before reaching the domain layer.
    */
   async validateReject(questId: string, rationale: string): Promise<void> {
     if (rationale.trim().length === 0) {
       throw new Error(`[MISSING_ARG] --rationale is required and must be non-empty`);
     }
     const quest = await this.getQuestOrThrow(questId);
-    if (quest.status !== 'BACKLOG') {
+    if (!IntakeService.REJECTABLE.has(quest.status)) {
       throw new Error(
-        `[INVALID_FROM] reject requires status BACKLOG, quest ${questId} is ${quest.status}`
+        `[INVALID_FROM] reject requires status BACKLOG or PLANNED, quest ${questId} is ${quest.status}`
       );
     }
   }

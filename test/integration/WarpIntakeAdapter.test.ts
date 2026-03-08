@@ -58,7 +58,17 @@ describe('WarpIntakeAdapter Integration', () => {
         .setProperty('task:INTAKE-ALREADY-PROMOTED', 'title', 'Already promoted task for order-independent test')
         .setProperty('task:INTAKE-ALREADY-PROMOTED', 'status', 'BACKLOG')
         .setProperty('task:INTAKE-ALREADY-PROMOTED', 'hours', 1)
-        .setProperty('task:INTAKE-ALREADY-PROMOTED', 'type', 'task');
+        .setProperty('task:INTAKE-ALREADY-PROMOTED', 'type', 'task')
+        .addNode('task:INTAKE-REJECT-BACKLOG')
+        .setProperty('task:INTAKE-REJECT-BACKLOG', 'title', 'BACKLOG task for reject test')
+        .setProperty('task:INTAKE-REJECT-BACKLOG', 'status', 'BACKLOG')
+        .setProperty('task:INTAKE-REJECT-BACKLOG', 'hours', 1)
+        .setProperty('task:INTAKE-REJECT-BACKLOG', 'type', 'task')
+        .addNode('task:INTAKE-REJECT-PLANNED')
+        .setProperty('task:INTAKE-REJECT-PLANNED', 'title', 'PLANNED task for reject test')
+        .setProperty('task:INTAKE-REJECT-PLANNED', 'status', 'PLANNED')
+        .setProperty('task:INTAKE-REJECT-PLANNED', 'hours', 1)
+        .setProperty('task:INTAKE-REJECT-PLANNED', 'type', 'task');
     });
   });
 
@@ -124,8 +134,32 @@ describe('WarpIntakeAdapter Integration', () => {
     await expect(adapter.reject('task:INTAKE-002', '   ')).rejects.toThrow('[MISSING_ARG]');
   });
 
-  it('reject fails: task not in INBOX → [INVALID_FROM]', async () => {
+  it('reject fails: task in GRAVEYARD → [INVALID_FROM]', async () => {
     const adapter = new WarpIntakeAdapter(graphPort, humanAgentId);
     await expect(adapter.reject('task:INTAKE-004', 'some reason')).rejects.toThrow('[INVALID_FROM]');
+  });
+
+  it('reject succeeds from BACKLOG status', async () => {
+    const adapter = new WarpIntakeAdapter(graphPort, humanAgentId);
+    await adapter.reject('task:INTAKE-REJECT-BACKLOG', 'Redundant with existing work');
+
+    const reader = createGraphContext(graphPort);
+    const snapshot = await reader.fetchSnapshot();
+    const q = snapshot.quests.find((q) => q.id === 'task:INTAKE-REJECT-BACKLOG');
+    expect(q?.status).toBe('GRAVEYARD');
+    expect(q?.rejectedBy).toBe(humanAgentId);
+    expect(q?.rejectionRationale).toBe('Redundant with existing work');
+  });
+
+  it('reject succeeds from PLANNED status', async () => {
+    const adapter = new WarpIntakeAdapter(graphPort, humanAgentId);
+    await adapter.reject('task:INTAKE-REJECT-PLANNED', 'Superseded by git-warp native API');
+
+    const reader = createGraphContext(graphPort);
+    const snapshot = await reader.fetchSnapshot();
+    const q = snapshot.quests.find((q) => q.id === 'task:INTAKE-REJECT-PLANNED');
+    expect(q?.status).toBe('GRAVEYARD');
+    expect(q?.rejectedBy).toBe(humanAgentId);
+    expect(q?.rejectionRationale).toBe('Superseded by git-warp native API');
   });
 });

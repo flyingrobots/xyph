@@ -19,8 +19,8 @@ function makePort(quest: Quest | null = null): RoadmapPort {
 }
 
 describe('TRANSITION_TABLE', () => {
-  it('contains exactly 3 entries', () => {
-    expect(TRANSITION_TABLE).toHaveLength(3);
+  it('contains exactly 4 entries', () => {
+    expect(TRANSITION_TABLE).toHaveLength(4);
   });
 
   it('promote and reopen require human authority', () => {
@@ -44,11 +44,15 @@ describe('TRANSITION_TABLE', () => {
     expect(rule?.to).toBe('PLANNED');
   });
 
-  it('reject goes from BACKLOG to GRAVEYARD', () => {
-    const rule = TRANSITION_TABLE.find((r) => r.command === 'reject');
-    expect(rule?.from).toBe('BACKLOG');
-    expect(rule?.to).toBe('GRAVEYARD');
-    expect(rule?.requiresHuman).toBe(false);
+  it('reject transitions BACKLOG and PLANNED to GRAVEYARD', () => {
+    const rules = TRANSITION_TABLE.filter((r) => r.command === 'reject');
+    expect(rules).toHaveLength(2);
+    const froms = rules.map((r) => r.from).sort();
+    expect(froms).toEqual(['BACKLOG', 'PLANNED']);
+    for (const rule of rules) {
+      expect(rule.to).toBe('GRAVEYARD');
+      expect(rule.requiresHuman).toBe(false);
+    }
   });
 });
 
@@ -134,14 +138,29 @@ describe('IntakeService', () => {
       await expect(svc.validateReject('task:TST-001', 'Out of scope')).rejects.toThrow('[NOT_FOUND]');
     });
 
-    it('throws [INVALID_FROM] when quest is not BACKLOG', async () => {
-      const svc = new IntakeService(makePort(makeQuest('PLANNED')));
+    it('throws [INVALID_FROM] when quest is IN_PROGRESS', async () => {
+      const svc = new IntakeService(makePort(makeQuest('IN_PROGRESS')));
       await expect(svc.validateReject('task:TST-001', 'Out of scope')).rejects.toThrow('[INVALID_FROM]');
     });
 
-    it('resolves for any actor when quest is BACKLOG and rationale is provided', async () => {
+    it('throws [INVALID_FROM] when quest is DONE', async () => {
+      const svc = new IntakeService(makePort(makeQuest('DONE')));
+      await expect(svc.validateReject('task:TST-001', 'Out of scope')).rejects.toThrow('[INVALID_FROM]');
+    });
+
+    it('throws [INVALID_FROM] when quest is GRAVEYARD', async () => {
+      const svc = new IntakeService(makePort(makeQuest('GRAVEYARD')));
+      await expect(svc.validateReject('task:TST-001', 'Out of scope')).rejects.toThrow('[INVALID_FROM]');
+    });
+
+    it('resolves for any actor when quest is BACKLOG', async () => {
       const svc = new IntakeService(makePort(makeQuest('BACKLOG')));
       await expect(svc.validateReject('task:TST-001', 'Out of scope')).resolves.toBeUndefined();
+    });
+
+    it('resolves for any actor when quest is PLANNED', async () => {
+      const svc = new IntakeService(makePort(makeQuest('PLANNED')));
+      await expect(svc.validateReject('task:TST-001', 'Superseded by existing API')).resolves.toBeUndefined();
     });
 
   });

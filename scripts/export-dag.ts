@@ -172,9 +172,10 @@ async function main(): Promise<void> {
       if (!task) continue;
       const isFrontier = frontier.has(id);
       const isBlocker = topBlockerSet.has(id);
+      const fallback = { fill: '#444444', font: '#cccccc', border: '#666666' };
       const sc = isFrontier
         ? { fill: '#5c4a00', font: '#ffd700', border: '#daa520' }
-        : STATUS_COLORS[task.status] ?? STATUS_COLORS['BACKLOG'];
+        : STATUS_COLORS[task.status] ?? STATUS_COLORS['BACKLOG'] ?? fallback;
       const shortId = id.replace('task:', '');
       const transCount = blockerTransitive.get(id);
       const blockerTag = isBlocker && transCount ? ` [blocks ${transCount}]` : '';

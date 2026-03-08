@@ -6,6 +6,24 @@ All notable changes to XYPH will be documented in this file.
 
 ### Added
 
+- **`scripts/` under lint + typecheck** — `tsconfig.scripts.json` and ESLint config now cover all TypeScript scripts; `npm run lint` checks scripts alongside src/test
+- **Consolidated `wire-deps.ts`** — single idempotent dependency-wiring script replacing wave2/wave3/fixup; gracefully skips missing nodes, detects cycles and duplicates
+
+### Changed
+
+- **Reject from BACKLOG or PLANNED** — `reject` command now accepts quests in BACKLOG or PLANNED status (previously only INBOX/BACKLOG depending on layer); adapter and domain service aligned
+- **Scripts migrated to git-warp v13 API** — all `props.get('key')` calls in `scripts/` replaced with Record bracket notation `props['key']`; `Array<T>` → `T[]`, unused imports removed
+
+### Fixed
+
+- **WarpIntakeAdapter reject guard** — adapter checked `status !== 'INBOX'` but domain service expected `BACKLOG`; now both layers accept the same set of pre-work statuses
+
+### Removed
+
+- **task:BX-017 (HistoryPort)** — graveyarded as redundant; git-warp v13 natively provides `patchesFor()`, `materializeSlice({ receipts: true })`, and `materialize({ ceiling })`. Downstream quests (BX-009–016) call git-warp directly
+
+### Previously Added
+
 - **Key rotation** — `GuildSealService.rotateKey(agentId)` generates a new Ed25519 keypair, marks the previous key as retired (`active: false`), and registers the new key as the sole active key for the agent. Retired keys stay in the keyring for verification of historical signatures (WVR-006)
 - **Pre-rendered SVG diagrams** — 24 diagrams across 22 documentation files, rendered from Mermaid source (`.mmd`) to SVG via `mmdc`. Source files in `docs/diagrams/*.mmd`, rendered output in `docs/diagrams/*.svg`. Render script: `scripts/render-diagrams.sh`. Covers entity relationships, state machines, flowcharts, sequence diagrams, and architecture stacks (WVR-006)
 - **`history` command** — `xyph-actuator history <nodeId>` shows all patches that touched a node via git-warp's `patchesFor()` provenance API (Constitution Art. III compliance)
