@@ -1,7 +1,7 @@
 import type { Command } from 'commander';
 import type { CliContext } from '../context.js';
 import { createErrorHandler } from '../errorHandler.js';
-import { assertPrefix, assertMinLength } from '../validators.js';
+import { assertPrefix, assertMinLength, assertPrefixOneOf, assertNodeExists } from '../validators.js';
 import { VALID_REQUIREMENT_KINDS, VALID_REQUIREMENT_PRIORITIES } from '../../domain/entities/Requirement.js';
 import { VALID_EVIDENCE_KINDS, VALID_EVIDENCE_RESULTS } from '../../domain/entities/Evidence.js';
 
@@ -13,15 +13,11 @@ const DECOMPOSE_FROM_PREFIXES = ['intent:', 'story:'] as const;
 const DECOMPOSE_TO_PREFIXES = ['story:', 'req:'] as const;
 
 function assertDecomposeFrom(value: string): void {
-  if (!DECOMPOSE_FROM_PREFIXES.some((p) => value.startsWith(p))) {
-    throw new Error(`<from> must start with one of: ${DECOMPOSE_FROM_PREFIXES.join(', ')}. Got: '${value}'`);
-  }
+  assertPrefixOneOf(value, DECOMPOSE_FROM_PREFIXES, '<from>');
 }
 
 function assertDecomposeTo(value: string): void {
-  if (!DECOMPOSE_TO_PREFIXES.some((p) => value.startsWith(p))) {
-    throw new Error(`<to> must start with one of: ${DECOMPOSE_TO_PREFIXES.join(', ')}. Got: '${value}'`);
-  }
+  assertPrefixOneOf(value, DECOMPOSE_TO_PREFIXES, '<to>');
 }
 
 export function registerTraceabilityCommands(program: Command, ctx: CliContext): void {
@@ -49,8 +45,8 @@ export function registerTraceabilityCommands(program: Command, ctx: CliContext):
       const graph = await ctx.graphPort.getGraph();
       const now = Date.now();
 
-      if (opts.intent && !await graph.hasNode(opts.intent)) {
-        throw new Error(`[NOT_FOUND] Intent ${opts.intent} not found in the graph`);
+      if (opts.intent) {
+        await assertNodeExists(graph, opts.intent, 'Intent');
       }
 
       const sha = await graph.patch((p) => {
@@ -112,8 +108,8 @@ export function registerTraceabilityCommands(program: Command, ctx: CliContext):
 
       const graph = await ctx.graphPort.getGraph();
 
-      if (opts.story && !await graph.hasNode(opts.story)) {
-        throw new Error(`[NOT_FOUND] Story ${opts.story} not found in the graph`);
+      if (opts.story) {
+        await assertNodeExists(graph, opts.story, 'Story');
       }
 
       const sha = await graph.patch((p) => {
@@ -163,8 +159,8 @@ export function registerTraceabilityCommands(program: Command, ctx: CliContext):
 
       const graph = await ctx.graphPort.getGraph();
 
-      if (opts.requirement && !await graph.hasNode(opts.requirement)) {
-        throw new Error(`[NOT_FOUND] Requirement ${opts.requirement} not found in the graph`);
+      if (opts.requirement) {
+        await assertNodeExists(graph, opts.requirement, 'Requirement');
       }
 
       const sha = await graph.patch((p) => {
@@ -218,9 +214,7 @@ export function registerTraceabilityCommands(program: Command, ctx: CliContext):
 
       const graph = await ctx.graphPort.getGraph();
 
-      if (!await graph.hasNode(opts.criterion)) {
-        throw new Error(`[NOT_FOUND] Criterion ${opts.criterion} not found in the graph`);
-      }
+      await assertNodeExists(graph, opts.criterion, 'Criterion');
 
       const now = Date.now();
 
@@ -277,12 +271,10 @@ export function registerTraceabilityCommands(program: Command, ctx: CliContext):
 
       const graph = await ctx.graphPort.getGraph();
 
-      const [fromExists, toExists] = await Promise.all([
-        graph.hasNode(from),
-        graph.hasNode(to),
+      await Promise.all([
+        assertNodeExists(graph, from, 'Node'),
+        assertNodeExists(graph, to, 'Node'),
       ]);
-      if (!fromExists) throw new Error(`[NOT_FOUND] Node ${from} not found in the graph`);
-      if (!toExists) throw new Error(`[NOT_FOUND] Node ${to} not found in the graph`);
 
       // Cycle check via reachability
       const { reachable } = await graph.traverse.isReachable(to, from, { labelFilter: 'decomposes-to' });

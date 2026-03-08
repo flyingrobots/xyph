@@ -10,7 +10,7 @@
 import type { Command } from 'commander';
 import type { CliContext } from '../context.js';
 import { createErrorHandler } from '../errorHandler.js';
-import { assertPrefix } from '../validators.js';
+import { assertPrefix, assertNodeExists } from '../validators.js';
 
 export function registerSuggestionCommands(program: Command, ctx: CliContext): void {
   const withErrorHandler = createErrorHandler(ctx);
@@ -29,9 +29,7 @@ export function registerSuggestionCommands(program: Command, ctx: CliContext): v
 
       const graph = await ctx.graphPort.getGraph();
 
-      if (!await graph.hasNode(id)) {
-        throw new Error(`[NOT_FOUND] Suggestion ${id} not found in the graph`);
-      }
+      await assertNodeExists(graph, id, 'Suggestion');
 
       const props = await graph.getNodeProps(id);
       if (!props) throw new Error(`[NOT_FOUND] Suggestion ${id} has no properties`);
@@ -102,9 +100,7 @@ export function registerSuggestionCommands(program: Command, ctx: CliContext): v
 
       const graph = await ctx.graphPort.getGraph();
 
-      if (!await graph.hasNode(id)) {
-        throw new Error(`[NOT_FOUND] Suggestion ${id} not found in the graph`);
-      }
+      await assertNodeExists(graph, id, 'Suggestion');
 
       const props = await graph.getNodeProps(id);
       if (!props) throw new Error(`[NOT_FOUND] Suggestion ${id} has no properties`);

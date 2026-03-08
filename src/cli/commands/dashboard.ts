@@ -1,7 +1,7 @@
 import type { Command } from 'commander';
 import type { CliContext } from '../context.js';
 import { createErrorHandler } from '../errorHandler.js';
-import { assertPrefixOneOf } from '../validators.js';
+import { assertPrefixOneOf, assertNodeExists } from '../validators.js';
 
 export function registerDashboardCommands(program: Command, ctx: CliContext): void {
   const withErrorHandler = createErrorHandler(ctx);
@@ -21,12 +21,10 @@ export function registerDashboardCommands(program: Command, ctx: CliContext): vo
 
       const graph = await ctx.graphPort.getGraph();
 
-      const [fromExists, toExists] = await Promise.all([
-        graph.hasNode(from),
-        graph.hasNode(to),
+      await Promise.all([
+        assertNodeExists(graph, from, 'Node'),
+        assertNodeExists(graph, to, 'Node'),
       ]);
-      if (!fromExists) throw new Error(`[NOT_FOUND] Node ${from} not found in the graph`);
-      if (!toExists) throw new Error(`[NOT_FOUND] Node ${to} not found in the graph`);
 
       // Verify both nodes have valid types for dependency edges
       const [fromProps, toProps] = await Promise.all([
