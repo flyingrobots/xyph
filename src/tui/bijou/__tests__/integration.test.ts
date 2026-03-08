@@ -234,7 +234,7 @@ describe('DashboardApp integration (full loop)', () => {
 
   // ── Backlog input mode ────────────────────────────────────────────
 
-  it('d on backlog → type rationale → enter submits reject', () => {
+  it('D (shift+d) on backlog → type rationale → enter submits reject', () => {
     const { app } = buildApp();
     const snap = makeSnapshot({
       quests: [{ id: 'task:I1', title: 'Inbox', status: 'BACKLOG', hours: 1, suggestedBy: 'agent.test' }],
@@ -246,8 +246,8 @@ describe('DashboardApp integration (full loop)', () => {
     ]);
     expect(model.activeView).toBe('backlog');
 
-    // focusRow is already 0 from snapshot-loaded — press d
-    const [inputMode] = app.update(key('d'), model);
+    // focusRow is already 0 from snapshot-loaded — press D (shift+d)
+    const [inputMode] = app.update(key('d', { shift: true }), model);
     expect(inputMode.mode).toBe('input');
     expect(inputMode.inputState?.action.kind).toBe('reject');
 
@@ -299,7 +299,7 @@ describe('DashboardApp integration (full loop)', () => {
       key('5'),
     ]);
 
-    const [inputMode] = app.update(key('d'), model);
+    const [inputMode] = app.update(key('d', { shift: true }), model);
     const [typed] = app.update(key('x'), inputMode);
     const [cancelled] = app.update(key('escape'), typed);
     expect(cancelled.mode).toBe('normal');
@@ -317,7 +317,7 @@ describe('DashboardApp integration (full loop)', () => {
       key('5'),
     ]);
 
-    const [inputMode] = app.update(key('d'), model);
+    const [inputMode] = app.update(key('d', { shift: true }), model);
     const [noSubmit, cmds] = app.update(key('enter'), inputMode);
     expect(noSubmit.mode).toBe('input');
     expect(cmds).toHaveLength(0);
@@ -334,7 +334,7 @@ describe('DashboardApp integration (full loop)', () => {
       key('5'),
     ]);
 
-    const [inputMode] = app.update(key('d'), model);
+    const [inputMode] = app.update(key('d', { shift: true }), model);
     const [m1] = app.update(key('a'), inputMode);
     const [m2] = app.update(key('b'), m1);
     const [m3] = app.update(key('c'), m2);
@@ -524,18 +524,30 @@ describe('DashboardApp integration (full loop)', () => {
     expect(result.activeView).toBe('roadmap');
   });
 
-  it('palette: j/k navigates focus', () => {
+  it('palette: down/up navigates focus', () => {
     const { app } = buildApp();
     const m = ready(app, makeSnapshot());
 
     const [p1] = app.update(key(':'), m);
     const initialFocus = p1.paletteState?.focusIndex ?? -1;
 
-    const [p2] = app.update(key('j'), p1);
+    const [p2] = app.update(key('down'), p1);
     expect(p2.paletteState?.focusIndex).toBe(initialFocus + 1);
 
-    const [p3] = app.update(key('k'), p2);
+    const [p3] = app.update(key('up'), p2);
     expect(p3.paletteState?.focusIndex).toBe(initialFocus);
+  });
+
+  it('palette: j/k types filter characters (not navigation)', () => {
+    const { app } = buildApp();
+    const m = ready(app, makeSnapshot());
+
+    const [p1] = app.update(key(':'), m);
+    const [p2] = app.update(key('j'), p1);
+    expect(p2.paletteState?.query).toBe('j');
+
+    const [p3] = app.update(key('k'), p2);
+    expect(p3.paletteState?.query).toBe('jk');
   });
 
   it('palette: backspace removes filter chars', () => {

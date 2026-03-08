@@ -12,6 +12,8 @@ All notable changes to XYPH will be documented in this file.
 
 ### Changed
 
+- **Keybindings standardized to bijou v1.6.0 vim conventions** — all views now use `d`/`u` for half-page scroll, `g`/`G` for jump-to-top/bottom, `space` toggles accordion in lineage view. Reject in backlog rebound from `d` to `D` (shift+d) to avoid conflict with page-down. Command palette navigation changed from `j`/`k` to `Ctrl+N`/`Down` and `Ctrl+P`/`Up` (j/k now type filter characters). All view keymaps built on bijou preconfigured factories (`navTableKeyMap`, `accordionKeyMap`, `commandPaletteKeyMap`)
+- **Upgrade bijou v1.3.0 → v1.6.0** — all three packages (`@flyingrobots/bijou`, `@flyingrobots/bijou-node`, `@flyingrobots/bijou-tui`) bumped to v1.6.0. New capabilities include: `interactiveAccordion()`, transition shaders (7 built-in page transitions), preconfigured `*KeyMap()` factories for all building blocks, `markdown()` terminal renderer, `hyperlink()` (OSC 8), `dagStats()`, `auditStyle` test adapter, drawer with all 4 anchors, and DTCG theme interop
 - **VOC-001: Vocabulary rename** — raw graph statuses now match the domain model. `inbox` command writes `BACKLOG` (was `INBOX`), `promote` writes `PLANNED` (was `BACKLOG`), `quest`/`quest-wizard` write `PLANNED` (was `BACKLOG`), `reopen` writes `BACKLOG` (was `INBOX`). `normalizeQuestStatus()` retained as legacy shim for un-migrated nodes only
 - **Reject from BACKLOG or PLANNED** — `reject` command now accepts quests in BACKLOG or PLANNED status; adapter and domain service aligned
 - **Scripts migrated to git-warp v13 API** — all `props.get('key')` calls in `scripts/` replaced with Record bracket notation `props['key']`; `Array<T>` → `T[]`, unused imports removed
