@@ -2,7 +2,7 @@
 # Render all Mermaid source files (.mmd) to SVG.
 # Usage: ./scripts/render-diagrams.sh
 #
-# Requires: npx mmdc (mermaid-cli)
+# Requires: @mermaid-js/mermaid-cli (devDependency — run npm install first)
 # Config:   docs/diagrams/mermaid.json
 #
 # After rendering, writes a .mmd.sha256 sidecar for each source file.
@@ -29,7 +29,7 @@ for mmd in "$DIAGRAMS_DIR"/*.mmd; do
   sha="${mmd}.sha256"
   name="$(basename "$mmd")"
 
-  if npx mmdc -q -i "$mmd" -o "$svg" -b transparent -c "$CONFIG" 2>/dev/null; then
+  if npx --no-install mmdc -q -i "$mmd" -o "$svg" -b transparent -c "$CONFIG" 2>/dev/null; then
     # Write combined hash sidecar (CI freshness check).
     # Hash includes .mmd source + mermaid.json config so config changes are detected.
     cat "$mmd" "$CONFIG" | shasum -a 256 | awk '{print $1}' > "$sha"

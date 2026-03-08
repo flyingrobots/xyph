@@ -339,7 +339,7 @@ coordination. There are no namespace locks and no snapshot preconditions.
   `graph.patch()`. Patches converge deterministically at materialization
   (OR-Set for existence, LWW for properties).
 - If two concurrent runs modify the same entity, the write with the higher
-  Lamport timestamp wins (ties broken by writerId, then patchSha).
+  Lamport timestamp wins (ties broken by writerId, then patchSha, then opIndex).
 - The planning compiler MAY perform a post-apply consistency check
   (re-materialize and verify expectations). CRDT convergence guarantees
   storage-level consistency, but concurrent APPLY runs can still produce

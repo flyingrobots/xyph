@@ -45,7 +45,7 @@ that keeps it all backward-compatible.
             ┌───────────────┼───────────────┐
             ▼               ▼               ▼
    trust/<agent>.sk    keyring.json    did:key:z6Mk...
-   (private key)       (public key)    (agent identity)
+   (private key)       (public key)    (signing key ID)
             │                               │
             │         ┌─────────┐           │
             └────────►│  sign() ├───────────┘
@@ -66,8 +66,10 @@ The flow:
    goes to `trust/<agentId>.sk` (gitignored). The public key is registered in
    `trust/keyring.json`.
 
-2. **Identify** — The agent's identity is a [W3C DID Key][did-key-spec]:
-   `did:key:z6Mk...`, derived deterministically from the public key bytes.
+2. **Identify** — Each agent has a stable `agentId` (e.g., `agent.hal`). The
+   signing key identifier is a [W3C DID Key][did-key-spec]: `did:key:z6Mk...`,
+   derived deterministically from the current public key. On key rotation, the
+   `did:key` changes but the `agentId` remains stable.
 
 3. **Sign** — When sealing a quest, `sign()` reads the private key, derives
    the public key, canonicalizes the payload, hashes it with BLAKE3, and

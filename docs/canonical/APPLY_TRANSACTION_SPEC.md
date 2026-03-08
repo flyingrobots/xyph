@@ -116,7 +116,7 @@ deterministically at materialization time via CRDT merge rules:
 
 - **Node/edge existence:** OR-Set (add wins over concurrent remove).
 - **Properties:** LWW (highest Lamport tick wins; ties broken by writerId,
-  then patchSha).
+  then patchSha, then opIndex).
 
 ### 5.2 Conflict detection (optional, advisory)
 
