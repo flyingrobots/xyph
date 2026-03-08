@@ -17,6 +17,9 @@ import type {
   DecisionNode,
 } from '../../src/domain/models/dashboard.js';
 
+/** Deterministic default timestamp for test fixtures (2024-01-01T00:00:00Z). */
+const FIXED_TS = Date.UTC(2024, 0, 1);
+
 // ── Snapshot builder ────────────────────────────────────────────────
 
 export function makeSnapshot(overrides?: Partial<GraphSnapshot>): GraphSnapshot {
@@ -34,7 +37,7 @@ export function makeSnapshot(overrides?: Partial<GraphSnapshot>): GraphSnapshot 
     criteria: [],
     evidence: [],
     suggestions: [],
-    asOf: Date.now(),
+    asOf: FIXED_TS,
     sortedTaskIds: [] as string[],
     sortedCampaignIds: [] as string[],
     ...overrides,
@@ -62,7 +65,7 @@ export function quest(overrides: Partial<QuestNode> & { id: string; title: strin
 export function intent(overrides: Partial<IntentNode> & { id: string; title: string }): IntentNode {
   return {
     requestedBy: 'human.james',
-    createdAt: Date.now(),
+    createdAt: FIXED_TS,
     ...overrides,
   };
 }
@@ -78,7 +81,7 @@ export function scroll(overrides: Partial<ScrollNode> & { id: string; questId: s
   return {
     artifactHash: 'abc123',
     sealedBy: 'agent.james',
-    sealedAt: Date.now(),
+    sealedAt: FIXED_TS,
     hasSeal: true,
     ...overrides,
   };
@@ -90,7 +93,7 @@ export function submission(overrides: Partial<SubmissionNode> & { id: string; qu
     headsCount: 1,
     approvalCount: 0,
     submittedBy: 'agent.james',
-    submittedAt: Date.now(),
+    submittedAt: FIXED_TS,
     ...overrides,
   };
 }
@@ -100,7 +103,7 @@ export function review(overrides: Partial<ReviewNode> & { id: string; patchsetId
     verdict: 'approve',
     comment: '',
     reviewedBy: 'human.james',
-    reviewedAt: Date.now(),
+    reviewedAt: FIXED_TS,
     ...overrides,
   };
 }
@@ -110,7 +113,7 @@ export function decision(overrides: Partial<DecisionNode> & { id: string; submis
     kind: 'merge',
     decidedBy: 'human.james',
     rationale: 'Looks good',
-    decidedAt: Date.now(),
+    decidedAt: FIXED_TS,
     ...overrides,
   };
 }

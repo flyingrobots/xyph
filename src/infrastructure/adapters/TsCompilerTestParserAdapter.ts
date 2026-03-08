@@ -35,13 +35,20 @@ export function parseTestFile(content: string, filePath: string): TestDescriptor
 // Implementation (moved from src/domain/services/analysis/TestFileParser.ts)
 // ---------------------------------------------------------------------------
 
+function scriptKindFromPath(filePath: string): ts.ScriptKind {
+  if (filePath.endsWith('.tsx')) return ts.ScriptKind.TSX;
+  if (filePath.endsWith('.jsx')) return ts.ScriptKind.JSX;
+  if (filePath.endsWith('.js')) return ts.ScriptKind.JS;
+  return ts.ScriptKind.TS;
+}
+
 function parseTestFileImpl(content: string, filePath: string): TestDescriptor {
   const sourceFile = ts.createSourceFile(
     filePath,
     content,
     ts.ScriptTarget.Latest,
     true, // setParentNodes
-    ts.ScriptKind.TSX,
+    scriptKindFromPath(filePath),
   );
 
   const imports = extractImports(sourceFile);
@@ -75,6 +82,7 @@ function extractImports(sourceFile: ts.SourceFile): ImportRef[] {
 
     const namedImports: string[] = [];
     let defaultImport: string | undefined;
+    let namespaceImport: string | undefined;
 
     if (stmt.importClause) {
       if (stmt.importClause.name) {
@@ -88,7 +96,7 @@ function extractImports(sourceFile: ts.SourceFile): ImportRef[] {
             namedImports.push(element.name.text);
           }
         } else if (ts.isNamespaceImport(bindings)) {
-          defaultImport = bindings.name.text;
+          namespaceImport = bindings.name.text;
         }
       }
     }
@@ -97,6 +105,7 @@ function extractImports(sourceFile: ts.SourceFile): ImportRef[] {
       moduleSpecifier: moduleSpecifier.text,
       namedImports,
       defaultImport,
+      namespaceImport,
     });
   }
 
@@ -214,7 +223,10 @@ function collectCalls(
         calledFunctions.push(name);
       }
     } else if (ts.isPropertyAccessExpression(expr)) {
-      calledMethods.push(expr.name.text);
+      const rootName = getCallName(expr.expression);
+      if (!rootName || !isTestFrameworkCall(rootName)) {
+        calledMethods.push(expr.name.text);
+      }
     }
   }
 

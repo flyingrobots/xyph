@@ -83,6 +83,16 @@ export class GuildSealService {
     const publicKeyHex = Buffer.from(pub).toString('hex');
     const keyId = publicKeyToDidKey(publicKeyHex);
 
+    // Check keyring for existing active key before writing anything.
+    // Protects against the case where the .sk file was manually deleted but
+    // the keyring still contains an active entry for this agent.
+    const keyring = this.storage.loadKeyring();
+    for (const entry of keyring.entries.values()) {
+      if (entry.agentId === agentId && entry.active) {
+        throw new Error(`Key already exists for agent '${agentId}' in keyring`);
+      }
+    }
+
     // Write private key atomically (adapter enforces no-overwrite semantics)
     this.storage.writePrivateKey(agentId, privateKeyHex);
 
@@ -90,8 +100,6 @@ export class GuildSealService {
     // Wrapped in try/catch to roll back the .sk file if keyring update fails,
     // preventing permanently broken state (orphaned .sk with no keyring entry).
     try {
-      const keyring = this.storage.loadKeyring();
-
       if (!keyring.entries.has(keyId)) {
         keyring.entries.set(keyId, {
           keyId,
@@ -147,17 +155,15 @@ export class GuildSealService {
     const publicKeyHex = Buffer.from(pub).toString('hex');
     const newKeyId = publicKeyToDidKey(publicKeyHex);
 
-    // Retire the old private key file by renaming it
+    // Retire the old private key by renaming it
     const suffix = currentKeyId.slice(-8);
     const didRename = this.storage.retirePrivateKey(agentId, suffix);
 
-    // Write the new private key
-    this.storage.writePrivateKeyOverwrite(agentId, privateKeyHex);
-
-    // Rebuild keyring: retire old key, add new active key.
-    // Wrapped in try/catch to roll back filesystem changes if the keyring
-    // write fails, preventing an orphaned private key with no keyring entry.
+    // Write the new private key and rebuild keyring inside a single try/catch
+    // so that any failure (write, keyring save) rolls back all changes.
     try {
+      this.storage.writePrivateKeyOverwrite(agentId, privateKeyHex);
+
       const currentEntry = keyring.entries.get(currentKeyId);
       if (currentEntry) {
         keyring.entries.set(currentKeyId, { ...currentEntry, active: false });
