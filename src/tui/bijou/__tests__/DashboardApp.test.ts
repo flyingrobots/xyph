@@ -700,12 +700,15 @@ describe('DashboardApp', () => {
     it('d on backlog triggers page-down (not reject)', () => {
       const app = makeApp();
       const [initial] = app.init();
-      const snap = makeSnapshot({
-        quests: [
-          { id: 'task:I1', title: 'Backlog 1', status: 'BACKLOG', hours: 1, suggestedBy: 'agent.test' },
-          { id: 'task:I2', title: 'Backlog 2', status: 'BACKLOG', hours: 1, suggestedBy: 'agent.test' },
-        ],
-      });
+      // Seed enough items to exceed one page (default height ~20)
+      const quests = Array.from({ length: 30 }, (_, i) => ({
+        id: `task:I-${i.toString().padStart(2, '0')}`,
+        title: `Backlog ${i}`,
+        status: 'BACKLOG' as const,
+        hours: 1,
+        suggestedBy: 'agent.test',
+      }));
+      const snap = makeSnapshot({ quests });
       const [withSnap] = app.update(
         { type: 'snapshot-loaded', snapshot: snap, requestId: initial.requestId },
         initial,
@@ -716,9 +719,11 @@ describe('DashboardApp', () => {
         activeView: 'backlog',
       };
 
+      expect(loaded.backlog.table.focusRow).toBe(0);
       const [afterD] = app.update(makeKey('d'), loaded);
-      // d triggers page-down, not reject — mode stays normal
+      // d triggers page-down, not reject — mode stays normal, focusRow advances
       expect(afterD.mode).toBe('normal');
+      expect(afterD.backlog.table.focusRow).toBeGreaterThan(0);
     });
 
     it('p on backlog enters input mode for promote', () => {
@@ -1019,9 +1024,11 @@ describe('DashboardApp', () => {
         dependsOn: i > 0 ? [`task:Q-${(i - 1).toString().padStart(2, '0')}`] : [],
       }));
       const snap = makeSnapshot({ quests });
+      // Use a small viewport so the DAG exceeds the visible area
+      const smallModel: DashboardModel = { ...initial, cols: 90, rows: 10 };
       const [withSnap] = app.update(
-        { type: 'snapshot-loaded', snapshot: snap, requestId: initial.requestId },
-        initial,
+        { type: 'snapshot-loaded', snapshot: snap, requestId: smallModel.requestId },
+        smallModel,
       );
       const loaded: DashboardModel = {
         ...withSnap,
@@ -1029,12 +1036,17 @@ describe('DashboardApp', () => {
         activeView: 'roadmap',
       };
 
-      // d scrolls DAG down
+      const scrollBefore = loaded.roadmap.dagPane?.focusArea.scroll.y ?? 0;
+      // d scrolls DAG down — scroll offset should increase
       const [afterD] = app.update(makeKey('d'), loaded);
       expect(afterD.roadmap.dagPane).not.toBeNull();
-      // u scrolls DAG up (back)
+      const scrollAfterD = afterD.roadmap.dagPane?.focusArea.scroll.y ?? 0;
+      expect(scrollAfterD).toBeGreaterThanOrEqual(scrollBefore);
+      // u scrolls DAG up — scroll offset should decrease or stay at floor
       const [afterU] = app.update(makeKey('u'), afterD);
       expect(afterU.roadmap.dagPane).not.toBeNull();
+      const scrollAfterU = afterU.roadmap.dagPane?.focusArea.scroll.y ?? 0;
+      expect(scrollAfterU).toBeLessThanOrEqual(scrollAfterD);
     });
 
     it('g jumps to first item on roadmap', () => {
