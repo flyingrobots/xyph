@@ -8,12 +8,12 @@
  */
 
 import type { LlmPort, LlmMatchRequest, LlmMatch } from '../../ports/LlmPort.js';
-import type { SecretAdapter } from './VaultSecretAdapter.js';
+import type { SecretPort } from '../../ports/SecretPort.js';
 import type { LlmConfig } from '../../ports/ConfigPort.js';
 
 export class AnthropicLlmAdapter implements LlmPort {
   constructor(
-    private readonly secretAdapter: SecretAdapter,
+    private readonly secretAdapter: SecretPort,
     private readonly config: LlmConfig,
   ) {}
 
