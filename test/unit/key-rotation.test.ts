@@ -205,12 +205,13 @@ describe('key rotation', () => {
       };
       const sealBefore = await service.sign(scroll, agentId);
       expect(sealBefore).not.toBeNull();
+      if (sealBefore === null) return;
 
       // Rotate the key
       await service.rotateKey(agentId);
 
       // Old seal should still verify (retired key is still in keyring)
-      const ok = await service.verify(sealBefore!, scroll);
+      const ok = await service.verify(sealBefore, scroll);
       expect(ok).toBe(true);
     });
 
@@ -231,9 +232,10 @@ describe('key rotation', () => {
       };
       const seal = await service.sign(scroll, agentId);
       expect(seal).not.toBeNull();
-      expect(seal?.keyId).toBe(rotated.keyId);
+      if (seal === null) return;
+      expect(seal.keyId).toBe(rotated.keyId);
 
-      const ok = await service.verify(seal!, scroll);
+      const ok = await service.verify(seal, scroll);
       expect(ok).toBe(true);
     });
 
