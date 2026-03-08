@@ -19,7 +19,7 @@ export function mockGraphContext(snapshotOverrides?: Partial<GraphSnapshot>): Gr
   return {
     get graph(): never { throw new Error('not initialized'); },
     fetchSnapshot: vi.fn().mockResolvedValue(snap) as GraphContext['fetchSnapshot'],
-    filterSnapshot: vi.fn((s: GraphSnapshot, _opts: { includeGraveyard: boolean }) => s),
+    filterSnapshot: vi.fn((s: GraphSnapshot) => s) as GraphContext['filterSnapshot'],
     invalidateCache: vi.fn(),
   };
 }
