@@ -65,7 +65,7 @@ Never push code that doesn't pass both checks.
 
 ## Diagrams
 
-Documentation diagrams live in `docs/diagrams/` as Mermaid source (`.mmd`) pre-rendered to SVG. Markdown files reference the SVGs directly — no inline ` ```mermaid ` blocks.
+Documentation diagrams live in `docs/diagrams/` as Mermaid source (`.mmd`) pre-rendered to SVG. Markdown files reference the SVGs directly — no inline Mermaid code fences.
 
 **To add or edit a diagram:**
 

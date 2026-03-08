@@ -20,7 +20,7 @@
 
 ## Authorization
 
-- Domain-level authorization is enforced in actuator command handlers *before* calling `graph.patch()`. This is pre-patch validation, not a centralized gatekeeper.
+- In runtime compiler flows, domain-level authorization is enforced in actuator command handlers *before* calling `graph.patch()`. This is pre-patch validation, not a centralized gatekeeper. Bootstrap and migration scripts may use low-level graph primitives directly.
 - Approval gates (`approval:*` nodes) require human sign-off for critical path changes and scope increases >5%.
 - git-warp itself has no built-in access control — any writer with access to the Git repository can emit patches. Policy enforcement is the application's responsibility.
 

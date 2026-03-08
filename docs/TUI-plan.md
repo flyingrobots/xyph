@@ -1109,7 +1109,7 @@ Generate structured recommendations for each inbox item to accelerate triage:
 
 Analyze item title against existing campaign titles and quest titles. Suggest the best-fit campaign with confidence:
 
-```
+```text
 Suggested campaign: campaign:DASHBOARD (high confidence)
   Reason: 5 similar quests already in this campaign
 ```
@@ -1118,7 +1118,7 @@ Suggested campaign: campaign:DASHBOARD (high confidence)
 
 Match against existing intents:
 
-```
+```text
 Suggested intent: intent:DASHBOARD (medium confidence)
   Reason: Title mentions "TUI" which aligns with dashboard intent
 ```

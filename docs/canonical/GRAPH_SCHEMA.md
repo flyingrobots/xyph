@@ -278,7 +278,7 @@ Each property write carries an **EventId** — a 4-tuple that provides a global 
 
 Conflicts are resolved by comparing the complete EventId lexicographically. The write with the greater EventId wins.
 
-**Important:** Each writer independently maintains its own Lamport counter. To override a property set by writer X, the new write MUST come from writer X (to get a higher tick in X's sequence). A write from writer Y at a lower tick in Y's sequence will lose, even if Y's counter is numerically higher — because the full EventId comparison starts with Lamport, then falls through to writerId.
+**Important:** The EventId tuple is compared lexicographically: Lamport timestamp first. If writer Y's Lamport timestamp is higher than writer X's, writer Y wins — regardless of writer identity. The `writerId` field is only a tie-breaker when two writes have the same Lamport timestamp (which happens when patches are created concurrently before observing each other's clocks). This ensures a global total order across all writers.
 
 ## 7. Non-Examples (Invalid)
 

@@ -30,8 +30,9 @@ for mmd in "$DIAGRAMS_DIR"/*.mmd; do
   name="$(basename "$mmd")"
 
   if npx mmdc -q -i "$mmd" -o "$svg" -b transparent -c "$CONFIG" 2>/dev/null; then
-    # Write source hash sidecar (CI freshness check)
-    shasum -a 256 "$mmd" | awk '{print $1}' > "$sha"
+    # Write combined hash sidecar (CI freshness check).
+    # Hash includes .mmd source + mermaid.json config so config changes are detected.
+    cat "$mmd" "$CONFIG" | shasum -a 256 | awk '{print $1}' > "$sha"
     printf "  %-45s -> %s\n" "$name" "$(basename "$svg")"
     count=$((count + 1))
   else

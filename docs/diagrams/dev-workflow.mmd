@@ -12,8 +12,7 @@ sequenceDiagram
     Ada->>Warp: Review patchset
 
     alt Approved
-        Ada->>Git: Merge branch (--no-ff)
-        Ada->>Warp: Record merge decision
+        Ada->>Warp: xyph-actuator merge (Git merge + graph seal)
         Warp-->>Warp: Auto-seal quest (Scroll + Guild Seal + DONE)
     else Changes requested
         Hal->>Warp: Revise submission (new patchset tip)

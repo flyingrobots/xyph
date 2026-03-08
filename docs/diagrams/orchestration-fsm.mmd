@@ -9,8 +9,8 @@ stateDiagram-v2
     CLASSIFY --> VALIDATE: ok
     CLASSIFY --> FAILED: fail
 
-    VALIDATE --> MERGE: must_pass
-    VALIDATE --> FAILED: must_fail
+    VALIDATE --> MERGE: ok
+    VALIDATE --> FAILED: reject
 
     MERGE --> REBALANCE: ok
     MERGE --> FAILED: fail
@@ -21,13 +21,13 @@ stateDiagram-v2
     SCHEDULE --> REVIEW: ok
     SCHEDULE --> FAILED: fail
 
-    REVIEW --> EMIT: approvals_resolved
+    REVIEW --> EMIT: approved
     REVIEW --> FAILED: fail
 
-    EMIT --> APPLY: signed_patch
+    EMIT --> APPLY: ok
     EMIT --> FAILED: fail
 
-    APPLY --> DONE: committed
+    APPLY --> DONE: ok
     APPLY --> FAILED: fail
 
     DONE --> [*]

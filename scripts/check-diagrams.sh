@@ -73,10 +73,12 @@ for mmd in "$DIAGRAMS_DIR"/*.mmd; do
   fi
 
   stored_hash="$(cat "$sha_file")"
-  current_hash="$(shasum -a 256 "$mmd" | awk '{print $1}')"
+  # Hash includes .mmd source + mermaid.json config (must match render-diagrams.sh)
+  config_file="$DIAGRAMS_DIR/mermaid.json"
+  current_hash="$(cat "$mmd" "$config_file" | shasum -a 256 | awk '{print $1}')"
 
   if [ "$stored_hash" != "$current_hash" ]; then
-    echo "::error::Stale SVG for $name — source changed since last render. Run scripts/render-diagrams.sh"
+    echo "::error::Stale SVG for $name — source or config changed since last render. Run scripts/render-diagrams.sh"
     errors=$((errors + 1))
   fi
 done

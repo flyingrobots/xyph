@@ -341,8 +341,11 @@ coordination. There are no namespace locks and no snapshot preconditions.
 - If two concurrent runs modify the same entity, the write with the higher
   Lamport timestamp wins (ties broken by writerId, then patchSha).
 - The planning compiler MAY perform a post-apply consistency check
-  (re-materialize and verify expectations) but this is advisory, not
-  a hard gate. The graph is always in a valid, converged state.
+  (re-materialize and verify expectations). CRDT convergence guarantees
+  storage-level consistency, but concurrent APPLY runs can still produce
+  domain-level conflicts (e.g., a dependency cycle created by two
+  independent patches). Post-apply checks SHOULD detect such conflicts
+  and emit compensating patches if remediation is needed.
 
 ---
 
@@ -371,7 +374,7 @@ coordination. There are no namespace locks and no snapshot preconditions.
 3. MUST rule violation ignored
 4. Unsatisfied approval gate entering APPLY
 5. Audit record omission at any state
-6. Direct state mutation attempted outside APPLY
+6. Direct state mutation attempted outside APPLY (runtime compiler flows; bootstrap/migration scripts may use low-level graph primitives directly)
 
 ---
 

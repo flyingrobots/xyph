@@ -251,6 +251,7 @@ export function loadKeyring(keyringPath = path.resolve(process.cwd(), "trust/key
 
   // Build Map indexed by canonical keyId + legacy aliases
   const map = new Map<string, KeyringEntry>();
+  const seenAgentIds = new Set<string>();
 
   for (const k of migrated.keys) {
     const keyId = String(k["keyId"]);
@@ -259,6 +260,14 @@ export function loadKeyring(keyringPath = path.resolve(process.cwd(), "trust/key
     const legacyKeyIds = Array.isArray(k["legacyKeyIds"])
       ? (k["legacyKeyIds"] as string[])
       : undefined;
+
+    // Reject duplicate agentIds — keyIdForAgent() relies on at-most-one match
+    if (agentId !== undefined) {
+      if (seenAgentIds.has(agentId)) {
+        throw new Error(`Duplicate agentId '${agentId}' in keyring — each agent must have exactly one active key`);
+      }
+      seenAgentIds.add(agentId);
+    }
 
     const entry: KeyringEntry = {
       keyId,

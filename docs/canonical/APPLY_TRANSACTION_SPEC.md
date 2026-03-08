@@ -133,10 +133,13 @@ This is advisory, not mandatory. The graph is always consistent.
 
 ### 5.3 Content-addressed deduplication
 
-git-warp patches are Git commits. If two APPLY runs emit identical
-operations (same nodes, same properties, same values), they produce the same
-commit SHA and naturally deduplicate. No application-level idempotency key
-is needed.
+git-warp patches are Git commits. Identical operations produce the same
+Git tree object, but commit SHAs also incorporate metadata (author,
+committer, timestamps, parent commits), so two APPLY runs at different
+times will produce different commit SHAs even with identical payloads.
+Application-level deduplication, if needed, should use an explicit
+idempotency key (e.g., `patchId` in the PlanPatchArtifact) rather than
+relying on commit SHA identity.
 
 ---
 
