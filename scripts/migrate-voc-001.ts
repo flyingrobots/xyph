@@ -14,18 +14,19 @@ import WarpGraph, { GitGraphAdapter } from '@git-stunts/git-warp';
 import Plumbing from '@git-stunts/plumbing';
 import chalk from 'chalk';
 import { createPatchSession } from '../src/infrastructure/helpers/createPatchSession.js';
+import { toNeighborEntries } from '../src/infrastructure/helpers/isNeighborEntry.js';
 
 const WRITER_ID = process.env['XYPH_AGENT_ID'] ?? 'agent.prime';
 const plumbing = Plumbing.createDefault({ cwd: process.cwd() });
 const persistence = new GitGraphAdapter({ plumbing });
 
-const RENAMES: Record<string, string> = {
+/**
+ * Phase 1 renames: unconditional status remap.
+ * Phase 2 renames: BACKLOG→PLANNED only for nodes with authorized-by
+ * edges and no suggested_by property (old-vocab quest-created nodes).
+ */
+const PHASE1_RENAMES: Record<string, string> = {
   'INBOX': 'BACKLOG',
-  // NOTE: We do NOT rename BACKLOG→PLANNED here because we cannot
-  // distinguish old-vocab BACKLOG (meaning "vetted work") from
-  // new-vocab BACKLOG (meaning "suggestion pool"). The new code
-  // already writes BACKLOG for suggestions and PLANNED for vetted
-  // work, so only un-migrated INBOX nodes need patching.
 };
 
 async function main(): Promise<void> {
@@ -52,9 +53,27 @@ async function main(): Promise<void> {
     const status = props?.['status'] as string | undefined;
     if (status === undefined) continue;
 
-    const newStatus = RENAMES[status];
-    if (newStatus !== undefined) {
-      toMigrate.push([nodeId, status, newStatus]);
+    // Phase 1: unconditional INBOX→BACKLOG
+    const phase1 = PHASE1_RENAMES[status];
+    if (phase1 !== undefined) {
+      toMigrate.push([nodeId, status, phase1]);
+      continue;
+    }
+
+    // Phase 2: BACKLOG→PLANNED for old-vocab quest-created nodes.
+    // Distinguishing criterion: nodes with authorized-by intent edges
+    // but no suggested_by property were created via the `quest` command
+    // under the old vocabulary (where BACKLOG meant "vetted work").
+    // New-vocab BACKLOG nodes (created via `inbox`) always have suggested_by.
+    if (status === 'BACKLOG') {
+      const suggestedBy = props['suggested_by'] as string | undefined;
+      if (suggestedBy !== undefined) continue; // inbox-created, correctly BACKLOG
+
+      const neighbors = toNeighborEntries(await graph.neighbors(nodeId, 'outgoing'));
+      const hasIntent = neighbors.some((n) => n.label === 'authorized-by');
+      if (hasIntent) {
+        toMigrate.push([nodeId, 'BACKLOG', 'PLANNED']);
+      }
     }
   }
 
