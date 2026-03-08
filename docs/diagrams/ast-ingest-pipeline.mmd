@@ -1,0 +1,8 @@
+graph TD
+    A[Raw Markdown] --> B[Unified/Remark Parser]
+    B --> C[Markdown AST - mdast]
+    C --> D[Tree Walker - depth-first]
+    D --> E{Context Manager}
+    E -- "# Header" --> F[Set Current Milestone Context]
+    E -- "- [ ] Task" --> G[Create Quest + link to Milestone]
+    G --> H[Emit Manifest of Intent]

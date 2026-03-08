@@ -126,7 +126,7 @@
         "alg": { "type": "string", "enum": ["ed25519"] },
         "keyId": {
           "type": "string",
-          "pattern": "^(KEY-[A-Z0-9]{6,24}|did:key:z6[A-Za-z0-9]+)$"
+          "pattern": "^(?:KEY-[A-Z0-9]{6,24}|did:key:z[1-9A-HJ-NP-Za-km-z]{10,100})$"
         },
         "payloadDigest": {
           "type": "string",

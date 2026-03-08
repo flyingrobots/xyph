@@ -5,8 +5,10 @@ import * as ed from '@noble/ed25519';
 import {
   canonicalize,
   prefixedBlake3,
+  publicKeyToDidKey,
   loadKeyring,
   verifyEd25519DetachedHex,
+  CURRENT_KEYRING_VERSION,
   type Json,
 } from '../../validation/crypto.js';
 
@@ -64,10 +66,24 @@ export class GuildSealService {
   }
 
   /**
-   * Returns the key ID for an agent (DID format).
+   * Returns the multibase-encoded did:key identifier for an agent.
+   * Looks up the agent's public key from the keyring and derives the DID key
+   * using the Ed25519 multicodec prefix + base58btc encoding.
+   *
+   * Throws if no key is registered for the agent.
    */
   public keyIdForAgent(agentId: string): string {
-    return `did:key:${agentId}`;
+    const keyringPath = path.join(this.trustDir, 'keyring.json');
+    const keyring = loadKeyring(keyringPath);
+    const seen = new Set<string>();
+    for (const entry of keyring.values()) {
+      if (seen.has(entry.keyId)) continue;
+      seen.add(entry.keyId);
+      if (entry.agentId === agentId) {
+        return publicKeyToDidKey(entry.publicKeyHex);
+      }
+    }
+    throw new Error(`No key registered for agent '${agentId}' in keyring`);
   }
 
   /**
@@ -90,7 +106,7 @@ export class GuildSealService {
 
     const privateKeyHex = Buffer.from(priv).toString('hex');
     const publicKeyHex = Buffer.from(pub).toString('hex');
-    const keyId = this.keyIdForAgent(agentId);
+    const keyId = publicKeyToDidKey(publicKeyHex);
 
     // Write private key atomically (O_EXCL prevents overwriting an existing key)
     try {
@@ -111,12 +127,12 @@ export class GuildSealService {
 
       if (!existingKeys.has(keyId)) {
         // Reconstruct the JSON structure from the validated Map + the new entry
-        const keys: { keyId: string; alg: string; publicKeyHex: string }[] = [];
+        const keys: { keyId: string; alg: string; publicKeyHex: string; agentId?: string }[] = [];
         for (const entry of existingKeys.values()) {
-          keys.push({ keyId: entry.keyId, alg: entry.alg, publicKeyHex: entry.publicKeyHex });
+          keys.push({ keyId: entry.keyId, alg: entry.alg, publicKeyHex: entry.publicKeyHex, agentId: entry.agentId });
         }
-        keys.push({ keyId, alg: 'ed25519', publicKeyHex });
-        fs.writeFileSync(keyringPath, JSON.stringify({ version: 'v1', keys }, null, 2) + '\n');
+        keys.push({ keyId, alg: 'ed25519', publicKeyHex, agentId });
+        fs.writeFileSync(keyringPath, JSON.stringify({ version: CURRENT_KEYRING_VERSION, keys }, null, 2) + '\n');
       }
     } catch (err) {
       // Roll back: remove the private key so the agent is not stuck with an orphaned .sk
@@ -162,9 +178,10 @@ export class GuildSealService {
 
     const msg = new TextEncoder().encode(canonical);
     const priv = Buffer.from(privateKeyHex, 'hex');
+    const pub = await ed.getPublicKey(priv);
     const sig = await ed.sign(msg, priv);
     const sigHex = Buffer.from(sig).toString('hex');
-    const keyId = this.keyIdForAgent(agentId);
+    const keyId = publicKeyToDidKey(Buffer.from(pub).toString('hex'));
 
     return {
       alg: 'ed25519',

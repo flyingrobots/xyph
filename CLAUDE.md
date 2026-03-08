@@ -89,6 +89,19 @@ If the types are hard, that means you need to understand the code better.
   fit in memory at once — git-warp's traversals are designed to work incrementally
   over the commit graph.
 
+**NEVER describe git-warp using centralized-database vocabulary:**
+- git-warp is a **CRDT**. There are **no locks, no transactions, no centralized snapshots**.
+- Multiple writers emit patches concurrently; convergence is automatic and deterministic.
+- Each `graph.patch()` call produces **one atomic Git commit**. There is no multi-step
+  TXN to start/commit/rollback.
+- Patches are **immutable and append-only**. You cannot "rollback" a patch — you emit
+  a new compensating patch that overrides via LWW or re-adds/removes nodes and edges.
+- When writing design docs, specs, or diagrams: never use "lock", "transaction",
+  "snapshot precondition", "rollback transaction", or "optimistic concurrency check"
+  to describe git-warp behavior. These concepts do not exist in the substrate.
+- Domain-layer validation (approval gates, signature checks, DAG acyclicity) happens
+  **before** calling `graph.patch()`, not as part of a centralized gatekeeper.
+
 ### Project Planning via the Actuator
 XYPH plans and tracks its own development through the WARP graph.
 The `xyph-actuator.ts` CLI is the single source of truth for what's been done,
@@ -133,7 +146,7 @@ Use it — it was added for agent consumption and avoids parsing ANSI/table nois
 
 ### git-warp: The Engine Under the Hood
 
-XYPH is built on **git-warp** (v12.1.0) — a CRDT graph database that lives
+XYPH is built on **git-warp** (v13.1.0) — a CRDT graph database that lives
 inside a Git repository without touching the codebase. Every piece of graph
 data is a Git commit pointing to the **empty tree** (`4b825dc6...`), making
 it invisible to `git log`, `git diff`, and `git status`. The result: a full

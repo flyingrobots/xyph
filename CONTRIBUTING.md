@@ -45,6 +45,8 @@ All planning, prioritization, and progress tracking flows through the actuator. 
 
 For solo work without review, you can still **seal directly** with `xyph-actuator.ts seal <id> --artifact <hash> --rationale "..."`.
 
+![Development workflow](docs/diagrams/contribution-workflow.svg)
+
 ## Quality Gates
 
 Before opening or updating a PR, **always** run:
@@ -60,6 +62,48 @@ Never push code that doesn't pass both checks.
 - Do not use `eslint-disable` comments to silence lint rules.
 - Do not use `@ts-ignore` or `@ts-expect-error` to silence TypeScript.
 - If you encounter lint errors, test failures, or warnings — even pre-existing ones — fix them. Leave the codebase better than you found it.
+
+## Diagrams
+
+Documentation diagrams live in `docs/diagrams/` as Mermaid source (`.mmd`) pre-rendered to SVG. Markdown files reference the SVGs directly — no inline ` ```mermaid ` blocks.
+
+**To add or edit a diagram:**
+
+```bash
+# Edit (or create) the Mermaid source
+vim docs/diagrams/my-diagram.mmd
+
+# Render all diagrams to SVG (writes .svg + .sha256 sidecar)
+./scripts/render-diagrams.sh
+
+# Reference from markdown (path is relative to the .md file)
+# From docs/:           ![Alt text](diagrams/my-diagram.svg)
+# From docs/canonical/: ![Alt text](../diagrams/my-diagram.svg)
+# From project root:    ![Alt text](docs/diagrams/my-diagram.svg)
+```
+
+**Why pre-rendered SVGs?** Inline Mermaid depends on the viewer's renderer — GitHub, Obsidian, and VS Code all have different Mermaid versions with different feature support. Pre-rendered SVGs look identical everywhere.
+
+**CI enforces:**
+- No inline ` ```mermaid ` blocks in any `.md` file
+- Every `.mmd` has a corresponding `.svg` and `.mmd.sha256`
+- Source hash freshness — if you edit a `.mmd` without re-rendering, CI fails
+
+The pre-commit hook catches inline mermaid blocks locally. The pre-push hook runs the full freshness check.
+
+## Design Doc Accuracy
+
+XYPH's canonical design documents (`docs/canonical/`) describe the planning compiler pipeline and domain rules. When writing or updating these docs, remember:
+
+**git-warp is a CRDT, not a database.** The substrate has no locks, no transactions, no centralized snapshots, and no rollback. All writes go through `graph.patch()`, which produces a single atomic Git commit. Multiple writers can emit patches concurrently without coordination — convergence is deterministic.
+
+- Use "emit a patch" or "call `graph.patch()`", not "commit a transaction".
+- Use "compensating patch" (new forward-only correction via LWW), not "rollback".
+- Use "domain validation before `graph.patch()`", not "optimistic concurrency check" or "snapshot precondition".
+- Use `graph.traverse.weightedLongestPath()` for critical path, not Dijkstra (which finds shortest paths).
+- Never describe userland graph algorithms — reference `graph.traverse.*` primitives.
+
+If a design doc contradicts how git-warp actually works, the doc is wrong — fix it. Always cross-reference against the [git-warp README](https://github.com/git-stunts/git-warp) and ARCHITECTURE.md for ground truth.
 
 ## Constitution
 

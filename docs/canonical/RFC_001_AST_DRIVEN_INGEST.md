@@ -23,16 +23,7 @@ const match = line.match(/^- \[([ xX])\]\s+([a-z]+:[A-Z0-9-]+)\s+(.+?)(?:\s+#(\d
 We propose replacing the line-based loop with a tree-walking parser. By parsing the entire document into an AST, we can utilize the structural properties of Markdown (headers, list nesting, and block properties) to derive graph relationships.
 
 ### 3.1 Structural Data Flow
-```mermaid
-graph TD
-    A[Raw Markdown] --> B[Unified/Remark Parser]
-    B --> C[Markdown AST - mdast]
-    C --> D[Tree Walker - depth-first]
-    D --> E{Context Manager}
-    E -- "# Header" --> F[Set Current Milestone Context]
-    E -- "- [ ] Task" --> G[Create Quest + link to Milestone]
-    G --> H[Emit Manifest of Intent]
-```
+![AST-driven ingest pipeline](../diagrams/ast-ingest-pipeline.svg)
 
 ## 4. Detailed Design
 

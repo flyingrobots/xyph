@@ -3,7 +3,7 @@
  * Based on ORCHESTRATION_SPEC.md v1.0
  */
 
-export type OrchestrationState = 
+export type OrchestrationState =
   | 'INGEST'
   | 'NORMALIZE'
   | 'CLASSIFY'
@@ -15,8 +15,7 @@ export type OrchestrationState =
   | 'EMIT'
   | 'APPLY'
   | 'DONE'
-  | 'FAILED'
-  | 'ROLLED_BACK';
+  | 'FAILED';
 
 export interface AuditRecord {
   schemaVersion: 'v1.0';

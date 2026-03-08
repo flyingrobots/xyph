@@ -144,7 +144,7 @@ Legacy: `INBOX` is normalized to `BACKLOG` at read time.
 | `sealed_by` | string | seal/merge | Principal ID. |
 | `sealed_at` | number | seal/merge | Timestamp. |
 | `payload_digest` | string | GuildSealService | Hash for signing. |
-| `guild_seal_alg` | string | GuildSealService | `'Ed25519'` if signed. |
+| `guild_seal_alg` | string | GuildSealService | `'ed25519'` if signed. |
 | `guild_seal_key_id` | string | GuildSealService | Public key ID. |
 | `guild_seal_sig` | string | GuildSealService | Signature. |
 
@@ -264,15 +264,21 @@ intent: ←authorized-by← task: ─belongs-to─→ campaign:
                            ←fulfills── artifact: (scroll)
 ```
 
+![Entity-relationship diagram](../diagrams/entity-relationship.svg)
+
 ## 6. Conflict Resolution (LWW)
 
 XYPH uses **Last-Writer-Wins (LWW)** for all node properties.
-The winner is determined by:
-1. Higher Lamport timestamp (per-writer, not global).
-2. Tie-break: Lexicographically greater `writerId`.
-3. Tie-break: Greater patch SHA.
+Each property write carries an **EventId** — a 4-tuple that provides a global total order:
 
-**Important:** To override a property set by writer X, the new write MUST come from writer X (to get a higher tick in X's sequence). A write from writer Y at a lower tick will lose.
+1. **Lamport timestamp** — per-writer monotonic counter assigned per patch.
+2. **writerId** — lexicographic tie-break when Lamport timestamps are equal.
+3. **patchSha** — tie-break when writer and Lamport are both equal.
+4. **opIndex** — tie-break within a single patch (operation order).
+
+Conflicts are resolved by comparing the complete EventId lexicographically. The write with the greater EventId wins.
+
+**Important:** Each writer independently maintains its own Lamport counter. To override a property set by writer X, the new write MUST come from writer X (to get a higher tick in X's sequence). A write from writer Y at a lower tick in Y's sequence will lose, even if Y's counter is numerically higher — because the full EventId comparison starts with Lamport, then falls through to writerId.
 
 ## 7. Non-Examples (Invalid)
 

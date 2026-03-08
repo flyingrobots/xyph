@@ -1,0 +1,12 @@
+flowchart TD
+    A["Mutation received"] --> B{"DAG intact?"}
+    B -->|No cycle| C{"Signed by Actor?"}
+    B -->|Cycle detected| REJECT["REJECT"]
+    C -->|Yes| D{"Intent lineage?"}
+    C -->|No| REJECT
+    D -->|Valid| E{"Critical path or scope >5%?"}
+    D -->|Missing| REJECT
+    E -->|No| ACCEPT["ACCEPT"]
+    E -->|Yes| F{"Human approval?"}
+    F -->|Approved| ACCEPT
+    F -->|Denied| REJECT

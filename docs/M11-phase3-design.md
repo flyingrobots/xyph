@@ -9,13 +9,7 @@ heuristic — it's a deterministic query over the traceability chain.
 
 ## Traceability Chain (established in Phases 1–2)
 
-```
-intent
-  └── decomposes-to → story
-        └── decomposes-to → requirement
-              └── has-criterion → criterion
-                    └── verifies ← evidence
-```
+![Traceability chain](diagrams/traceability-chain.svg)
 
 Each layer rolls up to the one above. Status propagates bottom-up:
 evidence → criterion → requirement → story → quest.

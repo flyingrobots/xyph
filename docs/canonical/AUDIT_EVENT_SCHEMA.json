@@ -59,8 +59,7 @@
         "EMIT",
         "APPLY",
         "FAILED",
-        "DONE",
-        "ROLLED_BACK"
+        "DONE"
       ]
     },
     "toState": {
@@ -77,8 +76,7 @@
         "EMIT",
         "APPLY",
         "FAILED",
-        "DONE",
-        "ROLLED_BACK"
+        "DONE"
       ]
     },
     "actor": {
@@ -194,7 +192,9 @@
         },
         "rollbackPatchDigest": {
           "type": "string",
-          "pattern": "^blake3:[a-f0-9]{64}$"
+          "pattern": "^blake3:[a-f0-9]{64}$",
+          "deprecated": true,
+          "description": "Vestigial field from the pre-CRDT transaction model. git-warp patches are immutable — corrections are made via compensating patches, not rollback. Retained for backward compatibility with existing audit records."
         }
       }
     },

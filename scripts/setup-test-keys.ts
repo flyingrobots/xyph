@@ -1,4 +1,5 @@
 import { generateTestKeypair } from '../src/validation/signPatchFixture.js';
+import { publicKeyToDidKey } from '../src/validation/crypto.js';
 import fs from 'node:fs';
 
 async function setup() {
@@ -9,7 +10,7 @@ async function setup() {
     const keyringPath = 'trust/keyring.json';
     const keyring = JSON.parse(fs.readFileSync(keyringPath, 'utf8'));
 
-    const testKeyId = 'did:key:z6MkhTestSigner01';
+    const testKeyId = publicKeyToDidKey(keys.publicKeyHex);
 
     // Check for duplicate key entry before pushing
     const alreadyExists = keyring.keys.some(

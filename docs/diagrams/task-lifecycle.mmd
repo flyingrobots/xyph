@@ -1,0 +1,11 @@
+stateDiagram-v2
+    direction LR
+    [*] --> BACKLOG
+    BACKLOG --> PLANNED : promote
+    BACKLOG --> GRAVEYARD : reject
+    PLANNED --> IN_PROGRESS : claim
+    PLANNED --> GRAVEYARD : reject
+    IN_PROGRESS --> BLOCKED
+    IN_PROGRESS --> DONE : seal / merge
+    BLOCKED --> IN_PROGRESS
+    GRAVEYARD --> BACKLOG : reopen

@@ -1,0 +1,23 @@
+stateDiagram-v2
+    direction LR
+    [*] --> INGEST
+    INGEST --> NORMALIZE
+    NORMALIZE --> CLASSIFY
+    CLASSIFY --> VALIDATE
+    VALIDATE --> MERGE
+    MERGE --> REBALANCE
+    REBALANCE --> SCHEDULE
+    SCHEDULE --> REVIEW
+    REVIEW --> EMIT
+    EMIT --> APPLY
+    APPLY --> DONE
+    INGEST --> FAILED
+    NORMALIZE --> FAILED
+    CLASSIFY --> FAILED
+    VALIDATE --> FAILED
+    MERGE --> FAILED
+    REBALANCE --> FAILED
+    SCHEDULE --> FAILED
+    REVIEW --> FAILED
+    EMIT --> FAILED
+    APPLY --> FAILED
