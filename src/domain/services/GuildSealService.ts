@@ -45,6 +45,16 @@ export interface GuildSeal {
   sealedAt: number;
 }
 
+/** Shape written to keyring.json — mirrors KeyringEntry but without the parsed Map index. */
+interface KeyringEntryJson {
+  keyId: string;
+  alg: string;
+  publicKeyHex: string;
+  active: boolean;
+  agentId?: string;
+  legacyKeyIds?: string[];
+}
+
 export class GuildSealService {
   /**
    * @param trustDir Absolute path to the trust directory containing keyring.json
@@ -127,7 +137,7 @@ export class GuildSealService {
 
       if (!existingKeys.has(keyId)) {
         // Reconstruct the JSON structure from the validated Map + the new entry
-        const keys: { keyId: string; alg: string; publicKeyHex: string; active: boolean; agentId?: string; legacyKeyIds?: string[] }[] = [];
+        const keys: KeyringEntryJson[] = [];
         const seen = new Set<string>();
         for (const entry of existingKeys.values()) {
           if (seen.has(entry.keyId)) continue;
@@ -190,31 +200,44 @@ export class GuildSealService {
 
     // Retire the old private key file by renaming it
     const oldSkPath = this.skPath(agentId);
+    const suffix = currentKeyId.slice(-8);
+    const retiredPath = `${oldSkPath}.retired.${suffix}`;
+    let didRename = false;
     if (fs.existsSync(oldSkPath)) {
-      const suffix = currentKeyId.slice(-8);
-      const retiredPath = `${oldSkPath}.retired.${suffix}`;
       fs.renameSync(oldSkPath, retiredPath);
+      didRename = true;
     }
 
     // Write the new private key
     fs.writeFileSync(oldSkPath, privateKeyHex, { mode: 0o600 });
 
-    // Rebuild keyring: retire old key, add new active key
-    const keys: { keyId: string; alg: string; publicKeyHex: string; active: boolean; agentId?: string; legacyKeyIds?: string[] }[] = [];
-    const rebuilt = new Set<string>();
-    for (const entry of existingKeys.values()) {
-      if (rebuilt.has(entry.keyId)) continue;
-      rebuilt.add(entry.keyId);
-      const isOldKey = entry.keyId === currentKeyId;
-      keys.push({
-        keyId: entry.keyId, alg: entry.alg, publicKeyHex: entry.publicKeyHex,
-        active: isOldKey ? false : entry.active,
-        ...(entry.agentId !== undefined ? { agentId: entry.agentId } : {}),
-        ...(entry.legacyKeyIds !== undefined ? { legacyKeyIds: entry.legacyKeyIds } : {}),
-      });
+    // Rebuild keyring: retire old key, add new active key.
+    // Wrapped in try/catch to roll back filesystem changes if the keyring
+    // write fails, preventing an orphaned private key with no keyring entry.
+    try {
+      const keys: KeyringEntryJson[] = [];
+      const rebuilt = new Set<string>();
+      for (const entry of existingKeys.values()) {
+        if (rebuilt.has(entry.keyId)) continue;
+        rebuilt.add(entry.keyId);
+        const isOldKey = entry.keyId === currentKeyId;
+        keys.push({
+          keyId: entry.keyId, alg: entry.alg, publicKeyHex: entry.publicKeyHex,
+          active: isOldKey ? false : entry.active,
+          ...(entry.agentId !== undefined ? { agentId: entry.agentId } : {}),
+          ...(entry.legacyKeyIds !== undefined ? { legacyKeyIds: entry.legacyKeyIds } : {}),
+        });
+      }
+      keys.push({ keyId: newKeyId, alg: 'ed25519', publicKeyHex, active: true, agentId });
+      fs.writeFileSync(keyringPath, JSON.stringify({ version: CURRENT_KEYRING_VERSION, keys }, null, 2) + '\n');
+    } catch (err) {
+      // Roll back: delete the new .sk and restore the old one
+      try { fs.unlinkSync(oldSkPath); } catch { /* best-effort */ }
+      if (didRename) {
+        try { fs.renameSync(retiredPath, oldSkPath); } catch { /* best-effort */ }
+      }
+      throw err;
     }
-    keys.push({ keyId: newKeyId, alg: 'ed25519', publicKeyHex, active: true, agentId });
-    fs.writeFileSync(keyringPath, JSON.stringify({ version: CURRENT_KEYRING_VERSION, keys }, null, 2) + '\n');
 
     return { keyId: newKeyId, publicKeyHex };
   }
