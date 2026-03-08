@@ -3,6 +3,7 @@ import { interactiveAccordion, type AccordionState } from '@flyingrobots/bijou-t
 import type { StylePort } from '../../../ports/StylePort.js';
 import type { DashboardModel } from '../DashboardApp.js';
 import type { QuestNode } from '../../../domain/models/dashboard.js';
+import { sliceDate, groupBy } from '../../view-helpers.js';
 
 function truncate(s: string, max: number): string {
   return s.length > max ? s.slice(0, max - 1) + '\u2026' : s;
@@ -46,14 +47,10 @@ export function lineageView(model: DashboardModel, style: StylePort, _width?: nu
     scrollByQuestId.set(s.questId, { id: s.id, hasSeal: s.hasSeal });
   }
 
-  const questsByIntent = new Map<string, typeof snap.quests>();
-  for (const q of snap.quests) {
-    if (q.intentId !== undefined) {
-      const arr = questsByIntent.get(q.intentId) ?? [];
-      arr.push(q);
-      questsByIntent.set(q.intentId, arr);
-    }
-  }
+  const questsByIntent = groupBy(
+    snap.quests.filter(q => q.intentId !== undefined),
+    q => q.intentId as string,
+  );
 
   // Orphan quests (no intentId, excluding BACKLOG which legitimately lack intent)
   const orphans = snap.quests.filter(
@@ -88,7 +85,7 @@ export function lineageView(model: DashboardModel, style: StylePort, _width?: nu
 
     // Build card subtitle lines
     const subtitleLines: string[] = [];
-    const dateStr = new Date(intent.createdAt).toISOString().slice(0, 10);
+    const dateStr = sliceDate(intent.createdAt);
     subtitleLines.push(style.styled(style.theme.semantic.muted, `    requested-by: ${intent.requestedBy}  \u00B7  ${dateStr}`));
     if (intent.description) {
       subtitleLines.push(style.styled(style.theme.semantic.muted, `    ${truncate(intent.description, 72)}`));

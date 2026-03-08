@@ -1,9 +1,8 @@
 import { flex, navigableTable, createPagerState, pagerScrollTo, pager } from '@flyingrobots/bijou-tui';
 import { badge, stepper, type StepperStep } from '@flyingrobots/bijou';
 import type { StylePort } from '../../../ports/StylePort.js';
-import { statusVariant, formatAge } from '../../view-helpers.js';
+import { statusVariant, formatAge, sliceDate, groupBy } from '../../view-helpers.js';
 import type { DashboardModel } from '../DashboardApp.js';
-import type { ReviewNode, DecisionNode } from '../../../domain/models/dashboard.js';
 import { sortedSubmissions } from '../selection-order.js';
 
 function verdictIcon(verdict: string, style: StylePort): string {
@@ -45,18 +44,8 @@ export function submissionsView(model: DashboardModel, style: StylePort, width?:
 
   // Lookup maps
   const questTitle = new Map(snap.quests.map(q => [q.id, q.title]));
-  const reviewsByPatchset = new Map<string, ReviewNode[]>();
-  for (const r of snap.reviews) {
-    const arr = reviewsByPatchset.get(r.patchsetId) ?? [];
-    arr.push(r);
-    reviewsByPatchset.set(r.patchsetId, arr);
-  }
-  const decisionsBySub = new Map<string, DecisionNode[]>();
-  for (const d of snap.decisions) {
-    const arr = decisionsBySub.get(d.submissionId) ?? [];
-    arr.push(d);
-    decisionsBySub.set(d.submissionId, arr);
-  }
+  const reviewsByPatchset = groupBy(snap.reviews, r => r.patchsetId);
+  const decisionsBySub = groupBy(snap.decisions, d => d.submissionId);
 
   const expandedId = model.submissions.expandedId;
 
@@ -94,7 +83,7 @@ export function submissionsView(model: DashboardModel, style: StylePort, width?:
     lines.push('');
     lines.push(` Quest:     ${qTitle}`);
     lines.push(` Submitter: ${sub.submittedBy}`);
-    lines.push(` Date:      ${new Date(sub.submittedAt).toISOString().slice(0, 10)}`);
+    lines.push(` Date:      ${sliceDate(sub.submittedAt)}`);
     lines.push(` Age:       ${formatAge(sub.submittedAt)} ago`);
     lines.push(` Status:    ${badge(sub.status, { variant: statusVariant(sub.status) })}`);
 
