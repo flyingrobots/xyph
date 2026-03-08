@@ -82,7 +82,7 @@ export function registerAnalyzeCommands(program: Command, ctx: CliContext): void
       }
 
       // --- Parse test files ---
-      const { parseTestFile } = await import('../../domain/services/analysis/TestFileParser.js');
+      const { parseTestFile } = await import('../../infrastructure/adapters/TsCompilerTestParserAdapter.js');
       const fs = await import('node:fs/promises');
 
       const tests = await Promise.all(
