@@ -57,23 +57,30 @@ describe('FsKeyringAdapter.updateKeyring', () => {
   });
 
   it('rolls back .sk on saveKeyring failure', () => {
-    // Make keyring.json read-only so saveKeyring will fail
-    const keyringPath = path.join(trustDir, 'keyring.json');
-    fs.chmodSync(keyringPath, 0o444);
+    // Stub saveKeyring to throw deterministically (avoids chmod which is
+    // environment-dependent — root can write through 0o444).
+    const origSave = adapter.saveKeyring.bind(adapter);
+    adapter.saveKeyring = (): void => {
+      throw new Error('save boom');
+    };
 
-    expect(() => {
-      adapter.updateKeyring((keyring, ops) => {
-        ops.writePrivateKey('agent.gamma', 'feed1234');
-        keyring.entries.set('did:key:gamma', {
-          keyId: 'did:key:gamma',
-          alg: 'ed25519',
-          publicKeyHex: '11223344',
-          active: true,
-          agentId: 'agent.gamma',
+    try {
+      expect(() => {
+        adapter.updateKeyring((keyring, ops) => {
+          ops.writePrivateKey('agent.gamma', 'feed1234');
+          keyring.entries.set('did:key:gamma', {
+            keyId: 'did:key:gamma',
+            alg: 'ed25519',
+            publicKeyHex: '11223344',
+            active: true,
+            agentId: 'agent.gamma',
+          });
+          return keyring;
         });
-        return keyring;
-      });
-    }).toThrow();
+      }).toThrow('save boom');
+    } finally {
+      adapter.saveKeyring = origSave;
+    }
 
     expect(adapter.hasPrivateKey('agent.gamma')).toBe(false);
   });
