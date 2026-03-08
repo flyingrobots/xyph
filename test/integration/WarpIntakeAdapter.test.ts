@@ -31,17 +31,17 @@ describe('WarpIntakeAdapter Integration', () => {
         .setProperty('intent:sovereign-test', 'type', 'intent')
         .addNode('task:INTAKE-001')
         .setProperty('task:INTAKE-001', 'title', 'Intake promote target task')
-        .setProperty('task:INTAKE-001', 'status', 'INBOX')
+        .setProperty('task:INTAKE-001', 'status', 'BACKLOG')
         .setProperty('task:INTAKE-001', 'hours', 2)
         .setProperty('task:INTAKE-001', 'type', 'task')
         .addNode('task:INTAKE-002')
         .setProperty('task:INTAKE-002', 'title', 'Intake reject target task')
-        .setProperty('task:INTAKE-002', 'status', 'INBOX')
+        .setProperty('task:INTAKE-002', 'status', 'BACKLOG')
         .setProperty('task:INTAKE-002', 'hours', 1)
         .setProperty('task:INTAKE-002', 'type', 'task')
         .addNode('task:INTAKE-003')
         .setProperty('task:INTAKE-003', 'title', 'Already promoted task')
-        .setProperty('task:INTAKE-003', 'status', 'BACKLOG')
+        .setProperty('task:INTAKE-003', 'status', 'PLANNED')
         .setProperty('task:INTAKE-003', 'hours', 3)
         .setProperty('task:INTAKE-003', 'type', 'task')
         .addNode('task:INTAKE-004')
@@ -51,12 +51,12 @@ describe('WarpIntakeAdapter Integration', () => {
         .setProperty('task:INTAKE-004', 'type', 'task')
         .addNode('task:INTAKE-FORBIDDEN')
         .setProperty('task:INTAKE-FORBIDDEN', 'title', 'Forbidden authority test task')
-        .setProperty('task:INTAKE-FORBIDDEN', 'status', 'INBOX')
+        .setProperty('task:INTAKE-FORBIDDEN', 'status', 'BACKLOG')
         .setProperty('task:INTAKE-FORBIDDEN', 'hours', 1)
         .setProperty('task:INTAKE-FORBIDDEN', 'type', 'task')
         .addNode('task:INTAKE-ALREADY-PROMOTED')
         .setProperty('task:INTAKE-ALREADY-PROMOTED', 'title', 'Already promoted task for order-independent test')
-        .setProperty('task:INTAKE-ALREADY-PROMOTED', 'status', 'BACKLOG')
+        .setProperty('task:INTAKE-ALREADY-PROMOTED', 'status', 'PLANNED')
         .setProperty('task:INTAKE-ALREADY-PROMOTED', 'hours', 1)
         .setProperty('task:INTAKE-ALREADY-PROMOTED', 'type', 'task')
         .addNode('task:INTAKE-REJECT-BACKLOG')
@@ -86,7 +86,6 @@ describe('WarpIntakeAdapter Integration', () => {
     const snapshot = await reader.fetchSnapshot();
     const q = snapshot.quests.find((q) => q.id === 'task:INTAKE-001');
     expect(q).toBeDefined();
-    // Graph stores BACKLOG, read-time normalization converts to PLANNED
     expect(q?.status).toBe('PLANNED');
     expect(q?.intentId).toBe('intent:sovereign-test');
   });
@@ -102,7 +101,7 @@ describe('WarpIntakeAdapter Integration', () => {
     await expect(adapter.promote('task:INTAKE-001', 'wrong-id')).rejects.toThrow('[MISSING_ARG]');
   });
 
-  it('promote fails: task not in INBOX → [INVALID_FROM]', async () => {
+  it('promote fails: task not in BACKLOG → [INVALID_FROM]', async () => {
     const adapter = new WarpIntakeAdapter(graphPort, humanAgentId);
     await expect(adapter.promote('task:INTAKE-ALREADY-PROMOTED', 'intent:sovereign-test')).rejects.toThrow('[INVALID_FROM]');
   });

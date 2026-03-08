@@ -8,18 +8,22 @@ All notable changes to XYPH will be documented in this file.
 
 - **`scripts/` under lint + typecheck** — `tsconfig.scripts.json` and ESLint config now cover all TypeScript scripts; `npm run lint` checks scripts alongside src/test
 - **Consolidated `wire-deps.ts`** — single idempotent dependency-wiring script replacing wave2/wave3/fixup; gracefully skips missing nodes, detects cycles and duplicates
+- **`migrate-voc-001.ts`** — one-shot graph migration script, patched 116 legacy `INBOX` nodes to `BACKLOG`
 
 ### Changed
 
-- **Reject from BACKLOG or PLANNED** — `reject` command now accepts quests in BACKLOG or PLANNED status (previously only INBOX/BACKLOG depending on layer); adapter and domain service aligned
+- **VOC-001: Vocabulary rename** — raw graph statuses now match the domain model. `inbox` command writes `BACKLOG` (was `INBOX`), `promote` writes `PLANNED` (was `BACKLOG`), `quest`/`quest-wizard` write `PLANNED` (was `BACKLOG`), `reopen` writes `BACKLOG` (was `INBOX`). `normalizeQuestStatus()` retained as legacy shim for un-migrated nodes only
+- **Reject from BACKLOG or PLANNED** — `reject` command now accepts quests in BACKLOG or PLANNED status; adapter and domain service aligned
 - **Scripts migrated to git-warp v13 API** — all `props.get('key')` calls in `scripts/` replaced with Record bracket notation `props['key']`; `Array<T>` → `T[]`, unused imports removed
+- **Quest status lifecycle diagram** — updated to reflect VOC-001 rename (no more INBOX state)
 
 ### Fixed
 
-- **WarpIntakeAdapter reject guard** — adapter checked `status !== 'INBOX'` but domain service expected `BACKLOG`; now both layers accept the same set of pre-work statuses
+- **WarpIntakeAdapter promote/reject guards** — adapter and domain service now use the same status vocabulary; promote checks `BACKLOG`, reject accepts `BACKLOG|PLANNED`
 
 ### Removed
 
+- **`VALID_RAW_STATUSES`** — no longer needed; `normalizeQuestStatus()` handles legacy values
 - **task:BX-017 (HistoryPort)** — graveyarded as redundant; git-warp v13 natively provides `patchesFor()`, `materializeSlice({ receipts: true })`, and `materialize({ ceiling })`. Downstream quests (BX-009–016) call git-warp directly
 
 ### Previously Added

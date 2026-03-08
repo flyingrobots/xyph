@@ -35,9 +35,9 @@ export class WarpIntakeAdapter implements IntakePort {
       throw new Error(`[NOT_FOUND] Quest ${questId} not found in the graph`);
     }
     const status = props['status'];
-    if (status !== 'INBOX') {
+    if (status !== 'BACKLOG') {
       throw new Error(
-        `[INVALID_FROM] promote requires status INBOX, quest ${questId} is ${String(status)}`
+        `[INVALID_FROM] promote requires status BACKLOG, quest ${questId} is ${String(status)}`
       );
     }
 
@@ -49,7 +49,7 @@ export class WarpIntakeAdapter implements IntakePort {
     }
 
     return graph.patch((p) => {
-      p.setProperty(questId, 'status', 'BACKLOG').addEdge(questId, intentId, 'authorized-by');
+      p.setProperty(questId, 'status', 'PLANNED').addEdge(questId, intentId, 'authorized-by');
       if (campaignId !== undefined) {
         p.addEdge(questId, campaignId, 'belongs-to');
       }
@@ -69,10 +69,10 @@ export class WarpIntakeAdapter implements IntakePort {
       throw new Error(`[NOT_FOUND] Quest ${questId} not found in the graph`);
     }
     const status = props['status'] as string | undefined;
-    const rejectable = new Set(['INBOX', 'BACKLOG', 'PLANNED']);
+    const rejectable = new Set(['BACKLOG', 'PLANNED']);
     if (status === undefined || !rejectable.has(status)) {
       throw new Error(
-        `[INVALID_FROM] reject requires status INBOX, BACKLOG, or PLANNED, quest ${questId} is ${String(status)}`
+        `[INVALID_FROM] reject requires status BACKLOG or PLANNED, quest ${questId} is ${String(status)}`
       );
     }
 
@@ -108,7 +108,7 @@ export class WarpIntakeAdapter implements IntakePort {
 
     const now = Date.now();
     return graph.patch((p) => {
-      p.setProperty(questId, 'status', 'INBOX')
+      p.setProperty(questId, 'status', 'BACKLOG')
         .setProperty(questId, 'reopened_by', this.agentId)
         .setProperty(questId, 'reopened_at', now);
     });

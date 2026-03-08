@@ -30,7 +30,7 @@ export function registerIngestCommands(program: Command, ctx: CliContext): void 
       const sha = await graph.patch((p) => {
         p.addNode(id)
           .setProperty(id, 'title', opts.title)
-          .setProperty(id, 'status', 'BACKLOG')
+          .setProperty(id, 'status', 'PLANNED')
           .setProperty(id, 'hours', opts.hours ?? 0)
           .setProperty(id, 'type', 'task');
 
@@ -43,7 +43,7 @@ export function registerIngestCommands(program: Command, ctx: CliContext): void 
       if (ctx.json) {
         ctx.jsonOut({
           success: true, command: 'quest',
-          data: { id, title: opts.title, status: 'BACKLOG', campaign: opts.campaign, intent: intentId, hours: opts.hours ?? 0, patch: sha },
+          data: { id, title: opts.title, status: 'PLANNED', campaign: opts.campaign, intent: intentId, hours: opts.hours ?? 0, patch: sha },
         });
         return;
       }

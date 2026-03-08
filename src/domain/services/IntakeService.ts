@@ -87,7 +87,6 @@ export class IntakeService {
   /**
    * Validates that reject can proceed.
    * Any principal (human or agent) may reject from BACKLOG or PLANNED.
-   * Note: raw INBOX is normalized to BACKLOG before reaching the domain layer.
    */
   async validateReject(questId: string, rationale: string): Promise<void> {
     if (rationale.trim().length === 0) {

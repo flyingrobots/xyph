@@ -66,7 +66,7 @@ describe('CliContext JSON mode', () => {
 
   it('jsonOut writes valid compact JSON to stdout', () => {
     const ctx = createCliContext('/tmp', 'test-graph', { json: true });
-    const envelope = { success: true as const, command: 'inbox', data: { id: 'task:X', status: 'INBOX' } };
+    const envelope = { success: true as const, command: 'inbox', data: { id: 'task:X', status: 'BACKLOG' } };
 
     ctx.jsonOut(envelope);
 

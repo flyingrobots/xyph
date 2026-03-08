@@ -34,7 +34,7 @@ for (const id of nodes) {
     const belongsTo = outgoing.filter((e) => e.label === 'belongs-to');
     const authorizedBy = outgoing.filter((e) => e.label === 'authorized-by');
     if (belongsTo.length === 0) issues.push('NO belongs-to edge (no campaign)');
-    if (authorizedBy.length === 0 && status !== 'INBOX')
+    if (authorizedBy.length === 0 && status !== 'BACKLOG')
       issues.push('NO authorized-by edge (no intent) — CONSTITUTION VIOLATION');
     if (type !== 'task') issues.push(`type="${type}" (expected "task")`);
     // Check edge targets exist

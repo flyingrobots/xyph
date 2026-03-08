@@ -310,7 +310,7 @@ export function renderAll(snapshot: GraphSnapshot, style: StylePort): string {
 }
 
 /**
- * Renders INBOX tasks grouped by suggested_by — the Intake view.
+ * Renders BACKLOG tasks grouped by suggested_by — the Intake view.
  * GRAVEYARD tasks are never shown here; use renderAll with --include-graveyard for those.
  */
 export function renderInbox(snapshot: GraphSnapshot, style: StylePort): string {

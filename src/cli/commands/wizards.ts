@@ -118,7 +118,7 @@ export function registerWizardCommands(program: Command, ctx: CliContext): void 
       const sha = await graph.patch((p) => {
         p.addNode(questId)
           .setProperty(questId, 'title', title)
-          .setProperty(questId, 'status', 'BACKLOG')
+          .setProperty(questId, 'status', 'PLANNED')
           .setProperty(questId, 'hours', hours)
           .setProperty(questId, 'type', 'task');
 
