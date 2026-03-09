@@ -21,6 +21,7 @@ export function renderMyStuffDrawer(
   pw: number,
   ph: number,
 ): string {
+  if (pw < 10) return '';
   const lines: string[] = [];
   const questById = new Map(snap.quests.map(q => [q.id, q]));
 
@@ -53,7 +54,8 @@ export function renderMyStuffDrawer(
 
   lines.push('');
   const subLabel = agentId ? 'My Submissions' : 'Pending Submissions';
-  lines.push(separator({ label: `${subLabel} (${mySubmissions.length})`, borderToken: style.theme.border.secondary, width: pw }));
+  const subCount = agentId ? mySubmissions.length : pendingReview.length;
+  lines.push(separator({ label: `${subLabel} (${subCount})`, borderToken: style.theme.border.secondary, width: pw }));
   if (mySubmissions.length === 0) {
     lines.push(style.styled(style.theme.semantic.muted, '  (none pending)'));
   } else {

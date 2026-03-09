@@ -108,7 +108,7 @@ export function computeTopBlockers(
     results.push({
       id: task.id,
       directCount: direct,
-      transitiveCount: transitiveDownstream.get(task.id) ?? direct,
+      transitiveCount: transitiveDownstream.get(task.id) ?? 0,
     });
   }
 

@@ -174,7 +174,6 @@ type ViewAction =
   | { type: 'scroll-dag-right' }
   | { type: 'page-down' }
   | { type: 'page-up' }
-  | { type: 'focus-panel' }
   | { type: 'scroll-col-down' }
   | { type: 'scroll-col-up' }
   | { type: 'top' }
@@ -839,6 +838,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
                   duration: 200,
                   ease: EASINGS.easeOut,
                   onFrame: (v) => ({ type: 'drawer-frame', value: v }),
+                  onComplete: () => ({ type: 'drawer-frame', value: targetWidth }),
                 })],
               ];
             }
@@ -927,7 +927,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
       );
 
       // "My Stuff" drawer overlay (global — available from any screen)
-      if (model.drawerWidth > 0 && model.snapshot) {
+      if (model.drawerWidth > 4 && model.snapshot) {
         const drawerH = model.rows - 2; // exclude status + hints
         const drawerContent = renderMyStuffDrawer(
           model.snapshot, style, model.agentId,
@@ -1175,11 +1175,6 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         if (model.activeView === 'backlog') {
           return [{ ...model, backlog: { ...model.backlog, table: navTablePageUp(model.backlog.table) } }, []];
         }
-        return [model, []];
-      }
-
-      case 'focus-panel': {
-        // Single panel now — no-op
         return [model, []];
       }
 

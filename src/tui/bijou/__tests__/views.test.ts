@@ -10,6 +10,7 @@ import { lineageView } from '../views/lineage-view.js';
 import { dashboardView } from '../views/dashboard-view.js';
 import { backlogView } from '../views/backlog-view.js';
 import { submissionsView } from '../views/submissions-view.js';
+import { renderMyStuffDrawer } from '../views/my-stuff-drawer.js';
 import { strip } from '../../../../test/helpers/ansi.js';
 import { makeSnapshot, quest, intent, campaign, scroll, submission, review, decision } from '../../../../test/helpers/snapshot.js';
 
@@ -614,6 +615,80 @@ describe('bijou views', () => {
       const plain = strip(lineageView(makeModel(snap), style));
       expect(plain).not.toContain('intent:');
       expect(plain).toContain('task:ORPHAN-001');
+    });
+  });
+  // ── My Stuff Drawer ──────────────────────────────────────────────────
+
+  describe('renderMyStuffDrawer', () => {
+    it('renders agent-scoped quests when agentId is set', () => {
+      const snap = makeSnapshot({
+        quests: [
+          quest({ id: 'task:Q-001', title: 'My task', status: 'IN_PROGRESS', assignedTo: 'agent.test' }),
+          quest({ id: 'task:Q-002', title: 'Other task', status: 'IN_PROGRESS', assignedTo: 'agent.other' }),
+        ],
+      });
+      const plain = strip(renderMyStuffDrawer(snap, style, 'agent.test', 60, 30));
+      expect(plain).toContain('task:Q-001'.replace(/^task:/, ''));
+      expect(plain).not.toContain('Q-002');
+    });
+
+    it('renders all assigned quests when agentId is undefined', () => {
+      const snap = makeSnapshot({
+        quests: [
+          quest({ id: 'task:Q-001', title: 'Task A', status: 'IN_PROGRESS', assignedTo: 'agent.a' }),
+          quest({ id: 'task:Q-002', title: 'Task B', status: 'PLANNED', assignedTo: 'agent.b' }),
+        ],
+      });
+      const plain = strip(renderMyStuffDrawer(snap, style, undefined, 60, 30));
+      expect(plain).toContain('Q-001');
+      expect(plain).toContain('Q-002');
+    });
+
+    it('returns empty string for very narrow width', () => {
+      const snap = makeSnapshot();
+      const result = renderMyStuffDrawer(snap, style, 'agent.test', 5, 30);
+      expect(result).toBe('');
+    });
+
+    it('filters My Submissions to agent-owned only', () => {
+      const snap = makeSnapshot({
+        submissions: [
+          submission({ id: 'submission:S1', questId: 'task:A', submittedBy: 'agent.test' }),
+          submission({ id: 'submission:S2', questId: 'task:B', submittedBy: 'agent.other' }),
+        ],
+      });
+      const plain = strip(renderMyStuffDrawer(snap, style, 'agent.test', 60, 30));
+      // My Submissions section only shows agent.test's submission
+      expect(plain).toContain('S1');
+      // S2 may still appear in the activity feed (which is project-wide),
+      // but the My Submissions section count should be 1
+      expect(plain).toContain('(1)');
+    });
+
+    it('shows activity feed from submissions and reviews', () => {
+      const snap = makeSnapshot({
+        quests: [quest({ id: 'task:A', title: 'Quest A' })],
+        submissions: [
+          submission({ id: 'submission:S1', questId: 'task:A', submittedBy: 'agent.test', submittedAt: 100 }),
+        ],
+        reviews: [
+          review({ id: 'review:R1', patchsetId: 'patchset:P1', verdict: 'approve', reviewedAt: 200 }),
+        ],
+      });
+      const plain = strip(renderMyStuffDrawer(snap, style, undefined, 80, 40));
+      expect(plain).toContain('agent.test');
+      expect(plain).toContain('approved');
+    });
+
+    it('uses true pending count in label when agentId is undefined', () => {
+      const snap = makeSnapshot({
+        submissions: Array.from({ length: 10 }, (_, i) =>
+          submission({ id: `submission:S${i}`, questId: `task:T${i}`, submittedBy: `agent.${i}` }),
+        ),
+      });
+      const plain = strip(renderMyStuffDrawer(snap, style, undefined, 60, 30));
+      // Label should show 10 (the true count), not 5 (the sliced display count)
+      expect(plain).toContain('10');
     });
   });
 }); // bijou views

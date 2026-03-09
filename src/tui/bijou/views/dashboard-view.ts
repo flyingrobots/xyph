@@ -190,8 +190,11 @@ export function dashboardView(model: DashboardModel, style: StylePort, width?: n
       if (hasDeps) {
         // Build a SlicedDagSource for campaigns
         const activeIds = new Set(activeCampaigns.map(c => c.id));
+        const sortedActiveIds = snap.sortedCampaignIds.filter(id => activeIds.has(id));
+        // Fallback to declaration order if topo sort didn't include these campaigns
+        const dagIds = sortedActiveIds.length > 0 ? sortedActiveIds : activeCampaigns.map(c => c.id);
         const campaignDagSource: SlicedDagSource = {
-          ids: () => snap.sortedCampaignIds.filter(id => activeIds.has(id)),
+          ids: () => dagIds,
           has: (id: string) => activeIds.has(id),
           label: (id: string) => {
             const c = campaignMap.get(id);
