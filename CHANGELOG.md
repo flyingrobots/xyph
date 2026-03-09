@@ -6,6 +6,8 @@ All notable changes to XYPH will be documented in this file.
 
 ### Added
 
+- **Graph algorithm ban enforcement** — `scripts/check-graph-algorithms.sh` detects userland BFS/DFS/topo-sort/Dijkstra patterns in `src/`. Wired into CI (`strict-policy` job) and `pre-commit` hook. Enforces the rule that all graph traversals must use git-warp's `graph.traverse.*` API
+- **`transitiveDownstream` in GraphSnapshot** — pre-computed via `graph.traverse.bfs()` in GraphContext; eliminates the last userland BFS in `computeTopBlockers()` (`DepAnalysis.ts`)
 - **Transactional `updateKeyring` API** (`KeyringStoragePort`) — new `updateKeyring(mutator)` method with `KeyOps` handle; adapter records an undo log and rolls back private-key side-effects in reverse order on failure (KSP-001)
 
 ### Changed

@@ -111,7 +111,7 @@ export function registerDashboardCommands(program: Command, ctx: CliContext): vo
             tasks.set(q.id, { title: q.title, status: q.status, hours: q.hours });
           }
 
-          const topBlockers = computeTopBlockers(taskSummaries, depEdges, 10);
+          const topBlockers = computeTopBlockers(taskSummaries, depEdges, 10, snapshot.transitiveDownstream);
 
           // Milestone frontier: reuse computeFrontier with campaigns mapped to TaskSummary
           const campaignSummaries = snapshot.campaigns.map((c) => ({ id: c.id, status: c.status, hours: 0 }));

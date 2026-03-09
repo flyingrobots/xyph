@@ -685,12 +685,32 @@ class GraphContextImpl implements GraphContext {
       labelFilter: 'depends-on',
     });
 
+    // --- Transitive downstream counts via git-warp BFS ---
+    log('Computing transitive downstream counts…');
+    const doneSet = new Set(quests.filter((q) => q.status === 'DONE').map((q) => q.id));
+    const transitiveDownstream = new Map<string, number>();
+    for (const taskId of taskIds) {
+      if (doneSet.has(taskId)) continue;
+      // BFS in reverse direction: find all nodes that transitively depend on this task
+      const reachable = await graph.traverse.bfs(taskId, {
+        dir: 'in',
+        labelFilter: 'depends-on',
+      });
+      // Count non-DONE reachable nodes (excluding self)
+      let count = 0;
+      for (const nodeId of reachable) {
+        if (nodeId !== taskId && !doneSet.has(nodeId)) count++;
+      }
+      if (count > 0) transitiveDownstream.set(taskId, count);
+    }
+
     log(`Snapshot ready — ${quests.length} quests, ${campaigns.length} campaigns`);
     const snap: GraphSnapshot = {
       campaigns, quests, intents, scrolls, approvals,
       submissions, reviews, decisions,
       stories, requirements, criteria, evidence, suggestions,
       asOf: Date.now(), graphMeta, sortedTaskIds, sortedCampaignIds,
+      transitiveDownstream,
     };
     this.cachedSnapshot = snap;
     this.cachedFrontierKey = this.frontierKeyFromState(state);

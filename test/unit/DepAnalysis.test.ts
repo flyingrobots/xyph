@@ -176,7 +176,9 @@ describe('computeTopBlockers', () => {
       { from: 'task:B', to: 'task:A' },
       { from: 'task:C', to: 'task:B' },
     ];
-    const result = computeTopBlockers(tasks, edges);
+    // Pre-computed by git-warp BFS: A reaches B,C (2 non-DONE); B reaches C (1)
+    const downstream = new Map<string, number>([['task:A', 2], ['task:B', 1]]);
+    const result = computeTopBlockers(tasks, edges, 10, downstream);
 
     // A blocks B and transitively C (2 transitive), B blocks only C (1 transitive)
     expect(result).toEqual([
@@ -199,7 +201,9 @@ describe('computeTopBlockers', () => {
       { from: 'task:D', to: 'task:B' },
       { from: 'task:D', to: 'task:C' },
     ];
-    const result = computeTopBlockers(tasks, edges);
+    // Pre-computed by git-warp BFS: A reaches B,C,D (3); B reaches D (1); C reaches D (1)
+    const downstream = new Map<string, number>([['task:A', 3], ['task:B', 1], ['task:C', 1]]);
+    const result = computeTopBlockers(tasks, edges, 10, downstream);
 
     // A blocks B, C, and transitively D (3 transitive)
     // B blocks D (1 transitive), C blocks D (1 transitive)
@@ -233,7 +237,9 @@ describe('computeTopBlockers', () => {
       { from: 'task:B', to: 'task:A' },
       { from: 'task:C', to: 'task:A' },
     ];
-    const result = computeTopBlockers(tasks, edges);
+    // Pre-computed by git-warp BFS: A reaches B(DONE),C — 1 non-DONE
+    const downstream = new Map<string, number>([['task:A', 1]]);
+    const result = computeTopBlockers(tasks, edges, 10, downstream);
 
     // A has 2 direct dependents but B is DONE, so only 1 transitive non-DONE
     expect(result).toEqual([
@@ -271,7 +277,9 @@ describe('computeTopBlockers', () => {
       { from: 'task:D', to: 'task:B' },
       { from: 'task:E', to: 'task:D' },
     ];
-    const result = computeTopBlockers(tasks, edges);
+    // Pre-computed by git-warp BFS: B reaches D,E (2); D reaches E (1); A reaches C (1)
+    const downstream = new Map<string, number>([['task:B', 2], ['task:D', 1], ['task:A', 1]]);
+    const result = computeTopBlockers(tasks, edges, 10, downstream);
 
     // B blocks D and transitively E (2), D blocks E (1), A blocks C (1)
     expect(result[0]?.id).toBe('task:B');

@@ -80,14 +80,23 @@ If the types are hard, that means you need to understand the code better.
   before your branch — fix them. You touched the codebase; you leave it better than
   you found it.
 
-**NEVER implement graph algorithms in userland:**
-- If you find yourself implementing graph algorithms (BFS, DFS, topological sort,
-  reachability, transitive reduction/closure, level assignment, etc.), **STOP**.
-- git-warp probably already does what you need via `graph.traverse.*` or `graph.query()`.
-- If git-warp doesn't have the primitive you need, **STOP** and request the user adds
-  the desired functionality to git-warp. You must never assume that the full DAG can
-  fit in memory at once — git-warp's traversals are designed to work incrementally
-  over the commit graph.
+**BANNED: Userland graph algorithms (CI-enforced):**
+- You are **permanently banned** from implementing graph algorithms in `src/`.
+  This includes BFS, DFS, topological sort, shortest/longest path, reachability,
+  cycle detection, transitive reduction/closure, level assignment, connected
+  components, or any algorithm that walks edges in a loop with a visited set.
+- git-warp provides all of these via `graph.traverse.*` and `graph.query()`.
+  Use them. Always.
+- If git-warp doesn't have the primitive you need, **STOP** and request the user
+  adds the desired functionality to git-warp. You must never assume that the full
+  DAG can fit in memory at once — git-warp's traversals are designed to work
+  incrementally over the commit graph.
+- **Pure domain functions** that consume pre-computed results (e.g., DP over a
+  topological order from git-warp, grouping by pre-computed levels) are fine.
+  The ban is on reimplementing the *graph primitives themselves*.
+- **Enforced by CI**: `scripts/check-graph-algorithms.sh` scans `src/` for
+  telltale patterns (queue.shift, stack.pop+visited, in-degree tracking,
+  priority queues). The build fails if any are found.
 
 **NEVER describe git-warp using centralized-database vocabulary:**
 - git-warp is a **CRDT**. There are **no locks, no transactions, no centralized snapshots**.

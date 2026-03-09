@@ -242,7 +242,7 @@ export function dashboardView(model: DashboardModel, style: StylePort, width?: n
 
     // Top Blockers
     if (depEdges.length > 0) {
-      const topBlockers = computeTopBlockers(tasks, depEdges, 3);
+      const topBlockers = computeTopBlockers(tasks, depEdges, 3, snap.transitiveDownstream);
       if (topBlockers.length > 0) {
         lines.push('');
         lines.push(separator({ label: 'Top Blockers', borderToken: style.theme.border.secondary, width: pw }));
