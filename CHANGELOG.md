@@ -10,6 +10,8 @@ All notable changes to XYPH will be documented in this file.
 
 ### Changed
 
+- **Upgrade bijou 1.3.0 → 1.8.0** — all three packages (`@flyingrobots/bijou`, `bijou-node`, `bijou-tui`) bumped. Test helper imports updated to use `@flyingrobots/bijou/adapters/test` subpath
+
 - **`GuildSealService` simplified** — `generateKeypair()` and `rotateKey()` now delegate rollback to `updateKeyring()`, removing hand-written try/catch rollback choreography from the domain layer
 
 - **Shared test helpers** (`test/helpers/`) — `makeSnapshot()`, entity builders (`quest`, `intent`, `campaign`, `scroll`, `submission`, `review`, `decision`), `strip()` ANSI helper, `makeKey()`/`makeResize()` keyboard factories, and mock port factories (`mockGraphContext`, `mockIntakePort`, `mockGraphPort`, `mockSubmissionPort`). Eliminates duplication across TUI test files
