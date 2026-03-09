@@ -1,7 +1,7 @@
 import {
   headerBox, progressBar, table as bijouTable,
-  separator, badge, timeline,
-  type TimelineEvent, type BaseStatusKey,
+  separator, badge, timeline, dagLayout,
+  type TimelineEvent, type BaseStatusKey, type SlicedDagSource,
 } from '@flyingrobots/bijou';
 import { flex, createFocusAreaState, focusAreaScrollTo, focusArea } from '@flyingrobots/bijou-tui';
 import type { StylePort } from '../../../ports/StylePort.js';
@@ -225,22 +225,71 @@ export function dashboardView(model: DashboardModel, style: StylePort, width?: n
       }
     }
 
-    // Campaigns with progress
+    // Campaigns DAG (topologically sorted with dependency visualization)
     if (activeCampaigns.length > 0) {
       const doneCampaignIds = new Set(snap.campaigns.filter(c => c.status === 'DONE').map(c => c.id));
+      const campaignMap = new Map(snap.campaigns.map(c => [c.id, c]));
       lines.push('');
       lines.push(separator({ label: 'Campaigns', borderToken: style.theme.border.secondary, width: pw }));
-      for (const c of activeCampaigns) {
-        const cQuests = questsByCampaign.get(c.id) ?? [];
-        const cDone = cQuests.filter(q => q.status === 'DONE').length;
-        const cTotal = cQuests.length;
-        const cPct = cTotal > 0 ? Math.round((cDone / cTotal) * 100) : 0;
-        const cBarWidth = Math.max(6, Math.min(12, pw - 40));
-        const cBar = cTotal > 0 ? progressBar(cPct, { width: cBarWidth }) : '';
-        const label = c.title.slice(0, Math.max(0, pw - 30));
-        const blockedDeps = (c.dependsOn ?? []).filter(dep => !doneCampaignIds.has(dep));
-        const blockedMark = blockedDeps.length > 0 ? style.styled(style.theme.semantic.warning, ' [blocked]') : '';
-        lines.push(`   ${label}  ${cBar} ${cDone}/${cTotal}${blockedMark}`);
+
+      // Use sortedCampaignIds for topo order; fall back to activeCampaigns order
+      const hasDeps = activeCampaigns.some(c => (c.dependsOn?.length ?? 0) > 0);
+      if (hasDeps) {
+        // Build a SlicedDagSource for campaigns
+        const activeIds = new Set(activeCampaigns.map(c => c.id));
+        const campaignDagSource: SlicedDagSource = {
+          ids: () => snap.sortedCampaignIds.filter(id => activeIds.has(id)),
+          has: (id: string) => activeIds.has(id),
+          label: (id: string) => {
+            const c = campaignMap.get(id);
+            return c ? c.title.slice(0, 16) : id.replace(/^(campaign:|milestone:)/, '');
+          },
+          children: (id: string) => {
+            const c = campaignMap.get(id);
+            return (c?.dependsOn ?? []).filter(dep => activeIds.has(dep));
+          },
+          badge: (id: string) => {
+            const c = campaignMap.get(id);
+            if (!c) return undefined;
+            const cQuests = questsByCampaign.get(c.id) ?? [];
+            const cDone = cQuests.filter(q => q.status === 'DONE').length;
+            const cTotal = cQuests.length;
+            const cPct = cTotal > 0 ? Math.round((cDone / cTotal) * 100) : 0;
+            return `${cPct}%`;
+          },
+          token: (id: string) => {
+            const c = campaignMap.get(id);
+            if (!c) return undefined;
+            const blockedDeps = (c.dependsOn ?? []).filter(dep => !doneCampaignIds.has(dep));
+            return blockedDeps.length > 0 ? style.theme.semantic.warning : undefined;
+          },
+          ghost: () => false,
+          ghostLabel: () => undefined,
+        };
+        const layout = dagLayout(campaignDagSource, {
+          direction: 'right',
+          maxWidth: Math.max(pw - 4, 40),
+        });
+        // Limit height to 8 rows
+        const dagLines = layout.output.split('\n').slice(0, 8);
+        for (const dl of dagLines) {
+          lines.push(`  ${dl}`);
+        }
+        if (layout.height > 8) {
+          lines.push(style.styled(style.theme.semantic.muted, `   +${layout.height - 8} rows`));
+        }
+      } else {
+        // Flat list fallback (no dependencies between campaigns)
+        for (const c of activeCampaigns) {
+          const cQuests = questsByCampaign.get(c.id) ?? [];
+          const cDone = cQuests.filter(q => q.status === 'DONE').length;
+          const cTotal = cQuests.length;
+          const cPct = cTotal > 0 ? Math.round((cDone / cTotal) * 100) : 0;
+          const cBarWidth = Math.max(6, Math.min(12, pw - 40));
+          const cBar = cTotal > 0 ? progressBar(cPct, { width: cBarWidth }) : '';
+          const label = c.title.slice(0, Math.max(0, pw - 30));
+          lines.push(`   ${label}  ${cBar} ${cDone}/${cTotal}`);
+        }
       }
     }
 
