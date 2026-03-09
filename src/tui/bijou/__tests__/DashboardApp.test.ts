@@ -835,6 +835,47 @@ describe('DashboardApp', () => {
       expect(after.toast?.message).toBe('newer toast');
     });
 
+    // ── Drawer toggle ──────────────────────────────────────────────────
+
+    it('m toggles drawerOpen and emits animation commands', () => {
+      const app = makeApp();
+      const [initial] = app.init();
+      const loaded: DashboardModel = { ...initial, showLanding: false, loading: false };
+
+      const [afterM, cmds] = app.update(makeKey('m'), loaded);
+      expect(afterM.drawerOpen).toBe(true);
+      expect(cmds.length).toBeGreaterThan(0); // animation cmd
+
+      const [afterM2, cmds2] = app.update(makeKey('m'), afterM);
+      expect(afterM2.drawerOpen).toBe(false);
+      expect(cmds2.length).toBeGreaterThan(0); // animation cmd
+    });
+
+    it('drawer-frame updates drawerWidth', () => {
+      const app = makeApp();
+      const [initial] = app.init();
+      const loaded: DashboardModel = { ...initial, showLanding: false, loading: false, drawerOpen: true };
+
+      const [after] = app.update({ type: 'drawer-frame', value: 25.7 }, loaded);
+      expect(after.drawerWidth).toBe(26);
+    });
+
+    // ── Landing auto-dismiss ────────────────────────────────────────────
+
+    it('snapshot-loaded auto-dismisses landing screen', () => {
+      const app = makeApp();
+      const [initial] = app.init();
+      expect(initial.showLanding).toBe(true);
+
+      const snap = makeSnapshot({ asOf: 12345 });
+      const [updated] = app.update(
+        { type: 'snapshot-loaded', snapshot: snap, requestId: initial.requestId },
+        initial,
+      );
+      expect(updated.showLanding).toBe(false);
+      expect(updated.snapshot).toBe(snap);
+    });
+
     // ── Submission expand/collapse ────────────────────────────────────
 
     it('Enter on submissions view toggles expanded detail', () => {
@@ -1134,6 +1175,27 @@ describe('DashboardApp', () => {
       const output = app.view(model);
       // Hint bar renders some content for the active view
       expect(output.length).toBeGreaterThan(0);
+    });
+
+    it('shows drawer content when drawerWidth > 0 and snapshot exists', () => {
+      const app = makeApp();
+      const [initial] = app.init();
+      const snap = makeSnapshot({
+        quests: [
+          { id: 'task:Q-001', title: 'Active work', status: 'IN_PROGRESS', hours: 2, assignedTo: 'agent.test' },
+        ],
+      });
+      const model: DashboardModel = {
+        ...initial,
+        showLanding: false,
+        loading: false,
+        snapshot: snap,
+        drawerOpen: true,
+        drawerWidth: 30,
+      };
+      const output = app.view(model);
+      // Drawer should render — agent.test's quest appears
+      expect(output).toContain('task:Q-001'.replace(/^task:/, ''));
     });
 
     it('shows toast in status line', () => {
