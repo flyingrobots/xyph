@@ -196,5 +196,7 @@ export interface GraphSnapshot {
   sortedTaskIds: string[];
   /** Campaign IDs in topological order (prerequisites first), computed by git-warp's traversal engine. */
   sortedCampaignIds: string[];
+  /** Per-task count of non-DONE nodes transitively downstream via depends-on edges, computed by git-warp's BFS. */
+  transitiveDownstream: Map<string, number>;
 }
 

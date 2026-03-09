@@ -13,12 +13,12 @@ import { navTableKeyMap } from '@flyingrobots/bijou-tui';
 import { accordionKeyMap } from '@flyingrobots/bijou-tui';
 import { commandPaletteKeyMap, cpPageDown, cpPageUp } from '@flyingrobots/bijou-tui';
 import { statusBar, visibleLength } from '@flyingrobots/bijou-tui';
-import { composite, toast as toastOverlay } from '@flyingrobots/bijou-tui';
+import { composite, toast as toastOverlay, drawer } from '@flyingrobots/bijou-tui';
 import { helpView, helpShort } from '@flyingrobots/bijou-tui';
 import { createNavigableTableState, navTableFocusNext, navTableFocusPrev, navTablePageDown, navTablePageUp, type NavigableTableState } from '@flyingrobots/bijou-tui';
 import { createDagPaneState, dagPaneSelectNode, dagPanePageDown, dagPanePageUp, dagPaneScrollByX, type DagPaneState } from '@flyingrobots/bijou-tui';
 import { createCommandPaletteState, cpFilter, cpFocusNext, cpFocusPrev, cpSelectedItem, commandPalette, modal, type CommandPaletteState, type CommandPaletteItem } from '@flyingrobots/bijou-tui';
-import { tabs, getDefaultContext, type TokenValue } from '@flyingrobots/bijou';
+import { tabs, getDefaultContext, progressBar, type TokenValue } from '@flyingrobots/bijou';
 import type { StylePort } from '../../ports/StylePort.js';
 import type { GraphContext } from '../../infrastructure/GraphContext.js';
 import type { GraphSnapshot } from '../../domain/models/dashboard.js';
@@ -31,6 +31,7 @@ import { backlogView } from './views/backlog-view.js';
 import { submissionsView } from './views/submissions-view.js';
 import { landingView } from './views/landing-view.js';
 import { confirmOverlay, inputOverlay } from './overlays.js';
+import { renderMyStuffDrawer } from './views/my-stuff-drawer.js';
 import { claimQuest, promoteQuest, rejectQuest, reviewSubmission, type WriteDeps } from './write-cmds.js';
 import { roadmapQuestIds, submissionIds, sortedSubmissions, backlogQuestIds, lineageIntentIds } from './selection-order.js';
 import type { SubmissionPort } from '../../ports/SubmissionPort.js';
@@ -76,11 +77,10 @@ export interface LineageState {
 }
 
 export interface DashboardViewState {
-  focusPanel: 'in-progress' | 'my-quests';
+  focusPanel: 'in-progress';
   focusRow: number;
   detailId: string | null;
   leftScrollY: number;
-  rightScrollY: number;
 }
 
 export interface DashboardModel {
@@ -119,6 +119,11 @@ export interface DashboardModel {
   /** Guards against double-writes while a write command is in flight. */
   writePending: boolean;
 
+  /** Whether the "My Stuff" drawer is logically open. */
+  drawerOpen: boolean;
+  /** Current drawer width in columns (0 when fully closed, animated). */
+  drawerWidth: number;
+
   /** True once graph.watch() polling has been started (fires after first snapshot load). */
   watching: boolean;
 
@@ -140,15 +145,19 @@ export type DashboardMsg =
   | { type: 'write-success'; message: string }
   | { type: 'write-error'; message: string }
   | { type: 'dismiss-toast'; expiresAt: number }
-  | { type: 'remote-change' };
+  | { type: 'remote-change' }
+  | { type: 'drawer-frame'; value: number };
 
 // ── Keybindings ─────────────────────────────────────────────────────────
 
 type GlobalAction =
   | { type: 'quit' }
   | { type: 'jump-view'; view: ViewName }
+  | { type: 'next-view' }
+  | { type: 'prev-view' }
   | { type: 'refresh' }
-  | { type: 'toggle-help' };
+  | { type: 'toggle-help' }
+  | { type: 'toggle-drawer' };
 
 type ViewAction =
   | { type: 'select-next' }
@@ -165,7 +174,6 @@ type ViewAction =
   | { type: 'scroll-dag-right' }
   | { type: 'page-down' }
   | { type: 'page-up' }
-  | { type: 'focus-panel' }
   | { type: 'scroll-col-down' }
   | { type: 'scroll-col-up' }
   | { type: 'top' }
@@ -180,7 +188,10 @@ function buildGlobalKeys(): KeyMap<GlobalAction> {
       .bind('3', 'Submissions', { type: 'jump-view', view: 'submissions' })
       .bind('4', 'Lineage', { type: 'jump-view', view: 'lineage' })
       .bind('5', 'Backlog', { type: 'jump-view', view: 'backlog' })
+      .bind('[', 'Prev view', { type: 'prev-view' })
+      .bind(']', 'Next view', { type: 'next-view' })
       .bind('r', 'Refresh', { type: 'refresh' })
+      .bind('m', 'My Stuff', { type: 'toggle-drawer' })
       .bind('?', 'Toggle help', { type: 'toggle-help' })
     );
 }
@@ -250,7 +261,6 @@ function buildDashboardKeys(): KeyMap<ViewAction> {
   });
   km.disable('Quit');
   return km.group('Dashboard', g => g
-    .bind('tab', 'Switch panel', { type: 'focus-panel' })
     .bind('enter', 'Show detail', { type: 'expand' })
     .bind('g', 'Jump to first', { type: 'top' })
     .bind('shift+g', 'Jump to last', { type: 'bottom' })
@@ -446,7 +456,9 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         submissions: { table: createNavigableTableState({ columns: [], rows: [], height: 20 }), expandedId: null, detailScrollY: 0 },
         backlog: { table: createNavigableTableState({ columns: [], rows: [], height: 20 }) },
         lineage: { selectedIndex: -1, collapsedIntents: [] },
-        dashboardView: { focusPanel: 'in-progress', focusRow: 0, detailId: null, leftScrollY: 0, rightScrollY: 0 },
+        dashboardView: { focusPanel: 'in-progress', focusRow: 0, detailId: null, leftScrollY: 0 },
+        drawerOpen: false,
+        drawerWidth: 0,
         pulsePhase: 0,
         mode: 'normal',
         confirmState: null,
@@ -515,8 +527,8 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         if (msg.requestId !== model.requestId) return [model, []];
         const snap = msg.snapshot;
         // Clamp dashboard focusRow to visible panel size after data refresh
-        const currentDv = model.dashboardView ?? { focusPanel: 'in-progress' as const, focusRow: 0, detailId: null, leftScrollY: 0, rightScrollY: 0 };
-        const panelCount = dashboardPanelCount(snap, model, currentDv.focusPanel);
+        const currentDv = model.dashboardView ?? { focusPanel: 'in-progress' as const, focusRow: 0, detailId: null, leftScrollY: 0 };
+        const panelCount = dashboardPanelCount(snap);
         const clampedFocusRow = panelCount > 0 ? Math.min(currentDv.focusRow, panelCount - 1) : 0;
         // Build dagPane from dependency data
         const newRoadmapTable = rebuildRoadmapTable(snap, model.roadmap.table.focusRow, model.rows - 4);
@@ -562,6 +574,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
           ...model,
           snapshot: snap,
           loading: pendingRefresh,
+          showLanding: false,
           error: null,
           loadingProgress: 100,
           watching: true,
@@ -640,6 +653,11 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
           onFrame: (v) => ({ type: 'pulse-frame', value: v }),
           onComplete: () => ({ type: 'pulse-done' }),
         })]];
+      }
+
+      // Handle drawer animation frame
+      if (msg.type === 'drawer-frame') {
+        return [{ ...model, drawerWidth: Math.round(msg.value) }, []];
       }
 
       // ── Key handling ──────────────────────────────────────────────────
@@ -791,12 +809,39 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
               return [model, [stopWatching(), quit()]];
             case 'jump-view':
               return [{ ...model, activeView: globalAction.view }, []];
+            case 'next-view': {
+              const idx = VIEWS.indexOf(model.activeView);
+              const next = VIEWS[(idx + 1) % VIEWS.length] ?? model.activeView;
+              return [{ ...model, activeView: next }, []];
+            }
+            case 'prev-view': {
+              const idx = VIEWS.indexOf(model.activeView);
+              const prev = VIEWS[(idx - 1 + VIEWS.length) % VIEWS.length] ?? model.activeView;
+              return [{ ...model, activeView: prev }, []];
+            }
             case 'refresh': {
               const nextReqId = model.requestId + 1;
               return [{ ...model, loading: true, error: null, requestId: nextReqId }, [fetchSnapshot(nextReqId)]];
             }
             case 'toggle-help':
               return [{ ...model, showHelp: !model.showHelp }, []];
+            case 'toggle-drawer': {
+              const opening = !model.drawerOpen;
+              const targetWidth = opening ? Math.min(40, Math.floor(model.cols * 0.35)) : 0;
+              const fromWidth = model.drawerWidth;
+              return [
+                { ...model, drawerOpen: opening },
+                [animate<DashboardMsg>({
+                  type: 'tween',
+                  from: fromWidth,
+                  to: targetWidth,
+                  duration: 200,
+                  ease: EASINGS.easeOut,
+                  onFrame: (v) => ({ type: 'drawer-frame', value: v }),
+                  onComplete: () => ({ type: 'drawer-frame', value: targetWidth }),
+                })],
+              ];
+            }
           }
         }
 
@@ -880,6 +925,27 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         { basis: 1, content: statusBg },
         { basis: 1, content: hintLine },
       );
+
+      // "My Stuff" drawer overlay (global — available from any screen)
+      if (model.drawerWidth > 4 && model.snapshot) {
+        const drawerH = model.rows - 2; // exclude status + hints
+        const drawerContent = renderMyStuffDrawer(
+          model.snapshot, style, model.agentId,
+          model.drawerWidth - 2,  // account for border
+          drawerH - 2,            // account for border
+        );
+        const drawerTitle = model.agentId ? 'My Stuff' : 'Activity';
+        const dov = drawer({
+          content: drawerContent,
+          anchor: 'right',
+          width: model.drawerWidth,
+          screenWidth: model.cols,
+          screenHeight: drawerH,
+          title: drawerTitle,
+          borderToken: style.theme.border.primary,
+        });
+        output = composite(output, [dov]);
+      }
 
       // Command palette overlay
       if (model.mode === 'palette' && model.paletteState) {
@@ -1112,31 +1178,19 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         return [model, []];
       }
 
-      case 'focus-panel': {
-        if (model.activeView !== 'dashboard' || !model.dashboardView) return [model, []];
-        const nextPanel = model.dashboardView.focusPanel === 'in-progress' ? 'my-quests' as const : 'in-progress' as const;
-        return [{ ...model, dashboardView: { ...model.dashboardView, focusPanel: nextPanel, focusRow: 0 } }, []];
-      }
-
       case 'scroll-col-down': {
         if (model.activeView !== 'dashboard' || !model.dashboardView) return [model, []];
         const step = Math.max(1, model.rows - 6);
         const maxScroll = model.rows * 5;
         const dv = model.dashboardView;
-        if (dv.focusPanel === 'in-progress') {
-          return [{ ...model, dashboardView: { ...dv, leftScrollY: Math.min(dv.leftScrollY + step, maxScroll) } }, []];
-        }
-        return [{ ...model, dashboardView: { ...dv, rightScrollY: Math.min(dv.rightScrollY + step, maxScroll) } }, []];
+        return [{ ...model, dashboardView: { ...dv, leftScrollY: Math.min(dv.leftScrollY + step, maxScroll) } }, []];
       }
 
       case 'scroll-col-up': {
         if (model.activeView !== 'dashboard' || !model.dashboardView) return [model, []];
         const step = Math.max(1, model.rows - 6);
         const dv = model.dashboardView;
-        if (dv.focusPanel === 'in-progress') {
-          return [{ ...model, dashboardView: { ...dv, leftScrollY: Math.max(0, dv.leftScrollY - step) } }, []];
-        }
-        return [{ ...model, dashboardView: { ...dv, rightScrollY: Math.max(0, dv.rightScrollY - step) } }, []];
+        return [{ ...model, dashboardView: { ...dv, leftScrollY: Math.max(0, dv.leftScrollY - step) } }, []];
       }
 
       case 'top':
@@ -1190,10 +1244,9 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
       }
       case 'dashboard': {
         if (!model.dashboardView) {
-          return { ...model, dashboardView: { focusPanel: 'in-progress', focusRow: 0, detailId: null, leftScrollY: 0, rightScrollY: 0 } };
+          return { ...model, dashboardView: { focusPanel: 'in-progress', focusRow: 0, detailId: null, leftScrollY: 0 } };
         }
-        const { focusPanel } = model.dashboardView;
-        const count = dashboardPanelCount(snap, model, focusPanel);
+        const count = dashboardPanelCount(snap);
         if (count === 0) return model;
         const nextRow = ((model.dashboardView.focusRow + delta) % count + count) % count;
         return { ...model, dashboardView: { ...model.dashboardView, focusRow: nextRow } };
@@ -1242,7 +1295,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
       }
       case 'dashboard': {
         if (!model.dashboardView) return model;
-        const count = dashboardPanelCount(snap, model, model.dashboardView.focusPanel);
+        const count = dashboardPanelCount(snap);
         if (count === 0) return model;
         const targetRow = edge === 'top' ? 0 : count - 1;
         return { ...model, dashboardView: { ...model.dashboardView, focusRow: targetRow } };
@@ -1323,13 +1376,15 @@ function renderStatusLine(model: DashboardModel, style: StylePort): string {
   // Apply gradient to WARP tag
   const styledTag = style.gradient(tagText, style.theme.gradient.brand);
 
-  // Right side: project stats
+  // Right side: project stats with progress bar
   let rightStats = '';
   if (snap) {
-    const total = snap.quests.length;
+    const total = snap.quests.filter(q => q.status !== 'BACKLOG' && q.status !== 'GRAVEYARD').length;
     const done = snap.quests.filter(q => q.status === 'DONE').length;
     const ip = snap.quests.filter(q => q.status === 'IN_PROGRESS').length;
-    rightStats = `${done}/${total} done \u00B7 ${ip} active`;
+    const statusPct = total > 0 ? Math.round((done / total) * 100) : 0;
+    const bar = progressBar(statusPct, { width: 12, gradient: style.theme.gradient.progress });
+    rightStats = `${bar} ${done}/${total} done \u00B7 ${ip} active`;
   }
 
   return statusBar({
@@ -1485,34 +1540,19 @@ function rebuildRoadmapTable(
 
 // ── Dashboard panel helpers ───────────────────────────────────────────
 
-// Visibility caps — must match the .slice() limits used by dashboard-view.ts
+// Visibility cap — must match the .slice() limit used by dashboard-view.ts
 const DASHBOARD_IN_PROGRESS_VISIBLE = 8;
-const DASHBOARD_MY_ISSUES_VISIBLE = 6;
 
 function dashboardFocusedQuestId(snap: GraphSnapshot, model: DashboardModel): string | null {
   if (!model.dashboardView) return null;
-  const { focusPanel, focusRow } = model.dashboardView;
-  if (focusPanel === 'in-progress') {
-    const inProgress = snap.quests.filter(q => q.status === 'IN_PROGRESS');
-    return inProgress.slice(0, DASHBOARD_IN_PROGRESS_VISIBLE)[focusRow]?.id ?? null;
-  }
-  const agentId = model.agentId;
-  const myIssues = agentId
-    ? snap.quests.filter(q => q.assignedTo === agentId && q.status !== 'DONE' && q.status !== 'GRAVEYARD')
-    : snap.quests.filter(q => q.assignedTo !== undefined && q.status !== 'DONE' && q.status !== 'GRAVEYARD');
-  return myIssues.slice(0, DASHBOARD_MY_ISSUES_VISIBLE)[focusRow]?.id ?? null;
+  const { focusRow } = model.dashboardView;
+  const inProgress = snap.quests.filter(q => q.status === 'IN_PROGRESS');
+  return inProgress.slice(0, DASHBOARD_IN_PROGRESS_VISIBLE)[focusRow]?.id ?? null;
 }
 
-function dashboardPanelCount(snap: GraphSnapshot, model: DashboardModel, panel: 'in-progress' | 'my-quests'): number {
-  if (panel === 'in-progress') {
-    return Math.min(
-      snap.quests.filter(q => q.status === 'IN_PROGRESS').length,
-      DASHBOARD_IN_PROGRESS_VISIBLE,
-    );
-  }
-  const agentId = model.agentId;
-  const count = agentId
-    ? snap.quests.filter(q => q.assignedTo === agentId && q.status !== 'DONE' && q.status !== 'GRAVEYARD').length
-    : snap.quests.filter(q => q.assignedTo !== undefined && q.status !== 'DONE' && q.status !== 'GRAVEYARD').length;
-  return Math.min(count, DASHBOARD_MY_ISSUES_VISIBLE);
+function dashboardPanelCount(snap: GraphSnapshot): number {
+  return Math.min(
+    snap.quests.filter(q => q.status === 'IN_PROGRESS').length,
+    DASHBOARD_IN_PROGRESS_VISIBLE,
+  );
 }

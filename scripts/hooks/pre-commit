@@ -10,3 +10,6 @@ if grep -rn '^```mermaid' README.md CONTRIBUTING.md docs/ --include='*.md' 2>/de
   echo "Error: Found inline \`\`\`mermaid blocks. Extract to docs/diagrams/*.mmd and run scripts/render-diagrams.sh"
   exit 1
 fi
+
+# No userland graph algorithms — use git-warp's graph.traverse.* instead
+bash scripts/check-graph-algorithms.sh

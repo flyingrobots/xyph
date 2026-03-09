@@ -87,7 +87,7 @@ export function roadmapView(model: DashboardModel, style: StylePort, width?: num
   const critSet = new Set(criticalPath);
 
   // Top blockers (hoisted out of render callback to avoid recomputation)
-  const topBlockers = computeTopBlockers(tasks, edges, 5);
+  const topBlockers = computeTopBlockers(tasks, edges, 5, snap.transitiveDownstream);
 
   // Quest lookup
   const questMap = new Map(snap.quests.map(q => [q.id, q]));

@@ -6,9 +6,25 @@ All notable changes to XYPH will be documented in this file.
 
 ### Added
 
+- **Global "My Stuff" drawer** — press `m` from any screen to toggle an animated drawer showing agent's quests, submissions, and recent activity. Slides in from the right with a tween animation; content is agent-scoped when `XYPH_AGENT_ID` is set. Replaces the fixed right column on the dashboard view
+- **Campaign DAG visualization** — campaigns with inter-campaign dependencies are rendered as a mini-DAG using bijou's `dagLayout()`, sorted topologically. Falls back to flat list when no dependencies exist
+- **Status bar progress bar** — compact gradient progress bar added to the status line showing quest completion percentage
+- **Graph algorithm ban enforcement** — `scripts/check-graph-algorithms.sh` detects userland BFS/DFS/topo-sort/Dijkstra patterns in `src/`. Wired into CI (`strict-policy` job) and `pre-commit` hook. Enforces the rule that all graph traversals must use git-warp's `graph.traverse.*` API
+- **`transitiveDownstream` in GraphSnapshot** — pre-computed via `graph.traverse.bfs()` in GraphContext; eliminates the last userland BFS in `computeTopBlockers()` (`DepAnalysis.ts`)
+
+### Fixed
+
+- **Blocker counts exclude GRAVEYARD tasks** — `transitiveDownstream` BFS now excludes GRAVEYARD tasks from counts (matching DONE exclusion), and `filterSnapshot()` strips GRAVEYARD keys from the map. Fixes inconsistency where `directCount` (from filtered edges) and `transitiveCount` (from unfiltered BFS) could diverge when `--include-graveyard` was not set
+- **Landing screen auto-dismiss** — `showLanding` is now set to `false` when `snapshot-loaded` fires, so the dashboard appears immediately after data loads. Previously required a throwaway keypress to dismiss the landing screen, making navigation appear broken
+- **View cycling via `[`/`]`** — bracket keys cycle forward/backward through all 5 views from anywhere, matching bijou's `createFramedApp` convention (`[`/`]` = tabs, Tab = panes). Tab/Shift+Tab retained for panel switching within views
 - **Transactional `updateKeyring` API** (`KeyringStoragePort`) — new `updateKeyring(mutator)` method with `KeyOps` handle; adapter records an undo log and rolls back private-key side-effects in reverse order on failure (KSP-001)
 
 ### Changed
+
+- **Dashboard restyled to single-column layout** — graph stats use bold primary labels instead of dim/muted text; health metrics (sovereignty, orphans, forked) merged into the stats area; "Inbox" label renamed to "Backlog"; Top Blockers rendered as `bijouTable()` instead of `enumeratedList()`
+- **Dashboard panel switching removed** — Tab/Shift+Tab on dashboard is now a no-op. The right column content moved to the global drawer (`m` key)
+- **Upgrade bijou 1.3.0 → 1.8.0** — all three packages (`@flyingrobots/bijou`, `bijou-node`, `bijou-tui`) bumped. Test helper imports updated to use `@flyingrobots/bijou/adapters/test` subpath
+- **Upgrade git-warp 13.1.0 → 14.0.0** — major version bump, no breaking changes for current usage
 
 - **`GuildSealService` simplified** — `generateKeypair()` and `rotateKey()` now delegate rollback to `updateKeyring()`, removing hand-written try/catch rollback choreography from the domain layer
 

@@ -6,10 +6,12 @@
  *   XYPH_AGENT_ID=human.james ./xyph-dashboard.ts
  *
  * Keys:
- *   Tab   — cycle views (roadmap → submissions → lineage → overview → inbox)
- *   r     — refresh snapshot
- *   q     — quit
- *   ?     — help
+ *   [ / ]           — cycle views (prev / next)
+ *   1-5             — jump to view (dashboard, roadmap, submissions, lineage, backlog)
+ *   m               — toggle "My Stuff" drawer (quests, submissions, activity)
+ *   r               — refresh snapshot
+ *   q               — quit
+ *   ?               — help
  */
 
 // Suppress DEP0169 stderr output from transitive deps.

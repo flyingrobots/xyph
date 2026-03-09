@@ -40,6 +40,7 @@ export function makeSnapshot(overrides?: Partial<GraphSnapshot>): GraphSnapshot 
     asOf: FIXED_TS,
     sortedTaskIds: [] as string[],
     sortedCampaignIds: [] as string[],
+    transitiveDownstream: new Map<string, number>(),
     ...overrides,
   };
   // Auto-populate sorted ID arrays from entity arrays if not explicitly provided
