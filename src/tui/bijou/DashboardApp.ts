@@ -182,8 +182,8 @@ function buildGlobalKeys(): KeyMap<GlobalAction> {
       .bind('3', 'Submissions', { type: 'jump-view', view: 'submissions' })
       .bind('4', 'Lineage', { type: 'jump-view', view: 'lineage' })
       .bind('5', 'Backlog', { type: 'jump-view', view: 'backlog' })
-      .bind('tab', 'Next view', { type: 'next-view' })
-      .bind('shift+tab', 'Prev view', { type: 'prev-view' })
+      .bind('[', 'Prev view', { type: 'prev-view' })
+      .bind(']', 'Next view', { type: 'next-view' })
       .bind('r', 'Refresh', { type: 'refresh' })
       .bind('?', 'Toggle help', { type: 'toggle-help' })
     );
@@ -254,8 +254,8 @@ function buildDashboardKeys(): KeyMap<ViewAction> {
   });
   km.disable('Quit');
   return km.group('Dashboard', g => g
-    .bind('[', 'Prev panel', { type: 'focus-panel' })
-    .bind(']', 'Next panel', { type: 'focus-panel' })
+    .bind('tab', 'Next panel', { type: 'focus-panel' })
+    .bind('shift+tab', 'Prev panel', { type: 'focus-panel' })
     .bind('enter', 'Show detail', { type: 'expand' })
     .bind('g', 'Jump to first', { type: 'top' })
     .bind('shift+g', 'Jump to last', { type: 'bottom' })

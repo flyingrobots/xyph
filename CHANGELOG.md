@@ -11,7 +11,7 @@ All notable changes to XYPH will be documented in this file.
 
 ### Fixed
 
-- **Tab now cycles views globally** — Tab/Shift+Tab cycle forward/backward through all 5 dashboard views from any view. Previously Tab only worked on the dashboard view (switched panels). Dashboard panel switching moved to `[`/`]` keys
+- **View cycling via `[`/`]`** — bracket keys cycle forward/backward through all 5 views from anywhere, matching bijou's `createFramedApp` convention (`[`/`]` = tabs, Tab = panes). Tab/Shift+Tab retained for panel switching within views
 - **Transactional `updateKeyring` API** (`KeyringStoragePort`) — new `updateKeyring(mutator)` method with `KeyOps` handle; adapter records an undo log and rolls back private-key side-effects in reverse order on failure (KSP-001)
 
 ### Changed

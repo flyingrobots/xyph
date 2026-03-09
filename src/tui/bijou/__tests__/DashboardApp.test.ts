@@ -171,7 +171,7 @@ describe('DashboardApp', () => {
       expect(after5.activeView).toBe('backlog');
     });
 
-    it('] on dashboard switches focusPanel', () => {
+    it('Tab on dashboard switches focusPanel', () => {
       const app = makeApp();
       const [initial] = app.init();
       const loaded: DashboardModel = {
@@ -183,12 +183,12 @@ describe('DashboardApp', () => {
 
       expect(loaded.dashboardView?.focusPanel).toBe('in-progress');
 
-      const [afterBracket] = app.update(makeKey(']'), loaded);
-      expect(afterBracket.dashboardView?.focusPanel).toBe('my-quests');
-      expect(afterBracket.dashboardView?.focusRow).toBe(0);
+      const [afterTab] = app.update(makeKey('tab'), loaded);
+      expect(afterTab.dashboardView?.focusPanel).toBe('my-quests');
+      expect(afterTab.dashboardView?.focusRow).toBe(0);
 
-      const [afterBracket2] = app.update(makeKey(']'), afterBracket);
-      expect(afterBracket2.dashboardView?.focusPanel).toBe('in-progress');
+      const [afterTab2] = app.update(makeKey('tab'), afterTab);
+      expect(afterTab2.dashboardView?.focusPanel).toBe('in-progress');
     });
 
     it('PageDown scrolls the focused dashboard column', () => {
@@ -206,9 +206,9 @@ describe('DashboardApp', () => {
       expect(afterPgDn.dashboardView?.leftScrollY).toBeGreaterThan(0);
       expect(afterPgDn.dashboardView?.rightScrollY).toBe(0);
 
-      // Switch to right panel via ], then PageDown
-      const [afterBracket] = app.update(makeKey(']'), loaded);
-      const [afterPgDn2] = app.update(makeKey('pagedown'), afterBracket);
+      // Switch to right panel via Tab, then PageDown
+      const [afterTab] = app.update(makeKey('tab'), loaded);
+      const [afterPgDn2] = app.update(makeKey('pagedown'), afterTab);
       expect(afterPgDn2.dashboardView?.rightScrollY).toBeGreaterThan(0);
       expect(afterPgDn2.dashboardView?.leftScrollY).toBe(0);
     });

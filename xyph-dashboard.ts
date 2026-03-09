@@ -6,8 +6,9 @@
  *   XYPH_AGENT_ID=human.james ./xyph-dashboard.ts
  *
  * Keys:
- *   Tab / Shift+Tab — cycle views forward / backward
+ *   [ / ]           — cycle views (prev / next)
  *   1-5             — jump to view (dashboard, roadmap, submissions, lineage, backlog)
+ *   Tab / Shift+Tab — cycle panes within a view
  *   r               — refresh snapshot
  *   q               — quit
  *   ?               — help
