@@ -18,7 +18,7 @@ import { helpView, helpShort } from '@flyingrobots/bijou-tui';
 import { createNavigableTableState, navTableFocusNext, navTableFocusPrev, navTablePageDown, navTablePageUp, type NavigableTableState } from '@flyingrobots/bijou-tui';
 import { createDagPaneState, dagPaneSelectNode, dagPanePageDown, dagPanePageUp, dagPaneScrollByX, type DagPaneState } from '@flyingrobots/bijou-tui';
 import { createCommandPaletteState, cpFilter, cpFocusNext, cpFocusPrev, cpSelectedItem, commandPalette, modal, type CommandPaletteState, type CommandPaletteItem } from '@flyingrobots/bijou-tui';
-import { tabs, getDefaultContext, type TokenValue } from '@flyingrobots/bijou';
+import { tabs, getDefaultContext, progressBar, type TokenValue } from '@flyingrobots/bijou';
 import type { StylePort } from '../../ports/StylePort.js';
 import type { GraphContext } from '../../infrastructure/GraphContext.js';
 import type { GraphSnapshot } from '../../domain/models/dashboard.js';
@@ -1339,13 +1339,15 @@ function renderStatusLine(model: DashboardModel, style: StylePort): string {
   // Apply gradient to WARP tag
   const styledTag = style.gradient(tagText, style.theme.gradient.brand);
 
-  // Right side: project stats
+  // Right side: project stats with progress bar
   let rightStats = '';
   if (snap) {
-    const total = snap.quests.length;
+    const total = snap.quests.filter(q => q.status !== 'BACKLOG' && q.status !== 'GRAVEYARD').length;
     const done = snap.quests.filter(q => q.status === 'DONE').length;
     const ip = snap.quests.filter(q => q.status === 'IN_PROGRESS').length;
-    rightStats = `${done}/${total} done \u00B7 ${ip} active`;
+    const statusPct = total > 0 ? Math.round((done / total) * 100) : 0;
+    const bar = progressBar(statusPct, { width: 12, gradient: style.theme.gradient.progress });
+    rightStats = `${bar} ${done}/${total} done \u00B7 ${ip} active`;
   }
 
   return statusBar({

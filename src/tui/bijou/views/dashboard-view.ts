@@ -1,6 +1,6 @@
 import {
   headerBox, progressBar, table as bijouTable,
-  separator, badge, timeline, enumeratedList,
+  separator, badge, timeline,
   type TimelineEvent, type BaseStatusKey,
 } from '@flyingrobots/bijou';
 import { flex, createFocusAreaState, focusAreaScrollTo, focusArea } from '@flyingrobots/bijou-tui';
@@ -136,17 +136,36 @@ export function dashboardView(model: DashboardModel, style: StylePort, width?: n
       width: pw,
     }));
 
-    // Graph + DAG stats (compact)
-    const statParts: string[] = [];
-    statParts.push(`${snap.quests.length} quests`);
-    statParts.push(`${frontierCount} frontier`);
-    statParts.push(`${inProgress.length} active`);
+    // Graph + DAG stats (compact, readable)
+    const labelTk = style.theme.semantic.primary;
+    const statLine1Parts: string[] = [];
+    statLine1Parts.push(`${style.styled(labelTk, 'Quests:')} ${snap.quests.length}`);
+    statLine1Parts.push(`${style.styled(labelTk, 'Frontier:')} ${frontierCount}`);
+    statLine1Parts.push(`${style.styled(labelTk, 'Active:')} ${inProgress.length}`);
+    if (backlogCount > 0) {
+      statLine1Parts.push(`${style.styled(labelTk, 'Backlog:')} ${backlogCount}`);
+    }
     if (meta) {
-      statParts.push(`${meta.writerCount} wrtrs`);
-      statParts.push(`tick: ${meta.maxTick}`);
+      statLine1Parts.push(`${style.styled(labelTk, 'Writers:')} ${meta.writerCount}`);
+      statLine1Parts.push(`${style.styled(labelTk, 'Tick:')} ${meta.maxTick}`);
     }
     lines.push('');
-    lines.push(style.styled(style.theme.semantic.muted, `  Graph  ${statParts.join(' \u00B7 ')}`));
+    lines.push(`  ${statLine1Parts.join('  ')}`);
+
+    // Health stats (merged into graph stats area)
+    const healthParts: string[] = [];
+    healthParts.push(`${style.styled(labelTk, 'Sovereignty:')} ${withIntent}/${totalNonBacklog}`);
+    if (orphanCount > 0) {
+      healthParts.push(style.styled(style.theme.semantic.warning, `Orphans: ${orphanCount}`));
+    } else {
+      healthParts.push(`${style.styled(labelTk, 'Orphans:')} 0`);
+    }
+    if (forkedCount > 0) {
+      healthParts.push(style.styled(style.theme.semantic.error, `Forked: ${forkedCount}`));
+    } else {
+      healthParts.push(`${style.styled(labelTk, 'Forked:')} 0`);
+    }
+    lines.push(`  ${healthParts.join('  ')}`);
 
     // In Progress (table)
     lines.push('');
@@ -225,33 +244,31 @@ export function dashboardView(model: DashboardModel, style: StylePort, width?: n
       }
     }
 
-    // Health
-    lines.push('');
-    lines.push(separator({ label: 'Health', borderToken: style.theme.border.secondary, width: pw }));
-    lines.push(`  Sovereignty: ${withIntent}/${totalNonBacklog}`);
-    if (orphanCount > 0) {
-      lines.push(style.styled(style.theme.semantic.warning, `  Orphans: ${orphanCount}`));
-    } else {
-      lines.push(`  Orphans: 0`);
-    }
-    if (forkedCount > 0) {
-      lines.push(style.styled(style.theme.semantic.error, `  Forked: ${forkedCount}`));
-    } else {
-      lines.push(`  Forked: 0`);
-    }
-
-    // Top Blockers
+    // Top Blockers (table)
     if (depEdges.length > 0) {
       const topBlockers = computeTopBlockers(tasks, depEdges, 3, snap.transitiveDownstream);
       if (topBlockers.length > 0) {
         lines.push('');
         lines.push(separator({ label: 'Top Blockers', borderToken: style.theme.border.secondary, width: pw }));
-        const blockerItems = topBlockers.map(b => {
+        const blockerRows = topBlockers.map(b => {
           const q = snap.quests.find(quest => quest.id === b.id);
-          const title = q ? q.title.slice(0, pw - 30) : b.id;
-          return `${b.id.replace(/^task:/, '')} ${title}  blocks ${b.transitiveCount}`;
+          const title = q ? q.title.slice(0, Math.max(0, pw - 34)) : b.id;
+          return [
+            b.id.replace(/^task:/, ''),
+            title,
+            String(b.transitiveCount),
+          ];
         });
-        lines.push(enumeratedList(blockerItems, { style: 'arabic', indent: 2 }));
+        lines.push(bijouTable({
+          columns: [
+            { header: 'ID', width: 12 },
+            { header: 'Title' },
+            { header: 'Blocks', width: 8 },
+          ],
+          rows: blockerRows,
+          headerToken: style.theme.ui.tableHeader,
+          borderToken: style.theme.border.primary,
+        }));
       }
     }
 
@@ -321,11 +338,10 @@ export function dashboardView(model: DashboardModel, style: StylePort, width?: n
       }
     }
 
-    // Inbox pressure
+    // Backlog pressure
     if (backlogCount > 0) {
       lines.push('');
-      lines.push(style.styled(style.theme.semantic.info, ` Inbox (${backlogCount} quest${backlogCount > 1 ? 's' : ''})`));
-      lines.push(style.styled(style.theme.semantic.muted, '  Quests awaiting triage'));
+      lines.push(style.styled(style.theme.semantic.info, ` Backlog (${backlogCount} quest${backlogCount > 1 ? 's' : ''})`));
     }
 
     // Activity Feed
