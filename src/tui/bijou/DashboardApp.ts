@@ -567,6 +567,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
           ...model,
           snapshot: snap,
           loading: pendingRefresh,
+          showLanding: false,
           error: null,
           loadingProgress: 100,
           watching: true,
