@@ -8,7 +8,7 @@
  * Keys:
  *   [ / ]           — cycle views (prev / next)
  *   1-5             — jump to view (dashboard, roadmap, submissions, lineage, backlog)
- *   Tab / Shift+Tab — cycle panes within a view
+ *   m               — toggle "My Stuff" drawer (quests, submissions, activity)
  *   r               — refresh snapshot
  *   q               — quit
  *   ?               — help

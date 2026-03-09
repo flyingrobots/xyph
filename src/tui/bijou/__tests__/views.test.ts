@@ -125,6 +125,8 @@ function makeModel(snapshot: GraphSnapshot | null): DashboardModel {
     writePending: false,
     watching: false,
     refreshPending: false,
+    drawerOpen: false,
+    drawerWidth: 0,
   };
 }
 
