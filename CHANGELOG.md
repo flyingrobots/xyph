@@ -11,6 +11,7 @@ All notable changes to XYPH will be documented in this file.
 ### Changed
 
 - **Upgrade bijou 1.3.0 → 1.8.0** — all three packages (`@flyingrobots/bijou`, `bijou-node`, `bijou-tui`) bumped. Test helper imports updated to use `@flyingrobots/bijou/adapters/test` subpath
+- **Upgrade git-warp 13.1.0 → 14.0.0** — major version bump, no breaking changes for current usage
 
 - **`GuildSealService` simplified** — `generateKeypair()` and `rotateKey()` now delegate rollback to `updateKeyring()`, removing hand-written try/catch rollback choreography from the domain layer
 
