@@ -14,6 +14,7 @@ All notable changes to XYPH will be documented in this file.
 
 ### Fixed
 
+- **Blocker counts exclude GRAVEYARD tasks** — `transitiveDownstream` BFS now excludes GRAVEYARD tasks from counts (matching DONE exclusion), and `filterSnapshot()` strips GRAVEYARD keys from the map. Fixes inconsistency where `directCount` (from filtered edges) and `transitiveCount` (from unfiltered BFS) could diverge when `--include-graveyard` was not set
 - **Landing screen auto-dismiss** — `showLanding` is now set to `false` when `snapshot-loaded` fires, so the dashboard appears immediately after data loads. Previously required a throwaway keypress to dismiss the landing screen, making navigation appear broken
 - **View cycling via `[`/`]`** — bracket keys cycle forward/backward through all 5 views from anywhere, matching bijou's `createFramedApp` convention (`[`/`]` = tabs, Tab = panes). Tab/Shift+Tab retained for panel switching within views
 - **Transactional `updateKeyring` API** (`KeyringStoragePort`) — new `updateKeyring(mutator)` method with `KeyOps` handle; adapter records an undo log and rolls back private-key side-effects in reverse order on failure (KSP-001)
