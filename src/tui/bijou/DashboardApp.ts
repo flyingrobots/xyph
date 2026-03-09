@@ -147,6 +147,8 @@ export type DashboardMsg =
 type GlobalAction =
   | { type: 'quit' }
   | { type: 'jump-view'; view: ViewName }
+  | { type: 'next-view' }
+  | { type: 'prev-view' }
   | { type: 'refresh' }
   | { type: 'toggle-help' };
 
@@ -180,6 +182,8 @@ function buildGlobalKeys(): KeyMap<GlobalAction> {
       .bind('3', 'Submissions', { type: 'jump-view', view: 'submissions' })
       .bind('4', 'Lineage', { type: 'jump-view', view: 'lineage' })
       .bind('5', 'Backlog', { type: 'jump-view', view: 'backlog' })
+      .bind('tab', 'Next view', { type: 'next-view' })
+      .bind('shift+tab', 'Prev view', { type: 'prev-view' })
       .bind('r', 'Refresh', { type: 'refresh' })
       .bind('?', 'Toggle help', { type: 'toggle-help' })
     );
@@ -250,7 +254,8 @@ function buildDashboardKeys(): KeyMap<ViewAction> {
   });
   km.disable('Quit');
   return km.group('Dashboard', g => g
-    .bind('tab', 'Switch panel', { type: 'focus-panel' })
+    .bind('[', 'Prev panel', { type: 'focus-panel' })
+    .bind(']', 'Next panel', { type: 'focus-panel' })
     .bind('enter', 'Show detail', { type: 'expand' })
     .bind('g', 'Jump to first', { type: 'top' })
     .bind('shift+g', 'Jump to last', { type: 'bottom' })
@@ -791,6 +796,16 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
               return [model, [stopWatching(), quit()]];
             case 'jump-view':
               return [{ ...model, activeView: globalAction.view }, []];
+            case 'next-view': {
+              const idx = VIEWS.indexOf(model.activeView);
+              const next = VIEWS[(idx + 1) % VIEWS.length] ?? model.activeView;
+              return [{ ...model, activeView: next }, []];
+            }
+            case 'prev-view': {
+              const idx = VIEWS.indexOf(model.activeView);
+              const prev = VIEWS[(idx - 1 + VIEWS.length) % VIEWS.length] ?? model.activeView;
+              return [{ ...model, activeView: prev }, []];
+            }
             case 'refresh': {
               const nextReqId = model.requestId + 1;
               return [{ ...model, loading: true, error: null, requestId: nextReqId }, [fetchSnapshot(nextReqId)]];
