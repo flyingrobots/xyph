@@ -37,6 +37,7 @@ import type {
   GraphMeta,
   GraphSnapshot,
   IntentNode,
+  PolicyNode,
   QuestNode,
   RequirementNode,
   ReviewNode,
@@ -52,6 +53,12 @@ import type { RequirementKind, RequirementPriority } from '../domain/entities/Re
 import { VALID_REQUIREMENT_KINDS, VALID_REQUIREMENT_PRIORITIES } from '../domain/entities/Requirement.js';
 import type { EvidenceKind, EvidenceResult } from '../domain/entities/Evidence.js';
 import { VALID_EVIDENCE_KINDS, VALID_EVIDENCE_RESULTS } from '../domain/entities/Evidence.js';
+import {
+  DEFAULT_POLICY_ALLOW_MANUAL_SEAL,
+  DEFAULT_POLICY_COVERAGE_THRESHOLD,
+  DEFAULT_POLICY_REQUIRE_ALL_CRITERIA,
+  DEFAULT_POLICY_REQUIRE_EVIDENCE,
+} from '../domain/entities/Policy.js';
 import type { GraphPort } from '../ports/GraphPort.js';
 import { toNeighborEntries, type NeighborEntry } from './helpers/isNeighborEntry.js';
 
@@ -225,7 +232,7 @@ class GraphContextImpl implements GraphContext {
       taskNodes, campaignNodes, milestoneNodes, intentNodes,
       scrollNodes, approvalNodes, submissionNodes,
       patchsetNodes, reviewNodes, decisionNodes,
-      storyNodes, requirementNodes, criterionNodes, evidenceNodes,
+      storyNodes, requirementNodes, criterionNodes, evidenceNodes, policyNodes,
       suggestionNodes,
     ] = await Promise.all([
       graph.query().match('task:*').select(['id', 'props']).run().then(extractNodes),
@@ -242,6 +249,7 @@ class GraphContextImpl implements GraphContext {
       graph.query().match('req:*').select(['id', 'props']).run().then(extractNodes),
       graph.query().match('criterion:*').select(['id', 'props']).run().then(extractNodes),
       graph.query().match('evidence:*').select(['id', 'props']).run().then(extractNodes),
+      graph.query().match('policy:*').select(['id', 'props']).run().then(extractNodes),
       graph.query().match('suggestion:*').select(['id', 'props']).run().then(extractNodes),
     ]);
 
@@ -261,6 +269,7 @@ class GraphContextImpl implements GraphContext {
       ...storyNodes.map((n) => n.id),
       ...requirementNodes.map((n) => n.id),
       ...evidenceNodes.map((n) => n.id),
+      ...policyNodes.map((n) => n.id),
     ];
     const neighborsCache = await batchNeighbors(graph, neighborsNeeded);
 
@@ -438,7 +447,7 @@ class GraphContextImpl implements GraphContext {
       if (subId !== undefined) quest.submissionId = subId;
     }
 
-    // --- Build traceability nodes (stories, requirements, criteria, evidence) ---
+    // --- Build traceability nodes (stories, requirements, criteria, evidence, policies) ---
     log('Building traceability models…');
 
     // Build reverse lookup: intent → stories via decomposes-to edges on intent nodes
@@ -617,6 +626,50 @@ class GraphContextImpl implements GraphContext {
       }
     }
 
+    // Build policies (resolve governs edges)
+    const policies: PolicyNode[] = [];
+    for (const n of policyNodes) {
+      if (n.props['type'] !== 'policy') continue;
+
+      const neighbors = neighborsCache.get(n.id) ?? [];
+      let campaignId: string | undefined;
+      for (const nb of neighbors) {
+        if (nb.label === 'governs' && (nb.nodeId.startsWith('campaign:') || nb.nodeId.startsWith('milestone:'))) {
+          campaignId = nb.nodeId;
+          break;
+        }
+      }
+
+      const coverageThresholdRaw = n.props['coverage_threshold'];
+      const requireAllCriteriaRaw = n.props['require_all_criteria'];
+      const requireEvidenceRaw = n.props['require_evidence'];
+      const allowManualSealRaw = n.props['allow_manual_seal'];
+
+      const coverageThreshold = (
+        typeof coverageThresholdRaw === 'number' &&
+        Number.isFinite(coverageThresholdRaw) &&
+        coverageThresholdRaw >= 0 &&
+        coverageThresholdRaw <= 1
+      )
+        ? coverageThresholdRaw
+        : DEFAULT_POLICY_COVERAGE_THRESHOLD;
+
+      policies.push({
+        id: n.id,
+        campaignId,
+        coverageThreshold,
+        requireAllCriteria: typeof requireAllCriteriaRaw === 'boolean'
+          ? requireAllCriteriaRaw
+          : DEFAULT_POLICY_REQUIRE_ALL_CRITERIA,
+        requireEvidence: typeof requireEvidenceRaw === 'boolean'
+          ? requireEvidenceRaw
+          : DEFAULT_POLICY_REQUIRE_EVIDENCE,
+        allowManualSeal: typeof allowManualSealRaw === 'boolean'
+          ? allowManualSealRaw
+          : DEFAULT_POLICY_ALLOW_MANUAL_SEAL,
+      });
+    }
+
     // --- Build suggestions (M11 Phase 4) ---
     log('Building suggestion models…');
     const suggestions: SuggestionNode[] = [];
@@ -738,7 +791,7 @@ class GraphContextImpl implements GraphContext {
     const snap: GraphSnapshot = {
       campaigns, quests, intents, scrolls, approvals,
       submissions, reviews, decisions,
-      stories, requirements, criteria, evidence, suggestions,
+      stories, requirements, criteria, evidence, policies, suggestions,
       asOf: Date.now(), graphMeta, sortedTaskIds, sortedCampaignIds,
       transitiveDownstream,
     };

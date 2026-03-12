@@ -36,6 +36,7 @@ export function makeSnapshot(overrides?: Partial<GraphSnapshot>): GraphSnapshot 
     requirements: [],
     criteria: [],
     evidence: [],
+    policies: [],
     suggestions: [],
     asOf: FIXED_TS,
     sortedTaskIds: [] as string[],

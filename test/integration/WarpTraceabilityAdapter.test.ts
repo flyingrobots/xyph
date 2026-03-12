@@ -25,7 +25,7 @@ describe('WarpTraceabilityAdapter Integration', () => {
     }
   });
 
-  it('should persist story→req→criterion→evidence and verify snapshot', { timeout: 30_000 }, async () => {
+  it('should persist story→req→criterion→evidence→policy state and verify snapshot', { timeout: 30_000 }, async () => {
     const graph = await graphPort.getGraph();
 
     // Create an intent for the decomposition chain
@@ -35,6 +35,11 @@ describe('WarpTraceabilityAdapter Integration', () => {
         .setProperty('intent:TRACE-TEST', 'requested_by', 'human.test')
         .setProperty('intent:TRACE-TEST', 'created_at', 1_700_000_000_000)
         .setProperty('intent:TRACE-TEST', 'type', 'intent');
+
+      p.addNode('campaign:TRACE')
+        .setProperty('campaign:TRACE', 'title', 'Traceability milestone')
+        .setProperty('campaign:TRACE', 'status', 'PLANNED')
+        .setProperty('campaign:TRACE', 'type', 'campaign');
     });
 
     // Create a story decomposed from the intent
@@ -84,6 +89,17 @@ describe('WarpTraceabilityAdapter Integration', () => {
       p.addEdge('evidence:E-001', 'criterion:C-001', 'verifies');
     });
 
+    await graph.patch((p) => {
+      p.addNode('policy:TRACE')
+        .setProperty('policy:TRACE', 'coverage_threshold', 1)
+        .setProperty('policy:TRACE', 'require_all_criteria', true)
+        .setProperty('policy:TRACE', 'require_evidence', true)
+        .setProperty('policy:TRACE', 'allow_manual_seal', false)
+        .setProperty('policy:TRACE', 'type', 'policy');
+
+      p.addEdge('policy:TRACE', 'campaign:TRACE', 'governs');
+    });
+
     // Now fetch the snapshot and verify
     const ctx = createGraphContext(graphPort);
     const snapshot = await ctx.fetchSnapshot();
@@ -118,5 +134,15 @@ describe('WarpTraceabilityAdapter Integration', () => {
     expect(snapshot.evidence[0]?.kind).toBe('test');
     expect(snapshot.evidence[0]?.result).toBe('pass');
     expect(snapshot.evidence[0]?.criterionId).toBe('criterion:C-001');
+
+    expect(snapshot.policies).toHaveLength(1);
+    expect(snapshot.policies[0]).toEqual({
+      id: 'policy:TRACE',
+      campaignId: 'campaign:TRACE',
+      coverageThreshold: 1,
+      requireAllCriteria: true,
+      requireEvidence: true,
+      allowManualSeal: false,
+    });
   });
 });

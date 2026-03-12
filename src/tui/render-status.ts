@@ -1,7 +1,15 @@
 import {
   headerBox, table, separator, badge, enumeratedList,
 } from '@flyingrobots/bijou';
-import type { GraphSnapshot, StoryNode, RequirementNode, CriterionNode, EvidenceNode, SuggestionNode } from '../domain/models/dashboard.js';
+import type {
+  CriterionNode,
+  EvidenceNode,
+  GraphSnapshot,
+  PolicyNode,
+  RequirementNode,
+  StoryNode,
+  SuggestionNode,
+} from '../domain/models/dashboard.js';
 import type { BlockerInfo } from '../domain/services/DepAnalysis.js';
 import type { UnmetRequirement, CoverageResult } from '../domain/services/TraceabilityAnalysis.js';
 import type { StylePort } from '../ports/StylePort.js';
@@ -173,6 +181,7 @@ export function renderAll(snapshot: GraphSnapshot, style: StylePort): string {
     snapshot.requirements.length +
     snapshot.criteria.length +
     snapshot.evidence.length +
+    snapshot.policies.length +
     snapshot.suggestions.length;
 
   lines.push(snapshotHeader(style, 'All XYPH Nodes', `${total} node(s) total`, 'success'));
@@ -643,6 +652,7 @@ export interface TraceViewData {
   requirements: RequirementNode[];
   criteria: CriterionNode[];
   evidence: EvidenceNode[];
+  policies: PolicyNode[];
   unmetRequirements: UnmetRequirement[];
   untestedCriteria: string[];
   coverage: CoverageResult;
@@ -660,7 +670,7 @@ export function renderTrace(data: TraceViewData, style: StylePort): string {
 
   lines.push(snapshotHeader(style,
     'Traceability',
-    `${data.stories.length} stories  ${data.requirements.length} reqs  ${data.criteria.length} criteria  coverage: ${pct}`,
+    `${data.stories.length} stories  ${data.requirements.length} reqs  ${data.criteria.length} criteria  ${data.policies.length} policies  coverage: ${pct}`,
     'secondary',
   ));
 
@@ -748,12 +758,40 @@ export function renderTrace(data: TraceViewData, style: StylePort): string {
     lines.push(enumeratedList(items, { style: 'arabic', indent: 4 }));
   }
 
+  // --- Policies ---
+  if (data.policies.length > 0) {
+    lines.push('');
+    lines.push(separator({ label: 'Policies', borderToken: style.theme.border.secondary }));
+    const rows = data.policies.map((policy) => [
+      style.styled(style.theme.semantic.muted, policy.id.slice(0, 24)),
+      (policy.campaignId ?? '(unscoped)').slice(0, 24),
+      `${Math.round(policy.coverageThreshold * 100)}%`,
+      policy.requireAllCriteria ? 'all' : 'threshold',
+      policy.requireEvidence ? 'required' : 'optional',
+      policy.allowManualSeal ? 'allowed' : 'blocked',
+    ]);
+    lines.push(table({
+      columns: [
+        { header: 'Policy', width: 26 },
+        { header: 'Campaign', width: 26 },
+        { header: 'Coverage', width: 10 },
+        { header: 'Criteria', width: 11 },
+        { header: 'Evidence', width: 10 },
+        { header: 'Manual', width: 9 },
+      ],
+      rows,
+      headerToken: style.theme.ui.tableHeader,
+      borderToken: style.theme.border.primary,
+    }));
+  }
+
   // --- Summary ---
   lines.push('');
   lines.push(separator({ label: 'Summary', borderToken: style.theme.border.primary }));
   lines.push(`    ${style.styled(style.theme.semantic.muted, 'Stories:')} ${data.stories.length}`);
   lines.push(`    ${style.styled(style.theme.semantic.muted, 'Requirements:')} ${data.requirements.length}`);
   lines.push(`    ${style.styled(style.theme.semantic.muted, 'Criteria:')} ${data.criteria.length}`);
+  lines.push(`    ${style.styled(style.theme.semantic.muted, 'Policies:')} ${data.policies.length}`);
   lines.push(`    ${style.styled(style.theme.semantic.muted, 'Evidenced:')} ${data.coverage.evidenced} / ${data.coverage.total}`);
   lines.push(`    ${style.styled(style.theme.semantic.muted, 'Coverage:')} ${pct}`);
 

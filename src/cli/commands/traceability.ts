@@ -1,9 +1,15 @@
-import type { Command } from 'commander';
+import { InvalidArgumentError, type Command } from 'commander';
 import type { CliContext } from '../context.js';
 import { createErrorHandler } from '../errorHandler.js';
 import { assertPrefix, assertMinLength, assertPrefixOneOf, assertNodeExists } from '../validators.js';
 import { VALID_REQUIREMENT_KINDS, VALID_REQUIREMENT_PRIORITIES } from '../../domain/entities/Requirement.js';
 import { VALID_EVIDENCE_KINDS, VALID_EVIDENCE_RESULTS } from '../../domain/entities/Evidence.js';
+import {
+  DEFAULT_POLICY_ALLOW_MANUAL_SEAL,
+  DEFAULT_POLICY_COVERAGE_THRESHOLD,
+  DEFAULT_POLICY_REQUIRE_ALL_CRITERIA,
+  DEFAULT_POLICY_REQUIRE_EVIDENCE,
+} from '../../domain/entities/Policy.js';
 
 // ---------------------------------------------------------------------------
 // Prefix validation helpers
@@ -11,6 +17,7 @@ import { VALID_EVIDENCE_KINDS, VALID_EVIDENCE_RESULTS } from '../../domain/entit
 
 const DECOMPOSE_FROM_PREFIXES = ['intent:', 'story:'] as const;
 const DECOMPOSE_TO_PREFIXES = ['story:', 'req:'] as const;
+const GOVERN_CAMPAIGN_PREFIXES = ['campaign:', 'milestone:'] as const;
 
 function assertDecomposeFrom(value: string): void {
   assertPrefixOneOf(value, DECOMPOSE_FROM_PREFIXES, '<from>');
@@ -18,6 +25,18 @@ function assertDecomposeFrom(value: string): void {
 
 function assertDecomposeTo(value: string): void {
   assertPrefixOneOf(value, DECOMPOSE_TO_PREFIXES, '<to>');
+}
+
+function assertGovernCampaign(value: string): void {
+  assertPrefixOneOf(value, GOVERN_CAMPAIGN_PREFIXES, '<campaign>');
+}
+
+function parseCoverageThreshold(value: string): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1) {
+    throw new InvalidArgumentError(`--coverage-threshold must be a number between 0 and 1. Got: '${value}'`);
+  }
+  return parsed;
 }
 
 export function registerTraceabilityCommands(program: Command, ctx: CliContext): void {
@@ -247,6 +266,93 @@ export function registerTraceabilityCommands(program: Command, ctx: CliContext):
       }
 
       ctx.ok(`[OK] Evidence ${id} created → verifies ${opts.criterion}. Patch: ${sha}`);
+    }));
+
+  // --- policy: create a Definition of Done policy node ---
+  program
+    .command('policy <id>')
+    .description('Create a Definition of Done policy node (policy:*)')
+    .requiredOption('--campaign <id>', 'Campaign or milestone governed by this policy')
+    .option(
+      '--coverage-threshold <ratio>',
+      'Minimum coverage ratio from 0.0 to 1.0',
+      parseCoverageThreshold,
+      DEFAULT_POLICY_COVERAGE_THRESHOLD,
+    )
+    .option('--no-require-all-criteria', 'Allow threshold-based completion without all criteria passing')
+    .option('--no-require-evidence', 'Allow criteria without evidence to count toward future completion checks')
+    .option('--allow-manual-seal', 'Permit future manual settlement override when policy is unmet')
+    .action(withErrorHandler(async (id: string, opts: {
+      campaign: string;
+      coverageThreshold: number;
+      requireAllCriteria: boolean;
+      requireEvidence: boolean;
+      allowManualSeal?: boolean;
+    }) => {
+      assertPrefix(id, 'policy:', 'Policy ID');
+      assertGovernCampaign(opts.campaign);
+
+      const graph = await ctx.graphPort.getGraph();
+      await assertNodeExists(graph, opts.campaign, 'Campaign');
+
+      const allowManualSeal = opts.allowManualSeal ?? DEFAULT_POLICY_ALLOW_MANUAL_SEAL;
+
+      const sha = await graph.patch((p) => {
+        p.addNode(id)
+          .setProperty(id, 'coverage_threshold', opts.coverageThreshold)
+          .setProperty(id, 'require_all_criteria', opts.requireAllCriteria ?? DEFAULT_POLICY_REQUIRE_ALL_CRITERIA)
+          .setProperty(id, 'require_evidence', opts.requireEvidence ?? DEFAULT_POLICY_REQUIRE_EVIDENCE)
+          .setProperty(id, 'allow_manual_seal', allowManualSeal)
+          .setProperty(id, 'type', 'policy')
+          .addEdge(id, opts.campaign, 'governs');
+      });
+
+      if (ctx.json) {
+        ctx.jsonOut({
+          success: true, command: 'policy',
+          data: {
+            id,
+            campaign: opts.campaign,
+            coverageThreshold: opts.coverageThreshold,
+            requireAllCriteria: opts.requireAllCriteria ?? DEFAULT_POLICY_REQUIRE_ALL_CRITERIA,
+            requireEvidence: opts.requireEvidence ?? DEFAULT_POLICY_REQUIRE_EVIDENCE,
+            allowManualSeal,
+            patch: sha,
+          },
+        });
+        return;
+      }
+
+      ctx.ok(`[OK] Policy ${id} created → governs ${opts.campaign}. Patch: ${sha}`);
+    }));
+
+  // --- govern: attach an existing policy to a campaign ---
+  program
+    .command('govern <policy> <campaign>')
+    .description('Attach an existing policy to a campaign or milestone (policy→campaign)')
+    .action(withErrorHandler(async (policy: string, campaign: string) => {
+      assertPrefix(policy, 'policy:', '<policy>');
+      assertGovernCampaign(campaign);
+
+      const graph = await ctx.graphPort.getGraph();
+      await Promise.all([
+        assertNodeExists(graph, policy, 'Policy'),
+        assertNodeExists(graph, campaign, 'Campaign'),
+      ]);
+
+      const sha = await graph.patch((p) => {
+        p.addEdge(policy, campaign, 'governs');
+      });
+
+      if (ctx.json) {
+        ctx.jsonOut({
+          success: true, command: 'govern',
+          data: { policy, campaign, patch: sha },
+        });
+        return;
+      }
+
+      ctx.ok(`[OK] ${policy} now governs ${campaign} (patch: ${sha.slice(0, 7)})`);
     }));
 
   // --- decompose: add a decomposes-to edge ---

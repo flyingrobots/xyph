@@ -148,6 +148,15 @@ export interface EvidenceNode {
   sourceFile?: string;     // originating test file (set by auto-link)
 }
 
+export interface PolicyNode {
+  id: string;
+  campaignId?: string; // governs edge target (policy→campaign)
+  coverageThreshold: number;
+  requireAllCriteria: boolean;
+  requireEvidence: boolean;
+  allowManualSeal: boolean;
+}
+
 // ---------------------------------------------------------------------------
 // Suggestion node type (M11 Phase 4)
 // ---------------------------------------------------------------------------
@@ -188,6 +197,7 @@ export interface GraphSnapshot {
   requirements: RequirementNode[];
   criteria: CriterionNode[];
   evidence: EvidenceNode[];
+  policies: PolicyNode[];
   // Auto-linking suggestions (M11 Phase 4)
   suggestions: SuggestionNode[];
   asOf: number;
@@ -199,4 +209,3 @@ export interface GraphSnapshot {
   /** Per-task count of non-DONE nodes transitively downstream via depends-on edges, computed by git-warp's BFS. */
   transitiveDownstream: Map<string, number>;
 }
-
