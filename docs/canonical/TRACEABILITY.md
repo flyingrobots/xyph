@@ -139,6 +139,9 @@ allows nodes to move between campaigns without identity conflicts.
 **Phase 2 — Criteria & Evidence:** `criterion:` and `evidence:` nodes, `has-criterion` and `verifies` edges, `xyph scan` command.
 
 **Phase 3 — Computed Status:** DONE as graph query, Policy nodes, Definition of Done enforcement.
+This phase also gates settlement: `seal` and auto-sealing `merge` reject governed
+work when required criteria are missing, linked-only, or failing unless the
+applied policy explicitly permits manual settlement.
 
 **Phase 4 — Intelligence:** Gap detection ("what's untested?"), risk/assumption tracking, suggested tests from unverified criteria.
 

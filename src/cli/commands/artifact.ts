@@ -1,6 +1,11 @@
 import type { Command } from 'commander';
 import type { CliContext } from '../context.js';
 import { createErrorHandler } from '../errorHandler.js';
+import {
+  assessSettlementGate,
+  formatSettlementGateFailure,
+  settlementGateFailureData,
+} from '../../domain/services/SettlementGateService.js';
 
 export const UNSIGNED_SCROLLS_OVERRIDE_ENV = 'XYPH_ALLOW_UNSIGNED_SCROLLS';
 
@@ -49,9 +54,20 @@ export function registerArtifactCommands(program: Command, ctx: CliContext): voi
     .action(withErrorHandler(async (id: string, opts: { artifact: string; rationale: string }) => {
       const { GuildSealService } = await import('../../domain/services/GuildSealService.js');
       const { FsKeyringAdapter } = await import('../../infrastructure/adapters/FsKeyringAdapter.js');
+      const { createGraphContext } = await import('../../infrastructure/GraphContext.js');
       const keyring = new FsKeyringAdapter();
       const sealService = new GuildSealService(keyring);
       const allowUnsignedScrolls = allowUnsignedScrollsForSettlement();
+
+      const graphCtx = createGraphContext(ctx.graphPort);
+      const detail = await graphCtx.fetchEntityDetail(id);
+      const assessment = assessSettlementGate(detail?.questDetail, 'seal');
+      if (!assessment.allowed) {
+        return ctx.failWithData(
+          formatSettlementGateFailure(assessment),
+          settlementGateFailureData(assessment),
+        );
+      }
 
       // Guard: warn if a non-terminal submission exists for this quest
       let openSubWarning: string | undefined;

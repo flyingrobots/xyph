@@ -9,6 +9,11 @@ import {
   formatUnsignedScrollOverrideWarning,
   missingSettlementKeyData,
 } from './artifact.js';
+import {
+  assessSettlementGate,
+  formatSettlementGateFailure,
+  settlementGateFailureData,
+} from '../../domain/services/SettlementGateService.js';
 
 export function registerSubmissionCommands(program: Command, ctx: CliContext): void {
   const withErrorHandler = createErrorHandler(ctx);
@@ -191,6 +196,7 @@ export function registerSubmissionCommands(program: Command, ctx: CliContext): v
       const { GitWorkspaceAdapter } = await import('../../infrastructure/adapters/GitWorkspaceAdapter.js');
       const { GuildSealService } = await import('../../domain/services/GuildSealService.js');
       const { FsKeyringAdapter } = await import('../../infrastructure/adapters/FsKeyringAdapter.js');
+      const { createGraphContext } = await import('../../infrastructure/GraphContext.js');
 
       const adapter = new WarpSubmissionAdapter(ctx.graphPort, ctx.agentId);
       const service = new SubmissionService(adapter);
@@ -200,6 +206,21 @@ export function registerSubmissionCommands(program: Command, ctx: CliContext): v
       const questId = await adapter.getSubmissionQuestId(submissionId);
       const questStatus = questId ? await adapter.getQuestStatus(questId) : null;
       const shouldAutoSeal = typeof questId === 'string' && questStatus !== 'DONE';
+
+      if (shouldAutoSeal && questId) {
+        const graphCtx = createGraphContext(ctx.graphPort);
+        const detail = await graphCtx.fetchEntityDetail(questId);
+        const assessment = assessSettlementGate(detail?.questDetail, 'merge');
+        if (!assessment.allowed) {
+          return ctx.failWithData(
+            formatSettlementGateFailure(assessment),
+            {
+              submissionId,
+              ...settlementGateFailureData(assessment),
+            },
+          );
+        }
+      }
 
       if (shouldAutoSeal && !sealService.hasPrivateKey(ctx.agentId) && !allowUnsignedScrolls) {
         return ctx.failWithData(

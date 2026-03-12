@@ -21,6 +21,7 @@
 - `claim` is valid only from `READY`.
 - `PLANNED` quests may carry draft dependencies, estimates, and traceability links, but they are excluded from executable frontier / critical-path analysis.
 - `show` / `context` inspect the readiness contract for `PLANNED` and already-active quests; the `ready` transition itself still requires `PLANNED`.
+- `seal` and auto-sealing `merge` must reject governed work when the applied policy disallows manual settlement and computed completion is still incomplete.
 
 ## Authoring Workflow
 - Use `xyph shape <task>` while a quest is `BACKLOG` or `PLANNED` to enrich durable metadata such as `description` and `task_kind`.

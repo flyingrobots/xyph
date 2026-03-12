@@ -1,6 +1,7 @@
 import { Command } from 'commander';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CliContext, JsonEnvelope } from '../../src/cli/context.js';
+import type { EntityDetail } from '../../src/domain/models/dashboard.js';
 import {
   allowUnsignedScrollsForSettlement,
   registerArtifactCommands,
@@ -21,6 +22,7 @@ const mocks = vi.hoisted(() => ({
   isMerged: vi.fn(),
   merge: vi.fn(),
   getHeadCommit: vi.fn(),
+  fetchEntityDetail: vi.fn(),
 }));
 
 vi.mock('../../src/domain/services/GuildSealService.js', () => ({
@@ -93,6 +95,75 @@ vi.mock('../../src/infrastructure/adapters/GitWorkspaceAdapter.js', () => ({
   },
 }));
 
+vi.mock('../../src/infrastructure/GraphContext.js', () => ({
+  createGraphContext: () => ({
+    fetchEntityDetail(id: string): Promise<EntityDetail | null> {
+      return mocks.fetchEntityDetail(id);
+    },
+  }),
+}));
+
+function makeQuestDetail(
+  overrides?: Partial<NonNullable<EntityDetail['questDetail']>>,
+): EntityDetail {
+  return {
+    id: 'task:Q1',
+    type: 'task',
+    props: {},
+    outgoing: [],
+    incoming: [],
+    questDetail: {
+      id: 'task:Q1',
+      quest: {
+        id: 'task:Q1',
+        title: 'Governed quest',
+        status: 'PLANNED',
+        hours: 1,
+        taskKind: 'delivery',
+        computedCompletion: {
+          tracked: true,
+          complete: true,
+          verdict: 'SATISFIED',
+          requirementCount: 1,
+          criterionCount: 1,
+          coverageRatio: 1,
+          satisfiedCount: 1,
+          failingCriterionIds: [],
+          linkedOnlyCriterionIds: [],
+          missingCriterionIds: [],
+          policyId: 'policy:TRACE',
+        },
+      },
+      reviews: [],
+      decisions: [],
+      stories: [],
+      requirements: [],
+      criteria: [],
+      evidence: [],
+      policies: [{
+        id: 'policy:TRACE',
+        campaignId: 'campaign:TRACE',
+        coverageThreshold: 1,
+        requireAllCriteria: true,
+        requireEvidence: true,
+        allowManualSeal: false,
+      }],
+      documents: [],
+      comments: [],
+      timeline: [],
+      ...overrides,
+    },
+  };
+}
+
+function defaultQuestNode(): NonNullable<EntityDetail['questDetail']>['quest'] {
+  const detail = makeQuestDetail().questDetail;
+  if (!detail) {
+    throw new Error('Expected default quest detail fixture');
+  }
+  return detail.quest;
+}
+
 function createJsonCtx(overrides: Partial<CliContext> = {}): CliContext {
   return {
     agentId: 'agent.test',
@@ -155,6 +226,7 @@ describe('signed settlement enforcement', () => {
     mocks.isMerged.mockResolvedValue(false);
     mocks.merge.mockResolvedValue('abcdef1234567890');
     mocks.getHeadCommit.mockResolvedValue('abcdef1234567890');
+    mocks.fetchEntityDetail.mockResolvedValue(makeQuestDetail());
   });
 
   afterEach(() => {
@@ -252,6 +324,52 @@ describe('signed settlement enforcement', () => {
     ]));
   });
 
+  it('seal fails for governed work when computed completion is incomplete', async () => {
+    mocks.fetchEntityDetail.mockResolvedValue(makeQuestDetail({
+      quest: {
+        ...defaultQuestNode(),
+        computedCompletion: {
+          tracked: true,
+          complete: false,
+          verdict: 'MISSING',
+          requirementCount: 1,
+          criterionCount: 1,
+          coverageRatio: 0,
+          satisfiedCount: 0,
+          failingCriterionIds: [],
+          linkedOnlyCriterionIds: [],
+          missingCriterionIds: ['criterion:Q1'],
+          policyId: 'policy:TRACE',
+        },
+      },
+    }));
+
+    const program = new Command();
+    registerArtifactCommands(program, createJsonCtx());
+
+    await program.parseAsync(
+      ['seal', 'task:Q1', '--artifact', 'artifact-sha', '--rationale', 'attempt governed seal'],
+      { from: 'user' },
+    );
+
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    expect(mocks.sign).not.toHaveBeenCalled();
+
+    const output = JSON.parse(String(logSpy.mock.calls.at(-1)?.[0]));
+    expect(output).toMatchObject({
+      success: false,
+      error: expect.stringContaining('policy policy:TRACE blocks settlement'),
+      data: {
+        action: 'seal',
+        questId: 'task:Q1',
+        governed: true,
+        policyId: 'policy:TRACE',
+        verdict: 'MISSING',
+        missingCriterionIds: ['criterion:Q1'],
+      },
+    });
+  });
+
   it('merge fails before git settlement when auto-seal needs a key', async () => {
     mocks.hasPrivateKey.mockReturnValue(false);
 
@@ -278,6 +396,56 @@ describe('signed settlement enforcement', () => {
         action: 'merge',
         missing: 'guild-seal-private-key',
         overrideEnvVar: UNSIGNED_SCROLLS_OVERRIDE_ENV,
+      },
+    });
+  });
+
+  it('merge fails before git settlement when governed completion is incomplete', async () => {
+    mocks.fetchEntityDetail.mockResolvedValue(makeQuestDetail({
+      quest: {
+        ...defaultQuestNode(),
+        computedCompletion: {
+          tracked: true,
+          complete: false,
+          verdict: 'LINKED',
+          requirementCount: 1,
+          criterionCount: 1,
+          coverageRatio: 0,
+          satisfiedCount: 0,
+          failingCriterionIds: [],
+          linkedOnlyCriterionIds: ['criterion:Q1'],
+          missingCriterionIds: [],
+          policyId: 'policy:TRACE',
+        },
+      },
+    }));
+
+    const program = new Command();
+    registerSubmissionCommands(program, createJsonCtx());
+
+    await program.parseAsync(
+      ['merge', 'submission:S1', '--rationale', 'attempt governed merge'],
+      { from: 'user' },
+    );
+
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    expect(mocks.isMerged).not.toHaveBeenCalled();
+    expect(mocks.merge).not.toHaveBeenCalled();
+    expect(mocks.decide).not.toHaveBeenCalled();
+    expect(mocks.sign).not.toHaveBeenCalled();
+
+    const output = JSON.parse(String(logSpy.mock.calls.at(-1)?.[0]));
+    expect(output).toMatchObject({
+      success: false,
+      error: expect.stringContaining('policy policy:TRACE blocks settlement'),
+      data: {
+        submissionId: 'submission:S1',
+        action: 'merge',
+        questId: 'task:Q1',
+        governed: true,
+        policyId: 'policy:TRACE',
+        verdict: 'LINKED',
+        linkedOnlyCriterionIds: ['criterion:Q1'],
       },
     });
   });
