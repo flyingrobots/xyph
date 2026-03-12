@@ -173,6 +173,7 @@ export function registerDashboardCommands(program: Command, ctx: CliContext): vo
         case 'trace': {
           const {
             computeUnmetRequirements,
+            computeFailingCriteria,
             computeUntestedCriteria,
             computeCoverageRatio,
           } = await import('../../domain/services/TraceabilityAnalysis.js');
@@ -181,13 +182,22 @@ export function registerDashboardCommands(program: Command, ctx: CliContext): vo
             id: r.id,
             criterionIds: r.criterionIds,
           }));
+          const evidenceById = new Map(snapshot.evidence.map((e) => [e.id, e] as const));
           const critSummaries = snapshot.criteria.map((c) => ({
             id: c.id,
-            evidenceIds: c.evidenceIds,
+            evidence: c.evidenceIds
+              .map((id) => evidenceById.get(id))
+              .filter((e): e is NonNullable<typeof e> => Boolean(e))
+              .map((e) => ({
+                id: e.id,
+                result: e.result,
+                producedAt: e.producedAt,
+              })),
           }));
 
           const unmetReqs = computeUnmetRequirements(reqSummaries, critSummaries);
           const untestedCriteria = computeUntestedCriteria(critSummaries);
+          const failingCriteria = computeFailingCriteria(critSummaries);
           const coverage = computeCoverageRatio(critSummaries);
 
           if (ctx.json) {
@@ -206,11 +216,15 @@ export function registerDashboardCommands(program: Command, ctx: CliContext): vo
                   criteria: snapshot.criteria.length,
                   policies: snapshot.policies.length,
                   evidenced: coverage.evidenced,
-                  unevidenced: coverage.total - coverage.evidenced,
+                  satisfied: coverage.satisfied,
+                  failing: coverage.failing,
+                  linkedOnly: coverage.linkedOnly,
+                  unevidenced: coverage.unevidenced,
                   coverageRatio: coverage.ratio,
                 },
                 unmetRequirements: unmetReqs,
                 untestedCriteria,
+                failingCriteria,
               },
             });
             return;
@@ -225,6 +239,7 @@ export function registerDashboardCommands(program: Command, ctx: CliContext): vo
             policies: snapshot.policies,
             unmetRequirements: unmetReqs,
             untestedCriteria,
+            failingCriteria,
             coverage,
           }, ctx.style));
           break;

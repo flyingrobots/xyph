@@ -38,7 +38,7 @@ A task is DONE when:
 | `story:` | Story | User-facing narrative | `persona`, `goal`, `benefit`, `created_by`, `created_at` |
 | `req:` | Requirement | Specific functional or non-functional need | `description`, `kind` (functional / non-functional), `priority` |
 | `criterion:` | Criterion | Single testable condition | `description`, `verifiable` (bool) |
-| `evidence:` | Evidence | Proof a criterion is met | `kind` (test / benchmark / manual / screenshot), `result` (pass / fail), `produced_at`, `produced_by`, `artifact_hash` |
+| `evidence:` | Evidence | Proof or linkage for a criterion | `kind` (test / benchmark / manual / screenshot), `result` (pass / fail / linked), `produced_at`, `produced_by`, `artifact_hash` |
 | `constraint:` | Constraint | Non-functional boundary (perf, security, compat) | `description`, `threshold`, `unit` |
 | `assumption:` | Assumption | Believed-true condition that could invalidate work | `description`, `validated` (bool), `validated_at` |
 | `risk:` | Risk | Known unknown with impact assessment | `description`, `likelihood`, `impact`, `mitigation` |
@@ -70,7 +70,7 @@ With this model, the graph can answer:
 | **What's untested?** | Criteria with no `verifies` edge from any evidence node |
 | **What broke?** | Evidence nodes with `result: fail` → trace back to criterion → requirement → story → intent |
 | **What's at risk?** | Tasks with unvalidated assumptions |
-| **What's the spec coverage?** | Ratio of criteria with evidence vs. without |
+| **What's the spec coverage?** | Ratio of criteria with passing evidence vs. total criteria |
 | **What tests should exist?** | Criteria with `verifiable: true` but no evidence |
 | **What's ready to work on?** | Deps clear + requirements specified + no blocking risks + no unvalidated assumptions |
 
@@ -90,8 +90,9 @@ it('returns 401 with descriptive error for expired tokens', () => { ... });
 ```
 
 A `xyph scan` command walks test files, extracts annotations, and writes
-Evidence nodes + `verifies` edges into the graph. Running in CI keeps
-the traceability chain current automatically.
+`result: linked` evidence nodes + `verifies` edges into the graph. These
+capture that a test is associated with a criterion without claiming the test
+has passed. Execution results add later `pass` / `fail` evidence over time.
 
 ## 7. Auto-ID Convention
 

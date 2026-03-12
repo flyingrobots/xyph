@@ -214,7 +214,7 @@ export function registerTraceabilityCommands(program: Command, ctx: CliContext):
     .command('evidence <id>')
     .description('Create an evidence node that verifies a criterion (evidence:*)')
     .requiredOption('--kind <type>', `test | benchmark | manual | screenshot`)
-    .requiredOption('--result <outcome>', `pass | fail`)
+    .requiredOption('--result <outcome>', `pass | fail | linked`)
     .requiredOption('--criterion <id>', 'Criterion to verify (criterion:*)')
     .requiredOption('--produced-by <principal>', 'Who or what produced this evidence')
     .option('--artifact-hash <hash>', 'Content hash of the evidence artifact')
@@ -480,7 +480,7 @@ export function registerTraceabilityCommands(program: Command, ctx: CliContext):
 
             p.addNode(evidenceId)
               .setProperty(evidenceId, 'kind', 'test')
-              .setProperty(evidenceId, 'result', 'pass')
+              .setProperty(evidenceId, 'result', 'linked')
               .setProperty(evidenceId, 'produced_at', now)
               .setProperty(evidenceId, 'produced_by', ctx.agentId)
               .setProperty(evidenceId, 'type', 'evidence')
@@ -512,6 +512,6 @@ export function registerTraceabilityCommands(program: Command, ctx: CliContext):
         return;
       }
 
-      ctx.ok(`[OK] Scanned ${files.length} files — ${allAnnotations.length} annotation(s), ${evidenceWritten} evidence node(s) written.`);
+      ctx.ok(`[OK] Scanned ${files.length} files — ${allAnnotations.length} annotation(s), ${evidenceWritten} linked evidence node(s) written.`);
     }));
 }

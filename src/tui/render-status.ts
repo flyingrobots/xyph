@@ -655,6 +655,7 @@ export interface TraceViewData {
   policies: PolicyNode[];
   unmetRequirements: UnmetRequirement[];
   untestedCriteria: string[];
+  failingCriteria: string[];
   coverage: CoverageResult;
 }
 
@@ -758,6 +759,17 @@ export function renderTrace(data: TraceViewData, style: StylePort): string {
     lines.push(enumeratedList(items, { style: 'arabic', indent: 4 }));
   }
 
+  // --- Failing criteria ---
+  if (data.failingCriteria.length > 0) {
+    lines.push('');
+    lines.push(separator({ label: 'Failing Criteria', borderToken: style.theme.border.warning }));
+    const items = data.failingCriteria.map((cId) => {
+      const c = data.criteria.find((cr) => cr.id === cId);
+      return `${cId}  ${c?.description.slice(0, 48) ?? '—'}`;
+    });
+    lines.push(enumeratedList(items, { style: 'arabic', indent: 4 }));
+  }
+
   // --- Policies ---
   if (data.policies.length > 0) {
     lines.push('');
@@ -792,7 +804,11 @@ export function renderTrace(data: TraceViewData, style: StylePort): string {
   lines.push(`    ${style.styled(style.theme.semantic.muted, 'Requirements:')} ${data.requirements.length}`);
   lines.push(`    ${style.styled(style.theme.semantic.muted, 'Criteria:')} ${data.criteria.length}`);
   lines.push(`    ${style.styled(style.theme.semantic.muted, 'Policies:')} ${data.policies.length}`);
-  lines.push(`    ${style.styled(style.theme.semantic.muted, 'Evidenced:')} ${data.coverage.evidenced} / ${data.coverage.total}`);
+  lines.push(`    ${style.styled(style.theme.semantic.muted, 'Observed:')} ${data.coverage.evidenced} / ${data.coverage.total}`);
+  lines.push(`    ${style.styled(style.theme.semantic.muted, 'Satisfied:')} ${data.coverage.satisfied}`);
+  lines.push(`    ${style.styled(style.theme.semantic.muted, 'Failing:')} ${data.coverage.failing}`);
+  lines.push(`    ${style.styled(style.theme.semantic.muted, 'Linked Only:')} ${data.coverage.linkedOnly}`);
+  lines.push(`    ${style.styled(style.theme.semantic.muted, 'Unevidenced:')} ${data.coverage.unevidenced}`);
   lines.push(`    ${style.styled(style.theme.semantic.muted, 'Coverage:')} ${pct}`);
 
   return lines.join('\n');

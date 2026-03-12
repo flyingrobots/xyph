@@ -3,6 +3,17 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CliContext } from '../../src/cli/context.js';
 import { registerTraceabilityCommands } from '../../src/cli/commands/traceability.js';
 
+vi.mock('node:fs', () => ({
+  globSync: vi.fn(() => ['test/unit/AnnotatedTrace.test.ts']),
+}));
+
+vi.mock('node:fs/promises', () => ({
+  readFile: vi.fn(async () => [
+    '// @xyph criterion:TRACE-001',
+    "it('stays linked until a real test run reports a result', () => {})",
+  ].join('\n')),
+}));
+
 function createPatchBuilder() {
   return {
     addNode: vi.fn().mockReturnThis(),
@@ -143,6 +154,37 @@ describe('traceability policy commands', () => {
         policy: 'policy:TRACE',
         campaign: 'campaign:TRACE',
         patch: 'patch:govern',
+      },
+    });
+  });
+
+  it('scan writes linked test evidence instead of synthetic pass evidence', async () => {
+    const patchBuilder = createPatchBuilder();
+    const graph = {
+      hasNode: vi.fn().mockResolvedValue(true),
+      patch: vi.fn(async (fn: (builder: typeof patchBuilder) => void) => {
+        fn(patchBuilder);
+        return 'patch:scan';
+      }),
+    };
+    const ctx = makeCtx(graph);
+    const program = new Command();
+    registerTraceabilityCommands(program, ctx);
+
+    await program.parseAsync(['scan'], { from: 'user' });
+
+    expect(patchBuilder.addNode).toHaveBeenCalledWith('evidence:scan-TRACE-001');
+    expect(patchBuilder.setProperty).toHaveBeenCalledWith('evidence:scan-TRACE-001', 'kind', 'test');
+    expect(patchBuilder.setProperty).toHaveBeenCalledWith('evidence:scan-TRACE-001', 'result', 'linked');
+    expect(patchBuilder.addEdge).toHaveBeenCalledWith('evidence:scan-TRACE-001', 'criterion:TRACE-001', 'verifies');
+    expect(ctx.jsonOut).toHaveBeenCalledWith({
+      success: true,
+      command: 'scan',
+      data: {
+        filesScanned: 1,
+        annotationsFound: 1,
+        evidenceWritten: 1,
+        criteria: ['criterion:TRACE-001'],
       },
     });
   });

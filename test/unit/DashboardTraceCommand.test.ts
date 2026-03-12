@@ -115,12 +115,94 @@ describe('dashboard trace view JSON', () => {
           criteria: 1,
           policies: 1,
           evidenced: 1,
+          satisfied: 1,
+          failing: 0,
+          linkedOnly: 0,
           unevidenced: 0,
           coverageRatio: 1,
         },
         unmetRequirements: [],
         untestedCriteria: [],
+        failingCriteria: [],
       },
     });
+  });
+
+  it('treats linked-only and failed evidence as incomplete in the trace JSON envelope', async () => {
+    const snapshot = makeSnapshot({
+      requirements: [{
+        id: 'req:TRACE',
+        description: 'Traceability uses real execution evidence',
+        kind: 'functional',
+        priority: 'must',
+        criterionIds: ['criterion:LINKED', 'criterion:FAILED'],
+        taskIds: [],
+      }],
+      criteria: [
+        {
+          id: 'criterion:LINKED',
+          description: 'A linked test alone is not completion evidence',
+          verifiable: true,
+          requirementId: 'req:TRACE',
+          evidenceIds: ['evidence:LINKED'],
+        },
+        {
+          id: 'criterion:FAILED',
+          description: 'A failing test keeps the criterion incomplete',
+          verifiable: true,
+          requirementId: 'req:TRACE',
+          evidenceIds: ['evidence:FAILED'],
+        },
+      ],
+      evidence: [
+        {
+          id: 'evidence:LINKED',
+          kind: 'test',
+          result: 'linked',
+          producedAt: 1_700_000_000_010,
+          producedBy: 'agent.scan',
+          criterionId: 'criterion:LINKED',
+        },
+        {
+          id: 'evidence:FAILED',
+          kind: 'test',
+          result: 'fail',
+          producedAt: 1_700_000_000_020,
+          producedBy: 'agent.ci',
+          criterionId: 'criterion:FAILED',
+        },
+      ],
+    });
+
+    fetchSnapshot.mockResolvedValue(snapshot);
+    filterSnapshot.mockReturnValue(snapshot);
+
+    const ctx = makeCtx();
+    const program = new Command();
+    registerDashboardCommands(program, ctx);
+
+    await program.parseAsync(['status', '--view', 'trace'], { from: 'user' });
+
+    expect(ctx.jsonOut).toHaveBeenCalledWith(expect.objectContaining({
+      success: true,
+      command: 'status',
+      data: expect.objectContaining({
+        summary: expect.objectContaining({
+          evidenced: 2,
+          satisfied: 0,
+          failing: 1,
+          linkedOnly: 1,
+          unevidenced: 0,
+          coverageRatio: 0,
+        }),
+        unmetRequirements: [{
+          id: 'req:TRACE',
+          untestedCriterionIds: ['criterion:LINKED'],
+          failingCriterionIds: ['criterion:FAILED'],
+        }],
+        untestedCriteria: ['criterion:LINKED'],
+        failingCriteria: ['criterion:FAILED'],
+      }),
+    }));
   });
 });

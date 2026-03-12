@@ -33,7 +33,7 @@ describe('Evidence Entity', () => {
   });
 
   it('should accept all valid results', () => {
-    for (const result of ['pass', 'fail'] as const) {
+    for (const result of ['pass', 'fail', 'linked'] as const) {
       const evidence = new Evidence({ ...validProps, result });
       expect(evidence.result).toBe(result);
     }

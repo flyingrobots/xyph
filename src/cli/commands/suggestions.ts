@@ -19,10 +19,10 @@ export function registerSuggestionCommands(program: Command, ctx: CliContext): v
     .command('suggestion')
     .description('Manage auto-linking suggestions');
 
-  // --- suggestion accept: materialize a suggestion into a real evidence + edge ---
+  // --- suggestion accept: materialize a suggestion into linked evidence + edge ---
   suggestionCmd
     .command('accept <id>')
-    .description('Accept a suggestion — materializes evidence + verifies/implements edge')
+    .description('Accept a suggestion — materializes linked evidence + verifies/implements edge')
     .option('--rationale <text>', 'Why this suggestion is correct')
     .action(withErrorHandler(async (id: string, opts: { rationale?: string }) => {
       assertPrefix(id, 'suggestion:', 'Suggestion ID');
@@ -56,7 +56,7 @@ export function registerSuggestionCommands(program: Command, ctx: CliContext): v
         // Create evidence node
         p.addNode(evidenceId)
           .setProperty(evidenceId, 'kind', 'test')
-          .setProperty(evidenceId, 'result', 'pass')
+          .setProperty(evidenceId, 'result', 'linked')
           .setProperty(evidenceId, 'produced_at', now)
           .setProperty(evidenceId, 'produced_by', ctx.agentId)
           .setProperty(evidenceId, 'type', 'evidence')
@@ -87,7 +87,7 @@ export function registerSuggestionCommands(program: Command, ctx: CliContext): v
         return;
       }
 
-      ctx.ok(`[OK] Accepted ${id} → created ${evidenceId} ${edgeType} ${targetId}. Patch: ${sha.slice(0, 7)}`);
+      ctx.ok(`[OK] Accepted ${id} → created linked ${evidenceId} ${edgeType} ${targetId}. Patch: ${sha.slice(0, 7)}`);
     }));
 
   // --- suggestion reject: mark suggestion as REJECTED ---
@@ -174,7 +174,7 @@ export function registerSuggestionCommands(program: Command, ctx: CliContext): v
 
           p.addNode(evidenceId)
             .setProperty(evidenceId, 'kind', 'test')
-            .setProperty(evidenceId, 'result', 'pass')
+            .setProperty(evidenceId, 'result', 'linked')
             .setProperty(evidenceId, 'produced_at', now)
             .setProperty(evidenceId, 'produced_by', ctx.agentId)
             .setProperty(evidenceId, 'type', 'evidence')

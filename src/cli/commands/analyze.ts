@@ -277,7 +277,7 @@ export function registerAnalyzeCommands(program: Command, ctx: CliContext): void
       const graph = await ctx.graphPort.getGraph();
       const now = Date.now();
 
-      // Auto-link: batch all evidence nodes + edges into a single patch
+      // Auto-link: batch all linked-evidence nodes + edges into a single patch
       interface AutoLinkInfo { evidenceId: string; edgeType: 'verifies' | 'implements'; targetId: string; confidence: number }
       const autoLinkInfos: AutoLinkInfo[] = [];
 
@@ -289,7 +289,7 @@ export function registerAnalyzeCommands(program: Command, ctx: CliContext): void
 
             p.addNode(evidenceId)
               .setProperty(evidenceId, 'kind', 'test')
-              .setProperty(evidenceId, 'result', 'pass')
+              .setProperty(evidenceId, 'result', 'linked')
               .setProperty(evidenceId, 'produced_at', now)
               .setProperty(evidenceId, 'produced_by', ctx.agentId)
               .setProperty(evidenceId, 'type', 'evidence')
@@ -358,7 +358,7 @@ export function registerAnalyzeCommands(program: Command, ctx: CliContext): void
       }
 
       ctx.ok(`[OK] Analyzed ${files.length} files against ${targets.length} targets:`);
-      ctx.muted(`  Evidence written: ${evidenceWritten}`);
+      ctx.muted(`  Linked evidence written: ${evidenceWritten}`);
       ctx.muted(`  Suggestions written: ${suggestionsWritten}`);
       ctx.muted(`  Discarded: ${result.discarded}`);
     }));

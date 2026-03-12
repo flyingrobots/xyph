@@ -2,20 +2,21 @@
  * Evidence Entity
  *
  * A piece of evidence that verifies an acceptance criterion. Evidence can be
- * automated test results, benchmarks, manual verification, or screenshots.
+ * automated test results, benchmarks, manual verification, screenshots, or a
+ * discovered test link that has not yet produced an execution verdict.
  *
  * Part of M11 Traceability — TRC-005.
  */
 
 export type EvidenceKind = 'test' | 'benchmark' | 'manual' | 'screenshot';
-export type EvidenceResult = 'pass' | 'fail';
+export type EvidenceResult = 'pass' | 'fail' | 'linked';
 
 export const VALID_EVIDENCE_KINDS: ReadonlySet<string> = new Set<EvidenceKind>([
   'test', 'benchmark', 'manual', 'screenshot',
 ]);
 
 export const VALID_EVIDENCE_RESULTS: ReadonlySet<string> = new Set<EvidenceResult>([
-  'pass', 'fail',
+  'pass', 'fail', 'linked',
 ]);
 
 export interface EvidenceProps {

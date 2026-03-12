@@ -87,6 +87,15 @@ describe('WarpTraceabilityAdapter Integration', () => {
         .setProperty('evidence:E-001', 'type', 'evidence');
 
       p.addEdge('evidence:E-001', 'criterion:C-001', 'verifies');
+
+      p.addNode('evidence:E-002')
+        .setProperty('evidence:E-002', 'kind', 'test')
+        .setProperty('evidence:E-002', 'result', 'linked')
+        .setProperty('evidence:E-002', 'produced_at', 1_700_000_000_003)
+        .setProperty('evidence:E-002', 'produced_by', 'agent.scan')
+        .setProperty('evidence:E-002', 'type', 'evidence');
+
+      p.addEdge('evidence:E-002', 'criterion:C-001', 'verifies');
     });
 
     await graph.patch((p) => {
@@ -126,14 +135,18 @@ describe('WarpTraceabilityAdapter Integration', () => {
     expect(snapshot.criteria[0]?.description).toBe('Trace view shows the chain');
     expect(snapshot.criteria[0]?.verifiable).toBe(true);
     expect(snapshot.criteria[0]?.requirementId).toBe('req:R-001');
-    expect(snapshot.criteria[0]?.evidenceIds).toEqual(['evidence:E-001']);
+    expect(snapshot.criteria[0]?.evidenceIds).toEqual(['evidence:E-001', 'evidence:E-002']);
 
     // Verify evidence
-    expect(snapshot.evidence).toHaveLength(1);
+    expect(snapshot.evidence).toHaveLength(2);
     expect(snapshot.evidence[0]?.id).toBe('evidence:E-001');
     expect(snapshot.evidence[0]?.kind).toBe('test');
     expect(snapshot.evidence[0]?.result).toBe('pass');
     expect(snapshot.evidence[0]?.criterionId).toBe('criterion:C-001');
+    expect(snapshot.evidence[1]?.id).toBe('evidence:E-002');
+    expect(snapshot.evidence[1]?.kind).toBe('test');
+    expect(snapshot.evidence[1]?.result).toBe('linked');
+    expect(snapshot.evidence[1]?.criterionId).toBe('criterion:C-001');
 
     expect(snapshot.policies).toHaveLength(1);
     expect(snapshot.policies[0]).toEqual({
