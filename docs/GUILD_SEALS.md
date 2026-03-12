@@ -44,8 +44,8 @@ that keeps it all backward-compatible.
                             │
             ┌───────────────┼───────────────┐
             ▼               ▼               ▼
-   trust/<agent>.sk    keyring.json    did:key:z6Mk...
-   (private key)       (public key)    (signing key ID)
+   ~/.xyph/trust/<agent>.sk    ~/.xyph/trust/keyring.json    did:key:z6Mk...
+   (private key)               (public key)                  (signing key ID)
             │                               │
             │         ┌─────────┐           │
             └────────►│  sign() ├───────────┘
@@ -63,8 +63,9 @@ that keeps it all backward-compatible.
 The flow:
 
 1. **Generate** — `generate-key` creates an Ed25519 keypair. The private key
-   goes to `trust/<agentId>.sk` (gitignored). The public key is registered in
-   `trust/keyring.json`.
+   goes to `~/.xyph/trust/<agentId>.sk` by default. The public key is
+   registered in `~/.xyph/trust/keyring.json`. Set `XYPH_TRUST_DIR` to use a
+   different location, such as a local vault checkout.
 
 2. **Identify** — Each agent has a stable `agentId` (e.g., `agent.hal`). The
    signing key identifier is a [W3C DID Key][did-key-spec]: `did:key:z6Mk...`,
@@ -95,11 +96,11 @@ This calls `GuildSealService.generateKeypair(agentId)`, which:
 
 1. Generates 32 cryptographically random bytes (via `crypto.randomBytes`).
 2. Derives the Ed25519 public key using `@noble/ed25519`.
-3. Writes the private key hex to `trust/<agentId>.sk` with mode `0600`
+3. Writes the private key hex to `~/.xyph/trust/<agentId>.sk` with mode `0600`
    (owner-only read/write). Uses `O_EXCL` to prevent overwriting an existing
    key.
 4. Derives the `did:key:z6Mk...` identifier from the public key.
-5. Appends the entry to `trust/keyring.json` with the canonical `keyId`,
+5. Appends the entry to `~/.xyph/trust/keyring.json` with the canonical `keyId`,
    `publicKeyHex`, `alg`, and `agentId` fields.
 
 If the keyring write fails, the private key file is rolled back (deleted) to
@@ -232,7 +233,7 @@ transparently for patch validation too.
 
 ## The Keyring
 
-The keyring is a JSON file at `trust/keyring.json` that maps key identifiers to
+The keyring is a JSON file at `~/.xyph/trust/keyring.json` by default that maps key identifiers to
 Ed25519 public keys. It is the single source of trust for signature
 verification.
 
@@ -404,17 +405,18 @@ The pipeline runs `v1 → v2 → v3 → ...` automatically. Old v1 keyrings stil
 ## Trust Directory Layout
 
 ```text
-trust/
-├── keyring.json        # Public key registry (committed to Git)
-├── agent.hal.sk        # Hal's Ed25519 private key (gitignored)
-├── agent.james.sk      # James's Ed25519 private key (gitignored)
+~/.xyph/trust/
+├── keyring.json        # Public key registry (local machine state)
+├── agent.hal.sk        # Hal's Ed25519 private key
+├── agent.james.sk      # James's Ed25519 private key
 └── ...
 ```
 
-- **`keyring.json`** is committed. It contains only public keys and is safe to
-  share.
-- **`*.sk` files** are gitignored. They contain 64-character hex-encoded
-  Ed25519 private keys. File permissions are set to `0600` (owner-only).
+- Use `XYPH_TRUST_DIR` to point XYPH at a different trust directory when you
+  want machine-local state somewhere other than `~/.xyph/trust`.
+- **`keyring.json`** is local machine state, not a repo artifact.
+- **`*.sk` files** contain 64-character hex-encoded Ed25519 private keys. File
+  permissions are set to `0600` (owner-only).
 
 ---
 
@@ -422,11 +424,11 @@ trust/
 
 | Concern | Mitigation |
 |---------|------------|
-| **Private key storage** | Stored as hex in `trust/<agent>.sk` with `0600` permissions. Gitignored. For production, consider hardware tokens or OS keychains via `@git-stunts/vault`. |
+| **Private key storage** | Stored as hex in `~/.xyph/trust/<agent>.sk` with `0600` permissions by default. Use `XYPH_TRUST_DIR` for a different local path, including a vault-backed directory. |
 | **Key material in memory** | Node.js strings are immutable and cannot be zeroed after use. Private key hex stays in memory until garbage collected. Acknowledged limitation (L-19). |
 | **Algorithm agility** | Only `ed25519` is supported. The `alg` field exists for future algorithm upgrades. `loadKeyring()` rejects entries with unsupported algorithms. |
 | **Canonical JSON stability** | The `canonicalize()` function produces deterministic output: sorted keys, no whitespace, preserved array order. Any change would break existing signatures. |
-| **Keyring tampering** | If someone modifies `keyring.json` to swap a public key, they can forge seals for that agent. The keyring should be reviewed in code review like any other trust artifact. |
+| **Keyring tampering** | If someone modifies a local `keyring.json` to swap a public key, they can forge seals for that agent on that machine. Protect the trust directory like other local credentials. |
 | **Legacy alias collisions** | If two entries have overlapping legacy keyIds, first-write-wins in the Map. This is unlikely in practice and logged via `legacyKeyIds`. |
 
 ---

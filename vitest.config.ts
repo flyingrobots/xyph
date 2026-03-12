@@ -5,5 +5,6 @@ export default defineConfig({
     exclude: ['dist/**', 'coverage/**', 'node_modules/**'],
     testTimeout: 15_000,
     hookTimeout: 15_000,
+    setupFiles: ['test/setup.ts'],
   },
 });
