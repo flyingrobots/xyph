@@ -6,6 +6,8 @@ import { registerAgentCommands } from '../../src/cli/commands/agent.js';
 const mocks = vi.hoisted(() => ({
   execute: vi.fn(),
   fetchContext: vi.fn(),
+  buildBriefing: vi.fn(),
+  nextCandidates: vi.fn(),
   WarpRoadmapAdapter: vi.fn(),
 }));
 
@@ -21,6 +23,18 @@ vi.mock('../../src/domain/services/AgentContextService.js', () => ({
   AgentContextService: class AgentContextService {
     fetch(id: string) {
       return mocks.fetchContext(id);
+    }
+  },
+}));
+
+vi.mock('../../src/domain/services/AgentBriefingService.js', () => ({
+  AgentBriefingService: class AgentBriefingService {
+    buildBriefing() {
+      return mocks.buildBriefing();
+    }
+
+    next(limit: number) {
+      return mocks.nextCandidates(limit);
     }
   },
 }));
@@ -53,6 +67,108 @@ function makeCtx(): CliContext {
 describe('agent act command', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('emits a JSON briefing packet', async () => {
+    mocks.buildBriefing.mockResolvedValue({
+      identity: {
+        agentId: 'agent.hal',
+        principalType: 'agent',
+      },
+      assignments: [],
+      reviewQueue: [],
+      frontier: [],
+      alerts: [],
+      graphMeta: {
+        maxTick: 42,
+        myTick: 7,
+        writerCount: 3,
+        tipSha: 'abc1234',
+      },
+    });
+
+    const ctx = makeCtx();
+    const program = new Command();
+    registerAgentCommands(program, ctx);
+
+    await program.parseAsync(['briefing'], { from: 'user' });
+
+    expect(mocks.buildBriefing).toHaveBeenCalledTimes(1);
+    expect(ctx.jsonOut).toHaveBeenCalledWith({
+      success: true,
+      command: 'briefing',
+      data: {
+        identity: {
+          agentId: 'agent.hal',
+          principalType: 'agent',
+        },
+        assignments: [],
+        reviewQueue: [],
+        frontier: [],
+        alerts: [],
+        graphMeta: {
+          maxTick: 42,
+          myTick: 7,
+          writerCount: 3,
+          tipSha: 'abc1234',
+        },
+      },
+    });
+  });
+
+  it('emits a JSON next-candidate list', async () => {
+    mocks.nextCandidates.mockResolvedValue([
+      {
+        kind: 'claim',
+        targetId: 'task:AGT-001',
+        args: {},
+        reason: 'Quest is in READY and can be claimed immediately.',
+        confidence: 0.98,
+        requiresHumanApproval: false,
+        dryRunSummary: 'Move the quest into IN_PROGRESS and assign it to the current agent.',
+        blockedBy: [],
+        allowed: true,
+        underlyingCommand: 'xyph claim task:AGT-001',
+        sideEffects: ['status -> IN_PROGRESS'],
+        validationCode: null,
+        questTitle: 'Agent native quest',
+        questStatus: 'READY',
+        source: 'frontier',
+      },
+    ]);
+
+    const ctx = makeCtx();
+    const program = new Command();
+    registerAgentCommands(program, ctx);
+
+    await program.parseAsync(['next', '--limit', '3'], { from: 'user' });
+
+    expect(mocks.nextCandidates).toHaveBeenCalledWith(3);
+    expect(ctx.jsonOut).toHaveBeenCalledWith({
+      success: true,
+      command: 'next',
+      data: {
+        candidates: [
+          {
+            kind: 'claim',
+            targetId: 'task:AGT-001',
+            args: {},
+            reason: 'Quest is in READY and can be claimed immediately.',
+            confidence: 0.98,
+            requiresHumanApproval: false,
+            dryRunSummary: 'Move the quest into IN_PROGRESS and assign it to the current agent.',
+            blockedBy: [],
+            allowed: true,
+            underlyingCommand: 'xyph claim task:AGT-001',
+            sideEffects: ['status -> IN_PROGRESS'],
+            validationCode: null,
+            questTitle: 'Agent native quest',
+            questStatus: 'READY',
+            source: 'frontier',
+          },
+        ],
+      },
+    });
   });
 
   it('emits a JSON context packet for a quest target', async () => {

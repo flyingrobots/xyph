@@ -49,11 +49,11 @@ export class AgentRecommender {
   public async recommendForQuest(
     quest: QuestNode,
     readiness: ReadinessAssessment | null,
-    _dependency: AgentDependencyContext,
+    dependency: AgentDependencyContext,
   ): Promise<AgentActionCandidate[]> {
     const seeds: CandidateSeed[] = [];
 
-    if (quest.status === 'READY') {
+    if (quest.status === 'READY' && dependency.isFrontier) {
       seeds.push({
         request: {
           kind: 'claim',

@@ -16,6 +16,7 @@ import type {
   AgentActionCandidate,
   AgentDependencyContext,
 } from '../../domain/services/AgentRecommender.js';
+import { AgentBriefingService } from '../../domain/services/AgentBriefingService.js';
 import type { ReadinessAssessment } from '../../domain/services/ReadinessService.js';
 import type { EntityDetail } from '../../domain/models/dashboard.js';
 
@@ -176,8 +177,151 @@ function renderAgentContext(
   return lines.join('\n');
 }
 
+function renderBriefing(briefing: {
+  identity: { agentId: string; principalType: string };
+  assignments: { quest: { id: string; title: string; status: string }; nextAction: AgentActionCandidate | null }[];
+  reviewQueue: { submissionId: string; questTitle: string; status: string }[];
+  frontier: { quest: { id: string; title: string; status: string }; nextAction: AgentActionCandidate | null }[];
+  alerts: { severity: string; message: string }[];
+  graphMeta: { maxTick: number; writerCount: number; tipSha: string } | null;
+}): string {
+  const lines: string[] = [];
+  lines.push(`${briefing.identity.agentId}  [${briefing.identity.principalType}]`);
+
+  lines.push('');
+  lines.push(`Assignments (${briefing.assignments.length})`);
+  if (briefing.assignments.length === 0) {
+    lines.push('  none');
+  } else {
+    for (const entry of briefing.assignments) {
+      lines.push(`  - ${entry.quest.id} ${entry.quest.title} [${entry.quest.status}]`);
+      if (entry.nextAction) {
+        lines.push(`      next: ${entry.nextAction.kind}`);
+      }
+    }
+  }
+
+  lines.push('');
+  lines.push(`Review Queue (${briefing.reviewQueue.length})`);
+  if (briefing.reviewQueue.length === 0) {
+    lines.push('  none');
+  } else {
+    for (const entry of briefing.reviewQueue) {
+      lines.push(`  - ${entry.submissionId} ${entry.questTitle} [${entry.status}]`);
+    }
+  }
+
+  lines.push('');
+  lines.push(`Frontier (${briefing.frontier.length})`);
+  if (briefing.frontier.length === 0) {
+    lines.push('  none');
+  } else {
+    for (const entry of briefing.frontier) {
+      lines.push(`  - ${entry.quest.id} ${entry.quest.title} [${entry.quest.status}]`);
+      if (entry.nextAction) {
+        lines.push(`      next: ${entry.nextAction.kind}`);
+      }
+    }
+  }
+
+  if (briefing.alerts.length > 0) {
+    lines.push('');
+    lines.push('Alerts');
+    for (const alert of briefing.alerts) {
+      lines.push(`  - ${alert.severity}: ${alert.message}`);
+    }
+  }
+
+  if (briefing.graphMeta) {
+    lines.push('');
+    lines.push(`Graph: tick=${briefing.graphMeta.maxTick} writers=${briefing.graphMeta.writerCount} tip=${briefing.graphMeta.tipSha}`);
+  }
+
+  return lines.join('\n');
+}
+
+function renderNext(candidates: {
+  kind: string;
+  targetId: string;
+  questTitle: string;
+  source: string;
+  reason: string;
+  blockedBy: string[];
+}[]): string {
+  const lines: string[] = [];
+  lines.push(`Candidates (${candidates.length})`);
+  if (candidates.length === 0) {
+    lines.push('  none');
+    return lines.join('\n');
+  }
+
+  for (const candidate of candidates) {
+    lines.push(`  - ${candidate.kind} ${candidate.targetId} [${candidate.source}]`);
+    lines.push(`      ${candidate.questTitle}`);
+    lines.push(`      ${candidate.reason}`);
+    if (candidate.blockedBy.length > 0) {
+      lines.push(`      blockedBy: ${candidate.blockedBy.join(' | ')}`);
+    }
+  }
+  return lines.join('\n');
+}
+
 export function registerAgentCommands(program: Command, ctx: CliContext): void {
   const withErrorHandler = createErrorHandler(ctx);
+
+  program
+    .command('briefing')
+    .description('Build a start-of-session agent briefing packet')
+    .action(withErrorHandler(async () => {
+      const service = new AgentBriefingService(
+        ctx.graphPort,
+        new WarpRoadmapAdapter(ctx.graphPort),
+        ctx.agentId,
+      );
+      const briefing = await service.buildBriefing();
+
+      if (ctx.json) {
+        ctx.jsonOut({
+          success: true,
+          command: 'briefing',
+          data: { ...briefing },
+        });
+        return;
+      }
+
+      ctx.print(renderBriefing(briefing));
+    }));
+
+  program
+    .command('next')
+    .description('Recommend the next validated actions for this agent')
+    .option('--limit <n>', 'Maximum number of action candidates to return', '5')
+    .action(withErrorHandler(async (opts: { limit: string }) => {
+      const limit = Number.parseInt(opts.limit, 10);
+      if (!Number.isFinite(limit) || limit < 1) {
+        throw new Error(`[INVALID_ARGS] --limit must be a positive integer, got '${opts.limit}'`);
+      }
+
+      const service = new AgentBriefingService(
+        ctx.graphPort,
+        new WarpRoadmapAdapter(ctx.graphPort),
+        ctx.agentId,
+      );
+      const candidates = await service.next(limit);
+
+      if (ctx.json) {
+        ctx.jsonOut({
+          success: true,
+          command: 'next',
+          data: {
+            candidates,
+          },
+        });
+        return;
+      }
+
+      ctx.print(renderNext(candidates));
+    }));
 
   program
     .command('context <id>')

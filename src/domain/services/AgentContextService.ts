@@ -20,7 +20,7 @@ export interface AgentContextResult {
   recommendedActions: AgentActionCandidate[];
 }
 
-function toQuestRef(quest: QuestNode): AgentQuestRef {
+export function toAgentQuestRef(quest: QuestNode): AgentQuestRef {
   return {
     id: quest.id,
     title: quest.title,
@@ -31,7 +31,7 @@ function toQuestRef(quest: QuestNode): AgentQuestRef {
   };
 }
 
-function buildDependencyContext(
+export function buildAgentDependencyContext(
   snapshot: GraphSnapshot,
   quest: QuestNode,
 ): AgentDependencyContext {
@@ -49,17 +49,17 @@ function buildDependencyContext(
   const dependsOn = (quest.dependsOn ?? [])
     .map((id) => questById.get(id))
     .filter((entry): entry is QuestNode => Boolean(entry))
-    .map(toQuestRef);
+    .map(toAgentQuestRef);
 
   const dependents = snapshot.quests
     .filter((entry) => (entry.dependsOn ?? []).includes(quest.id))
-    .map(toQuestRef)
+    .map(toAgentQuestRef)
     .sort((a, b) => a.id.localeCompare(b.id));
 
   const blockedBy = (frontierResult.blockedBy.get(quest.id) ?? [])
     .map((id) => questById.get(id))
     .filter((entry): entry is QuestNode => Boolean(entry))
-    .map(toQuestRef);
+    .map(toAgentQuestRef);
 
   const topoIndex = snapshot.sortedTaskIds.indexOf(quest.id);
 
@@ -108,7 +108,7 @@ export class AgentContextService {
 
     const quest = detail.questDetail.quest;
     const readiness = await this.readiness.assess(id, { transition: false });
-    const dependency = buildDependencyContext(snapshot, quest);
+    const dependency = buildAgentDependencyContext(snapshot, quest);
     const recommendedActions = await this.recommender.recommendForQuest(
       quest,
       readiness,
