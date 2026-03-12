@@ -2,6 +2,7 @@ import type { Command } from 'commander';
 import type { CliContext } from '../context.js';
 import { createErrorHandler } from '../errorHandler.js';
 import { assertPrefixOneOf, assertNodeExists } from '../validators.js';
+import { isExecutableQuestStatus } from '../../domain/entities/Quest.js';
 
 export function registerDashboardCommands(program: Command, ctx: CliContext): void {
   const withErrorHandler = createErrorHandler(ctx);
@@ -97,17 +98,14 @@ export function registerDashboardCommands(program: Command, ctx: CliContext): vo
           const depEdges = snapshot.quests.flatMap((q) =>
             (q.dependsOn ?? []).map((to) => ({ from: q.id, to })),
           );
-          const taskIds = snapshot.quests.map((q) => q.id);
-          const { sorted } = await graphCtx.graph.traverse.topologicalSort(taskIds, {
-            dir: 'in',
-            labelFilter: 'depends-on',
-          });
+          const sorted = snapshot.sortedTaskIds;
 
           const frontierResult = computeFrontier(taskSummaries, depEdges);
           const criticalResult = computeCriticalPath(sorted, taskSummaries, depEdges);
 
           const tasks = new Map<string, { title: string; status: string; hours: number }>();
           for (const q of snapshot.quests) {
+            if (!isExecutableQuestStatus(q.status)) continue;
             tasks.set(q.id, { title: q.title, status: q.status, hours: q.hours });
           }
 
@@ -292,7 +290,7 @@ export function registerDashboardCommands(program: Command, ctx: CliContext): vo
 
   program
     .command('audit-sovereignty')
-    .description('Audit authorized quests (PLANNED, IN_PROGRESS, BLOCKED, DONE) for missing Genealogy of Intent (Constitution Art. IV)')
+    .description('Audit authorized quests (PLANNED, READY, IN_PROGRESS, BLOCKED, DONE) for missing Genealogy of Intent (Constitution Art. IV)')
     .action(withErrorHandler(async () => {
       const { WarpRoadmapAdapter } = await import('../../infrastructure/adapters/WarpRoadmapAdapter.js');
       const {

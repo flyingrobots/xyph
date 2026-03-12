@@ -11,6 +11,14 @@ export function registerCoordinationCommands(program: Command, ctx: CliContext):
     .action(withErrorHandler(async (id: string) => {
       assertPrefix(id, 'task:', 'Quest ID');
       const graph = await ctx.graphPort.getGraph();
+      const before = await graph.getNodeProps(id);
+      if (before === null) {
+        throw new Error(`[NOT_FOUND] Quest ${id} not found in the graph`);
+      }
+      const status = String(before['status'] ?? '');
+      if (status !== 'READY') {
+        throw new Error(`[INVALID_FROM] claim requires status READY, quest ${id} is ${status || 'unknown'}`);
+      }
 
       ctx.warn(`[*] Attempting to claim ${id} as ${ctx.agentId}...`);
 

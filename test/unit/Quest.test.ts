@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { Quest } from '../../src/domain/entities/Quest.js';
+import { Quest, normalizeQuestKind } from '../../src/domain/entities/Quest.js';
 
 describe('Quest Entity', () => {
   it('should create a valid quest', () => {
@@ -8,10 +8,13 @@ describe('Quest Entity', () => {
       title: 'Test Quest',
       status: 'BACKLOG',
       hours: 1,
+      description: 'A durable body for this test quest',
+      taskKind: 'maintenance',
       type: 'task'
     });
     expect(quest.id).toBe('task:001');
     expect(quest.isDone()).toBe(false);
+    expect(quest.taskKind).toBe('maintenance');
   });
 
   it('should identify a completed quest', () => {
@@ -35,6 +38,7 @@ describe('Quest Entity', () => {
       assignedTo: 'agent.test'
     });
     expect(quest.isClaimed()).toBe(true);
+    expect(quest.isExecutable()).toBe(true);
   });
 
   it('should identify an unclaimed quest', () => {
@@ -76,5 +80,32 @@ describe('Quest Entity', () => {
       hours: -1,
       type: 'task'
     })).toThrow('finite non-negative number');
+  });
+
+  it('defaults task kind to delivery when omitted', () => {
+    const quest = new Quest({
+      id: 'task:007',
+      title: 'Default Kind Quest',
+      status: 'PLANNED',
+      hours: 1,
+      type: 'task',
+    });
+
+    expect(quest.taskKind).toBe('delivery');
+    expect(normalizeQuestKind(undefined)).toBe('delivery');
+  });
+
+  it('accepts READY as a first-class quest status', () => {
+    const quest = new Quest({
+      id: 'task:008',
+      title: 'Ready Quest',
+      status: 'READY',
+      hours: 1,
+      description: 'This quest has passed readiness validation.',
+      type: 'task',
+    });
+
+    expect(quest.status).toBe('READY');
+    expect(quest.isExecutable()).toBe(true);
   });
 });

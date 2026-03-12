@@ -43,6 +43,7 @@ describe('WarpIntakeAdapter Integration', () => {
         .setProperty('task:INTAKE-003', 'title', 'Already promoted task')
         .setProperty('task:INTAKE-003', 'status', 'PLANNED')
         .setProperty('task:INTAKE-003', 'hours', 3)
+        .setProperty('task:INTAKE-003', 'description', 'Already shaped and ready for validation.')
         .setProperty('task:INTAKE-003', 'type', 'task')
         .addNode('task:INTAKE-004')
         .setProperty('task:INTAKE-004', 'title', 'GRAVEYARD task for reject test')
@@ -58,6 +59,7 @@ describe('WarpIntakeAdapter Integration', () => {
         .setProperty('task:INTAKE-ALREADY-PROMOTED', 'title', 'Already promoted task for order-independent test')
         .setProperty('task:INTAKE-ALREADY-PROMOTED', 'status', 'PLANNED')
         .setProperty('task:INTAKE-ALREADY-PROMOTED', 'hours', 1)
+        .setProperty('task:INTAKE-ALREADY-PROMOTED', 'description', 'Already promoted task with description.')
         .setProperty('task:INTAKE-ALREADY-PROMOTED', 'type', 'task')
         .addNode('task:INTAKE-REJECT-BACKLOG')
         .setProperty('task:INTAKE-REJECT-BACKLOG', 'title', 'BACKLOG task for reject test')
@@ -78,9 +80,12 @@ describe('WarpIntakeAdapter Integration', () => {
     }
   });
 
-  it('promote succeeds: status → PLANNED with authorized-by edge', async () => {
+  it('promote succeeds: status → PLANNED with authorized-by edge and metadata', async () => {
     const adapter = new WarpIntakeAdapter(graphPort, humanAgentId);
-    await adapter.promote('task:INTAKE-001', 'intent:sovereign-test');
+    await adapter.promote('task:INTAKE-001', 'intent:sovereign-test', undefined, {
+      description: 'A durable intake description for executable planning.',
+      taskKind: 'maintenance',
+    });
 
     const reader = createGraphContext(graphPort);
     const snapshot = await reader.fetchSnapshot();
@@ -88,6 +93,8 @@ describe('WarpIntakeAdapter Integration', () => {
     expect(q).toBeDefined();
     expect(q?.status).toBe('PLANNED');
     expect(q?.intentId).toBe('intent:sovereign-test');
+    expect(q?.description).toBe('A durable intake description for executable planning.');
+    expect(q?.taskKind).toBe('maintenance');
   });
 
   it('promote fails: non-human agentId → [FORBIDDEN]', async () => {
@@ -98,12 +105,55 @@ describe('WarpIntakeAdapter Integration', () => {
 
   it('promote fails: malformed intentId (not intent:*) → [MISSING_ARG]', async () => {
     const adapter = new WarpIntakeAdapter(graphPort, humanAgentId);
-    await expect(adapter.promote('task:INTAKE-001', 'wrong-id')).rejects.toThrow('[MISSING_ARG]');
+    await expect(adapter.promote('task:INTAKE-001', 'wrong-id', undefined, {
+      description: 'Durable intake description.',
+    })).rejects.toThrow('[MISSING_ARG]');
   });
 
   it('promote fails: task not in BACKLOG → [INVALID_FROM]', async () => {
     const adapter = new WarpIntakeAdapter(graphPort, humanAgentId);
-    await expect(adapter.promote('task:INTAKE-ALREADY-PROMOTED', 'intent:sovereign-test')).rejects.toThrow('[INVALID_FROM]');
+    await expect(adapter.promote('task:INTAKE-ALREADY-PROMOTED', 'intent:sovereign-test', undefined, {
+      description: 'Durable intake description.',
+    })).rejects.toThrow('[INVALID_FROM]');
+  });
+
+  it('promote fails when no description exists and none is supplied', async () => {
+    const adapter = new WarpIntakeAdapter(graphPort, humanAgentId);
+    await expect(adapter.promote('task:INTAKE-FORBIDDEN', 'intent:sovereign-test')).rejects.toThrow('[MISSING_ARG]');
+  });
+
+  it('ready succeeds: status → READY with readiness metadata', async () => {
+    const graph = await graphPort.getGraph();
+    await graph.patch((p) => {
+      p.addNode('campaign:READY-TEST')
+        .setProperty('campaign:READY-TEST', 'title', 'Ready Test Campaign')
+        .setProperty('campaign:READY-TEST', 'type', 'campaign')
+        .setProperty('campaign:READY-TEST', 'status', 'BACKLOG');
+    });
+    await graph.patch((p) => {
+      p.addEdge('task:INTAKE-003', 'campaign:READY-TEST', 'belongs-to');
+    });
+    await graph.patch((p) => {
+      p.addEdge('task:INTAKE-003', 'intent:sovereign-test', 'authorized-by');
+    });
+
+    const adapter = new WarpIntakeAdapter(graphPort, humanAgentId);
+    const before = Date.now();
+    await adapter.ready('task:INTAKE-003');
+    const after = Date.now();
+
+    const reader = createGraphContext(graphPort);
+    const snapshot = await reader.fetchSnapshot();
+    const q = snapshot.quests.find((quest) => quest.id === 'task:INTAKE-003');
+    expect(q?.status).toBe('READY');
+    expect(q?.readyBy).toBe(humanAgentId);
+    expect(q?.readyAt).toBeGreaterThanOrEqual(before);
+    expect(q?.readyAt).toBeLessThanOrEqual(after);
+  });
+
+  it('ready fails with [NOT_READY] when requirements are unmet', async () => {
+    const adapter = new WarpIntakeAdapter(graphPort, humanAgentId);
+    await expect(adapter.ready('task:INTAKE-FORBIDDEN')).rejects.toThrow('[NOT_READY]');
   });
 
   it('reject succeeds: status → GRAVEYARD with metadata properties', async () => {

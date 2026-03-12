@@ -100,6 +100,10 @@ describe('statusVariant', () => {
     expect(statusVariant('IN_PROGRESS')).toBe('info');
   });
 
+  it('maps READY to info', () => {
+    expect(statusVariant('READY')).toBe('info');
+  });
+
   it('maps OPEN to info', () => {
     expect(statusVariant('OPEN')).toBe('info');
   });

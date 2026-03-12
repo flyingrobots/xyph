@@ -4,7 +4,7 @@ import type { BadgeVariant } from '@flyingrobots/bijou';
 export function statusVariant(status: string): BadgeVariant {
   switch (status) {
     case 'DONE': case 'MERGED': case 'APPROVED': case 'ACCEPTED': return 'success';
-    case 'IN_PROGRESS': case 'OPEN': case 'PENDING': return 'info';
+    case 'READY': case 'IN_PROGRESS': case 'OPEN': case 'PENDING': return 'info';
     case 'CHANGES_REQUESTED': case 'BLOCKED': return 'warning';
     case 'CLOSED': case 'GRAVEYARD': case 'REJECTED': return 'error';
     default: return 'muted';

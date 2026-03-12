@@ -48,7 +48,7 @@ describe('Concurrent OCP Claim — LWW determinism', () => {
     execSync('git config user.email "test@xyph.dev"', { cwd: repoPath });
     execSync('git config user.name "Test Runner"', { cwd: repoPath });
 
-    // Seed: a BACKLOG quest ready to be claimed
+    // Seed: a READY quest ready to be claimed
     const seed = await openGraph(alice);
     await seed.syncCoverage();
     await seed.materialize();
@@ -56,7 +56,7 @@ describe('Concurrent OCP Claim — LWW determinism', () => {
     const p = await createPatch(seed);
     p.addNode(questId)
       .setProperty(questId, 'title', 'Race condition target')
-      .setProperty(questId, 'status', 'BACKLOG')
+      .setProperty(questId, 'status', 'READY')
       .setProperty(questId, 'hours', 2)
       .setProperty(questId, 'type', 'task');
     await p.commit();

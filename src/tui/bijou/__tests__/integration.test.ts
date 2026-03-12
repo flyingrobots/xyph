@@ -106,7 +106,7 @@ describe('DashboardApp integration (full loop)', () => {
       campaigns: [{ id: 'campaign:M1', title: 'Milestone 1', status: 'IN_PROGRESS' }],
       intents: [{ id: 'intent:SOV', title: 'Sovereignty', requestedBy: 'human.james', createdAt: 0 }],
       quests: [
-        { id: 'task:A', title: 'Alpha', status: 'PLANNED', hours: 4, campaignId: 'campaign:M1', intentId: 'intent:SOV' },
+        { id: 'task:A', title: 'Alpha', status: 'READY', hours: 4, campaignId: 'campaign:M1', intentId: 'intent:SOV' },
         { id: 'task:B', title: 'Bravo', status: 'IN_PROGRESS', hours: 2 },
       ],
     });
@@ -131,9 +131,9 @@ describe('DashboardApp integration (full loop)', () => {
     const { app } = buildApp();
     const snap = makeSnapshot({
       quests: [
-        { id: 'task:A', title: 'A', status: 'PLANNED', hours: 1 },
+        { id: 'task:A', title: 'A', status: 'READY', hours: 1 },
         { id: 'task:B', title: 'B', status: 'IN_PROGRESS', hours: 2 },
-        { id: 'task:C', title: 'C', status: 'PLANNED', hours: 3 },
+        { id: 'task:C', title: 'C', status: 'READY', hours: 3 },
       ],
     });
     const m = ready(app, snap);
@@ -155,7 +155,7 @@ describe('DashboardApp integration (full loop)', () => {
   it('c → y claim flow dispatches write and renders confirm overlay', () => {
     const { app } = buildApp();
     const snap = makeSnapshot({
-      quests: [{ id: 'task:Q1', title: 'Quest One', status: 'PLANNED', hours: 1 }],
+      quests: [{ id: 'task:Q1', title: 'Quest One', status: 'READY', hours: 1 }],
     });
     const m = ready(app, snap);
 
@@ -181,7 +181,7 @@ describe('DashboardApp integration (full loop)', () => {
   it('c → n cancels claim', () => {
     const { app } = buildApp();
     const snap = makeSnapshot({
-      quests: [{ id: 'task:Q1', title: 'Q', status: 'PLANNED', hours: 1 }],
+      quests: [{ id: 'task:Q1', title: 'Q', status: 'READY', hours: 1 }],
     });
     const m = ready(app, snap);
 

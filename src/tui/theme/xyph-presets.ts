@@ -22,7 +22,7 @@ import {
 
 /** Quest/workflow status keys beyond bijou's BaseStatusKey. */
 type XyphExtStatus =
-  | 'DONE' | 'IN_PROGRESS' | 'BACKLOG' | 'BLOCKED' | 'PLANNED'
+  | 'DONE' | 'READY' | 'IN_PROGRESS' | 'BACKLOG' | 'BLOCKED' | 'PLANNED'
   | 'GRAVEYARD' | 'PENDING' | 'APPROVED' | 'REJECTED' | 'UNKNOWN'
   | 'OPEN' | 'CHANGES_REQUESTED' | 'MERGED' | 'CLOSED';
 
@@ -42,6 +42,7 @@ export type XyphTheme = Theme<XyphStatusKey, XyphUiKey, BaseGradientKey>;
 
 const XYPH_STATUS_CYAN_MAGENTA_DARK = {
   DONE:              tv('#00ff00'),
+  READY:             tv('#7dd3fc'),
   IN_PROGRESS:       tv('#00ffff'),
   BACKLOG:           tv('#ff00ff'),
   BLOCKED:           tv('#ff0000'),
@@ -59,6 +60,7 @@ const XYPH_STATUS_CYAN_MAGENTA_DARK = {
 
 const XYPH_STATUS_CYAN_MAGENTA_LIGHT = {
   DONE:              tv('#059669'),
+  READY:             tv('#0284c7'),
   IN_PROGRESS:       tv('#0891b2'),
   BACKLOG:           tv('#a21caf'),
   BLOCKED:           tv('#dc2626'),
@@ -76,6 +78,7 @@ const XYPH_STATUS_CYAN_MAGENTA_LIGHT = {
 
 const XYPH_STATUS_TEAL_ORANGE_DARK = {
   DONE:              tv('#34d399'),
+  READY:             tv('#67e8f9'),
   IN_PROGRESS:       tv('#3bcfd4'),
   BACKLOG:           tv('#f20094'),
   BLOCKED:           tv('#ef4444'),
@@ -93,6 +96,7 @@ const XYPH_STATUS_TEAL_ORANGE_DARK = {
 
 const XYPH_STATUS_TEAL_ORANGE_LIGHT = {
   DONE:              tv('#059669'),
+  READY:             tv('#0f766e'),
   IN_PROGRESS:       tv('#0d9488'),
   BACKLOG:           tv('#be185d'),
   BLOCKED:           tv('#dc2626'),

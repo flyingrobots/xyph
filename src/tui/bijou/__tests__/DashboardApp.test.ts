@@ -470,7 +470,7 @@ describe('DashboardApp', () => {
       const [initial] = app.init();
       const snap = makeSnapshot({
         quests: [
-          { id: 'task:A', title: 'A', status: 'PLANNED', hours: 1 },
+          { id: 'task:A', title: 'A', status: 'READY', hours: 1 },
           { id: 'task:B', title: 'B', status: 'IN_PROGRESS', hours: 2 },
         ],
       });
@@ -559,7 +559,7 @@ describe('DashboardApp', () => {
       const [initial] = app.init();
       const snap = makeSnapshot({
         quests: [
-          { id: 'task:Q1', title: 'Quest 1', status: 'PLANNED', hours: 1 },
+          { id: 'task:Q1', title: 'Quest 1', status: 'READY', hours: 1 },
         ],
       });
       // Feed snapshot through update to rebuild the roadmap table
@@ -1053,9 +1053,9 @@ describe('DashboardApp', () => {
       const [initial] = app.init();
       const snap = makeSnapshot({
         quests: [
-          { id: 'task:A', title: 'A', status: 'PLANNED', hours: 1 },
+          { id: 'task:A', title: 'A', status: 'READY', hours: 1 },
           { id: 'task:B', title: 'B', status: 'IN_PROGRESS', hours: 2 },
-          { id: 'task:C', title: 'C', status: 'PLANNED', hours: 3 },
+          { id: 'task:C', title: 'C', status: 'READY', hours: 3 },
         ],
       });
       const [withSnap] = app.update(
@@ -1083,9 +1083,9 @@ describe('DashboardApp', () => {
       const [initial] = app.init();
       const snap = makeSnapshot({
         quests: [
-          { id: 'task:A', title: 'A', status: 'PLANNED', hours: 1 },
+          { id: 'task:A', title: 'A', status: 'READY', hours: 1 },
           { id: 'task:B', title: 'B', status: 'IN_PROGRESS', hours: 2 },
-          { id: 'task:C', title: 'C', status: 'PLANNED', hours: 3 },
+          { id: 'task:C', title: 'C', status: 'READY', hours: 3 },
         ],
       });
       const [withSnap] = app.update(

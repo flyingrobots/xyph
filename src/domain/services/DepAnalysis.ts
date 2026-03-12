@@ -9,6 +9,8 @@
  * `graph.traverse.topologicalSort()` and stored in `GraphSnapshot.sortedTaskIds`.
  */
 
+import { isExecutableQuestStatus } from '../entities/Quest.js';
+
 // ---------------------------------------------------------------------------
 // Frontier computation
 // ---------------------------------------------------------------------------
@@ -34,11 +36,15 @@ export function computeFrontier(
   tasks: TaskSummary[],
   edges: DepEdge[],
 ): { frontier: string[]; blockedBy: Map<string, string[]> } {
+  const executableTaskIds = new Set(
+    tasks.filter((t) => isExecutableQuestStatus(t.status)).map((t) => t.id),
+  );
   const doneSet = new Set(tasks.filter((t) => t.status === 'DONE').map((t) => t.id));
 
   // Build outgoing dependency map: task → [things it depends on]
   const depsOf = new Map<string, string[]>();
   for (const edge of edges) {
+    if (!executableTaskIds.has(edge.from) || !executableTaskIds.has(edge.to)) continue;
     const arr = depsOf.get(edge.from) ?? [];
     arr.push(edge.to);
     depsOf.set(edge.from, arr);
@@ -48,6 +54,7 @@ export function computeFrontier(
   const blockedBy = new Map<string, string[]>();
 
   for (const task of tasks) {
+    if (!executableTaskIds.has(task.id)) continue;
     if (doneSet.has(task.id)) continue;
 
     const deps = depsOf.get(task.id) ?? [];
@@ -89,11 +96,15 @@ export function computeTopBlockers(
   limit = 10,
   transitiveDownstream = new Map<string, number>(),
 ): BlockerInfo[] {
+  const executableTaskIds = new Set(
+    tasks.filter((t) => isExecutableQuestStatus(t.status)).map((t) => t.id),
+  );
   const doneSet = new Set(tasks.filter((t) => t.status === 'DONE').map((t) => t.id));
 
   // Build reverse map: prerequisite → [tasks that depend on it]
   const dependentsOf = new Map<string, string[]>();
   for (const edge of edges) {
+    if (!executableTaskIds.has(edge.from) || !executableTaskIds.has(edge.to)) continue;
     // edge.from depends on edge.to → edge.to is prerequisite of edge.from
     const arr = dependentsOf.get(edge.to) ?? [];
     arr.push(edge.from);
@@ -102,6 +113,7 @@ export function computeTopBlockers(
 
   const results: BlockerInfo[] = [];
   for (const task of tasks) {
+    if (!executableTaskIds.has(task.id)) continue;
     if (doneSet.has(task.id)) continue;
     const direct = (dependentsOf.get(task.id) ?? []).length;
     if (direct === 0) continue;
@@ -136,9 +148,18 @@ export function computeCriticalPath(
     return { path: [], totalHours: 0 };
   }
 
+  const executableTaskIds = new Set(
+    tasks.filter((t) => isExecutableQuestStatus(t.status)).map((t) => t.id),
+  );
+  const executableSorted = sorted.filter((id) => executableTaskIds.has(id));
+  if (executableSorted.length === 0) {
+    return { path: [], totalHours: 0 };
+  }
+
   // Build weight map (DONE tasks weigh 0)
   const weightMap = new Map<string, number>();
   for (const t of tasks) {
+    if (!executableTaskIds.has(t.id)) continue;
     weightMap.set(t.id, t.status === 'DONE' ? 0 : t.hours);
   }
 
@@ -146,6 +167,7 @@ export function computeCriticalPath(
   // Storage: from depends-on to. So `to` is the prerequisite and `from` is the dependent.
   const dependentsOf = new Map<string, string[]>();
   for (const edge of edges) {
+    if (!executableTaskIds.has(edge.from) || !executableTaskIds.has(edge.to)) continue;
     const arr = dependentsOf.get(edge.to) ?? [];
     arr.push(edge.from);
     dependentsOf.set(edge.to, arr);
@@ -155,7 +177,7 @@ export function computeCriticalPath(
   const dist = new Map<string, number>();
   const predecessor = new Map<string, string | null>();
 
-  for (const node of sorted) {
+  for (const node of executableSorted) {
     const w = weightMap.get(node) ?? 0;
     if (!dist.has(node)) {
       dist.set(node, w);

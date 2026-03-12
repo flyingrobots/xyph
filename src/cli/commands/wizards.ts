@@ -4,6 +4,7 @@ import { createErrorHandler } from '../errorHandler.js';
 import { assertPrefix } from '../validators.js';
 import { generateId } from '../generateId.js';
 import type { GraphSnapshot } from '../../domain/models/dashboard.js';
+import { VALID_TASK_KINDS, type QuestKind } from '../../domain/entities/Quest.js';
 
 /** Lightweight snapshot fetch for wizard option lists. */
 async function fetchWizardSnapshot(ctx: CliContext): Promise<GraphSnapshot> {
@@ -22,7 +23,7 @@ export function registerWizardCommands(program: Command, ctx: CliContext): void 
     .action(withErrorHandler(async () => {
       if (ctx.json) return ctx.fail('Interactive mode not available with --json. Use quest command with flags.');
 
-      const { filter, input: bijouInput, confirm } = await import('@flyingrobots/bijou');
+      const { filter, input: bijouInput, confirm, select } = await import('@flyingrobots/bijou');
       const snap = await fetchWizardSnapshot(ctx);
 
       // Pick campaign
@@ -64,6 +65,22 @@ export function registerWizardCommands(program: Command, ctx: CliContext): void 
           : { valid: false, message: 'At least 5 characters' },
       });
 
+      const description = await bijouInput({
+        title: 'Quest description (optional)',
+        defaultValue: '',
+        validate: (v) => v.trim().length === 0 || v.trim().length >= 5
+          ? { valid: true }
+          : { valid: false, message: 'Leave blank or enter at least 5 characters' },
+      });
+
+      const taskKind = await select<QuestKind>({
+        title: 'Quest kind',
+        options: [...VALID_TASK_KINDS].map((kind) => ({
+          label: kind,
+          value: kind as QuestKind,
+        })),
+      });
+
       // Hours (optional)
       const hoursStr = await bijouInput({
         title: 'Estimated hours (optional, 0 to skip)',
@@ -100,6 +117,8 @@ export function registerWizardCommands(program: Command, ctx: CliContext): void 
       ctx.print('');
       ctx.print(`  Quest:    ${questId}`);
       ctx.print(`  Title:    ${title}`);
+      if (description.trim()) ctx.print(`  Desc:     ${description.trim()}`);
+      ctx.print(`  Kind:     ${taskKind}`);
       ctx.print(`  Campaign: ${campaignId}`);
       ctx.print(`  Intent:   ${intentId}`);
       ctx.print(`  Hours:    ${hours}`);
@@ -120,7 +139,11 @@ export function registerWizardCommands(program: Command, ctx: CliContext): void 
           .setProperty(questId, 'title', title)
           .setProperty(questId, 'status', 'PLANNED')
           .setProperty(questId, 'hours', hours)
+          .setProperty(questId, 'task_kind', taskKind)
           .setProperty(questId, 'type', 'task');
+        if (description.trim()) {
+          p.setProperty(questId, 'description', description.trim());
+        }
 
         if (campaignId !== 'none') {
           p.addEdge(questId, campaignId, 'belongs-to');
@@ -211,8 +234,12 @@ export function registerWizardCommands(program: Command, ctx: CliContext): void 
 
       assertPrefix(id, 'task:', 'Quest ID');
 
-      const { filter, confirm } = await import('@flyingrobots/bijou');
+      const { filter, confirm, input: bijouInput, select } = await import('@flyingrobots/bijou');
       const snap = await fetchWizardSnapshot(ctx);
+      const quest = snap.quests.find((q) => q.id === id);
+      if (!quest) {
+        return ctx.fail(`[NOT_FOUND] Quest ${id} not found in snapshot.`);
+      }
 
       const intentOptions = snap.intents.map(i => ({
         label: `${i.id}: ${i.title}`,
@@ -236,7 +263,7 @@ export function registerWizardCommands(program: Command, ctx: CliContext): void 
       }));
 
       let campaignId: string | undefined;
-      if (campaignOptions.length > 0) {
+      if (campaignOptions.length > 0 && !quest.campaignId) {
         const assignCampaign = await confirm({ title: 'Assign to a campaign?' });
         if (assignCampaign) {
           campaignId = await filter<string>({
@@ -246,7 +273,26 @@ export function registerWizardCommands(program: Command, ctx: CliContext): void 
         }
       }
 
-      const ok = await confirm({ title: `Promote ${id} to BACKLOG?` });
+      let description = quest.description;
+      if (!description) {
+        description = await bijouInput({
+          title: 'Quest description',
+          validate: (v) => v.trim().length >= 5
+            ? { valid: true }
+            : { valid: false, message: 'At least 5 characters' },
+        });
+      }
+
+      const taskKind = await select<QuestKind>({
+        title: 'Quest kind',
+        options: [...VALID_TASK_KINDS].map((kind) => ({
+          label: kind,
+          value: kind as QuestKind,
+        })),
+        defaultValue: quest.taskKind ?? 'delivery',
+      });
+
+      const ok = await confirm({ title: `Promote ${id} to PLANNED?` });
       if (!ok) {
         ctx.warn('[CANCELLED]');
         return;
@@ -254,11 +300,15 @@ export function registerWizardCommands(program: Command, ctx: CliContext): void 
 
       const { WarpIntakeAdapter } = await import('../../infrastructure/adapters/WarpIntakeAdapter.js');
       const intake = new WarpIntakeAdapter(ctx.graphPort, ctx.agentId);
-      const sha = await intake.promote(id, intentId, campaignId);
+      const sha = await intake.promote(id, intentId, campaignId ?? quest.campaignId, {
+        description: description?.trim(),
+        taskKind,
+      });
 
-      ctx.ok(`[OK] Quest ${id} promoted to BACKLOG.`);
+      ctx.ok(`[OK] Quest ${id} promoted to PLANNED.`);
       ctx.muted(`  Intent:   ${intentId}`);
-      if (campaignId !== undefined) ctx.muted(`  Campaign: ${campaignId}`);
+      ctx.muted(`  Kind:     ${taskKind}`);
+      if ((campaignId ?? quest.campaignId) !== undefined) ctx.muted(`  Campaign: ${campaignId ?? quest.campaignId}`);
       ctx.muted(`  Patch: ${sha}`);
     }));
 
@@ -333,7 +383,7 @@ export function registerWizardCommands(program: Command, ctx: CliContext): void 
           }));
 
           let campaignId: string | undefined;
-          if (campaignOptions.length > 0) {
+          if (campaignOptions.length > 0 && !quest.campaignId) {
             const assignCampaign = await confirm({ title: 'Assign to a campaign?' });
             if (assignCampaign) {
               campaignId = await filter<string>({
@@ -343,7 +393,26 @@ export function registerWizardCommands(program: Command, ctx: CliContext): void 
             }
           }
 
-          await intake.promote(quest.id, intentId, campaignId);
+          const description = quest.description ?? await bijouInput({
+            title: `Description for ${quest.id}`,
+            validate: (v) => v.trim().length >= 5
+              ? { valid: true }
+              : { valid: false, message: 'At least 5 characters' },
+          });
+
+          const taskKind = await select<QuestKind>({
+            title: `Quest kind for ${quest.id}`,
+            options: [...VALID_TASK_KINDS].map((kind) => ({
+              label: kind,
+              value: kind as QuestKind,
+            })),
+            defaultValue: quest.taskKind ?? 'delivery',
+          });
+
+          await intake.promote(quest.id, intentId, campaignId ?? quest.campaignId, {
+            description: description.trim(),
+            taskKind,
+          });
           ctx.ok(`  [OK] ${quest.id} promoted.`);
           promoted++;
         }

@@ -158,6 +158,38 @@ describe('traceability policy commands', () => {
     });
   });
 
+  it('adds an implements edge from a quest to a requirement', async () => {
+    const patchBuilder = createPatchBuilder();
+    const graph = {
+      hasNode: vi.fn().mockResolvedValue(true),
+      patch: vi.fn(async (fn: (builder: typeof patchBuilder) => void) => {
+        fn(patchBuilder);
+        return 'patch:implement';
+      }),
+    };
+    const ctx = makeCtx(graph);
+    const program = new Command();
+    registerTraceabilityCommands(program, ctx);
+
+    await program.parseAsync(
+      ['implement', 'task:TRC-010', 'req:TRC-010'],
+      { from: 'user' },
+    );
+
+    expect(graph.hasNode).toHaveBeenNthCalledWith(1, 'task:TRC-010');
+    expect(graph.hasNode).toHaveBeenNthCalledWith(2, 'req:TRC-010');
+    expect(patchBuilder.addEdge).toHaveBeenCalledWith('task:TRC-010', 'req:TRC-010', 'implements');
+    expect(ctx.jsonOut).toHaveBeenCalledWith({
+      success: true,
+      command: 'implement',
+      data: {
+        quest: 'task:TRC-010',
+        requirement: 'req:TRC-010',
+        patch: 'patch:implement',
+      },
+    });
+  });
+
   it('scan writes linked test evidence instead of synthetic pass evidence', async () => {
     const patchBuilder = createPatchBuilder();
     const graph = {

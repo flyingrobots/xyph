@@ -1,10 +1,12 @@
 import type { RoadmapQueryPort } from '../../ports/RoadmapPort.js';
+import { ReadinessService } from './ReadinessService.js';
 import type { Quest, QuestStatus } from '../entities/Quest.js';
 
 /**
  * Canonical state-machine for the intake pipeline.
  *
  * BACKLOG    ──promote (human only)──▶  PLANNED
+ * PLANNED    ──ready   (validated) ─▶   READY
  * BACKLOG  ┬──reject  (any actor) ──▶  GRAVEYARD
  * PLANNED  ┘
  * GRAVEYARD  ──reopen (human only)──▶  BACKLOG
@@ -15,11 +17,12 @@ export interface TransitionRule {
   from: QuestStatus;
   to: QuestStatus;
   requiresHuman: boolean;
-  command: 'promote' | 'reject' | 'reopen';
+  command: 'promote' | 'ready' | 'reject' | 'reopen';
 }
 
 export const TRANSITION_TABLE: readonly TransitionRule[] = [
   { from: 'BACKLOG', to: 'PLANNED', requiresHuman: true, command: 'promote' },
+  { from: 'PLANNED', to: 'READY', requiresHuman: false, command: 'ready' },
   { from: 'BACKLOG', to: 'GRAVEYARD', requiresHuman: false, command: 'reject' },
   { from: 'PLANNED', to: 'GRAVEYARD', requiresHuman: false, command: 'reject' },
   { from: 'GRAVEYARD', to: 'BACKLOG', requiresHuman: true, command: 'reopen' },
@@ -34,7 +37,11 @@ export const TRANSITION_TABLE: readonly TransitionRule[] = [
  * This separation keeps domain logic free of infrastructure concerns.
  */
 export class IntakeService {
-  constructor(private readonly roadmap: RoadmapQueryPort) {}
+  private readonly readiness: ReadinessService;
+
+  constructor(private readonly roadmap: RoadmapQueryPort) {
+    this.readiness = new ReadinessService(roadmap);
+  }
 
   /**
    * Defense-in-depth only — checks the `human.` prefix convention.
@@ -76,6 +83,14 @@ export class IntakeService {
       throw new Error(
         `[INVALID_FROM] promote requires status BACKLOG, quest ${questId} is ${quest.status}`
       );
+    }
+  }
+
+  async validateReady(questId: string): Promise<void> {
+    const assessment = await this.readiness.assess(questId);
+    if (!assessment.valid) {
+      const reason = assessment.unmet[0]?.message ?? `Quest ${questId} is not READY`;
+      throw new Error(`[NOT_READY] ${reason}`);
     }
   }
 

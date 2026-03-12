@@ -184,7 +184,7 @@ describe('bijou views', () => {
     it('highlights selected quest in frontier panel', () => {
       const snap = makeSnapshot({
         quests: [
-          quest({ id: 'task:A', title: 'Alpha', status: 'PLANNED' }),
+          quest({ id: 'task:A', title: 'Alpha', status: 'READY' }),
           quest({ id: 'task:B', title: 'Beta', status: 'IN_PROGRESS' }),
         ],
       });
@@ -200,7 +200,7 @@ describe('bijou views', () => {
         campaigns: [campaign({ id: 'campaign:M1', title: 'Milestone 1' })],
         intents: [intent({ id: 'intent:SOV', title: 'Sovereignty' })],
         quests: [
-          quest({ id: 'task:A', title: 'Alpha Quest', status: 'PLANNED', campaignId: 'campaign:M1', intentId: 'intent:SOV', hours: 4 }),
+          quest({ id: 'task:A', title: 'Alpha Quest', status: 'READY', campaignId: 'campaign:M1', intentId: 'intent:SOV', hours: 4 }),
           quest({ id: 'task:B', title: 'Beta Quest', status: 'IN_PROGRESS', dependsOn: ['task:A'] }),
         ],
       });
@@ -209,7 +209,7 @@ describe('bijou views', () => {
       const plain = strip(roadmapView(model, style, 120, 30));
       expect(plain).toContain('task:A');
       expect(plain).toContain('Alpha Quest');
-      expect(plain).toContain('PLANNED');
+      expect(plain).toContain('READY');
       expect(plain).toMatch(/\b4\b/);
       expect(plain).toContain('Milestone 1');
       expect(plain).toContain('intent:SOV');
@@ -219,7 +219,7 @@ describe('bijou views', () => {
       const snap = makeSnapshot({
         quests: [
           quest({ id: 'task:A', title: 'Alpha', status: 'DONE' }),
-          quest({ id: 'task:B', title: 'Beta', status: 'PLANNED', dependsOn: ['task:A'] }),
+          quest({ id: 'task:B', title: 'Beta', status: 'READY', dependsOn: ['task:A'] }),
         ],
       });
       const model = makeModel(snap);

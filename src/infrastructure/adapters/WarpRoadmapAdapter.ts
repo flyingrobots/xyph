@@ -1,5 +1,11 @@
 import type { RoadmapPort } from '../../ports/RoadmapPort.js';
-import { Quest, QuestType, VALID_STATUSES, normalizeQuestStatus } from '../../domain/entities/Quest.js';
+import {
+  Quest,
+  QuestType,
+  VALID_STATUSES,
+  normalizeQuestKind,
+  normalizeQuestStatus,
+} from '../../domain/entities/Quest.js';
 import { EdgeType } from '../../schema.js';
 import type { GraphPort } from '../../ports/GraphPort.js';
 import { toNeighborEntries } from '../helpers/isNeighborEntry.js';
@@ -28,6 +34,10 @@ export class WarpRoadmapAdapter implements RoadmapPort {
     const assignedTo = props['assigned_to'];
     const claimedAt = props['claimed_at'];
     const completedAt = props['completed_at'];
+    const description = props['description'];
+    const taskKind = props['task_kind'];
+    const readyBy = props['ready_by'];
+    const readyAt = props['ready_at'];
     const originContext = props['origin_context'];
 
     return new Quest({
@@ -35,9 +45,13 @@ export class WarpRoadmapAdapter implements RoadmapPort {
       title,
       status: normalized,
       hours: parsedHours,
+      description: typeof description === 'string' ? description : undefined,
+      taskKind: normalizeQuestKind(taskKind),
       assignedTo: typeof assignedTo === 'string' ? assignedTo : undefined,
       claimedAt: typeof claimedAt === 'number' ? claimedAt : undefined,
       completedAt: typeof completedAt === 'number' ? completedAt : undefined,
+      readyBy: typeof readyBy === 'string' ? readyBy : undefined,
+      readyAt: typeof readyAt === 'number' ? readyAt : undefined,
       type: type as QuestType,
       originContext: typeof originContext === 'string' ? originContext : undefined,
     });
@@ -82,11 +96,15 @@ export class WarpRoadmapAdapter implements RoadmapPort {
 
       p.setProperty(quest.id, 'title', quest.title)
         .setProperty(quest.id, 'hours', quest.hours)
+        .setProperty(quest.id, 'task_kind', quest.taskKind)
         .setProperty(quest.id, 'type', quest.type);
 
+      if (quest.description != null) p.setProperty(quest.id, 'description', quest.description);
       if (quest.assignedTo != null) p.setProperty(quest.id, 'assigned_to', quest.assignedTo);
       if (quest.claimedAt != null) p.setProperty(quest.id, 'claimed_at', quest.claimedAt);
       if (quest.completedAt != null) p.setProperty(quest.id, 'completed_at', quest.completedAt);
+      if (quest.readyBy != null) p.setProperty(quest.id, 'ready_by', quest.readyBy);
+      if (quest.readyAt != null) p.setProperty(quest.id, 'ready_at', quest.readyAt);
       if (quest.originContext != null) p.setProperty(quest.id, 'origin_context', quest.originContext);
     });
   }

@@ -6,6 +6,7 @@
  * must use the same ordering to prevent wrong-item-selected bugs.
  */
 
+import { isExecutableQuestStatus } from '../../domain/entities/Quest.js';
 import type { GraphSnapshot, SubmissionNode } from '../../domain/models/dashboard.js';
 import { computeFrontier, type TaskSummary, type DepEdge } from '../../domain/services/DepAnalysis.js';
 import { SUBMISSION_STATUS_ORDER } from '../../domain/entities/Submission.js';
@@ -26,7 +27,9 @@ export function roadmapQuestIds(snap: GraphSnapshot): string[] {
     }
   }
   if (edges.length === 0) {
-    return snap.quests.filter(q => q.status !== 'DONE' && q.status !== 'GRAVEYARD').map(q => q.id);
+    return snap.quests
+      .filter(q => isExecutableQuestStatus(q.status) && q.status !== 'DONE')
+      .map(q => q.id);
   }
   const { frontier, blockedBy } = computeFrontier(tasks, edges);
   const graveyardIds = new Set(snap.quests.filter(q => q.status === 'GRAVEYARD').map(q => q.id));

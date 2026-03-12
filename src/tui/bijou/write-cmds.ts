@@ -36,6 +36,12 @@ export function claimQuest(deps: WriteDeps, questId: string): Cmd<DashboardMsg> 
   return async (emit) => {
     try {
       const graph = await deps.graphPort.getGraph();
+      const propsBefore = await graph.getNodeProps(questId);
+      const statusBefore = String(propsBefore?.['status'] ?? '');
+      if (statusBefore !== 'READY') {
+        emit({ type: 'write-error', message: `Claim requires READY, ${questId} is ${statusBefore || 'unknown'}` });
+        return;
+      }
       await graph.patch((p) => {
         p.setProperty(questId, 'assigned_to', deps.agentId)
           .setProperty(questId, 'status', 'IN_PROGRESS')

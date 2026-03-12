@@ -76,7 +76,9 @@ describe('Cross-Adapter Visibility (GraphContext sees Intake mutations)', () => 
     expect(questBefore?.status).toBe('BACKLOG');
 
     const intake = new WarpIntakeAdapter(graphPort, writerId);
-    await intake.promote('task:XVIS-001', 'intent:cross-test');
+    await intake.promote('task:XVIS-001', 'intent:cross-test', undefined, {
+      description: 'Promote visibility target description for readiness-aware planning.',
+    });
 
     const after = await ctx.fetchSnapshot();
     const questAfter = after.quests.find((q) => q.id === 'task:XVIS-001');

@@ -4,27 +4,39 @@ import { computeFrontier, computeCriticalPath, computeTopBlockers, type TaskSumm
 function makeTasks(...specs: { id: string; status?: string; hours?: number }[]): TaskSummary[] {
   return specs.map((s) => ({
     id: s.id,
-    status: s.status ?? 'PLANNED',
+    status: s.status ?? 'READY',
     hours: s.hours ?? 1,
   }));
 }
 
 describe('computeFrontier', () => {
-  it('returns all non-DONE tasks as frontier when no dependencies exist', () => {
+  it('returns only executable non-DONE tasks as frontier when no dependencies exist', () => {
     const tasks = makeTasks(
       { id: 'task:A', status: 'PLANNED' },
+      { id: 'task:B', status: 'READY' },
+      { id: 'task:C', status: 'IN_PROGRESS' },
+    );
+    const { frontier, blockedBy } = computeFrontier(tasks, []);
+
+    expect(frontier).toEqual(['task:B', 'task:C']);
+    expect(blockedBy.size).toBe(0);
+  });
+
+  it('excludes draft tasks from frontier even when they have no dependencies', () => {
+    const tasks = makeTasks(
+      { id: 'task:A', status: 'BACKLOG' },
       { id: 'task:B', status: 'IN_PROGRESS' },
     );
     const { frontier, blockedBy } = computeFrontier(tasks, []);
 
-    expect(frontier).toEqual(['task:A', 'task:B']);
+    expect(frontier).toEqual(['task:B']);
     expect(blockedBy.size).toBe(0);
   });
 
   it('excludes DONE tasks from frontier', () => {
     const tasks = makeTasks(
       { id: 'task:A', status: 'DONE' },
-      { id: 'task:B', status: 'PLANNED' },
+      { id: 'task:B', status: 'READY' },
     );
     const { frontier } = computeFrontier(tasks, []);
 
@@ -33,8 +45,8 @@ describe('computeFrontier', () => {
 
   it('marks tasks as blocked when dependencies are incomplete', () => {
     const tasks = makeTasks(
-      { id: 'task:A', status: 'PLANNED' },
-      { id: 'task:B', status: 'PLANNED' },
+      { id: 'task:A', status: 'READY' },
+      { id: 'task:B', status: 'READY' },
     );
     const edges: DepEdge[] = [{ from: 'task:B', to: 'task:A' }];
     const { frontier, blockedBy } = computeFrontier(tasks, edges);
@@ -46,7 +58,7 @@ describe('computeFrontier', () => {
   it('unblocks task when all dependencies are DONE', () => {
     const tasks = makeTasks(
       { id: 'task:A', status: 'DONE' },
-      { id: 'task:B', status: 'PLANNED' },
+      { id: 'task:B', status: 'READY' },
     );
     const edges: DepEdge[] = [{ from: 'task:B', to: 'task:A' }];
     const { frontier, blockedBy } = computeFrontier(tasks, edges);
@@ -58,9 +70,9 @@ describe('computeFrontier', () => {
   it('handles diamond DAG correctly', () => {
     const tasks = makeTasks(
       { id: 'task:A', status: 'DONE' },
-      { id: 'task:B', status: 'PLANNED' },
-      { id: 'task:C', status: 'PLANNED' },
-      { id: 'task:D', status: 'PLANNED' },
+      { id: 'task:B', status: 'READY' },
+      { id: 'task:C', status: 'READY' },
+      { id: 'task:D', status: 'READY' },
     );
     const edges: DepEdge[] = [
       { from: 'task:B', to: 'task:A' },
@@ -82,6 +94,19 @@ describe('computeFrontier', () => {
     const { frontier, blockedBy } = computeFrontier(tasks, []);
 
     expect(frontier).toEqual([]);
+    expect(blockedBy.size).toBe(0);
+  });
+
+  it('ignores dependencies that originate from PLANNED tasks when computing the executable frontier', () => {
+    const tasks = makeTasks(
+      { id: 'task:A', status: 'READY' },
+      { id: 'task:B', status: 'PLANNED' },
+    );
+    const edges: DepEdge[] = [{ from: 'task:B', to: 'task:A' }];
+
+    const { frontier, blockedBy } = computeFrontier(tasks, edges);
+
+    expect(frontier).toEqual(['task:A']);
     expect(blockedBy.size).toBe(0);
   });
 });
@@ -159,17 +184,17 @@ describe('computeTopBlockers', () => {
 
   it('returns empty array when no edges exist', () => {
     const tasks = makeTasks(
-      { id: 'task:A', status: 'PLANNED' },
-      { id: 'task:B', status: 'PLANNED' },
+      { id: 'task:A', status: 'READY' },
+      { id: 'task:B', status: 'READY' },
     );
     expect(computeTopBlockers(tasks, [])).toEqual([]);
   });
 
   it('computes transitive blockers in linear chain A→B→C', () => {
     const tasks = makeTasks(
-      { id: 'task:A', status: 'PLANNED' },
-      { id: 'task:B', status: 'PLANNED' },
-      { id: 'task:C', status: 'PLANNED' },
+      { id: 'task:A', status: 'READY' },
+      { id: 'task:B', status: 'READY' },
+      { id: 'task:C', status: 'READY' },
     );
     // B depends on A, C depends on B
     const edges: DepEdge[] = [
@@ -189,10 +214,10 @@ describe('computeTopBlockers', () => {
 
   it('computes diamond DAG: A is top blocker', () => {
     const tasks = makeTasks(
-      { id: 'task:A', status: 'PLANNED' },
-      { id: 'task:B', status: 'PLANNED' },
-      { id: 'task:C', status: 'PLANNED' },
-      { id: 'task:D', status: 'PLANNED' },
+      { id: 'task:A', status: 'READY' },
+      { id: 'task:B', status: 'READY' },
+      { id: 'task:C', status: 'READY' },
+      { id: 'task:D', status: 'READY' },
     );
     // B depends on A, C depends on A, D depends on B and C
     const edges: DepEdge[] = [
@@ -217,7 +242,7 @@ describe('computeTopBlockers', () => {
   it('excludes DONE tasks from results', () => {
     const tasks = makeTasks(
       { id: 'task:A', status: 'DONE' },
-      { id: 'task:B', status: 'PLANNED' },
+      { id: 'task:B', status: 'READY' },
     );
     const edges: DepEdge[] = [{ from: 'task:B', to: 'task:A' }];
     const result = computeTopBlockers(tasks, edges);
@@ -228,9 +253,9 @@ describe('computeTopBlockers', () => {
 
   it('does not count DONE dependents in transitive totals', () => {
     const tasks = makeTasks(
-      { id: 'task:A', status: 'PLANNED' },
+      { id: 'task:A', status: 'READY' },
       { id: 'task:B', status: 'DONE' },
-      { id: 'task:C', status: 'PLANNED' },
+      { id: 'task:C', status: 'READY' },
     );
     // B depends on A, C depends on A
     const edges: DepEdge[] = [
@@ -249,9 +274,9 @@ describe('computeTopBlockers', () => {
 
   it('respects limit parameter', () => {
     const tasks = makeTasks(
-      { id: 'task:A', status: 'PLANNED' },
-      { id: 'task:B', status: 'PLANNED' },
-      { id: 'task:C', status: 'PLANNED' },
+      { id: 'task:A', status: 'READY' },
+      { id: 'task:B', status: 'READY' },
+      { id: 'task:C', status: 'READY' },
     );
     const edges: DepEdge[] = [
       { from: 'task:B', to: 'task:A' },
@@ -265,11 +290,11 @@ describe('computeTopBlockers', () => {
 
   it('sorts deterministically by transitiveCount desc', () => {
     const tasks = makeTasks(
-      { id: 'task:A', status: 'PLANNED' },
-      { id: 'task:B', status: 'PLANNED' },
-      { id: 'task:C', status: 'PLANNED' },
-      { id: 'task:D', status: 'PLANNED' },
-      { id: 'task:E', status: 'PLANNED' },
+      { id: 'task:A', status: 'READY' },
+      { id: 'task:B', status: 'READY' },
+      { id: 'task:C', status: 'READY' },
+      { id: 'task:D', status: 'READY' },
+      { id: 'task:E', status: 'READY' },
     );
     // E depends on D, D depends on B, C depends on A
     const edges: DepEdge[] = [
@@ -285,5 +310,14 @@ describe('computeTopBlockers', () => {
     expect(result[0]?.id).toBe('task:B');
     expect(result[0]?.transitiveCount).toBe(2);
   });
-});
 
+  it('ignores PLANNED tasks when computing blocker pressure', () => {
+    const tasks = makeTasks(
+      { id: 'task:A', status: 'READY' },
+      { id: 'task:B', status: 'PLANNED' },
+    );
+    const edges: DepEdge[] = [{ from: 'task:B', to: 'task:A' }];
+
+    expect(computeTopBlockers(tasks, edges)).toEqual([]);
+  });
+});

@@ -4,7 +4,7 @@
  */
 
 export const PREFIXES = [
-  'milestone', 'feature', 'task', 'spec', 'adr',
+  'milestone', 'feature', 'task', 'spec', 'adr', 'comment', 'note',
   'crate', 'issue', 'concept', 'decision', 'person',
   'tool', 'event', 'metric', 'artifact', 'roadmap', 'campaign', 'intent', 'approval',
   'submission', 'patchset', 'review',
@@ -17,6 +17,7 @@ export type Prefix = typeof PREFIXES[number];
 export const EDGE_TYPES = [
   'implements', 'augments', 'relates-to', 'blocks',
   'belongs-to', 'consumed-by', 'depends-on', 'documents', 'fulfills',
+  'comments-on', 'replies-to',
   'authorized-by', 'approves',
   'submits', 'has-patchset', 'supersedes', 'reviews', 'decides',
   'decomposes-to', 'has-criterion', 'verifies',

@@ -3,7 +3,7 @@
  * No external dependencies — only TypeScript shapes.
  */
 
-import type { QuestStatus } from '../entities/Quest.js';
+import type { QuestKind, QuestStatus } from '../entities/Quest.js';
 import type { ApprovalGateStatus, ApprovalGateTrigger } from '../entities/ApprovalGate.js';
 import type { SubmissionStatus, ReviewVerdict, DecisionKind } from '../entities/Submission.js';
 import type { RequirementKind, RequirementPriority } from '../entities/Requirement.js';
@@ -28,11 +28,15 @@ export interface QuestNode {
   title: string;
   status: QuestStatus;
   hours: number;
+  description?: string;
+  taskKind?: QuestKind;
   campaignId?: string;
   intentId?: string;
   scrollId?: string;
   submissionId?: string;
   assignedTo?: string;
+  readyBy?: string;
+  readyAt?: number;
   completedAt?: number;
   // INBOX lifecycle provenance (set once at intake, never erased)
   suggestedBy?: string;
@@ -174,6 +178,90 @@ export interface SuggestionNode {
   rationale?: string;
   resolvedBy?: string;
   resolvedAt?: number;
+}
+
+export type NarrativeNodeType = 'spec' | 'adr' | 'note';
+
+export interface NarrativeNode {
+  id: string;
+  type: NarrativeNodeType;
+  title: string;
+  authoredBy: string;
+  authoredAt: number;
+  body?: string;
+  contentOid?: string;
+  targetIds: string[];
+  supersedesId?: string;
+  supersededByIds: string[];
+  current: boolean;
+}
+
+export interface CommentNode {
+  id: string;
+  authoredBy: string;
+  authoredAt: number;
+  body?: string;
+  contentOid?: string;
+  targetId?: string;
+  replyToId?: string;
+  replyIds: string[];
+}
+
+export type QuestTimelineEntryKind =
+  | 'quest'
+  | 'comment'
+  | 'note'
+  | 'spec'
+  | 'adr'
+  | 'submission'
+  | 'review'
+  | 'decision'
+  | 'artifact'
+  | 'evidence';
+
+export interface QuestTimelineEntry {
+  id: string;
+  at: number;
+  kind: QuestTimelineEntryKind;
+  title: string;
+  actor?: string;
+  relatedId?: string;
+  targetId?: string;
+}
+
+export interface QuestDetail {
+  id: string;
+  quest: QuestNode;
+  campaign?: CampaignNode;
+  intent?: IntentNode;
+  scroll?: ScrollNode;
+  submission?: SubmissionNode;
+  reviews: ReviewNode[];
+  decisions: DecisionNode[];
+  stories: StoryNode[];
+  requirements: RequirementNode[];
+  criteria: CriterionNode[];
+  evidence: EvidenceNode[];
+  policies: PolicyNode[];
+  documents: NarrativeNode[];
+  comments: CommentNode[];
+  timeline: QuestTimelineEntry[];
+}
+
+export interface EntityEdgeRef {
+  nodeId: string;
+  label: string;
+}
+
+export interface EntityDetail {
+  id: string;
+  type: string;
+  props: Record<string, unknown>;
+  content?: string;
+  contentOid?: string;
+  outgoing: EntityEdgeRef[];
+  incoming: EntityEdgeRef[];
+  questDetail?: QuestDetail;
 }
 
 export interface GraphMeta {

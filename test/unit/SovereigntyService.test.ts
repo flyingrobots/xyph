@@ -71,36 +71,40 @@ describe('SovereigntyService', () => {
       const quests: Quest[] = [
         new Quest({ id: 'task:Q-001', title: 'Backlog without intent', status: 'BACKLOG', hours: 1, type: 'task' }),
         new Quest({ id: 'task:Q-002', title: 'Planned without intent', status: 'PLANNED', hours: 1, type: 'task' }),
-        new Quest({ id: 'task:Q-003', title: 'Active with intent link', status: 'IN_PROGRESS', hours: 1, type: 'task' }),
-        new Quest({ id: 'task:Q-004', title: 'Blocked without intent', status: 'BLOCKED', hours: 1, type: 'task' }),
-        new Quest({ id: 'task:Q-005', title: 'Done with intent link', status: 'DONE', hours: 1, type: 'task' }),
-        new Quest({ id: 'task:Q-006', title: 'Buried without intent', status: 'GRAVEYARD', hours: 1, type: 'task' }),
+        new Quest({ id: 'task:Q-003', title: 'Ready with intent link', status: 'READY', hours: 1, type: 'task' }),
+        new Quest({ id: 'task:Q-004', title: 'Active with intent link', status: 'IN_PROGRESS', hours: 1, type: 'task' }),
+        new Quest({ id: 'task:Q-005', title: 'Blocked without intent', status: 'BLOCKED', hours: 1, type: 'task' }),
+        new Quest({ id: 'task:Q-006', title: 'Done with intent link', status: 'DONE', hours: 1, type: 'task' }),
+        new Quest({ id: 'task:Q-007', title: 'Buried without intent', status: 'GRAVEYARD', hours: 1, type: 'task' }),
       ];
 
       vi.mocked(mockRoadmap.getQuests).mockResolvedValue(quests);
       vi.mocked(mockRoadmap.getOutgoingEdges)
         .mockResolvedValueOnce([]) // task:Q-002 — no edges
         .mockResolvedValueOnce([{ to: 'intent:ROOT', type: 'authorized-by' }]) // task:Q-003
-        .mockResolvedValueOnce([]) // task:Q-004 — no edges
-        .mockResolvedValueOnce([{ to: 'intent:ROOT', type: 'authorized-by' }]); // task:Q-005
+        .mockResolvedValueOnce([{ to: 'intent:ROOT', type: 'authorized-by' }]) // task:Q-004
+        .mockResolvedValueOnce([]) // task:Q-005 — no edges
+        .mockResolvedValueOnce([{ to: 'intent:ROOT', type: 'authorized-by' }]); // task:Q-006
 
       const violations = await service.auditAuthorizedWork();
 
       expect(SOVEREIGNTY_AUDIT_STATUSES).toEqual([
         'PLANNED',
+        'READY',
         'IN_PROGRESS',
         'BLOCKED',
         'DONE',
       ]);
-      expect(mockRoadmap.getOutgoingEdges).toHaveBeenCalledTimes(4);
+      expect(mockRoadmap.getOutgoingEdges).toHaveBeenCalledTimes(5);
       expect(mockRoadmap.getOutgoingEdges).toHaveBeenNthCalledWith(1, 'task:Q-002');
       expect(mockRoadmap.getOutgoingEdges).toHaveBeenNthCalledWith(2, 'task:Q-003');
       expect(mockRoadmap.getOutgoingEdges).toHaveBeenNthCalledWith(3, 'task:Q-004');
       expect(mockRoadmap.getOutgoingEdges).toHaveBeenNthCalledWith(4, 'task:Q-005');
+      expect(mockRoadmap.getOutgoingEdges).toHaveBeenNthCalledWith(5, 'task:Q-006');
       expect(violations).toHaveLength(2);
       expect(violations.map((violation) => violation.questId)).toEqual([
         'task:Q-002',
-        'task:Q-004',
+        'task:Q-005',
       ]);
     });
 

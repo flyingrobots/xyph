@@ -1,5 +1,8 @@
-import type { IntakePort } from '../../ports/IntakePort.js';
+import type { IntakePort, PromoteOptions } from '../../ports/IntakePort.js';
 import type { GraphPort } from '../../ports/GraphPort.js';
+import { VALID_TASK_KINDS } from '../../domain/entities/Quest.js';
+import { ReadinessService } from '../../domain/services/ReadinessService.js';
+import { WarpRoadmapAdapter } from './WarpRoadmapAdapter.js';
 
 export class WarpIntakeAdapter implements IntakePort {
   /** Raw statuses from which promote is allowed (includes legacy INBOX for unmigrated graphs). */
@@ -21,7 +24,7 @@ export class WarpIntakeAdapter implements IntakePort {
     }
   }
 
-  public async promote(questId: string, intentId: string, campaignId?: string): Promise<string> {
+  public async promote(questId: string, intentId: string, campaignId?: string, opts?: PromoteOptions): Promise<string> {
     this.validateQuestId(questId);
     if (!this.agentId.startsWith('human.')) {
       throw new Error(
@@ -47,6 +50,19 @@ export class WarpIntakeAdapter implements IntakePort {
       );
     }
 
+    const description = opts?.description?.trim();
+    if (description !== undefined && description.length < 5) {
+      throw new Error('[MISSING_ARG] --description must be at least 5 characters');
+    }
+    const taskKind = opts?.taskKind ?? 'delivery';
+    if (!VALID_TASK_KINDS.has(taskKind)) {
+      throw new Error(`[MISSING_ARG] --kind must be one of ${[...VALID_TASK_KINDS].join(', ')}`);
+    }
+    const existingDescription = props['description'];
+    if ((typeof existingDescription !== 'string' || existingDescription.trim().length < 5) && description === undefined) {
+      throw new Error('[MISSING_ARG] promote requires --description when the quest has no existing description');
+    }
+
     if (!await graph.hasNode(intentId)) {
       throw new Error(`[NOT_FOUND] Intent ${intentId} not found in the graph`);
     }
@@ -55,10 +71,34 @@ export class WarpIntakeAdapter implements IntakePort {
     }
 
     return graph.patch((p) => {
-      p.setProperty(questId, 'status', 'PLANNED').addEdge(questId, intentId, 'authorized-by');
+      p.setProperty(questId, 'status', 'PLANNED')
+        .setProperty(questId, 'task_kind', taskKind)
+        .addEdge(questId, intentId, 'authorized-by');
+      if (description !== undefined) {
+        p.setProperty(questId, 'description', description);
+      }
       if (campaignId !== undefined) {
         p.addEdge(questId, campaignId, 'belongs-to');
       }
+    });
+  }
+
+  public async ready(questId: string): Promise<string> {
+    this.validateQuestId(questId);
+
+    const readiness = new ReadinessService(new WarpRoadmapAdapter(this.graphPort));
+    const assessment = await readiness.assess(questId);
+    if (!assessment.valid) {
+      const reason = assessment.unmet.map((item) => item.message).join('; ');
+      throw new Error(`[NOT_READY] ${reason}`);
+    }
+
+    const graph = await this.graphPort.getGraph();
+    const now = Date.now();
+    return graph.patch((p) => {
+      p.setProperty(questId, 'status', 'READY')
+        .setProperty(questId, 'ready_by', this.agentId)
+        .setProperty(questId, 'ready_at', now);
     });
   }
 

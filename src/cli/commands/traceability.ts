@@ -403,6 +403,36 @@ export function registerTraceabilityCommands(program: Command, ctx: CliContext):
       ctx.ok(`[OK] ${from} decomposes into ${to} (patch: ${sha.slice(0, 7)})`);
     }));
 
+  // --- implement: attach a quest to a requirement ---
+  program
+    .command('implement <quest> <requirement>')
+    .description('Declare that <quest> implements <requirement> (task→req)')
+    .action(withErrorHandler(async (quest: string, requirement: string) => {
+      assertPrefix(quest, 'task:', '<quest>');
+      assertPrefix(requirement, 'req:', '<requirement>');
+
+      const graph = await ctx.graphPort.getGraph();
+      await Promise.all([
+        assertNodeExists(graph, quest, 'Quest'),
+        assertNodeExists(graph, requirement, 'Requirement'),
+      ]);
+
+      const sha = await graph.patch((p) => {
+        p.addEdge(quest, requirement, 'implements');
+      });
+
+      if (ctx.json) {
+        ctx.jsonOut({
+          success: true,
+          command: 'implement',
+          data: { quest, requirement, patch: sha },
+        });
+        return;
+      }
+
+      ctx.ok(`[OK] ${quest} now implements ${requirement} (patch: ${sha.slice(0, 7)})`);
+    }));
+
   // --- scan: parse test annotations and write evidence ---
   program
     .command('scan')

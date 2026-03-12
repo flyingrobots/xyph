@@ -1,7 +1,16 @@
 import type { Command } from 'commander';
 import type { CliContext } from '../context.js';
 import { createErrorHandler } from '../errorHandler.js';
-import { assertPrefix, parseHours } from '../validators.js';
+import { assertMinLength, assertPrefix, parseHours } from '../validators.js';
+import { VALID_TASK_KINDS, type QuestKind } from '../../domain/entities/Quest.js';
+
+function resolveTaskKind(raw: string | undefined): QuestKind {
+  const taskKind = raw ?? 'delivery';
+  if (!VALID_TASK_KINDS.has(taskKind)) {
+    throw new Error(`--kind must be one of ${[...VALID_TASK_KINDS].join(', ')}`);
+  }
+  return taskKind as QuestKind;
+}
 
 export function registerIngestCommands(program: Command, ctx: CliContext): void {
   const withErrorHandler = createErrorHandler(ctx);
@@ -11,10 +20,14 @@ export function registerIngestCommands(program: Command, ctx: CliContext): void 
     .description('Initialize a new Quest node')
     .requiredOption('--title <text>', 'Quest title')
     .requiredOption('--campaign <id>', 'Parent Campaign ID (use "none" to skip)')
+    .option('--description <text>', 'Durable quest description/body preview')
+    .option('--kind <kind>', `Quest kind (${[...VALID_TASK_KINDS].join(' | ')})`)
     .option('--hours <number>', 'Estimated human hours (PERT)', parseHours)
     .option('--intent <id>', 'Sovereign Intent node that authorizes this Quest (intent:* prefix)')
-    .action(withErrorHandler(async (id: string, opts: { title: string; campaign: string; hours?: number; intent?: string }) => {
+    .action(withErrorHandler(async (id: string, opts: { title: string; campaign: string; description?: string; kind?: string; hours?: number; intent?: string }) => {
       assertPrefix(id, 'task:', 'Quest ID');
+      if (opts.description !== undefined) assertMinLength(opts.description.trim(), 5, '--description');
+      const taskKind = resolveTaskKind(opts.kind);
 
       const intentId = opts.intent;
       if (!intentId) {
@@ -32,7 +45,11 @@ export function registerIngestCommands(program: Command, ctx: CliContext): void 
           .setProperty(id, 'title', opts.title)
           .setProperty(id, 'status', 'PLANNED')
           .setProperty(id, 'hours', opts.hours ?? 0)
+          .setProperty(id, 'task_kind', taskKind)
           .setProperty(id, 'type', 'task');
+        if (opts.description !== undefined) {
+          p.setProperty(id, 'description', opts.description.trim());
+        }
 
         if (opts.campaign !== 'none') {
           p.addEdge(id, opts.campaign, 'belongs-to');
@@ -43,7 +60,17 @@ export function registerIngestCommands(program: Command, ctx: CliContext): void 
       if (ctx.json) {
         ctx.jsonOut({
           success: true, command: 'quest',
-          data: { id, title: opts.title, status: 'PLANNED', campaign: opts.campaign, intent: intentId, hours: opts.hours ?? 0, patch: sha },
+          data: {
+            id,
+            title: opts.title,
+            status: 'PLANNED',
+            campaign: opts.campaign,
+            intent: intentId,
+            description: opts.description?.trim() ?? null,
+            taskKind,
+            hours: opts.hours ?? 0,
+            patch: sha,
+          },
         });
         return;
       }

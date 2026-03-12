@@ -1,5 +1,5 @@
 # GRAPH SCHEMA
-**Version:** 2.0.0
+**Version:** 2.1.0
 **Status:** AUTHORITATIVE
 
 ## 1. Node ID Grammar
@@ -20,6 +20,10 @@ Example: `task:BDK-001`, `campaign:BEDROCK`, `submission:abc123`
 | `campaign` | Campaign | High-level milestone or epoch. | `campaign:BEDROCK` |
 | `milestone` | Campaign | Alias for campaign (legacy). | `milestone:M1` |
 | `intent` | Intent | Sovereign human declaration of purpose. | `intent:SOVEREIGNTY` |
+| `spec` | Spec | Graph-native design/spec document. | `spec:ready-gate` |
+| `adr` | ADR | Graph-native architecture decision record. | `adr:0007` |
+| `note` | Note | Graph-native working note or quest memo. | `note:quest-brief` |
+| `comment` | Comment | Append-only discussion event. | `comment:019xyz` |
 | `artifact` | Scroll | Sealed output of completed quest. | `artifact:task:BDK-001` |
 | `approval` | ApprovalGate | Formal human approval requirement. | `approval:cp-001` |
 | `submission` | Submission | Review lifecycle envelope. | `submission:abc123` |
@@ -33,8 +37,6 @@ Example: `task:BDK-001`, `campaign:BEDROCK`, `submission:abc123`
 |--------|---------|
 | `roadmap` | Root container. |
 | `feature` | Groups of related tasks. |
-| `spec` | Formal requirement or design doc. |
-| `adr` | Architecture decision record. |
 | `crate` | Reusable module. |
 | `issue` | Bug or defect. |
 | `concept` | Abstract idea. |
@@ -52,6 +54,9 @@ Example: `task:BDK-001`, `campaign:BEDROCK`, `submission:abc123`
 | `belongs-to` | task → campaign/milestone | Quest is part of a campaign. |
 | `authorized-by` | task → intent | Quest traces to human intent (sovereignty). |
 | `depends-on` | task → task | Source cannot start until target is DONE. |
+| `documents` | spec/adr/note → target | Graph-native document records durable context for a node. |
+| `comments-on` | comment → target | Append-only discussion attached to a node. |
+| `replies-to` | comment → comment | Comment-thread reply chain. |
 | `fulfills` | artifact → task | Scroll is the sealed output of a quest. |
 | `submits` | submission → task | Submission proposes work for a quest. |
 | `has-patchset` | patchset → submission | Patchset belongs to a submission. |
@@ -69,11 +74,13 @@ Example: `task:BDK-001`, `campaign:BEDROCK`, `submission:abc123`
 | `relates-to` | General association. |
 | `blocks` | Forward dependency (inverse of depends-on). |
 | `consumed-by` | Resource consumption. |
-| `documents` | Documentation link. |
+| `documents` | Documentation link (use graph-native content blobs by default). |
 
 ## 4. Node Property Contracts
 
 All properties use **snake_case** in the WARP graph. Timestamps are Unix epoch numbers.
+
+**Design rule:** queryable metadata belongs in node/edge properties. Substantial bodies belong in graph-native content blobs attached with `attachContent()` / `attachEdgeContent()`.
 
 ### Quest (`task:*`)
 
@@ -83,8 +90,12 @@ All properties use **snake_case** in the WARP graph. Timestamps are Unix epoch n
 | `title` | string | quest command | ≥5 chars. |
 | `status` | QuestStatus | lifecycle | See valid values below. |
 | `hours` | number | quest command | ≥0, default 0. |
+| `description` | string | intake/quest command | Optional durable summary/body preview. |
+| `task_kind` | string | intake/quest command | `delivery`, `spike`, `maintenance`, or `ops`. Defaults to `delivery`. |
 | `assigned_to` | string | claim command | Principal ID (e.g., `agent.hal`). |
 | `claimed_at` | number | claim command | Timestamp. |
+| `ready_by` | string | ready command | Principal who moved the quest into READY. |
+| `ready_at` | number | ready command | Timestamp. |
 | `completed_at` | number | seal/merge | Timestamp. |
 | `origin_context` | string | ingest | Optional provenance. |
 | `suggested_by` | string | inbox command | Who suggested it. |
@@ -95,14 +106,18 @@ All properties use **snake_case** in the WARP graph. Timestamps are Unix epoch n
 | `reopened_by` | string | reopen command | Who reopened it. |
 | `reopened_at` | number | reopen command | Timestamp. |
 
-**Valid QuestStatus values:** `BACKLOG`, `PLANNED`, `IN_PROGRESS`, `BLOCKED`, `DONE`, `GRAVEYARD`
+**Valid QuestStatus values:** `BACKLOG`, `PLANNED`, `READY`, `IN_PROGRESS`, `BLOCKED`, `DONE`, `GRAVEYARD`
 
 Legacy: Pre-VOC-001 `INBOX` values are normalized to `BACKLOG` at read time.
 
 **Edges:**
-- `belongs-to` → campaign:/milestone: (optional)
-- `authorized-by` → intent: (required for BACKLOG+)
+- `belongs-to` → campaign:/milestone: (required before `READY`)
+- `authorized-by` → intent: (required for `PLANNED`+)
 - `depends-on` → task: (optional, Weaver)
+
+**Execution semantics:**
+- `PLANNED` quests are draft-shaped work and are excluded from executable DAG analysis.
+- `READY`, `IN_PROGRESS`, `BLOCKED`, and `DONE` participate in executable frontier / critical-path computations.
 
 ---
 
@@ -117,6 +132,27 @@ Legacy: Pre-VOC-001 `INBOX` values are normalized to `BACKLOG` at read time.
 | `description` | string | intent command | Optional. |
 
 **Edges:** Incoming `authorized-by` from task: nodes.
+
+---
+
+### Graph-native Docs / Discussion (`spec:*`, `adr:*`, `note:*`, `comment:*`)
+
+These node families keep durable coordination narrative inside the XYPH graph.
+
+| Property | Type | Applies To | Notes |
+|----------|------|------------|-------|
+| `type` | string | all | `spec`, `adr`, `note`, or `comment`. |
+| `title` | string | `spec`, `adr`, `note` | Short queryable label. |
+| `authored_by` | string | all | Principal ID. |
+| `authored_at` | number | all | Timestamp. |
+
+**Bodies:** stored via `attachContent()` on the node. Do not store long-form markdown in scalar properties.
+
+**Edges:**
+- `documents` → task:/campaign:/intent:/req:/submission: (durable linked context)
+- `comments-on` → any node ID (discussion attachment)
+- `replies-to` → comment: (threading)
+- `supersedes` → prior spec:/adr:/note: revision (append-only history)
 
 ---
 

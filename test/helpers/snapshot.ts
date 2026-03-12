@@ -60,6 +60,7 @@ export function quest(overrides: Partial<QuestNode> & { id: string; title: strin
   return {
     status: 'PLANNED',
     hours: 2,
+    taskKind: 'delivery',
     ...overrides,
   };
 }

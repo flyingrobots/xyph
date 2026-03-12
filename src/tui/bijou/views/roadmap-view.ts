@@ -2,6 +2,7 @@ import { headerBox, type SlicedDagSource, getDefaultContext } from '@flyingrobot
 import { flex, viewport, composite, drawer, dagPane } from '@flyingrobots/bijou-tui';
 import type { StylePort } from '../../../ports/StylePort.js';
 import type { DashboardModel } from '../DashboardApp.js';
+import { isExecutableQuestStatus } from '../../../domain/entities/Quest.js';
 import type { GraphSnapshot } from '../../../domain/models/dashboard.js';
 import { computeFrontier, computeCriticalPath, computeTopBlockers, type TaskSummary, type DepEdge } from '../../../domain/services/DepAnalysis.js';
 import { roadmapQuestIds } from '../selection-order.js';
@@ -11,6 +12,7 @@ import { groupBy } from '../../view-helpers.js';
 function statusIcon(status: string): string {
   switch (status) {
     case 'DONE':        return '\u2713';
+    case 'READY':       return '\u25C7';
     case 'IN_PROGRESS': return '\u25B6';
     case 'BLOCKED':     return '\u2718';
     case 'PLANNED':     return '\u25CB';
@@ -169,7 +171,7 @@ export function roadmapView(model: DashboardModel, style: StylePort, width?: num
       lines.push('');
 
       const byStatus = groupBy(
-        snap.quests.filter(q => q.status !== 'DONE'),
+        snap.quests.filter(q => isExecutableQuestStatus(q.status) && q.status !== 'DONE'),
         q => q.status,
       );
 

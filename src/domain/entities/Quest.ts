@@ -6,13 +6,18 @@
 export type QuestStatus =
   | 'BACKLOG'
   | 'PLANNED'
+  | 'READY'
   | 'IN_PROGRESS'
   | 'BLOCKED'
   | 'DONE'
   | 'GRAVEYARD';
 
 export const VALID_STATUSES: ReadonlySet<string> = new Set<QuestStatus>([
-  'BACKLOG', 'PLANNED', 'IN_PROGRESS', 'BLOCKED', 'DONE', 'GRAVEYARD',
+  'BACKLOG', 'PLANNED', 'READY', 'IN_PROGRESS', 'BLOCKED', 'DONE', 'GRAVEYARD',
+]);
+
+export const EXECUTABLE_QUEST_STATUSES: ReadonlySet<QuestStatus> = new Set<QuestStatus>([
+  'READY', 'IN_PROGRESS', 'BLOCKED', 'DONE',
 ]);
 
 /**
@@ -27,6 +32,7 @@ export function normalizeQuestStatus(raw: string): QuestStatus {
     case 'INBOX':       return 'BACKLOG';       // legacy INBOX → BACKLOG
     case 'BACKLOG':     return 'BACKLOG';
     case 'PLANNED':     return 'PLANNED';
+    case 'READY':       return 'READY';
     case 'IN_PROGRESS': return 'IN_PROGRESS';
     case 'BLOCKED':     return 'BLOCKED';
     case 'DONE':        return 'DONE';
@@ -36,15 +42,35 @@ export function normalizeQuestStatus(raw: string): QuestStatus {
 }
 
 export type QuestType = 'task';
+export type QuestKind = 'delivery' | 'spike' | 'maintenance' | 'ops';
+
+export const VALID_TASK_KINDS: ReadonlySet<string> = new Set<QuestKind>([
+  'delivery', 'spike', 'maintenance', 'ops',
+]);
+
+export function normalizeQuestKind(raw: unknown): QuestKind {
+  if (typeof raw === 'string' && VALID_TASK_KINDS.has(raw)) {
+    return raw as QuestKind;
+  }
+  return 'delivery';
+}
+
+export function isExecutableQuestStatus(status: string): status is QuestStatus {
+  return EXECUTABLE_QUEST_STATUSES.has(status as QuestStatus);
+}
 
 export interface QuestProps {
   id: string;
   title: string;
   status: QuestStatus;
   hours: number;
+  description?: string;
+  taskKind?: QuestKind;
   assignedTo?: string;
   claimedAt?: number;
   completedAt?: number;
+  readyBy?: string;
+  readyAt?: number;
   type: QuestType;
   originContext?: string;
 }
@@ -54,9 +80,13 @@ export class Quest {
   public readonly title: string;
   public readonly status: QuestStatus;
   public readonly hours: number;
+  public readonly description?: string;
+  public readonly taskKind: QuestKind;
   public readonly assignedTo?: string;
   public readonly claimedAt?: number;
   public readonly completedAt?: number;
+  public readonly readyBy?: string;
+  public readonly readyAt?: number;
   public readonly type: QuestType;
   public readonly originContext?: string;
 
@@ -74,14 +104,24 @@ export class Quest {
     if (!Number.isFinite(props.hours) || props.hours < 0) {
       throw new Error(`Quest hours must be a finite non-negative number, got: ${props.hours}`);
     }
+    if (props.description !== undefined) {
+      if (typeof props.description !== 'string' || props.description.trim().length < 5) {
+        throw new Error(`Quest description must be at least 5 characters, got: '${String(props.description)}'`);
+      }
+    }
+    const taskKind = normalizeQuestKind(props.taskKind);
 
     this.id = props.id;
     this.title = props.title;
     this.status = props.status;
     this.hours = props.hours;
+    this.description = props.description?.trim();
+    this.taskKind = taskKind;
     this.assignedTo = props.assignedTo;
     this.claimedAt = props.claimedAt;
     this.completedAt = props.completedAt;
+    this.readyBy = props.readyBy;
+    this.readyAt = props.readyAt;
     this.type = props.type;
     this.originContext = props.originContext;
   }
@@ -92,9 +132,13 @@ export class Quest {
       title: this.title,
       status: this.status,
       hours: this.hours,
+      description: this.description,
+      taskKind: this.taskKind,
       assignedTo: this.assignedTo,
       claimedAt: this.claimedAt,
       completedAt: this.completedAt,
+      readyBy: this.readyBy,
+      readyAt: this.readyAt,
       type: this.type,
       originContext: this.originContext,
     };
@@ -106,5 +150,9 @@ export class Quest {
 
   public isClaimed(): boolean {
     return !!this.assignedTo;
+  }
+
+  public isExecutable(): boolean {
+    return EXECUTABLE_QUEST_STATUSES.has(this.status);
   }
 }

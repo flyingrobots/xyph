@@ -13,7 +13,7 @@ vi.mock('../../src/infrastructure/adapters/WarpRoadmapAdapter.js', () => ({
 }));
 
 vi.mock('../../src/domain/services/SovereigntyService.js', () => ({
-  SOVEREIGNTY_AUDIT_STATUSES: ['PLANNED', 'IN_PROGRESS', 'BLOCKED', 'DONE'],
+  SOVEREIGNTY_AUDIT_STATUSES: ['PLANNED', 'READY', 'IN_PROGRESS', 'BLOCKED', 'DONE'],
   SovereigntyService: vi.fn().mockImplementation(function MockSovereigntyService() {
     return {
       auditAuthorizedWork,
@@ -23,7 +23,7 @@ vi.mock('../../src/domain/services/SovereigntyService.js', () => ({
 
 import { registerDashboardCommands } from '../../src/cli/commands/dashboard.js';
 
-const AUDITED_STATUSES = ['PLANNED', 'IN_PROGRESS', 'BLOCKED', 'DONE'];
+const AUDITED_STATUSES = ['PLANNED', 'READY', 'IN_PROGRESS', 'BLOCKED', 'DONE'];
 
 function makeCtx(json: boolean): CliContext {
   return {
@@ -61,7 +61,7 @@ describe('dashboard audit-sovereignty command', () => {
     const cmd = program.commands.find((command) => command.name() === 'audit-sovereignty');
 
     expect(cmd?.description()).toBe(
-      'Audit authorized quests (PLANNED, IN_PROGRESS, BLOCKED, DONE) for missing Genealogy of Intent (Constitution Art. IV)',
+      'Audit authorized quests (PLANNED, READY, IN_PROGRESS, BLOCKED, DONE) for missing Genealogy of Intent (Constitution Art. IV)',
     );
   });
 

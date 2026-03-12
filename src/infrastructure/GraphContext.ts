@@ -13,7 +13,12 @@
 
 import type WarpGraph from '@git-stunts/git-warp';
 import type { QueryResultV1, AggregateResult } from '@git-stunts/git-warp';
-import { VALID_STATUSES as VALID_QUEST_STATUSES, normalizeQuestStatus } from '../domain/entities/Quest.js';
+import {
+  VALID_STATUSES as VALID_QUEST_STATUSES,
+  isExecutableQuestStatus,
+  normalizeQuestKind,
+  normalizeQuestStatus,
+} from '../domain/entities/Quest.js';
 import type { QuestStatus } from '../domain/entities/Quest.js';
 import type { ApprovalGateTrigger } from '../domain/entities/ApprovalGate.js';
 import {
@@ -31,13 +36,18 @@ import type {
   ApprovalNode,
   CampaignNode,
   CampaignStatus,
+  CommentNode,
   CriterionNode,
   DecisionNode,
+  EntityDetail,
   EvidenceNode,
   GraphMeta,
   GraphSnapshot,
   IntentNode,
+  NarrativeNode,
   PolicyNode,
+  QuestDetail,
+  QuestTimelineEntry,
   QuestNode,
   RequirementNode,
   ReviewNode,
@@ -89,6 +99,9 @@ export interface GraphContext {
   /** Build a snapshot from the current graph state (sync → materialize → query). */
   fetchSnapshot(onProgress?: (msg: string) => void): Promise<GraphSnapshot>;
 
+  /** Build a detailed projection for a single graph entity. */
+  fetchEntityDetail(id: string): Promise<EntityDetail | null>;
+
   /** Filter a snapshot for presentation (excludes GRAVEYARD unless opted in). */
   filterSnapshot(snapshot: GraphSnapshot, opts: { includeGraveyard: boolean }): GraphSnapshot;
 
@@ -138,6 +151,11 @@ async function batchNeighbors(
 // ---------------------------------------------------------------------------
 function yieldEventLoop(): Promise<void> {
   return new Promise(resolve => setImmediate(resolve));
+}
+
+function decodeNodeContent(content: Uint8Array | null): string | undefined {
+  if (!content) return undefined;
+  return Buffer.from(content).toString('utf8');
 }
 
 function deriveCampaignStatusFromQuests(quests: QuestNode[]): CampaignStatus {
@@ -329,6 +347,10 @@ class GraphContextImpl implements GraphContext {
       }
 
       const assignedTo = n.props['assigned_to'];
+      const description = n.props['description'];
+      const taskKind = n.props['task_kind'];
+      const readyBy = n.props['ready_by'];
+      const readyAt = n.props['ready_at'];
       const completedAt = n.props['completed_at'];
       const suggestedBy = n.props['suggested_by'];
       const suggestedAt = n.props['suggested_at'];
@@ -343,9 +365,13 @@ class GraphContextImpl implements GraphContext {
         title,
         status: rawStatus as QuestStatus,
         hours: typeof hours === 'number' && Number.isFinite(hours) && hours >= 0 ? hours : 0,
+        description: typeof description === 'string' ? description : undefined,
+        taskKind: normalizeQuestKind(taskKind),
         campaignId,
         intentId,
         assignedTo: typeof assignedTo === 'string' ? assignedTo : undefined,
+        readyBy: typeof readyBy === 'string' ? readyBy : undefined,
+        readyAt: typeof readyAt === 'number' ? readyAt : undefined,
         completedAt: typeof completedAt === 'number' ? completedAt : undefined,
         suggestedBy: typeof suggestedBy === 'string' ? suggestedBy : undefined,
         suggestedAt: typeof suggestedAt === 'number' ? suggestedAt : undefined,
@@ -752,7 +778,9 @@ class GraphContextImpl implements GraphContext {
 
     // --- Topological sort via git-warp traversal engine ---
     log('Computing topological order…');
-    const taskIds = quests.map((q) => q.id);
+    const taskIds = quests
+      .filter((q) => isExecutableQuestStatus(q.status))
+      .map((q) => q.id);
     const { sorted: sortedTaskIds } = await graph.traverse.topologicalSort(taskIds, {
       dir: 'in',
       labelFilter: 'depends-on',
@@ -768,9 +796,10 @@ class GraphContextImpl implements GraphContext {
     log('Computing transitive downstream counts…');
     const excludeSet = new Set(
       quests
-        .filter((q) => q.status === 'DONE' || q.status === 'GRAVEYARD')
+        .filter((q) => !isExecutableQuestStatus(q.status) || q.status === 'DONE' || q.status === 'GRAVEYARD')
         .map((q) => q.id),
     );
+    const executableTaskIdSet = new Set(taskIds);
     const transitiveDownstream = new Map<string, number>();
     for (const taskId of taskIds) {
       if (excludeSet.has(taskId)) continue;
@@ -782,7 +811,7 @@ class GraphContextImpl implements GraphContext {
       // Count non-DONE, non-GRAVEYARD reachable nodes (excluding self)
       let count = 0;
       for (const nodeId of reachable) {
-        if (nodeId !== taskId && !excludeSet.has(nodeId)) count++;
+        if (nodeId !== taskId && executableTaskIdSet.has(nodeId) && !excludeSet.has(nodeId)) count++;
       }
       if (count > 0) transitiveDownstream.set(taskId, count);
     }
@@ -800,6 +829,52 @@ class GraphContextImpl implements GraphContext {
     return snap;
   }
 
+  async fetchEntityDetail(id: string): Promise<EntityDetail | null> {
+    const graph = await this.graphPort.getGraph();
+    this._graph = graph;
+
+    await graph.syncCoverage();
+    await graph.materialize();
+
+    if (!await graph.hasNode(id)) {
+      return null;
+    }
+
+    const [
+      rawProps,
+      outgoingRaw,
+      incomingRaw,
+      rawContent,
+      contentOid,
+    ] = await Promise.all([
+      graph.getNodeProps(id),
+      graph.neighbors(id, 'outgoing'),
+      graph.neighbors(id, 'incoming'),
+      graph.getContent(id),
+      graph.getContentOid(id),
+    ]);
+
+    const props = rawProps ?? {};
+    const type = typeof props['type'] === 'string' ? props['type'] : 'unknown';
+
+    let questDetail: QuestDetail | undefined;
+    if (id.startsWith('task:')) {
+      const snapshot = await this.fetchSnapshot();
+      questDetail = await this.buildQuestDetail(graph, snapshot, id) ?? undefined;
+    }
+
+    return {
+      id,
+      type,
+      props,
+      content: decodeNodeContent(rawContent),
+      contentOid: contentOid ?? undefined,
+      outgoing: toNeighborEntries(outgoingRaw).map((entry) => ({ nodeId: entry.nodeId, label: entry.label })),
+      incoming: toNeighborEntries(incomingRaw).map((entry) => ({ nodeId: entry.nodeId, label: entry.label })),
+      questDetail,
+    };
+  }
+
   // -------------------------------------------------------------------------
   // Cache helpers
   // -------------------------------------------------------------------------
@@ -809,6 +884,493 @@ class GraphContextImpl implements GraphContext {
     if (!state) return '';
     const entries = [...state.observedFrontier.entries()].sort(([a], [b]) => a.localeCompare(b));
     return entries.map(([w, t]) => `${w}:${t}`).join(',');
+  }
+
+  private async buildQuestDetail(
+    graph: WarpGraph,
+    snapshot: GraphSnapshot,
+    questId: string,
+  ): Promise<QuestDetail | null> {
+    const quest = snapshot.quests.find((entry) => entry.id === questId);
+    if (!quest) return null;
+
+    const campaign = quest.campaignId
+      ? snapshot.campaigns.find((entry) => entry.id === quest.campaignId)
+      : undefined;
+    const intent = quest.intentId
+      ? snapshot.intents.find((entry) => entry.id === quest.intentId)
+      : undefined;
+    const scroll = quest.scrollId
+      ? snapshot.scrolls.find((entry) => entry.id === quest.scrollId)
+      : undefined;
+    const submission = quest.submissionId
+      ? snapshot.submissions.find((entry) => entry.id === quest.submissionId)
+      : undefined;
+
+    const requirements = snapshot.requirements.filter((entry) => entry.taskIds.includes(quest.id));
+    const requirementIdSet = new Set(requirements.map((entry) => entry.id));
+    const criteria = snapshot.criteria.filter((entry) => entry.requirementId !== undefined && requirementIdSet.has(entry.requirementId));
+    const criterionIdSet = new Set(criteria.map((entry) => entry.id));
+    const evidence = snapshot.evidence.filter((entry) => entry.criterionId !== undefined && criterionIdSet.has(entry.criterionId));
+    const storyIds = new Set(requirements.map((entry) => entry.storyId).filter((entry): entry is string => typeof entry === 'string'));
+    const stories = snapshot.stories.filter((entry) => storyIds.has(entry.id));
+    const policies = snapshot.policies.filter((entry) => entry.campaignId === quest.campaignId);
+
+    const patchsetIds = submission
+      ? await this.findPatchsetIdsForSubmission(graph, submission.id)
+      : new Set<string>();
+    const reviews = snapshot.reviews.filter((entry) => patchsetIds.has(entry.patchsetId));
+    const decisions = submission
+      ? snapshot.decisions.filter((entry) => entry.submissionId === submission.id)
+      : [];
+
+    const relevantIds = new Set<string>([
+      quest.id,
+      ...requirements.map((entry) => entry.id),
+      ...stories.map((entry) => entry.id),
+      ...criteria.map((entry) => entry.id),
+    ]);
+    if (campaign) relevantIds.add(campaign.id);
+    if (intent) relevantIds.add(intent.id);
+    if (submission) relevantIds.add(submission.id);
+    if (scroll) relevantIds.add(scroll.id);
+
+    const { documents, comments } = await this.loadNarrativeForTargets(graph, relevantIds);
+    const timeline = this.buildQuestTimeline({
+      quest,
+      scroll,
+      submission,
+      reviews,
+      decisions,
+      evidence,
+      documents,
+      comments,
+    });
+
+    return {
+      id: quest.id,
+      quest,
+      campaign,
+      intent,
+      scroll,
+      submission,
+      reviews,
+      decisions,
+      stories,
+      requirements,
+      criteria,
+      evidence,
+      policies,
+      documents,
+      comments,
+      timeline,
+    };
+  }
+
+  private async loadNarrativeForTargets(
+    graph: WarpGraph,
+    targetIds: Set<string>,
+  ): Promise<{ documents: NarrativeNode[]; comments: CommentNode[] }> {
+    const [specNodes, adrNodes, noteNodes, commentNodes] = await Promise.all([
+      graph.query().match('spec:*').select(['id', 'props']).run().then(extractNodes),
+      graph.query().match('adr:*').select(['id', 'props']).run().then(extractNodes),
+      graph.query().match('note:*').select(['id', 'props']).run().then(extractNodes),
+      graph.query().match('comment:*').select(['id', 'props']).run().then(extractNodes),
+    ]);
+
+    const narrativeQNodes = [...specNodes, ...adrNodes, ...noteNodes, ...commentNodes];
+    if (narrativeQNodes.length === 0) {
+      return { documents: [], comments: [] };
+    }
+
+    const neighbors = await batchNeighbors(graph, narrativeQNodes.map((entry) => entry.id));
+
+    const docsById = new Map<string, {
+      id: string;
+      type: 'spec' | 'adr' | 'note';
+      title: string;
+      authoredBy: string;
+      authoredAt: number;
+      targetIds: string[];
+      supersedesId?: string;
+    }>();
+    const commentsById = new Map<string, {
+      id: string;
+      authoredBy: string;
+      authoredAt: number;
+      targetId?: string;
+      replyToId?: string;
+    }>();
+
+    for (const node of [...specNodes, ...adrNodes, ...noteNodes]) {
+      const rawType = node.props['type'];
+      const title = node.props['title'];
+      const authoredBy = node.props['authored_by'];
+      const authoredAt = node.props['authored_at'];
+      if (
+        (rawType !== 'spec' && rawType !== 'adr' && rawType !== 'note') ||
+        typeof title !== 'string' ||
+        typeof authoredBy !== 'string' ||
+        typeof authoredAt !== 'number'
+      ) {
+        continue;
+      }
+
+      const targetRefs: string[] = [];
+      let supersedesId: string | undefined;
+      for (const edge of neighbors.get(node.id) ?? []) {
+        if (edge.label === 'documents') targetRefs.push(edge.nodeId);
+        if (edge.label === 'supersedes' && edge.nodeId.startsWith(`${rawType}:`)) {
+          supersedesId = edge.nodeId;
+        }
+      }
+
+      docsById.set(node.id, {
+        id: node.id,
+        type: rawType,
+        title,
+        authoredBy,
+        authoredAt,
+        targetIds: targetRefs,
+        supersedesId,
+      });
+    }
+
+    for (const node of commentNodes) {
+      const authoredBy = node.props['authored_by'];
+      const authoredAt = node.props['authored_at'];
+      if (typeof authoredBy !== 'string' || typeof authoredAt !== 'number') continue;
+
+      let targetId: string | undefined;
+      let replyToId: string | undefined;
+      for (const edge of neighbors.get(node.id) ?? []) {
+        if (edge.label === 'comments-on') targetId = edge.nodeId;
+        if (edge.label === 'replies-to' && edge.nodeId.startsWith('comment:')) replyToId = edge.nodeId;
+      }
+
+      commentsById.set(node.id, {
+        id: node.id,
+        authoredBy,
+        authoredAt,
+        targetId,
+        replyToId,
+      });
+    }
+
+    const includedDocIds = this.expandDocumentIdsForTargets(docsById, targetIds);
+    const includedCommentIds = this.expandCommentIdsForTargets(commentsById, targetIds);
+    const contentIds = [...includedDocIds, ...includedCommentIds];
+    const contentMap = await this.loadContentMap(graph, contentIds);
+
+    const supersededBy = new Map<string, string[]>();
+    for (const docId of includedDocIds) {
+      const doc = docsById.get(docId);
+      if (!doc?.supersedesId || !includedDocIds.has(doc.supersedesId)) continue;
+      const arr = supersededBy.get(doc.supersedesId) ?? [];
+      arr.push(doc.id);
+      supersededBy.set(doc.supersedesId, arr);
+    }
+
+    const replyIds = new Map<string, string[]>();
+    for (const commentId of includedCommentIds) {
+      const comment = commentsById.get(commentId);
+      if (!comment?.replyToId || !includedCommentIds.has(comment.replyToId)) continue;
+      const arr = replyIds.get(comment.replyToId) ?? [];
+      arr.push(comment.id);
+      replyIds.set(comment.replyToId, arr);
+    }
+
+    const documents: NarrativeNode[] = [];
+    for (const docId of includedDocIds) {
+      const doc = docsById.get(docId);
+      if (!doc) continue;
+      const content = contentMap.get(docId);
+      const supersededByIds = supersededBy.get(doc.id) ?? [];
+      documents.push({
+        id: doc.id,
+        type: doc.type,
+        title: doc.title,
+        authoredBy: doc.authoredBy,
+        authoredAt: doc.authoredAt,
+        body: content?.body,
+        contentOid: content?.contentOid,
+        targetIds: doc.targetIds.filter((targetId) => targetIds.has(targetId)),
+        supersedesId: doc.supersedesId,
+        supersededByIds,
+        current: supersededByIds.length === 0,
+      });
+    }
+    documents.sort((a, b) => a.authoredAt - b.authoredAt || a.id.localeCompare(b.id));
+
+    const comments: CommentNode[] = [];
+    for (const commentId of includedCommentIds) {
+      const comment = commentsById.get(commentId);
+      if (!comment) continue;
+      const content = contentMap.get(commentId);
+      comments.push({
+        id: comment.id,
+        authoredBy: comment.authoredBy,
+        authoredAt: comment.authoredAt,
+        body: content?.body,
+        contentOid: content?.contentOid,
+        targetId: comment.targetId,
+        replyToId: comment.replyToId,
+        replyIds: replyIds.get(comment.id) ?? [],
+      });
+    }
+    comments.sort((a, b) => a.authoredAt - b.authoredAt || a.id.localeCompare(b.id));
+
+    return { documents, comments };
+  }
+
+  private expandDocumentIdsForTargets(
+    docsById: Map<string, { id: string; targetIds: string[]; supersedesId?: string }>,
+    targetIds: Set<string>,
+  ): Set<string> {
+    const included = new Set<string>();
+    const queue: string[] = [];
+    const supersededBy = new Map<string, string[]>();
+
+    for (const doc of docsById.values()) {
+      if (doc.supersedesId) {
+        const arr = supersededBy.get(doc.supersedesId) ?? [];
+        arr.push(doc.id);
+        supersededBy.set(doc.supersedesId, arr);
+      }
+      if (doc.targetIds.some((targetId) => targetIds.has(targetId))) {
+        included.add(doc.id);
+        queue.push(doc.id);
+      }
+    }
+
+    for (const currentId of queue) {
+      if (!currentId) continue;
+      const current = docsById.get(currentId);
+      if (!current) continue;
+
+      if (current.supersedesId && !included.has(current.supersedesId) && docsById.has(current.supersedesId)) {
+        included.add(current.supersedesId);
+        queue.push(current.supersedesId);
+      }
+
+      for (const nextId of supersededBy.get(currentId) ?? []) {
+        if (included.has(nextId)) continue;
+        included.add(nextId);
+        queue.push(nextId);
+      }
+    }
+
+    return included;
+  }
+
+  private expandCommentIdsForTargets(
+    commentsById: Map<string, { id: string; targetId?: string; replyToId?: string }>,
+    targetIds: Set<string>,
+  ): Set<string> {
+    const included = new Set<string>();
+    const queue: string[] = [];
+    const replyIds = new Map<string, string[]>();
+
+    for (const comment of commentsById.values()) {
+      if (comment.replyToId) {
+        const arr = replyIds.get(comment.replyToId) ?? [];
+        arr.push(comment.id);
+        replyIds.set(comment.replyToId, arr);
+      }
+      if (comment.targetId && targetIds.has(comment.targetId)) {
+        included.add(comment.id);
+        queue.push(comment.id);
+      }
+    }
+
+    for (const currentId of queue) {
+      if (!currentId) continue;
+      const current = commentsById.get(currentId);
+      if (!current) continue;
+
+      if (current.replyToId && !included.has(current.replyToId) && commentsById.has(current.replyToId)) {
+        included.add(current.replyToId);
+        queue.push(current.replyToId);
+      }
+
+      for (const childId of replyIds.get(currentId) ?? []) {
+        if (included.has(childId)) continue;
+        included.add(childId);
+        queue.push(childId);
+      }
+    }
+
+    return included;
+  }
+
+  private async loadContentMap(
+    graph: WarpGraph,
+    ids: string[],
+  ): Promise<Map<string, { body?: string; contentOid?: string }>> {
+    const results = await Promise.all(ids.map(async (id) => {
+      const [rawBody, contentOid] = await Promise.all([
+        graph.getContent(id),
+        graph.getContentOid(id),
+      ]);
+      return [id, {
+        body: decodeNodeContent(rawBody),
+        contentOid: contentOid ?? undefined,
+      }] as const;
+    }));
+
+    return new Map(results);
+  }
+
+  private async findPatchsetIdsForSubmission(
+    graph: WarpGraph,
+    submissionId: string,
+  ): Promise<Set<string>> {
+    const incoming = toNeighborEntries(await graph.neighbors(submissionId, 'incoming'));
+    return new Set(
+      incoming
+        .filter((entry) => entry.label === 'has-patchset' && entry.nodeId.startsWith('patchset:'))
+        .map((entry) => entry.nodeId),
+    );
+  }
+
+  private buildQuestTimeline(args: {
+    quest: QuestNode;
+    scroll?: ScrollNode;
+    submission?: SubmissionNode;
+    reviews: ReviewNode[];
+    decisions: DecisionNode[];
+    evidence: EvidenceNode[];
+    documents: NarrativeNode[];
+    comments: CommentNode[];
+  }): QuestTimelineEntry[] {
+    const entries: QuestTimelineEntry[] = [];
+    const { quest, scroll, submission, reviews, decisions, evidence, documents, comments } = args;
+
+    if (typeof quest.suggestedAt === 'number') {
+      entries.push({
+        id: `${quest.id}:suggested`,
+        at: quest.suggestedAt,
+        kind: 'quest',
+        title: 'Suggested into BACKLOG',
+        actor: quest.suggestedBy,
+        relatedId: quest.id,
+      });
+    }
+    if (typeof quest.readyAt === 'number') {
+      entries.push({
+        id: `${quest.id}:ready`,
+        at: quest.readyAt,
+        kind: 'quest',
+        title: 'Passed readiness and entered READY',
+        actor: quest.readyBy,
+        relatedId: quest.id,
+      });
+    }
+    if (typeof quest.completedAt === 'number') {
+      entries.push({
+        id: `${quest.id}:done`,
+        at: quest.completedAt,
+        kind: 'quest',
+        title: 'Marked DONE',
+        actor: quest.assignedTo,
+        relatedId: quest.id,
+      });
+    }
+    if (typeof quest.rejectedAt === 'number') {
+      entries.push({
+        id: `${quest.id}:rejected`,
+        at: quest.rejectedAt,
+        kind: 'quest',
+        title: quest.rejectionRationale
+          ? `Rejected to GRAVEYARD: ${quest.rejectionRationale}`
+          : 'Rejected to GRAVEYARD',
+        actor: quest.rejectedBy,
+        relatedId: quest.id,
+      });
+    }
+    if (typeof quest.reopenedAt === 'number') {
+      entries.push({
+        id: `${quest.id}:reopened`,
+        at: quest.reopenedAt,
+        kind: 'quest',
+        title: 'Reopened to BACKLOG',
+        actor: quest.reopenedBy,
+        relatedId: quest.id,
+      });
+    }
+    if (submission) {
+      entries.push({
+        id: submission.id,
+        at: submission.submittedAt,
+        kind: 'submission',
+        title: `Submission opened (${submission.status})`,
+        actor: submission.submittedBy,
+        relatedId: submission.id,
+      });
+    }
+    for (const review of reviews) {
+      entries.push({
+        id: review.id,
+        at: review.reviewedAt,
+        kind: 'review',
+        title: `Review: ${review.verdict}`,
+        actor: review.reviewedBy,
+        relatedId: review.patchsetId,
+      });
+    }
+    for (const decision of decisions) {
+      entries.push({
+        id: decision.id,
+        at: decision.decidedAt,
+        kind: 'decision',
+        title: `Decision: ${decision.kind}`,
+        actor: decision.decidedBy,
+        relatedId: decision.submissionId,
+      });
+    }
+    if (scroll) {
+      entries.push({
+        id: scroll.id,
+        at: scroll.sealedAt,
+        kind: 'artifact',
+        title: scroll.hasSeal ? 'Scroll sealed with Guild Seal' : 'Scroll created',
+        actor: scroll.sealedBy,
+        relatedId: scroll.id,
+      });
+    }
+    for (const evidenceEntry of evidence) {
+      entries.push({
+        id: evidenceEntry.id,
+        at: evidenceEntry.producedAt,
+        kind: 'evidence',
+        title: `Evidence ${evidenceEntry.result} (${evidenceEntry.kind})`,
+        actor: evidenceEntry.producedBy,
+        relatedId: evidenceEntry.criterionId,
+      });
+    }
+    for (const document of documents) {
+      entries.push({
+        id: document.id,
+        at: document.authoredAt,
+        kind: document.type,
+        title: document.title,
+        actor: document.authoredBy,
+        relatedId: document.targetIds[0],
+      });
+    }
+    for (const comment of comments) {
+      entries.push({
+        id: comment.id,
+        at: comment.authoredAt,
+        kind: 'comment',
+        title: comment.replyToId ? `Reply to ${comment.replyToId}` : 'Comment',
+        actor: comment.authoredBy,
+        relatedId: comment.targetId ?? comment.replyToId,
+      });
+    }
+
+    entries.sort((a, b) => a.at - b.at || a.id.localeCompare(b.id));
+    return entries;
   }
 
   // -------------------------------------------------------------------------

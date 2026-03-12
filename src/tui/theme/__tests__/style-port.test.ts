@@ -55,6 +55,7 @@ describe('PlainStyleAdapter', () => {
   it('has all XYPH status keys on theme', () => {
     const style = createPlainStylePort();
     expect(style.theme.status.DONE).toBeDefined();
+    expect(style.theme.status.READY).toBeDefined();
     expect(style.theme.status.IN_PROGRESS).toBeDefined();
     expect(style.theme.status.BACKLOG).toBeDefined();
     expect(style.theme.status.BLOCKED).toBeDefined();
@@ -149,6 +150,7 @@ describe('BijouStyleAdapter', () => {
   it('has all XYPH status keys', () => {
     const style = createStylePort();
     expect(style.theme.status.DONE).toBeDefined();
+    expect(style.theme.status.READY).toBeDefined();
     expect(style.theme.status.IN_PROGRESS).toBeDefined();
     expect(style.theme.status.BACKLOG).toBeDefined();
     expect(style.theme.status.BLOCKED).toBeDefined();

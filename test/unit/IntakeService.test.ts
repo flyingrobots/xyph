@@ -11,13 +11,13 @@ function makePort(quest: Quest | null = null): RoadmapQueryPort {
   return {
     getQuests: vi.fn(),
     getQuest: vi.fn().mockResolvedValue(quest),
-    getOutgoingEdges: vi.fn(),
+    getOutgoingEdges: vi.fn().mockResolvedValue([]),
   };
 }
 
 describe('TRANSITION_TABLE', () => {
-  it('contains exactly 4 entries', () => {
-    expect(TRANSITION_TABLE).toHaveLength(4);
+  it('contains exactly 5 entries', () => {
+    expect(TRANSITION_TABLE).toHaveLength(5);
   });
 
   it('promote and reopen require human authority', () => {
@@ -26,6 +26,7 @@ describe('TRANSITION_TABLE', () => {
     expect(commands).toContain('promote');
     expect(commands).toContain('reopen');
     expect(commands).not.toContain('reject');
+    expect(commands).not.toContain('ready');
   });
 
   it('reopen is the only transition from GRAVEYARD', () => {
@@ -39,6 +40,12 @@ describe('TRANSITION_TABLE', () => {
     const rule = TRANSITION_TABLE.find((r) => r.command === 'promote');
     expect(rule?.from).toBe('BACKLOG');
     expect(rule?.to).toBe('PLANNED');
+  });
+
+  it('ready goes from PLANNED to READY', () => {
+    const rule = TRANSITION_TABLE.find((r) => r.command === 'ready');
+    expect(rule?.from).toBe('PLANNED');
+    expect(rule?.to).toBe('READY');
   });
 
   it('reject transitions BACKLOG and PLANNED to GRAVEYARD', () => {
@@ -191,6 +198,35 @@ describe('IntakeService', () => {
     it('resolves for human actor with GRAVEYARD quest', async () => {
       const svc = new IntakeService(makePort(makeQuest('GRAVEYARD')));
       await expect(svc.validateReopen('task:TST-001', 'human.james')).resolves.toBeUndefined();
+    });
+  });
+
+  describe('validateReady', () => {
+    it('throws [NOT_READY] when readiness requirements are not met', async () => {
+      const svc = new IntakeService(makePort(makeQuest('BACKLOG')));
+      await expect(svc.validateReady('task:TST-001')).rejects.toThrow('[NOT_READY]');
+    });
+
+    it('resolves when the quest is PLANNED with description, intent, and campaign', async () => {
+      const quest = new Quest({
+        id: 'task:TST-001',
+        title: 'Ready test quest',
+        status: 'PLANNED',
+        hours: 2,
+        description: 'Quest has the metadata needed for readiness.',
+        type: 'task',
+      });
+      const port: RoadmapQueryPort = {
+        getQuests: vi.fn(),
+        getQuest: vi.fn().mockResolvedValue(quest),
+        getOutgoingEdges: vi.fn().mockResolvedValue([
+          { type: 'authorized-by', to: 'intent:READY' },
+          { type: 'belongs-to', to: 'campaign:READY' },
+        ]),
+      };
+      const svc = new IntakeService(port);
+
+      await expect(svc.validateReady('task:TST-001')).resolves.toBeUndefined();
     });
   });
 

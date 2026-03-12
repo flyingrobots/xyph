@@ -19,6 +19,7 @@ export function mockGraphContext(snapshotOverrides?: Partial<GraphSnapshot>): Gr
   return {
     get graph(): never { throw new Error('not initialized'); },
     fetchSnapshot: vi.fn().mockResolvedValue(snap) as GraphContext['fetchSnapshot'],
+    fetchEntityDetail: vi.fn().mockResolvedValue(null) as GraphContext['fetchEntityDetail'],
     filterSnapshot: vi.fn((s: GraphSnapshot) => s) as GraphContext['filterSnapshot'],
     invalidateCache: vi.fn(),
   };
@@ -27,6 +28,7 @@ export function mockGraphContext(snapshotOverrides?: Partial<GraphSnapshot>): Gr
 export function mockIntakePort(): IntakePort {
   return {
     promote: vi.fn().mockResolvedValue('sha-1') as IntakePort['promote'],
+    ready: vi.fn().mockResolvedValue('sha-ready') as IntakePort['ready'],
     reject: vi.fn().mockResolvedValue('sha-2') as IntakePort['reject'],
     reopen: vi.fn().mockResolvedValue('sha-3') as IntakePort['reopen'],
   };
@@ -36,7 +38,7 @@ export function mockGraphPort(): GraphPort {
   return {
     getGraph: vi.fn().mockResolvedValue({
       patch: vi.fn(),
-      getNodeProps: vi.fn().mockResolvedValue({ assigned_to: 'agent.test' }),
+      getNodeProps: vi.fn().mockResolvedValue({ assigned_to: 'agent.test', status: 'READY' }),
     }),
     reset: vi.fn(),
   };

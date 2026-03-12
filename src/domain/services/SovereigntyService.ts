@@ -13,6 +13,7 @@ import type { RoadmapQueryPort } from '../../ports/RoadmapPort.js';
 
 export const SOVEREIGNTY_AUDIT_STATUSES = [
   'PLANNED',
+  'READY',
   'IN_PROGRESS',
   'BLOCKED',
   'DONE',
