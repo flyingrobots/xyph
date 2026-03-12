@@ -383,7 +383,7 @@ xyph-dashboard.ts  # Interactive TUI entry point
 | 9 | FORGE — emit + apply phases | ⬜ PLANNED |
 | 10 | CLI TOOLING — identity, packaging, time-travel, ergonomics | 🔧 IN PROGRESS |
 | 11 | TRACEABILITY — stories, requirements, acceptance criteria, evidence | ⬜ PLANNED |
-| 12 | AGENT PROTOCOL — structured agent interface (briefing, next, context, handoff) | ⬜ PLANNED |
+| 12 | AGENT PROTOCOL — agent-native CLI and policy-bounded action kernel | ⬜ PLANNED |
 | — | ECOSYSTEM — MCP server, Web UI, IDE integration | ⬜ PLANNED |
 
 Milestone descriptions and inter-milestone dependencies are modeled in the WARP graph. Query via: `npx tsx xyph-actuator.ts status --view deps`
@@ -410,6 +410,7 @@ The `docs/canonical/` directory contains the foundational specifications:
 **Architecture & Pipeline**
 
 - [ARCHITECTURE.md](docs/canonical/ARCHITECTURE.md) — Module structure and dependency rules
+- [AGENT_PROTOCOL.md](docs/canonical/AGENT_PROTOCOL.md) — Agent-native CLI and action-kernel contract
 - [ORCHESTRATION_SPEC.md](docs/canonical/ORCHESTRATION_SPEC.md) — Planning pipeline state machine
 - [SCHEDULING_AND_DAG.md](docs/canonical/SCHEDULING_AND_DAG.md) — DAG scheduling primitives (critical path, anti-chains, lanes)
 - [ROADMAP_PROTOCOL.md](docs/canonical/ROADMAP_PROTOCOL.md) — Task and milestone lifecycle states

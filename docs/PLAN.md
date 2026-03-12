@@ -1,149 +1,137 @@
-# XYPH Bring-Up Plan: Make the Existing Alpha Honest, Operable, and Then Spec-Complete
+# XYPH Steering Plan: Honest Core -> Agent-Native -> Human-Friendly
 
 ## Summary
 
-XYPH is already a real alpha product, but it is not yet “up to spec” in the sense its canonical docs promise.
+XYPH should be steered through three checkpoints:
 
-Current state, based on the repo and its own `--json` status output:
-- Build, lint, and tests are green: 56 test files, 732 tests passing.
-- Core runtime works: Git-backed graph, CLI, TUI, dependency analysis, submission lifecycle, merge/seal flow, and a traceability model in code.
-- Self-tracked graph says 69 quests are `DONE`, 24 are `PLANNED`, and 129 are still `BACKLOG`.
-- 7 of 13 campaigns are marked `DONE`, but at least some campaign statuses are stale and not credible relative to quest reality.
-- 59 scrolls exist, but only 1 is actually cryptographically signed.
-- The self-graph has 0 stories, 0 requirements, 0 criteria, 0 evidence, and 0 suggestions, so the traceability system exists in code but is not yet dogfooded.
-- `audit-sovereignty --json` reports 51 violations, which means the repo is not obeying its own intent-lineage story consistently.
-- The planning-compiler spec is only partially implemented. The missing weight is in ORACLE/FORGE: classification, policy engine, merge planning, emit/apply, and end-to-end compiler artifacts.
+1. **Honest Core** — make the runtime, graph, and canonical docs agree.
+2. **Agent-Native** — make XYPH the policy-bounded operating interface for agents.
+3. **Human-Friendly** — make the human operator surface reuse the same kernel.
 
-My completeness estimate:
-- Product alpha completeness: 60-65%
-- Canonical spec completeness: 30-35%
-- Self-dogfooding / “truthfulness of its own graph”: 20-25%
+This replaces the earlier bias toward “truth first, then TUI.” The TUI is
+important, but it should be layered on top of a real agent-native protocol and
+action kernel, not built ahead of it.
 
-## Key Product Decisions
+## Checkpoint 1 — Honest Core
 
-- Optimize for product integrity first, not literal spec completion first. The repo is already useful as a graph-native coordination tool; the fastest path to credibility is making the current system truthful and self-hosting.
-- Freeze the status semantics now: `BACKLOG` is unauthorized triage; `PLANNED`, `IN_PROGRESS`, `BLOCKED`, and `DONE` are authorized work. Do not reintroduce a second inbox state. Fix the audits and docs to match this.
-- Stop treating stored campaign status as authoritative. Compute campaign status from member quests and show only derived values in CLI/TUI.
-- Treat `--json` CLI as the automation API for v1. Do not build a local REST/socket API before the CLI contract is stable.
-- Keep direct user-driven CLI mutations for manual workflows. Build the compiler pipeline as a second path for ingest/planning, not as an immediate rewrite of every manual command.
-- Defer ecosystem and vanity features until core integrity is fixed. That means no Web UI, IDE plugin, MCP server, graph explorer, or heavy TUI redesign work until the graph model, traceability, and compiler path are trustworthy.
+Focus:
 
-## Milestone Schedule
+- keep lifecycle, readiness, traceability, and settlement behavior truthful
+- finish self-dogfooding on governed campaigns such as `CLITOOL` and `TRACE`
+- backfill stale self-roadmap state so shipped capabilities are reflected in the
+  graph
+- treat `show` and the quest-detail projection as the canonical issue-page
+  substrate
 
-### Milestone 0 — Truth Repair and Dogfood Hygiene
-Target: 1 week
+Completion bar:
 
-- Remove read-path write behavior and warnings from normal inspection flows. `status --json` should not emit checkpoint failures during routine reads.
-- Make sovereignty rules consistent with actual workflow. Audit only authorized work, not triage-only backlog items.
-- Backfill or relabel the current self-tracked graph so the repo no longer reports obvious constitutional violations.
-- Compute campaign status from quests and ignore stale stored campaign status for display and reporting.
-- Surface signature state clearly and require agent key setup for all new seal/merge operations in non-dev workflows.
+- `status --json`, `show --json`, and `audit-sovereignty --json` are truthful
+  and stable
+- governed quests cannot pass readiness or settlement dishonestly
+- the repo's own graph contains real stories, requirements, criteria, and
+  evidence
 
-Exit criteria:
-- `audit-sovereignty --json` is green for all authorized work.
-- `status --json` runs without checkpoint warnings.
-- Campaign status in CLI/TUI matches quest reality.
-- All new scrolls are signed by default.
+## Checkpoint 2 — Agent-Native
 
-### Milestone 1 — CLI Foundation v1
-Target: 2 weeks
+Focus:
 
-- Ship a real `xyph` binary entrypoint and normalize command ergonomics.
-- Implement identity resolution with explicit precedence: `--as`, env, repo config, user config, fallback default.
-- Add `whoami`, `login`, `logout`, and a full `show/context` inspection path so agents and humans can bootstrap work without reading raw graph dumps.
-- Make JSON output a stable v1 contract across all user-facing commands.
-- Fix workflow gaps in promote/reject/history/status so provenance is complete and scriptable.
-- Harden merge/workspace behavior so graph validation and Git settlement fail more predictably.
+- build the shared agent services:
+  - `AgentBriefingService`
+  - `AgentRecommender`
+  - `AgentActionValidator`
+  - `AgentActionService`
+  - `AgentContextService` or equivalent
+- stabilize the agent-facing JSON commands:
+  - `briefing`
+  - `next`
+  - `context`
+  - `submissions`
+  - `act`
+  - `handoff`
+- make `act` a policy-bounded action kernel over routine operations
 
-Exit criteria:
-- A human or agent can bootstrap, inspect, claim, submit, review, and settle work using only the CLI and `--json`.
-- JSON output is stable enough to support CI and agent automation.
+Checkpoint-2 action kinds:
 
-### Milestone 2 — Traceability v1 That Is Actually Used
-Target: 2 weeks
+- `claim`
+- `shape`
+- `packet`
+- `ready`
+- `comment`
+- `submit`
+- `review`
+- `handoff`
+- `seal`
+- `merge`
 
-- Finish the missing traceability pieces: policy nodes, governed campaigns, computed coverage queries, and campaign-level definition-of-done checks.
-- Dogfood traceability on this repo itself. Start with `CLITOOL` and `FORGE`, not the whole graph.
-- Require stories/requirements/criteria/evidence for governed campaigns only. Do not hard-gate the whole repo at once.
-- Wire `scan`/`analyze` into CI for governed campaigns so evidence is generated and reviewed continuously.
-- Expose coverage and unmet criteria in CLI/TUI status.
+Still human-only in checkpoint 2:
 
-Exit criteria:
-- Self-graph contains non-zero stories, requirements, criteria, and evidence.
-- At least one campaign is governed by real traceability policy.
-- Seal/merge is blocked when governed work lacks required evidence.
+- `intent`
+- `promote`
+- `reject`
+- `reopen`
+- `depend`
+- campaign mutation
+- policy mutation
+- any constitutionally sensitive scope or sovereignty change
 
-### Milestone 3 — ORACLE + FORGE Compiler Path
-Target: 3 weeks
+Completion bar:
 
-- Implement the missing compiler phases in the planning path: classify, validate, merge planning, schedule, review, emit, apply.
-- Reuse the existing signed patch-ops validator as the compiler IR validation layer instead of inventing a second artifact system.
-- Emit typed artifacts and audit records for each phase, but keep manual command flows intact.
-- Restrict APPLY semantics to compiler-driven planning operations; manual graph edits remain separate and explicit.
-- Add one real end-to-end compiler flow on the self-repo: ingest structured planning input, emit patch artifact, validate, apply, and audit.
+- a cold-start agent can orient, choose work, act through XYPH, submit or
+  review, settle governed work when policy passes, and leave a graph-native
+  handoff
+- every allowed agent mutation flows through the same validators and gates as
+  the human CLI
 
-Exit criteria:
-- One supported compiler path runs end to end from ingest to apply.
-- Artifacts and audit nodes are durable and queryable.
-- The canonical FORGE story is no longer mostly doc-only.
+## Checkpoint 3 — Human-Friendly
 
-### Milestone 4 — Agent Protocol and TUI Operationalization
-Target: 2 weeks
+Focus:
 
-- Build the useful agent-facing commands first: `briefing`, `context`, `submissions`, `review`, `submit`, and `handoff`.
-- Add the minimum TUI surfaces needed for real ops: suggestions, graveyard, alerts, traceability coverage, and signature/health indicators.
-- Do not prioritize overview redesign chains, chord-mode polish, or visual experiments ahead of workflow closure.
-- Make self-hosting explicit: the repo must be able to plan and drive itself via XYPH without outside spreadsheets/docs.
+- build an ops-grade human surface on top of the same read/write services
+- prioritize quest detail, triage, submissions, graveyard, alerts,
+  traceability coverage, and graph/trust health
+- keep the TUI as an operator console, not a separate workflow model
 
-Exit criteria:
-- An agent can enter the repo cold, ask the CLI for context, find work, submit, review, and hand off.
-- TUI surfaces the operational state that matters, not just pretty summaries.
+Defer out of this checkpoint:
 
-### Milestone 5 — Ecosystem and Expansion
-Target: later, after v1 core is stable
+- web UI
+- polish-first redesign work
+- graph explorer vanity features
+- large TUI chains that do not improve operator throughput
 
-- MCP server
-- Web UI
-- IDE integrations
-- Time-travel and provenance explorer features (`diff`, `seek`, `slice`, graph explorer)
-- Multi-user proof and large-graph scaling work
+Completion bar:
 
-These are valuable, but they should not block v1 credibility.
+- a human can supervise agents, inspect quests like issue pages, triage work,
+  review submissions, and override when allowed, entirely through XYPH
 
-## Missing Features to Call Out Explicitly
+## Product Decisions
 
-- Spec/runtime mismatch around sovereignty and backlog semantics
-- Derived campaign status and truthful milestone reporting
-- Stable CLI identity model and packaging
-- Stable JSON automation contract
-- Real self-hosted traceability data
-- Governed definition-of-done enforcement
-- Compiler phases ORACLE/FORGE
-- Durable audit artifacts for compiler path
-- Agent protocol beyond a few early commands
-- Default cryptographic signing discipline for scrolls
+- **One source of truth**: CLI, agent protocol, and TUI all consume the same
+  graph-backed read models.
+- **One action kernel**: `act` and future human surfaces reuse the same domain
+  validators and mutation services.
+- **JSON first**: CLI `--json` is the primary automation surface; MCP is later.
+- **Graph-native collaboration**: quest-linked notes, specs, comments, and
+  handoffs live in the graph, not in repo files as the source of truth.
+- **Compiler track deferred**: ORACLE/FORGE remains important, but it is not a
+  checkpoint blocker before the agent-native kernel is real.
 
-## Test and Acceptance Plan
+## Acceptance and Verification
 
-- Keep build, lint, and full test suite green on every milestone.
-- Add CI assertions that use the product’s own `--json` output:
-  - sovereignty audit passes for authorized work
-  - campaign status is derived and consistent
-  - governed campaigns have non-zero traceability coverage
-  - new scrolls are signed
-- Add end-to-end tests for:
-  - triage to promoted work with correct intent lineage
-  - submit/revise/review/merge with full provenance
-  - governed traceability gate on seal/merge
-  - compiler ingest → emit → apply → audit flow
-- Add golden tests for JSON envelopes so agent integrations do not drift.
-- Add a self-hosting acceptance check: the repo can represent and advance its own roadmap without external bookkeeping.
+- Keep build, lint, and local test suite green through every checkpoint.
+- Add golden JSON tests for the agent-facing commands.
+- Add end-to-end agent session tests:
+  - `briefing -> next -> context -> act -> submit/review/merge/seal -> handoff`
+- Add negative tests for:
+  - human-only actions
+  - readiness, sovereignty, and settlement rejections
+  - governed incomplete work
+- Add self-hosting checks proving XYPH can coordinate and advance its own
+  roadmap through the agent-native protocol.
 
 ## Assumptions and Defaults
 
-- Schedule assumes one strong maintainer with AI assistance. Two engineers can roughly halve calendar time.
-- The zero-hour estimates in the graph are not trustworthy planning inputs; milestone scheduling here is based on implementation risk, not current quest hour fields.
-- `BACKLOG` remains the triage bucket. I would not reintroduce `INBOX`.
-- REST/socket APIs are deferred; CLI `--json` is the supported automation surface for v1.
-- Manual CLI mutations remain supported. The compiler path is additive, not a rewrite of the whole product.
-- If forced to cut scope, I would cut ecosystem/UI polish first, not traceability or compiler bring-up.
+- Checkpoint order is fixed: Honest Core -> Agent-Native -> Human-Friendly.
+- The agent-native checkpoint is intentionally bold: it includes an action
+  kernel, not just read-only agent commands.
+- Agent authority is policy-bounded, not sovereign.
+- Human-friendly means ops-grade TUI first, not web-first.

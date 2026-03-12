@@ -1,5 +1,10 @@
 # XYPH CLI & Agent Interface — Enhancement Plan
 
+> **Note:** The canonical contract for the agent-native CLI now lives in
+> [`docs/canonical/AGENT_PROTOCOL.md`](docs/canonical/AGENT_PROTOCOL.md).
+> This file remains a broader enhancement/backlog plan and may use older
+> command sketches or names.
+
 ## Context
 
 The CLI (`xyph-actuator.ts`) is the primary interface for both humans and agents. Bijou v0.6.0 introduced interactive primitives (`wizard()`, `filter()`, `textarea()`) that can transform multi-flag commands into guided flows. Meanwhile, the agent interface is underserved — agents need structured I/O, session lifecycle commands, and batch operations to work efficiently.

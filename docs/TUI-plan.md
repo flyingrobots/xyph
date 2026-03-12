@@ -1,5 +1,10 @@
 # XYPH Interactive TUI — Full Dashboard Plan
 
+> **Note:** The canonical contract for the agent-native CLI and action kernel
+> now lives in [`docs/canonical/AGENT_PROTOCOL.md`](docs/canonical/AGENT_PROTOCOL.md).
+> The agent-command sections in this file are design context for the TUI, not
+> the authoritative protocol spec.
+
 ## Context
 
 The XYPH TUI dashboard is currently read-only with 4 views (roadmap, lineage, all, inbox). The domain has rich data (submissions, reviews, decisions, sovereignty audits) and write operations (claim, promote, reject, review) that aren't surfaced. The goal is to make the TUI the **primary interface** — fully interactive, with all key data and operations accessible.

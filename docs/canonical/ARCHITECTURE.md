@@ -21,7 +21,7 @@
 ### Layers
 
 - **`src/domain/entities/`** — Core business objects: `Quest`, `Intent`, `Submission`, `ApprovalGate`, `Orchestration`.
-- **`src/domain/services/`** — Domain logic: `CoordinatorService`, `SubmissionService`, `IntakeService`, `DepAnalysis`, `GuildSealService`, `SovereigntyService`, `IngestService`, `NormalizeService`, `RebalanceService`.
+- **`src/domain/services/`** — Domain logic: `CoordinatorService`, `SubmissionService`, `IntakeService`, `DepAnalysis`, `GuildSealService`, `SovereigntyService`, `IngestService`, `NormalizeService`, `RebalanceService`, and the agent-kernel services defined by `AGENT_PROTOCOL.md`.
 - **`src/domain/models/`** — View models for the TUI dashboard (`dashboard.ts`).
 - **`src/ports/`** — Boundary interfaces: `GraphPort`, `RoadmapPort`, `IntakePort`, `SubmissionPort`, `WorkspacePort`.
 - **`src/infrastructure/adapters/`** — Concrete implementations backed by git-warp and git: `WarpGraphAdapter`, `WarpIntakeAdapter`, `WarpSubmissionAdapter`, `WarpRoadmapAdapter`, `GitWorkspaceAdapter`.
@@ -71,6 +71,20 @@ submit → patchset → review → revise → approve → merge/close
                                             auto-seal quest DONE
 ```
 
+### Agent-Native Lifecycle
+```
+briefing → next → context → act → handoff
+                     │
+                     └→ submit/review/seal/merge (when the same gates pass)
+```
+
+- `show` remains general entity inspection.
+- `context` is the action-oriented work packet.
+- `act` wraps routine mutations but must still reuse readiness, submission,
+  sovereignty, and settlement gates.
+- Future TUI and MCP surfaces should call the same agent-kernel services rather
+  than inventing parallel mutation paths.
+
 ## Key Services
 
 | Service | Responsibility |
@@ -81,6 +95,9 @@ submit → patchset → review → revise → approve → merge/close
 | `DepAnalysis` | Frontier detection, critical path DP over dependency DAG |
 | `GuildSealService` | Ed25519 signing for Project Scrolls |
 | `SovereigntyService` | Genealogy of Intent audit (Constitution Art. IV) |
+| `AgentBriefingService` | Session-start orientation document for agents |
+| `AgentRecommender` | Ranked next-action candidates for agent work |
+| `AgentActionValidator` / `AgentActionService` | Policy-bounded action kernel over routine CLI mutations |
 
 ## Graph Node Types
 
