@@ -190,7 +190,7 @@ export class AgentSubmissionService {
         kind: 'review',
         targetId: submission.tipPatchsetId ?? submission.id,
         reason: 'Review the current tip patchset for this submission.',
-        supportedByActionKernel: false,
+        supportedByActionKernel: true,
       };
     }
 

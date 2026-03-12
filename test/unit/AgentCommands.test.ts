@@ -375,7 +375,7 @@ describe('agent act command', () => {
             kind: 'review',
             targetId: 'patchset:REV-001',
             reason: 'Review the current tip patchset for this submission.',
-            supportedByActionKernel: false,
+            supportedByActionKernel: true,
           },
         },
       ],
@@ -477,7 +477,7 @@ describe('agent act command', () => {
               kind: 'review',
               targetId: 'patchset:REV-001',
               reason: 'Review the current tip patchset for this submission.',
-              supportedByActionKernel: false,
+              supportedByActionKernel: true,
             },
           },
         ],
@@ -640,6 +640,101 @@ describe('agent act command', () => {
         criterionId: 'criterion:AGT-001',
         criterionDescription: 'The packet includes at least one criterion.',
         verifiable: false,
+      },
+    });
+  });
+
+  it('maps submit options into normalized action args', async () => {
+    mocks.execute.mockResolvedValue({
+      kind: 'submit',
+      targetId: 'task:AGT-001',
+      allowed: true,
+      dryRun: true,
+      requiresHumanApproval: false,
+      validation: {
+        valid: true,
+        code: null,
+        reasons: [],
+      },
+      normalizedArgs: {},
+      underlyingCommand: 'xyph submit task:AGT-001',
+      sideEffects: [],
+      result: 'dry-run',
+      patch: null,
+      details: null,
+    });
+
+    const ctx = makeCtx();
+    const program = new Command();
+    registerAgentCommands(program, ctx);
+
+    await program.parseAsync([
+      'act',
+      'submit',
+      'task:AGT-001',
+      '--description',
+      'Submit the quest through the action kernel.',
+      '--base',
+      'main',
+      '--workspace',
+      'feat/agent-action-kernel-v1',
+      '--dry-run',
+    ], { from: 'user' });
+
+    expect(mocks.execute).toHaveBeenCalledWith({
+      kind: 'submit',
+      targetId: 'task:AGT-001',
+      dryRun: true,
+      args: {
+        description: 'Submit the quest through the action kernel.',
+        baseRef: 'main',
+        workspaceRef: 'feat/agent-action-kernel-v1',
+      },
+    });
+  });
+
+  it('maps review options into normalized action args', async () => {
+    mocks.execute.mockResolvedValue({
+      kind: 'review',
+      targetId: 'patchset:AGT-001',
+      allowed: true,
+      dryRun: true,
+      requiresHumanApproval: false,
+      validation: {
+        valid: true,
+        code: null,
+        reasons: [],
+      },
+      normalizedArgs: {},
+      underlyingCommand: 'xyph review patchset:AGT-001 --verdict approve',
+      sideEffects: [],
+      result: 'dry-run',
+      patch: null,
+      details: null,
+    });
+
+    const ctx = makeCtx();
+    const program = new Command();
+    registerAgentCommands(program, ctx);
+
+    await program.parseAsync([
+      'act',
+      'review',
+      'patchset:AGT-001',
+      '--verdict',
+      'approve',
+      '--message',
+      'Looks good from the action kernel.',
+      '--dry-run',
+    ], { from: 'user' });
+
+    expect(mocks.execute).toHaveBeenCalledWith({
+      kind: 'review',
+      targetId: 'patchset:AGT-001',
+      dryRun: true,
+      args: {
+        verdict: 'approve',
+        message: 'Looks good from the action kernel.',
       },
     });
   });

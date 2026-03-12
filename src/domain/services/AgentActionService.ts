@@ -10,11 +10,15 @@ import {
 } from '../entities/Requirement.js';
 import { IntakeService } from './IntakeService.js';
 import { ReadinessService } from './ReadinessService.js';
+import { SubmissionService } from './SubmissionService.js';
 import { createPatchSession } from '../../infrastructure/helpers/createPatchSession.js';
 import { WarpIntakeAdapter } from '../../infrastructure/adapters/WarpIntakeAdapter.js';
+import { WarpSubmissionAdapter } from '../../infrastructure/adapters/WarpSubmissionAdapter.js';
+import { GitWorkspaceAdapter } from '../../infrastructure/adapters/GitWorkspaceAdapter.js';
+import type { ReviewVerdict } from '../entities/Submission.js';
 
 export const ROUTINE_AGENT_ACTION_KINDS = [
-  'claim', 'shape', 'packet', 'ready', 'comment',
+  'claim', 'shape', 'packet', 'ready', 'comment', 'submit', 'review',
 ] as const;
 
 export const HUMAN_ONLY_AGENT_ACTION_KINDS = [
@@ -103,12 +107,35 @@ interface CommentAction {
   generatedId: boolean;
 }
 
+interface SubmitAction {
+  kind: 'submit';
+  targetId: string;
+  description: string;
+  baseRef: string;
+  workspaceRef: string;
+  headRef?: string;
+  commitShas?: string[];
+  submissionId: string;
+  patchsetId: string;
+}
+
+interface ReviewAction {
+  kind: 'review';
+  targetId: string;
+  reviewId: string;
+  verdict: ReviewVerdict;
+  comment: string;
+  submissionId: string;
+}
+
 type SupportedNormalizedAction =
   | ClaimAction
   | ShapeAction
   | PacketAction
   | ReadyAction
-  | CommentAction;
+  | CommentAction
+  | SubmitAction
+  | ReviewAction;
 
 function autoId(prefix: string): string {
   const ts = Date.now().toString(36).padStart(9, '0');
@@ -184,6 +211,7 @@ function derivePacketId(prefix: 'story:' | 'req:' | 'criterion:', questId: strin
 export class AgentActionValidator {
   private readonly intake: IntakeService;
   private readonly readiness: ReadinessService;
+  private readonly submissions: SubmissionService;
 
   constructor(
     private readonly graphPort: GraphPort,
@@ -192,6 +220,9 @@ export class AgentActionValidator {
   ) {
     this.intake = new IntakeService(roadmap);
     this.readiness = new ReadinessService(roadmap);
+    this.submissions = new SubmissionService(
+      new WarpSubmissionAdapter(graphPort, agentId),
+    );
   }
 
   public async validate(request: AgentActionRequest): Promise<ValidatedAssessment> {
@@ -223,6 +254,10 @@ export class AgentActionValidator {
         return this.validateReady(request);
       case 'comment':
         return this.validateComment(request);
+      case 'submit':
+        return this.validateSubmit(request);
+      case 'review':
+        return this.validateReview(request);
     }
   }
 
@@ -586,6 +621,194 @@ export class AgentActionValidator {
       ],
     );
   }
+
+  private async validateSubmit(request: AgentActionRequest): Promise<ValidatedAssessment> {
+    if (!request.targetId.startsWith('task:')) {
+      return failAssessment(request, 'invalid-target', [
+        `submit requires a task:* target, got '${request.targetId}'`,
+      ]);
+    }
+
+    const description = typeof request.args['description'] === 'string'
+      ? request.args['description'].trim()
+      : '';
+    if (description.length < 10) {
+      return failAssessment(request, 'invalid-args', [
+        'submit requires a description of at least 10 characters',
+      ]);
+    }
+
+    const baseRef = typeof request.args['baseRef'] === 'string' && request.args['baseRef'].trim().length > 0
+      ? request.args['baseRef'].trim()
+      : 'main';
+
+    try {
+      await this.submissions.validateSubmit(request.targetId, this.agentId);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return failAssessment(request, 'precondition-failed', [msg], {
+        normalizedArgs: {
+          description,
+          baseRef,
+          workspaceRef: typeof request.args['workspaceRef'] === 'string' ? request.args['workspaceRef'] : null,
+        },
+        underlyingCommand: `xyph submit ${request.targetId}`,
+        sideEffects: [
+          'create submission node',
+          'create patchset node',
+          `submits -> ${request.targetId}`,
+          'has-patchset edge',
+        ],
+      });
+    }
+
+    const workspace = new GitWorkspaceAdapter(process.cwd());
+    let workspaceRef: string;
+    try {
+      workspaceRef = typeof request.args['workspaceRef'] === 'string' && request.args['workspaceRef'].trim().length > 0
+        ? request.args['workspaceRef'].trim()
+        : await workspace.getWorkspaceRef();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return failAssessment(request, 'workspace-resolution-failed', [
+        `Could not resolve workspace ref for submit: ${msg}`,
+      ], {
+        normalizedArgs: {
+          description,
+          baseRef,
+          workspaceRef: null,
+        },
+        underlyingCommand: `xyph submit ${request.targetId}`,
+        sideEffects: [
+          'create submission node',
+          'create patchset node',
+          `submits -> ${request.targetId}`,
+          'has-patchset edge',
+        ],
+      });
+    }
+
+    let headRef: string | undefined;
+    let commitShas: string[] | undefined;
+    try {
+      headRef = await workspace.getHeadCommit(workspaceRef);
+      commitShas = await workspace.getCommitsSince(baseRef);
+    } catch {
+      // Non-fatal: submission packets can omit workspace metadata beyond workspaceRef.
+    }
+
+    const submissionId = autoId('submission:');
+    const patchsetId = autoId('patchset:');
+
+    return successAssessment(
+      request,
+      {
+        kind: 'submit',
+        targetId: request.targetId,
+        description,
+        baseRef,
+        workspaceRef,
+        headRef,
+        commitShas,
+        submissionId,
+        patchsetId,
+      },
+      {
+        description,
+        baseRef,
+        workspaceRef,
+        headRef: headRef ?? null,
+        commitShas: commitShas ?? [],
+        submissionId,
+        patchsetId,
+      },
+      `xyph submit ${request.targetId}`,
+      [
+        `create ${submissionId}`,
+        `create ${patchsetId}`,
+        `submits -> ${request.targetId}`,
+        `workspace_ref -> ${workspaceRef}`,
+      ],
+    );
+  }
+
+  private async validateReview(request: AgentActionRequest): Promise<ValidatedAssessment> {
+    if (!request.targetId.startsWith('patchset:')) {
+      return failAssessment(request, 'invalid-target', [
+        `review requires a patchset:* target, got '${request.targetId}'`,
+      ]);
+    }
+
+    const verdictRaw = typeof request.args['verdict'] === 'string'
+      ? request.args['verdict'].trim()
+      : '';
+    const validVerdicts: ReviewVerdict[] = ['approve', 'request-changes', 'comment'];
+    if (!validVerdicts.includes(verdictRaw as ReviewVerdict)) {
+      return failAssessment(request, 'invalid-args', [
+        `verdict must be one of ${validVerdicts.join(', ')}`,
+      ]);
+    }
+
+    const comment = typeof request.args['message'] === 'string'
+      ? request.args['message'].trim()
+      : '';
+    if (comment.length < 1) {
+      return failAssessment(request, 'invalid-args', [
+        'review requires a non-empty message',
+      ]);
+    }
+
+    try {
+      await this.submissions.validateReview(request.targetId, this.agentId);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return failAssessment(request, 'precondition-failed', [msg], {
+        normalizedArgs: {
+          verdict: verdictRaw,
+          comment,
+        },
+        underlyingCommand: `xyph review ${request.targetId}`,
+        sideEffects: [
+          'create review node',
+          `reviews -> ${request.targetId}`,
+        ],
+      });
+    }
+
+    const adapter = new WarpSubmissionAdapter(this.graphPort, this.agentId);
+    const submissionId = await adapter.getSubmissionForPatchset(request.targetId);
+    if (submissionId === null) {
+      return failAssessment(request, 'not-found', [
+        `Patchset ${request.targetId} not found or has no parent submission`,
+      ]);
+    }
+
+    const reviewId = autoId('review:');
+    const verdict = verdictRaw as ReviewVerdict;
+
+    return successAssessment(
+      request,
+      {
+        kind: 'review',
+        targetId: request.targetId,
+        reviewId,
+        verdict,
+        comment,
+        submissionId,
+      },
+      {
+        reviewId,
+        verdict,
+        comment,
+        submissionId,
+      },
+      `xyph review ${request.targetId} --verdict ${verdict}`,
+      [
+        `create ${reviewId}`,
+        `reviews -> ${request.targetId}`,
+      ],
+    );
+  }
 }
 
 export class AgentActionService {
@@ -647,6 +870,10 @@ export class AgentActionService {
           return await this.executeReady(assessment, normalized);
         case 'comment':
           return await this.executeComment(assessment, normalized);
+        case 'submit':
+          return await this.executeSubmit(assessment, normalized);
+        case 'review':
+          return await this.executeReview(assessment, normalized);
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -868,6 +1095,66 @@ export class AgentActionService {
         authoredBy: this.agentId,
         authoredAt: now,
         contentOid: contentOid ?? null,
+      },
+    };
+  }
+
+  private async executeSubmit(
+    assessment: ValidatedAssessment,
+    action: SubmitAction,
+  ): Promise<AgentActionOutcome> {
+    const adapter = new WarpSubmissionAdapter(this.graphPort, this.agentId);
+    const { patchSha } = await adapter.submit({
+      questId: action.targetId,
+      submissionId: action.submissionId,
+      patchsetId: action.patchsetId,
+      patchset: {
+        workspaceRef: action.workspaceRef,
+        baseRef: action.baseRef,
+        headRef: action.headRef,
+        commitShas: action.commitShas,
+        description: action.description,
+      },
+    });
+
+    return {
+      ...assessment,
+      result: 'success',
+      patch: patchSha,
+      details: {
+        submissionId: action.submissionId,
+        patchsetId: action.patchsetId,
+        questId: action.targetId,
+        workspaceRef: action.workspaceRef,
+        baseRef: action.baseRef,
+        headRef: action.headRef ?? null,
+        commitCount: action.commitShas?.length ?? 0,
+      },
+    };
+  }
+
+  private async executeReview(
+    assessment: ValidatedAssessment,
+    action: ReviewAction,
+  ): Promise<AgentActionOutcome> {
+    const adapter = new WarpSubmissionAdapter(this.graphPort, this.agentId);
+    const { patchSha } = await adapter.review({
+      patchsetId: action.targetId,
+      reviewId: action.reviewId,
+      verdict: action.verdict,
+      comment: action.comment,
+    });
+
+    return {
+      ...assessment,
+      result: 'success',
+      patch: patchSha,
+      details: {
+        reviewId: action.reviewId,
+        patchsetId: action.targetId,
+        submissionId: action.submissionId,
+        verdict: action.verdict,
+        reviewedBy: this.agentId,
       },
     };
   }

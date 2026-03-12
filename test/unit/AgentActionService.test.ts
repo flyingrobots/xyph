@@ -6,10 +6,62 @@ import { AgentActionService } from '../../src/domain/services/AgentActionService
 
 const mocks = vi.hoisted(() => ({
   createPatchSession: vi.fn(),
+  validateSubmit: vi.fn(),
+  validateReview: vi.fn(),
+  submit: vi.fn(),
+  review: vi.fn(),
+  getSubmissionForPatchset: vi.fn(),
+  getWorkspaceRef: vi.fn(),
+  getHeadCommit: vi.fn(),
+  getCommitsSince: vi.fn(),
 }));
 
 vi.mock('../../src/infrastructure/helpers/createPatchSession.js', () => ({
   createPatchSession: (graph: unknown) => mocks.createPatchSession(graph),
+}));
+
+vi.mock('../../src/domain/services/SubmissionService.js', () => ({
+  SubmissionService: class SubmissionService {
+    validateSubmit(questId: string, actorId: string) {
+      return mocks.validateSubmit(questId, actorId);
+    }
+
+    validateReview(patchsetId: string, actorId: string) {
+      return mocks.validateReview(patchsetId, actorId);
+    }
+  },
+}));
+
+vi.mock('../../src/infrastructure/adapters/WarpSubmissionAdapter.js', () => ({
+  WarpSubmissionAdapter: class WarpSubmissionAdapter {
+    submit(args: unknown) {
+      return mocks.submit(args);
+    }
+
+    review(args: unknown) {
+      return mocks.review(args);
+    }
+
+    getSubmissionForPatchset(patchsetId: string) {
+      return mocks.getSubmissionForPatchset(patchsetId);
+    }
+  },
+}));
+
+vi.mock('../../src/infrastructure/adapters/GitWorkspaceAdapter.js', () => ({
+  GitWorkspaceAdapter: class GitWorkspaceAdapter {
+    getWorkspaceRef() {
+      return mocks.getWorkspaceRef();
+    }
+
+    getHeadCommit(ref: string) {
+      return mocks.getHeadCommit(ref);
+    }
+
+    getCommitsSince(base: string) {
+      return mocks.getCommitsSince(base);
+    }
+  },
 }));
 
 function makeQuest(overrides?: Partial<ConstructorParameters<typeof Quest>[0]>): Quest {
@@ -57,6 +109,14 @@ function makePatchSession() {
 describe('AgentActionService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.validateSubmit.mockResolvedValue(undefined);
+    mocks.validateReview.mockResolvedValue(undefined);
+    mocks.submit.mockResolvedValue({ patchSha: 'patch:submit' });
+    mocks.review.mockResolvedValue({ patchSha: 'patch:review' });
+    mocks.getSubmissionForPatchset.mockResolvedValue('submission:AGT-001');
+    mocks.getWorkspaceRef.mockResolvedValue('feat/agent-action-kernel-v1');
+    mocks.getHeadCommit.mockResolvedValue('abc123def456');
+    mocks.getCommitsSince.mockResolvedValue(['abc123def456']);
   });
 
   it('rejects human-only actions with an explicit machine-readable reason', async () => {
@@ -207,5 +267,83 @@ describe('AgentActionService', () => {
         contentOid: 'oid:comment',
       },
     });
+  });
+
+  it('normalizes submit during dry-run with workspace metadata and generated ids', async () => {
+    const service = new AgentActionService(
+      makeGraphPort({}),
+      makeRoadmap(makeQuest({ status: 'IN_PROGRESS' })),
+      'agent.hal',
+    );
+
+    const outcome = await service.execute({
+      kind: 'submit',
+      targetId: 'task:AGT-001',
+      dryRun: true,
+      args: {
+        description: 'Submit this quest through the action kernel.',
+        baseRef: 'main',
+      },
+    });
+
+    expect(mocks.validateSubmit).toHaveBeenCalledWith('task:AGT-001', 'agent.hal');
+    expect(mocks.getWorkspaceRef).toHaveBeenCalledTimes(1);
+    expect(mocks.getHeadCommit).toHaveBeenCalledWith('feat/agent-action-kernel-v1');
+    expect(mocks.getCommitsSince).toHaveBeenCalledWith('main');
+    expect(outcome).toMatchObject({
+      kind: 'submit',
+      targetId: 'task:AGT-001',
+      allowed: true,
+      result: 'dry-run',
+      underlyingCommand: 'xyph submit task:AGT-001',
+      normalizedArgs: {
+        description: 'Submit this quest through the action kernel.',
+        baseRef: 'main',
+        workspaceRef: 'feat/agent-action-kernel-v1',
+        headRef: 'abc123def456',
+        commitShas: ['abc123def456'],
+      },
+    });
+    expect(typeof outcome.normalizedArgs['submissionId']).toBe('string');
+    expect(typeof outcome.normalizedArgs['patchsetId']).toBe('string');
+  });
+
+  it('executes review by writing a review node through the submission adapter', async () => {
+    const service = new AgentActionService(
+      makeGraphPort({}),
+      makeRoadmap(makeQuest()),
+      'agent.hal',
+    );
+
+    const outcome = await service.execute({
+      kind: 'review',
+      targetId: 'patchset:AGT-001',
+      args: {
+        verdict: 'approve',
+        message: 'Looks good from the action kernel.',
+      },
+    });
+
+    expect(mocks.validateReview).toHaveBeenCalledWith('patchset:AGT-001', 'agent.hal');
+    expect(mocks.getSubmissionForPatchset).toHaveBeenCalledWith('patchset:AGT-001');
+    expect(mocks.review).toHaveBeenCalledWith(expect.objectContaining({
+      patchsetId: 'patchset:AGT-001',
+      verdict: 'approve',
+      comment: 'Looks good from the action kernel.',
+    }));
+    expect(outcome).toMatchObject({
+      kind: 'review',
+      targetId: 'patchset:AGT-001',
+      allowed: true,
+      result: 'success',
+      patch: 'patch:review',
+      details: {
+        patchsetId: 'patchset:AGT-001',
+        submissionId: 'submission:AGT-001',
+        verdict: 'approve',
+        reviewedBy: 'agent.hal',
+      },
+    });
+    expect(typeof outcome.details?.['reviewId']).toBe('string');
   });
 });

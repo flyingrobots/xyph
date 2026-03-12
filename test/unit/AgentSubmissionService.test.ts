@@ -143,6 +143,7 @@ describe('AgentSubmissionService', () => {
         nextStep: {
           kind: 'review',
           targetId: 'patchset:REV-001',
+          supportedByActionKernel: true,
         },
       },
     ]);

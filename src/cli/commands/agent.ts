@@ -24,6 +24,8 @@ import type { EntityDetail } from '../../domain/models/dashboard.js';
 interface ActOptions {
   dryRun?: boolean;
   description?: string;
+  base?: string;
+  workspace?: string;
   kind?: string;
   story?: string;
   storyTitle?: string;
@@ -37,6 +39,7 @@ interface ActOptions {
   criterion?: string;
   criterionDescription?: string;
   verifiable?: boolean;
+  verdict?: string;
   message?: string;
   replyTo?: string;
   commentId?: string;
@@ -45,6 +48,8 @@ interface ActOptions {
 function buildActionArgs(opts: ActOptions): Record<string, unknown> {
   const args: Record<string, unknown> = {};
   if (opts.description !== undefined) args['description'] = opts.description.trim();
+  if (opts.base !== undefined) args['baseRef'] = opts.base.trim();
+  if (opts.workspace !== undefined) args['workspaceRef'] = opts.workspace.trim();
   if (opts.kind !== undefined) args['taskKind'] = opts.kind;
   if (opts.story !== undefined) args['storyId'] = opts.story;
   if (opts.storyTitle !== undefined) args['storyTitle'] = opts.storyTitle.trim();
@@ -62,6 +67,7 @@ function buildActionArgs(opts: ActOptions): Record<string, unknown> {
     args['criterionDescription'] = opts.criterionDescription.trim();
   }
   if (opts.verifiable === false) args['verifiable'] = false;
+  if (opts.verdict !== undefined) args['verdict'] = opts.verdict.trim();
   if (opts.message !== undefined) args['message'] = opts.message.trim();
   if (opts.replyTo !== undefined) args['replyTo'] = opts.replyTo;
   if (opts.commentId !== undefined) args['commentId'] = opts.commentId;
@@ -464,7 +470,9 @@ export function registerAgentCommands(program: Command, ctx: CliContext): void {
     .command('act <actionKind> <targetId>')
     .description('Execute a validated routine action through the agent action kernel')
     .option('--dry-run', 'Validate and normalize without mutating graph or workspace')
-    .option('--description <text>', 'Quest description for shape')
+    .option('--description <text>', 'Description for shape or submit')
+    .option('--base <ref>', 'Base branch for submit (default: main)')
+    .option('--workspace <ref>', 'Workspace ref for submit (default: current git branch)')
     .option('--kind <kind>', `Quest kind for shape (${[...VALID_TASK_KINDS].join(' | ')})`)
     .option('--story <id>', 'Story node ID for packet')
     .option('--story-title <text>', 'Story title for packet')
@@ -478,7 +486,8 @@ export function registerAgentCommands(program: Command, ctx: CliContext): void {
     .option('--criterion <id>', 'Criterion node ID for packet')
     .option('--criterion-description <text>', 'Criterion description for packet')
     .option('--no-verifiable', 'Mark a newly created criterion as not independently verifiable')
-    .option('--message <text>', 'Comment body for comment')
+    .option('--verdict <type>', 'Review verdict for review (approve | request-changes | comment)')
+    .option('--message <text>', 'Comment body for comment or review')
     .option('--reply-to <commentId>', 'Reply target for comment')
     .option('--comment-id <id>', 'Explicit comment ID for comment')
     .action(withErrorHandler(async (actionKind: string, targetId: string, opts: ActOptions) => {
