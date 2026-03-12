@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   fetchContext: vi.fn(),
   buildBriefing: vi.fn(),
   nextCandidates: vi.fn(),
+  listSubmissions: vi.fn(),
   WarpRoadmapAdapter: vi.fn(),
 }));
 
@@ -35,6 +36,14 @@ vi.mock('../../src/domain/services/AgentBriefingService.js', () => ({
 
     next(limit: number) {
       return mocks.nextCandidates(limit);
+    }
+  },
+}));
+
+vi.mock('../../src/domain/services/AgentSubmissionService.js', () => ({
+  AgentSubmissionService: class AgentSubmissionService {
+    list(limit: number) {
+      return mocks.listSubmissions(limit);
     }
   },
 }));
@@ -302,6 +311,203 @@ describe('agent act command', () => {
             validationCode: null,
           }],
         },
+      },
+    });
+  });
+
+  it('emits a JSON submissions queue packet', async () => {
+    mocks.listSubmissions.mockResolvedValue({
+      asOf: 1_700_000_000_000,
+      staleAfterHours: 72,
+      counts: {
+        owned: 1,
+        reviewable: 1,
+        attentionNeeded: 1,
+        stale: 0,
+      },
+      owned: [
+        {
+          submissionId: 'submission:OWN-001',
+          questId: 'task:OWN-001',
+          questTitle: 'Owned quest',
+          questStatus: 'IN_PROGRESS',
+          status: 'APPROVED',
+          submittedBy: 'agent.hal',
+          submittedAt: 1_700_000_000_000,
+          tipPatchsetId: 'patchset:OWN-001',
+          headsCount: 1,
+          approvalCount: 1,
+          reviewCount: 1,
+          latestReviewAt: 1_700_000_000_000,
+          latestReviewVerdict: 'approve',
+          latestDecisionKind: null,
+          stale: false,
+          attentionCodes: ['approved-awaiting-merge'],
+          contextId: 'task:OWN-001',
+          nextStep: {
+            kind: 'merge',
+            targetId: 'submission:OWN-001',
+            reason: 'Submission is approved and ready for settlement.',
+            supportedByActionKernel: false,
+          },
+        },
+      ],
+      reviewable: [
+        {
+          submissionId: 'submission:REV-001',
+          questId: 'task:REV-001',
+          questTitle: 'Reviewable quest',
+          questStatus: 'READY',
+          status: 'OPEN',
+          submittedBy: 'agent.other',
+          submittedAt: 1_700_000_000_000,
+          tipPatchsetId: 'patchset:REV-001',
+          headsCount: 1,
+          approvalCount: 0,
+          reviewCount: 0,
+          latestReviewAt: null,
+          latestReviewVerdict: null,
+          latestDecisionKind: null,
+          stale: false,
+          attentionCodes: [],
+          contextId: 'task:REV-001',
+          nextStep: {
+            kind: 'review',
+            targetId: 'patchset:REV-001',
+            reason: 'Review the current tip patchset for this submission.',
+            supportedByActionKernel: false,
+          },
+        },
+      ],
+      attentionNeeded: [
+        {
+          submissionId: 'submission:OWN-001',
+          questId: 'task:OWN-001',
+          questTitle: 'Owned quest',
+          questStatus: 'IN_PROGRESS',
+          status: 'APPROVED',
+          submittedBy: 'agent.hal',
+          submittedAt: 1_700_000_000_000,
+          tipPatchsetId: 'patchset:OWN-001',
+          headsCount: 1,
+          approvalCount: 1,
+          reviewCount: 1,
+          latestReviewAt: 1_700_000_000_000,
+          latestReviewVerdict: 'approve',
+          latestDecisionKind: null,
+          stale: false,
+          attentionCodes: ['approved-awaiting-merge'],
+          contextId: 'task:OWN-001',
+          nextStep: {
+            kind: 'merge',
+            targetId: 'submission:OWN-001',
+            reason: 'Submission is approved and ready for settlement.',
+            supportedByActionKernel: false,
+          },
+        },
+      ],
+    });
+
+    const ctx = makeCtx();
+    const program = new Command();
+    registerAgentCommands(program, ctx);
+
+    await program.parseAsync(['submissions', '--limit', '4'], { from: 'user' });
+
+    expect(mocks.listSubmissions).toHaveBeenCalledWith(4);
+    expect(ctx.jsonOut).toHaveBeenCalledWith({
+      success: true,
+      command: 'submissions',
+      data: {
+        asOf: 1_700_000_000_000,
+        staleAfterHours: 72,
+        counts: {
+          owned: 1,
+          reviewable: 1,
+          attentionNeeded: 1,
+          stale: 0,
+        },
+        owned: [
+          {
+            submissionId: 'submission:OWN-001',
+            questId: 'task:OWN-001',
+            questTitle: 'Owned quest',
+            questStatus: 'IN_PROGRESS',
+            status: 'APPROVED',
+            submittedBy: 'agent.hal',
+            submittedAt: 1_700_000_000_000,
+            tipPatchsetId: 'patchset:OWN-001',
+            headsCount: 1,
+            approvalCount: 1,
+            reviewCount: 1,
+            latestReviewAt: 1_700_000_000_000,
+            latestReviewVerdict: 'approve',
+            latestDecisionKind: null,
+            stale: false,
+            attentionCodes: ['approved-awaiting-merge'],
+            contextId: 'task:OWN-001',
+            nextStep: {
+              kind: 'merge',
+              targetId: 'submission:OWN-001',
+              reason: 'Submission is approved and ready for settlement.',
+              supportedByActionKernel: false,
+            },
+          },
+        ],
+        reviewable: [
+          {
+            submissionId: 'submission:REV-001',
+            questId: 'task:REV-001',
+            questTitle: 'Reviewable quest',
+            questStatus: 'READY',
+            status: 'OPEN',
+            submittedBy: 'agent.other',
+            submittedAt: 1_700_000_000_000,
+            tipPatchsetId: 'patchset:REV-001',
+            headsCount: 1,
+            approvalCount: 0,
+            reviewCount: 0,
+            latestReviewAt: null,
+            latestReviewVerdict: null,
+            latestDecisionKind: null,
+            stale: false,
+            attentionCodes: [],
+            contextId: 'task:REV-001',
+            nextStep: {
+              kind: 'review',
+              targetId: 'patchset:REV-001',
+              reason: 'Review the current tip patchset for this submission.',
+              supportedByActionKernel: false,
+            },
+          },
+        ],
+        attentionNeeded: [
+          {
+            submissionId: 'submission:OWN-001',
+            questId: 'task:OWN-001',
+            questTitle: 'Owned quest',
+            questStatus: 'IN_PROGRESS',
+            status: 'APPROVED',
+            submittedBy: 'agent.hal',
+            submittedAt: 1_700_000_000_000,
+            tipPatchsetId: 'patchset:OWN-001',
+            headsCount: 1,
+            approvalCount: 1,
+            reviewCount: 1,
+            latestReviewAt: 1_700_000_000_000,
+            latestReviewVerdict: 'approve',
+            latestDecisionKind: null,
+            stale: false,
+            attentionCodes: ['approved-awaiting-merge'],
+            contextId: 'task:OWN-001',
+            nextStep: {
+              kind: 'merge',
+              targetId: 'submission:OWN-001',
+              reason: 'Submission is approved and ready for settlement.',
+              supportedByActionKernel: false,
+            },
+          },
+        ],
       },
     });
   });

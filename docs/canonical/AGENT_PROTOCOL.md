@@ -61,9 +61,10 @@ Current runtime tranche:
 - shipped now: `briefing`
 - shipped now: `next`
 - shipped now: `context <id>`
+- shipped now: `submissions`
 - shipped now: `claim`, `shape`, `packet`, `ready`, `comment`
 - shipped now: `act <kind> <target>` for that subset
-- planned later in checkpoint 2: `submissions`, `handoff`, `submit`, `review`, `seal`, `merge`
+- planned later in checkpoint 2: `handoff`, `submit`, `review`, `seal`, `merge`
 
 ### 3.1 `show` vs `context`
 

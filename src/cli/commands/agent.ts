@@ -17,6 +17,7 @@ import type {
   AgentDependencyContext,
 } from '../../domain/services/AgentRecommender.js';
 import { AgentBriefingService } from '../../domain/services/AgentBriefingService.js';
+import { AgentSubmissionService } from '../../domain/services/AgentSubmissionService.js';
 import type { ReadinessAssessment } from '../../domain/services/ReadinessService.js';
 import type { EntityDetail } from '../../domain/models/dashboard.js';
 
@@ -266,6 +267,69 @@ function renderNext(candidates: {
   return lines.join('\n');
 }
 
+function renderSubmissions(queues: {
+  counts: { owned: number; reviewable: number; attentionNeeded: number; stale: number };
+  staleAfterHours: number;
+  owned: {
+    submissionId: string;
+    questTitle: string;
+    status: string;
+    nextStep: { kind: string; targetId: string };
+    attentionCodes: string[];
+  }[];
+  reviewable: {
+    submissionId: string;
+    questTitle: string;
+    status: string;
+    nextStep: { kind: string; targetId: string };
+    attentionCodes: string[];
+  }[];
+  attentionNeeded: {
+    submissionId: string;
+    questTitle: string;
+    status: string;
+    nextStep: { kind: string; targetId: string };
+    attentionCodes: string[];
+  }[];
+}): string {
+  const renderSection = (
+    title: string,
+    entries: {
+      submissionId: string;
+      questTitle: string;
+      status: string;
+      nextStep: { kind: string; targetId: string };
+      attentionCodes: string[];
+    }[],
+  ): string[] => {
+    const lines: string[] = [];
+    lines.push(title);
+    if (entries.length === 0) {
+      lines.push('  none');
+      return lines;
+    }
+    for (const entry of entries) {
+      lines.push(`  - ${entry.submissionId} ${entry.questTitle} [${entry.status}]`);
+      lines.push(`      next: ${entry.nextStep.kind} ${entry.nextStep.targetId}`);
+      if (entry.attentionCodes.length > 0) {
+        lines.push(`      flags: ${entry.attentionCodes.join(' | ')}`);
+      }
+    }
+    return lines;
+  };
+
+  const lines: string[] = [];
+  lines.push(`Submissions owned=${queues.counts.owned} reviewable=${queues.counts.reviewable} attention=${queues.counts.attentionNeeded} stale=${queues.counts.stale}`);
+  lines.push(`Stale threshold: ${queues.staleAfterHours}h`);
+  lines.push('');
+  lines.push(...renderSection('Owned', queues.owned));
+  lines.push('');
+  lines.push(...renderSection('Reviewable', queues.reviewable));
+  lines.push('');
+  lines.push(...renderSection('Attention Needed', queues.attentionNeeded));
+  return lines.join('\n');
+}
+
 export function registerAgentCommands(program: Command, ctx: CliContext): void {
   const withErrorHandler = createErrorHandler(ctx);
 
@@ -321,6 +385,31 @@ export function registerAgentCommands(program: Command, ctx: CliContext): void {
       }
 
       ctx.print(renderNext(candidates));
+    }));
+
+  program
+    .command('submissions')
+    .description('Build the agent-facing submission queues')
+    .option('--limit <n>', 'Maximum number of entries to return per queue', '10')
+    .action(withErrorHandler(async (opts: { limit: string }) => {
+      const limit = Number.parseInt(opts.limit, 10);
+      if (!Number.isFinite(limit) || limit < 1) {
+        throw new Error(`[INVALID_ARGS] --limit must be a positive integer, got '${opts.limit}'`);
+      }
+
+      const service = new AgentSubmissionService(ctx.graphPort, ctx.agentId);
+      const queues = await service.list(limit);
+
+      if (ctx.json) {
+        ctx.jsonOut({
+          success: true,
+          command: 'submissions',
+          data: { ...queues },
+        });
+        return;
+      }
+
+      ctx.print(renderSubmissions(queues));
     }));
 
   program
