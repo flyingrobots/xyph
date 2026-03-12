@@ -1,4 +1,3 @@
-import path from 'node:path';
 import type { Command } from 'commander';
 import type { CliContext } from '../context.js';
 import { createErrorHandler } from '../errorHandler.js';
@@ -160,6 +159,6 @@ export function registerArtifactCommands(program: Command, ctx: CliContext): voi
       ctx.muted(`  Key ID:     ${keyId}`);
       ctx.muted(`  Public key: ${publicKeyHex}`);
       ctx.muted(`  Trust dir:  ${keyring.trustDir}`);
-      ctx.muted(`  Private key stored in ${path.join(keyring.trustDir, `${ctx.agentId}.sk`)}`);
+      ctx.muted(`  Private key stored in ${keyring.privateKeyPath(ctx.agentId)}`);
     }));
 }
