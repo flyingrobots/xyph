@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { SovereigntyService } from '../../src/domain/services/SovereigntyService.js';
+import {
+  SovereigntyService,
+  SOVEREIGNTY_AUDIT_STATUSES,
+} from '../../src/domain/services/SovereigntyService.js';
 import type { RoadmapQueryPort } from '../../src/ports/RoadmapPort.js';
 import { Quest } from '../../src/domain/entities/Quest.js';
 
@@ -63,45 +66,66 @@ describe('SovereigntyService', () => {
     });
   });
 
-  describe('auditBacklog', () => {
-    it('should return violations only for BACKLOG quests', async () => {
+  describe('auditAuthorizedWork', () => {
+    it('should audit only authorized work statuses and skip BACKLOG/GRAVEYARD', async () => {
       const quests: Quest[] = [
         new Quest({ id: 'task:Q-001', title: 'Backlog without intent', status: 'BACKLOG', hours: 1, type: 'task' }),
-        new Quest({ id: 'task:Q-002', title: 'Done quest no intent', status: 'DONE', hours: 1, type: 'task' }),
-        new Quest({ id: 'task:Q-003', title: 'Backlog with intent link', status: 'BACKLOG', hours: 1, type: 'task' }),
+        new Quest({ id: 'task:Q-002', title: 'Planned without intent', status: 'PLANNED', hours: 1, type: 'task' }),
+        new Quest({ id: 'task:Q-003', title: 'Active with intent link', status: 'IN_PROGRESS', hours: 1, type: 'task' }),
+        new Quest({ id: 'task:Q-004', title: 'Blocked without intent', status: 'BLOCKED', hours: 1, type: 'task' }),
+        new Quest({ id: 'task:Q-005', title: 'Done with intent link', status: 'DONE', hours: 1, type: 'task' }),
+        new Quest({ id: 'task:Q-006', title: 'Buried without intent', status: 'GRAVEYARD', hours: 1, type: 'task' }),
       ];
 
       vi.mocked(mockRoadmap.getQuests).mockResolvedValue(quests);
       vi.mocked(mockRoadmap.getOutgoingEdges)
-        .mockResolvedValueOnce([])  // task:Q-001 — no edges
-        .mockResolvedValueOnce([{ to: 'intent:ROOT', type: 'authorized-by' }]);  // task:Q-003
+        .mockResolvedValueOnce([]) // task:Q-002 — no edges
+        .mockResolvedValueOnce([{ to: 'intent:ROOT', type: 'authorized-by' }]) // task:Q-003
+        .mockResolvedValueOnce([]) // task:Q-004 — no edges
+        .mockResolvedValueOnce([{ to: 'intent:ROOT', type: 'authorized-by' }]); // task:Q-005
 
-      const violations = await service.auditBacklog();
+      const violations = await service.auditAuthorizedWork();
 
-      // Only BACKLOG quests checked; DONE are skipped
-      expect(mockRoadmap.getOutgoingEdges).toHaveBeenCalledTimes(2);
-      expect(violations).toHaveLength(1);
-      expect(violations[0]?.questId).toBe('task:Q-001');
+      expect(SOVEREIGNTY_AUDIT_STATUSES).toEqual([
+        'PLANNED',
+        'IN_PROGRESS',
+        'BLOCKED',
+        'DONE',
+      ]);
+      expect(mockRoadmap.getOutgoingEdges).toHaveBeenCalledTimes(4);
+      expect(mockRoadmap.getOutgoingEdges).toHaveBeenNthCalledWith(1, 'task:Q-002');
+      expect(mockRoadmap.getOutgoingEdges).toHaveBeenNthCalledWith(2, 'task:Q-003');
+      expect(mockRoadmap.getOutgoingEdges).toHaveBeenNthCalledWith(3, 'task:Q-004');
+      expect(mockRoadmap.getOutgoingEdges).toHaveBeenNthCalledWith(4, 'task:Q-005');
+      expect(violations).toHaveLength(2);
+      expect(violations.map((violation) => violation.questId)).toEqual([
+        'task:Q-002',
+        'task:Q-004',
+      ]);
     });
 
-    it('should return empty array when all BACKLOG quests have intent ancestry', async () => {
+    it('should return empty array when all authorized quests have intent ancestry', async () => {
       const quests: Quest[] = [
-        new Quest({ id: 'task:Q-001', title: 'Quest with intent', status: 'BACKLOG', hours: 1, type: 'task' }),
+        new Quest({ id: 'task:Q-001', title: 'Planned quest with intent', status: 'PLANNED', hours: 1, type: 'task' }),
+        new Quest({ id: 'task:Q-002', title: 'Blocked quest with intent', status: 'BLOCKED', hours: 1, type: 'task' }),
       ];
 
       vi.mocked(mockRoadmap.getQuests).mockResolvedValue(quests);
-      vi.mocked(mockRoadmap.getOutgoingEdges).mockResolvedValue([
-        { to: 'intent:SOVEREIGNTY', type: 'authorized-by' },
-      ]);
+      vi.mocked(mockRoadmap.getOutgoingEdges)
+        .mockResolvedValueOnce([{ to: 'intent:SOVEREIGNTY', type: 'authorized-by' }])
+        .mockResolvedValueOnce([{ to: 'intent:SOVEREIGNTY', type: 'authorized-by' }]);
 
-      const violations = await service.auditBacklog();
+      const violations = await service.auditAuthorizedWork();
       expect(violations).toHaveLength(0);
     });
 
-    it('should return empty array when there are no BACKLOG quests', async () => {
-      vi.mocked(mockRoadmap.getQuests).mockResolvedValue([]);
+    it('should return empty array when there are no authorized quests to audit', async () => {
+      vi.mocked(mockRoadmap.getQuests).mockResolvedValue([
+        new Quest({ id: 'task:Q-001', title: 'Backlog task only', status: 'BACKLOG', hours: 1, type: 'task' }),
+        new Quest({ id: 'task:Q-002', title: 'Graveyard task only', status: 'GRAVEYARD', hours: 1, type: 'task' }),
+      ]);
 
-      const violations = await service.auditBacklog();
+      const violations = await service.auditAuthorizedWork();
       expect(violations).toHaveLength(0);
       expect(mockRoadmap.getOutgoingEdges).not.toHaveBeenCalled();
     });

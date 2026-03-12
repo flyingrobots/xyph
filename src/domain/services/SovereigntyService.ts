@@ -1,13 +1,24 @@
+import type { QuestStatus } from '../entities/Quest.js';
 import type { RoadmapQueryPort } from '../../ports/RoadmapPort.js';
 
 /**
  * SovereigntyService
  *
  * Enforces the Law of Human Sovereignty (Constitution Article IV).
- * Every Quest must trace its lineage back to a human-signed Intent node
- * via an `authorized-by` edge. Quests without this lineage are constitutional
- * violations — Genealogy of Intent is non-negotiable.
+ * Every quest that has been promoted out of triage must trace its lineage
+ * back to a human-signed Intent node via an `authorized-by` edge.
+ * Authorized work without this lineage is a constitutional violation —
+ * Genealogy of Intent is non-negotiable.
  */
+
+export const SOVEREIGNTY_AUDIT_STATUSES = [
+  'PLANNED',
+  'IN_PROGRESS',
+  'BLOCKED',
+  'DONE',
+] as const satisfies readonly QuestStatus[];
+
+const SOVEREIGNTY_AUDIT_STATUS_SET = new Set<QuestStatus>(SOVEREIGNTY_AUDIT_STATUSES);
 
 export interface SovereigntyViolation {
   questId: string;
@@ -48,14 +59,15 @@ export class SovereigntyService {
   }
 
   /**
-   * Scans all BACKLOG quests for missing intent ancestry and returns violations.
-   * Used by the audit command and the coordinator heartbeat.
+   * Scans all authorized quests for missing intent ancestry and returns
+   * violations. BACKLOG is triage-only and excluded from constitutional audit;
+   * GRAVEYARD is also excluded.
    */
-  public async auditBacklog(): Promise<SovereigntyViolation[]> {
+  public async auditAuthorizedWork(): Promise<SovereigntyViolation[]> {
     const quests = await this.roadmap.getQuests();
     const violations: SovereigntyViolation[] = [];
 
-    for (const quest of quests.filter(q => q.status === 'BACKLOG')) {
+    for (const quest of quests.filter(q => SOVEREIGNTY_AUDIT_STATUS_SET.has(q.status))) {
       const result = await this.checkQuestAncestry(quest.id);
       if (!result.valid && result.violation) {
         violations.push(result.violation);
@@ -63,7 +75,9 @@ export class SovereigntyService {
     }
 
     if (violations.length > 0) {
-      console.warn(`[Sovereignty] ${violations.length} quest(s) violate Genealogy of Intent (Constitution Art. IV).`);
+      console.warn(
+        `[Sovereignty] ${violations.length} authorized quest(s) violate Genealogy of Intent (Constitution Art. IV).`,
+      );
     }
 
     return violations;

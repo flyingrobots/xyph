@@ -6,10 +6,12 @@
  *   XYPH_AGENT_ID=human.james ./xyph-dashboard.ts
  *
  * Keys:
- *   Tab   — cycle views (roadmap → submissions → lineage → overview → inbox)
- *   r     — refresh snapshot
- *   q     — quit
- *   ?     — help
+ *   [ / ]           — cycle views (prev / next)
+ *   1-5             — jump to view (dashboard, roadmap, submissions, lineage, backlog)
+ *   m               — toggle "My Stuff" drawer (quests, submissions, activity)
+ *   r               — refresh snapshot
+ *   q               — quit
+ *   ?               — help
  */
 
 // Suppress DEP0169 stderr output from transitive deps.
@@ -34,12 +36,16 @@ import { WarpSubmissionAdapter } from './src/infrastructure/adapters/WarpSubmiss
 import { createDashboardApp } from './src/tui/bijou/DashboardApp.js';
 import { loadRandomLogo, selectLogoSize } from './src/tui/logo-loader.js';
 import { TuiLogger } from './src/tui/TuiLogger.js';
+import { parseAsOverrideFromArgv, resolveIdentity } from './src/cli/identity.js';
 
 // Initialize bijou context with XYPH presets via StylePort.
 const style = createStylePort();
 
-const DEFAULT_AGENT_ID = 'agent.prime';
-const agentId = process.env['XYPH_AGENT_ID'] ?? DEFAULT_AGENT_ID;
+const identity = resolveIdentity({
+  cwd: process.cwd(),
+  cliOverride: parseAsOverrideFromArgv(process.argv),
+});
+const agentId = identity.agentId;
 const cwd = process.cwd();
 
 const currentFilePath = fileURLToPath(import.meta.url);

@@ -133,6 +133,16 @@ function yieldEventLoop(): Promise<void> {
   return new Promise(resolve => setImmediate(resolve));
 }
 
+function deriveCampaignStatusFromQuests(quests: QuestNode[]): CampaignStatus {
+  const usableQuests = quests.filter((quest) => quest.status !== 'GRAVEYARD');
+  if (usableQuests.length === 0) return 'UNKNOWN';
+  if (usableQuests.every((quest) => quest.status === 'DONE')) return 'DONE';
+  if (usableQuests.every((quest) => quest.status === 'BACKLOG' || quest.status === 'PLANNED')) {
+    return 'BACKLOG';
+  }
+  return 'IN_PROGRESS';
+}
+
 // ---------------------------------------------------------------------------
 // Implementation
 // ---------------------------------------------------------------------------
@@ -163,19 +173,28 @@ class GraphContextImpl implements GraphContext {
     if (opts.includeGraveyard) return snapshot;
     const quests = snapshot.quests.filter((q) => q.status !== 'GRAVEYARD');
     const questIds = new Set(quests.map((q) => q.id));
+
+    // Strip GRAVEYARD keys from transitive downstream counts so blocker
+    // metrics stay consistent with the filtered quest set.
+    const transitiveDownstream = new Map<string, number>();
+    for (const [id, count] of snapshot.transitiveDownstream) {
+      if (questIds.has(id)) transitiveDownstream.set(id, count);
+    }
+
     return {
       ...snapshot,
       quests,
       scrolls: snapshot.scrolls.filter((s) => questIds.has(s.questId)),
       submissions: snapshot.submissions.filter((s) => questIds.has(s.questId)),
       sortedTaskIds: snapshot.sortedTaskIds.filter((id) => questIds.has(id)),
+      transitiveDownstream,
     };
   }
 
   async fetchSnapshot(onProgress?: (msg: string) => void): Promise<GraphSnapshot> {
     const log: (msg: string) => void = onProgress ?? function noop(): void { /* no-op */ };
 
-    // --- Lifecycle: open → sync → materialize → checkpoint ---
+    // --- Lifecycle: open → sync → materialize ---
     log('Opening project graph…');
     const graph = await this.graphPort.getGraph();
     this._graph = graph;
@@ -198,15 +217,6 @@ class GraphContextImpl implements GraphContext {
 
     log('Materializing graph…');
     await graph.materialize();
-    await yieldEventLoop();
-
-    log('Creating checkpoint…');
-    let checkpointSha: string | undefined;
-    try {
-      checkpointSha = await graph.createCheckpoint();
-    } catch (err: unknown) {
-      console.warn(`[WARN] createCheckpoint failed: ${err instanceof Error ? err.message : String(err)}`);
-    }
     await yieldEventLoop();
 
     // --- Query each node type in parallel ---
@@ -337,6 +347,19 @@ class GraphContextImpl implements GraphContext {
         reopenedAt: typeof reopenedAt === 'number' ? reopenedAt : undefined,
         dependsOn: dependsOnIds.length > 0 ? dependsOnIds : undefined,
       });
+    }
+
+    const questsByCampaignId = new Map<string, QuestNode[]>();
+    for (const quest of quests) {
+      if (!quest.campaignId) continue;
+      const members = questsByCampaignId.get(quest.campaignId) ?? [];
+      members.push(quest);
+      questsByCampaignId.set(quest.campaignId, members);
+    }
+    for (const campaign of campaigns) {
+      const memberQuests = questsByCampaignId.get(campaign.id);
+      if (!memberQuests || memberQuests.length === 0) continue;
+      campaign.status = deriveCampaignStatusFromQuests(memberQuests);
     }
 
     // --- Build intents ---
@@ -664,11 +687,14 @@ class GraphContextImpl implements GraphContext {
 
     // --- Build graph meta ---
     log('Reading graph metadata…');
-    const state = await graph.getStateSnapshot();
+    const [state, frontier] = await Promise.all([
+      graph.getStateSnapshot(),
+      graph.getFrontier(),
+    ]);
     const maxTick = state ? Math.max(0, ...state.observedFrontier.values()) : 0;
     const myTick = state ? (state.observedFrontier.get(graph.writerId) ?? 0) : 0;
     const writerCount = state ? state.observedFrontier.size : 0;
-    const tipSha = checkpointSha ? checkpointSha.slice(0, 7) : 'unknown';
+    const tipSha = frontier.get(graph.writerId)?.slice(0, 7) ?? 'unknown';
     const graphMeta: GraphMeta = { maxTick, myTick, writerCount, tipSha };
 
     // --- Topological sort via git-warp traversal engine ---
@@ -685,12 +711,36 @@ class GraphContextImpl implements GraphContext {
       labelFilter: 'depends-on',
     });
 
+    // --- Transitive downstream counts via git-warp BFS ---
+    log('Computing transitive downstream counts…');
+    const excludeSet = new Set(
+      quests
+        .filter((q) => q.status === 'DONE' || q.status === 'GRAVEYARD')
+        .map((q) => q.id),
+    );
+    const transitiveDownstream = new Map<string, number>();
+    for (const taskId of taskIds) {
+      if (excludeSet.has(taskId)) continue;
+      // BFS in reverse direction: find all nodes that transitively depend on this task
+      const reachable = await graph.traverse.bfs(taskId, {
+        dir: 'in',
+        labelFilter: 'depends-on',
+      });
+      // Count non-DONE, non-GRAVEYARD reachable nodes (excluding self)
+      let count = 0;
+      for (const nodeId of reachable) {
+        if (nodeId !== taskId && !excludeSet.has(nodeId)) count++;
+      }
+      if (count > 0) transitiveDownstream.set(taskId, count);
+    }
+
     log(`Snapshot ready — ${quests.length} quests, ${campaigns.length} campaigns`);
     const snap: GraphSnapshot = {
       campaigns, quests, intents, scrolls, approvals,
       submissions, reviews, decisions,
       stories, requirements, criteria, evidence, suggestions,
       asOf: Date.now(), graphMeta, sortedTaskIds, sortedCampaignIds,
+      transitiveDownstream,
     };
     this.cachedSnapshot = snap;
     this.cachedFrontierKey = this.frontierKeyFromState(state);

@@ -79,13 +79,15 @@ export interface BlockerInfo {
 /**
  * Computes which non-DONE tasks block the most other tasks.
  *
- * Uses a reverse adjacency map (prerequisite → dependents) and BFS
- * to count transitive downstream impact for each task.
+ * Transitive downstream counts are pre-computed by git-warp's BFS
+ * in GraphContext and passed via the `transitiveDownstream` map.
+ * This function only computes direct counts and sorts.
  */
 export function computeTopBlockers(
   tasks: TaskSummary[],
   edges: DepEdge[],
   limit = 10,
+  transitiveDownstream = new Map<string, number>(),
 ): BlockerInfo[] {
   const doneSet = new Set(tasks.filter((t) => t.status === 'DONE').map((t) => t.id));
 
@@ -98,29 +100,6 @@ export function computeTopBlockers(
     dependentsOf.set(edge.to, arr);
   }
 
-  // BFS to count transitive downstream from a starting task.
-  // Traverses through DONE nodes (to reach dependents beyond them)
-  // but only counts non-DONE nodes in the result.
-  function transitiveDownstream(startId: string): number {
-    const visited = new Set<string>();
-    const queue = [startId];
-    while (queue.length > 0) {
-      const current = queue.shift();
-      if (current === undefined) break;
-      for (const dep of dependentsOf.get(current) ?? []) {
-        if (!visited.has(dep)) {
-          visited.add(dep);
-          queue.push(dep);
-        }
-      }
-    }
-    let count = 0;
-    for (const id of visited) {
-      if (!doneSet.has(id)) count++;
-    }
-    return count;
-  }
-
   const results: BlockerInfo[] = [];
   for (const task of tasks) {
     if (doneSet.has(task.id)) continue;
@@ -129,7 +108,7 @@ export function computeTopBlockers(
     results.push({
       id: task.id,
       directCount: direct,
-      transitiveCount: transitiveDownstream(task.id),
+      transitiveCount: transitiveDownstream.get(task.id) ?? 0,
     });
   }
 

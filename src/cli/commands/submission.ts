@@ -3,6 +3,12 @@ import type { CliContext } from '../context.js';
 import { createErrorHandler } from '../errorHandler.js';
 import { assertMinLength } from '../validators.js';
 import { generateId } from '../generateId.js';
+import {
+  allowUnsignedScrollsForSettlement,
+  formatMissingSettlementKeyMessage,
+  formatUnsignedScrollOverrideWarning,
+  missingSettlementKeyData,
+} from './artifact.js';
 
 export function registerSubmissionCommands(program: Command, ctx: CliContext): void {
   const withErrorHandler = createErrorHandler(ctx);
@@ -189,6 +195,18 @@ export function registerSubmissionCommands(program: Command, ctx: CliContext): v
       const adapter = new WarpSubmissionAdapter(ctx.graphPort, ctx.agentId);
       const service = new SubmissionService(adapter);
       const { tipPatchsetId } = await service.validateMerge(submissionId, ctx.agentId, opts.patchset);
+      const sealService = new GuildSealService(new FsKeyringAdapter());
+      const allowUnsignedScrolls = allowUnsignedScrollsForSettlement();
+      const questId = await adapter.getSubmissionQuestId(submissionId);
+      const questStatus = questId ? await adapter.getQuestStatus(questId) : null;
+      const shouldAutoSeal = typeof questId === 'string' && questStatus !== 'DONE';
+
+      if (shouldAutoSeal && !sealService.hasPrivateKey(ctx.agentId) && !allowUnsignedScrolls) {
+        return ctx.failWithData(
+          formatMissingSettlementKeyMessage(ctx.agentId, 'merge'),
+          missingSettlementKeyData(ctx.agentId, 'merge'),
+        );
+      }
 
       // Get workspace ref from the tip patchset
       const workspaceRef = await adapter.getPatchsetWorkspaceRef(tipPatchsetId);
@@ -224,14 +242,12 @@ export function registerSubmissionCommands(program: Command, ctx: CliContext): v
       // Auto-seal: create scroll + sign with GuildSealService + set quest DONE
       let autoSealed = false;
       let guildSealInfo: { keyId: string; alg: string } | null = null;
-      const questId = await adapter.getSubmissionQuestId(submissionId);
+      let unsignedScrollWarning: string | null = null;
       if (questId) {
-        const questStatus = await adapter.getQuestStatus(questId);
         if (questStatus === 'DONE') {
           ctx.warn(`[WARN] Quest ${questId} is already DONE — skipping auto-seal.`);
         } else {
           const now = Date.now();
-          const sealService = new GuildSealService(new FsKeyringAdapter());
           const scrollPayload = {
             artifactHash: mergeCommit ?? 'unknown',
             questId,
@@ -266,17 +282,22 @@ export function registerSubmissionCommands(program: Command, ctx: CliContext): v
 
           autoSealed = true;
           if (guildSeal) guildSealInfo = { keyId: guildSeal.keyId, alg: guildSeal.alg };
+          if (!guildSeal) {
+            unsignedScrollWarning = formatUnsignedScrollOverrideWarning(ctx.agentId);
+          }
 
           ctx.ok(`[OK] Quest ${questId} auto-sealed via merge.`);
           if (guildSeal) {
             ctx.muted(`  Guild Seal: ${guildSeal.keyId}`);
+          } else {
+            ctx.warn(`  [WARN] ${unsignedScrollWarning}.`);
           }
         }
       }
 
       if (ctx.json) {
         const warnings: string[] = [];
-        if (autoSealed && !guildSealInfo) warnings.push(`No private key found for ${ctx.agentId} — scroll is unsigned`);
+        if (unsignedScrollWarning) warnings.push(unsignedScrollWarning);
         ctx.jsonOut({
           success: true, command: 'merge',
           data: {

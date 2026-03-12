@@ -1,18 +1,16 @@
 import {
   headerBox, progressBar, table as bijouTable,
-  separator, badge, timeline, enumeratedList,
-  type TimelineEvent, type BaseStatusKey,
+  separator, badge, dagLayout,
+  type SlicedDagSource,
 } from '@flyingrobots/bijou';
-import { flex, createFocusAreaState, focusAreaScrollTo, focusArea } from '@flyingrobots/bijou-tui';
+import { createFocusAreaState, focusAreaScrollTo, focusArea } from '@flyingrobots/bijou-tui';
 import type { StylePort } from '../../../ports/StylePort.js';
-import { statusVariant, formatAge, groupBy } from '../../view-helpers.js';
+import { statusVariant, groupBy } from '../../view-helpers.js';
 import type { DashboardModel } from '../DashboardApp.js';
 import {
   computeFrontier, computeTopBlockers, computeCriticalPath,
   type TaskSummary, type DepEdge,
 } from '../../../domain/services/DepAnalysis.js';
-
-interface ActivityEvent { ts: number; text: string }
 
 export function dashboardView(model: DashboardModel, style: StylePort, width?: number, height?: number): string {
   const w = width ?? model.cols;
@@ -74,51 +72,6 @@ export function dashboardView(model: DashboardModel, style: StylePort, width?: n
     ? dagResult.frontier.filter(id => actionableQuestIds.has(id)).length
     : actionableQuestIds.size;
 
-  // ── My Stuff ──────────────────────────────────────────────────────
-  const agentId = model.agentId;
-  const myIssues = agentId
-    ? snap.quests.filter(q => q.assignedTo === agentId && q.status !== 'DONE' && q.status !== 'GRAVEYARD')
-    : snap.quests.filter(q => q.assignedTo !== undefined && q.status !== 'DONE' && q.status !== 'GRAVEYARD');
-
-  const mySubmissions = agentId
-    ? snap.submissions.filter(s => s.submittedBy === agentId && (s.status === 'OPEN' || s.status === 'CHANGES_REQUESTED'))
-    : pendingReview.slice(0, 5);
-
-  // ── Activity Feed ─────────────────────────────────────────────────
-  const submissionById = new Map(snap.submissions.map(s => [s.id, s]));
-  const patchsetToQuestId = new Map<string, string>();
-  for (const s of snap.submissions) {
-    if (s.tipPatchsetId) {
-      patchsetToQuestId.set(s.tipPatchsetId, s.questId);
-    }
-  }
-
-  const activity: ActivityEvent[] = [];
-  for (const s of snap.submissions) {
-    const q = questById.get(s.questId);
-    const title = q ? q.title : s.questId;
-    const shortId = s.id.replace(/^submission:/, '').slice(0, 7);
-    activity.push({ ts: s.submittedAt, text: `${s.submittedBy} submitted ${title} ${shortId}` });
-  }
-  for (const r of snap.reviews) {
-    const verb = r.verdict === 'approve' ? 'approved' : 'reviewed';
-    const qId = patchsetToQuestId.get(r.patchsetId);
-    const q = qId ? questById.get(qId) : undefined;
-    const title = q ? q.title : r.patchsetId;
-    const shortId = r.patchsetId.replace(/^patchset:/, '').slice(0, 7);
-    activity.push({ ts: r.reviewedAt, text: `${r.reviewedBy} ${verb} ${title} ${shortId}` });
-  }
-  for (const d of snap.decisions) {
-    const sub = submissionById.get(d.submissionId);
-    const qId = sub ? sub.questId : undefined;
-    const q = qId ? questById.get(qId) : undefined;
-    const title = q ? q.title : d.submissionId;
-    const shortId = d.submissionId.replace(/^submission:/, '').slice(0, 7);
-    activity.push({ ts: d.decidedAt, text: `${d.decidedBy} ${d.kind}d ${title} ${shortId}` });
-  }
-  activity.sort((a, b) => b.ts - a.ts);
-  const recentActivity = activity.slice(0, 6);
-
   // ── Dashboard focus state (optional — undefined in tests) ─────
   const dv = model.dashboardView;
 
@@ -136,17 +89,36 @@ export function dashboardView(model: DashboardModel, style: StylePort, width?: n
       width: pw,
     }));
 
-    // Graph + DAG stats (compact)
-    const statParts: string[] = [];
-    statParts.push(`${snap.quests.length} quests`);
-    statParts.push(`${frontierCount} frontier`);
-    statParts.push(`${inProgress.length} active`);
+    // Graph + DAG stats (compact, readable)
+    const labelTk = style.theme.semantic.primary;
+    const statLine1Parts: string[] = [];
+    statLine1Parts.push(`${style.styled(labelTk, 'Quests:')} ${snap.quests.length}`);
+    statLine1Parts.push(`${style.styled(labelTk, 'Frontier:')} ${frontierCount}`);
+    statLine1Parts.push(`${style.styled(labelTk, 'Active:')} ${inProgress.length}`);
+    if (backlogCount > 0) {
+      statLine1Parts.push(`${style.styled(labelTk, 'Backlog:')} ${backlogCount}`);
+    }
     if (meta) {
-      statParts.push(`${meta.writerCount} wrtrs`);
-      statParts.push(`tick: ${meta.maxTick}`);
+      statLine1Parts.push(`${style.styled(labelTk, 'Writers:')} ${meta.writerCount}`);
+      statLine1Parts.push(`${style.styled(labelTk, 'Tick:')} ${meta.maxTick}`);
     }
     lines.push('');
-    lines.push(style.styled(style.theme.semantic.muted, `  Graph  ${statParts.join(' \u00B7 ')}`));
+    lines.push(`  ${statLine1Parts.join('  ')}`);
+
+    // Health stats (merged into graph stats area)
+    const healthParts: string[] = [];
+    healthParts.push(`${style.styled(labelTk, 'Sovereignty:')} ${withIntent}/${totalNonBacklog}`);
+    if (orphanCount > 0) {
+      healthParts.push(style.styled(style.theme.semantic.warning, `Orphans: ${orphanCount}`));
+    } else {
+      healthParts.push(`${style.styled(labelTk, 'Orphans:')} 0`);
+    }
+    if (forkedCount > 0) {
+      healthParts.push(style.styled(style.theme.semantic.error, `Forked: ${forkedCount}`));
+    } else {
+      healthParts.push(`${style.styled(labelTk, 'Forked:')} 0`);
+    }
+    lines.push(`  ${healthParts.join('  ')}`);
 
     // In Progress (table)
     lines.push('');
@@ -206,52 +178,102 @@ export function dashboardView(model: DashboardModel, style: StylePort, width?: n
       }
     }
 
-    // Campaigns with progress
+    // Campaigns DAG (topologically sorted with dependency visualization)
     if (activeCampaigns.length > 0) {
       const doneCampaignIds = new Set(snap.campaigns.filter(c => c.status === 'DONE').map(c => c.id));
+      const campaignMap = new Map(snap.campaigns.map(c => [c.id, c]));
       lines.push('');
       lines.push(separator({ label: 'Campaigns', borderToken: style.theme.border.secondary, width: pw }));
-      for (const c of activeCampaigns) {
-        const cQuests = questsByCampaign.get(c.id) ?? [];
-        const cDone = cQuests.filter(q => q.status === 'DONE').length;
-        const cTotal = cQuests.length;
-        const cPct = cTotal > 0 ? Math.round((cDone / cTotal) * 100) : 0;
-        const cBarWidth = Math.max(6, Math.min(12, pw - 40));
-        const cBar = cTotal > 0 ? progressBar(cPct, { width: cBarWidth }) : '';
-        const label = c.title.slice(0, Math.max(0, pw - 30));
-        const blockedDeps = (c.dependsOn ?? []).filter(dep => !doneCampaignIds.has(dep));
-        const blockedMark = blockedDeps.length > 0 ? style.styled(style.theme.semantic.warning, ' [blocked]') : '';
-        lines.push(`   ${label}  ${cBar} ${cDone}/${cTotal}${blockedMark}`);
+
+      // Use sortedCampaignIds for topo order; fall back to activeCampaigns order
+      const hasDeps = activeCampaigns.some(c => (c.dependsOn?.length ?? 0) > 0);
+      if (hasDeps) {
+        // Build a SlicedDagSource for campaigns
+        const activeIds = new Set(activeCampaigns.map(c => c.id));
+        const sortedActiveIds = snap.sortedCampaignIds.filter(id => activeIds.has(id));
+        // Fallback to declaration order if topo sort didn't include these campaigns
+        const dagIds = sortedActiveIds.length > 0 ? sortedActiveIds : activeCampaigns.map(c => c.id);
+        const campaignDagSource: SlicedDagSource = {
+          ids: () => dagIds,
+          has: (id: string) => activeIds.has(id),
+          label: (id: string) => {
+            const c = campaignMap.get(id);
+            return c ? c.title.slice(0, 16) : id.replace(/^(campaign:|milestone:)/, '');
+          },
+          children: (id: string) => {
+            const c = campaignMap.get(id);
+            return (c?.dependsOn ?? []).filter(dep => activeIds.has(dep));
+          },
+          badge: (id: string) => {
+            const c = campaignMap.get(id);
+            if (!c) return undefined;
+            const cQuests = questsByCampaign.get(c.id) ?? [];
+            const cDone = cQuests.filter(q => q.status === 'DONE').length;
+            const cTotal = cQuests.length;
+            const cPct = cTotal > 0 ? Math.round((cDone / cTotal) * 100) : 0;
+            return `${cPct}%`;
+          },
+          token: (id: string) => {
+            const c = campaignMap.get(id);
+            if (!c) return undefined;
+            const blockedDeps = (c.dependsOn ?? []).filter(dep => !doneCampaignIds.has(dep));
+            return blockedDeps.length > 0 ? style.theme.semantic.warning : undefined;
+          },
+          ghost: () => false,
+          ghostLabel: () => undefined,
+        };
+        const layout = dagLayout(campaignDagSource, {
+          direction: 'right',
+          maxWidth: Math.max(pw - 4, 40),
+        });
+        // Limit height to 8 rows
+        const dagLines = layout.output.split('\n').slice(0, 8);
+        for (const dl of dagLines) {
+          lines.push(`  ${dl}`);
+        }
+        if (layout.height > 8) {
+          lines.push(style.styled(style.theme.semantic.muted, `   +${layout.height - 8} rows`));
+        }
+      } else {
+        // Flat list fallback (no dependencies between campaigns)
+        for (const c of activeCampaigns) {
+          const cQuests = questsByCampaign.get(c.id) ?? [];
+          const cDone = cQuests.filter(q => q.status === 'DONE').length;
+          const cTotal = cQuests.length;
+          const cPct = cTotal > 0 ? Math.round((cDone / cTotal) * 100) : 0;
+          const cBarWidth = Math.max(6, Math.min(12, pw - 40));
+          const cBar = cTotal > 0 ? progressBar(cPct, { width: cBarWidth }) : '';
+          const label = c.title.slice(0, Math.max(0, pw - 30));
+          lines.push(`   ${label}  ${cBar} ${cDone}/${cTotal}`);
+        }
       }
     }
 
-    // Health
-    lines.push('');
-    lines.push(separator({ label: 'Health', borderToken: style.theme.border.secondary, width: pw }));
-    lines.push(`  Sovereignty: ${withIntent}/${totalNonBacklog}`);
-    if (orphanCount > 0) {
-      lines.push(style.styled(style.theme.semantic.warning, `  Orphans: ${orphanCount}`));
-    } else {
-      lines.push(`  Orphans: 0`);
-    }
-    if (forkedCount > 0) {
-      lines.push(style.styled(style.theme.semantic.error, `  Forked: ${forkedCount}`));
-    } else {
-      lines.push(`  Forked: 0`);
-    }
-
-    // Top Blockers
+    // Top Blockers (table)
     if (depEdges.length > 0) {
-      const topBlockers = computeTopBlockers(tasks, depEdges, 3);
+      const topBlockers = computeTopBlockers(tasks, depEdges, 3, snap.transitiveDownstream);
       if (topBlockers.length > 0) {
         lines.push('');
         lines.push(separator({ label: 'Top Blockers', borderToken: style.theme.border.secondary, width: pw }));
-        const blockerItems = topBlockers.map(b => {
+        const blockerRows = topBlockers.map(b => {
           const q = snap.quests.find(quest => quest.id === b.id);
-          const title = q ? q.title.slice(0, pw - 30) : b.id;
-          return `${b.id.replace(/^task:/, '')} ${title}  blocks ${b.transitiveCount}`;
+          const title = q ? q.title.slice(0, Math.max(0, pw - 34)) : b.id;
+          return [
+            b.id.replace(/^task:/, ''),
+            title,
+            String(b.transitiveCount),
+          ];
         });
-        lines.push(enumeratedList(blockerItems, { style: 'arabic', indent: 2 }));
+        lines.push(bijouTable({
+          columns: [
+            { header: 'ID', width: 12 },
+            { header: 'Title' },
+            { header: 'Blocks', width: 8 },
+          ],
+          rows: blockerRows,
+          headerToken: style.theme.ui.tableHeader,
+          borderToken: style.theme.border.primary,
+        }));
       }
     }
 
@@ -278,85 +300,10 @@ export function dashboardView(model: DashboardModel, style: StylePort, width?: n
     const content = lines.join('\n');
     let fa = createFocusAreaState({ content, width: pw, height: ph });
     fa = focusAreaScrollTo(fa, dv?.leftScrollY ?? 0);
-    return focusArea(fa, { focused: dv?.focusPanel === 'in-progress' });
+    return focusArea(fa, { focused: true });
   }
 
-  // ── Right column (My Stuff) ─────────────────────────────────────
+  // ── Single-column layout ──────────────────────────────────────────
 
-  function renderRightColumn(pw: number, ph: number): string {
-    const lines: string[] = [];
-
-    // My Issues
-    const issueLabel = agentId ? 'My Quests' : 'Assigned Quests';
-    lines.push(separator({ label: `${issueLabel} (${myIssues.length})`, borderToken: style.theme.border.secondary, width: pw }));
-    if (myIssues.length === 0) {
-      lines.push(style.styled(style.theme.semantic.muted, '  (none)'));
-    } else {
-      for (const [i, q] of myIssues.slice(0, 6).entries()) {
-        const indicator = (dv?.focusPanel === 'my-quests' && dv.focusRow === i)
-          ? style.styled(style.theme.semantic.primary, '\u25B6')
-          : ' ';
-        const statusStr = style.styledStatus(q.status);
-        lines.push(`  ${indicator} ${style.styled(style.theme.semantic.muted, q.id.replace(/^task:/, ''))} ${q.title.slice(0, Math.max(0, pw - 22))} ${statusStr}`);
-      }
-      if (myIssues.length > 6) {
-        lines.push(style.styled(style.theme.semantic.muted, `  +${myIssues.length - 6} more`));
-      }
-    }
-
-    // My Submissions
-    lines.push('');
-    const subLabel = agentId ? 'My Submissions' : 'Pending Submissions';
-    lines.push(separator({ label: `${subLabel} (${mySubmissions.length})`, borderToken: style.theme.border.secondary, width: pw }));
-    if (mySubmissions.length === 0) {
-      lines.push(style.styled(style.theme.semantic.muted, '  (none pending)'));
-    } else {
-      for (const s of mySubmissions.slice(0, 4)) {
-        const q = questById.get(s.questId);
-        const title = q ? q.title.slice(0, Math.max(0, pw - 20)) : s.questId;
-        lines.push(`  ${style.styled(style.theme.semantic.muted, s.id.replace(/^submission:/, ''))} ${title}  ${badge(s.status, { variant: statusVariant(s.status) })}`);
-      }
-      if (mySubmissions.length > 4) {
-        lines.push(style.styled(style.theme.semantic.muted, `  +${mySubmissions.length - 4} more`));
-      }
-    }
-
-    // Inbox pressure
-    if (backlogCount > 0) {
-      lines.push('');
-      lines.push(style.styled(style.theme.semantic.info, ` Inbox (${backlogCount} quest${backlogCount > 1 ? 's' : ''})`));
-      lines.push(style.styled(style.theme.semantic.muted, '  Quests awaiting triage'));
-    }
-
-    // Activity Feed
-    if (recentActivity.length > 0) {
-      lines.push('');
-      lines.push(separator({ label: 'Recent Activity', borderToken: style.theme.border.secondary, width: pw }));
-      const tlEvents: TimelineEvent[] = recentActivity.map(ev => ({
-        label: `${formatAge(ev.ts)}  ${ev.text.slice(0, Math.max(0, pw - 10))}`,
-        status: activityEventStatus(ev.text),
-      }));
-      lines.push(timeline(tlEvents, { lineToken: style.theme.semantic.muted }));
-    }
-
-    const content = lines.join('\n');
-    let fa = createFocusAreaState({ content, width: pw, height: ph });
-    fa = focusAreaScrollTo(fa, dv?.rightScrollY ?? 0);
-    return focusArea(fa, { focused: dv?.focusPanel === 'my-quests' });
-  }
-
-  // ── Layout ──────────────────────────────────────────────────────────
-
-  return flex(
-    { direction: 'row', width: w, height: h },
-    { flex: 2, content: renderLeftColumn },
-    { flex: 1, content: renderRightColumn },
-  );
-}
-
-function activityEventStatus(text: string): BaseStatusKey {
-  if (text.includes('approved') || text.includes('merged')) return 'success';
-  if (text.includes('closed')) return 'error';
-  if (text.includes('reviewed')) return 'warning';
-  return 'info';
+  return renderLeftColumn(w, h);
 }

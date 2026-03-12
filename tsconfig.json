@@ -16,6 +16,6 @@
     "skipLibCheck": true,
     "outDir": "dist"
   },
-  "include": ["src/**/*", "xyph-actuator.ts", "xyph-dashboard.ts", "xyph-theme-lab.ts"],
+  "include": ["src/**/*", "xyph.ts", "xyph-actuator.ts", "xyph-dashboard.ts", "xyph-theme-lab.ts"],
   "exclude": ["node_modules", "dist"]
 }

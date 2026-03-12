@@ -171,7 +171,39 @@ describe('DashboardApp', () => {
       expect(after5.activeView).toBe('backlog');
     });
 
-    it('Tab on dashboard switches focusPanel', () => {
+    it('] cycles to next view (with wraparound)', () => {
+      const app = makeApp();
+      const [initial] = app.init();
+      const loaded: DashboardModel = { ...initial, showLanding: false, loading: false, activeView: 'dashboard' };
+
+      const [after1] = app.update(makeKey(']'), loaded);
+      expect(after1.activeView).toBe('roadmap');
+
+      const [after2] = app.update(makeKey(']'), after1);
+      expect(after2.activeView).toBe('submissions');
+
+      // Cycle to end and wrap
+      const [after3] = app.update(makeKey(']'), after2);
+      const [after4] = app.update(makeKey(']'), after3);
+      expect(after4.activeView).toBe('backlog');
+
+      const [after5] = app.update(makeKey(']'), after4);
+      expect(after5.activeView).toBe('dashboard'); // wraparound
+    });
+
+    it('[ cycles to prev view (with wraparound)', () => {
+      const app = makeApp();
+      const [initial] = app.init();
+      const loaded: DashboardModel = { ...initial, showLanding: false, loading: false, activeView: 'dashboard' };
+
+      const [after1] = app.update(makeKey('['), loaded);
+      expect(after1.activeView).toBe('backlog'); // wraps to end
+
+      const [after2] = app.update(makeKey('['), after1);
+      expect(after2.activeView).toBe('lineage');
+    });
+
+    it('Tab on dashboard is a no-op (single panel)', () => {
       const app = makeApp();
       const [initial] = app.init();
       const loaded: DashboardModel = {
@@ -184,14 +216,11 @@ describe('DashboardApp', () => {
       expect(loaded.dashboardView?.focusPanel).toBe('in-progress');
 
       const [afterTab] = app.update(makeKey('tab'), loaded);
-      expect(afterTab.dashboardView?.focusPanel).toBe('my-quests');
-      expect(afterTab.dashboardView?.focusRow).toBe(0);
-
-      const [afterTab2] = app.update(makeKey('tab'), afterTab);
-      expect(afterTab2.dashboardView?.focusPanel).toBe('in-progress');
+      // Tab is no-op — stays on in-progress
+      expect(afterTab.dashboardView?.focusPanel).toBe('in-progress');
     });
 
-    it('PageDown scrolls the focused dashboard column', () => {
+    it('PageDown scrolls the dashboard column', () => {
       const app = makeApp();
       const [initial] = app.init();
       const loaded: DashboardModel = {
@@ -201,16 +230,9 @@ describe('DashboardApp', () => {
         activeView: 'dashboard',
       };
 
-      // PageDown on left column (in-progress is default focus)
+      // PageDown scrolls the single dashboard column
       const [afterPgDn] = app.update(makeKey('pagedown'), loaded);
       expect(afterPgDn.dashboardView?.leftScrollY).toBeGreaterThan(0);
-      expect(afterPgDn.dashboardView?.rightScrollY).toBe(0);
-
-      // Switch to right panel, then PageDown
-      const [afterTab] = app.update(makeKey('tab'), loaded);
-      const [afterPgDn2] = app.update(makeKey('pagedown'), afterTab);
-      expect(afterPgDn2.dashboardView?.rightScrollY).toBeGreaterThan(0);
-      expect(afterPgDn2.dashboardView?.leftScrollY).toBe(0);
     });
 
     it('PageUp scrolls the focused dashboard column back', () => {
@@ -845,6 +867,47 @@ describe('DashboardApp', () => {
       expect(after.toast?.message).toBe('newer toast');
     });
 
+    // ── Drawer toggle ──────────────────────────────────────────────────
+
+    it('m toggles drawerOpen and emits animation commands', () => {
+      const app = makeApp();
+      const [initial] = app.init();
+      const loaded: DashboardModel = { ...initial, showLanding: false, loading: false };
+
+      const [afterM, cmds] = app.update(makeKey('m'), loaded);
+      expect(afterM.drawerOpen).toBe(true);
+      expect(cmds.length).toBeGreaterThan(0); // animation cmd
+
+      const [afterM2, cmds2] = app.update(makeKey('m'), afterM);
+      expect(afterM2.drawerOpen).toBe(false);
+      expect(cmds2.length).toBeGreaterThan(0); // animation cmd
+    });
+
+    it('drawer-frame updates drawerWidth', () => {
+      const app = makeApp();
+      const [initial] = app.init();
+      const loaded: DashboardModel = { ...initial, showLanding: false, loading: false, drawerOpen: true };
+
+      const [after] = app.update({ type: 'drawer-frame', value: 25.7 }, loaded);
+      expect(after.drawerWidth).toBe(26);
+    });
+
+    // ── Landing auto-dismiss ────────────────────────────────────────────
+
+    it('snapshot-loaded auto-dismisses landing screen', () => {
+      const app = makeApp();
+      const [initial] = app.init();
+      expect(initial.showLanding).toBe(true);
+
+      const snap = makeSnapshot({ asOf: 12345 });
+      const [updated] = app.update(
+        { type: 'snapshot-loaded', snapshot: snap, requestId: initial.requestId },
+        initial,
+      );
+      expect(updated.showLanding).toBe(false);
+      expect(updated.snapshot).toBe(snap);
+    });
+
     // ── Submission expand/collapse ────────────────────────────────────
 
     it('Enter on submissions view toggles expanded detail', () => {
@@ -1144,6 +1207,30 @@ describe('DashboardApp', () => {
       const output = app.view(model);
       // Hint bar renders some content for the active view
       expect(output.length).toBeGreaterThan(0);
+    });
+
+    it('shows drawer content when drawerWidth > 4 and snapshot exists', () => {
+      const app = makeApp();
+      const [initial] = app.init();
+      const snap = makeSnapshot({
+        quests: [
+          { id: 'task:Q-001', title: 'Active work', status: 'IN_PROGRESS', hours: 2, assignedTo: 'agent.test' },
+        ],
+        submissions: [
+          { id: 'submission:DRAWER-S1', questId: 'task:Q-001', status: 'OPEN', headsCount: 1, approvalCount: 0, submittedBy: 'agent.test', submittedAt: 100 },
+        ],
+      });
+      const model: DashboardModel = {
+        ...initial,
+        showLanding: false,
+        loading: false,
+        snapshot: snap,
+        drawerOpen: true,
+        drawerWidth: 30,
+      };
+      const output = app.view(model);
+      // Assert on drawer-unique content — this submission only appears in the drawer, not the dashboard
+      expect(output).toContain('DRAWER-S1');
     });
 
     it('shows toast in status line', () => {

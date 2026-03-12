@@ -81,6 +81,9 @@ jobs:
             exit 1
           fi
 
+      - name: Ban userland graph algorithms
+        run: bash scripts/check-graph-algorithms.sh
+
   audit:
     runs-on: ubuntu-latest
     timeout-minutes: 5

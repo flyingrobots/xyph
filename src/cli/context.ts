@@ -2,8 +2,9 @@ import { createStylePort } from '../infrastructure/adapters/BijouStyleAdapter.js
 import { createPlainStylePort } from '../infrastructure/adapters/PlainStyleAdapter.js';
 import type { StylePort } from '../ports/StylePort.js';
 import { WarpGraphAdapter } from '../infrastructure/adapters/WarpGraphAdapter.js';
+import { resolveIdentity, type ResolvedIdentity } from './identity.js';
 
-export const DEFAULT_AGENT_ID = 'agent.prime';
+export { DEFAULT_AGENT_ID } from './identity.js';
 
 export interface JsonEnvelope {
   success: true;
@@ -21,6 +22,7 @@ export type JsonOutput = JsonEnvelope | JsonErrorEnvelope;
 
 export interface CliContext {
   readonly agentId: string;
+  readonly identity: ResolvedIdentity;
   readonly json: boolean;
   readonly graphPort: WarpGraphAdapter;
   readonly style: StylePort;
@@ -40,10 +42,21 @@ export interface CliContext {
 export function createCliContext(
   cwd: string,
   graphName: string,
-  opts?: { json?: boolean },
+  opts?: {
+    json?: boolean;
+    as?: string;
+    env?: NodeJS.ProcessEnv;
+    homeDir?: string;
+    identity?: ResolvedIdentity;
+  },
 ): CliContext {
-  const envAgentId = process.env['XYPH_AGENT_ID']?.trim();
-  const agentId = envAgentId ? envAgentId : DEFAULT_AGENT_ID;
+  const identity = opts?.identity ?? resolveIdentity({
+    cwd,
+    cliOverride: opts?.as,
+    env: opts?.env,
+    homeDir: opts?.homeDir,
+  });
+  const agentId = identity.agentId;
   const graphPort = new WarpGraphAdapter(cwd, graphName, agentId);
   const jsonMode = opts?.json ?? false;
   const style = jsonMode ? createPlainStylePort() : createStylePort();
@@ -57,6 +70,7 @@ export function createCliContext(
 
   return {
     agentId,
+    identity,
     json: jsonMode,
     graphPort,
     style,

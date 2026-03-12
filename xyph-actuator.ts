@@ -1,6 +1,6 @@
 #!/usr/bin/env -S npx tsx
 import { program } from 'commander';
-import { createCliContext } from './src/cli/index.js';
+import { createCliContext, parseAsOverrideFromArgv } from './src/cli/index.js';
 import { registerIngestCommands } from './src/cli/commands/ingest.js';
 import { registerSovereigntyCommands } from './src/cli/commands/sovereignty.js';
 import { registerCoordinationCommands } from './src/cli/commands/coordination.js';
@@ -14,22 +14,28 @@ import { registerTraceabilityCommands } from './src/cli/commands/traceability.js
 import { registerConfigCommands } from './src/cli/commands/config.js';
 import { registerSuggestionCommands } from './src/cli/commands/suggestions.js';
 import { registerAnalyzeCommands } from './src/cli/commands/analyze.js';
+import { registerIdentityCommands } from './src/cli/commands/identity.js';
 
 // Best-effort pre-scan for --json before Commander parses.
 // createCliContext() handles theme init internally based on this flag.
 const jsonFlag = process.argv.includes('--json');
+const asOverride = parseAsOverrideFromArgv(process.argv);
 
 /**
  * XYPH Actuator - The "Hands" of the Causal Agent.
  * Exposes the git-warp Node.js API as a CLI for agentic mutations.
  */
 
-const ctx = createCliContext(process.cwd(), 'xyph-roadmap', { json: jsonFlag });
+const ctx = createCliContext(process.cwd(), 'xyph-roadmap', {
+  json: jsonFlag,
+  as: asOverride,
+});
 
 program
   .name('xyph-actuator')
   .description('Cryptographic Actuator for XYPH Causal Agents')
-  .option('--json', 'Output as structured JSON');
+  .option('--json', 'Output as structured JSON')
+  .option('--as <principal>', 'Override identity for this invocation');
 
 registerIngestCommands(program, ctx);
 registerSovereigntyCommands(program, ctx);
@@ -44,5 +50,6 @@ registerTraceabilityCommands(program, ctx);
 registerConfigCommands(program, ctx);
 registerSuggestionCommands(program, ctx);
 registerAnalyzeCommands(program, ctx);
+registerIdentityCommands(program, ctx);
 
 await program.parseAsync(process.argv);

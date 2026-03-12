@@ -3,8 +3,11 @@
   "version": "1.0.0-alpha.13",
   "description": "Agent Planning and Orchestration framework powered by Causal Agents and WARP graphs.",
   "type": "module",
+  "bin": {
+    "xyph": "dist/xyph.js"
+  },
   "scripts": {
-    "lint": "eslint \"src/**/*.ts\" \"test/**/*.ts\" \"scripts/**/*.ts\" \"scripts/**/*.mts\" xyph-actuator.ts xyph-dashboard.ts xyph-theme-lab.ts",
+    "lint": "eslint \"src/**/*.ts\" \"test/**/*.ts\" \"scripts/**/*.ts\" \"scripts/**/*.mts\" xyph.ts xyph-actuator.ts xyph-dashboard.ts xyph-theme-lab.ts",
     "build": "tsc",
     "coordinator": "node dist/src/coordinator-daemon.js",
     "verify:patch-ops": "npm run build && node scripts/verify-patch-ops.mjs patches",
@@ -17,10 +20,10 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
-    "@flyingrobots/bijou": "^1.6.0",
-    "@flyingrobots/bijou-node": "^1.6.0",
-    "@flyingrobots/bijou-tui": "^1.6.0",
-    "@git-stunts/git-warp": "^13.1.0",
+    "@flyingrobots/bijou": "^1.8.0",
+    "@flyingrobots/bijou-node": "^1.8.0",
+    "@flyingrobots/bijou-tui": "^1.8.0",
+    "@git-stunts/git-warp": "^14.0.0",
     "@git-stunts/plumbing": "^2.8.0",
     "@git-stunts/vault": "^1.0.1",
     "@noble/ed25519": "^3.0.0",
