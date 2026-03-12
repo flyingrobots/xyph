@@ -11,6 +11,13 @@ import {
   AgentActionService,
   type AgentActionOutcome,
 } from '../../domain/services/AgentActionService.js';
+import { AgentContextService } from '../../domain/services/AgentContextService.js';
+import type {
+  AgentActionCandidate,
+  AgentDependencyContext,
+} from '../../domain/services/AgentRecommender.js';
+import type { ReadinessAssessment } from '../../domain/services/ReadinessService.js';
+import type { EntityDetail } from '../../domain/models/dashboard.js';
 
 interface ActOptions {
   dryRun?: boolean;
@@ -87,8 +94,138 @@ function renderHumanOutcome(
   }
 }
 
+function renderAgentContext(
+  detail: EntityDetail,
+  readiness: ReadinessAssessment | null,
+  dependency: AgentDependencyContext | null,
+  recommendedActions: AgentActionCandidate[],
+): string {
+  const lines: string[] = [];
+  lines.push(`${detail.id}  [${detail.type}]`);
+
+  if (detail.questDetail) {
+    const quest = detail.questDetail.quest;
+    lines.push(`${quest.title}  [${quest.status}]`);
+    lines.push(`kind: ${quest.taskKind ?? 'delivery'}   hours: ${quest.hours}`);
+    if (quest.description) {
+      lines.push('');
+      lines.push(quest.description);
+    }
+
+    lines.push('');
+    lines.push('Action Context');
+    lines.push(`  campaign: ${detail.questDetail.campaign?.id ?? '—'}`);
+    lines.push(`  intent: ${detail.questDetail.intent?.id ?? '—'}`);
+    lines.push(`  assigned: ${quest.assignedTo ?? '—'}`);
+    if (readiness) {
+      lines.push(`  readiness: ${readiness.valid ? 'valid' : 'blocked'}`);
+      for (const unmet of readiness.unmet) {
+        lines.push(`    - ${unmet.message}`);
+      }
+    }
+    if (dependency) {
+      lines.push(`  executable: ${dependency.isExecutable ? 'yes' : 'no'}`);
+      lines.push(`  frontier: ${dependency.isFrontier ? 'yes' : 'no'}`);
+      lines.push(`  topoIndex: ${dependency.topologicalIndex ?? '—'}`);
+      lines.push(`  downstream: ${dependency.transitiveDownstream}`);
+      if (dependency.dependsOn.length > 0) {
+        lines.push(`  dependsOn: ${dependency.dependsOn.map((entry) => entry.id).join(', ')}`);
+      }
+      if (dependency.blockedBy.length > 0) {
+        lines.push(`  blockedBy: ${dependency.blockedBy.map((entry) => entry.id).join(', ')}`);
+      }
+      if (dependency.dependents.length > 0) {
+        lines.push(`  dependents: ${dependency.dependents.map((entry) => entry.id).join(', ')}`);
+      }
+    }
+
+    if (detail.questDetail.submission) {
+      lines.push('');
+      lines.push('Submission');
+      lines.push(`  latest: ${detail.questDetail.submission.id} (${detail.questDetail.submission.status})`);
+      lines.push(`  reviews: ${detail.questDetail.reviews.length}`);
+      lines.push(`  decisions: ${detail.questDetail.decisions.length}`);
+    }
+
+    lines.push('');
+    lines.push('Recommended Actions');
+    if (recommendedActions.length === 0) {
+      lines.push('  none');
+    } else {
+      for (const action of recommendedActions) {
+        const status = action.allowed ? 'allowed' : 'blocked';
+        lines.push(`  - ${action.kind} (${status})`);
+        lines.push(`      ${action.reason}`);
+        if (action.blockedBy.length > 0) {
+          lines.push(`      blockedBy: ${action.blockedBy.join(' | ')}`);
+        }
+      }
+    }
+
+    return lines.join('\n');
+  }
+
+  const propKeys = Object.keys(detail.props).sort();
+  if (propKeys.length > 0) {
+    lines.push('');
+    lines.push('Properties');
+    for (const key of propKeys) {
+      lines.push(`  ${key}: ${JSON.stringify(detail.props[key])}`);
+    }
+  }
+  return lines.join('\n');
+}
+
 export function registerAgentCommands(program: Command, ctx: CliContext): void {
   const withErrorHandler = createErrorHandler(ctx);
+
+  program
+    .command('context <id>')
+    .description('Build an action-oriented work packet for an entity')
+    .action(withErrorHandler(async (id: string) => {
+      const service = new AgentContextService(
+        ctx.graphPort,
+        new WarpRoadmapAdapter(ctx.graphPort),
+        ctx.agentId,
+      );
+      const result = await service.fetch(id);
+      if (!result) {
+        if (ctx.json) {
+          return ctx.failWithData(`Node ${id} not found in the graph`, { id });
+        }
+        return ctx.fail(`[NOT_FOUND] Node ${id} not found in the graph`);
+      }
+
+      if (ctx.json) {
+        ctx.jsonOut({
+          success: true,
+          command: 'context',
+          data: {
+            id: result.detail.id,
+            type: result.detail.type,
+            props: result.detail.props,
+            content: result.detail.content ?? null,
+            contentOid: result.detail.contentOid ?? null,
+            outgoing: result.detail.outgoing,
+            incoming: result.detail.incoming,
+            questDetail: result.detail.questDetail ?? null,
+            agentContext: {
+              readiness: result.readiness,
+              dependency: result.dependency,
+              recommendedActions: result.recommendedActions,
+            },
+          },
+        });
+        return;
+      }
+
+      ctx.print(renderAgentContext(
+        result.detail,
+        result.readiness,
+        result.dependency,
+        result.recommendedActions,
+      ));
+    }));
 
   program
     .command('act <actionKind> <targetId>')

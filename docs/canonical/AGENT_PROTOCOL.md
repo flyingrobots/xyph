@@ -58,8 +58,10 @@ and response contract.
 
 Current runtime tranche:
 
+- shipped now: `context <id>`
 - shipped now: `claim`, `shape`, `packet`, `ready`, `comment`
-- planned later in checkpoint 2: `submit`, `review`, `handoff`, `seal`, `merge`
+- shipped now: `act <kind> <target>` for that subset
+- planned later in checkpoint 2: `briefing`, `next`, `submissions`, `handoff`, `submit`, `review`, `seal`, `merge`
 
 ### 3.1 `show` vs `context`
 

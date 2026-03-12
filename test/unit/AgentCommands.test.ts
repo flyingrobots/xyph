@@ -5,6 +5,7 @@ import { registerAgentCommands } from '../../src/cli/commands/agent.js';
 
 const mocks = vi.hoisted(() => ({
   execute: vi.fn(),
+  fetchContext: vi.fn(),
   WarpRoadmapAdapter: vi.fn(),
 }));
 
@@ -12,6 +13,14 @@ vi.mock('../../src/domain/services/AgentActionService.js', () => ({
   AgentActionService: class AgentActionService {
     execute(request: unknown) {
       return mocks.execute(request);
+    }
+  },
+}));
+
+vi.mock('../../src/domain/services/AgentContextService.js', () => ({
+  AgentContextService: class AgentContextService {
+    fetch(id: string) {
+      return mocks.fetchContext(id);
     }
   },
 }));
@@ -44,6 +53,141 @@ function makeCtx(): CliContext {
 describe('agent act command', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('emits a JSON context packet for a quest target', async () => {
+    mocks.fetchContext.mockResolvedValue({
+      detail: {
+        id: 'task:CTX-001',
+        type: 'task',
+        props: { type: 'task', title: 'Context quest' },
+        content: null,
+        contentOid: null,
+        outgoing: [],
+        incoming: [],
+        questDetail: {
+          id: 'task:CTX-001',
+          quest: {
+            id: 'task:CTX-001',
+            title: 'Context quest',
+            status: 'READY',
+            hours: 2,
+            taskKind: 'delivery',
+          },
+          reviews: [],
+          decisions: [],
+          stories: [],
+          requirements: [],
+          criteria: [],
+          evidence: [],
+          policies: [],
+          documents: [],
+          comments: [],
+          timeline: [],
+        },
+      },
+      readiness: {
+        valid: true,
+        questId: 'task:CTX-001',
+        taskKind: 'delivery',
+        unmet: [],
+      },
+      dependency: {
+        isExecutable: true,
+        isFrontier: true,
+        dependsOn: [],
+        dependents: [],
+        blockedBy: [],
+        topologicalIndex: 1,
+        transitiveDownstream: 0,
+      },
+      recommendedActions: [{
+        kind: 'claim',
+        targetId: 'task:CTX-001',
+        args: {},
+        reason: 'Quest is in READY and can be claimed immediately.',
+        confidence: 0.98,
+        requiresHumanApproval: false,
+        dryRunSummary: 'Move the quest into IN_PROGRESS and assign it to the current agent.',
+        blockedBy: [],
+        allowed: true,
+        underlyingCommand: 'xyph claim task:CTX-001',
+        sideEffects: ['status -> IN_PROGRESS'],
+        validationCode: null,
+      }],
+    });
+
+    const ctx = makeCtx();
+    const program = new Command();
+    registerAgentCommands(program, ctx);
+
+    await program.parseAsync(['context', 'task:CTX-001'], { from: 'user' });
+
+    expect(mocks.fetchContext).toHaveBeenCalledWith('task:CTX-001');
+    expect(ctx.jsonOut).toHaveBeenCalledWith({
+      success: true,
+      command: 'context',
+      data: {
+        id: 'task:CTX-001',
+        type: 'task',
+        props: { type: 'task', title: 'Context quest' },
+        content: null,
+        contentOid: null,
+        outgoing: [],
+        incoming: [],
+        questDetail: {
+          id: 'task:CTX-001',
+          quest: {
+            id: 'task:CTX-001',
+            title: 'Context quest',
+            status: 'READY',
+            hours: 2,
+            taskKind: 'delivery',
+          },
+          reviews: [],
+          decisions: [],
+          stories: [],
+          requirements: [],
+          criteria: [],
+          evidence: [],
+          policies: [],
+          documents: [],
+          comments: [],
+          timeline: [],
+        },
+        agentContext: {
+          readiness: {
+            valid: true,
+            questId: 'task:CTX-001',
+            taskKind: 'delivery',
+            unmet: [],
+          },
+          dependency: {
+            isExecutable: true,
+            isFrontier: true,
+            dependsOn: [],
+            dependents: [],
+            blockedBy: [],
+            topologicalIndex: 1,
+            transitiveDownstream: 0,
+          },
+          recommendedActions: [{
+            kind: 'claim',
+            targetId: 'task:CTX-001',
+            args: {},
+            reason: 'Quest is in READY and can be claimed immediately.',
+            confidence: 0.98,
+            requiresHumanApproval: false,
+            dryRunSummary: 'Move the quest into IN_PROGRESS and assign it to the current agent.',
+            blockedBy: [],
+            allowed: true,
+            underlyingCommand: 'xyph claim task:CTX-001',
+            sideEffects: ['status -> IN_PROGRESS'],
+            validationCode: null,
+          }],
+        },
+      },
+    });
   });
 
   it('emits the action-kernel JSON envelope for a dry-run claim', async () => {
