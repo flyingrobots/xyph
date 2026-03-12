@@ -1,0 +1,33 @@
+{
+  "version": "v3",
+  "keys": [
+    {
+      "keyId": "did:key:z6MkqB6ZiuSBAfRM7kFu7c2djSYuKwhFvD9KGx1FoK82FaZY",
+      "alg": "ed25519",
+      "publicKeyHex": "9f4c8b2b4c8b9fd9f06c01d6c9f4d88f2b8f7b8f6fd2a5c6e11a6f6ef9a5e123",
+      "active": true,
+      "legacyKeyIds": [
+        "did:key:z6MkhExampleSigner01"
+      ]
+    },
+    {
+      "keyId": "did:key:z6MkgyWT7Dk9yQuYTDLa2Zg5SiN4D5YWoCTWQ3MVb2hg5212",
+      "alg": "ed25519",
+      "publicKeyHex": "2577162074909c27c9c14979f2755816f649bd9ca42f140a37061bef25185375",
+      "active": true,
+      "legacyKeyIds": [
+        "did:key:z6MkhTestSigner01"
+      ]
+    },
+    {
+      "keyId": "did:key:z6MkeiNQBzZgerpPEKxKe3rTERBqweLvdegPFe82RstXY45f",
+      "alg": "ed25519",
+      "publicKeyHex": "03dee5df0ac6c7e82d002ae6c8e525017647ff12f7a11c897c32c7732d9bb992",
+      "agentId": "agent.james",
+      "active": true,
+      "legacyKeyIds": [
+        "did:key:agent.james"
+      ]
+    }
+  ]
+}
