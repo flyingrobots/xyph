@@ -8,6 +8,7 @@ describe('TriageService', () => {
     getQuests: vi.fn(),
     getQuest: vi.fn(),
     getOutgoingEdges: vi.fn().mockResolvedValue([]),
+    getIncomingEdges: vi.fn().mockResolvedValue([]),
     upsertQuest: vi.fn().mockResolvedValue('patch-sha'),
     addEdge: vi.fn(),
   };

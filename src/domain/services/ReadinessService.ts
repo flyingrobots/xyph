@@ -7,9 +7,14 @@ export interface ReadinessCondition {
     | 'invalid-status'
     | 'missing-intent'
     | 'missing-campaign'
-    | 'missing-description';
+    | 'missing-description'
+    | 'missing-requirement'
+    | 'missing-story'
+    | 'missing-criterion'
+    | 'missing-quest-doc';
   message: string;
-  field?: 'status' | 'intent' | 'campaign' | 'description';
+  field?: 'status' | 'intent' | 'campaign' | 'description' | 'traceability' | 'narrative';
+  nodeId?: string;
 }
 
 export interface ReadinessAssessment {
@@ -75,6 +80,35 @@ export class ReadinessService {
       });
     }
 
+    const implementedRequirementIds = edges
+      .filter((edge) => edge.type === 'implements' && edge.to.startsWith('req:'))
+      .map((edge) => edge.to);
+
+    switch (quest.taskKind) {
+      case 'delivery':
+        await this.assessDeliveryQuest(questId, implementedRequirementIds, unmet);
+        break;
+      case 'maintenance':
+        await this.assessRequirementBackedQuest(
+          questId,
+          implementedRequirementIds,
+          unmet,
+          'Maintenance quest',
+        );
+        break;
+      case 'ops':
+        await this.assessRequirementBackedQuest(
+          questId,
+          implementedRequirementIds,
+          unmet,
+          'Ops quest',
+        );
+        break;
+      case 'spike':
+        await this.assessSpikeQuest(questId, unmet);
+        break;
+    }
+
     return {
       valid: unmet.length === 0,
       questId,
@@ -84,5 +118,78 @@ export class ReadinessService {
       campaignId,
       unmet,
     };
+  }
+
+  private async assessDeliveryQuest(
+    questId: string,
+    requirementIds: string[],
+    unmet: ReadinessCondition[],
+  ): Promise<void> {
+    await this.assessRequirementBackedQuest(questId, requirementIds, unmet, 'Delivery quest');
+
+    for (const requirementId of requirementIds) {
+      const incoming = await this.roadmap.getIncomingEdges(requirementId);
+      const storyLink = incoming.find((edge) => edge.type === 'decomposes-to' && edge.from.startsWith('story:'));
+      if (!storyLink) {
+        unmet.push({
+          code: 'missing-story',
+          field: 'traceability',
+          nodeId: requirementId,
+          message: `Delivery quest ${questId} requires a story→req chain; ${requirementId} has no incoming decomposes-to edge from story:*`,
+        });
+      }
+    }
+  }
+
+  private async assessRequirementBackedQuest(
+    questId: string,
+    requirementIds: string[],
+    unmet: ReadinessCondition[],
+    label: string,
+  ): Promise<void> {
+    if (requirementIds.length === 0) {
+      unmet.push({
+        code: 'missing-requirement',
+        field: 'traceability',
+        message: `${label} ${questId} needs at least one implements edge to req:* before READY`,
+      });
+      return;
+    }
+
+    for (const requirementId of requirementIds) {
+      const outgoing = await this.roadmap.getOutgoingEdges(requirementId);
+      const criterionIds = outgoing
+        .filter((edge) => edge.type === 'has-criterion' && edge.to.startsWith('criterion:'))
+        .map((edge) => edge.to);
+      if (criterionIds.length === 0) {
+        unmet.push({
+          code: 'missing-criterion',
+          field: 'traceability',
+          nodeId: requirementId,
+          message: `${requirementId} needs at least one has-criterion edge before ${questId} can become READY`,
+        });
+      }
+    }
+  }
+
+  private async assessSpikeQuest(
+    questId: string,
+    unmet: ReadinessCondition[],
+  ): Promise<void> {
+    const incoming = await this.roadmap.getIncomingEdges(questId);
+    const framingDoc = incoming.find((edge) =>
+      edge.type === 'documents' && (
+        edge.from.startsWith('note:') ||
+        edge.from.startsWith('spec:') ||
+        edge.from.startsWith('adr:')
+      ),
+    );
+    if (!framingDoc) {
+      unmet.push({
+        code: 'missing-quest-doc',
+        field: 'narrative',
+        message: `Spike quest ${questId} needs at least one linked note/spec/adr before READY`,
+      });
+    }
   }
 }

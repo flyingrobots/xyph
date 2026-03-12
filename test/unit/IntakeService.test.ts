@@ -12,6 +12,7 @@ function makePort(quest: Quest | null = null): RoadmapQueryPort {
     getQuests: vi.fn(),
     getQuest: vi.fn().mockResolvedValue(quest),
     getOutgoingEdges: vi.fn().mockResolvedValue([]),
+    getIncomingEdges: vi.fn().mockResolvedValue([]),
   };
 }
 
@@ -207,7 +208,7 @@ describe('IntakeService', () => {
       await expect(svc.validateReady('task:TST-001')).rejects.toThrow('[NOT_READY]');
     });
 
-    it('resolves when the quest is PLANNED with description, intent, and campaign', async () => {
+    it('resolves when a delivery quest has the full readiness packet', async () => {
       const quest = new Quest({
         id: 'task:TST-001',
         title: 'Ready test quest',
@@ -219,10 +220,32 @@ describe('IntakeService', () => {
       const port: RoadmapQueryPort = {
         getQuests: vi.fn(),
         getQuest: vi.fn().mockResolvedValue(quest),
-        getOutgoingEdges: vi.fn().mockResolvedValue([
-          { type: 'authorized-by', to: 'intent:READY' },
-          { type: 'belongs-to', to: 'campaign:READY' },
-        ]),
+        getOutgoingEdges: vi.fn(async (nodeId: string) => {
+          switch (nodeId) {
+            case 'task:TST-001':
+              return [
+                { type: 'authorized-by', to: 'intent:READY' },
+                { type: 'belongs-to', to: 'campaign:READY' },
+                { type: 'implements', to: 'req:READY' },
+              ];
+            case 'req:READY':
+              return [
+                { type: 'has-criterion', to: 'criterion:READY' },
+              ];
+            default:
+              return [];
+          }
+        }),
+        getIncomingEdges: vi.fn(async (nodeId: string) => {
+          switch (nodeId) {
+            case 'req:READY':
+              return [
+                { type: 'decomposes-to', from: 'story:READY' },
+              ];
+            default:
+              return [];
+          }
+        }),
       };
       const svc = new IntakeService(port);
 

@@ -128,13 +128,35 @@ describe('WarpIntakeAdapter Integration', () => {
       p.addNode('campaign:READY-TEST')
         .setProperty('campaign:READY-TEST', 'title', 'Ready Test Campaign')
         .setProperty('campaign:READY-TEST', 'type', 'campaign')
-        .setProperty('campaign:READY-TEST', 'status', 'BACKLOG');
+        .setProperty('campaign:READY-TEST', 'status', 'BACKLOG')
+        .addNode('story:READY-TEST')
+        .setProperty('story:READY-TEST', 'title', 'Ready packet story')
+        .setProperty('story:READY-TEST', 'persona', 'Maintainer')
+        .setProperty('story:READY-TEST', 'goal', 'move shaped work into READY')
+        .setProperty('story:READY-TEST', 'benefit', 'execution DAG stays truthful')
+        .setProperty('story:READY-TEST', 'created_by', humanAgentId)
+        .setProperty('story:READY-TEST', 'created_at', 1_700_000_000_100)
+        .setProperty('story:READY-TEST', 'type', 'story')
+        .addNode('req:READY-TEST')
+        .setProperty('req:READY-TEST', 'description', 'Delivery quests must have a traceability packet before READY')
+        .setProperty('req:READY-TEST', 'kind', 'functional')
+        .setProperty('req:READY-TEST', 'priority', 'must')
+        .setProperty('req:READY-TEST', 'type', 'requirement')
+        .addNode('criterion:READY-TEST')
+        .setProperty('criterion:READY-TEST', 'description', 'At least one criterion exists before READY')
+        .setProperty('criterion:READY-TEST', 'verifiable', true)
+        .setProperty('criterion:READY-TEST', 'type', 'criterion');
     });
     await graph.patch((p) => {
       p.addEdge('task:INTAKE-003', 'campaign:READY-TEST', 'belongs-to');
     });
     await graph.patch((p) => {
       p.addEdge('task:INTAKE-003', 'intent:sovereign-test', 'authorized-by');
+    });
+    await graph.patch((p) => {
+      p.addEdge('story:READY-TEST', 'req:READY-TEST', 'decomposes-to');
+      p.addEdge('req:READY-TEST', 'criterion:READY-TEST', 'has-criterion');
+      p.addEdge('task:INTAKE-003', 'req:READY-TEST', 'implements');
     });
 
     const adapter = new WarpIntakeAdapter(graphPort, humanAgentId);

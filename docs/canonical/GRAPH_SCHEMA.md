@@ -119,6 +119,12 @@ Legacy: Pre-VOC-001 `INBOX` values are normalized to `BACKLOG` at read time.
 - `PLANNED` quests are draft-shaped work and are excluded from executable DAG analysis.
 - `READY`, `IN_PROGRESS`, `BLOCKED`, and `DONE` participate in executable frontier / critical-path computations.
 
+**Readiness by `task_kind`:**
+- `delivery`: requires `task → implements → req`, `story → decomposes-to → req`, and `req → has-criterion → criterion`
+- `maintenance`: requires `task → implements → req` and `req → has-criterion → criterion`
+- `ops`: requires `task → implements → req` and `req → has-criterion → criterion` (manual evidence may satisfy later settlement)
+- `spike`: requires at least one incoming `documents` edge from `note:*`, `spec:*`, or `adr:*`
+
 ---
 
 ### Intent (`intent:*`)

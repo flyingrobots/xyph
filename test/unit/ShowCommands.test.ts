@@ -6,6 +6,8 @@ import { registerShowCommands } from '../../src/cli/commands/show.js';
 const mocks = vi.hoisted(() => ({
   createPatchSession: vi.fn(),
   createGraphContext: vi.fn(),
+  WarpRoadmapAdapter: vi.fn(),
+  readinessAssess: vi.fn(),
 }));
 
 vi.mock('../../src/infrastructure/helpers/createPatchSession.js', () => ({
@@ -14,6 +16,20 @@ vi.mock('../../src/infrastructure/helpers/createPatchSession.js', () => ({
 
 vi.mock('../../src/infrastructure/GraphContext.js', () => ({
   createGraphContext: (graphPort: unknown) => mocks.createGraphContext(graphPort),
+}));
+
+vi.mock('../../src/infrastructure/adapters/WarpRoadmapAdapter.js', () => ({
+  WarpRoadmapAdapter: function WarpRoadmapAdapter(graphPort: unknown) {
+    mocks.WarpRoadmapAdapter(graphPort);
+  },
+}));
+
+vi.mock('../../src/domain/services/ReadinessService.js', () => ({
+  ReadinessService: class ReadinessService {
+    assess(questId: string) {
+      return mocks.readinessAssess(questId);
+    }
+  },
 }));
 
 function makePatchSession() {
@@ -55,6 +71,12 @@ function makeCtx(graph: {
 describe('show and narrative commands', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.readinessAssess.mockResolvedValue({
+      valid: true,
+      questId: 'task:Q-001',
+      taskKind: 'delivery',
+      unmet: [],
+    });
   });
 
   it('comment writes an append-only content-backed node', async () => {
@@ -189,6 +211,12 @@ describe('show and narrative commands', () => {
         outgoing: [{ nodeId: 'campaign:CORE', label: 'belongs-to' }],
         incoming: [],
         questDetail: detail.questDetail,
+        readiness: {
+          valid: true,
+          questId: 'task:Q-001',
+          taskKind: 'delivery',
+          unmet: [],
+        },
       },
     });
   });

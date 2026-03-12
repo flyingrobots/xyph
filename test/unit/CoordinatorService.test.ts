@@ -12,6 +12,7 @@ describe('CoordinatorService', () => {
     upsertQuest: vi.fn().mockResolvedValue('patch-sha'),
     addEdge: vi.fn().mockResolvedValue('edge-sha'),
     getOutgoingEdges: vi.fn().mockResolvedValue([]),
+    getIncomingEdges: vi.fn().mockResolvedValue([]),
     sync: vi.fn()
   };
 

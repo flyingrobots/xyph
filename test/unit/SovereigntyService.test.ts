@@ -11,6 +11,7 @@ describe('SovereigntyService', () => {
     getQuests: vi.fn(),
     getQuest: vi.fn(),
     getOutgoingEdges: vi.fn(),
+    getIncomingEdges: vi.fn(),
   };
 
   const service = new SovereigntyService(mockRoadmap);

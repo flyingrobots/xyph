@@ -122,6 +122,12 @@ export class WarpRoadmapAdapter implements RoadmapPort {
     return neighbors.map(n => ({ to: n.nodeId, type: n.label }));
   }
 
+  public async getIncomingEdges(nodeId: string): Promise<{ from: string; type: string }[]> {
+    const graph = await this.graphPort.getGraph();
+    const neighbors = toNeighborEntries(await graph.neighbors(nodeId, 'incoming'));
+    return neighbors.map(n => ({ from: n.nodeId, type: n.label }));
+  }
+
   public async sync(): Promise<void> {
     const graph = await this.graphPort.getGraph();
     await graph.syncCoverage();

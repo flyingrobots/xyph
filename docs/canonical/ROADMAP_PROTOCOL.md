@@ -13,7 +13,11 @@
 
 ## Readiness Rules
 - A quest must be `PLANNED` before it can become `READY`.
-- `READY` currently requires: a durable description, campaign assignment, and intent lineage.
+- Every quest requires: a durable description, campaign assignment, and intent lineage.
+- `delivery` quests additionally require a traceability packet: at least one `implements` edge to `req:*`, each implemented requirement must have a `story:* → decomposes-to → req:*` link, and each implemented requirement must have at least one `has-criterion` edge.
+- `maintenance` quests additionally require at least one implemented requirement and at least one criterion on each implemented requirement.
+- `ops` quests additionally require at least one implemented requirement and at least one criterion on each implemented requirement; later settlement may use manual evidence.
+- `spike` quests additionally require at least one linked `note:*`, `spec:*`, or `adr:*` node documenting investigative framing.
 - `claim` is valid only from `READY`.
 - `PLANNED` quests may carry draft dependencies, estimates, and traceability links, but they are excluded from executable frontier / critical-path analysis.
 

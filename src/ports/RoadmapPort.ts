@@ -8,6 +8,7 @@ export interface RoadmapQueryPort {
   getQuests(): Promise<Quest[]>;
   getQuest(id: string): Promise<Quest | null>;
   getOutgoingEdges(nodeId: string): Promise<{ to: string; type: string }[]>;
+  getIncomingEdges(nodeId: string): Promise<{ from: string; type: string }[]>;
 }
 
 /**

@@ -3,6 +3,7 @@ import type { CliContext } from '../context.js';
 import { createErrorHandler } from '../errorHandler.js';
 import { assertMinLength, assertNodeExists, assertPrefix } from '../validators.js';
 import { createPatchSession } from '../../infrastructure/helpers/createPatchSession.js';
+import type { ReadinessAssessment } from '../../domain/services/ReadinessService.js';
 import type {
   CommentNode,
   EntityDetail,
@@ -102,7 +103,7 @@ function renderTimeline(entries: QuestTimelineEntry[]): string[] {
   return lines;
 }
 
-function renderQuestDetail(detail: QuestDetail): string {
+function renderQuestDetail(detail: QuestDetail, readiness?: ReadinessAssessment): string {
   const lines: string[] = [];
   const { quest } = detail;
 
@@ -121,6 +122,14 @@ function renderQuestDetail(detail: QuestDetail): string {
   lines.push(`  readyAt: ${quest.readyAt ? new Date(quest.readyAt).toISOString() : '—'}`);
   if ((quest.dependsOn?.length ?? 0) > 0) {
     lines.push(`  dependsOn: ${quest.dependsOn?.join(', ')}`);
+  }
+  if (readiness) {
+    lines.push(`  readiness: ${readiness.valid ? 'READYABLE' : 'NOT READY'}`);
+    if (!readiness.valid && readiness.unmet.length > 0) {
+      for (const unmet of readiness.unmet) {
+        lines.push(`    - ${unmet.message}`);
+      }
+    }
   }
 
   lines.push('');
@@ -201,6 +210,12 @@ export function registerShowCommands(program: Command, ctx: CliContext): void {
       if (!detail) {
         throw new Error(`[NOT_FOUND] Node ${id} not found in the graph`);
       }
+      let readiness: ReadinessAssessment | null = null;
+      if (detail.questDetail) {
+        const { WarpRoadmapAdapter } = await import('../../infrastructure/adapters/WarpRoadmapAdapter.js');
+        const { ReadinessService } = await import('../../domain/services/ReadinessService.js');
+        readiness = await new ReadinessService(new WarpRoadmapAdapter(ctx.graphPort)).assess(id);
+      }
 
       if (ctx.json) {
         ctx.jsonOut({
@@ -215,12 +230,13 @@ export function registerShowCommands(program: Command, ctx: CliContext): void {
             outgoing: detail.outgoing,
             incoming: detail.incoming,
             questDetail: detail.questDetail ?? null,
+            readiness: readiness ?? null,
           },
         });
         return;
       }
 
-      ctx.print(detail.questDetail ? renderQuestDetail(detail.questDetail) : renderGenericEntity(detail));
+      ctx.print(detail.questDetail ? renderQuestDetail(detail.questDetail, readiness ?? undefined) : renderGenericEntity(detail));
     }));
 
   program
