@@ -197,6 +197,40 @@ export function registerDashboardCommands(program: Command, ctx: CliContext): vo
           const untestedCriteria = computeUntestedCriteria(critSummaries);
           const failingCriteria = computeFailingCriteria(critSummaries);
           const coverage = computeCoverageRatio(critSummaries);
+          const questCompletion = snapshot.quests
+            .filter((quest) => quest.computedCompletion?.tracked || quest.computedCompletion?.discrepancy)
+            .map((quest) => ({
+              id: quest.id,
+              title: quest.title,
+              manualStatus: quest.status,
+              computedCompletion: quest.computedCompletion,
+            }));
+          const campaignCompletion = snapshot.campaigns
+            .filter((campaign) => campaign.computedCompletion?.tracked || campaign.computedCompletion?.discrepancy)
+            .map((campaign) => ({
+              id: campaign.id,
+              title: campaign.title,
+              manualStatus: campaign.status,
+              computedCompletion: campaign.computedCompletion,
+            }));
+          const questDiscrepancies = questCompletion
+            .filter((entry) => entry.computedCompletion?.discrepancy)
+            .map((entry) => ({
+              id: entry.id,
+              title: entry.title,
+              manualStatus: entry.manualStatus,
+              discrepancy: entry.computedCompletion?.discrepancy,
+              verdict: entry.computedCompletion?.verdict,
+            }));
+          const campaignDiscrepancies = campaignCompletion
+            .filter((entry) => entry.computedCompletion?.discrepancy)
+            .map((entry) => ({
+              id: entry.id,
+              title: entry.title,
+              manualStatus: entry.manualStatus,
+              discrepancy: entry.computedCompletion?.discrepancy,
+              verdict: entry.computedCompletion?.verdict,
+            }));
 
           if (ctx.json) {
             ctx.jsonOut({
@@ -219,10 +253,20 @@ export function registerDashboardCommands(program: Command, ctx: CliContext): vo
                   linkedOnly: coverage.linkedOnly,
                   unevidenced: coverage.unevidenced,
                   coverageRatio: coverage.ratio,
+                  computedCompleteQuests: questCompletion.filter((entry) => entry.computedCompletion?.complete).length,
+                  computedTrackedQuests: questCompletion.filter((entry) => entry.computedCompletion?.tracked).length,
+                  computedCompleteCampaigns: campaignCompletion.filter((entry) => entry.computedCompletion?.complete).length,
+                  computedTrackedCampaigns: campaignCompletion.filter((entry) => entry.computedCompletion?.tracked).length,
+                  questDiscrepancies: questDiscrepancies.length,
+                  campaignDiscrepancies: campaignDiscrepancies.length,
                 },
                 unmetRequirements: unmetReqs,
                 untestedCriteria,
                 failingCriteria,
+                questCompletion,
+                campaignCompletion,
+                questDiscrepancies,
+                campaignDiscrepancies,
               },
             });
             return;
@@ -239,6 +283,10 @@ export function registerDashboardCommands(program: Command, ctx: CliContext): vo
             untestedCriteria,
             failingCriteria,
             coverage,
+            questCompletion,
+            campaignCompletion,
+            questDiscrepancies,
+            campaignDiscrepancies,
           }, ctx.style));
           break;
         }

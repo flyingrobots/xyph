@@ -27,10 +27,17 @@ export interface ReadinessAssessment {
   unmet: ReadinessCondition[];
 }
 
+export interface ReadinessAssessmentOptions {
+  transition?: boolean;
+}
+
 export class ReadinessService {
   constructor(private readonly roadmap: RoadmapQueryPort) {}
 
-  public async assess(questId: string): Promise<ReadinessAssessment> {
+  public async assess(
+    questId: string,
+    options?: ReadinessAssessmentOptions,
+  ): Promise<ReadinessAssessment> {
     const quest = await this.roadmap.getQuest(questId);
     if (quest === null) {
       return {
@@ -51,11 +58,26 @@ export class ReadinessService {
     ))?.to;
 
     const unmet: ReadinessCondition[] = [];
-    if (quest.status !== 'PLANNED') {
+    const transition = options?.transition ?? true;
+    const statusAllowsContractInspection = (
+      quest.status === 'PLANNED' ||
+      quest.status === 'READY' ||
+      quest.status === 'IN_PROGRESS' ||
+      quest.status === 'BLOCKED' ||
+      quest.status === 'DONE'
+    );
+
+    if (transition && quest.status !== 'PLANNED') {
       unmet.push({
         code: 'invalid-status',
         field: 'status',
         message: `READY requires status PLANNED, quest ${questId} is ${quest.status}`,
+      });
+    } else if (!transition && !statusAllowsContractInspection) {
+      unmet.push({
+        code: 'invalid-status',
+        field: 'status',
+        message: `Readiness contract applies to planned or active work, quest ${questId} is ${quest.status}`,
       });
     }
     if (!intentId) {

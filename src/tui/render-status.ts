@@ -3,6 +3,7 @@ import {
 } from '@flyingrobots/bijou';
 import type {
   CriterionNode,
+  ComputedCompletionSummary,
   EvidenceNode,
   GraphSnapshot,
   PolicyNode,
@@ -22,6 +23,25 @@ function snapshotHeader(style: StylePort, label: string, detail: string, borderT
     detail: style.styled(style.theme.semantic.muted, detail),
     borderToken: style.theme.border[borderToken],
   });
+}
+
+function renderCompletionBadge(summary: ComputedCompletionSummary | undefined): string {
+  if (!summary || !summary.tracked) {
+    return badge('—', { variant: 'muted' });
+  }
+  switch (summary.verdict) {
+    case 'SATISFIED':
+      return badge('SAT', { variant: 'success' });
+    case 'FAILED':
+      return badge('FAIL', { variant: 'error' });
+    case 'LINKED':
+      return badge('LINK', { variant: 'warning' });
+    case 'MISSING':
+      return badge('MISS', { variant: 'warning' });
+    case 'UNTRACKED':
+    default:
+      return badge('—', { variant: 'muted' });
+  }
 }
 
 /**
@@ -49,23 +69,31 @@ export function renderRoadmap(snapshot: GraphSnapshot, style: StylePort): string
   for (const [key, quests] of grouped) {
     const heading = campaignTitle.get(key) ?? key;
     lines.push('');
-    lines.push(style.styled(style.theme.ui.sectionHeader, `  ${heading}`));
+    const campaign = snapshot.campaigns.find((entry) => entry.id === key);
+    const campaignDelta = campaign?.computedCompletion?.discrepancy
+      ? ` ${style.styled(style.theme.semantic.warning, '(!)')}`
+      : '';
+    lines.push(style.styled(style.theme.ui.sectionHeader, `  ${heading}`) + campaignDelta);
 
     const rows = quests.map(q => [
       style.styled(style.theme.semantic.muted, q.id.slice(0, 20)),
-      q.title.slice(0, 42),
+      q.title.slice(0, 34),
       badge(q.status, { variant: statusVariant(q.status) }),
+      renderCompletionBadge(q.computedCompletion),
       String(q.hours),
-      q.assignedTo ?? '—',
+      q.computedCompletion?.discrepancy
+        ? style.styled(style.theme.semantic.warning, '!')
+        : (q.assignedTo ?? '—'),
     ]);
 
     lines.push(table({
       columns: [
         { header: 'Quest', width: 22 },
-        { header: 'Title', width: 44 },
+        { header: 'Title', width: 36 },
         { header: 'Status', width: 13 },
+        { header: 'Trace', width: 8 },
         { header: 'h', width: 5 },
-        { header: 'Assigned', width: 16 },
+        { header: 'Assigned', width: 12 },
       ],
       rows,
       headerToken: style.theme.ui.tableHeader,
@@ -657,6 +685,32 @@ export interface TraceViewData {
   untestedCriteria: string[];
   failingCriteria: string[];
   coverage: CoverageResult;
+  questCompletion: {
+    id: string;
+    title: string;
+    manualStatus: string;
+    computedCompletion?: ComputedCompletionSummary;
+  }[];
+  campaignCompletion: {
+    id: string;
+    title: string;
+    manualStatus: string;
+    computedCompletion?: ComputedCompletionSummary;
+  }[];
+  questDiscrepancies: {
+    id: string;
+    title: string;
+    manualStatus: string;
+    discrepancy?: string;
+    verdict?: string;
+  }[];
+  campaignDiscrepancies: {
+    id: string;
+    title: string;
+    manualStatus: string;
+    discrepancy?: string;
+    verdict?: string;
+  }[];
 }
 
 /**
@@ -797,6 +851,76 @@ export function renderTrace(data: TraceViewData, style: StylePort): string {
     }));
   }
 
+  if (data.questCompletion.length > 0) {
+    lines.push('');
+    lines.push(separator({ label: 'Quest Completion', borderToken: style.theme.border.secondary }));
+    const rows = data.questCompletion.map((entry) => [
+      style.styled(style.theme.semantic.muted, entry.id.slice(0, 20)),
+      entry.title.slice(0, 30),
+      badge(entry.manualStatus, { variant: statusVariant(entry.manualStatus) }),
+      renderCompletionBadge(entry.computedCompletion),
+      entry.computedCompletion?.discrepancy
+        ? style.styled(style.theme.semantic.warning, '!')
+        : style.styled(style.theme.semantic.muted, '—'),
+    ]);
+    lines.push(table({
+      columns: [
+        { header: 'Quest', width: 22 },
+        { header: 'Title', width: 32 },
+        { header: 'Manual', width: 12 },
+        { header: 'Computed', width: 10 },
+        { header: 'Δ', width: 3 },
+      ],
+      rows,
+      headerToken: style.theme.ui.tableHeader,
+      borderToken: style.theme.border.primary,
+    }));
+  }
+
+  if (data.campaignCompletion.length > 0) {
+    lines.push('');
+    lines.push(separator({ label: 'Campaign Completion', borderToken: style.theme.border.secondary }));
+    const rows = data.campaignCompletion.map((entry) => [
+      style.styled(style.theme.semantic.muted, entry.id.slice(0, 20)),
+      entry.title.slice(0, 28),
+      badge(entry.manualStatus, { variant: statusVariant(entry.manualStatus) }),
+      renderCompletionBadge(entry.computedCompletion),
+      entry.computedCompletion?.discrepancy
+        ? style.styled(style.theme.semantic.warning, '!')
+        : style.styled(style.theme.semantic.muted, '—'),
+    ]);
+    lines.push(table({
+      columns: [
+        { header: 'Campaign', width: 22 },
+        { header: 'Title', width: 30 },
+        { header: 'Manual', width: 12 },
+        { header: 'Computed', width: 10 },
+        { header: 'Δ', width: 3 },
+      ],
+      rows,
+      headerToken: style.theme.ui.tableHeader,
+      borderToken: style.theme.border.primary,
+    }));
+  }
+
+  if (data.questDiscrepancies.length > 0) {
+    lines.push('');
+    lines.push(separator({ label: 'Quest Discrepancies', borderToken: style.theme.border.warning }));
+    const items = data.questDiscrepancies.map((entry) => (
+      `${entry.id}  manual=${entry.manualStatus} computed=${entry.verdict ?? '—'}  ${entry.discrepancy ?? ''}`
+    ));
+    lines.push(enumeratedList(items, { style: 'arabic', indent: 4 }));
+  }
+
+  if (data.campaignDiscrepancies.length > 0) {
+    lines.push('');
+    lines.push(separator({ label: 'Campaign Discrepancies', borderToken: style.theme.border.warning }));
+    const items = data.campaignDiscrepancies.map((entry) => (
+      `${entry.id}  manual=${entry.manualStatus} computed=${entry.verdict ?? '—'}  ${entry.discrepancy ?? ''}`
+    ));
+    lines.push(enumeratedList(items, { style: 'arabic', indent: 4 }));
+  }
+
   // --- Summary ---
   lines.push('');
   lines.push(separator({ label: 'Summary', borderToken: style.theme.border.primary }));
@@ -810,6 +934,8 @@ export function renderTrace(data: TraceViewData, style: StylePort): string {
   lines.push(`    ${style.styled(style.theme.semantic.muted, 'Linked Only:')} ${data.coverage.linkedOnly}`);
   lines.push(`    ${style.styled(style.theme.semantic.muted, 'Unevidenced:')} ${data.coverage.unevidenced}`);
   lines.push(`    ${style.styled(style.theme.semantic.muted, 'Coverage:')} ${pct}`);
+  lines.push(`    ${style.styled(style.theme.semantic.muted, 'Quest Discrepancies:')} ${data.questDiscrepancies.length}`);
+  lines.push(`    ${style.styled(style.theme.semantic.muted, 'Campaign Discrepancies:')} ${data.campaignDiscrepancies.length}`);
 
   return lines.join('\n');
 }

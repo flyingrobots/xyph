@@ -63,6 +63,7 @@ import type { RequirementKind, RequirementPriority } from '../domain/entities/Re
 import { VALID_REQUIREMENT_KINDS, VALID_REQUIREMENT_PRIORITIES } from '../domain/entities/Requirement.js';
 import type { EvidenceKind, EvidenceResult } from '../domain/entities/Evidence.js';
 import { VALID_EVIDENCE_KINDS, VALID_EVIDENCE_RESULTS } from '../domain/entities/Evidence.js';
+import { computeCompletionSummary } from '../domain/services/TraceabilityAnalysis.js';
 import {
   DEFAULT_POLICY_ALLOW_MANUAL_SEAL,
   DEFAULT_POLICY_COVERAGE_THRESHOLD,
@@ -384,19 +385,6 @@ class GraphContextImpl implements GraphContext {
       });
     }
 
-    const questsByCampaignId = new Map<string, QuestNode[]>();
-    for (const quest of quests) {
-      if (!quest.campaignId) continue;
-      const members = questsByCampaignId.get(quest.campaignId) ?? [];
-      members.push(quest);
-      questsByCampaignId.set(quest.campaignId, members);
-    }
-    for (const campaign of campaigns) {
-      const memberQuests = questsByCampaignId.get(campaign.id);
-      if (!memberQuests || memberQuests.length === 0) continue;
-      campaign.status = deriveCampaignStatusFromQuests(memberQuests);
-    }
-
     // --- Build intents ---
     const intents: IntentNode[] = [];
     for (const n of intentNodes) {
@@ -694,6 +682,110 @@ class GraphContextImpl implements GraphContext {
           ? allowManualSealRaw
           : DEFAULT_POLICY_ALLOW_MANUAL_SEAL,
       });
+    }
+
+    // --- Compute traceability rollups for quests and campaigns ---
+    const policyByCampaignId = new Map<string, PolicyNode>();
+    for (const policy of policies) {
+      if (!policy.campaignId || policyByCampaignId.has(policy.campaignId)) continue;
+      policyByCampaignId.set(policy.campaignId, policy);
+    }
+
+    const requirementsByQuestId = new Map<string, RequirementNode[]>();
+    for (const requirement of requirements) {
+      for (const taskId of requirement.taskIds) {
+        const linked = requirementsByQuestId.get(taskId) ?? [];
+        linked.push(requirement);
+        requirementsByQuestId.set(taskId, linked);
+      }
+    }
+    const criteriaByRequirementId = new Map<string, CriterionNode[]>();
+    for (const criterion of criteria) {
+      if (!criterion.requirementId) continue;
+      const linked = criteriaByRequirementId.get(criterion.requirementId) ?? [];
+      linked.push(criterion);
+      criteriaByRequirementId.set(criterion.requirementId, linked);
+    }
+
+    for (const quest of quests) {
+      const questRequirements = requirementsByQuestId.get(quest.id) ?? [];
+      const questCriteria = questRequirements.flatMap((requirement) => criteriaByRequirementId.get(requirement.id) ?? []);
+      const appliedPolicy = quest.campaignId ? policyByCampaignId.get(quest.campaignId) : undefined;
+      quest.computedCompletion = computeCompletionSummary(
+        questRequirements.map((requirement) => ({
+          id: requirement.id,
+          criterionIds: requirement.criterionIds,
+        })),
+        questCriteria.map((criterion) => ({
+          id: criterion.id,
+          evidence: criterion.evidenceIds
+            .map((evidenceId) => evidence.find((entry) => entry.id === evidenceId))
+            .filter((entry): entry is EvidenceNode => Boolean(entry))
+            .map((entry) => ({
+              id: entry.id,
+              result: entry.result,
+              producedAt: entry.producedAt,
+            })),
+        })),
+        {
+          policy: appliedPolicy
+            ? {
+                id: appliedPolicy.id,
+                coverageThreshold: appliedPolicy.coverageThreshold,
+                requireAllCriteria: appliedPolicy.requireAllCriteria,
+                requireEvidence: appliedPolicy.requireEvidence,
+              }
+            : undefined,
+          manualComplete: quest.status === 'DONE',
+        },
+      );
+    }
+
+    const questsByCampaignId = new Map<string, QuestNode[]>();
+    for (const quest of quests) {
+      if (!quest.campaignId) continue;
+      const members = questsByCampaignId.get(quest.campaignId) ?? [];
+      members.push(quest);
+      questsByCampaignId.set(quest.campaignId, members);
+    }
+    for (const campaign of campaigns) {
+      const memberQuests = questsByCampaignId.get(campaign.id);
+      if (memberQuests && memberQuests.length > 0) {
+        campaign.status = deriveCampaignStatusFromQuests(memberQuests);
+      }
+
+      const questIds = new Set((memberQuests ?? []).map((quest) => quest.id));
+      const campaignRequirements = requirements.filter((requirement) => requirement.taskIds.some((taskId) => questIds.has(taskId)));
+      const campaignCriteria = campaignRequirements.flatMap((requirement) => criteriaByRequirementId.get(requirement.id) ?? []);
+      const appliedPolicy = policyByCampaignId.get(campaign.id);
+      campaign.computedCompletion = computeCompletionSummary(
+        campaignRequirements.map((requirement) => ({
+          id: requirement.id,
+          criterionIds: requirement.criterionIds,
+        })),
+        campaignCriteria.map((criterion) => ({
+          id: criterion.id,
+          evidence: criterion.evidenceIds
+            .map((evidenceId) => evidence.find((entry) => entry.id === evidenceId))
+            .filter((entry): entry is EvidenceNode => Boolean(entry))
+            .map((entry) => ({
+              id: entry.id,
+              result: entry.result,
+              producedAt: entry.producedAt,
+            })),
+        })),
+        {
+          policy: appliedPolicy
+            ? {
+                id: appliedPolicy.id,
+                coverageThreshold: appliedPolicy.coverageThreshold,
+                requireAllCriteria: appliedPolicy.requireAllCriteria,
+                requireEvidence: appliedPolicy.requireEvidence,
+              }
+            : undefined,
+          manualComplete: campaign.status === 'DONE',
+        },
+      );
     }
 
     // --- Build suggestions (M11 Phase 4) ---

@@ -253,6 +253,10 @@ export function roadmapView(model: DashboardModel, style: StylePort, width?: num
     lines.push(` ${q.title.slice(0, pw - 2)}`);
     lines.push('');
     lines.push(` Status: ${style.styledStatus(q.status)}`);
+    if (q.computedCompletion) {
+      lines.push(` Trace:  ${q.computedCompletion.verdict}${q.computedCompletion.discrepancy ? '  (!) mismatch' : ''}`);
+      lines.push(` Done?:  ${q.computedCompletion.complete ? 'yes' : 'no'}  coverage=${Math.round(q.computedCompletion.coverageRatio * 100)}%`);
+    }
     if (q.hours !== undefined) lines.push(` Hours:  ${q.hours}`);
     if (q.assignedTo) lines.push(` Owner:  ${q.assignedTo}`);
 

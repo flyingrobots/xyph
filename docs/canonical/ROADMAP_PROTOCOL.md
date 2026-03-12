@@ -6,7 +6,7 @@
 - **READY**: Passed readiness validation and entered the executable work DAG.
 - **IN_PROGRESS**: Claimed by a worker from `READY`.
 - **BLOCKED**: Executable work blocked by an incomplete dependency.
-- **DONE**: Acceptance criteria met, evidence attached.
+- **DONE**: Acceptance criteria met, evidence attached. For governed traced work this is computed from criteria and evidence; legacy untracked work continues to honor manual status until it gains a traceability packet.
 - **GRAVEYARD**: Rejected or abandoned.
 
 > **Note:** `normalizeQuestStatus()` in `Quest.ts` remaps legacy graph values on read: `INBOX` → `BACKLOG`. New code writes canonical status values directly.
@@ -20,6 +20,7 @@
 - `spike` quests additionally require at least one linked `note:*`, `spec:*`, or `adr:*` node documenting investigative framing.
 - `claim` is valid only from `READY`.
 - `PLANNED` quests may carry draft dependencies, estimates, and traceability links, but they are excluded from executable frontier / critical-path analysis.
+- `show` / `context` inspect the readiness contract for `PLANNED` and already-active quests; the `ready` transition itself still requires `PLANNED`.
 
 ## Authoring Workflow
 - Use `xyph shape <task>` while a quest is `BACKLOG` or `PLANNED` to enrich durable metadata such as `description` and `task_kind`.

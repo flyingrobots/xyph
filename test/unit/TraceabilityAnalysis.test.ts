@@ -4,6 +4,7 @@ import {
   computeFailingCriteria,
   computeUntestedCriteria,
   computeCoverageRatio,
+  computeCompletionSummary,
   computeCriterionVerdicts,
   type RequirementSummary,
   type CriterionSummary,
@@ -217,6 +218,93 @@ describe('computeCoverageRatio', () => {
     expect(result.evidenced).toBe(0);
     expect(result.total).toBe(0);
     expect(result.ratio).toBe(1);
+  });
+});
+
+describe('computeCompletionSummary', () => {
+  it('marks tracked work complete only when all criteria are satisfied by default', () => {
+    const reqs: RequirementSummary[] = [{ id: 'req:A', criterionIds: ['criterion:A'] }];
+    const criteria: CriterionSummary[] = [
+      {
+        id: 'criterion:A',
+        evidence: [{ id: 'evidence:A', result: 'pass', producedAt: 100 }],
+      },
+    ];
+
+    expect(computeCompletionSummary(reqs, criteria, { manualComplete: true })).toEqual({
+      tracked: true,
+      complete: true,
+      verdict: 'SATISFIED',
+      requirementCount: 1,
+      criterionCount: 1,
+      coverageRatio: 1,
+      satisfiedCount: 1,
+      failingCriterionIds: [],
+      linkedOnlyCriterionIds: [],
+      missingCriterionIds: [],
+      policyId: undefined,
+      discrepancy: undefined,
+    });
+  });
+
+  it('flags manual DONE as discrepant when criteria are only linked', () => {
+    const reqs: RequirementSummary[] = [{ id: 'req:A', criterionIds: ['criterion:A'] }];
+    const criteria: CriterionSummary[] = [
+      {
+        id: 'criterion:A',
+        evidence: [{ id: 'evidence:A', result: 'linked', producedAt: 100 }],
+      },
+    ];
+
+    const result = computeCompletionSummary(reqs, criteria, { manualComplete: true });
+    expect(result.complete).toBe(false);
+    expect(result.verdict).toBe('LINKED');
+    expect(result.discrepancy).toBe('MANUAL_DONE_BUT_COMPUTED_INCOMPLETE');
+    expect(result.linkedOnlyCriterionIds).toEqual(['criterion:A']);
+  });
+
+  it('marks governed work complete when policy threshold is met without requiring all criteria', () => {
+    const reqs: RequirementSummary[] = [{ id: 'req:A', criterionIds: ['criterion:A', 'criterion:B'] }];
+    const criteria: CriterionSummary[] = [
+      {
+        id: 'criterion:A',
+        evidence: [{ id: 'evidence:A', result: 'pass', producedAt: 100 }],
+      },
+      {
+        id: 'criterion:B',
+        evidence: [{ id: 'evidence:B', result: 'linked', producedAt: 200 }],
+      },
+    ];
+
+    const result = computeCompletionSummary(reqs, criteria, {
+      manualComplete: false,
+      policy: {
+        id: 'policy:TRACE',
+        coverageThreshold: 0.5,
+        requireAllCriteria: false,
+        requireEvidence: false,
+      },
+    });
+    expect(result.complete).toBe(true);
+    expect(result.verdict).toBe('SATISFIED');
+    expect(result.discrepancy).toBe('MANUAL_NOT_DONE_BUT_COMPUTED_COMPLETE');
+    expect(result.policyId).toBe('policy:TRACE');
+  });
+
+  it('treats untracked work as incomplete without a discrepancy when not manually done', () => {
+    const result = computeCompletionSummary([], [], { manualComplete: false });
+    expect(result.complete).toBe(false);
+    expect(result.tracked).toBe(false);
+    expect(result.verdict).toBe('UNTRACKED');
+    expect(result.discrepancy).toBeUndefined();
+  });
+
+  it('honors manual completion for untracked work without surfacing a discrepancy', () => {
+    const result = computeCompletionSummary([], [], { manualComplete: true });
+    expect(result.complete).toBe(true);
+    expect(result.tracked).toBe(false);
+    expect(result.verdict).toBe('UNTRACKED');
+    expect(result.discrepancy).toBeUndefined();
   });
 });
 

@@ -14,6 +14,25 @@ import type { LayerScore } from '../services/analysis/types.js';
 export type { ApprovalGateStatus };
 
 export type CampaignStatus = 'BACKLOG' | 'IN_PROGRESS' | 'DONE' | 'UNKNOWN';
+export type ComputedCompletionVerdict = 'UNTRACKED' | 'SATISFIED' | 'FAILED' | 'LINKED' | 'MISSING';
+export type CompletionDiscrepancyCode =
+  | 'MANUAL_DONE_BUT_COMPUTED_INCOMPLETE'
+  | 'MANUAL_NOT_DONE_BUT_COMPUTED_COMPLETE';
+
+export interface ComputedCompletionSummary {
+  tracked: boolean;
+  complete: boolean;
+  verdict: ComputedCompletionVerdict;
+  requirementCount: number;
+  criterionCount: number;
+  coverageRatio: number;
+  satisfiedCount: number;
+  failingCriterionIds: string[];
+  linkedOnlyCriterionIds: string[];
+  missingCriterionIds: string[];
+  policyId?: string;
+  discrepancy?: CompletionDiscrepancyCode;
+}
 
 export interface CampaignNode {
   id: string;
@@ -21,6 +40,7 @@ export interface CampaignNode {
   status: CampaignStatus;
   description?: string;
   dependsOn?: string[];
+  computedCompletion?: ComputedCompletionSummary;
 }
 
 export interface QuestNode {
@@ -50,6 +70,7 @@ export interface QuestNode {
   reopenedAt?: number;
   // Task dependencies (Weaver)
   dependsOn?: string[];
+  computedCompletion?: ComputedCompletionSummary;
 }
 
 export interface IntentNode {

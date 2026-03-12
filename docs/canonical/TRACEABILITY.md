@@ -30,6 +30,9 @@ A task is DONE when:
 2. The governing Policy's conditions are satisfied (campaign-level gates)
 
 `status: DONE` becomes a **computed property**, not a manually-set flag.
+For backward compatibility, legacy work with no traceability packet remains
+`UNTRACKED` and continues to honor its manual status until requirements and
+criteria are modeled.
 
 ## 3. New Node Types
 

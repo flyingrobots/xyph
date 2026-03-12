@@ -124,7 +124,10 @@ function renderQuestDetail(detail: QuestDetail, readiness?: ReadinessAssessment)
     lines.push(`  dependsOn: ${quest.dependsOn?.join(', ')}`);
   }
   if (readiness) {
-    lines.push(`  readiness: ${readiness.valid ? 'READYABLE' : 'NOT READY'}`);
+    const readinessLabel = readiness.valid
+      ? (quest.status === 'PLANNED' ? 'READYABLE' : 'CONTRACT SATISFIED')
+      : 'NOT READY';
+    lines.push(`  readiness: ${readinessLabel}`);
     if (!readiness.valid && readiness.unmet.length > 0) {
       for (const unmet of readiness.unmet) {
         lines.push(`    - ${unmet.message}`);
@@ -139,6 +142,20 @@ function renderQuestDetail(detail: QuestDetail, readiness?: ReadinessAssessment)
   lines.push(`  criteria: ${detail.criteria.length}`);
   lines.push(`  evidence: ${detail.evidence.length}`);
   lines.push(`  policies: ${detail.policies.length}`);
+  if (quest.computedCompletion) {
+    lines.push('');
+    lines.push('Computed Completion');
+    lines.push(`  verdict: ${quest.computedCompletion.verdict}`);
+    lines.push(`  complete: ${quest.computedCompletion.complete ? 'yes' : 'no'}`);
+    lines.push(`  tracked: ${quest.computedCompletion.tracked ? 'yes' : 'no'}`);
+    lines.push(`  coverage: ${Math.round(quest.computedCompletion.coverageRatio * 100)}%`);
+    if (quest.computedCompletion.policyId) {
+      lines.push(`  policy: ${quest.computedCompletion.policyId}`);
+    }
+    if (quest.computedCompletion.discrepancy) {
+      lines.push(`  discrepancy: ${quest.computedCompletion.discrepancy}`);
+    }
+  }
 
   if (detail.submission) {
     lines.push('');
@@ -214,7 +231,7 @@ export function registerShowCommands(program: Command, ctx: CliContext): void {
       if (detail.questDetail) {
         const { WarpRoadmapAdapter } = await import('../../infrastructure/adapters/WarpRoadmapAdapter.js');
         const { ReadinessService } = await import('../../domain/services/ReadinessService.js');
-        readiness = await new ReadinessService(new WarpRoadmapAdapter(ctx.graphPort)).assess(id);
+        readiness = await new ReadinessService(new WarpRoadmapAdapter(ctx.graphPort)).assess(id, { transition: false });
       }
 
       if (ctx.json) {

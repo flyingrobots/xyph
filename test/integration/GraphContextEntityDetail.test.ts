@@ -159,6 +159,14 @@ describe('GraphContext entity detail integration', () => {
     }
     expect(questDetail.quest.status).toBe('READY');
     expect(questDetail.quest.taskKind).toBe('delivery');
+    expect(questDetail.quest.computedCompletion).toMatchObject({
+      tracked: true,
+      complete: false,
+      verdict: 'LINKED',
+      discrepancy: undefined,
+      requirementCount: 1,
+      criterionCount: 1,
+    });
     expect(questDetail.requirements.map((entry) => entry.id)).toEqual(['req:SHOW']);
     expect(questDetail.criteria.map((entry) => entry.id)).toEqual(['criterion:SHOW']);
     expect(questDetail.evidence.map((entry) => entry.id)).toEqual(['evidence:SHOW']);

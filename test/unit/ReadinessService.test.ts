@@ -128,6 +128,34 @@ describe('ReadinessService', () => {
     expect(assessment.valid).toBe(true);
   });
 
+  it('treats READY quests as satisfying the readiness contract when inspected outside the transition command', async () => {
+    const svc = new ReadinessService(makePort(
+      makeQuest({
+        status: 'READY',
+      }),
+      {
+        'task:READY-001': [
+          { type: 'authorized-by', to: 'intent:READY' },
+          { type: 'belongs-to', to: 'campaign:READY' },
+          { type: 'implements', to: 'req:READY-001' },
+        ],
+        'req:READY-001': [
+          { type: 'has-criterion', to: 'criterion:READY-001' },
+        ],
+      },
+      {
+        'req:READY-001': [
+          { type: 'decomposes-to', from: 'story:READY-001' },
+        ],
+      },
+    ));
+
+    const assessment = await svc.assess('task:READY-001', { transition: false });
+
+    expect(assessment.valid).toBe(true);
+    expect(assessment.unmet).toEqual([]);
+  });
+
   it('reports missing quests without throwing', async () => {
     const svc = new ReadinessService(makePort(null));
 

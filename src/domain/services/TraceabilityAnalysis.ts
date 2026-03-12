@@ -8,6 +8,10 @@
  */
 
 import type { EvidenceResult } from '../entities/Evidence.js';
+import type {
+  CompletionDiscrepancyCode,
+  ComputedCompletionSummary,
+} from '../models/dashboard.js';
 
 // ---------------------------------------------------------------------------
 // Input types (match dashboard model shapes)
@@ -34,6 +38,13 @@ export type CriterionVerdict = 'SATISFIED' | 'FAILED' | 'LINKED' | 'MISSING';
 export interface CriterionVerdictSummary {
   id: string;
   verdict: CriterionVerdict;
+}
+
+export interface PolicySummary {
+  id: string;
+  coverageThreshold: number;
+  requireAllCriteria: boolean;
+  requireEvidence: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -212,5 +223,96 @@ export function computeCoverageRatio(
     unevidenced,
     total: criteria.length,
     ratio: satisfied / criteria.length,
+  };
+}
+
+function computeDiscrepancy(
+  manualComplete: boolean,
+  computedComplete: boolean,
+): CompletionDiscrepancyCode | undefined {
+  if (manualComplete && !computedComplete) {
+    return 'MANUAL_DONE_BUT_COMPUTED_INCOMPLETE';
+  }
+  if (!manualComplete && computedComplete) {
+    return 'MANUAL_NOT_DONE_BUT_COMPUTED_COMPLETE';
+  }
+  return undefined;
+}
+
+export function computeCompletionSummary(
+  requirements: RequirementSummary[],
+  criteria: CriterionSummary[],
+  options?: {
+    policy?: PolicySummary;
+    manualComplete?: boolean;
+  },
+): ComputedCompletionSummary {
+  const coverage = computeCoverageRatio(criteria);
+  const verdicts = computeCriterionVerdicts(criteria);
+  const failingCriterionIds = verdicts
+    .filter((entry) => entry.verdict === 'FAILED')
+    .map((entry) => entry.id);
+  const linkedOnlyCriterionIds = verdicts
+    .filter((entry) => entry.verdict === 'LINKED')
+    .map((entry) => entry.id);
+  const missingCriterionIds = verdicts
+    .filter((entry) => entry.verdict === 'MISSING')
+    .map((entry) => entry.id);
+
+  const tracked = requirements.length > 0 || criteria.length > 0;
+  const policy = options?.policy;
+  const manualComplete = options?.manualComplete ?? false;
+  const criterionCount = criteria.length;
+  const requirementCount = requirements.length;
+
+  let complete = false;
+  let verdict: ComputedCompletionSummary['verdict'] = 'UNTRACKED';
+
+  if (!tracked) {
+    verdict = 'UNTRACKED';
+    complete = manualComplete;
+  } else if (criterionCount === 0) {
+    verdict = 'MISSING';
+  } else if (failingCriterionIds.length > 0) {
+    verdict = 'FAILED';
+  } else if (policy) {
+    const meetsCoverage = coverage.ratio >= policy.coverageThreshold;
+    const blocksForLinked = policy.requireAllCriteria && linkedOnlyCriterionIds.length > 0;
+    const blocksForMissing = (policy.requireAllCriteria || policy.requireEvidence) && missingCriterionIds.length > 0;
+
+    if (blocksForLinked) {
+      verdict = 'LINKED';
+    } else if (blocksForMissing) {
+      verdict = 'MISSING';
+    } else if (meetsCoverage) {
+      verdict = 'SATISFIED';
+      complete = true;
+    } else if (linkedOnlyCriterionIds.length > 0) {
+      verdict = 'LINKED';
+    } else {
+      verdict = 'MISSING';
+    }
+  } else if (linkedOnlyCriterionIds.length > 0) {
+    verdict = 'LINKED';
+  } else if (missingCriterionIds.length > 0) {
+    verdict = 'MISSING';
+  } else {
+    verdict = 'SATISFIED';
+    complete = true;
+  }
+
+  return {
+    tracked,
+    complete,
+    verdict,
+    requirementCount,
+    criterionCount,
+    coverageRatio: coverage.ratio,
+    satisfiedCount: coverage.satisfied,
+    failingCriterionIds,
+    linkedOnlyCriterionIds,
+    missingCriterionIds,
+    policyId: policy?.id,
+    discrepancy: tracked ? computeDiscrepancy(manualComplete, complete) : undefined,
   };
 }
