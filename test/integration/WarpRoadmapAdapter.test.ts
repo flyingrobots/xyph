@@ -10,6 +10,7 @@ import fs from 'node:fs';
 describe('WarpRoadmapAdapter Integration', () => {
   let repoPath: string;
   let graphPort: WarpGraphAdapter;
+  let readerGraphPort: WarpGraphAdapter;
 
   beforeAll(() => {
     repoPath = path.join(os.tmpdir(), `xyph-test-${Date.now()}`);
@@ -18,6 +19,7 @@ describe('WarpRoadmapAdapter Integration', () => {
     execSync('git config user.email "test@xyph.dev"', { cwd: repoPath });
     execSync('git config user.name "Test Runner"', { cwd: repoPath });
     graphPort = new WarpGraphAdapter(repoPath, 'test-graph', 'test-writer');
+    readerGraphPort = new WarpGraphAdapter(repoPath, 'test-graph', 'test-reader');
   });
 
   afterAll(() => {
@@ -76,5 +78,26 @@ describe('WarpRoadmapAdapter Integration', () => {
     expect(tasks.length).toBeGreaterThanOrEqual(2);
     expect(tasks.some(t => t.id === 'task:INT-002')).toBe(true);
     expect(tasks.some(t => t.id === 'task:INT-003')).toBe(true);
+  });
+
+  it('should see fresh writes from a separate graph instance after sync', async () => {
+    const writer = new WarpRoadmapAdapter(graphPort);
+    const reader = new WarpRoadmapAdapter(readerGraphPort);
+
+    await writer.upsertQuest(new Quest({
+      id: 'task:INT-004',
+      title: 'Cross-process read visibility',
+      status: 'PLANNED',
+      hours: 1,
+      description: 'Fresh write should be visible to a separate reader graph instance.',
+      taskKind: 'maintenance',
+      type: 'task',
+    }));
+
+    const retrieved = await reader.getQuest('task:INT-004');
+    expect(retrieved).not.toBeNull();
+    expect(retrieved?.description).toBe('Fresh write should be visible to a separate reader graph instance.');
+    expect(retrieved?.taskKind).toBe('maintenance');
+    expect(retrieved?.status).toBe('PLANNED');
   });
 });

@@ -37,6 +37,7 @@ export const TRANSITION_TABLE: readonly TransitionRule[] = [
  * This separation keeps domain logic free of infrastructure concerns.
  */
 export class IntakeService {
+  private static readonly SHAPABLE: ReadonlySet<QuestStatus> = new Set(['BACKLOG', 'PLANNED']);
   private readonly readiness: ReadinessService;
 
   constructor(private readonly roadmap: RoadmapQueryPort) {
@@ -91,6 +92,15 @@ export class IntakeService {
     if (!assessment.valid) {
       const reason = assessment.unmet[0]?.message ?? `Quest ${questId} is not READY`;
       throw new Error(`[NOT_READY] ${reason}`);
+    }
+  }
+
+  async validateShape(questId: string): Promise<void> {
+    const quest = await this.getQuestOrThrow(questId);
+    if (!IntakeService.SHAPABLE.has(quest.status)) {
+      throw new Error(
+        `[INVALID_FROM] shape requires status BACKLOG or PLANNED, quest ${questId} is ${quest.status}`
+      );
     }
   }
 

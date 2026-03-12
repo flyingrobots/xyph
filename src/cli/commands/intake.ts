@@ -163,6 +163,53 @@ export function registerIntakeCommands(program: Command, ctx: CliContext): void 
     }));
 
   program
+    .command('shape <id>')
+    .description('Enrich a BACKLOG or PLANNED task with durable metadata before READY')
+    .option('--description <text>', 'Durable quest description/body preview')
+    .option('--kind <kind>', `Quest kind (${[...VALID_TASK_KINDS].join(' | ')})`)
+    .action(withErrorHandler(async (id: string, opts: { description?: string; kind?: string }) => {
+      const { WarpIntakeAdapter } = await import('../../infrastructure/adapters/WarpIntakeAdapter.js');
+      const { WarpRoadmapAdapter } = await import('../../infrastructure/adapters/WarpRoadmapAdapter.js');
+
+      if (opts.description === undefined && opts.kind === undefined) {
+        throw new Error('[MISSING_ARG] shape requires --description and/or --kind');
+      }
+      if (opts.description !== undefined) {
+        assertMinLength(opts.description.trim(), 5, '--description');
+      }
+      const taskKind = opts.kind !== undefined ? resolveTaskKind(opts.kind) : undefined;
+
+      const intake = new WarpIntakeAdapter(ctx.graphPort, ctx.agentId);
+      const sha = await intake.shape(id, {
+        description: opts.description?.trim(),
+        taskKind,
+      });
+
+      const roadmap = new WarpRoadmapAdapter(ctx.graphPort);
+      const quest = await roadmap.getQuest(id);
+
+      if (ctx.json) {
+        ctx.jsonOut({
+          success: true,
+          command: 'shape',
+          data: {
+            id,
+            status: quest?.status ?? null,
+            description: quest?.description ?? null,
+            taskKind: quest?.taskKind ?? null,
+            patch: sha,
+          },
+        });
+        return;
+      }
+
+      ctx.ok(`[OK] Task ${id} shaped for planning.`);
+      if (quest?.description) ctx.muted(`  Description: ${quest.description}`);
+      if (quest?.taskKind) ctx.muted(`  Kind:        ${quest.taskKind}`);
+      ctx.muted(`  Patch:       ${sha}`);
+    }));
+
+  program
     .command('reject <id>')
     .description('Reject a BACKLOG or PLANNED task to GRAVEYARD — rationale required')
     .requiredOption('--rationale <text>', 'Reason for rejection (non-empty)')

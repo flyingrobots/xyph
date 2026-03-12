@@ -28,6 +28,7 @@ export function mockGraphContext(snapshotOverrides?: Partial<GraphSnapshot>): Gr
 export function mockIntakePort(): IntakePort {
   return {
     promote: vi.fn().mockResolvedValue('sha-1') as IntakePort['promote'],
+    shape: vi.fn().mockResolvedValue('sha-shape') as IntakePort['shape'],
     ready: vi.fn().mockResolvedValue('sha-ready') as IntakePort['ready'],
     reject: vi.fn().mockResolvedValue('sha-2') as IntakePort['reject'],
     reopen: vi.fn().mockResolvedValue('sha-3') as IntakePort['reopen'],

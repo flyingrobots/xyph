@@ -1,4 +1,5 @@
 import type { RoadmapPort } from '../../ports/RoadmapPort.js';
+import type WarpGraph from '@git-stunts/git-warp';
 import {
   Quest,
   QuestType,
@@ -16,6 +17,14 @@ export class WarpRoadmapAdapter implements RoadmapPort {
   constructor(
     private readonly graphPort: GraphPort,
   ) {}
+
+  private async getSyncedGraph(): Promise<WarpGraph> {
+    const graph = await this.graphPort.getGraph();
+    if (typeof graph.syncCoverage === 'function') {
+      await graph.syncCoverage();
+    }
+    return graph;
+  }
 
   private buildQuestFromProps(id: string, props: Record<string, unknown>): Quest | null {
     const title = props['title'];
@@ -58,7 +67,7 @@ export class WarpRoadmapAdapter implements RoadmapPort {
   }
 
   public async getQuests(): Promise<Quest[]> {
-    const graph = await this.graphPort.getGraph();
+    const graph = await this.getSyncedGraph();
     const result = await graph.query().match('task:*').select(['id', 'props']).run();
     if (!('nodes' in result)) return [];
 
@@ -72,7 +81,7 @@ export class WarpRoadmapAdapter implements RoadmapPort {
   }
 
   public async getQuest(id: string): Promise<Quest | null> {
-    const graph = await this.graphPort.getGraph();
+    const graph = await this.getSyncedGraph();
     if (!await graph.hasNode(id)) return null;
 
     const props = await graph.getNodeProps(id);
@@ -117,13 +126,13 @@ export class WarpRoadmapAdapter implements RoadmapPort {
   }
 
   public async getOutgoingEdges(nodeId: string): Promise<{ to: string; type: string }[]> {
-    const graph = await this.graphPort.getGraph();
+    const graph = await this.getSyncedGraph();
     const neighbors = toNeighborEntries(await graph.neighbors(nodeId, 'outgoing'));
     return neighbors.map(n => ({ to: n.nodeId, type: n.label }));
   }
 
   public async getIncomingEdges(nodeId: string): Promise<{ from: string; type: string }[]> {
-    const graph = await this.graphPort.getGraph();
+    const graph = await this.getSyncedGraph();
     const neighbors = toNeighborEntries(await graph.neighbors(nodeId, 'incoming'));
     return neighbors.map(n => ({ from: n.nodeId, type: n.label }));
   }

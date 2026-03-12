@@ -1,12 +1,16 @@
-import type { IntakePort, PromoteOptions } from '../../ports/IntakePort.js';
+import type { IntakePort, PromoteOptions, ShapeOptions } from '../../ports/IntakePort.js';
 import type { GraphPort } from '../../ports/GraphPort.js';
 import { VALID_TASK_KINDS } from '../../domain/entities/Quest.js';
+import { IntakeService } from '../../domain/services/IntakeService.js';
 import { ReadinessService } from '../../domain/services/ReadinessService.js';
 import { WarpRoadmapAdapter } from './WarpRoadmapAdapter.js';
 
 export class WarpIntakeAdapter implements IntakePort {
   /** Raw statuses from which promote is allowed (includes legacy INBOX for unmigrated graphs). */
   private static readonly PROMOTABLE: ReadonlySet<string> = new Set(['BACKLOG', 'INBOX']);
+
+  /** Raw statuses from which shape is allowed (includes legacy INBOX for unmigrated graphs). */
+  private static readonly SHAPABLE: ReadonlySet<string> = new Set(['BACKLOG', 'PLANNED', 'INBOX']);
 
   /** Raw statuses from which reject is allowed (includes legacy INBOX for unmigrated graphs). */
   private static readonly REJECTABLE: ReadonlySet<string> = new Set(['BACKLOG', 'PLANNED', 'INBOX']);
@@ -79,6 +83,47 @@ export class WarpIntakeAdapter implements IntakePort {
       }
       if (campaignId !== undefined) {
         p.addEdge(questId, campaignId, 'belongs-to');
+      }
+    });
+  }
+
+  public async shape(questId: string, opts: ShapeOptions): Promise<string> {
+    this.validateQuestId(questId);
+
+    const description = opts.description?.trim();
+    if (description !== undefined && description.length < 5) {
+      throw new Error('[MISSING_ARG] --description must be at least 5 characters');
+    }
+    const taskKind = opts.taskKind;
+    if (taskKind !== undefined && !VALID_TASK_KINDS.has(taskKind)) {
+      throw new Error(`[MISSING_ARG] --kind must be one of ${[...VALID_TASK_KINDS].join(', ')}`);
+    }
+    if (description === undefined && taskKind === undefined) {
+      throw new Error('[MISSING_ARG] shape requires --description and/or --kind');
+    }
+
+    const roadmap = new WarpRoadmapAdapter(this.graphPort);
+    const intake = new IntakeService(roadmap);
+    await intake.validateShape(questId);
+
+    const graph = await this.graphPort.getGraph();
+    const props = await graph.getNodeProps(questId);
+    if (props === null) {
+      throw new Error(`[NOT_FOUND] Quest ${questId} not found in the graph`);
+    }
+    const status = props['status'] as string | undefined;
+    if (status === undefined || !WarpIntakeAdapter.SHAPABLE.has(status)) {
+      throw new Error(
+        `[INVALID_FROM] shape requires status BACKLOG or PLANNED, quest ${questId} is ${String(status)}`
+      );
+    }
+
+    return graph.patch((p) => {
+      if (description !== undefined) {
+        p.setProperty(questId, 'description', description);
+      }
+      if (taskKind !== undefined) {
+        p.setProperty(questId, 'task_kind', taskKind);
       }
     });
   }

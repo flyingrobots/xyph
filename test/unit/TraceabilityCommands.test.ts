@@ -22,7 +22,12 @@ function createPatchBuilder() {
   };
 }
 
-function makeCtx(graph: { hasNode: (id: string) => Promise<boolean>; patch: (fn: (builder: ReturnType<typeof createPatchBuilder>) => void) => Promise<string> }): CliContext {
+function makeCtx(graph: {
+  hasNode: (id: string) => Promise<boolean>;
+  patch: (fn: (builder: ReturnType<typeof createPatchBuilder>) => void) => Promise<string>;
+  getNodeProps?: (id: string) => Promise<Record<string, unknown> | null>;
+  neighbors?: (id: string, dir: 'outgoing' | 'incoming') => Promise<{ nodeId: string; label: string }[]>;
+}): CliContext {
   return {
     agentId: 'human.trace',
     identity: { agentId: 'human.trace', source: 'default', origin: null },
@@ -186,6 +191,76 @@ describe('traceability policy commands', () => {
         quest: 'task:TRC-010',
         requirement: 'req:TRC-010',
         patch: 'patch:implement',
+      },
+    });
+  });
+
+  it('packet creates a minimal story→req→criterion chain for a quest', async () => {
+    const patchBuilder = createPatchBuilder();
+    const graph = {
+      hasNode: vi.fn(async (id: string) => id === 'task:PKT-001' || id === 'intent:TRACE'),
+      getNodeProps: vi.fn(async (id: string) => {
+        if (id === 'task:PKT-001') {
+          return {
+            title: 'Packet authoring quest',
+            status: 'PLANNED',
+            hours: 2,
+            description: 'Quest description for packet authoring.',
+            type: 'task',
+          };
+        }
+        return null;
+      }),
+      neighbors: vi.fn(async (id: string, dir: 'outgoing' | 'incoming') => {
+        if (id === 'task:PKT-001' && dir === 'outgoing') {
+          return [{ nodeId: 'intent:TRACE', label: 'authorized-by' }];
+        }
+        return [];
+      }),
+      patch: vi.fn(async (fn: (builder: typeof patchBuilder) => void) => {
+        fn(patchBuilder);
+        return 'patch:packet';
+      }),
+    };
+    const ctx = makeCtx(graph);
+    const program = new Command();
+    registerTraceabilityCommands(program, ctx);
+
+    await program.parseAsync(
+      [
+        'packet',
+        'task:PKT-001',
+        '--persona',
+        'Maintainer',
+        '--goal',
+        'shape work through XYPH before execution',
+        '--benefit',
+        'READY becomes a truthful ceremony',
+        '--requirement-description',
+        'A quest can be packetized without a five-command manual dance.',
+        '--criterion-description',
+        'The quest ends up linked to at least one criterion before READY.',
+      ],
+      { from: 'user' },
+    );
+
+    expect(patchBuilder.addNode).toHaveBeenCalledWith('story:PKT-001');
+    expect(patchBuilder.addNode).toHaveBeenCalledWith('req:PKT-001');
+    expect(patchBuilder.addNode).toHaveBeenCalledWith('criterion:PKT-001');
+    expect(patchBuilder.addEdge).toHaveBeenCalledWith('intent:TRACE', 'story:PKT-001', 'decomposes-to');
+    expect(patchBuilder.addEdge).toHaveBeenCalledWith('story:PKT-001', 'req:PKT-001', 'decomposes-to');
+    expect(patchBuilder.addEdge).toHaveBeenCalledWith('task:PKT-001', 'req:PKT-001', 'implements');
+    expect(patchBuilder.addEdge).toHaveBeenCalledWith('req:PKT-001', 'criterion:PKT-001', 'has-criterion');
+    expect(ctx.jsonOut).toHaveBeenCalledWith({
+      success: true,
+      command: 'packet',
+      data: {
+        quest: 'task:PKT-001',
+        intent: 'intent:TRACE',
+        story: { id: 'story:PKT-001', created: true },
+        requirement: { id: 'req:PKT-001', created: true },
+        criterion: { id: 'criterion:PKT-001', created: true },
+        patch: 'patch:packet',
       },
     });
   });

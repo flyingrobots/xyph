@@ -94,6 +94,22 @@ A `xyph scan` command walks test files, extracts annotations, and writes
 capture that a test is associated with a criterion without claiming the test
 has passed. Execution results add later `pass` / `fail` evidence over time.
 
+## 6.5 Authoring Workflow
+
+For planning ergonomics, XYPH provides a packet-authoring command:
+
+```bash
+xyph packet task:TRC-010 \
+  --persona "Maintainer" \
+  --goal "see computed completion from current evidence" \
+  --benefit "manual DONE stops lying" \
+  --requirement-description "Quest completion is derived from current criterion verdicts." \
+  --criterion-description "A governed quest is incomplete when required criteria are missing, linked-only, or failing."
+```
+
+`xyph packet` creates or links the minimal story → requirement → criterion chain for
+a quest and reuses the quest's existing `authorized-by` intent edge when present.
+
 ## 7. Auto-ID Convention
 
 All node IDs are auto-generated using the `prefix:` + sortable timestamp + random suffix

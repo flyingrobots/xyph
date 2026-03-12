@@ -39,6 +39,10 @@ function parseCoverageThreshold(value: string): number {
   return parsed;
 }
 
+function derivePacketId(prefix: 'story:' | 'req:' | 'criterion:', questId: string): string {
+  return `${prefix}${questId.slice('task:'.length)}`;
+}
+
 export function registerTraceabilityCommands(program: Command, ctx: CliContext): void {
   const withErrorHandler = createErrorHandler(ctx);
 
@@ -431,6 +435,167 @@ export function registerTraceabilityCommands(program: Command, ctx: CliContext):
       }
 
       ctx.ok(`[OK] ${quest} now implements ${requirement} (patch: ${sha.slice(0, 7)})`);
+    }));
+
+  // --- packet: create or link a minimal story→req→criterion chain for a quest ---
+  program
+    .command('packet <quest>')
+    .description('Create or link a minimal traceability packet for a quest')
+    .option('--story <id>', 'Story node ID (defaults to story:<quest-suffix>)')
+    .option('--story-title <text>', 'Story title when creating a new story node')
+    .option('--persona <text>', 'Story persona when creating a new story node')
+    .option('--goal <text>', 'Story goal when creating a new story node')
+    .option('--benefit <text>', 'Story benefit when creating a new story node')
+    .option('--requirement <id>', 'Requirement node ID (defaults to req:<quest-suffix>)')
+    .option('--requirement-description <text>', 'Requirement description when creating a new requirement node')
+    .option('--requirement-kind <type>', `functional | non-functional`, 'functional')
+    .option('--priority <level>', `must | should | could | wont`, 'must')
+    .option('--criterion <id>', 'Criterion node ID (defaults to criterion:<quest-suffix>)')
+    .option('--criterion-description <text>', 'Criterion description when creating a new criterion node')
+    .option('--no-verifiable', 'Mark a newly created criterion as not independently verifiable')
+    .action(withErrorHandler(async (questId: string, opts: {
+      story?: string;
+      storyTitle?: string;
+      persona?: string;
+      goal?: string;
+      benefit?: string;
+      requirement?: string;
+      requirementDescription?: string;
+      requirementKind: string;
+      priority: string;
+      criterion?: string;
+      criterionDescription?: string;
+      verifiable: boolean;
+    }) => {
+      assertPrefix(questId, 'task:', '<quest>');
+      const storyId = opts.story ?? derivePacketId('story:', questId);
+      const requirementId = opts.requirement ?? derivePacketId('req:', questId);
+      const criterionId = opts.criterion ?? derivePacketId('criterion:', questId);
+
+      assertPrefix(storyId, 'story:', '--story');
+      assertPrefix(requirementId, 'req:', '--requirement');
+      assertPrefix(criterionId, 'criterion:', '--criterion');
+
+      if (!VALID_REQUIREMENT_KINDS.has(opts.requirementKind)) {
+        throw new Error(`--requirement-kind must be one of: ${[...VALID_REQUIREMENT_KINDS].join(', ')}. Got: '${opts.requirementKind}'`);
+      }
+      if (!VALID_REQUIREMENT_PRIORITIES.has(opts.priority)) {
+        throw new Error(`--priority must be one of: ${[...VALID_REQUIREMENT_PRIORITIES].join(', ')}. Got: '${opts.priority}'`);
+      }
+
+      const graph = await ctx.graphPort.getGraph();
+      await assertNodeExists(graph, questId, 'Quest');
+
+      const { WarpRoadmapAdapter } = await import('../../infrastructure/adapters/WarpRoadmapAdapter.js');
+      const roadmap = new WarpRoadmapAdapter(ctx.graphPort);
+      const quest = await roadmap.getQuest(questId);
+      if (quest === null) {
+        throw new Error(`[NOT_FOUND] Quest ${questId} not found in the graph`);
+      }
+
+      const [storyExists, requirementExists, criterionExists] = await Promise.all([
+        graph.hasNode(storyId),
+        graph.hasNode(requirementId),
+        graph.hasNode(criterionId),
+      ]);
+
+      const storyTitle = opts.storyTitle?.trim() || quest.title;
+      if (!storyExists) {
+        assertMinLength(storyTitle, 5, '--story-title');
+        assertMinLength(opts.persona ?? '', 2, '--persona');
+        assertMinLength(opts.goal ?? '', 5, '--goal');
+        assertMinLength(opts.benefit ?? '', 5, '--benefit');
+      }
+      if (!requirementExists) {
+        assertMinLength(opts.requirementDescription ?? '', 5, '--requirement-description');
+      }
+      if (!criterionExists) {
+        assertMinLength(opts.criterionDescription ?? '', 5, '--criterion-description');
+      }
+
+      const persona = opts.persona?.trim();
+      const goal = opts.goal?.trim();
+      const benefit = opts.benefit?.trim();
+      const requirementDescription = opts.requirementDescription?.trim();
+      const criterionDescription = opts.criterionDescription?.trim();
+
+      const [questOutgoing, storyOutgoing, storyIncoming, requirementOutgoing] = await Promise.all([
+        roadmap.getOutgoingEdges(questId),
+        storyExists ? roadmap.getOutgoingEdges(storyId) : Promise.resolve([]),
+        storyExists ? roadmap.getIncomingEdges(storyId) : Promise.resolve([]),
+        requirementExists ? roadmap.getOutgoingEdges(requirementId) : Promise.resolve([]),
+      ]);
+
+      const intentId = questOutgoing.find((edge) => edge.type === 'authorized-by' && edge.to.startsWith('intent:'))?.to ?? null;
+      const hasIntentToStory = intentId === null
+        ? false
+        : storyIncoming.some((edge) => edge.type === 'decomposes-to' && edge.from === intentId);
+      const hasStoryToRequirement = storyOutgoing.some((edge) => edge.type === 'decomposes-to' && edge.to === requirementId);
+      const hasQuestToRequirement = questOutgoing.some((edge) => edge.type === 'implements' && edge.to === requirementId);
+      const hasRequirementToCriterion = requirementOutgoing.some((edge) => edge.type === 'has-criterion' && edge.to === criterionId);
+      const now = Date.now();
+
+      const sha = await graph.patch((p) => {
+        if (!storyExists) {
+          p.addNode(storyId)
+            .setProperty(storyId, 'title', storyTitle)
+            .setProperty(storyId, 'persona', persona as string)
+            .setProperty(storyId, 'goal', goal as string)
+            .setProperty(storyId, 'benefit', benefit as string)
+            .setProperty(storyId, 'created_by', ctx.agentId)
+            .setProperty(storyId, 'created_at', now)
+            .setProperty(storyId, 'type', 'story');
+        }
+
+        if (!requirementExists) {
+          p.addNode(requirementId)
+            .setProperty(requirementId, 'description', requirementDescription as string)
+            .setProperty(requirementId, 'kind', opts.requirementKind)
+            .setProperty(requirementId, 'priority', opts.priority)
+            .setProperty(requirementId, 'type', 'requirement');
+        }
+
+        if (!criterionExists) {
+          p.addNode(criterionId)
+            .setProperty(criterionId, 'description', criterionDescription as string)
+            .setProperty(criterionId, 'verifiable', opts.verifiable)
+            .setProperty(criterionId, 'type', 'criterion');
+        }
+
+        if (intentId !== null && (!storyExists || !hasIntentToStory)) {
+          p.addEdge(intentId, storyId, 'decomposes-to');
+        }
+        if (!hasStoryToRequirement) {
+          p.addEdge(storyId, requirementId, 'decomposes-to');
+        }
+        if (!hasQuestToRequirement) {
+          p.addEdge(questId, requirementId, 'implements');
+        }
+        if (!hasRequirementToCriterion) {
+          p.addEdge(requirementId, criterionId, 'has-criterion');
+        }
+      });
+
+      if (ctx.json) {
+        ctx.jsonOut({
+          success: true,
+          command: 'packet',
+          data: {
+            quest: questId,
+            intent: intentId,
+            story: { id: storyId, created: !storyExists },
+            requirement: { id: requirementId, created: !requirementExists },
+            criterion: { id: criterionId, created: !criterionExists },
+            patch: sha,
+          },
+        });
+        return;
+      }
+
+      ctx.ok(`[OK] Traceability packet aligned for ${questId}. Patch: ${sha}`);
+      ctx.muted(`  Story:       ${storyId}${storyExists ? ' (linked)' : ' (created)'}`);
+      ctx.muted(`  Requirement: ${requirementId}${requirementExists ? ' (linked)' : ' (created)'}`);
+      ctx.muted(`  Criterion:   ${criterionId}${criterionExists ? ' (linked)' : ' (created)'}`);
     }));
 
   // --- scan: parse test annotations and write evidence ---

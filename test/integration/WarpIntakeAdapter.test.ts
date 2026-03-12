@@ -70,7 +70,24 @@ describe('WarpIntakeAdapter Integration', () => {
         .setProperty('task:INTAKE-REJECT-PLANNED', 'title', 'PLANNED task for reject test')
         .setProperty('task:INTAKE-REJECT-PLANNED', 'status', 'PLANNED')
         .setProperty('task:INTAKE-REJECT-PLANNED', 'hours', 1)
-        .setProperty('task:INTAKE-REJECT-PLANNED', 'type', 'task');
+        .setProperty('task:INTAKE-REJECT-PLANNED', 'type', 'task')
+        .addNode('task:INTAKE-SHAPE-BACKLOG')
+        .setProperty('task:INTAKE-SHAPE-BACKLOG', 'title', 'BACKLOG task for shape test')
+        .setProperty('task:INTAKE-SHAPE-BACKLOG', 'status', 'BACKLOG')
+        .setProperty('task:INTAKE-SHAPE-BACKLOG', 'hours', 1)
+        .setProperty('task:INTAKE-SHAPE-BACKLOG', 'type', 'task')
+        .addNode('task:INTAKE-SHAPE-PLANNED')
+        .setProperty('task:INTAKE-SHAPE-PLANNED', 'title', 'PLANNED task for shape test')
+        .setProperty('task:INTAKE-SHAPE-PLANNED', 'status', 'PLANNED')
+        .setProperty('task:INTAKE-SHAPE-PLANNED', 'hours', 2)
+        .setProperty('task:INTAKE-SHAPE-PLANNED', 'description', 'Existing planning description for shape test.')
+        .setProperty('task:INTAKE-SHAPE-PLANNED', 'type', 'task')
+        .addNode('task:INTAKE-SHAPE-READY')
+        .setProperty('task:INTAKE-SHAPE-READY', 'title', 'READY task for shape test')
+        .setProperty('task:INTAKE-SHAPE-READY', 'status', 'READY')
+        .setProperty('task:INTAKE-SHAPE-READY', 'hours', 2)
+        .setProperty('task:INTAKE-SHAPE-READY', 'description', 'Already executable task.')
+        .setProperty('task:INTAKE-SHAPE-READY', 'type', 'task');
     });
   });
 
@@ -176,6 +193,42 @@ describe('WarpIntakeAdapter Integration', () => {
   it('ready fails with [NOT_READY] when requirements are unmet', async () => {
     const adapter = new WarpIntakeAdapter(graphPort, humanAgentId);
     await expect(adapter.ready('task:INTAKE-FORBIDDEN')).rejects.toThrow('[NOT_READY]');
+  });
+
+  it('shape succeeds on BACKLOG and persists new description and task kind', async () => {
+    const adapter = new WarpIntakeAdapter(graphPort, humanAgentId);
+    await adapter.shape('task:INTAKE-SHAPE-BACKLOG', {
+      description: 'Shaped after triage so planning can proceed cleanly.',
+      taskKind: 'ops',
+    });
+
+    const reader = createGraphContext(graphPort);
+    const snapshot = await reader.fetchSnapshot();
+    const q = snapshot.quests.find((quest) => quest.id === 'task:INTAKE-SHAPE-BACKLOG');
+    expect(q?.status).toBe('BACKLOG');
+    expect(q?.description).toBe('Shaped after triage so planning can proceed cleanly.');
+    expect(q?.taskKind).toBe('ops');
+  });
+
+  it('shape succeeds on PLANNED and can update only the task kind', async () => {
+    const adapter = new WarpIntakeAdapter(graphPort, humanAgentId);
+    await adapter.shape('task:INTAKE-SHAPE-PLANNED', {
+      taskKind: 'maintenance',
+    });
+
+    const reader = createGraphContext(graphPort);
+    const snapshot = await reader.fetchSnapshot();
+    const q = snapshot.quests.find((quest) => quest.id === 'task:INTAKE-SHAPE-PLANNED');
+    expect(q?.status).toBe('PLANNED');
+    expect(q?.description).toBe('Existing planning description for shape test.');
+    expect(q?.taskKind).toBe('maintenance');
+  });
+
+  it('shape fails with [INVALID_FROM] once work is already READY', async () => {
+    const adapter = new WarpIntakeAdapter(graphPort, humanAgentId);
+    await expect(adapter.shape('task:INTAKE-SHAPE-READY', {
+      description: 'Too late to reshape this quest.',
+    })).rejects.toThrow('[INVALID_FROM]');
   });
 
   it('reject succeeds: status → GRAVEYARD with metadata properties', async () => {

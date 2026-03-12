@@ -253,6 +253,23 @@ describe('IntakeService', () => {
     });
   });
 
+  describe('validateShape', () => {
+    it('resolves for BACKLOG quests', async () => {
+      const svc = new IntakeService(makePort(makeQuest('BACKLOG')));
+      await expect(svc.validateShape('task:TST-001')).resolves.toBeUndefined();
+    });
+
+    it('resolves for PLANNED quests', async () => {
+      const svc = new IntakeService(makePort(makeQuest('PLANNED')));
+      await expect(svc.validateShape('task:TST-001')).resolves.toBeUndefined();
+    });
+
+    it('throws [INVALID_FROM] when a quest is already READY', async () => {
+      const svc = new IntakeService(makePort(makeQuest('READY')));
+      await expect(svc.validateShape('task:TST-001')).rejects.toThrow('[INVALID_FROM]');
+    });
+  });
+
   describe('port interactions', () => {
     beforeEach(() => {
       vi.clearAllMocks();
