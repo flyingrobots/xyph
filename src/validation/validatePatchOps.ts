@@ -21,6 +21,7 @@ import {
 } from "./crypto.js";
 import { InvariantCode } from "./InvariantCode.js";
 import type { InvariantError } from "./InvariantError.js";
+import { resolveKeyringPath } from "../shared/trustPaths.js";
 
 /**
  * ============================================================
@@ -353,7 +354,7 @@ async function validateInvariants(patch: PatchOps, keyringPath: string): Promise
 export async function validatePatchOpsDocument(
   doc: unknown,
   schemaPath = path.resolve(process.cwd(), "schemas/PATCH_OPS_SCHEMA.v1.json"),
-  keyringPath = path.resolve(process.cwd(), "trust/keyring.json")
+  keyringPath = resolveKeyringPath()
 ): Promise<ValidateResult> {
   const validate = getCompiledValidator(schemaPath);
 

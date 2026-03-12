@@ -3,7 +3,8 @@ node_modules/
 *.log
 dist/
 test/private.key
-trust/*.sk
+/trust/
+/.xyph/
 .obsidian/
 .env
 coverage/

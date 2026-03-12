@@ -1,6 +1,6 @@
 {
   "name": "xyph",
-  "version": "1.0.0-alpha.13",
+  "version": "1.0.0-alpha.14",
   "description": "Agent Planning and Orchestration framework powered by Causal Agents and WARP graphs.",
   "type": "module",
   "bin": {

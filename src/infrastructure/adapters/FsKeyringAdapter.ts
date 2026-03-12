@@ -1,9 +1,10 @@
 /**
  * FsKeyringAdapter — Filesystem-backed keyring and private-key storage.
  *
- * Implements KeyringStoragePort using the local trust/ directory:
- *   - Keyring: trust/keyring.json
- *   - Private keys: trust/<agentId>.sk
+ * Implements KeyringStoragePort using a user-scoped trust directory:
+ *   - Default keyring: ~/.xyph/trust/keyring.json
+ *   - Default private keys: ~/.xyph/trust/<agentId>.sk
+ *   - Override: XYPH_TRUST_DIR=/custom/path
  *
  * Part of Hexagonal Architecture Audit — H1 fix.
  */
@@ -16,6 +17,7 @@ import {
   loadKeyring as loadKeyringFromFile,
   CURRENT_KEYRING_VERSION,
 } from '../../validation/crypto.js';
+import { resolveTrustDir } from '../../shared/trustPaths.js';
 
 /** Shape written to keyring.json — mirrors KeyringEntry but in JSON form. */
 interface KeyringEntryJson {
@@ -31,17 +33,22 @@ const AGENT_ID_PATTERN = /^[a-zA-Z0-9._-]+$/;
 
 export class FsKeyringAdapter implements KeyringStoragePort {
   private readonly keyringPath: string;
-  private readonly trustDir: string;
+  public readonly trustDir: string;
 
   /**
-   * @param trustDir Absolute path to the trust directory. Defaults to `<cwd>/trust`.
+   * @param trustDir Absolute path to the trust directory. Defaults to `~/.xyph/trust`
+   * or `XYPH_TRUST_DIR` when set.
    */
   constructor(trustDir?: string) {
-    this.trustDir = trustDir ?? path.resolve(process.cwd(), 'trust');
+    this.trustDir = trustDir ?? resolveTrustDir();
     this.keyringPath = path.join(this.trustDir, 'keyring.json');
   }
 
-  private skPath(agentId: string): string {
+  private ensureTrustDir(): void {
+    fs.mkdirSync(this.trustDir, { recursive: true });
+  }
+
+  public privateKeyPath(agentId: string): string {
     if (!AGENT_ID_PATTERN.test(agentId)) {
       throw new Error(`Invalid agentId: must match /^[a-zA-Z0-9._-]+$/, got: '${agentId}'`);
     }
@@ -53,6 +60,7 @@ export class FsKeyringAdapter implements KeyringStoragePort {
   }
 
   saveKeyring(keyring: Keyring): void {
+    this.ensureTrustDir();
     const keys: KeyringEntryJson[] = [];
     const seen = new Set<string>();
     for (const entry of keyring.entries.values()) {
@@ -74,17 +82,18 @@ export class FsKeyringAdapter implements KeyringStoragePort {
   }
 
   hasPrivateKey(agentId: string): boolean {
-    return fs.existsSync(this.skPath(agentId));
+    return fs.existsSync(this.privateKeyPath(agentId));
   }
 
   readPrivateKey(agentId: string): string | null {
-    const skFile = this.skPath(agentId);
+    const skFile = this.privateKeyPath(agentId);
     if (!fs.existsSync(skFile)) return null;
     return fs.readFileSync(skFile, 'utf8').trim();
   }
 
   writePrivateKey(agentId: string, privateKeyHex: string): void {
-    const skFile = this.skPath(agentId);
+    this.ensureTrustDir();
+    const skFile = this.privateKeyPath(agentId);
     try {
       fs.writeFileSync(skFile, privateKeyHex, { mode: 0o600, flag: 'wx' });
     } catch (err: unknown) {
@@ -97,21 +106,21 @@ export class FsKeyringAdapter implements KeyringStoragePort {
 
   removePrivateKey(agentId: string): void {
     try {
-      fs.unlinkSync(this.skPath(agentId));
+      fs.unlinkSync(this.privateKeyPath(agentId));
     } catch {
       // best-effort cleanup
     }
   }
 
   retirePrivateKey(agentId: string, suffix: string): boolean {
-    const skFile = this.skPath(agentId);
+    const skFile = this.privateKeyPath(agentId);
     if (!fs.existsSync(skFile)) return false;
     fs.renameSync(skFile, `${skFile}.retired.${suffix}`);
     return true;
   }
 
   restoreRetiredPrivateKey(agentId: string, suffix: string): void {
-    const skFile = this.skPath(agentId);
+    const skFile = this.privateKeyPath(agentId);
     const retiredPath = `${skFile}.retired.${suffix}`;
     try {
       fs.renameSync(retiredPath, skFile);
@@ -121,7 +130,8 @@ export class FsKeyringAdapter implements KeyringStoragePort {
   }
 
   writePrivateKeyOverwrite(agentId: string, privateKeyHex: string): void {
-    fs.writeFileSync(this.skPath(agentId), privateKeyHex, { mode: 0o600 });
+    this.ensureTrustDir();
+    fs.writeFileSync(this.privateKeyPath(agentId), privateKeyHex, { mode: 0o600 });
   }
 
   updateKeyring(mutator: KeyringMutator): void {

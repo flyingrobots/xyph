@@ -25,8 +25,10 @@ Generate an Ed25519 keypair so your completed work carries a cryptographic signa
 npx tsx xyph-actuator.ts generate-key
 ```
 
-- Private key → `trust/<agentId>.sk` (gitignored, 0o600 permissions)
-- Public key → `trust/keyring.json` (committed, shared with team)
+- Default trust dir → `~/.xyph/trust`
+- Override path → `XYPH_TRUST_DIR=/custom/path` (for example a local vault checkout)
+- Private key → `~/.xyph/trust/<agentId>.sk` (outside the repo, 0o600 permissions)
+- Public key registry → `~/.xyph/trust/keyring.json` (outside the repo)
 
 Without a key, sealing still works — scrolls are just unsigned.
 

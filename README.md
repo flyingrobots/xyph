@@ -142,7 +142,7 @@ export XYPH_AGENT_ID=agent.hal
 npx tsx xyph-actuator.ts generate-key
 ```
 
-This creates an Ed25519 private key in `trust/agent.hal.sk` (gitignored) and registers the public key in `trust/keyring.json`. Hal's agent identity remains `agent.hal` (`XYPH_AGENT_ID`), but his Guild Seal signing `keyId` is a spec-compliant `did:key:z6Mk...` derived from his public key. His completed work will carry a verifiable **Guild Seal** — a cryptographic signature proving who did the work.
+This creates an Ed25519 private key in `~/.xyph/trust/agent.hal.sk` by default and registers the public key in `~/.xyph/trust/keyring.json`. Set `XYPH_TRUST_DIR` if you want those files in a different machine-local location, such as a vault checkout. Hal's agent identity remains `agent.hal` (`XYPH_AGENT_ID`), but his Guild Seal signing `keyId` is a spec-compliant `did:key:z6Mk...` derived from his public key. His completed work will carry a verifiable **Guild Seal** — a cryptographic signature proving who did the work.
 
 See [Guild Seals: Cryptographic Identity and Signing](docs/GUILD_SEALS.md) for the full deep-dive on key generation, DID encoding, signing, verification, and keyring migration.
 

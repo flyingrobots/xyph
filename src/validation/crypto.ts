@@ -1,9 +1,9 @@
 import fs from "node:fs";
-import path from "node:path";
 import { createHash } from "node:crypto";
 import { blake3 } from "@noble/hashes/blake3.js";
 import * as ed from "@noble/ed25519";
 import { bytesToHex } from "@noble/hashes/utils.js";
+import { resolveKeyringPath } from "../shared/trustPaths.js";
 
 export const sha512 = (msg: Uint8Array): Uint8Array => new Uint8Array(createHash("sha512").update(msg).digest());
 
@@ -236,7 +236,7 @@ export function hexToBytes(hex: string): Uint8Array {
   return out;
 }
 
-export function loadKeyring(keyringPath = path.resolve(process.cwd(), "trust/keyring.json")): Map<string, KeyringEntry> {
+export function loadKeyring(keyringPath = resolveKeyringPath()): Map<string, KeyringEntry> {
   if (!fs.existsSync(keyringPath)) {
     return new Map();
   }

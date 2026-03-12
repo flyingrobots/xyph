@@ -49,7 +49,8 @@ export function registerArtifactCommands(program: Command, ctx: CliContext): voi
     .action(withErrorHandler(async (id: string, opts: { artifact: string; rationale: string }) => {
       const { GuildSealService } = await import('../../domain/services/GuildSealService.js');
       const { FsKeyringAdapter } = await import('../../infrastructure/adapters/FsKeyringAdapter.js');
-      const sealService = new GuildSealService(new FsKeyringAdapter());
+      const keyring = new FsKeyringAdapter();
+      const sealService = new GuildSealService(keyring);
       const allowUnsignedScrolls = allowUnsignedScrollsForSettlement();
 
       // Guard: warn if a non-terminal submission exists for this quest
@@ -141,7 +142,8 @@ export function registerArtifactCommands(program: Command, ctx: CliContext): voi
     .action(withErrorHandler(async () => {
       const { GuildSealService } = await import('../../domain/services/GuildSealService.js');
       const { FsKeyringAdapter } = await import('../../infrastructure/adapters/FsKeyringAdapter.js');
-      const sealService = new GuildSealService(new FsKeyringAdapter());
+      const keyring = new FsKeyringAdapter();
+      const sealService = new GuildSealService(keyring);
 
       const { keyId, publicKeyHex } = await sealService.generateKeypair(ctx.agentId);
 
@@ -156,6 +158,7 @@ export function registerArtifactCommands(program: Command, ctx: CliContext): voi
       ctx.ok(`[OK] Keypair generated for agent ${ctx.agentId}`);
       ctx.muted(`  Key ID:     ${keyId}`);
       ctx.muted(`  Public key: ${publicKeyHex}`);
-      ctx.muted(`  Private key stored in trust/${ctx.agentId}.sk (gitignored)`);
+      ctx.muted(`  Trust dir:  ${keyring.trustDir}`);
+      ctx.muted(`  Private key stored in ${keyring.privateKeyPath(ctx.agentId)}`);
     }));
 }
