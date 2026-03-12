@@ -2,6 +2,42 @@ import type { Command } from 'commander';
 import type { CliContext } from '../context.js';
 import { createErrorHandler } from '../errorHandler.js';
 
+export const UNSIGNED_SCROLLS_OVERRIDE_ENV = 'XYPH_ALLOW_UNSIGNED_SCROLLS';
+
+export function allowUnsignedScrollsForSettlement(
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  const override = env[UNSIGNED_SCROLLS_OVERRIDE_ENV]?.trim().toLowerCase();
+  if (override === '1' || override === 'true') return true;
+  const vitest = env['VITEST']?.trim().toLowerCase();
+  if (vitest && vitest !== '0' && vitest !== 'false') return true;
+  return env['NODE_ENV'] === 'test';
+}
+
+export function formatUnsignedScrollOverrideWarning(agentId: string): string {
+  return `No private key found for ${agentId} — unsigned scroll allowed because ${UNSIGNED_SCROLLS_OVERRIDE_ENV}=1 or test mode is enabled`;
+}
+
+export function formatMissingSettlementKeyMessage(
+  agentId: string,
+  action: 'seal' | 'merge',
+): string {
+  return `Missing private key for ${agentId}. Generate a Guild Seal key before '${action}' or set ${UNSIGNED_SCROLLS_OVERRIDE_ENV}=1 for dev/test only.`;
+}
+
+export function missingSettlementKeyData(
+  agentId: string,
+  action: 'seal' | 'merge',
+): Record<string, unknown> {
+  return {
+    agentId,
+    action,
+    missing: 'guild-seal-private-key',
+    overrideEnvVar: UNSIGNED_SCROLLS_OVERRIDE_ENV,
+    hint: `Run 'xyph-actuator generate-key' before '${action}', or set ${UNSIGNED_SCROLLS_OVERRIDE_ENV}=1 for dev/test only.`,
+  };
+}
+
 export function registerArtifactCommands(program: Command, ctx: CliContext): void {
   const withErrorHandler = createErrorHandler(ctx);
 
@@ -14,6 +50,7 @@ export function registerArtifactCommands(program: Command, ctx: CliContext): voi
       const { GuildSealService } = await import('../../domain/services/GuildSealService.js');
       const { FsKeyringAdapter } = await import('../../infrastructure/adapters/FsKeyringAdapter.js');
       const sealService = new GuildSealService(new FsKeyringAdapter());
+      const allowUnsignedScrolls = allowUnsignedScrollsForSettlement();
 
       // Guard: warn if a non-terminal submission exists for this quest
       let openSubWarning: string | undefined;
@@ -30,6 +67,13 @@ export function registerArtifactCommands(program: Command, ctx: CliContext): voi
         }
       } catch {
         // Non-fatal: if submission lookup fails, seal still proceeds
+      }
+
+      if (!sealService.hasPrivateKey(ctx.agentId) && !allowUnsignedScrolls) {
+        return ctx.failWithData(
+          formatMissingSettlementKeyMessage(ctx.agentId, 'seal'),
+          missingSettlementKeyData(ctx.agentId, 'seal'),
+        );
       }
 
       const now = Date.now();
@@ -69,7 +113,7 @@ export function registerArtifactCommands(program: Command, ctx: CliContext): voi
       if (ctx.json) {
         const warnings: string[] = [];
         if (openSubWarning) warnings.push(openSubWarning);
-        if (!guildSeal) warnings.push(`No private key found for ${ctx.agentId} — scroll is unsigned`);
+        if (!guildSeal) warnings.push(formatUnsignedScrollOverrideWarning(ctx.agentId));
         ctx.jsonOut({
           success: true, command: 'seal',
           data: {
@@ -85,7 +129,7 @@ export function registerArtifactCommands(program: Command, ctx: CliContext): voi
       if (guildSeal) {
         ctx.muted(`  Guild Seal: ${guildSeal.keyId}`);
       } else {
-        ctx.warn(`  [WARN] No private key found for ${ctx.agentId} — scroll is unsigned. Run: xyph-actuator generate-key`);
+        ctx.warn(`  [WARN] ${formatUnsignedScrollOverrideWarning(ctx.agentId)}.`);
       }
 
       ctx.ok(`[OK] Quest ${id} sealed. Scroll: ${scrollId}. Patch: ${sha}`);

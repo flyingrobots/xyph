@@ -36,12 +36,16 @@ import { WarpSubmissionAdapter } from './src/infrastructure/adapters/WarpSubmiss
 import { createDashboardApp } from './src/tui/bijou/DashboardApp.js';
 import { loadRandomLogo, selectLogoSize } from './src/tui/logo-loader.js';
 import { TuiLogger } from './src/tui/TuiLogger.js';
+import { parseAsOverrideFromArgv, resolveIdentity } from './src/cli/identity.js';
 
 // Initialize bijou context with XYPH presets via StylePort.
 const style = createStylePort();
 
-const DEFAULT_AGENT_ID = 'agent.prime';
-const agentId = process.env['XYPH_AGENT_ID'] ?? DEFAULT_AGENT_ID;
+const identity = resolveIdentity({
+  cwd: process.cwd(),
+  cliOverride: parseAsOverrideFromArgv(process.argv),
+});
+const agentId = identity.agentId;
 const cwd = process.cwd();
 
 const currentFilePath = fileURLToPath(import.meta.url);

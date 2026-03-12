@@ -15,6 +15,12 @@ vi.mock('../../src/infrastructure/adapters/BijouStyleAdapter.js', () => ({
   createStylePort: () => createPlainStylePort(),
 }));
 
+const TEST_IDENTITY = {
+  agentId: 'agent.prime',
+  source: 'default' as const,
+  origin: null,
+};
+
 describe('CliContext JSON mode', () => {
   let logSpy: ReturnType<typeof vi.spyOn>;
   let errorSpy: ReturnType<typeof vi.spyOn>;
@@ -33,17 +39,17 @@ describe('CliContext JSON mode', () => {
   });
 
   it('sets json property to true when opts.json is true', () => {
-    const ctx = createCliContext('/tmp', 'test-graph', { json: true });
+    const ctx = createCliContext('/tmp', 'test-graph', { json: true, identity: TEST_IDENTITY });
     expect(ctx.json).toBe(true);
   });
 
   it('sets json property to false by default', () => {
-    const ctx = createCliContext('/tmp', 'test-graph');
+    const ctx = createCliContext('/tmp', 'test-graph', { identity: TEST_IDENTITY });
     expect(ctx.json).toBe(false);
   });
 
   it('suppresses ok/warn/muted/print in json mode', () => {
-    const ctx = createCliContext('/tmp', 'test-graph', { json: true });
+    const ctx = createCliContext('/tmp', 'test-graph', { json: true, identity: TEST_IDENTITY });
 
     ctx.ok('hello');
     ctx.warn('hello');
@@ -54,7 +60,7 @@ describe('CliContext JSON mode', () => {
   });
 
   it('ok/warn/muted/print emit in non-json mode', () => {
-    const ctx = createCliContext('/tmp', 'test-graph', { json: false });
+    const ctx = createCliContext('/tmp', 'test-graph', { json: false, identity: TEST_IDENTITY });
 
     ctx.ok('a');
     ctx.warn('b');
@@ -65,7 +71,7 @@ describe('CliContext JSON mode', () => {
   });
 
   it('jsonOut writes valid compact JSON to stdout', () => {
-    const ctx = createCliContext('/tmp', 'test-graph', { json: true });
+    const ctx = createCliContext('/tmp', 'test-graph', { json: true, identity: TEST_IDENTITY });
     const envelope = { success: true as const, command: 'inbox', data: { id: 'task:X', status: 'BACKLOG' } };
 
     ctx.jsonOut(envelope);
@@ -79,7 +85,7 @@ describe('CliContext JSON mode', () => {
   });
 
   it('fail in json mode writes JSON error envelope to stdout', () => {
-    const ctx = createCliContext('/tmp', 'test-graph', { json: true });
+    const ctx = createCliContext('/tmp', 'test-graph', { json: true, identity: TEST_IDENTITY });
 
     ctx.fail('something went wrong');
 
@@ -92,7 +98,7 @@ describe('CliContext JSON mode', () => {
   });
 
   it('fail in non-json mode writes to stderr', () => {
-    const ctx = createCliContext('/tmp', 'test-graph', { json: false });
+    const ctx = createCliContext('/tmp', 'test-graph', { json: false, identity: TEST_IDENTITY });
 
     ctx.fail('boom');
 
@@ -102,7 +108,7 @@ describe('CliContext JSON mode', () => {
   });
 
   it('failWithData in json mode writes error envelope with data to stdout', () => {
-    const ctx = createCliContext('/tmp', 'test-graph', { json: true });
+    const ctx = createCliContext('/tmp', 'test-graph', { json: true, identity: TEST_IDENTITY });
 
     ctx.failWithData('audit failed', { violations: ['task:A', 'task:B'] });
 
@@ -119,7 +125,7 @@ describe('CliContext JSON mode', () => {
   });
 
   it('failWithData in non-json mode writes to stderr (ignores data)', () => {
-    const ctx = createCliContext('/tmp', 'test-graph', { json: false });
+    const ctx = createCliContext('/tmp', 'test-graph', { json: false, identity: TEST_IDENTITY });
 
     ctx.failWithData('audit failed', { violations: ['task:A'] });
 
@@ -130,7 +136,7 @@ describe('CliContext JSON mode', () => {
   });
 
   it('failWithData error envelope matches JsonErrorEnvelope shape', () => {
-    const ctx = createCliContext('/tmp', 'test-graph', { json: true });
+    const ctx = createCliContext('/tmp', 'test-graph', { json: true, identity: TEST_IDENTITY });
 
     ctx.failWithData('3 quest(s) lack sovereign intent ancestry', {
       violations: [

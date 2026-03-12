@@ -133,6 +133,16 @@ function yieldEventLoop(): Promise<void> {
   return new Promise(resolve => setImmediate(resolve));
 }
 
+function deriveCampaignStatusFromQuests(quests: QuestNode[]): CampaignStatus {
+  const usableQuests = quests.filter((quest) => quest.status !== 'GRAVEYARD');
+  if (usableQuests.length === 0) return 'UNKNOWN';
+  if (usableQuests.every((quest) => quest.status === 'DONE')) return 'DONE';
+  if (usableQuests.every((quest) => quest.status === 'BACKLOG' || quest.status === 'PLANNED')) {
+    return 'BACKLOG';
+  }
+  return 'IN_PROGRESS';
+}
+
 // ---------------------------------------------------------------------------
 // Implementation
 // ---------------------------------------------------------------------------
@@ -184,7 +194,7 @@ class GraphContextImpl implements GraphContext {
   async fetchSnapshot(onProgress?: (msg: string) => void): Promise<GraphSnapshot> {
     const log: (msg: string) => void = onProgress ?? function noop(): void { /* no-op */ };
 
-    // --- Lifecycle: open → sync → materialize → checkpoint ---
+    // --- Lifecycle: open → sync → materialize ---
     log('Opening project graph…');
     const graph = await this.graphPort.getGraph();
     this._graph = graph;
@@ -207,15 +217,6 @@ class GraphContextImpl implements GraphContext {
 
     log('Materializing graph…');
     await graph.materialize();
-    await yieldEventLoop();
-
-    log('Creating checkpoint…');
-    let checkpointSha: string | undefined;
-    try {
-      checkpointSha = await graph.createCheckpoint();
-    } catch (err: unknown) {
-      console.warn(`[WARN] createCheckpoint failed: ${err instanceof Error ? err.message : String(err)}`);
-    }
     await yieldEventLoop();
 
     // --- Query each node type in parallel ---
@@ -346,6 +347,19 @@ class GraphContextImpl implements GraphContext {
         reopenedAt: typeof reopenedAt === 'number' ? reopenedAt : undefined,
         dependsOn: dependsOnIds.length > 0 ? dependsOnIds : undefined,
       });
+    }
+
+    const questsByCampaignId = new Map<string, QuestNode[]>();
+    for (const quest of quests) {
+      if (!quest.campaignId) continue;
+      const members = questsByCampaignId.get(quest.campaignId) ?? [];
+      members.push(quest);
+      questsByCampaignId.set(quest.campaignId, members);
+    }
+    for (const campaign of campaigns) {
+      const memberQuests = questsByCampaignId.get(campaign.id);
+      if (!memberQuests || memberQuests.length === 0) continue;
+      campaign.status = deriveCampaignStatusFromQuests(memberQuests);
     }
 
     // --- Build intents ---
@@ -673,11 +687,14 @@ class GraphContextImpl implements GraphContext {
 
     // --- Build graph meta ---
     log('Reading graph metadata…');
-    const state = await graph.getStateSnapshot();
+    const [state, frontier] = await Promise.all([
+      graph.getStateSnapshot(),
+      graph.getFrontier(),
+    ]);
     const maxTick = state ? Math.max(0, ...state.observedFrontier.values()) : 0;
     const myTick = state ? (state.observedFrontier.get(graph.writerId) ?? 0) : 0;
     const writerCount = state ? state.observedFrontier.size : 0;
-    const tipSha = checkpointSha ? checkpointSha.slice(0, 7) : 'unknown';
+    const tipSha = frontier.get(graph.writerId)?.slice(0, 7) ?? 'unknown';
     const graphMeta: GraphMeta = { maxTick, myTick, writerCount, tipSha };
 
     // --- Topological sort via git-warp traversal engine ---

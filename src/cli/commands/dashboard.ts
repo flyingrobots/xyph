@@ -274,38 +274,47 @@ export function registerDashboardCommands(program: Command, ctx: CliContext): vo
 
   program
     .command('audit-sovereignty')
-    .description('Audit all BACKLOG quests for missing Genealogy of Intent (Constitution Art. IV)')
+    .description('Audit authorized quests (PLANNED, IN_PROGRESS, BLOCKED, DONE) for missing Genealogy of Intent (Constitution Art. IV)')
     .action(withErrorHandler(async () => {
       const { WarpRoadmapAdapter } = await import('../../infrastructure/adapters/WarpRoadmapAdapter.js');
-      const { SovereigntyService } = await import('../../domain/services/SovereigntyService.js');
+      const {
+        SovereigntyService,
+        SOVEREIGNTY_AUDIT_STATUSES,
+      } = await import('../../domain/services/SovereigntyService.js');
 
       const adapter = new WarpRoadmapAdapter(ctx.graphPort);
       const service = new SovereigntyService(adapter);
 
-      const violations = await service.auditBacklog();
+      const violations = await service.auditAuthorizedWork();
+      const auditData = {
+        valid: violations.length === 0,
+        scope: 'authorized-work',
+        auditedStatuses: [...SOVEREIGNTY_AUDIT_STATUSES],
+        violations,
+      };
 
       if (ctx.json) {
         if (violations.length === 0) {
           ctx.jsonOut({
             success: true, command: 'audit-sovereignty',
-            data: { valid: true, violations: [] },
+            data: auditData,
           });
         } else {
           ctx.failWithData(
-            `${violations.length} quest(s) lack sovereign intent ancestry`,
-            { violations },
+            `${violations.length} authorized quest(s) lack sovereign intent ancestry`,
+            auditData,
           );
         }
         return;
       }
 
       if (violations.length === 0) {
-        ctx.ok('[OK] All BACKLOG quests have a valid Genealogy of Intent.');
+        ctx.ok('[OK] All authorized quests have a valid Genealogy of Intent.');
       } else {
         ctx.fail(
-          `\n[VIOLATION] ${violations.length} quest(s) lack sovereign intent ancestry:\n` +
+          `\n[VIOLATION] ${violations.length} authorized quest(s) lack sovereign intent ancestry:\n` +
           violations.map((v) => `  ✗ ${v.questId}\n    ${v.reason}`).join('\n') +
-          `\n\n  Fix: xyph-actuator quest <id> --intent <intent:ID> ...`,
+          `\n\n  Fix: xyph-actuator authorize <quest> --intent <intent:ID>`,
         );
       }
     }));
