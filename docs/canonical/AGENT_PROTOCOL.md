@@ -56,6 +56,11 @@ Existing domain commands such as `submit`, `review`, `seal`, and `merge` remain
 the underlying mutation primitives. `act` wraps them with a common validation
 and response contract.
 
+Current runtime tranche:
+
+- shipped now: `claim`, `shape`, `packet`, `ready`, `comment`
+- planned later in checkpoint 2: `submit`, `review`, `handoff`, `seal`, `merge`
+
 ### 3.1 `show` vs `context`
 
 - `show <id>` remains general entity inspection.
@@ -173,6 +178,14 @@ Checkpoint-2 action kinds are:
 
 These are the only routine agent actions that should be executable through
 `act` in the checkpoint-2 kernel.
+
+The current runtime implementation ships the first tranche only:
+
+- `claim`
+- `shape`
+- `packet`
+- `ready`
+- `comment`
 
 ### 5.1 Human-only actions
 
