@@ -1,33 +1,61 @@
 #!/usr/bin/env node
+import { existsSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
-function stripTuiFlag(argv: readonly string[]): string[] {
-  return argv.filter((arg) => arg !== '--tui');
-}
-
-function countCommandArgs(argv: readonly string[]): number {
-  let count = 0;
-
-  for (let i = 0; i < argv.length; i += 1) {
-    const arg = argv[i];
-    if (arg === '--tui') continue;
-    if (arg === '--as') {
-      i += 1;
-      continue;
-    }
-    if (typeof arg === 'string' && arg.startsWith('--as=')) continue;
-    count += 1;
+function resolveHelperModuleUrl(baseDir: string): string {
+  const builtPath = resolve(baseDir, 'src/cli/runtimeEntry.js');
+  if (existsSync(builtPath)) {
+    return pathToFileURL(builtPath).href;
   }
 
-  return count;
+  const sourcePath = resolve(baseDir, 'src/cli/runtimeEntry.ts');
+  if (existsSync(sourcePath)) {
+    return pathToFileURL(sourcePath).href;
+  }
+
+  throw new Error(`Could not resolve runtimeEntry helper from ${baseDir}`);
 }
 
 const argv = process.argv.slice(2);
+const runtimeDir = dirname(fileURLToPath(import.meta.url));
+const {
+  resolveLocalTsxCliPath,
+  resolveRuntimeLaunchPlan,
+  shouldLaunchTui,
+  stripTuiFlag,
+} = await import(resolveHelperModuleUrl(runtimeDir));
 const forwardedArgs = stripTuiFlag(argv);
-const shouldLaunchTui = argv.includes('--tui') || countCommandArgs(argv) === 0;
 
-if (shouldLaunchTui) {
+const launchTui = shouldLaunchTui(argv);
+const launchPlan = resolveRuntimeLaunchPlan(
+  runtimeDir,
+  launchTui ? 'xyph-dashboard' : 'xyph-actuator',
+);
+
+if (launchPlan.kind === 'tsx') {
+  const tsxCli = resolveLocalTsxCliPath(runtimeDir);
+  const child = spawnSync(
+    process.execPath,
+    [
+      tsxCli,
+      launchPlan.scriptPath,
+      ...(launchTui ? forwardedArgs : argv),
+    ],
+    {
+      stdio: 'inherit',
+    },
+  );
+  if (child.error) {
+    throw child.error;
+  }
+  process.exit(child.status ?? 1);
+}
+
+if (launchTui) {
   process.argv = [process.argv[0] ?? 'node', process.argv[1] ?? 'xyph', ...forwardedArgs];
-  await import('./xyph-dashboard.js');
+  await import(launchPlan.moduleUrl);
 } else {
-  await import('./xyph-actuator.js');
+  await import(launchPlan.moduleUrl);
 }
