@@ -9,6 +9,7 @@ import { AgentActionValidator } from './AgentActionService.js';
 import {
   determineSubmissionNextStep,
   isReviewableByAgent,
+  type AgentSubmissionEntry,
   type AgentSubmissionNextStep,
 } from './AgentSubmissionService.js';
 import {
@@ -83,7 +84,7 @@ export interface AgentBriefing {
 export interface AgentNextCandidate extends AgentActionCandidate {
   questTitle: string;
   questStatus: string;
-  source: 'assignment' | 'frontier' | 'planning';
+  source: 'assignment' | 'frontier' | 'planning' | 'submission';
 }
 
 function determineSource(
@@ -98,14 +99,36 @@ function determineSource(
 
 function kindPriority(kind: string): number {
   switch (kind) {
-    case 'claim':
+    case 'merge':
       return 0;
-    case 'ready':
+    case 'review':
       return 1;
-    case 'packet':
+    case 'claim':
       return 2;
+    case 'ready':
+      return 3;
+    case 'packet':
+      return 4;
+    case 'revise':
+      return 5;
+    case 'inspect':
+      return 6;
     default:
       return 9;
+  }
+}
+
+function sourcePriority(source: AgentNextCandidate['source']): number {
+  switch (source) {
+    case 'assignment':
+      return 0;
+    case 'submission':
+      return 1;
+    case 'frontier':
+      return 2;
+    case 'planning':
+    default:
+      return 3;
   }
 }
 
@@ -182,10 +205,11 @@ export class AgentBriefingService {
       }
     }
 
+    candidates.push(...this.buildSubmissionCandidates(snapshot));
+
     candidates.sort((a, b) =>
+      sourcePriority(a.source) - sourcePriority(b.source) ||
       Number(b.allowed) - Number(a.allowed) ||
-      (a.source === 'assignment' ? 0 : a.source === 'frontier' ? 1 : 2) -
-        (b.source === 'assignment' ? 0 : b.source === 'frontier' ? 1 : 2) ||
       kindPriority(a.kind) - kindPriority(b.kind) ||
       b.confidence - a.confidence ||
       a.targetId.localeCompare(b.targetId)
@@ -240,6 +264,125 @@ export class AgentBriefingService {
 
     queue.sort((a, b) => b.submittedAt - a.submittedAt || a.submissionId.localeCompare(b.submissionId));
     return queue;
+  }
+
+  private buildSubmissionCandidates(snapshot: GraphSnapshot): AgentNextCandidate[] {
+    const questById = new Map(snapshot.quests.map((quest) => [quest.id, quest] as const));
+    const terminalStatuses = new Set(['MERGED', 'CLOSED']);
+
+    const candidates = snapshot.submissions
+      .filter((submission) => !terminalStatuses.has(submission.status))
+      .flatMap((submission) => {
+        const quest = questById.get(submission.questId);
+        const entry: AgentSubmissionEntry = {
+          submissionId: submission.id,
+          questId: submission.questId,
+          questTitle: quest?.title ?? submission.questId,
+          questStatus: quest?.status ?? null,
+          status: submission.status,
+          submittedBy: submission.submittedBy,
+          submittedAt: submission.submittedAt,
+          tipPatchsetId: submission.tipPatchsetId,
+          headsCount: submission.headsCount,
+          approvalCount: submission.approvalCount,
+          reviewCount: 0,
+          latestReviewAt: null,
+          latestReviewVerdict: null,
+          latestDecisionKind: null,
+          stale: false,
+          attentionCodes: [],
+          contextId: submission.questId,
+          nextStep: determineSubmissionNextStep(submission, this.agentId),
+        };
+
+        const candidate = this.toSubmissionCandidate(entry);
+        return candidate ? [candidate] : [];
+      });
+
+    return candidates;
+  }
+
+  private toSubmissionCandidate(entry: AgentSubmissionEntry): AgentNextCandidate | null {
+    const base = {
+      questTitle: entry.questTitle,
+      questStatus: entry.questStatus ?? 'UNKNOWN',
+      source: 'submission' as const,
+      requiresHumanApproval: false,
+    };
+
+    switch (entry.nextStep.kind) {
+      case 'review':
+        return {
+          ...base,
+          kind: 'review',
+          targetId: entry.nextStep.targetId,
+          args: {},
+          reason: entry.nextStep.reason,
+          confidence: 0.96,
+          dryRunSummary: 'Review the current tip patchset after providing a verdict and message.',
+          blockedBy: entry.nextStep.supportedByActionKernel
+            ? ['Provide verdict and message to execute the review.']
+            : ['Review requires a resolved tip patchset before it can run through the action kernel.'],
+          allowed: false,
+          underlyingCommand: `xyph act review ${entry.nextStep.targetId}`,
+          sideEffects: [`create review on ${entry.nextStep.targetId}`],
+          validationCode: entry.nextStep.supportedByActionKernel
+            ? 'requires-additional-input'
+            : 'missing-tip-patchset',
+        };
+      case 'merge':
+        return {
+          ...base,
+          kind: 'merge',
+          targetId: entry.submissionId,
+          args: { intoRef: 'main' },
+          reason: entry.nextStep.reason,
+          confidence: 0.95,
+          dryRunSummary: 'Settle the independently approved submission after providing merge rationale.',
+          blockedBy: ['Provide rationale to execute the merge.'],
+          allowed: false,
+          underlyingCommand: `xyph act merge ${entry.submissionId}`,
+          sideEffects: [
+            `merge submission ${entry.submissionId}`,
+            'record merge decision',
+            'auto-seal quest when eligible',
+          ],
+          validationCode: 'requires-additional-input',
+        };
+      case 'revise':
+        return {
+          ...base,
+          kind: 'revise',
+          targetId: entry.submissionId,
+          args: {},
+          reason: entry.nextStep.reason,
+          confidence: 0.91,
+          dryRunSummary: 'Prepare a new patchset revision after addressing requested changes.',
+          blockedBy: ['Revise is not yet exposed through act; inspect context and use xyph revise with a new description.'],
+          allowed: false,
+          underlyingCommand: `xyph revise ${entry.submissionId}`,
+          sideEffects: [`create new patchset for ${entry.submissionId}`],
+          validationCode: 'unsupported-by-action-kernel',
+        };
+      case 'inspect':
+        return {
+          ...base,
+          kind: 'inspect',
+          targetId: entry.nextStep.targetId,
+          args: {},
+          reason: entry.nextStep.reason,
+          confidence: 0.78,
+          dryRunSummary: 'Inspect quest and submission context before taking a follow-on action.',
+          blockedBy: [],
+          allowed: true,
+          underlyingCommand: `xyph context ${entry.nextStep.targetId}`,
+          sideEffects: [],
+          validationCode: null,
+        };
+      case 'wait':
+      default:
+        return null;
+    }
   }
 
   private buildAlerts(

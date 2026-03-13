@@ -20,8 +20,8 @@ export class GitWorkspaceAdapter implements WorkspacePort {
     return this.git(['rev-parse', '--abbrev-ref', 'HEAD']);
   }
 
-  public async getCommitsSince(base: string): Promise<string[]> {
-    const output = this.git(['log', `${base}..HEAD`, '--format=%H']);
+  public async getCommitsSince(base: string, ref = 'HEAD'): Promise<string[]> {
+    const output = this.git(['log', `${base}..${ref}`, '--format=%H']);
     if (output === '') return [];
     return output.split('\n');
   }

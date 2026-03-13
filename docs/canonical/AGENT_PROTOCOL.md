@@ -126,6 +126,11 @@ Each candidate must include at least:
 The first candidate is the default recommendation. Remaining candidates are
 ordered alternatives.
 
+`next` should combine quest-shaping work with active submission workflow
+candidates such as `review`, `merge`, and `inspect`. When a candidate needs
+additional operator input, it should still be surfaced with machine-readable
+blocking reasons instead of silently disappearing from the queue.
+
 ### 4.3 `submissions --json`
 
 `submissions` is the agent-facing queue view. It should group at least:
@@ -197,9 +202,9 @@ Checkpoint-2 action kinds are:
 These are the routine agent actions that should be executable through `act` in
 the checkpoint-2 kernel.
 
-`seal` is review-gated in the agent kernel. An agent may only seal a quest when
-the latest linked submission is independently approved; `seal` must not bypass
-the submission review loop.
+`seal` is review-gated. A quest may only be sealed when the latest linked
+submission is independently approved; neither `act seal` nor direct `seal`
+may bypass the submission review loop.
 
 The current runtime now ships that routine action set:
 

@@ -319,6 +319,106 @@ describe('AgentBriefingService', () => {
     });
   });
 
+  it('includes review and merge candidates from active submission queues', async () => {
+    const snapshot = makeSnapshot({
+      quests: [
+        quest({
+          id: 'task:AGT-REVIEW',
+          title: 'Quest awaiting review',
+          status: 'IN_PROGRESS',
+          hours: 2,
+          description: 'Quest awaiting review',
+          taskKind: 'delivery',
+          assignedTo: 'agent.other',
+          campaignId: 'campaign:TRACE',
+          intentId: 'intent:TRACE',
+        }),
+        quest({
+          id: 'task:AGT-MERGE',
+          title: 'Quest awaiting merge',
+          status: 'IN_PROGRESS',
+          hours: 1,
+          description: 'Quest awaiting merge',
+          taskKind: 'delivery',
+          assignedTo: 'agent.hal',
+          campaignId: 'campaign:TRACE',
+          intentId: 'intent:TRACE',
+        }),
+      ],
+      campaigns: [campaign({ id: 'campaign:TRACE', title: 'Trace Campaign' })],
+      intents: [intent({ id: 'intent:TRACE', title: 'Trace Intent' })],
+      submissions: [
+        submission({
+          id: 'submission:AGT-REVIEW',
+          questId: 'task:AGT-REVIEW',
+          status: 'OPEN',
+          submittedBy: 'agent.other',
+          submittedAt: 100,
+          tipPatchsetId: 'patchset:AGT-REVIEW',
+        }),
+        submission({
+          id: 'submission:AGT-MERGE',
+          questId: 'task:AGT-MERGE',
+          status: 'APPROVED',
+          submittedBy: 'agent.hal',
+          submittedAt: 200,
+          tipPatchsetId: 'patchset:AGT-MERGE',
+        }),
+      ],
+      sortedTaskIds: ['task:AGT-REVIEW', 'task:AGT-MERGE'],
+    });
+
+    mocks.createGraphContext.mockReturnValue({
+      fetchSnapshot: vi.fn().mockResolvedValue(snapshot),
+      fetchEntityDetail: vi.fn(),
+      filterSnapshot: vi.fn(),
+      invalidateCache: vi.fn(),
+      get graph() {
+        throw new Error('not used in test');
+      },
+    });
+
+    const service = new AgentBriefingService(
+      makeGraphWithHandoffs([]),
+      makeRoadmap([
+        makeQuestEntity({
+          id: 'task:AGT-REVIEW',
+          title: 'Quest awaiting review',
+          status: 'IN_PROGRESS',
+          description: 'Quest awaiting review',
+          assignedTo: 'agent.other',
+        }),
+        makeQuestEntity({
+          id: 'task:AGT-MERGE',
+          title: 'Quest awaiting merge',
+          status: 'IN_PROGRESS',
+          description: 'Quest awaiting merge',
+          assignedTo: 'agent.hal',
+        }),
+      ]),
+      'agent.hal',
+    );
+
+    const candidates = await service.next(5);
+
+    expect(candidates).toHaveLength(2);
+    expect(candidates[0]).toMatchObject({
+      kind: 'merge',
+      targetId: 'submission:AGT-MERGE',
+      source: 'submission',
+      allowed: false,
+      validationCode: 'requires-additional-input',
+      args: { intoRef: 'main' },
+    });
+    expect(candidates[1]).toMatchObject({
+      kind: 'review',
+      targetId: 'patchset:AGT-REVIEW',
+      source: 'submission',
+      allowed: false,
+      validationCode: 'requires-additional-input',
+    });
+  });
+
   it('omits CHANGES_REQUESTED submissions from the briefing review queue', async () => {
     const snapshot = makeSnapshot({
       quests: [

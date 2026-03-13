@@ -753,7 +753,7 @@ export class AgentActionValidator {
     let commitShas: string[] | undefined;
     try {
       headRef = await workspace.getHeadCommit(workspaceRef);
-      commitShas = await workspace.getCommitsSince(baseRef);
+      commitShas = await workspace.getCommitsSince(baseRef, workspaceRef);
     } catch {
       // Non-fatal: submission packets can omit workspace metadata beyond workspaceRef.
     }
@@ -977,42 +977,6 @@ export class AgentActionValidator {
         normalizedArgs: {
           artifactHash,
           rationale,
-        },
-        underlyingCommand: `xyph seal ${request.targetId}`,
-        sideEffects: [
-          `create artifact:${request.targetId}`,
-          'status -> DONE',
-          'completed_at -> now',
-        ],
-      });
-    }
-
-    const submission = detail?.questDetail?.submission;
-    if (!submission) {
-      return failAssessment(request, 'approved-submission-required', [
-        `seal requires an independently approved submission for ${request.targetId}; no submission is linked to this quest.`,
-      ], {
-        normalizedArgs: {
-          artifactHash,
-          rationale,
-        },
-        underlyingCommand: `xyph seal ${request.targetId}`,
-        sideEffects: [
-          `create artifact:${request.targetId}`,
-          'status -> DONE',
-          'completed_at -> now',
-        ],
-      });
-    }
-    if (submission.status !== 'APPROVED') {
-      return failAssessment(request, 'approved-submission-required', [
-        `seal requires an independently approved submission for ${request.targetId}; latest submission ${submission.id} is ${submission.status}.`,
-      ], {
-        normalizedArgs: {
-          artifactHash,
-          rationale,
-          submissionId: submission.id,
-          submissionStatus: submission.status,
         },
         underlyingCommand: `xyph seal ${request.targetId}`,
         sideEffects: [

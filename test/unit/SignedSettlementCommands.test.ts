@@ -14,11 +14,15 @@ const mocks = vi.hoisted(() => ({
   sign: vi.fn(),
   payloadDigest: vi.fn(),
   getOpenSubmissionsForQuest: vi.fn(),
+  validateSubmit: vi.fn(),
   validateMerge: vi.fn(),
+  submit: vi.fn(),
   getPatchsetWorkspaceRef: vi.fn(),
   getSubmissionQuestId: vi.fn(),
   getQuestStatus: vi.fn(),
   decide: vi.fn(),
+  getWorkspaceRef: vi.fn(),
+  getCommitsSince: vi.fn(),
   isMerged: vi.fn(),
   merge: vi.fn(),
   getHeadCommit: vi.fn(),
@@ -53,6 +57,10 @@ vi.mock('../../src/infrastructure/adapters/WarpSubmissionAdapter.js', () => ({
       return mocks.getOpenSubmissionsForQuest(id);
     }
 
+    submit(input: unknown): Promise<{ patchSha: string }> {
+      return mocks.submit(input);
+    }
+
     getPatchsetWorkspaceRef(id: string): Promise<string | undefined> {
       return mocks.getPatchsetWorkspaceRef(id);
     }
@@ -73,6 +81,10 @@ vi.mock('../../src/infrastructure/adapters/WarpSubmissionAdapter.js', () => ({
 
 vi.mock('../../src/domain/services/SubmissionService.js', () => ({
   SubmissionService: class SubmissionService {
+    validateSubmit(questId: string, agentId: string): Promise<void> {
+      return mocks.validateSubmit(questId, agentId);
+    }
+
     validateMerge(submissionId: string, agentId: string, patchset?: string): Promise<{ tipPatchsetId: string }> {
       return mocks.validateMerge(submissionId, agentId, patchset);
     }
@@ -81,6 +93,14 @@ vi.mock('../../src/domain/services/SubmissionService.js', () => ({
 
 vi.mock('../../src/infrastructure/adapters/GitWorkspaceAdapter.js', () => ({
   GitWorkspaceAdapter: class GitWorkspaceAdapter {
+    getWorkspaceRef(): Promise<string> {
+      return mocks.getWorkspaceRef();
+    }
+
+    getCommitsSince(base: string, ref?: string): Promise<string[]> {
+      return mocks.getCommitsSince(base, ref);
+    }
+
     isMerged(ref: string, into: string): Promise<boolean> {
       return mocks.isMerged(ref, into);
     }
@@ -133,6 +153,16 @@ function makeQuestDetail(
           missingCriterionIds: [],
           policyId: 'policy:TRACE',
         },
+      },
+      submission: {
+        id: 'submission:Q1',
+        questId: 'task:Q1',
+        status: 'APPROVED',
+        tipPatchsetId: 'patchset:Q1',
+        headsCount: 1,
+        approvalCount: 1,
+        submittedBy: 'agent.other',
+        submittedAt: Date.UTC(2026, 2, 12, 12, 0, 0),
       },
       reviews: [],
       decisions: [],
@@ -218,7 +248,11 @@ describe('signed settlement enforcement', () => {
     mocks.sign.mockResolvedValue({ keyId: 'did:key:test', alg: 'ed25519' });
     mocks.payloadDigest.mockReturnValue('blake3:test');
     mocks.getOpenSubmissionsForQuest.mockResolvedValue([]);
+    mocks.validateSubmit.mockResolvedValue(undefined);
     mocks.validateMerge.mockResolvedValue({ tipPatchsetId: 'patchset:tip' });
+    mocks.submit.mockResolvedValue({ patchSha: 'patch:submit' });
+    mocks.getWorkspaceRef.mockResolvedValue('feat/current');
+    mocks.getCommitsSince.mockResolvedValue(['abc123def4567890']);
     mocks.getPatchsetWorkspaceRef.mockResolvedValue('feature/quest');
     mocks.getSubmissionQuestId.mockResolvedValue('task:Q1');
     mocks.getQuestStatus.mockResolvedValue('PLANNED');
@@ -370,6 +404,79 @@ describe('signed settlement enforcement', () => {
     });
   });
 
+  it('seal fails when the latest submission is not independently approved', async () => {
+    mocks.fetchEntityDetail.mockResolvedValue(makeQuestDetail({
+      submission: {
+        id: 'submission:Q1',
+        questId: 'task:Q1',
+        status: 'OPEN',
+        tipPatchsetId: 'patchset:Q1',
+        headsCount: 1,
+        approvalCount: 0,
+        submittedBy: 'agent.test',
+        submittedAt: Date.UTC(2026, 2, 12, 12, 0, 0),
+      },
+    }));
+
+    const program = new Command();
+    registerArtifactCommands(program, createJsonCtx());
+
+    await program.parseAsync(
+      ['seal', 'task:Q1', '--artifact', 'artifact-sha', '--rationale', 'attempt unreviewed seal'],
+      { from: 'user' },
+    );
+
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    expect(mocks.sign).not.toHaveBeenCalled();
+
+    const output = JSON.parse(String(logSpy.mock.calls.at(-1)?.[0]));
+    expect(output).toMatchObject({
+      success: false,
+      error: expect.stringContaining('latest submission submission:Q1 is OPEN'),
+      data: {
+        action: 'seal',
+        questId: 'task:Q1',
+        submissionId: 'submission:Q1',
+        submissionStatus: 'OPEN',
+        code: 'approved-submission-required',
+      },
+    });
+  });
+
+  it('submit derives commit metadata from the nominated workspace ref', async () => {
+    mocks.getHeadCommit.mockResolvedValue('feedfacecafebeef');
+
+    const program = new Command();
+    registerSubmissionCommands(program, createJsonCtx());
+
+    await program.parseAsync(
+      [
+        'submit',
+        'task:Q1',
+        '--description',
+        'Submit this quest with the nominated workspace branch.',
+        '--base',
+        'main',
+        '--workspace',
+        'feature/review-me',
+      ],
+      { from: 'user' },
+    );
+
+    expect(mocks.validateSubmit).toHaveBeenCalledWith('task:Q1', 'agent.test');
+    expect(mocks.getHeadCommit).toHaveBeenCalledWith('feature/review-me');
+    expect(mocks.getCommitsSince).toHaveBeenCalledWith('main', 'feature/review-me');
+    expect(mocks.submit).toHaveBeenCalledWith(expect.objectContaining({
+      questId: 'task:Q1',
+      patchset: expect.objectContaining({
+        workspaceRef: 'feature/review-me',
+        baseRef: 'main',
+        headRef: 'feedfacecafebeef',
+        commitShas: ['abc123def4567890'],
+      }),
+    }));
+  });
+
   it('merge fails before git settlement when auto-seal needs a key', async () => {
     mocks.hasPrivateKey.mockReturnValue(false);
 
@@ -439,7 +546,7 @@ describe('signed settlement enforcement', () => {
       success: false,
       error: expect.stringContaining('policy policy:TRACE blocks settlement'),
       data: {
-        submissionId: 'submission:S1',
+        submissionId: 'submission:Q1',
         action: 'merge',
         questId: 'task:Q1',
         governed: true,

@@ -41,7 +41,7 @@ export function registerSubmissionCommands(program: Command, ctx: CliContext): v
       let commitShas: string[] | undefined;
       try {
         headRef = await workspace.getHeadCommit(workspaceRef);
-        commitShas = await workspace.getCommitsSince(opts.base);
+        commitShas = await workspace.getCommitsSince(opts.base, workspaceRef);
       } catch {
         // Non-fatal: workspace info is optional
       }
@@ -108,7 +108,7 @@ export function registerSubmissionCommands(program: Command, ctx: CliContext): v
       let commitShas: string[] | undefined;
       try {
         headRef = await workspace.getHeadCommit(workspaceRef);
-        commitShas = await workspace.getCommitsSince(opts.base);
+        commitShas = await workspace.getCommitsSince(opts.base, workspaceRef);
       } catch {
         // Non-fatal
       }

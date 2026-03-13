@@ -125,8 +125,8 @@ vi.mock('../../src/infrastructure/adapters/GitWorkspaceAdapter.js', () => ({
       return mocks.getHeadCommit(ref);
     }
 
-    getCommitsSince(base: string) {
-      return mocks.getCommitsSince(base);
+    getCommitsSince(base: string, ref?: string) {
+      return mocks.getCommitsSince(base, ref);
     }
 
     isMerged(ref: string, into: string) {
@@ -811,7 +811,7 @@ describe('AgentActionService', () => {
     expect(mocks.validateSubmit).toHaveBeenCalledWith('task:AGT-001', 'agent.hal');
     expect(mocks.getWorkspaceRef).toHaveBeenCalledTimes(1);
     expect(mocks.getHeadCommit).toHaveBeenCalledWith('feat/agent-action-kernel-v1');
-    expect(mocks.getCommitsSince).toHaveBeenCalledWith('main');
+    expect(mocks.getCommitsSince).toHaveBeenCalledWith('main', 'feat/agent-action-kernel-v1');
     expect(outcome).toMatchObject({
       kind: 'submit',
       targetId: 'task:AGT-001',

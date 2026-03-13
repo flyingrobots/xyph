@@ -29,6 +29,16 @@ function makeQuestDetail(overrides?: Partial<QuestDetail>): QuestDetail {
         policyId: 'policy:TRACE',
       },
     },
+    submission: {
+      id: 'submission:Q1',
+      questId: 'task:Q1',
+      status: 'APPROVED',
+      tipPatchsetId: 'patchset:Q1',
+      headsCount: 1,
+      approvalCount: 1,
+      submittedBy: 'agent.other',
+      submittedAt: Date.UTC(2026, 2, 12, 12, 0, 0),
+    },
     reviews: [],
     decisions: [],
     stories: [],
@@ -54,10 +64,40 @@ describe('SettlementGateService', () => {
   it('allows ungoverned work to settle', () => {
     const assessment = assessSettlementGate(makeQuestDetail({
       policies: [],
-    }), 'seal');
+    }), 'merge');
 
     expect(assessment.allowed).toBe(true);
     expect(assessment.governed).toBe(false);
+  });
+
+  it('blocks seal when the latest submission is not independently approved', () => {
+    const assessment = assessSettlementGate(makeQuestDetail({
+      submission: {
+        id: 'submission:Q1',
+        questId: 'task:Q1',
+        status: 'OPEN',
+        tipPatchsetId: 'patchset:Q1',
+        headsCount: 1,
+        approvalCount: 0,
+        submittedBy: 'agent.hal',
+        submittedAt: Date.UTC(2026, 2, 12, 12, 0, 0),
+      },
+    }), 'seal');
+
+    expect(assessment).toMatchObject({
+      allowed: false,
+      action: 'seal',
+      code: 'approved-submission-required',
+      submissionId: 'submission:Q1',
+      submissionStatus: 'OPEN',
+    });
+    expect(formatSettlementGateFailure(assessment)).toContain('latest submission submission:Q1 is OPEN');
+    expect(settlementGateFailureData(assessment)).toMatchObject({
+      action: 'seal',
+      code: 'approved-submission-required',
+      submissionId: 'submission:Q1',
+      submissionStatus: 'OPEN',
+    });
   });
 
   it('blocks governed work when computed completion is incomplete', () => {
