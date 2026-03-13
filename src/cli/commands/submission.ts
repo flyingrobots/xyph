@@ -229,25 +229,26 @@ export function registerSubmissionCommands(program: Command, ctx: CliContext): v
         );
       }
 
-      // Get workspace ref from the tip patchset
+      // Get immutable patchset merge ref plus workspace metadata for operator messages
       const workspaceRef = await adapter.getPatchsetWorkspaceRef(tipPatchsetId);
       if (typeof workspaceRef !== 'string') {
         return ctx.fail(`Could not resolve workspace ref from patchset ${tipPatchsetId}`);
+      }
+      const mergeRef = await adapter.getPatchsetMergeRef(tipPatchsetId);
+      if (typeof mergeRef !== 'string') {
+        return ctx.fail(`Patchset ${tipPatchsetId} is missing immutable head metadata (head_ref or commit_shas)`);
       }
 
       // Git settlement
       const workspace = new GitWorkspaceAdapter(process.cwd());
       let mergeCommit: string | undefined;
-      const alreadyMerged = await workspace.isMerged(workspaceRef, opts.into);
+      const alreadyMerged = await workspace.isMerged(mergeRef, opts.into);
       if (alreadyMerged) {
-        mergeCommit = await workspace.getHeadCommit(opts.into);
-        if (!mergeCommit) {
-          return ctx.fail(`Could not resolve HEAD of ${opts.into}`);
-        }
-        ctx.muted(`  Branch ${workspaceRef} already merged into ${opts.into}`);
+        mergeCommit = mergeRef;
+        ctx.muted(`  Patchset tip ${mergeRef.slice(0, 7)} is already merged into ${opts.into}`);
       } else {
-        mergeCommit = await workspace.merge(workspaceRef, opts.into);
-        ctx.muted(`  Merged ${workspaceRef} into ${opts.into}: ${mergeCommit.slice(0, 7)}`);
+        mergeCommit = await workspace.merge(mergeRef, opts.into);
+        ctx.muted(`  Merged ${workspaceRef} @ ${mergeRef.slice(0, 7)} into ${opts.into}: ${mergeCommit.slice(0, 7)}`);
       }
 
       // Create merge decision

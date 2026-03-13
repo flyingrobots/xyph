@@ -162,6 +162,8 @@ interface MergeAction {
   rationale: string;
   intoRef: string;
   tipPatchsetId: string;
+  mergeRef: string;
+  workspaceRef?: string;
   explicitPatchsetId?: string;
   questId?: string;
   shouldAutoSeal: boolean;
@@ -338,6 +340,11 @@ export class AgentActionValidator {
     if (quest.status !== 'READY') {
       return failAssessment(request, 'precondition-failed', [
         `claim requires status READY, quest ${request.targetId} is ${quest.status}`,
+      ]);
+    }
+    if (quest.assignedTo && quest.assignedTo !== this.agentId) {
+      return failAssessment(request, 'already-assigned', [
+        `claim requires an unassigned quest or an existing self-assignment, quest ${request.targetId} is assigned to ${quest.assignedTo}`,
       ]);
     }
 
@@ -1143,6 +1150,27 @@ export class AgentActionValidator {
         ],
       });
     }
+    const mergeRef = await adapter.getPatchsetMergeRef(tipPatchsetId);
+    if (typeof mergeRef !== 'string') {
+      return failAssessment(request, 'missing-patchset-head', [
+        `Patchset ${tipPatchsetId} is missing immutable head metadata (head_ref or commit_shas); resubmit or revise before merging.`,
+      ], {
+        normalizedArgs: {
+          rationale,
+          intoRef,
+          patchsetId: explicitPatchsetId ?? null,
+          tipPatchsetId,
+          workspaceRef,
+          questId: questId ?? null,
+        },
+        underlyingCommand: `xyph merge ${request.targetId}`,
+        sideEffects: [
+          `merge ${workspaceRef} into ${intoRef}`,
+          'create merge decision',
+          ...(shouldAutoSeal ? ['auto-seal quest'] : []),
+        ],
+      });
+    }
 
     return successAssessment(
       request,
@@ -1152,6 +1180,8 @@ export class AgentActionValidator {
         rationale,
         intoRef,
         tipPatchsetId,
+        mergeRef,
+        workspaceRef,
         explicitPatchsetId,
         questId,
         shouldAutoSeal,
@@ -1161,13 +1191,14 @@ export class AgentActionValidator {
         intoRef,
         patchsetId: explicitPatchsetId ?? null,
         tipPatchsetId,
+        mergeRef,
         questId: questId ?? null,
         shouldAutoSeal,
         workspaceRef,
       },
       `xyph merge ${request.targetId}`,
       [
-        `merge ${workspaceRef} into ${intoRef}`,
+        `merge ${mergeRef} into ${intoRef}`,
         'create merge decision',
         ...(shouldAutoSeal ? ['auto-seal quest'] : []),
       ],
@@ -1267,14 +1298,19 @@ export class AgentActionService {
     action: ClaimAction,
   ): Promise<AgentActionOutcome> {
     const graph = await this.graphPort.getGraph();
+    const now = Date.now();
     const sha = await graph.patch((p) => {
       p.setProperty(action.targetId, 'assigned_to', this.agentId)
         .setProperty(action.targetId, 'status', 'IN_PROGRESS')
-        .setProperty(action.targetId, 'claimed_at', Date.now());
+        .setProperty(action.targetId, 'claimed_at', now);
     });
 
     const props = await graph.getNodeProps(action.targetId);
-    const confirmed = !!(props && props['assigned_to'] === this.agentId);
+    const confirmed = !!(
+      props &&
+      props['assigned_to'] === this.agentId &&
+      props['claimed_at'] === now
+    );
     if (!confirmed) {
       const winner = props ? String(props['assigned_to']) : 'unknown';
       return {
@@ -1301,6 +1337,7 @@ export class AgentActionService {
         id: action.targetId,
         assignedTo: this.agentId,
         status: 'IN_PROGRESS',
+        claimedAt: now,
       },
     };
   }
@@ -1645,24 +1682,16 @@ export class AgentActionService {
     assessment: ValidatedAssessment,
     action: MergeAction,
   ): Promise<AgentActionOutcome> {
-    const adapter = new WarpSubmissionAdapter(this.graphPort, this.agentId);
-    const workspaceRef = await adapter.getPatchsetWorkspaceRef(action.tipPatchsetId);
-    if (typeof workspaceRef !== 'string') {
-      throw new Error(`Could not resolve workspace ref from patchset ${action.tipPatchsetId}`);
-    }
-
     const workspace = new GitWorkspaceAdapter(process.cwd());
     let mergeCommit: string | undefined;
-    const alreadyMerged = await workspace.isMerged(workspaceRef, action.intoRef);
+    const alreadyMerged = await workspace.isMerged(action.mergeRef, action.intoRef);
     if (alreadyMerged) {
-      mergeCommit = await workspace.getHeadCommit(action.intoRef);
-      if (!mergeCommit) {
-        throw new Error(`Could not resolve HEAD of ${action.intoRef}`);
-      }
+      mergeCommit = action.mergeRef;
     } else {
-      mergeCommit = await workspace.merge(workspaceRef, action.intoRef);
+      mergeCommit = await workspace.merge(action.mergeRef, action.intoRef);
     }
 
+    const adapter = new WarpSubmissionAdapter(this.graphPort, this.agentId);
     const decisionId = autoId('decision:');
     let patchSha: string | null = null;
     try {

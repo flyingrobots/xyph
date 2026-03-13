@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Quest } from '../../src/domain/entities/Quest.js';
 import type { RoadmapQueryPort } from '../../src/ports/RoadmapPort.js';
 import type { GraphPort } from '../../src/ports/GraphPort.js';
-import { makeSnapshot, quest, campaign, intent } from '../helpers/snapshot.js';
+import { makeSnapshot, quest, campaign, intent, submission } from '../helpers/snapshot.js';
 import { AgentContextService } from '../../src/domain/services/AgentContextService.js';
 
 const mocks = vi.hoisted(() => ({
@@ -263,5 +263,112 @@ describe('AgentContextService', () => {
       targetId: 'task:CTX-READY',
       allowed: true,
     });
+  });
+
+  it('includes submission-driven actions in quest context when review workflow is the real next move', async () => {
+    const snapshot = makeSnapshot({
+      quests: [
+        quest({
+          id: 'task:CTX-MERGE',
+          title: 'Quest awaiting settlement',
+          status: 'IN_PROGRESS',
+          hours: 2,
+          description: 'Quest has already been submitted and approved.',
+          taskKind: 'delivery',
+          campaignId: 'campaign:TRACE',
+          intentId: 'intent:TRACE',
+        }),
+      ],
+      campaigns: [campaign({ id: 'campaign:TRACE', title: 'Trace Campaign' })],
+      intents: [intent({ id: 'intent:TRACE', title: 'Trace Intent' })],
+      submissions: [
+        submission({
+          id: 'submission:CTX-MERGE',
+          questId: 'task:CTX-MERGE',
+          status: 'APPROVED',
+          submittedBy: 'agent.hal',
+          submittedAt: Date.UTC(2026, 2, 13, 1, 0, 0),
+          tipPatchsetId: 'patchset:CTX-MERGE',
+          approvalCount: 1,
+        }),
+      ],
+      sortedTaskIds: ['task:CTX-MERGE'],
+    });
+
+    const detail = {
+      id: 'task:CTX-MERGE',
+      type: 'task',
+      props: { type: 'task', title: 'Quest awaiting settlement' },
+      content: null,
+      contentOid: null,
+      outgoing: [],
+      incoming: [],
+      questDetail: {
+        id: 'task:CTX-MERGE',
+        quest: snapshot.quests[0] ?? (() => { throw new Error('missing quest fixture'); })(),
+        campaign: snapshot.campaigns[0],
+        intent: snapshot.intents[0],
+        submission: snapshot.submissions[0],
+        reviews: [],
+        decisions: [],
+        stories: [],
+        requirements: [],
+        criteria: [],
+        evidence: [],
+        policies: [],
+        documents: [],
+        comments: [],
+        timeline: [],
+      },
+    };
+
+    mocks.createGraphContext.mockReturnValue({
+      fetchSnapshot: vi.fn().mockResolvedValue(snapshot),
+      fetchEntityDetail: vi.fn().mockResolvedValue(detail),
+      filterSnapshot: vi.fn(),
+      invalidateCache: vi.fn(),
+      get graph() {
+        throw new Error('not used in test');
+      },
+    });
+
+    const service = new AgentContextService(
+      makeGraphPort(),
+      makeRoadmap(
+        makeQuestEntity({
+          id: 'task:CTX-MERGE',
+          title: 'Quest awaiting settlement',
+          status: 'IN_PROGRESS',
+          hours: 2,
+          description: 'Quest has already been submitted and approved.',
+        }),
+        {
+          'task:CTX-MERGE': [
+            { type: 'authorized-by', to: 'intent:TRACE' },
+            { type: 'belongs-to', to: 'campaign:TRACE' },
+            { type: 'implements', to: 'req:CTX-MERGE' },
+          ],
+          'req:CTX-MERGE': [
+            { type: 'has-criterion', to: 'criterion:CTX-MERGE' },
+          ],
+        },
+        {
+          'req:CTX-MERGE': [
+            { type: 'decomposes-to', from: 'story:CTX-MERGE' },
+          ],
+        },
+      ),
+      'agent.hal',
+    );
+
+    const result = await service.fetch('task:CTX-MERGE');
+
+    expect(result?.recommendedActions).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: 'merge',
+        targetId: 'submission:CTX-MERGE',
+        validationCode: 'requires-additional-input',
+      }),
+    ]));
   });
 });

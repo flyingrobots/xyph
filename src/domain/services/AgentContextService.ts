@@ -6,6 +6,7 @@ import { createGraphContext } from '../../infrastructure/GraphContext.js';
 import { computeFrontier } from './DepAnalysis.js';
 import { ReadinessService, type ReadinessAssessment } from './ReadinessService.js';
 import { AgentActionValidator } from './AgentActionService.js';
+import { determineSubmissionNextStep } from './AgentSubmissionService.js';
 import {
   AgentRecommender,
   type AgentActionCandidate,
@@ -77,15 +78,18 @@ export function buildAgentDependencyContext(
 export class AgentContextService {
   private readonly readiness: ReadinessService;
   private readonly recommender: AgentRecommender;
+  private readonly agentId: string;
 
   constructor(
     private readonly graphPort: GraphPort,
     roadmap: RoadmapQueryPort,
     agentId: string,
   ) {
+    this.agentId = agentId;
     this.readiness = new ReadinessService(roadmap);
     this.recommender = new AgentRecommender(
       new AgentActionValidator(graphPort, roadmap, agentId),
+      agentId,
     );
   }
 
@@ -109,11 +113,21 @@ export class AgentContextService {
     const quest = detail.questDetail.quest;
     const readiness = await this.readiness.assess(id, { transition: false });
     const dependency = buildAgentDependencyContext(snapshot, quest);
-    const recommendedActions = await this.recommender.recommendForQuest(
+    const questActions = await this.recommender.recommendForQuest(
       quest,
       readiness,
       dependency,
     );
+    const submissionAction = detail.questDetail.submission
+      ? this.toSubmissionCandidate(detail.questDetail.submission)
+      : null;
+    const recommendedActions = submissionAction
+      ? [...questActions, submissionAction].sort((a, b) =>
+        Number(b.allowed) - Number(a.allowed) ||
+        b.confidence - a.confidence ||
+        a.kind.localeCompare(b.kind)
+      )
+      : questActions;
 
     return {
       detail,
@@ -121,5 +135,86 @@ export class AgentContextService {
       dependency,
       recommendedActions,
     };
+  }
+
+  private toSubmissionCandidate(
+    submission: NonNullable<EntityDetail['questDetail']>['submission'],
+  ): AgentActionCandidate | null {
+    if (!submission) return null;
+
+    const nextStep = determineSubmissionNextStep(submission, this.agentId);
+    switch (nextStep.kind) {
+      case 'review':
+        return {
+          kind: 'review',
+          targetId: nextStep.targetId,
+          args: {},
+          reason: nextStep.reason,
+          confidence: 0.96,
+          requiresHumanApproval: false,
+          dryRunSummary: 'Review the current tip patchset after providing a verdict and message.',
+          blockedBy: nextStep.supportedByActionKernel
+            ? ['Provide verdict and message to execute the review.']
+            : ['Review requires a resolved tip patchset before it can run through the action kernel.'],
+          allowed: false,
+          underlyingCommand: `xyph act review ${nextStep.targetId}`,
+          sideEffects: [`create review on ${nextStep.targetId}`],
+          validationCode: nextStep.supportedByActionKernel
+            ? 'requires-additional-input'
+            : 'missing-tip-patchset',
+        };
+      case 'merge':
+        return {
+          kind: 'merge',
+          targetId: submission.id,
+          args: { intoRef: 'main' },
+          reason: nextStep.reason,
+          confidence: 0.95,
+          requiresHumanApproval: false,
+          dryRunSummary: 'Settle the independently approved submission after providing merge rationale.',
+          blockedBy: ['Provide rationale to execute the merge.'],
+          allowed: false,
+          underlyingCommand: `xyph act merge ${submission.id}`,
+          sideEffects: [
+            `merge submission ${submission.id}`,
+            'record merge decision',
+            'auto-seal quest when eligible',
+          ],
+          validationCode: 'requires-additional-input',
+        };
+      case 'revise':
+        return {
+          kind: 'revise',
+          targetId: submission.id,
+          args: {},
+          reason: nextStep.reason,
+          confidence: 0.91,
+          requiresHumanApproval: false,
+          dryRunSummary: 'Prepare a new patchset revision after addressing requested changes.',
+          blockedBy: ['Revise is not yet exposed through act; inspect context and use xyph revise with a new description.'],
+          allowed: false,
+          underlyingCommand: `xyph revise ${submission.id}`,
+          sideEffects: [`create new patchset for ${submission.id}`],
+          validationCode: 'unsupported-by-action-kernel',
+        };
+      case 'inspect':
+        return {
+          kind: 'inspect',
+          targetId: nextStep.targetId,
+          args: {},
+          reason: nextStep.reason,
+          confidence: 0.78,
+          requiresHumanApproval: false,
+          dryRunSummary: 'Inspect quest and submission context before taking a follow-on action.',
+          blockedBy: [],
+          allowed: true,
+          underlyingCommand: `xyph context ${nextStep.targetId}`,
+          sideEffects: [],
+          validationCode: null,
+        };
+      case 'wait':
+      default:
+        return null;
+    }
   }
 }

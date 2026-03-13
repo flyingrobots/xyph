@@ -19,6 +19,12 @@ export function registerCoordinationCommands(program: Command, ctx: CliContext):
       if (status !== 'READY') {
         throw new Error(`[INVALID_FROM] claim requires status READY, quest ${id} is ${status || 'unknown'}`);
       }
+      const assignedTo = typeof before['assigned_to'] === 'string'
+        ? before['assigned_to']
+        : undefined;
+      if (assignedTo && assignedTo !== ctx.agentId) {
+        throw new Error(`[CONFLICT] claim requires an unassigned quest or an existing self-assignment, quest ${id} is assigned to ${assignedTo}`);
+      }
 
       ctx.warn(`[*] Attempting to claim ${id} as ${ctx.agentId}...`);
 

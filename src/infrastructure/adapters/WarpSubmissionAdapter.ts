@@ -256,6 +256,30 @@ export class WarpSubmissionAdapter implements SubmissionPort, SubmissionReadMode
     return typeof workspaceRef === 'string' ? workspaceRef : null;
   }
 
+  public async getPatchsetMergeRef(patchsetId: string): Promise<string | null> {
+    const graph = await this.graphPort.getGraph();
+    const props = await graph.getNodeProps(patchsetId);
+    if (!props) return null;
+
+    const headRef = props['head_ref'];
+    if (typeof headRef === 'string' && headRef.trim().length > 0) {
+      return headRef.trim();
+    }
+
+    const commitShas = props['commit_shas'];
+    if (typeof commitShas === 'string') {
+      const firstRecordedCommit = commitShas
+        .split(',')
+        .map((entry) => entry.trim())
+        .find((entry) => entry.length > 0);
+      if (firstRecordedCommit) {
+        return firstRecordedCommit;
+      }
+    }
+
+    return null;
+  }
+
   public async getReviewsForPatchset(patchsetId: string): Promise<ReviewRef[]> {
     const graph = await this.graphPort.getGraph();
     const reviewNeighbors = toNeighborEntries(

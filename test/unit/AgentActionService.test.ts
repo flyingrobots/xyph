@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   getSubmissionForPatchset: vi.fn(),
   getOpenSubmissionsForQuest: vi.fn(),
   getPatchsetWorkspaceRef: vi.fn(),
+  getPatchsetMergeRef: vi.fn(),
   getSubmissionQuestId: vi.fn(),
   getQuestStatus: vi.fn(),
   getWorkspaceRef: vi.fn(),
@@ -103,6 +104,10 @@ vi.mock('../../src/infrastructure/adapters/WarpSubmissionAdapter.js', () => ({
 
     getPatchsetWorkspaceRef(patchsetId: string) {
       return mocks.getPatchsetWorkspaceRef(patchsetId);
+    }
+
+    getPatchsetMergeRef(patchsetId: string) {
+      return mocks.getPatchsetMergeRef(patchsetId);
     }
 
     getSubmissionQuestId(submissionId: string) {
@@ -256,6 +261,7 @@ describe('AgentActionService', () => {
     mocks.getSubmissionForPatchset.mockResolvedValue('submission:AGT-001');
     mocks.getOpenSubmissionsForQuest.mockResolvedValue([]);
     mocks.getPatchsetWorkspaceRef.mockResolvedValue('feat/agent-action-kernel-v1');
+    mocks.getPatchsetMergeRef.mockResolvedValue('abc123def456');
     mocks.getSubmissionQuestId.mockResolvedValue('task:AGT-001');
     mocks.getQuestStatus.mockResolvedValue('READY');
     mocks.getWorkspaceRef.mockResolvedValue('feat/agent-action-kernel-v1');
@@ -324,6 +330,33 @@ describe('AgentActionService', () => {
       'status -> IN_PROGRESS',
       'claimed_at -> now',
     ]);
+  });
+
+  it('rejects claim when the READY quest is assigned to another principal', async () => {
+    const service = new AgentActionService(
+      makeGraphPort({}),
+      makeRoadmap(makeQuest({ status: 'READY', assignedTo: 'agent.other' })),
+      'agent.hal',
+    );
+
+    const outcome = await service.execute({
+      kind: 'claim',
+      targetId: 'task:AGT-001',
+      dryRun: true,
+      args: {},
+    });
+
+    expect(outcome).toMatchObject({
+      kind: 'claim',
+      targetId: 'task:AGT-001',
+      allowed: false,
+      result: 'rejected',
+      validation: {
+        valid: false,
+        code: 'already-assigned',
+      },
+    });
+    expect(outcome.validation.reasons[0]).toContain('assigned to agent.other');
   });
 
   it('normalizes packet creation during dry-run without mutating the graph', async () => {
@@ -650,6 +683,7 @@ describe('AgentActionService', () => {
         rationale: 'Independent review is complete and the tip is approved.',
         intoRef: 'main',
         tipPatchsetId: 'patchset:tip',
+        mergeRef: 'abc123def456',
         questId: 'task:AGT-001',
         shouldAutoSeal: true,
         workspaceRef: 'feat/agent-action-kernel-v1',
@@ -685,7 +719,7 @@ describe('AgentActionService', () => {
       },
     });
 
-    expect(mocks.merge).toHaveBeenCalledWith('feat/agent-action-kernel-v1', 'main');
+    expect(mocks.merge).toHaveBeenCalledWith('abc123def456', 'main');
     expect(mocks.decide).toHaveBeenCalledWith(expect.objectContaining({
       submissionId: 'submission:AGT-001',
       kind: 'merge',
@@ -729,7 +763,7 @@ describe('AgentActionService', () => {
       },
     });
 
-    expect(mocks.merge).toHaveBeenCalledWith('feat/agent-action-kernel-v1', 'main');
+    expect(mocks.merge).toHaveBeenCalledWith('abc123def456', 'main');
     expect(outcome).toMatchObject({
       kind: 'merge',
       targetId: 'submission:AGT-001',

@@ -144,6 +144,7 @@ export class AgentBriefingService {
     this.readiness = new ReadinessService(roadmap);
     this.recommender = new AgentRecommender(
       new AgentActionValidator(graphPort, roadmap, agentId),
+      agentId,
     );
   }
 

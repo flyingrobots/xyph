@@ -44,7 +44,10 @@ interface CandidateSeed {
 }
 
 export class AgentRecommender {
-  constructor(private readonly validator: AgentActionValidator) {}
+  constructor(
+    private readonly validator: AgentActionValidator,
+    private readonly agentId: string,
+  ) {}
 
   public async recommendForQuest(
     quest: QuestNode,
@@ -53,7 +56,14 @@ export class AgentRecommender {
   ): Promise<AgentActionCandidate[]> {
     const seeds: CandidateSeed[] = [];
 
-    if (quest.status === 'READY' && dependency.isFrontier) {
+    if (
+      quest.status === 'READY' &&
+      dependency.isFrontier &&
+      (
+        quest.assignedTo === undefined ||
+        quest.assignedTo === this.agentId
+      )
+    ) {
       seeds.push({
         request: {
           kind: 'claim',

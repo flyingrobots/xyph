@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   validateMerge: vi.fn(),
   submit: vi.fn(),
   getPatchsetWorkspaceRef: vi.fn(),
+  getPatchsetMergeRef: vi.fn(),
   getSubmissionQuestId: vi.fn(),
   getQuestStatus: vi.fn(),
   decide: vi.fn(),
@@ -63,6 +64,10 @@ vi.mock('../../src/infrastructure/adapters/WarpSubmissionAdapter.js', () => ({
 
     getPatchsetWorkspaceRef(id: string): Promise<string | undefined> {
       return mocks.getPatchsetWorkspaceRef(id);
+    }
+
+    getPatchsetMergeRef(id: string): Promise<string | undefined> {
+      return mocks.getPatchsetMergeRef(id);
     }
 
     getSubmissionQuestId(id: string): Promise<string | null> {
@@ -254,6 +259,7 @@ describe('signed settlement enforcement', () => {
     mocks.getWorkspaceRef.mockResolvedValue('feat/current');
     mocks.getCommitsSince.mockResolvedValue(['abc123def4567890']);
     mocks.getPatchsetWorkspaceRef.mockResolvedValue('feature/quest');
+    mocks.getPatchsetMergeRef.mockResolvedValue('feedfacecafebeef');
     mocks.getSubmissionQuestId.mockResolvedValue('task:Q1');
     mocks.getQuestStatus.mockResolvedValue('PLANNED');
     mocks.decide.mockResolvedValue({ patchSha: 'patch:decision' });
@@ -505,6 +511,19 @@ describe('signed settlement enforcement', () => {
         overrideEnvVar: UNSIGNED_SCROLLS_OVERRIDE_ENV,
       },
     });
+  });
+
+  it('merge settles the approved patchset head, not the mutable workspace branch ref', async () => {
+    const program = new Command();
+    registerSubmissionCommands(program, createJsonCtx());
+
+    await program.parseAsync(
+      ['merge', 'submission:S1', '--rationale', 'merge the approved patchset tip'],
+      { from: 'user' },
+    );
+
+    expect(mocks.isMerged).toHaveBeenCalledWith('feedfacecafebeef', 'main');
+    expect(mocks.merge).toHaveBeenCalledWith('feedfacecafebeef', 'main');
   });
 
   it('merge fails before git settlement when governed completion is incomplete', async () => {
