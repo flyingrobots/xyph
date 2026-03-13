@@ -14,6 +14,7 @@ All notable changes to XYPH will be documented in this file.
 
 ### Fixed
 
+- **`act merge` now fails loudly when decision recording does not land** — if the git merge succeeds but XYPH cannot write the authoritative merge decision back into the graph, the agent action kernel now returns a non-success partial-failure outcome and the CLI exits with an error envelope instead of reporting the merge as fully successful. This keeps automation retryable and prevents silently “settled” submissions that never recorded their decision state
 - **Trust test fixture is now tracked correctly** — `.gitignore` now ignores only the repo-root `trust/` and `.xyph/` directories, so `test/fixtures/trust/keyring.json` is committed and available in CI. Fixes patch-ops matrix failures caused by missing public-key fixture data on clean checkouts
 - **Blocker counts exclude GRAVEYARD tasks** — `transitiveDownstream` BFS now excludes GRAVEYARD tasks from counts (matching DONE exclusion), and `filterSnapshot()` strips GRAVEYARD keys from the map. Fixes inconsistency where `directCount` (from filtered edges) and `transitiveCount` (from unfiltered BFS) could diverge when `--include-graveyard` was not set
 - **Landing screen auto-dismiss** — `showLanding` is now set to `false` when `snapshot-loaded` fires, so the dashboard appears immediately after data loads. Previously required a throwaway keypress to dismiss the landing screen, making navigation appear broken

@@ -167,8 +167,10 @@ The `--json` result must include:
 `validation` must contain machine-readable failure reasons when the action is
 rejected. Rejections must happen **before** any graph or workspace mutation.
 If a follow-on step fails after mutation has already been committed, the
-outcome must stay truthful by returning success plus `warnings` and structured
-`partialFailure` data instead of pretending nothing happened.
+outcome must stay truthful. Non-critical follow-on failures may return success
+plus `warnings` and structured `partialFailure` data, but failures to record
+the authoritative graph-side settlement state must return a non-success outcome
+with the committed side effects included so automation can reconcile and retry.
 
 ### 4.5 `handoff --json`
 
