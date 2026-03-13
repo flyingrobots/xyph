@@ -94,7 +94,11 @@ function renderHumanOutcome(
   ctx: CliContext,
   outcome: AgentActionOutcome,
 ): void {
-  const label = outcome.result === 'dry-run' ? '[DRY RUN]' : '[OK]';
+  const label = outcome.result === 'dry-run'
+    ? '[DRY RUN]'
+    : outcome.result === 'partial-failure'
+      ? '[PARTIAL FAILURE]'
+      : '[OK]';
   ctx.ok(`${label} ${outcome.kind} ${outcome.targetId}`);
   ctx.muted(`  Command: ${outcome.underlyingCommand}`);
   for (const effect of outcome.sideEffects) {
@@ -547,10 +551,20 @@ export function registerAgentCommands(program: Command, ctx: CliContext): void {
         args: buildActionArgs(opts),
       });
 
-      if (outcome.result === 'rejected') {
-        const reason = outcome.validation.reasons[0] ?? `Action '${actionKind}' was rejected`;
+      if (outcome.result === 'rejected' || outcome.result === 'partial-failure') {
+        const reason = outcome.result === 'partial-failure'
+          ? String(
+            (outcome.details?.['partialFailure'] as { message?: unknown } | undefined)?.message
+            ?? outcome.validation.reasons[0]
+            ?? `Action '${actionKind}' completed with a partial failure`,
+          )
+          : outcome.validation.reasons[0] ?? `Action '${actionKind}' was rejected`;
         if (ctx.json) {
           return ctx.failWithData(reason, { ...outcome });
+        }
+        if (outcome.result === 'partial-failure') {
+          renderHumanOutcome(ctx, outcome);
+          return ctx.fail(`[PARTIAL FAILURE] ${reason}`);
         }
         return ctx.fail(`[REJECTED] ${reason}`);
       }

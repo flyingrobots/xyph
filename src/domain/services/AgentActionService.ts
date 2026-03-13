@@ -67,7 +67,7 @@ export interface AgentActionAssessment {
 }
 
 export interface AgentActionOutcome extends AgentActionAssessment {
-  result: 'dry-run' | 'success' | 'rejected';
+  result: 'dry-run' | 'success' | 'partial-failure' | 'rejected';
   patch: string | null;
   details: Record<string, unknown> | null;
 }
@@ -1678,7 +1678,7 @@ export class AgentActionService {
       const msg = err instanceof Error ? err.message : String(err);
       return {
         ...assessment,
-        result: 'success',
+        result: 'partial-failure',
         patch: null,
         details: {
           submissionId: action.targetId,

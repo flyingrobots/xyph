@@ -711,7 +711,7 @@ describe('AgentActionService', () => {
     expect(typeof outcome.details?.['decisionId']).toBe('string');
   });
 
-  it('reports committed merge state instead of rejection when recording the decision fails', async () => {
+  it('reports merge-decision write failure as a partial failure with reconciliation details', async () => {
     mocks.decide.mockRejectedValue(new Error('graph write failed'));
 
     const service = new AgentActionService(
@@ -734,7 +734,7 @@ describe('AgentActionService', () => {
       kind: 'merge',
       targetId: 'submission:AGT-001',
       allowed: true,
-      result: 'success',
+      result: 'partial-failure',
       patch: null,
       details: {
         submissionId: 'submission:AGT-001',

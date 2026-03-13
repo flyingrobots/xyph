@@ -986,4 +986,51 @@ describe('agent act command', () => {
     );
     expect(ctx.jsonOut).not.toHaveBeenCalled();
   });
+
+  it('routes partial-failure act results through the JSON error envelope', async () => {
+    const partialFailure = {
+      kind: 'merge',
+      targetId: 'submission:AGT-001',
+      allowed: true,
+      dryRun: false,
+      requiresHumanApproval: false,
+      validation: {
+        valid: true,
+        code: null,
+        reasons: [],
+      },
+      normalizedArgs: {
+        intoRef: 'main',
+        rationale: 'Merge approved submission.',
+      },
+      underlyingCommand: 'xyph merge submission:AGT-001',
+      sideEffects: ['merge feat/agent-action-kernel-v1 into main', 'create merge decision'],
+      result: 'partial-failure',
+      patch: null,
+      details: {
+        submissionId: 'submission:AGT-001',
+        mergeCommit: 'mergecommit123456',
+        partialFailure: {
+          stage: 'record-decision',
+          message: 'graph write failed',
+        },
+      },
+    };
+    mocks.execute.mockResolvedValue(partialFailure);
+
+    const ctx = makeCtx();
+    const program = new Command();
+    registerAgentCommands(program, ctx);
+
+    await program.parseAsync(
+      ['act', 'merge', 'submission:AGT-001', '--rationale', 'Merge approved submission.'],
+      { from: 'user' },
+    );
+
+    expect(ctx.failWithData).toHaveBeenCalledWith(
+      'graph write failed',
+      partialFailure,
+    );
+    expect(ctx.jsonOut).not.toHaveBeenCalled();
+  });
 });
