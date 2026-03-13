@@ -1087,6 +1087,7 @@ class GraphContextImpl implements GraphContext {
       title: string;
       authoredBy: string;
       authoredAt: number;
+      noteKind?: string;
       targetIds: string[];
       supersedesId?: string;
     }>();
@@ -1127,6 +1128,9 @@ class GraphContextImpl implements GraphContext {
         title,
         authoredBy,
         authoredAt,
+        noteKind: rawType === 'note' && typeof node.props['note_kind'] === 'string'
+          ? node.props['note_kind']
+          : undefined,
         targetIds: targetRefs,
         supersedesId,
       });
@@ -1188,6 +1192,7 @@ class GraphContextImpl implements GraphContext {
         title: doc.title,
         authoredBy: doc.authoredBy,
         authoredAt: doc.authoredAt,
+        noteKind: doc.noteKind,
         body: content?.body,
         contentOid: content?.contentOid,
         targetIds: doc.targetIds.filter((targetId) => targetIds.has(targetId)),
@@ -1445,11 +1450,14 @@ class GraphContextImpl implements GraphContext {
       });
     }
     for (const document of documents) {
+      const title = document.type === 'note' && document.noteKind === 'handoff'
+        ? `Handoff: ${document.title}`
+        : document.title;
       entries.push({
         id: document.id,
         at: document.authoredAt,
         kind: document.type,
-        title: document.title,
+        title,
         actor: document.authoredBy,
         relatedId: document.targetIds[0],
       });

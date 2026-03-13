@@ -18,7 +18,7 @@ import { GitWorkspaceAdapter } from '../../infrastructure/adapters/GitWorkspaceA
 import type { ReviewVerdict } from '../entities/Submission.js';
 
 export const ROUTINE_AGENT_ACTION_KINDS = [
-  'claim', 'shape', 'packet', 'ready', 'comment', 'submit', 'review',
+  'claim', 'shape', 'packet', 'ready', 'comment', 'submit', 'review', 'handoff',
 ] as const;
 
 export const HUMAN_ONLY_AGENT_ACTION_KINDS = [
@@ -128,6 +128,15 @@ interface ReviewAction {
   submissionId: string;
 }
 
+interface HandoffAction {
+  kind: 'handoff';
+  targetId: string;
+  noteId: string;
+  title: string;
+  message: string;
+  relatedIds: string[];
+}
+
 type SupportedNormalizedAction =
   | ClaimAction
   | ShapeAction
@@ -135,7 +144,8 @@ type SupportedNormalizedAction =
   | ReadyAction
   | CommentAction
   | SubmitAction
-  | ReviewAction;
+  | ReviewAction
+  | HandoffAction;
 
 function autoId(prefix: string): string {
   const ts = Date.now().toString(36).padStart(9, '0');
@@ -208,6 +218,19 @@ function derivePacketId(prefix: 'story:' | 'req:' | 'criterion:', questId: strin
   return `${prefix}${questId.slice('task:'.length)}`;
 }
 
+function normalizeStringArray(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value
+      .flatMap((entry) => typeof entry === 'string' ? [entry.trim()] : [])
+      .filter((entry) => entry.length > 0);
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? [trimmed] : [];
+  }
+  return [];
+}
+
 export class AgentActionValidator {
   private readonly intake: IntakeService;
   private readonly readiness: ReadinessService;
@@ -258,6 +281,8 @@ export class AgentActionValidator {
         return this.validateSubmit(request);
       case 'review':
         return this.validateReview(request);
+      case 'handoff':
+        return this.validateHandoff(request);
     }
   }
 
@@ -809,6 +834,77 @@ export class AgentActionValidator {
       ],
     );
   }
+
+  private async validateHandoff(request: AgentActionRequest): Promise<ValidatedAssessment> {
+    const message = typeof request.args['message'] === 'string'
+      ? request.args['message'].trim()
+      : '';
+    if (message.length < 5) {
+      return failAssessment(request, 'invalid-args', [
+        'handoff requires a message of at least 5 characters',
+      ]);
+    }
+
+    const title = typeof request.args['title'] === 'string' && request.args['title'].trim().length > 0
+      ? request.args['title'].trim()
+      : `Handoff for ${request.targetId}`;
+
+    const noteId = autoId('note:');
+    const rawRelatedIds = normalizeStringArray(request.args['relatedIds']);
+    const relatedIds = [...new Set([request.targetId, ...rawRelatedIds])];
+
+    const graph = await this.graphPort.getGraph();
+    if (!await graph.hasNode(request.targetId)) {
+      return failAssessment(request, 'not-found', [
+        `Target ${request.targetId} not found in the graph`,
+      ]);
+    }
+
+    for (const relatedId of rawRelatedIds) {
+      if (!await graph.hasNode(relatedId)) {
+        return failAssessment(request, 'not-found', [
+          `Related target ${relatedId} not found in the graph`,
+        ], {
+          normalizedArgs: {
+            noteId,
+            title,
+            message,
+            relatedIds,
+          },
+          underlyingCommand: `xyph handoff ${request.targetId}`,
+          sideEffects: [
+            `create ${noteId}`,
+            ...relatedIds.map((id) => `documents -> ${id}`),
+            'attach content blob',
+          ],
+        });
+      }
+    }
+
+    return successAssessment(
+      request,
+      {
+        kind: 'handoff',
+        targetId: request.targetId,
+        noteId,
+        title,
+        message,
+        relatedIds,
+      },
+      {
+        noteId,
+        title,
+        message,
+        relatedIds,
+      },
+      `xyph handoff ${request.targetId}`,
+      [
+        `create ${noteId}`,
+        ...relatedIds.map((id) => `documents -> ${id}`),
+        'attach content blob',
+      ],
+    );
+  }
 }
 
 export class AgentActionService {
@@ -874,6 +970,8 @@ export class AgentActionService {
           return await this.executeSubmit(assessment, normalized);
         case 'review':
           return await this.executeReview(assessment, normalized);
+        case 'handoff':
+          return await this.executeHandoff(assessment, normalized);
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -1155,6 +1253,43 @@ export class AgentActionService {
         submissionId: action.submissionId,
         verdict: action.verdict,
         reviewedBy: this.agentId,
+      },
+    };
+  }
+
+  private async executeHandoff(
+    assessment: ValidatedAssessment,
+    action: HandoffAction,
+  ): Promise<AgentActionOutcome> {
+    const graph = await this.graphPort.getGraph();
+    const patch = await createPatchSession(graph);
+    const now = Date.now();
+    patch
+      .addNode(action.noteId)
+      .setProperty(action.noteId, 'type', 'note')
+      .setProperty(action.noteId, 'note_kind', 'handoff')
+      .setProperty(action.noteId, 'title', action.title)
+      .setProperty(action.noteId, 'authored_by', this.agentId)
+      .setProperty(action.noteId, 'authored_at', now)
+      .setProperty(action.noteId, 'session_ended_at', now);
+    for (const relatedId of action.relatedIds) {
+      patch.addEdge(action.noteId, relatedId, 'documents');
+    }
+    await patch.attachContent(action.noteId, action.message);
+    const sha = await patch.commit();
+    const contentOid = await graph.getContentOid(action.noteId) ?? undefined;
+
+    return {
+      ...assessment,
+      result: 'success',
+      patch: sha,
+      details: {
+        noteId: action.noteId,
+        title: action.title,
+        authoredBy: this.agentId,
+        authoredAt: now,
+        relatedIds: action.relatedIds,
+        contentOid: contentOid ?? null,
       },
     };
   }

@@ -209,6 +209,7 @@ export interface NarrativeNode {
   title: string;
   authoredBy: string;
   authoredAt: number;
+  noteKind?: string;
   body?: string;
   contentOid?: string;
   targetIds: string[];

@@ -13,9 +13,19 @@ vi.mock('../../src/infrastructure/GraphContext.js', () => ({
   createGraphContext: (graphPort: unknown) => mocks.createGraphContext(graphPort),
 }));
 
-function makeGraphPort(): GraphPort {
+function makeGraphWithHandoffs(noteNodes: { id: string; props: Record<string, unknown> }[], outgoing: Record<string, { nodeId: string; label: string }[]> = {}): GraphPort {
+  const graph = {
+    query: vi.fn(() => ({
+      match: vi.fn(() => ({
+        select: vi.fn(() => ({
+          run: vi.fn(async () => ({ nodes: noteNodes })),
+        })),
+      })),
+    })),
+    neighbors: vi.fn(async (id: string) => outgoing[id] ?? []),
+  };
   return {
-    getGraph: vi.fn(),
+    getGraph: vi.fn(async () => graph),
     reset: vi.fn(),
   };
 }
@@ -121,7 +131,23 @@ describe('AgentBriefingService', () => {
     ];
 
     const service = new AgentBriefingService(
-      makeGraphPort(),
+      makeGraphWithHandoffs([
+        {
+          id: 'note:handoff-1',
+          props: {
+            type: 'note',
+            note_kind: 'handoff',
+            title: 'Wrapped READY gating',
+            authored_by: 'agent.hal',
+            authored_at: 150,
+          },
+        },
+      ], {
+        'note:handoff-1': [
+          { nodeId: 'task:AGT-001', label: 'documents' },
+          { nodeId: 'submission:AGT-001', label: 'documents' },
+        ],
+      }),
       makeRoadmap(
         questEntities,
         {
@@ -172,6 +198,14 @@ describe('AgentBriefingService', () => {
         status: 'OPEN',
       },
     ]);
+    expect(briefing.recentHandoffs).toEqual([
+      {
+        noteId: 'note:handoff-1',
+        title: 'Wrapped READY gating',
+        authoredAt: 150,
+        relatedIds: ['submission:AGT-001', 'task:AGT-001'],
+      },
+    ]);
     expect(briefing.graphMeta?.tipSha).toBe('abc1234');
     expect(briefing.alerts.map((alert) => alert.code)).toContain('review-queue');
   });
@@ -217,7 +251,7 @@ describe('AgentBriefingService', () => {
     });
 
     const service = new AgentBriefingService(
-      makeGraphPort(),
+      makeGraphWithHandoffs([]),
       makeRoadmap(
         [
           makeQuestEntity({

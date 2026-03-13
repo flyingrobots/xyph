@@ -71,7 +71,10 @@ function renderNarrativeLines(label: string, entries: NarrativeNode[] | CommentN
   for (const entry of entries) {
     if ('title' in entry) {
       const state = entry.current ? 'current' : 'history';
-      lines.push(`  - ${entry.id} [${entry.type}] ${entry.title} (${state})`);
+      const typeLabel = entry.type === 'note' && entry.noteKind
+        ? `${entry.type}:${entry.noteKind}`
+        : entry.type;
+      lines.push(`  - ${entry.id} [${typeLabel}] ${entry.title} (${state})`);
       if (entry.targetIds.length > 0) {
         lines.push(`      targets: ${entry.targetIds.join(', ')}`);
       }

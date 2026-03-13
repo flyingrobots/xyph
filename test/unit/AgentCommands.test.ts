@@ -87,6 +87,7 @@ describe('agent act command', () => {
       assignments: [],
       reviewQueue: [],
       frontier: [],
+      recentHandoffs: [],
       alerts: [],
       graphMeta: {
         maxTick: 42,
@@ -114,6 +115,7 @@ describe('agent act command', () => {
         assignments: [],
         reviewQueue: [],
         frontier: [],
+        recentHandoffs: [],
         alerts: [],
         graphMeta: {
           maxTick: 42,
@@ -735,6 +737,123 @@ describe('agent act command', () => {
       args: {
         verdict: 'approve',
         message: 'Looks good from the action kernel.',
+      },
+    });
+  });
+
+  it('maps handoff options into normalized action args', async () => {
+    mocks.execute.mockResolvedValue({
+      kind: 'handoff',
+      targetId: 'task:AGT-001',
+      allowed: true,
+      dryRun: true,
+      requiresHumanApproval: false,
+      validation: {
+        valid: true,
+        code: null,
+        reasons: [],
+      },
+      normalizedArgs: {},
+      underlyingCommand: 'xyph handoff task:AGT-001',
+      sideEffects: [],
+      result: 'dry-run',
+      patch: null,
+      details: null,
+    });
+
+    const ctx = makeCtx();
+    const program = new Command();
+    registerAgentCommands(program, ctx);
+
+    await program.parseAsync([
+      'act',
+      'handoff',
+      'task:AGT-001',
+      '--title',
+      'Session closeout',
+      '--message',
+      'Wrapped the slice and leaving a durable handoff.',
+      '--related',
+      'submission:AGT-001',
+      'campaign:AGT',
+      '--dry-run',
+    ], { from: 'user' });
+
+    expect(mocks.execute).toHaveBeenCalledWith({
+      kind: 'handoff',
+      targetId: 'task:AGT-001',
+      dryRun: true,
+      args: {
+        title: 'Session closeout',
+        message: 'Wrapped the slice and leaving a durable handoff.',
+        relatedIds: ['submission:AGT-001', 'campaign:AGT'],
+      },
+    });
+  });
+
+  it('emits the specialized handoff JSON envelope', async () => {
+    mocks.execute.mockResolvedValue({
+      kind: 'handoff',
+      targetId: 'task:AGT-001',
+      allowed: true,
+      dryRun: false,
+      requiresHumanApproval: false,
+      validation: {
+        valid: true,
+        code: null,
+        reasons: [],
+      },
+      normalizedArgs: {},
+      underlyingCommand: 'xyph handoff task:AGT-001',
+      sideEffects: ['create note:handoff-1'],
+      result: 'success',
+      patch: 'patch:handoff',
+      details: {
+        noteId: 'note:handoff-1',
+        authoredBy: 'agent.hal',
+        authoredAt: 1_700_000_000_000,
+        relatedIds: ['task:AGT-001', 'submission:AGT-001'],
+        title: 'Session closeout',
+        contentOid: 'oid:handoff',
+      },
+    });
+
+    const ctx = makeCtx();
+    const program = new Command();
+    registerAgentCommands(program, ctx);
+
+    await program.parseAsync([
+      'handoff',
+      'task:AGT-001',
+      '--title',
+      'Session closeout',
+      '--message',
+      'Wrapped the slice and leaving a durable handoff.',
+      '--related',
+      'submission:AGT-001',
+    ], { from: 'user' });
+
+    expect(mocks.execute).toHaveBeenCalledWith({
+      kind: 'handoff',
+      targetId: 'task:AGT-001',
+      dryRun: false,
+      args: {
+        title: 'Session closeout',
+        message: 'Wrapped the slice and leaving a durable handoff.',
+        relatedIds: ['submission:AGT-001'],
+      },
+    });
+    expect(ctx.jsonOut).toHaveBeenCalledWith({
+      success: true,
+      command: 'handoff',
+      data: {
+        noteId: 'note:handoff-1',
+        authoredBy: 'agent.hal',
+        authoredAt: 1_700_000_000_000,
+        relatedIds: ['task:AGT-001', 'submission:AGT-001'],
+        patch: 'patch:handoff',
+        title: 'Session closeout',
+        contentOid: 'oid:handoff',
       },
     });
   });

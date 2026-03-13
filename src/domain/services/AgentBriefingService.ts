@@ -1,7 +1,9 @@
+import type { QueryResultV1, AggregateResult } from '@git-stunts/git-warp';
 import type { GraphMeta, GraphSnapshot, QuestNode } from '../models/dashboard.js';
 import type { GraphPort } from '../../ports/GraphPort.js';
 import type { RoadmapQueryPort } from '../../ports/RoadmapPort.js';
 import { createGraphContext } from '../../infrastructure/GraphContext.js';
+import { toNeighborEntries } from '../../infrastructure/helpers/isNeighborEntry.js';
 import { ReadinessService } from './ReadinessService.js';
 import { AgentActionValidator } from './AgentActionService.js';
 import {
@@ -14,6 +16,18 @@ import {
   buildAgentDependencyContext,
   toAgentQuestRef,
 } from './AgentContextService.js';
+
+interface QNode {
+  id: string;
+  props: Record<string, unknown>;
+}
+
+function extractNodes(result: QueryResultV1 | AggregateResult): QNode[] {
+  if (!('nodes' in result)) return [];
+  return result.nodes.filter(
+    (node): node is QNode => typeof node.id === 'string' && node.props !== undefined,
+  );
+}
 
 export interface AgentBriefingIdentity {
   agentId: string;
@@ -43,11 +57,19 @@ export interface AgentReviewQueueEntry {
   reason: string;
 }
 
+export interface AgentHandoffSummary {
+  noteId: string;
+  title: string;
+  authoredAt: number;
+  relatedIds: string[];
+}
+
 export interface AgentBriefing {
   identity: AgentBriefingIdentity;
   assignments: AgentWorkSummary[];
   reviewQueue: AgentReviewQueueEntry[];
   frontier: AgentWorkSummary[];
+  recentHandoffs: AgentHandoffSummary[];
   alerts: AgentBriefingAlert[];
   graphMeta: GraphMeta | null;
 }
@@ -116,6 +138,7 @@ export class AgentBriefingService {
     );
 
     const reviewQueue = this.buildReviewQueue(snapshot);
+    const recentHandoffs = await this.buildRecentHandoffs();
     const alerts = this.buildAlerts(assignments, frontier, reviewQueue);
 
     return {
@@ -126,6 +149,7 @@ export class AgentBriefingService {
       assignments,
       reviewQueue,
       frontier,
+      recentHandoffs,
       alerts,
       graphMeta: snapshot.graphMeta ?? null,
     };
@@ -250,5 +274,46 @@ export class AgentBriefingService {
     }
 
     return alerts;
+  }
+
+  private async buildRecentHandoffs(limit = 5): Promise<AgentHandoffSummary[]> {
+    const graph = await this.graphPort.getGraph();
+    const noteNodes = await graph.query()
+      .match('note:*')
+      .select(['id', 'props'])
+      .run()
+      .then(extractNodes);
+
+    const summaries = await Promise.all(noteNodes.map(async (node) => {
+      const title = node.props['title'];
+      const authoredBy = node.props['authored_by'];
+      const authoredAt = node.props['authored_at'];
+      if (
+        node.props['type'] !== 'note' ||
+        node.props['note_kind'] !== 'handoff' ||
+        authoredBy !== this.agentId ||
+        typeof title !== 'string' ||
+        typeof authoredAt !== 'number'
+      ) {
+        return null;
+      }
+
+      const relatedIds = toNeighborEntries(await graph.neighbors(node.id, 'outgoing'))
+        .filter((edge) => edge.label === 'documents')
+        .map((edge) => edge.nodeId)
+        .sort((a, b) => a.localeCompare(b));
+
+      return {
+        noteId: node.id,
+        title,
+        authoredAt,
+        relatedIds,
+      } satisfies AgentHandoffSummary;
+    }));
+
+    return summaries
+      .filter((entry): entry is AgentHandoffSummary => entry !== null)
+      .sort((a, b) => b.authoredAt - a.authoredAt || a.noteId.localeCompare(b.noteId))
+      .slice(0, limit);
   }
 }

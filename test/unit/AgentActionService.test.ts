@@ -269,6 +269,91 @@ describe('AgentActionService', () => {
     });
   });
 
+  it('normalizes handoff during dry-run with target and related document links', async () => {
+    const graph = {
+      hasNode: vi.fn(async (id: string) => ['task:AGT-001', 'submission:AGT-001'].includes(id)),
+    };
+    const service = new AgentActionService(
+      makeGraphPort(graph),
+      makeRoadmap(makeQuest()),
+      'agent.hal',
+    );
+
+    const outcome = await service.execute({
+      kind: 'handoff',
+      targetId: 'task:AGT-001',
+      dryRun: true,
+      args: {
+        title: 'Session closeout',
+        message: 'Wrapped the review loop slice and leaving next-step notes.',
+        relatedIds: ['submission:AGT-001'],
+      },
+    });
+
+    expect(outcome).toMatchObject({
+      kind: 'handoff',
+      targetId: 'task:AGT-001',
+      allowed: true,
+      result: 'dry-run',
+      underlyingCommand: 'xyph handoff task:AGT-001',
+      normalizedArgs: {
+        title: 'Session closeout',
+        message: 'Wrapped the review loop slice and leaving next-step notes.',
+        relatedIds: ['task:AGT-001', 'submission:AGT-001'],
+      },
+    });
+    expect(typeof outcome.normalizedArgs['noteId']).toBe('string');
+  });
+
+  it('writes graph-native handoff notes with attached content and document links', async () => {
+    const graph = {
+      hasNode: vi.fn(async (id: string) => ['task:AGT-001', 'submission:AGT-001'].includes(id)),
+      getContentOid: vi.fn(async () => 'oid:handoff'),
+    };
+    const patch = makePatchSession();
+    patch.commit = vi.fn(async () => 'patch:handoff');
+    mocks.createPatchSession.mockResolvedValue(patch);
+
+    const service = new AgentActionService(
+      makeGraphPort(graph),
+      makeRoadmap(makeQuest()),
+      'agent.hal',
+    );
+
+    const outcome = await service.execute({
+      kind: 'handoff',
+      targetId: 'task:AGT-001',
+      args: {
+        title: 'Session closeout',
+        message: 'Wrapped the review loop slice and leaving next-step notes.',
+        relatedIds: ['submission:AGT-001'],
+      },
+    });
+
+    expect(patch.setProperty).toHaveBeenCalledWith(expect.any(String), 'note_kind', 'handoff');
+    expect(patch.addEdge).toHaveBeenCalledWith(expect.any(String), 'task:AGT-001', 'documents');
+    expect(patch.addEdge).toHaveBeenCalledWith(expect.any(String), 'submission:AGT-001', 'documents');
+    expect(patch.attachContent).toHaveBeenCalledWith(
+      expect.any(String),
+      'Wrapped the review loop slice and leaving next-step notes.',
+    );
+    expect(outcome).toMatchObject({
+      kind: 'handoff',
+      targetId: 'task:AGT-001',
+      allowed: true,
+      result: 'success',
+      patch: 'patch:handoff',
+      details: {
+        title: 'Session closeout',
+        authoredBy: 'agent.hal',
+        relatedIds: ['task:AGT-001', 'submission:AGT-001'],
+        contentOid: 'oid:handoff',
+      },
+    });
+    expect(typeof outcome.details?.['noteId']).toBe('string');
+    expect(typeof outcome.details?.['authoredAt']).toBe('number');
+  });
+
   it('normalizes submit during dry-run with workspace metadata and generated ids', async () => {
     const service = new AgentActionService(
       makeGraphPort({}),

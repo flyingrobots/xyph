@@ -69,9 +69,10 @@ Current runtime tranche:
 - shipped now: `next`
 - shipped now: `context <id>`
 - shipped now: `submissions`
-- shipped now: `claim`, `shape`, `packet`, `ready`, `comment`, `submit`, `review`
+- shipped now: `handoff`
+- shipped now: `claim`, `shape`, `packet`, `ready`, `comment`, `submit`, `review`, `handoff`
 - shipped now: `act <kind> <target>` for that subset
-- planned later in checkpoint 2: `handoff`, `seal`, `merge`
+- planned later in checkpoint 2: `seal`, `merge`
 
 ### 3.1 `show` vs `context`
 
@@ -104,6 +105,9 @@ includes:
 
 Each frontier or review entry should already contain an executable next step or
 an action candidate reference.
+
+The runtime may also include `recentHandoffs` so agents can resume from their
+own recent closeout notes without hunting through raw quest history.
 
 ### 4.2 `next --json`
 
@@ -200,6 +204,7 @@ The current runtime implementation ships the first tranche only:
 - `comment`
 - `submit`
 - `review`
+- `handoff`
 
 ### 5.1 Human-only actions
 

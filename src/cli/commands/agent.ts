@@ -24,6 +24,7 @@ import type { EntityDetail } from '../../domain/models/dashboard.js';
 interface ActOptions {
   dryRun?: boolean;
   description?: string;
+  title?: string;
   base?: string;
   workspace?: string;
   kind?: string;
@@ -43,11 +44,13 @@ interface ActOptions {
   message?: string;
   replyTo?: string;
   commentId?: string;
+  related?: string[];
 }
 
 function buildActionArgs(opts: ActOptions): Record<string, unknown> {
   const args: Record<string, unknown> = {};
   if (opts.description !== undefined) args['description'] = opts.description.trim();
+  if (opts.title !== undefined) args['title'] = opts.title.trim();
   if (opts.base !== undefined) args['baseRef'] = opts.base.trim();
   if (opts.workspace !== undefined) args['workspaceRef'] = opts.workspace.trim();
   if (opts.kind !== undefined) args['taskKind'] = opts.kind;
@@ -71,6 +74,11 @@ function buildActionArgs(opts: ActOptions): Record<string, unknown> {
   if (opts.message !== undefined) args['message'] = opts.message.trim();
   if (opts.replyTo !== undefined) args['replyTo'] = opts.replyTo;
   if (opts.commentId !== undefined) args['commentId'] = opts.commentId;
+  if (opts.related !== undefined) {
+    args['relatedIds'] = opts.related
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0);
+  }
   return args;
 }
 
@@ -189,6 +197,7 @@ function renderBriefing(briefing: {
   assignments: { quest: { id: string; title: string; status: string }; nextAction: AgentActionCandidate | null }[];
   reviewQueue: { submissionId: string; questTitle: string; status: string }[];
   frontier: { quest: { id: string; title: string; status: string }; nextAction: AgentActionCandidate | null }[];
+  recentHandoffs: { noteId: string; title: string; authoredAt: number; relatedIds: string[] }[];
   alerts: { severity: string; message: string }[];
   graphMeta: { maxTick: number; writerCount: number; tipSha: string } | null;
 }): string {
@@ -227,6 +236,20 @@ function renderBriefing(briefing: {
       lines.push(`  - ${entry.quest.id} ${entry.quest.title} [${entry.quest.status}]`);
       if (entry.nextAction) {
         lines.push(`      next: ${entry.nextAction.kind}`);
+      }
+    }
+  }
+
+  lines.push('');
+  lines.push(`Recent Handoffs (${briefing.recentHandoffs.length})`);
+  if (briefing.recentHandoffs.length === 0) {
+    lines.push('  none');
+  } else {
+    for (const entry of briefing.recentHandoffs) {
+      lines.push(`  - ${entry.noteId} ${entry.title}`);
+      lines.push(`      at: ${new Date(entry.authoredAt).toISOString()}`);
+      if (entry.relatedIds.length > 0) {
+        lines.push(`      related: ${entry.relatedIds.join(', ')}`);
       }
     }
   }
@@ -471,6 +494,7 @@ export function registerAgentCommands(program: Command, ctx: CliContext): void {
     .description('Execute a validated routine action through the agent action kernel')
     .option('--dry-run', 'Validate and normalize without mutating graph or workspace')
     .option('--description <text>', 'Description for shape or submit')
+    .option('--title <text>', 'Title for handoff')
     .option('--base <ref>', 'Base branch for submit (default: main)')
     .option('--workspace <ref>', 'Workspace ref for submit (default: current git branch)')
     .option('--kind <kind>', `Quest kind for shape (${[...VALID_TASK_KINDS].join(' | ')})`)
@@ -490,6 +514,7 @@ export function registerAgentCommands(program: Command, ctx: CliContext): void {
     .option('--message <text>', 'Comment body for comment or review')
     .option('--reply-to <commentId>', 'Reply target for comment')
     .option('--comment-id <id>', 'Explicit comment ID for comment')
+    .option('--related <ids...>', 'Additional related IDs for handoff')
     .action(withErrorHandler(async (actionKind: string, targetId: string, opts: ActOptions) => {
       const service = new AgentActionService(
         ctx.graphPort,
@@ -522,5 +547,58 @@ export function registerAgentCommands(program: Command, ctx: CliContext): void {
       }
 
       renderHumanOutcome(ctx, outcome);
+    }));
+
+  program
+    .command('handoff <targetId>')
+    .description('Record a durable graph-native session handoff note')
+    .requiredOption('--message <text>', 'Handoff summary body')
+    .option('--title <text>', 'Optional handoff title')
+    .option('--related <ids...>', 'Additional related IDs to document with the handoff')
+    .action(withErrorHandler(async (targetId: string, opts: Pick<ActOptions, 'message' | 'title' | 'related'>) => {
+      const service = new AgentActionService(
+        ctx.graphPort,
+        new WarpRoadmapAdapter(ctx.graphPort),
+        ctx.agentId,
+      );
+
+      const outcome = await service.execute({
+        kind: 'handoff',
+        targetId,
+        dryRun: false,
+        args: buildActionArgs(opts),
+      });
+
+      if (outcome.result === 'rejected') {
+        const reason = outcome.validation.reasons[0] ?? `Action 'handoff' was rejected`;
+        if (ctx.json) {
+          return ctx.failWithData(reason, { ...outcome });
+        }
+        return ctx.fail(`[REJECTED] ${reason}`);
+      }
+
+      const details = outcome.details ?? {};
+      if (ctx.json) {
+        ctx.jsonOut({
+          success: true,
+          command: 'handoff',
+          data: {
+            noteId: details['noteId'] ?? null,
+            authoredBy: details['authoredBy'] ?? null,
+            authoredAt: details['authoredAt'] ?? null,
+            relatedIds: details['relatedIds'] ?? [targetId],
+            patch: outcome.patch,
+            title: details['title'] ?? null,
+            contentOid: details['contentOid'] ?? null,
+          },
+        });
+        return;
+      }
+
+      ctx.ok(`[OK] handoff ${targetId}`);
+      ctx.muted(`  Note:    ${String(details['noteId'] ?? 'unknown')}`);
+      ctx.muted(`  Patch:   ${String(outcome.patch ?? 'none')}`);
+      const relatedIds = Array.isArray(details['relatedIds']) ? details['relatedIds'] : [targetId];
+      ctx.muted(`  Related: ${relatedIds.join(', ')}`);
     }));
 }
