@@ -987,6 +987,42 @@ export class AgentActionValidator {
       });
     }
 
+    const submission = detail?.questDetail?.submission;
+    if (!submission) {
+      return failAssessment(request, 'approved-submission-required', [
+        `seal requires an independently approved submission for ${request.targetId}; no submission is linked to this quest.`,
+      ], {
+        normalizedArgs: {
+          artifactHash,
+          rationale,
+        },
+        underlyingCommand: `xyph seal ${request.targetId}`,
+        sideEffects: [
+          `create artifact:${request.targetId}`,
+          'status -> DONE',
+          'completed_at -> now',
+        ],
+      });
+    }
+    if (submission.status !== 'APPROVED') {
+      return failAssessment(request, 'approved-submission-required', [
+        `seal requires an independently approved submission for ${request.targetId}; latest submission ${submission.id} is ${submission.status}.`,
+      ], {
+        normalizedArgs: {
+          artifactHash,
+          rationale,
+          submissionId: submission.id,
+          submissionStatus: submission.status,
+        },
+        underlyingCommand: `xyph seal ${request.targetId}`,
+        sideEffects: [
+          `create artifact:${request.targetId}`,
+          'status -> DONE',
+          'completed_at -> now',
+        ],
+      });
+    }
+
     const keyring = new FsKeyringAdapter();
     const sealService = new GuildSealService(keyring);
     if (!sealService.hasPrivateKey(this.agentId) && !allowUnsignedScrollsForSettlement()) {
@@ -1574,17 +1610,6 @@ export class AgentActionService {
     const sealService = new GuildSealService(keyring);
     const allowUnsignedScrolls = allowUnsignedScrollsForSettlement();
 
-    let openSubWarning: string | undefined;
-    try {
-      const adapter = new WarpSubmissionAdapter(this.graphPort, this.agentId);
-      const openSubs = await adapter.getOpenSubmissionsForQuest(action.targetId);
-      if (openSubs.length > 0) {
-        openSubWarning = `Quest ${action.targetId} has open submission ${openSubs[0]}. Consider using 'merge' instead.`;
-      }
-    } catch {
-      // Non-fatal: preserve raw seal behavior.
-    }
-
     if (!sealService.hasPrivateKey(this.agentId) && !allowUnsignedScrolls) {
       return {
         ...assessment,
@@ -1633,7 +1658,6 @@ export class AgentActionService {
     });
 
     const warnings: string[] = [];
-    if (openSubWarning) warnings.push(openSubWarning);
     if (!guildSeal) warnings.push(formatUnsignedScrollOverrideWarning(this.agentId));
 
     return {
@@ -1676,61 +1700,100 @@ export class AgentActionService {
     }
 
     const decisionId = autoId('decision:');
-    const { patchSha } = await adapter.decide({
-      submissionId: action.targetId,
-      decisionId,
-      kind: 'merge',
-      rationale: action.rationale,
-      mergeCommit,
-    });
+    let patchSha: string | null = null;
+    try {
+      const decision = await adapter.decide({
+        submissionId: action.targetId,
+        decisionId,
+        kind: 'merge',
+        rationale: action.rationale,
+        mergeCommit,
+      });
+      patchSha = decision.patchSha;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return {
+        ...assessment,
+        result: 'success',
+        patch: null,
+        details: {
+          submissionId: action.targetId,
+          decisionId,
+          questId: action.questId ?? null,
+          mergeCommit: mergeCommit ?? null,
+          alreadyMerged,
+          autoSealed: false,
+          guildSeal: null,
+          warnings: [
+            `Merge committed to ${action.intoRef}, but the merge decision could not be recorded: ${msg}`,
+          ],
+          partialFailure: {
+            stage: 'record-decision',
+            message: msg,
+          },
+        },
+      };
+    }
 
     let autoSealed = false;
     let guildSealInfo: { keyId: string; alg: string } | null = null;
     let unsignedScrollWarning: string | null = null;
+    let partialFailure: { stage: string; message: string } | null = null;
     if (action.questId && action.shouldAutoSeal) {
-      const now = Date.now();
-      const keyring = new FsKeyringAdapter();
-      const sealService = new GuildSealService(keyring);
-      const scrollPayload = {
-        artifactHash: mergeCommit ?? 'unknown',
-        questId: action.questId,
-        rationale: action.rationale,
-        sealedBy: this.agentId,
-        sealedAt: now,
-      };
-      const guildSeal = await sealService.sign(scrollPayload, this.agentId);
+      try {
+        const now = Date.now();
+        const keyring = new FsKeyringAdapter();
+        const sealService = new GuildSealService(keyring);
+        const scrollPayload = {
+          artifactHash: mergeCommit ?? 'unknown',
+          questId: action.questId,
+          rationale: action.rationale,
+          sealedBy: this.agentId,
+          sealedAt: now,
+        };
+        const guildSeal = await sealService.sign(scrollPayload, this.agentId);
 
-      const sealGraph = await this.graphPort.getGraph();
-      const scrollId = `artifact:${action.questId}`;
-      await sealGraph.patch((p) => {
-        p.addNode(scrollId)
-          .setProperty(scrollId, 'artifact_hash', mergeCommit ?? 'unknown')
-          .setProperty(scrollId, 'rationale', action.rationale)
-          .setProperty(scrollId, 'type', 'scroll')
-          .setProperty(scrollId, 'sealed_by', this.agentId)
-          .setProperty(scrollId, 'sealed_at', now)
-          .setProperty(scrollId, 'payload_digest', sealService.payloadDigest(scrollPayload))
-          .addEdge(scrollId, action.questId as string, 'fulfills');
+        const sealGraph = await this.graphPort.getGraph();
+        const scrollId = `artifact:${action.questId}`;
+        await sealGraph.patch((p) => {
+          p.addNode(scrollId)
+            .setProperty(scrollId, 'artifact_hash', mergeCommit ?? 'unknown')
+            .setProperty(scrollId, 'rationale', action.rationale)
+            .setProperty(scrollId, 'type', 'scroll')
+            .setProperty(scrollId, 'sealed_by', this.agentId)
+            .setProperty(scrollId, 'sealed_at', now)
+            .setProperty(scrollId, 'payload_digest', sealService.payloadDigest(scrollPayload))
+            .addEdge(scrollId, action.questId as string, 'fulfills');
 
-        if (guildSeal) {
-          p.setProperty(scrollId, 'guild_seal_alg', guildSeal.alg)
-            .setProperty(scrollId, 'guild_seal_key_id', guildSeal.keyId)
-            .setProperty(scrollId, 'guild_seal_sig', guildSeal.sig);
+          if (guildSeal) {
+            p.setProperty(scrollId, 'guild_seal_alg', guildSeal.alg)
+              .setProperty(scrollId, 'guild_seal_key_id', guildSeal.keyId)
+              .setProperty(scrollId, 'guild_seal_sig', guildSeal.sig);
+          }
+
+          p.setProperty(action.questId as string, 'status', 'DONE')
+            .setProperty(action.questId as string, 'completed_at', now);
+        });
+
+        autoSealed = true;
+        if (guildSeal) guildSealInfo = { keyId: guildSeal.keyId, alg: guildSeal.alg };
+        if (!guildSeal) {
+          unsignedScrollWarning = formatUnsignedScrollOverrideWarning(this.agentId);
         }
-
-        p.setProperty(action.questId as string, 'status', 'DONE')
-          .setProperty(action.questId as string, 'completed_at', now);
-      });
-
-      autoSealed = true;
-      if (guildSeal) guildSealInfo = { keyId: guildSeal.keyId, alg: guildSeal.alg };
-      if (!guildSeal) {
-        unsignedScrollWarning = formatUnsignedScrollOverrideWarning(this.agentId);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        partialFailure = {
+          stage: 'auto-seal',
+          message: msg,
+        };
       }
     }
 
     const warnings: string[] = [];
     if (unsignedScrollWarning) warnings.push(unsignedScrollWarning);
+    if (partialFailure) {
+      warnings.push(`Merge was recorded, but follow-on auto-seal failed: ${partialFailure.message}`);
+    }
 
     return {
       ...assessment,
@@ -1745,6 +1808,7 @@ export class AgentActionService {
         autoSealed,
         guildSeal: guildSealInfo,
         warnings,
+        partialFailure,
       },
     };
   }

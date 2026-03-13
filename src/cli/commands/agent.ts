@@ -203,7 +203,12 @@ function renderAgentContext(
 function renderBriefing(briefing: {
   identity: { agentId: string; principalType: string };
   assignments: { quest: { id: string; title: string; status: string }; nextAction: AgentActionCandidate | null }[];
-  reviewQueue: { submissionId: string; questTitle: string; status: string }[];
+  reviewQueue: {
+    submissionId: string;
+    questTitle: string;
+    status: string;
+    nextStep: { kind: string; targetId: string };
+  }[];
   frontier: { quest: { id: string; title: string; status: string }; nextAction: AgentActionCandidate | null }[];
   recentHandoffs: { noteId: string; title: string; authoredAt: number; relatedIds: string[] }[];
   alerts: { severity: string; message: string }[];
@@ -232,6 +237,7 @@ function renderBriefing(briefing: {
   } else {
     for (const entry of briefing.reviewQueue) {
       lines.push(`  - ${entry.submissionId} ${entry.questTitle} [${entry.status}]`);
+      lines.push(`      next: ${entry.nextStep.kind} ${entry.nextStep.targetId}`);
     }
   }
 

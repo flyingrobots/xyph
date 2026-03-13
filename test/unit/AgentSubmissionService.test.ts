@@ -4,6 +4,7 @@ import { makeSnapshot, campaign, decision, intent, quest, review, submission } f
 import {
   AGENT_SUBMISSION_STALE_HOURS,
   AgentSubmissionService,
+  determineSubmissionNextStep,
 } from '../../src/domain/services/AgentSubmissionService.js';
 
 const mocks = vi.hoisted(() => ({
@@ -82,6 +83,14 @@ describe('AgentSubmissionService', () => {
           tipPatchsetId: 'patchset:REV-001',
         }),
         submission({
+          id: 'submission:REV-002',
+          questId: 'task:REV-001',
+          status: 'CHANGES_REQUESTED',
+          submittedBy: 'agent.other',
+          submittedAt: asOf - (45 * 60 * 1000),
+          tipPatchsetId: 'patchset:REV-002',
+        }),
+        submission({
           id: 'submission:TERM-001',
           questId: 'task:OWN-001',
           status: 'MERGED',
@@ -147,6 +156,7 @@ describe('AgentSubmissionService', () => {
         },
       },
     ]);
+    expect(result.reviewable.map((entry) => entry.submissionId)).not.toContain('submission:REV-002');
     expect(result.attentionNeeded.map((entry) => entry.submissionId)).toEqual([
       'submission:OWN-002',
       'submission:OWN-001',
@@ -212,5 +222,26 @@ describe('AgentSubmissionService', () => {
     expect(result.counts.owned).toBe(2);
     expect(result.owned).toHaveLength(1);
     expect(result.owned[0]?.submissionId).toBe('submission:OWN-001');
+  });
+
+  it('routes external CHANGES_REQUESTED submissions to inspection instead of review', () => {
+    const nextStep = determineSubmissionNextStep(
+      submission({
+        id: 'submission:REV-CHANGES',
+        questId: 'task:REV-001',
+        status: 'CHANGES_REQUESTED',
+        submittedBy: 'agent.other',
+        submittedAt: Date.UTC(2026, 2, 12, 20, 0, 0),
+        tipPatchsetId: 'patchset:REV-CHANGES',
+      }),
+      'agent.hal',
+    );
+
+    expect(nextStep).toEqual({
+      kind: 'inspect',
+      targetId: 'task:REV-001',
+      reason: 'The current tip is blocked by requested changes; wait for the submitter to revise before reviewing again.',
+      supportedByActionKernel: false,
+    });
   });
 });

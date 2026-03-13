@@ -7,6 +7,11 @@ import { toNeighborEntries } from '../../infrastructure/helpers/isNeighborEntry.
 import { ReadinessService } from './ReadinessService.js';
 import { AgentActionValidator } from './AgentActionService.js';
 import {
+  determineSubmissionNextStep,
+  isReviewableByAgent,
+  type AgentSubmissionNextStep,
+} from './AgentSubmissionService.js';
+import {
   AgentRecommender,
   type AgentActionCandidate,
   type AgentDependencyContext,
@@ -55,6 +60,7 @@ export interface AgentReviewQueueEntry {
   submittedBy: string;
   submittedAt: number;
   reason: string;
+  nextStep: AgentSubmissionNextStep;
 }
 
 export interface AgentHandoffSummary {
@@ -216,8 +222,7 @@ export class AgentBriefingService {
     const questById = new Map(snapshot.quests.map((quest) => [quest.id, quest] as const));
     const queue = snapshot.submissions
       .filter((submission) =>
-        (submission.status === 'OPEN' || submission.status === 'CHANGES_REQUESTED') &&
-        submission.submittedBy !== this.agentId,
+        isReviewableByAgent(submission, this.agentId),
       )
       .map((submission) => {
         const quest = questById.get(submission.questId);
@@ -228,9 +233,8 @@ export class AgentBriefingService {
           status: submission.status,
           submittedBy: submission.submittedBy,
           submittedAt: submission.submittedAt,
-          reason: submission.status === 'CHANGES_REQUESTED'
-            ? 'Needs another review pass after requested changes.'
-            : 'Open submission awaiting review.',
+          reason: 'Open submission awaiting review.',
+          nextStep: determineSubmissionNextStep(submission, this.agentId),
         } satisfies AgentReviewQueueEntry;
       });
 

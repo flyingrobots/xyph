@@ -95,6 +95,7 @@ describe('AgentBriefingService', () => {
           status: 'OPEN',
           submittedBy: 'agent.other',
           submittedAt: 100,
+          tipPatchsetId: 'patchset:AGT-001',
         }),
       ],
       sortedTaskIds: ['task:AGT-001', 'task:AGT-002'],
@@ -196,6 +197,11 @@ describe('AgentBriefingService', () => {
         submissionId: 'submission:AGT-001',
         questId: 'task:AGT-002',
         status: 'OPEN',
+        nextStep: {
+          kind: 'review',
+          targetId: 'patchset:AGT-001',
+          supportedByActionKernel: true,
+        },
       },
     ]);
     expect(briefing.recentHandoffs).toEqual([
@@ -311,5 +317,60 @@ describe('AgentBriefingService', () => {
       targetId: 'task:AGT-PLAN',
       source: 'planning',
     });
+  });
+
+  it('omits CHANGES_REQUESTED submissions from the briefing review queue', async () => {
+    const snapshot = makeSnapshot({
+      quests: [
+        quest({
+          id: 'task:AGT-002',
+          title: 'Quest awaiting revision',
+          status: 'READY',
+          hours: 1,
+          description: 'Quest awaiting revision',
+          taskKind: 'delivery',
+          campaignId: 'campaign:TRACE',
+          intentId: 'intent:TRACE',
+        }),
+      ],
+      campaigns: [campaign({ id: 'campaign:TRACE', title: 'Trace Campaign' })],
+      intents: [intent({ id: 'intent:TRACE', title: 'Trace Intent' })],
+      submissions: [
+        submission({
+          id: 'submission:AGT-CHANGES',
+          questId: 'task:AGT-002',
+          status: 'CHANGES_REQUESTED',
+          submittedBy: 'agent.other',
+          submittedAt: 100,
+          tipPatchsetId: 'patchset:AGT-CHANGES',
+        }),
+      ],
+    });
+
+    mocks.createGraphContext.mockReturnValue({
+      fetchSnapshot: vi.fn().mockResolvedValue(snapshot),
+      fetchEntityDetail: vi.fn(),
+      filterSnapshot: vi.fn(),
+      invalidateCache: vi.fn(),
+      get graph() {
+        throw new Error('not used in test');
+      },
+    });
+
+    const service = new AgentBriefingService(
+      makeGraphWithHandoffs([]),
+      makeRoadmap([
+        makeQuestEntity({
+          id: 'task:AGT-002',
+          title: 'Quest awaiting revision',
+          description: 'Quest awaiting revision',
+        }),
+      ]),
+      'agent.hal',
+    );
+
+    const briefing = await service.buildBriefing();
+
+    expect(briefing.reviewQueue).toEqual([]);
   });
 });

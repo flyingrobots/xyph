@@ -212,6 +212,16 @@ function makeQuestDetail(
           policyId: 'policy:TRACE',
         },
       },
+      submission: {
+        id: 'submission:AGT-001',
+        questId: 'task:AGT-001',
+        status: 'APPROVED',
+        tipPatchsetId: 'patchset:tip',
+        headsCount: 1,
+        approvalCount: 1,
+        submittedBy: 'agent.other',
+        submittedAt: Date.UTC(2026, 2, 12, 18, 0, 0),
+      },
       reviews: [],
       decisions: [],
       stories: [],
@@ -524,6 +534,49 @@ describe('AgentActionService', () => {
     });
   });
 
+  it('rejects seal when the quest lacks an independently approved submission', async () => {
+    mocks.fetchEntityDetail.mockResolvedValue(makeQuestDetail({
+      submission: {
+        id: 'submission:AGT-001',
+        questId: 'task:AGT-001',
+        status: 'OPEN',
+        tipPatchsetId: 'patchset:tip',
+        headsCount: 1,
+        approvalCount: 0,
+        submittedBy: 'agent.hal',
+        submittedAt: Date.UTC(2026, 2, 12, 18, 0, 0),
+      },
+    }));
+
+    const service = new AgentActionService(
+      makeGraphPort({}),
+      makeRoadmap(makeQuest()),
+      'agent.hal',
+    );
+
+    const outcome = await service.execute({
+      kind: 'seal',
+      targetId: 'task:AGT-001',
+      dryRun: true,
+      args: {
+        artifactHash: 'blake3:artifact',
+        rationale: 'Attempting to settle without independent approval.',
+      },
+    });
+
+    expect(outcome).toMatchObject({
+      kind: 'seal',
+      targetId: 'task:AGT-001',
+      allowed: false,
+      result: 'rejected',
+      validation: {
+        valid: false,
+        code: 'approved-submission-required',
+      },
+    });
+    expect(outcome.validation.reasons[0]).toContain('latest submission submission:AGT-001 is OPEN');
+  });
+
   it('executes seal by writing a scroll and marking the quest done', async () => {
     const graph = {
       patch: vi.fn(async (fn: (patch: { addNode: ReturnType<typeof vi.fn>; setProperty: ReturnType<typeof vi.fn>; addEdge: ReturnType<typeof vi.fn> }) => void) => {
@@ -656,6 +709,86 @@ describe('AgentActionService', () => {
       },
     });
     expect(typeof outcome.details?.['decisionId']).toBe('string');
+  });
+
+  it('reports committed merge state instead of rejection when recording the decision fails', async () => {
+    mocks.decide.mockRejectedValue(new Error('graph write failed'));
+
+    const service = new AgentActionService(
+      makeGraphPort({}),
+      makeRoadmap(makeQuest()),
+      'agent.hal',
+    );
+
+    const outcome = await service.execute({
+      kind: 'merge',
+      targetId: 'submission:AGT-001',
+      args: {
+        rationale: 'Independent review is complete and the tip is approved.',
+        intoRef: 'main',
+      },
+    });
+
+    expect(mocks.merge).toHaveBeenCalledWith('feat/agent-action-kernel-v1', 'main');
+    expect(outcome).toMatchObject({
+      kind: 'merge',
+      targetId: 'submission:AGT-001',
+      allowed: true,
+      result: 'success',
+      patch: null,
+      details: {
+        submissionId: 'submission:AGT-001',
+        mergeCommit: 'mergecommit123456',
+        alreadyMerged: false,
+        autoSealed: false,
+        partialFailure: {
+          stage: 'record-decision',
+          message: 'graph write failed',
+        },
+      },
+    });
+  });
+
+  it('reports auto-seal failure as a warning after the merge decision is recorded', async () => {
+    const graph = {
+      patch: vi.fn(async () => {
+        throw new Error('artifact node already exists');
+      }),
+    };
+
+    const service = new AgentActionService(
+      makeGraphPort(graph),
+      makeRoadmap(makeQuest()),
+      'agent.hal',
+    );
+
+    const outcome = await service.execute({
+      kind: 'merge',
+      targetId: 'submission:AGT-001',
+      args: {
+        rationale: 'Independent review is complete and the tip is approved.',
+        intoRef: 'main',
+      },
+    });
+
+    expect(outcome).toMatchObject({
+      kind: 'merge',
+      targetId: 'submission:AGT-001',
+      allowed: true,
+      result: 'success',
+      patch: 'patch:merge',
+      details: {
+        submissionId: 'submission:AGT-001',
+        autoSealed: false,
+        partialFailure: {
+          stage: 'auto-seal',
+          message: 'artifact node already exists',
+        },
+      },
+    });
+    expect(outcome.details?.['warnings']).toEqual([
+      'Merge was recorded, but follow-on auto-seal failed: artifact node already exists',
+    ]);
   });
 
   it('normalizes submit during dry-run with workspace metadata and generated ids', async () => {

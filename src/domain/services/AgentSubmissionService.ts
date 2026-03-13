@@ -60,10 +60,10 @@ function isTerminalSubmission(status: SubmissionStatus): boolean {
   return status === 'MERGED' || status === 'CLOSED';
 }
 
-function isReviewableByAgent(submission: SubmissionNode, agentId: string): boolean {
+export function isReviewableByAgent(submission: SubmissionNode, agentId: string): boolean {
   return (
     submission.submittedBy !== agentId &&
-    (submission.status === 'OPEN' || submission.status === 'CHANGES_REQUESTED')
+    submission.status === 'OPEN'
   );
 }
 
@@ -180,52 +180,64 @@ export class AgentSubmissionService {
       stale,
       attentionCodes,
       contextId: submission.questId,
-      nextStep: this.determineNextStep(submission),
+      nextStep: determineSubmissionNextStep(submission, this.agentId),
+    };
+  }
+}
+
+export function determineSubmissionNextStep(
+  submission: SubmissionNode,
+  agentId: string,
+): AgentSubmissionNextStep {
+  if (isReviewableByAgent(submission, agentId)) {
+    return {
+      kind: 'review',
+      targetId: submission.tipPatchsetId ?? submission.id,
+      reason: 'Review the current tip patchset for this submission.',
+      supportedByActionKernel: typeof submission.tipPatchsetId === 'string',
     };
   }
 
-  private determineNextStep(submission: SubmissionNode): AgentSubmissionNextStep {
-    if (isReviewableByAgent(submission, this.agentId)) {
-      return {
-        kind: 'review',
-        targetId: submission.tipPatchsetId ?? submission.id,
-        reason: 'Review the current tip patchset for this submission.',
-        supportedByActionKernel: true,
-      };
-    }
-
-    if (submission.submittedBy === this.agentId && submission.status === 'CHANGES_REQUESTED') {
-      return {
-        kind: 'revise',
-        targetId: submission.id,
-        reason: 'Address requested changes with a new patchset revision.',
-        supportedByActionKernel: false,
-      };
-    }
-
-    if (submission.submittedBy === this.agentId && submission.status === 'APPROVED') {
-      return {
-        kind: 'merge',
-        targetId: submission.id,
-        reason: 'Submission is approved and ready for settlement.',
-        supportedByActionKernel: true,
-      };
-    }
-
-    if (submission.submittedBy === this.agentId) {
-      return {
-        kind: 'wait',
-        targetId: submission.questId,
-        reason: 'Submission is awaiting external review or follow-up.',
-        supportedByActionKernel: false,
-      };
-    }
-
+  if (submission.submittedBy === agentId && submission.status === 'CHANGES_REQUESTED') {
     return {
-      kind: 'inspect',
-      targetId: submission.questId,
-      reason: 'Inspect the quest context before taking a follow-on action.',
+      kind: 'revise',
+      targetId: submission.id,
+      reason: 'Address requested changes with a new patchset revision.',
       supportedByActionKernel: false,
     };
   }
+
+  if (submission.submittedBy === agentId && submission.status === 'APPROVED') {
+    return {
+      kind: 'merge',
+      targetId: submission.id,
+      reason: 'Submission is approved and ready for settlement.',
+      supportedByActionKernel: true,
+    };
+  }
+
+  if (submission.status === 'CHANGES_REQUESTED') {
+    return {
+      kind: 'inspect',
+      targetId: submission.questId,
+      reason: 'The current tip is blocked by requested changes; wait for the submitter to revise before reviewing again.',
+      supportedByActionKernel: false,
+    };
+  }
+
+  if (submission.submittedBy === agentId) {
+    return {
+      kind: 'wait',
+      targetId: submission.questId,
+      reason: 'Submission is awaiting external review or follow-up.',
+      supportedByActionKernel: false,
+    };
+  }
+
+  return {
+    kind: 'inspect',
+    targetId: submission.questId,
+    reason: 'Inspect the quest context before taking a follow-on action.',
+    supportedByActionKernel: false,
+  };
 }

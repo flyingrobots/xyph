@@ -161,6 +161,9 @@ The `--json` result must include:
 
 `validation` must contain machine-readable failure reasons when the action is
 rejected. Rejections must happen **before** any graph or workspace mutation.
+If a follow-on step fails after mutation has already been committed, the
+outcome must stay truthful by returning success plus `warnings` and structured
+`partialFailure` data instead of pretending nothing happened.
 
 ### 4.5 `handoff --json`
 
@@ -193,6 +196,10 @@ Checkpoint-2 action kinds are:
 
 These are the routine agent actions that should be executable through `act` in
 the checkpoint-2 kernel.
+
+`seal` is review-gated in the agent kernel. An agent may only seal a quest when
+the latest linked submission is independently approved; `seal` must not bypass
+the submission review loop.
 
 The current runtime now ships that routine action set:
 
