@@ -25,6 +25,7 @@ import {
   computeStatus,
   computeTipPatchset,
   computeEffectiveVerdicts,
+  filterIndependentVerdicts,
   type PatchsetRef,
   type ReviewRef,
   type DecisionProps,
@@ -1576,12 +1577,13 @@ class GraphContextImpl implements GraphContext {
       if (tip) {
         effectiveVerdicts = computeEffectiveVerdicts(reviewsByPatchset.get(tip.id) ?? []);
       }
+      const independentVerdicts = filterIndependentVerdicts(effectiveVerdicts, submittedBy);
 
       const subDecisions = decisionsBySubmission.get(n.id) ?? [];
-      const status = computeStatus({ decisions: subDecisions, effectiveVerdicts });
+      const status = computeStatus({ decisions: subDecisions, effectiveVerdicts: independentVerdicts });
 
       let approvalCount = 0;
-      for (const v of effectiveVerdicts.values()) {
+      for (const v of independentVerdicts.values()) {
         if (v === 'approve') approvalCount++;
       }
 

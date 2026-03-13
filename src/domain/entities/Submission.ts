@@ -249,6 +249,22 @@ export function computeEffectiveVerdicts(
   return effective;
 }
 
+/**
+ * Removes verdicts from a principal who must not count toward independent review.
+ * Used to ensure the submitter's own verdicts do not satisfy approval policy.
+ */
+export function filterIndependentVerdicts(
+  effectiveVerdicts: Map<string, ReviewVerdict>,
+  excludedReviewer: string,
+): Map<string, ReviewVerdict> {
+  const filtered = new Map<string, ReviewVerdict>();
+  for (const [reviewer, verdict] of effectiveVerdicts) {
+    if (reviewer === excludedReviewer) continue;
+    filtered.set(reviewer, verdict);
+  }
+  return filtered;
+}
+
 function reviewTieBreaker(a: ReviewRef, b: ReviewRef): number {
   // Sort descending: negative means a wins
   if (a.reviewedAt !== b.reviewedAt) return b.reviewedAt - a.reviewedAt;

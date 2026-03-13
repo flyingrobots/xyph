@@ -182,6 +182,14 @@ export class WarpSubmissionAdapter implements SubmissionPort, SubmissionReadMode
     return typeof questId === 'string' ? questId : null;
   }
 
+  public async getSubmissionSubmittedBy(submissionId: string): Promise<string | null> {
+    const graph = await this.graphPort.getGraph();
+    const props = await graph.getNodeProps(submissionId);
+    if (!props) return null;
+    const submittedBy = props['submitted_by'];
+    return typeof submittedBy === 'string' ? submittedBy : null;
+  }
+
   public async getOpenSubmissionsForQuest(questId: string): Promise<string[]> {
     const graph = await this.graphPort.getGraph();
     const submissionNeighbors = toNeighborEntries(

@@ -18,6 +18,7 @@ function makeReadModel(overrides: Partial<SubmissionReadModel> = {}): Submission
     getSubmissionForPatchset: vi.fn().mockResolvedValue('submission:S1'),
     getReviewsForPatchset: vi.fn().mockResolvedValue([]),
     getDecisionsForSubmission: vi.fn().mockResolvedValue([]),
+    getSubmissionSubmittedBy: vi.fn().mockResolvedValue('agent.submitter'),
     ...overrides,
   };
 }
@@ -178,6 +179,17 @@ describe('SubmissionService.validateReview', () => {
       svc.validateReview('patchset:S1:P1', 'human.alice'),
     ).rejects.toThrow('[INVALID_FROM]');
   });
+
+  it('throws [FORBIDDEN] when submitter tries to review their own submission', async () => {
+    const svc = new SubmissionService(
+      makeReadModel({
+        getSubmissionSubmittedBy: vi.fn().mockResolvedValue('agent.submitter'),
+      }),
+    );
+    await expect(
+      svc.validateReview('patchset:S1:P1', 'agent.submitter'),
+    ).rejects.toThrow('[FORBIDDEN]');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -218,6 +230,29 @@ describe('SubmissionService.validateMerge', () => {
   it('throws [INVALID_FROM] when submission is not APPROVED', async () => {
     // No reviews → status OPEN
     const svc = new SubmissionService(makeReadModel());
+    await expect(
+      svc.validateMerge('submission:S1', 'human.james'),
+    ).rejects.toThrow('[INVALID_FROM]');
+  });
+
+  it('throws [INVALID_FROM] when only the submitter approved the current tip', async () => {
+    const selfApprove: ReviewRef = {
+      id: 'r1',
+      verdict: 'approve',
+      reviewedBy: 'agent.submitter',
+      reviewedAt: 200,
+    };
+    const tipPatchset: PatchsetRef = {
+      id: 'patchset:S1:P1',
+      authoredAt: 100,
+    };
+    const svc = new SubmissionService(
+      makeReadModel({
+        getPatchsetRefs: vi.fn().mockResolvedValue([tipPatchset]),
+        getReviewsForPatchset: vi.fn().mockResolvedValue([selfApprove]),
+        getSubmissionSubmittedBy: vi.fn().mockResolvedValue('agent.submitter'),
+      }),
+    );
     await expect(
       svc.validateMerge('submission:S1', 'human.james'),
     ).rejects.toThrow('[INVALID_FROM]');

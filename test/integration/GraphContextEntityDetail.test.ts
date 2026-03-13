@@ -211,4 +211,52 @@ describe('GraphContext entity detail integration', () => {
       'comment:SHOW-2',
     ]));
   });
+
+  it('does not count the submitter as an independent approver in snapshot submission status', { timeout: 30_000 }, async () => {
+    const graph = await graphPort.getGraph();
+
+    await graph.patch((p) => {
+      p.addNode('task:SELF-001')
+        .setProperty('task:SELF-001', 'title', 'Self approval should not count')
+        .setProperty('task:SELF-001', 'status', 'IN_PROGRESS')
+        .setProperty('task:SELF-001', 'hours', 2)
+        .setProperty('task:SELF-001', 'type', 'task');
+
+      p.addNode('submission:SELF-001')
+        .setProperty('submission:SELF-001', 'type', 'submission')
+        .setProperty('submission:SELF-001', 'quest_id', 'task:SELF-001')
+        .setProperty('submission:SELF-001', 'submitted_by', 'agent.submitter')
+        .setProperty('submission:SELF-001', 'submitted_at', 1_700_100_000_100)
+        .addEdge('submission:SELF-001', 'task:SELF-001', 'submits');
+
+      p.addNode('patchset:SELF-001')
+        .setProperty('patchset:SELF-001', 'type', 'patchset')
+        .setProperty('patchset:SELF-001', 'workspace_ref', 'feat/self-review')
+        .setProperty('patchset:SELF-001', 'description', 'Self-approval should not make this approved.')
+        .setProperty('patchset:SELF-001', 'authored_by', 'agent.submitter')
+        .setProperty('patchset:SELF-001', 'authored_at', 1_700_100_000_101)
+        .addEdge('patchset:SELF-001', 'submission:SELF-001', 'has-patchset');
+
+      p.addNode('review:SELF-001')
+        .setProperty('review:SELF-001', 'type', 'review')
+        .setProperty('review:SELF-001', 'verdict', 'approve')
+        .setProperty('review:SELF-001', 'comment', 'I approve my own work.')
+        .setProperty('review:SELF-001', 'reviewed_by', 'agent.submitter')
+        .setProperty('review:SELF-001', 'reviewed_at', 1_700_100_000_102)
+        .addEdge('review:SELF-001', 'patchset:SELF-001', 'reviews');
+    });
+
+    const ctx = createGraphContext(graphPort);
+    const snapshot = await ctx.fetchSnapshot();
+    const submission = snapshot.submissions.find((entry) => entry.id === 'submission:SELF-001');
+
+    expect(submission).toBeDefined();
+    expect(submission).toMatchObject({
+      id: 'submission:SELF-001',
+      status: 'OPEN',
+      approvalCount: 0,
+      tipPatchsetId: 'patchset:SELF-001',
+      submittedBy: 'agent.submitter',
+    });
+  });
 });

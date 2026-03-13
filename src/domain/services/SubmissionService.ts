@@ -12,6 +12,7 @@ import {
   computeStatus,
   computeTipPatchset,
   computeEffectiveVerdicts,
+  filterIndependentVerdicts,
   type PatchsetRef,
   type ReviewRef,
   type DecisionProps,
@@ -43,6 +44,9 @@ export interface SubmissionReadModel {
 
   /** Returns decisions for a submission. */
   getDecisionsForSubmission(submissionId: string): Promise<DecisionProps[]>;
+
+  /** Returns the principal who opened the submission. */
+  getSubmissionSubmittedBy(submissionId: string): Promise<string | null>;
 }
 
 // ---------------------------------------------------------------------------
@@ -62,15 +66,19 @@ export class SubmissionService {
   async getSubmissionStatus(submissionId: string): Promise<SubmissionStatus> {
     const patchsetRefs = await this.read.getPatchsetRefs(submissionId);
     const { tip } = computeTipPatchset(patchsetRefs);
+    const submittedBy = await this.read.getSubmissionSubmittedBy(submissionId);
 
     let effectiveVerdicts = new Map<string, 'approve' | 'request-changes' | 'comment'>();
     if (tip) {
       const reviews = await this.read.getReviewsForPatchset(tip.id);
       effectiveVerdicts = computeEffectiveVerdicts(reviews);
     }
+    const independentVerdicts = submittedBy
+      ? filterIndependentVerdicts(effectiveVerdicts, submittedBy)
+      : effectiveVerdicts;
 
     const decisions = await this.read.getDecisionsForSubmission(submissionId);
-    return computeStatus({ decisions, effectiveVerdicts });
+    return computeStatus({ decisions, effectiveVerdicts: independentVerdicts });
   }
 
   /**
@@ -155,6 +163,12 @@ export class SubmissionService {
     const submissionId = await this.read.getSubmissionForPatchset(patchsetId);
     if (submissionId === null) {
       throw new Error(`[NOT_FOUND] Patchset ${patchsetId} not found or has no parent submission`);
+    }
+    const submittedBy = await this.read.getSubmissionSubmittedBy(submissionId);
+    if (submittedBy === actorId) {
+      throw new Error(
+        `[FORBIDDEN] review requires an independent reviewer, submission ${submissionId} was submitted by ${submittedBy}`
+      );
     }
 
     const status = await this.getSubmissionStatus(submissionId);

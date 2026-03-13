@@ -37,7 +37,11 @@ second workflow model and not an informal wrapper around raw commands.
    Agents may perform routine operations when XYPH gates pass. Sovereignty,
    scope control, and constitutionally sensitive changes remain human-bound.
 
-5. **Graph-native collaboration**
+5. **Independent review**
+   A submitter's own review does not satisfy approval policy. Settlement
+   requires approval from a different principal on the current tip.
+
+6. **Graph-native collaboration**
    Handoffs, notes, comments, and quest-linked discussion live in the WARP
    graph as nodes with queryable metadata and attached content blobs.
 
