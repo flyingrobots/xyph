@@ -1013,6 +1013,7 @@ class GraphContextImpl implements GraphContext {
       ? await this.findPatchsetIdsForSubmission(graph, submission.id)
       : new Set<string>();
     const reviews = snapshot.reviews.filter((entry) => patchsetIds.has(entry.patchsetId));
+    const reviewIds = new Set(reviews.map((entry) => entry.id));
     const decisions = submission
       ? snapshot.decisions.filter((entry) => entry.submissionId === submission.id)
       : [];
@@ -1022,6 +1023,8 @@ class GraphContextImpl implements GraphContext {
       ...requirements.map((entry) => entry.id),
       ...stories.map((entry) => entry.id),
       ...criteria.map((entry) => entry.id),
+      ...patchsetIds,
+      ...reviewIds,
     ]);
     if (campaign) relevantIds.add(campaign.id);
     if (intent) relevantIds.add(intent.id);
@@ -1452,11 +1455,16 @@ class GraphContextImpl implements GraphContext {
       });
     }
     for (const comment of comments) {
+      const targetLabel = comment.replyToId
+        ? `Reply to ${comment.replyToId}`
+        : comment.targetId
+          ? `Comment on ${comment.targetId}`
+          : 'Comment';
       entries.push({
         id: comment.id,
         at: comment.authoredAt,
         kind: 'comment',
-        title: comment.replyToId ? `Reply to ${comment.replyToId}` : 'Comment',
+        title: targetLabel,
         actor: comment.authoredBy,
         relatedId: comment.targetId ?? comment.replyToId,
       });

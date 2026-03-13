@@ -44,6 +44,9 @@ second workflow model and not an informal wrapper around raw commands.
 6. **Graph-native collaboration**
    Handoffs, notes, comments, and quest-linked discussion live in the WARP
    graph as nodes with queryable metadata and attached content blobs.
+   Review discussion should attach to `patchset:*` and `review:*` nodes so the
+   quest issue-page projection can render change-specific threads without
+   deferring to GitHub.
 
 ## 3. Command Set
 

@@ -140,6 +140,52 @@ describe('GraphContext entity detail integration', () => {
     await reply.attachContent('comment:SHOW-2', 'Agreed. The JSON shape should stabilize first.');
     await reply.commit();
 
+    await graph.patch((p) => {
+      p.addNode('submission:SHOW')
+        .setProperty('submission:SHOW', 'type', 'submission')
+        .setProperty('submission:SHOW', 'quest_id', 'task:SHOW-001')
+        .setProperty('submission:SHOW', 'submitted_by', 'agent.builder')
+        .setProperty('submission:SHOW', 'submitted_at', 1_700_100_000_009)
+        .addEdge('submission:SHOW', 'task:SHOW-001', 'submits');
+
+      p.addNode('patchset:SHOW')
+        .setProperty('patchset:SHOW', 'type', 'patchset')
+        .setProperty('patchset:SHOW', 'workspace_ref', 'feat/show-detail')
+        .setProperty('patchset:SHOW', 'description', 'Quest detail patchset for review discussion.')
+        .setProperty('patchset:SHOW', 'authored_by', 'agent.builder')
+        .setProperty('patchset:SHOW', 'authored_at', 1_700_100_000_010)
+        .addEdge('patchset:SHOW', 'submission:SHOW', 'has-patchset');
+
+      p.addNode('review:SHOW')
+        .setProperty('review:SHOW', 'type', 'review')
+        .setProperty('review:SHOW', 'verdict', 'comment')
+        .setProperty('review:SHOW', 'comment', 'Initial review comment')
+        .setProperty('review:SHOW', 'reviewed_by', 'human.reviewer')
+        .setProperty('review:SHOW', 'reviewed_at', 1_700_100_000_011)
+        .addEdge('review:SHOW', 'patchset:SHOW', 'reviews');
+    });
+
+    const patchsetComment = await createPatchSession(graph);
+    patchsetComment
+      .addNode('comment:SHOW-3')
+      .setProperty('comment:SHOW-3', 'type', 'comment')
+      .setProperty('comment:SHOW-3', 'authored_by', 'human.reviewer')
+      .setProperty('comment:SHOW-3', 'authored_at', 1_700_100_000_012)
+      .addEdge('comment:SHOW-3', 'patchset:SHOW', 'comments-on');
+    await patchsetComment.attachContent('comment:SHOW-3', 'Please explain the traceability rollup in this patchset.');
+    await patchsetComment.commit();
+
+    const reviewReply = await createPatchSession(graph);
+    reviewReply
+      .addNode('comment:SHOW-4')
+      .setProperty('comment:SHOW-4', 'type', 'comment')
+      .setProperty('comment:SHOW-4', 'authored_by', 'agent.builder')
+      .setProperty('comment:SHOW-4', 'authored_at', 1_700_100_000_013)
+      .addEdge('comment:SHOW-4', 'review:SHOW', 'comments-on')
+      .addEdge('comment:SHOW-4', 'comment:SHOW-3', 'replies-to');
+    await reviewReply.attachContent('comment:SHOW-4', 'Added a clearer explanation and updated the quest timeline labels.');
+    await reviewReply.commit();
+
     const ctx = createGraphContext(graphPort);
     const detail = await ctx.fetchEntityDetail('task:SHOW-001');
 
@@ -191,7 +237,12 @@ describe('GraphContext entity detail integration', () => {
       targetIds: ['req:SHOW'],
     });
 
-    expect(questDetail.comments.map((entry) => entry.id)).toEqual(['comment:SHOW-1', 'comment:SHOW-2']);
+    expect(questDetail.comments.map((entry) => entry.id)).toEqual([
+      'comment:SHOW-1',
+      'comment:SHOW-2',
+      'comment:SHOW-3',
+      'comment:SHOW-4',
+    ]);
     expect(questDetail.comments.find((entry) => entry.id === 'comment:SHOW-1')).toMatchObject({
       targetId: 'task:SHOW-001',
       replyIds: ['comment:SHOW-2'],
@@ -201,15 +252,37 @@ describe('GraphContext entity detail integration', () => {
       replyToId: 'comment:SHOW-1',
       body: 'Agreed. The JSON shape should stabilize first.',
     });
+    expect(questDetail.comments.find((entry) => entry.id === 'comment:SHOW-3')).toMatchObject({
+      targetId: 'patchset:SHOW',
+      replyIds: ['comment:SHOW-4'],
+      body: 'Please explain the traceability rollup in this patchset.',
+    });
+    expect(questDetail.comments.find((entry) => entry.id === 'comment:SHOW-4')).toMatchObject({
+      targetId: 'review:SHOW',
+      replyToId: 'comment:SHOW-3',
+      body: 'Added a clearer explanation and updated the quest timeline labels.',
+    });
 
     expect(questDetail.timeline.map((entry) => entry.id)).toEqual(expect.arrayContaining([
       'task:SHOW-001:ready',
       'evidence:SHOW',
+      'submission:SHOW',
+      'review:SHOW',
       'note:SHOW-v1',
       'note:SHOW-v2',
       'comment:SHOW-1',
       'comment:SHOW-2',
+      'comment:SHOW-3',
+      'comment:SHOW-4',
     ]));
+    expect(questDetail.timeline.find((entry) => entry.id === 'comment:SHOW-3')).toMatchObject({
+      title: 'Comment on patchset:SHOW',
+      relatedId: 'patchset:SHOW',
+    });
+    expect(questDetail.timeline.find((entry) => entry.id === 'comment:SHOW-4')).toMatchObject({
+      title: 'Reply to comment:SHOW-3',
+      relatedId: 'review:SHOW',
+    });
   });
 
   it('does not count the submitter as an independent approver in snapshot submission status', { timeout: 30_000 }, async () => {
