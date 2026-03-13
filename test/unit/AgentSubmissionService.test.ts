@@ -163,6 +163,7 @@ describe('AgentSubmissionService', () => {
       nextStep: {
         kind: 'merge',
         targetId: 'submission:OWN-001',
+        supportedByActionKernel: true,
       },
     });
   });

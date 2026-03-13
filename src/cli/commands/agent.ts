@@ -25,8 +25,12 @@ interface ActOptions {
   dryRun?: boolean;
   description?: string;
   title?: string;
+  rationale?: string;
+  artifact?: string;
   base?: string;
   workspace?: string;
+  into?: string;
+  patchset?: string;
   kind?: string;
   story?: string;
   storyTitle?: string;
@@ -51,8 +55,12 @@ function buildActionArgs(opts: ActOptions): Record<string, unknown> {
   const args: Record<string, unknown> = {};
   if (opts.description !== undefined) args['description'] = opts.description.trim();
   if (opts.title !== undefined) args['title'] = opts.title.trim();
+  if (opts.rationale !== undefined) args['rationale'] = opts.rationale.trim();
+  if (opts.artifact !== undefined) args['artifactHash'] = opts.artifact.trim();
   if (opts.base !== undefined) args['baseRef'] = opts.base.trim();
   if (opts.workspace !== undefined) args['workspaceRef'] = opts.workspace.trim();
+  if (opts.into !== undefined) args['intoRef'] = opts.into.trim();
+  if (opts.patchset !== undefined) args['patchsetId'] = opts.patchset.trim();
   if (opts.kind !== undefined) args['taskKind'] = opts.kind;
   if (opts.story !== undefined) args['storyId'] = opts.story;
   if (opts.storyTitle !== undefined) args['storyTitle'] = opts.storyTitle.trim();
@@ -495,8 +503,12 @@ export function registerAgentCommands(program: Command, ctx: CliContext): void {
     .option('--dry-run', 'Validate and normalize without mutating graph or workspace')
     .option('--description <text>', 'Description for shape or submit')
     .option('--title <text>', 'Title for handoff')
+    .option('--rationale <text>', 'Rationale for seal or merge')
+    .option('--artifact <hash>', 'Artifact hash for seal')
     .option('--base <ref>', 'Base branch for submit (default: main)')
     .option('--workspace <ref>', 'Workspace ref for submit (default: current git branch)')
+    .option('--into <ref>', 'Target branch for merge (default: main)')
+    .option('--patchset <id>', 'Explicit patchset ID for merge')
     .option('--kind <kind>', `Quest kind for shape (${[...VALID_TASK_KINDS].join(' | ')})`)
     .option('--story <id>', 'Story node ID for packet')
     .option('--story-title <text>', 'Story title for packet')

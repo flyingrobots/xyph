@@ -11,14 +11,26 @@ import {
 import { IntakeService } from './IntakeService.js';
 import { ReadinessService } from './ReadinessService.js';
 import { SubmissionService } from './SubmissionService.js';
+import { GuildSealService } from './GuildSealService.js';
+import {
+  assessSettlementGate,
+  formatSettlementGateFailure,
+} from './SettlementGateService.js';
+import {
+  allowUnsignedScrollsForSettlement,
+  formatMissingSettlementKeyMessage,
+  formatUnsignedScrollOverrideWarning,
+} from './SettlementKeyPolicy.js';
 import { createPatchSession } from '../../infrastructure/helpers/createPatchSession.js';
+import { createGraphContext } from '../../infrastructure/GraphContext.js';
+import { FsKeyringAdapter } from '../../infrastructure/adapters/FsKeyringAdapter.js';
 import { WarpIntakeAdapter } from '../../infrastructure/adapters/WarpIntakeAdapter.js';
 import { WarpSubmissionAdapter } from '../../infrastructure/adapters/WarpSubmissionAdapter.js';
 import { GitWorkspaceAdapter } from '../../infrastructure/adapters/GitWorkspaceAdapter.js';
 import type { ReviewVerdict } from '../entities/Submission.js';
 
 export const ROUTINE_AGENT_ACTION_KINDS = [
-  'claim', 'shape', 'packet', 'ready', 'comment', 'submit', 'review', 'handoff',
+  'claim', 'shape', 'packet', 'ready', 'comment', 'submit', 'review', 'handoff', 'seal', 'merge',
 ] as const;
 
 export const HUMAN_ONLY_AGENT_ACTION_KINDS = [
@@ -137,6 +149,24 @@ interface HandoffAction {
   relatedIds: string[];
 }
 
+interface SealAction {
+  kind: 'seal';
+  targetId: string;
+  artifactHash: string;
+  rationale: string;
+}
+
+interface MergeAction {
+  kind: 'merge';
+  targetId: string;
+  rationale: string;
+  intoRef: string;
+  tipPatchsetId: string;
+  explicitPatchsetId?: string;
+  questId?: string;
+  shouldAutoSeal: boolean;
+}
+
 type SupportedNormalizedAction =
   | ClaimAction
   | ShapeAction
@@ -145,7 +175,9 @@ type SupportedNormalizedAction =
   | CommentAction
   | SubmitAction
   | ReviewAction
-  | HandoffAction;
+  | HandoffAction
+  | SealAction
+  | MergeAction;
 
 function autoId(prefix: string): string {
   const ts = Date.now().toString(36).padStart(9, '0');
@@ -283,6 +315,10 @@ export class AgentActionValidator {
         return this.validateReview(request);
       case 'handoff':
         return this.validateHandoff(request);
+      case 'seal':
+        return this.validateSeal(request);
+      case 'merge':
+        return this.validateMerge(request);
     }
   }
 
@@ -905,6 +941,238 @@ export class AgentActionValidator {
       ],
     );
   }
+
+  private async validateSeal(request: AgentActionRequest): Promise<ValidatedAssessment> {
+    if (!request.targetId.startsWith('task:')) {
+      return failAssessment(request, 'invalid-target', [
+        `seal requires a task:* target, got '${request.targetId}'`,
+      ]);
+    }
+
+    const artifactHash = typeof request.args['artifactHash'] === 'string'
+      ? request.args['artifactHash'].trim()
+      : '';
+    if (artifactHash.length < 3) {
+      return failAssessment(request, 'invalid-args', [
+        'seal requires an artifactHash of at least 3 characters',
+      ]);
+    }
+
+    const rationale = typeof request.args['rationale'] === 'string'
+      ? request.args['rationale'].trim()
+      : '';
+    if (rationale.length < 3) {
+      return failAssessment(request, 'invalid-args', [
+        'seal requires a rationale of at least 3 characters',
+      ]);
+    }
+
+    const graphCtx = createGraphContext(this.graphPort);
+    const detail = await graphCtx.fetchEntityDetail(request.targetId);
+    const gate = assessSettlementGate(detail?.questDetail, 'seal');
+    if (!gate.allowed) {
+      return failAssessment(request, gate.code ?? 'precondition-failed', [
+        formatSettlementGateFailure(gate),
+      ], {
+        normalizedArgs: {
+          artifactHash,
+          rationale,
+        },
+        underlyingCommand: `xyph seal ${request.targetId}`,
+        sideEffects: [
+          `create artifact:${request.targetId}`,
+          'status -> DONE',
+          'completed_at -> now',
+        ],
+      });
+    }
+
+    const keyring = new FsKeyringAdapter();
+    const sealService = new GuildSealService(keyring);
+    if (!sealService.hasPrivateKey(this.agentId) && !allowUnsignedScrollsForSettlement()) {
+      return failAssessment(request, 'missing-private-key', [
+        formatMissingSettlementKeyMessage(this.agentId, 'seal'),
+      ], {
+        normalizedArgs: {
+          artifactHash,
+          rationale,
+        },
+        underlyingCommand: `xyph seal ${request.targetId}`,
+        sideEffects: [
+          `create artifact:${request.targetId}`,
+          'status -> DONE',
+          'completed_at -> now',
+        ],
+      });
+    }
+
+    return successAssessment(
+      request,
+      {
+        kind: 'seal',
+        targetId: request.targetId,
+        artifactHash,
+        rationale,
+      },
+      {
+        artifactHash,
+        rationale,
+      },
+      `xyph seal ${request.targetId}`,
+      [
+        `create artifact:${request.targetId}`,
+        'status -> DONE',
+        'completed_at -> now',
+      ],
+    );
+  }
+
+  private async validateMerge(request: AgentActionRequest): Promise<ValidatedAssessment> {
+    if (!request.targetId.startsWith('submission:')) {
+      return failAssessment(request, 'invalid-target', [
+        `merge requires a submission:* target, got '${request.targetId}'`,
+      ]);
+    }
+
+    const rationale = typeof request.args['rationale'] === 'string'
+      ? request.args['rationale'].trim()
+      : '';
+    if (rationale.length < 3) {
+      return failAssessment(request, 'invalid-args', [
+        'merge requires a rationale of at least 3 characters',
+      ]);
+    }
+
+    const intoRef = typeof request.args['intoRef'] === 'string' && request.args['intoRef'].trim().length > 0
+      ? request.args['intoRef'].trim()
+      : 'main';
+    const explicitPatchsetId = typeof request.args['patchsetId'] === 'string' && request.args['patchsetId'].trim().length > 0
+      ? request.args['patchsetId'].trim()
+      : undefined;
+
+    const adapter = new WarpSubmissionAdapter(this.graphPort, this.agentId);
+    let tipPatchsetId: string;
+    try {
+      const result = await this.submissions.validateMerge(request.targetId, this.agentId, explicitPatchsetId);
+      tipPatchsetId = result.tipPatchsetId;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return failAssessment(request, 'precondition-failed', [msg], {
+        normalizedArgs: {
+          rationale,
+          intoRef,
+          patchsetId: explicitPatchsetId ?? null,
+        },
+        underlyingCommand: `xyph merge ${request.targetId}`,
+        sideEffects: [
+          `merge submission into ${intoRef}`,
+          'create merge decision',
+          'auto-seal quest when needed',
+        ],
+      });
+    }
+
+    const questId = await adapter.getSubmissionQuestId(request.targetId) ?? undefined;
+    const questStatus = questId ? await adapter.getQuestStatus(questId) : null;
+    const shouldAutoSeal = typeof questId === 'string' && questStatus !== 'DONE';
+
+    if (shouldAutoSeal && questId) {
+      const graphCtx = createGraphContext(this.graphPort);
+      const detail = await graphCtx.fetchEntityDetail(questId);
+      const gate = assessSettlementGate(detail?.questDetail, 'merge');
+      if (!gate.allowed) {
+        return failAssessment(request, gate.code ?? 'precondition-failed', [
+          formatSettlementGateFailure(gate),
+        ], {
+          normalizedArgs: {
+            rationale,
+            intoRef,
+            patchsetId: explicitPatchsetId ?? null,
+            tipPatchsetId,
+            questId,
+          },
+          underlyingCommand: `xyph merge ${request.targetId}`,
+          sideEffects: [
+            `merge submission into ${intoRef}`,
+            'create merge decision',
+            'auto-seal quest when needed',
+          ],
+        });
+      }
+
+      const keyring = new FsKeyringAdapter();
+      const sealService = new GuildSealService(keyring);
+      if (!sealService.hasPrivateKey(this.agentId) && !allowUnsignedScrollsForSettlement()) {
+        return failAssessment(request, 'missing-private-key', [
+          formatMissingSettlementKeyMessage(this.agentId, 'merge'),
+        ], {
+          normalizedArgs: {
+            rationale,
+            intoRef,
+            patchsetId: explicitPatchsetId ?? null,
+            tipPatchsetId,
+            questId,
+          },
+          underlyingCommand: `xyph merge ${request.targetId}`,
+          sideEffects: [
+            `merge submission into ${intoRef}`,
+            'create merge decision',
+            'auto-seal quest when needed',
+          ],
+        });
+      }
+    }
+
+    const workspaceRef = await adapter.getPatchsetWorkspaceRef(tipPatchsetId);
+    if (typeof workspaceRef !== 'string') {
+      return failAssessment(request, 'workspace-resolution-failed', [
+        `Could not resolve workspace ref from patchset ${tipPatchsetId}`,
+      ], {
+        normalizedArgs: {
+          rationale,
+          intoRef,
+          patchsetId: explicitPatchsetId ?? null,
+          tipPatchsetId,
+          questId: questId ?? null,
+        },
+        underlyingCommand: `xyph merge ${request.targetId}`,
+        sideEffects: [
+          `merge submission into ${intoRef}`,
+          'create merge decision',
+          'auto-seal quest when needed',
+        ],
+      });
+    }
+
+    return successAssessment(
+      request,
+      {
+        kind: 'merge',
+        targetId: request.targetId,
+        rationale,
+        intoRef,
+        tipPatchsetId,
+        explicitPatchsetId,
+        questId,
+        shouldAutoSeal,
+      },
+      {
+        rationale,
+        intoRef,
+        patchsetId: explicitPatchsetId ?? null,
+        tipPatchsetId,
+        questId: questId ?? null,
+        shouldAutoSeal,
+        workspaceRef,
+      },
+      `xyph merge ${request.targetId}`,
+      [
+        `merge ${workspaceRef} into ${intoRef}`,
+        'create merge decision',
+        ...(shouldAutoSeal ? ['auto-seal quest'] : []),
+      ],
+    );
+  }
 }
 
 export class AgentActionService {
@@ -972,6 +1240,10 @@ export class AgentActionService {
           return await this.executeReview(assessment, normalized);
         case 'handoff':
           return await this.executeHandoff(assessment, normalized);
+        case 'seal':
+          return await this.executeSeal(assessment, normalized);
+        case 'merge':
+          return await this.executeMerge(assessment, normalized);
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -1290,6 +1562,189 @@ export class AgentActionService {
         authoredAt: now,
         relatedIds: action.relatedIds,
         contentOid: contentOid ?? null,
+      },
+    };
+  }
+
+  private async executeSeal(
+    assessment: ValidatedAssessment,
+    action: SealAction,
+  ): Promise<AgentActionOutcome> {
+    const keyring = new FsKeyringAdapter();
+    const sealService = new GuildSealService(keyring);
+    const allowUnsignedScrolls = allowUnsignedScrollsForSettlement();
+
+    let openSubWarning: string | undefined;
+    try {
+      const adapter = new WarpSubmissionAdapter(this.graphPort, this.agentId);
+      const openSubs = await adapter.getOpenSubmissionsForQuest(action.targetId);
+      if (openSubs.length > 0) {
+        openSubWarning = `Quest ${action.targetId} has open submission ${openSubs[0]}. Consider using 'merge' instead.`;
+      }
+    } catch {
+      // Non-fatal: preserve raw seal behavior.
+    }
+
+    if (!sealService.hasPrivateKey(this.agentId) && !allowUnsignedScrolls) {
+      return {
+        ...assessment,
+        allowed: false,
+        validation: {
+          valid: false,
+          code: 'missing-private-key',
+          reasons: [formatMissingSettlementKeyMessage(this.agentId, 'seal')],
+        },
+        result: 'rejected',
+        patch: null,
+        details: null,
+      };
+    }
+
+    const now = Date.now();
+    const scrollPayload = {
+      artifactHash: action.artifactHash,
+      questId: action.targetId,
+      rationale: action.rationale,
+      sealedBy: this.agentId,
+      sealedAt: now,
+    };
+    const guildSeal = await sealService.sign(scrollPayload, this.agentId);
+
+    const graph = await this.graphPort.getGraph();
+    const scrollId = `artifact:${action.targetId}`;
+    const sha = await graph.patch((p) => {
+      p.addNode(scrollId)
+        .setProperty(scrollId, 'artifact_hash', action.artifactHash)
+        .setProperty(scrollId, 'rationale', action.rationale)
+        .setProperty(scrollId, 'type', 'scroll')
+        .setProperty(scrollId, 'sealed_by', this.agentId)
+        .setProperty(scrollId, 'sealed_at', now)
+        .setProperty(scrollId, 'payload_digest', sealService.payloadDigest(scrollPayload))
+        .addEdge(scrollId, action.targetId, 'fulfills');
+
+      if (guildSeal) {
+        p.setProperty(scrollId, 'guild_seal_alg', guildSeal.alg)
+          .setProperty(scrollId, 'guild_seal_key_id', guildSeal.keyId)
+          .setProperty(scrollId, 'guild_seal_sig', guildSeal.sig);
+      }
+
+      p.setProperty(action.targetId, 'status', 'DONE')
+        .setProperty(action.targetId, 'completed_at', now);
+    });
+
+    const warnings: string[] = [];
+    if (openSubWarning) warnings.push(openSubWarning);
+    if (!guildSeal) warnings.push(formatUnsignedScrollOverrideWarning(this.agentId));
+
+    return {
+      ...assessment,
+      result: 'success',
+      patch: sha,
+      details: {
+        id: action.targetId,
+        scrollId,
+        artifactHash: action.artifactHash,
+        rationale: action.rationale,
+        sealedBy: this.agentId,
+        sealedAt: now,
+        guildSeal: guildSeal ? { keyId: guildSeal.keyId, alg: guildSeal.alg } : null,
+        warnings,
+      },
+    };
+  }
+
+  private async executeMerge(
+    assessment: ValidatedAssessment,
+    action: MergeAction,
+  ): Promise<AgentActionOutcome> {
+    const adapter = new WarpSubmissionAdapter(this.graphPort, this.agentId);
+    const workspaceRef = await adapter.getPatchsetWorkspaceRef(action.tipPatchsetId);
+    if (typeof workspaceRef !== 'string') {
+      throw new Error(`Could not resolve workspace ref from patchset ${action.tipPatchsetId}`);
+    }
+
+    const workspace = new GitWorkspaceAdapter(process.cwd());
+    let mergeCommit: string | undefined;
+    const alreadyMerged = await workspace.isMerged(workspaceRef, action.intoRef);
+    if (alreadyMerged) {
+      mergeCommit = await workspace.getHeadCommit(action.intoRef);
+      if (!mergeCommit) {
+        throw new Error(`Could not resolve HEAD of ${action.intoRef}`);
+      }
+    } else {
+      mergeCommit = await workspace.merge(workspaceRef, action.intoRef);
+    }
+
+    const decisionId = autoId('decision:');
+    const { patchSha } = await adapter.decide({
+      submissionId: action.targetId,
+      decisionId,
+      kind: 'merge',
+      rationale: action.rationale,
+      mergeCommit,
+    });
+
+    let autoSealed = false;
+    let guildSealInfo: { keyId: string; alg: string } | null = null;
+    let unsignedScrollWarning: string | null = null;
+    if (action.questId && action.shouldAutoSeal) {
+      const now = Date.now();
+      const keyring = new FsKeyringAdapter();
+      const sealService = new GuildSealService(keyring);
+      const scrollPayload = {
+        artifactHash: mergeCommit ?? 'unknown',
+        questId: action.questId,
+        rationale: action.rationale,
+        sealedBy: this.agentId,
+        sealedAt: now,
+      };
+      const guildSeal = await sealService.sign(scrollPayload, this.agentId);
+
+      const sealGraph = await this.graphPort.getGraph();
+      const scrollId = `artifact:${action.questId}`;
+      await sealGraph.patch((p) => {
+        p.addNode(scrollId)
+          .setProperty(scrollId, 'artifact_hash', mergeCommit ?? 'unknown')
+          .setProperty(scrollId, 'rationale', action.rationale)
+          .setProperty(scrollId, 'type', 'scroll')
+          .setProperty(scrollId, 'sealed_by', this.agentId)
+          .setProperty(scrollId, 'sealed_at', now)
+          .setProperty(scrollId, 'payload_digest', sealService.payloadDigest(scrollPayload))
+          .addEdge(scrollId, action.questId as string, 'fulfills');
+
+        if (guildSeal) {
+          p.setProperty(scrollId, 'guild_seal_alg', guildSeal.alg)
+            .setProperty(scrollId, 'guild_seal_key_id', guildSeal.keyId)
+            .setProperty(scrollId, 'guild_seal_sig', guildSeal.sig);
+        }
+
+        p.setProperty(action.questId as string, 'status', 'DONE')
+          .setProperty(action.questId as string, 'completed_at', now);
+      });
+
+      autoSealed = true;
+      if (guildSeal) guildSealInfo = { keyId: guildSeal.keyId, alg: guildSeal.alg };
+      if (!guildSeal) {
+        unsignedScrollWarning = formatUnsignedScrollOverrideWarning(this.agentId);
+      }
+    }
+
+    const warnings: string[] = [];
+    if (unsignedScrollWarning) warnings.push(unsignedScrollWarning);
+
+    return {
+      ...assessment,
+      result: 'success',
+      patch: patchSha,
+      details: {
+        submissionId: action.targetId,
+        decisionId,
+        questId: action.questId ?? null,
+        mergeCommit: mergeCommit ?? null,
+        alreadyMerged,
+        autoSealed,
+        guildSeal: guildSealInfo,
+        warnings,
       },
     };
   }

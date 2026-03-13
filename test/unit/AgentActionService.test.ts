@@ -2,18 +2,31 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Quest } from '../../src/domain/entities/Quest.js';
 import type { GraphPort } from '../../src/ports/GraphPort.js';
 import type { RoadmapQueryPort } from '../../src/ports/RoadmapPort.js';
+import type { EntityDetail } from '../../src/domain/models/dashboard.js';
 import { AgentActionService } from '../../src/domain/services/AgentActionService.js';
 
 const mocks = vi.hoisted(() => ({
   createPatchSession: vi.fn(),
   validateSubmit: vi.fn(),
   validateReview: vi.fn(),
+  validateMerge: vi.fn(),
   submit: vi.fn(),
   review: vi.fn(),
+  decide: vi.fn(),
   getSubmissionForPatchset: vi.fn(),
+  getOpenSubmissionsForQuest: vi.fn(),
+  getPatchsetWorkspaceRef: vi.fn(),
+  getSubmissionQuestId: vi.fn(),
+  getQuestStatus: vi.fn(),
   getWorkspaceRef: vi.fn(),
   getHeadCommit: vi.fn(),
   getCommitsSince: vi.fn(),
+  isMerged: vi.fn(),
+  merge: vi.fn(),
+  fetchEntityDetail: vi.fn(),
+  hasPrivateKey: vi.fn(),
+  sign: vi.fn(),
+  payloadDigest: vi.fn(),
 }));
 
 vi.mock('../../src/infrastructure/helpers/createPatchSession.js', () => ({
@@ -29,7 +42,41 @@ vi.mock('../../src/domain/services/SubmissionService.js', () => ({
     validateReview(patchsetId: string, actorId: string) {
       return mocks.validateReview(patchsetId, actorId);
     }
+
+    validateMerge(submissionId: string, actorId: string, patchsetId?: string) {
+      return mocks.validateMerge(submissionId, actorId, patchsetId);
+    }
   },
+}));
+
+vi.mock('../../src/domain/services/GuildSealService.js', () => ({
+  GuildSealService: class GuildSealService {
+    hasPrivateKey(agentId: string) {
+      return mocks.hasPrivateKey(agentId);
+    }
+
+    sign(payload: unknown, agentId: string) {
+      return mocks.sign(payload, agentId);
+    }
+
+    payloadDigest(payload: unknown) {
+      return mocks.payloadDigest(payload);
+    }
+  },
+}));
+
+vi.mock('../../src/infrastructure/adapters/FsKeyringAdapter.js', () => ({
+  FsKeyringAdapter: class FsKeyringAdapter {
+    readonly stub = true;
+  },
+}));
+
+vi.mock('../../src/infrastructure/GraphContext.js', () => ({
+  createGraphContext: () => ({
+    fetchEntityDetail(id: string) {
+      return mocks.fetchEntityDetail(id);
+    },
+  }),
 }));
 
 vi.mock('../../src/infrastructure/adapters/WarpSubmissionAdapter.js', () => ({
@@ -42,8 +89,28 @@ vi.mock('../../src/infrastructure/adapters/WarpSubmissionAdapter.js', () => ({
       return mocks.review(args);
     }
 
+    decide(args: unknown) {
+      return mocks.decide(args);
+    }
+
     getSubmissionForPatchset(patchsetId: string) {
       return mocks.getSubmissionForPatchset(patchsetId);
+    }
+
+    getOpenSubmissionsForQuest(questId: string) {
+      return mocks.getOpenSubmissionsForQuest(questId);
+    }
+
+    getPatchsetWorkspaceRef(patchsetId: string) {
+      return mocks.getPatchsetWorkspaceRef(patchsetId);
+    }
+
+    getSubmissionQuestId(submissionId: string) {
+      return mocks.getSubmissionQuestId(submissionId);
+    }
+
+    getQuestStatus(questId: string) {
+      return mocks.getQuestStatus(questId);
     }
   },
 }));
@@ -60,6 +127,14 @@ vi.mock('../../src/infrastructure/adapters/GitWorkspaceAdapter.js', () => ({
 
     getCommitsSince(base: string) {
       return mocks.getCommitsSince(base);
+    }
+
+    isMerged(ref: string, into: string) {
+      return mocks.isMerged(ref, into);
+    }
+
+    merge(ref: string, into: string) {
+      return mocks.merge(ref, into);
     }
   },
 }));
@@ -106,17 +181,82 @@ function makePatchSession() {
   };
 }
 
+function makeQuestDetail(
+  overrides?: Partial<NonNullable<EntityDetail['questDetail']>>,
+): EntityDetail {
+  return {
+    id: 'task:AGT-001',
+    type: 'task',
+    props: {},
+    outgoing: [],
+    incoming: [],
+    questDetail: {
+      id: 'task:AGT-001',
+      quest: {
+        id: 'task:AGT-001',
+        title: 'Agent kernel quest',
+        status: 'READY',
+        hours: 2,
+        taskKind: 'delivery',
+        computedCompletion: {
+          tracked: true,
+          complete: true,
+          verdict: 'SATISFIED',
+          requirementCount: 1,
+          criterionCount: 1,
+          coverageRatio: 1,
+          satisfiedCount: 1,
+          failingCriterionIds: [],
+          linkedOnlyCriterionIds: [],
+          missingCriterionIds: [],
+          policyId: 'policy:TRACE',
+        },
+      },
+      reviews: [],
+      decisions: [],
+      stories: [],
+      requirements: [],
+      criteria: [],
+      evidence: [],
+      policies: [{
+        id: 'policy:TRACE',
+        campaignId: 'campaign:TRACE',
+        coverageThreshold: 1,
+        requireAllCriteria: true,
+        requireEvidence: true,
+        allowManualSeal: false,
+      }],
+      documents: [],
+      comments: [],
+      timeline: [],
+      ...overrides,
+    },
+  };
+}
+
 describe('AgentActionService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.validateSubmit.mockResolvedValue(undefined);
     mocks.validateReview.mockResolvedValue(undefined);
+    mocks.validateMerge.mockResolvedValue({ tipPatchsetId: 'patchset:tip' });
     mocks.submit.mockResolvedValue({ patchSha: 'patch:submit' });
     mocks.review.mockResolvedValue({ patchSha: 'patch:review' });
+    mocks.decide.mockResolvedValue({ patchSha: 'patch:merge' });
     mocks.getSubmissionForPatchset.mockResolvedValue('submission:AGT-001');
+    mocks.getOpenSubmissionsForQuest.mockResolvedValue([]);
+    mocks.getPatchsetWorkspaceRef.mockResolvedValue('feat/agent-action-kernel-v1');
+    mocks.getSubmissionQuestId.mockResolvedValue('task:AGT-001');
+    mocks.getQuestStatus.mockResolvedValue('READY');
     mocks.getWorkspaceRef.mockResolvedValue('feat/agent-action-kernel-v1');
     mocks.getHeadCommit.mockResolvedValue('abc123def456');
     mocks.getCommitsSince.mockResolvedValue(['abc123def456']);
+    mocks.isMerged.mockResolvedValue(false);
+    mocks.merge.mockResolvedValue('mergecommit123456');
+    mocks.fetchEntityDetail.mockResolvedValue(makeQuestDetail());
+    mocks.hasPrivateKey.mockReturnValue(true);
+    mocks.sign.mockResolvedValue({ keyId: 'did:key:test', alg: 'ed25519' });
+    mocks.payloadDigest.mockReturnValue('blake3:test');
   });
 
   it('rejects human-only actions with an explicit machine-readable reason', async () => {
@@ -352,6 +492,170 @@ describe('AgentActionService', () => {
     });
     expect(typeof outcome.details?.['noteId']).toBe('string');
     expect(typeof outcome.details?.['authoredAt']).toBe('number');
+  });
+
+  it('normalizes seal during dry-run when governed completion and key policy pass', async () => {
+    const service = new AgentActionService(
+      makeGraphPort({}),
+      makeRoadmap(makeQuest()),
+      'agent.hal',
+    );
+
+    const outcome = await service.execute({
+      kind: 'seal',
+      targetId: 'task:AGT-001',
+      dryRun: true,
+      args: {
+        artifactHash: 'blake3:artifact',
+        rationale: 'Governed work is complete and ready to seal.',
+      },
+    });
+
+    expect(outcome).toMatchObject({
+      kind: 'seal',
+      targetId: 'task:AGT-001',
+      allowed: true,
+      result: 'dry-run',
+      underlyingCommand: 'xyph seal task:AGT-001',
+      normalizedArgs: {
+        artifactHash: 'blake3:artifact',
+        rationale: 'Governed work is complete and ready to seal.',
+      },
+    });
+  });
+
+  it('executes seal by writing a scroll and marking the quest done', async () => {
+    const graph = {
+      patch: vi.fn(async (fn: (patch: { addNode: ReturnType<typeof vi.fn>; setProperty: ReturnType<typeof vi.fn>; addEdge: ReturnType<typeof vi.fn> }) => void) => {
+        const patch = {
+          addNode: vi.fn().mockReturnThis(),
+          setProperty: vi.fn().mockReturnThis(),
+          addEdge: vi.fn().mockReturnThis(),
+        };
+        fn(patch);
+        return 'patch:seal';
+      }),
+    };
+
+    const service = new AgentActionService(
+      makeGraphPort(graph),
+      makeRoadmap(makeQuest()),
+      'agent.hal',
+    );
+
+    const outcome = await service.execute({
+      kind: 'seal',
+      targetId: 'task:AGT-001',
+      args: {
+        artifactHash: 'blake3:artifact',
+        rationale: 'Governed work is complete and ready to seal.',
+      },
+    });
+
+    expect(outcome).toMatchObject({
+      kind: 'seal',
+      targetId: 'task:AGT-001',
+      allowed: true,
+      result: 'success',
+      patch: 'patch:seal',
+      details: {
+        id: 'task:AGT-001',
+        scrollId: 'artifact:task:AGT-001',
+        artifactHash: 'blake3:artifact',
+        rationale: 'Governed work is complete and ready to seal.',
+        sealedBy: 'agent.hal',
+        guildSeal: { keyId: 'did:key:test', alg: 'ed25519' },
+        warnings: [],
+      },
+    });
+  });
+
+  it('normalizes merge during dry-run with settlement metadata', async () => {
+    const service = new AgentActionService(
+      makeGraphPort({}),
+      makeRoadmap(makeQuest()),
+      'agent.hal',
+    );
+
+    const outcome = await service.execute({
+      kind: 'merge',
+      targetId: 'submission:AGT-001',
+      dryRun: true,
+      args: {
+        rationale: 'Independent review is complete and the tip is approved.',
+        intoRef: 'main',
+      },
+    });
+
+    expect(mocks.validateMerge).toHaveBeenCalledWith('submission:AGT-001', 'agent.hal', undefined);
+    expect(outcome).toMatchObject({
+      kind: 'merge',
+      targetId: 'submission:AGT-001',
+      allowed: true,
+      result: 'dry-run',
+      normalizedArgs: {
+        rationale: 'Independent review is complete and the tip is approved.',
+        intoRef: 'main',
+        tipPatchsetId: 'patchset:tip',
+        questId: 'task:AGT-001',
+        shouldAutoSeal: true,
+        workspaceRef: 'feat/agent-action-kernel-v1',
+      },
+    });
+  });
+
+  it('executes merge by settling the workspace and writing the merge decision', async () => {
+    const graph = {
+      patch: vi.fn(async (fn: (patch: { addNode: ReturnType<typeof vi.fn>; setProperty: ReturnType<typeof vi.fn>; addEdge: ReturnType<typeof vi.fn> }) => void) => {
+        const patch = {
+          addNode: vi.fn().mockReturnThis(),
+          setProperty: vi.fn().mockReturnThis(),
+          addEdge: vi.fn().mockReturnThis(),
+        };
+        fn(patch);
+        return 'patch:scroll';
+      }),
+    };
+
+    const service = new AgentActionService(
+      makeGraphPort(graph),
+      makeRoadmap(makeQuest()),
+      'agent.hal',
+    );
+
+    const outcome = await service.execute({
+      kind: 'merge',
+      targetId: 'submission:AGT-001',
+      args: {
+        rationale: 'Independent review is complete and the tip is approved.',
+        intoRef: 'main',
+      },
+    });
+
+    expect(mocks.merge).toHaveBeenCalledWith('feat/agent-action-kernel-v1', 'main');
+    expect(mocks.decide).toHaveBeenCalledWith(expect.objectContaining({
+      submissionId: 'submission:AGT-001',
+      kind: 'merge',
+      rationale: 'Independent review is complete and the tip is approved.',
+      mergeCommit: 'mergecommit123456',
+    }));
+    expect(outcome).toMatchObject({
+      kind: 'merge',
+      targetId: 'submission:AGT-001',
+      allowed: true,
+      result: 'success',
+      patch: 'patch:merge',
+      details: {
+        submissionId: 'submission:AGT-001',
+        questId: 'task:AGT-001',
+        mergeCommit: 'mergecommit123456',
+        alreadyMerged: false,
+        autoSealed: true,
+        guildSeal: { keyId: 'did:key:test', alg: 'ed25519' },
+        warnings: [],
+      },
+    });
+    expect(typeof outcome.details?.['decisionId']).toBe('string');
   });
 
   it('normalizes submit during dry-run with workspace metadata and generated ids', async () => {

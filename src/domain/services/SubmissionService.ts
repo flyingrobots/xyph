@@ -182,7 +182,6 @@ export class SubmissionService {
   /**
    * Validates that a submission can be merged.
    * - Computed status must be APPROVED
-   * - Actor must be human
    * - Tip must be unique (no forked heads) unless explicit patchset specified
    */
   async validateMerge(
@@ -195,10 +194,8 @@ export class SubmissionService {
         `[MISSING_ARG] submission_id must start with 'submission:', got: '${submissionId}'`
       );
     }
-    if (!this.isHumanPrincipal(actorId)) {
-      throw new Error(
-        `[FORBIDDEN] merge requires a human principal (human.*), got: '${actorId}'`
-      );
+    if (!actorId || actorId.length === 0) {
+      throw new Error('[MISSING_ARG] actor_id must be non-empty');
     }
 
     const questId = await this.read.getSubmissionQuestId(submissionId);

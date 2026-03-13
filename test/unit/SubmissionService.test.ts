@@ -220,11 +220,26 @@ describe('SubmissionService.validateMerge', () => {
     expect(result.tipPatchsetId).toBe('patchset:S1:P1');
   });
 
-  it('throws [FORBIDDEN] for non-human actor', async () => {
-    const svc = new SubmissionService(makeReadModel());
+  it('allows an agent principal to merge once the submission is independently approved', async () => {
+    const approveReview: ReviewRef = {
+      id: 'r1',
+      verdict: 'approve',
+      reviewedBy: 'human.alice',
+      reviewedAt: 200,
+    };
+    const tipPatchset: PatchsetRef = {
+      id: 'patchset:S1:P1',
+      authoredAt: 100,
+    };
+    const svc = new SubmissionService(
+      makeReadModel({
+        getPatchsetRefs: vi.fn().mockResolvedValue([tipPatchset]),
+        getReviewsForPatchset: vi.fn().mockResolvedValue([approveReview]),
+      }),
+    );
     await expect(
       svc.validateMerge('submission:S1', 'agent.claude'),
-    ).rejects.toThrow('[FORBIDDEN]');
+    ).resolves.toEqual({ tipPatchsetId: 'patchset:S1:P1' });
   });
 
   it('throws [INVALID_FROM] when submission is not APPROVED', async () => {

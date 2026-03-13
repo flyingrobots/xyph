@@ -350,7 +350,7 @@ describe('agent act command', () => {
             kind: 'merge',
             targetId: 'submission:OWN-001',
             reason: 'Submission is approved and ready for settlement.',
-            supportedByActionKernel: false,
+            supportedByActionKernel: true,
           },
         },
       ],
@@ -404,7 +404,7 @@ describe('agent act command', () => {
             kind: 'merge',
             targetId: 'submission:OWN-001',
             reason: 'Submission is approved and ready for settlement.',
-            supportedByActionKernel: false,
+            supportedByActionKernel: true,
           },
         },
       ],
@@ -452,7 +452,7 @@ describe('agent act command', () => {
               kind: 'merge',
               targetId: 'submission:OWN-001',
               reason: 'Submission is approved and ready for settlement.',
-              supportedByActionKernel: false,
+              supportedByActionKernel: true,
             },
           },
         ],
@@ -506,7 +506,7 @@ describe('agent act command', () => {
               kind: 'merge',
               targetId: 'submission:OWN-001',
               reason: 'Submission is approved and ready for settlement.',
-              supportedByActionKernel: false,
+              supportedByActionKernel: true,
             },
           },
         ],
@@ -787,6 +787,101 @@ describe('agent act command', () => {
         title: 'Session closeout',
         message: 'Wrapped the slice and leaving a durable handoff.',
         relatedIds: ['submission:AGT-001', 'campaign:AGT'],
+      },
+    });
+  });
+
+  it('maps seal options into normalized action args', async () => {
+    mocks.execute.mockResolvedValue({
+      kind: 'seal',
+      targetId: 'task:AGT-001',
+      allowed: true,
+      dryRun: true,
+      requiresHumanApproval: false,
+      validation: {
+        valid: true,
+        code: null,
+        reasons: [],
+      },
+      normalizedArgs: {},
+      underlyingCommand: 'xyph seal task:AGT-001',
+      sideEffects: [],
+      result: 'dry-run',
+      patch: null,
+      details: null,
+    });
+
+    const ctx = makeCtx();
+    const program = new Command();
+    registerAgentCommands(program, ctx);
+
+    await program.parseAsync([
+      'act',
+      'seal',
+      'task:AGT-001',
+      '--artifact',
+      'blake3:artifact',
+      '--rationale',
+      'Governed work is complete and ready to seal.',
+      '--dry-run',
+    ], { from: 'user' });
+
+    expect(mocks.execute).toHaveBeenCalledWith({
+      kind: 'seal',
+      targetId: 'task:AGT-001',
+      dryRun: true,
+      args: {
+        artifactHash: 'blake3:artifact',
+        rationale: 'Governed work is complete and ready to seal.',
+      },
+    });
+  });
+
+  it('maps merge options into normalized action args', async () => {
+    mocks.execute.mockResolvedValue({
+      kind: 'merge',
+      targetId: 'submission:AGT-001',
+      allowed: true,
+      dryRun: true,
+      requiresHumanApproval: false,
+      validation: {
+        valid: true,
+        code: null,
+        reasons: [],
+      },
+      normalizedArgs: {},
+      underlyingCommand: 'xyph merge submission:AGT-001',
+      sideEffects: [],
+      result: 'dry-run',
+      patch: null,
+      details: null,
+    });
+
+    const ctx = makeCtx();
+    const program = new Command();
+    registerAgentCommands(program, ctx);
+
+    await program.parseAsync([
+      'act',
+      'merge',
+      'submission:AGT-001',
+      '--rationale',
+      'Independent review is complete and the tip is approved.',
+      '--into',
+      'main',
+      '--patchset',
+      'patchset:AGT-001',
+      '--dry-run',
+    ], { from: 'user' });
+
+    expect(mocks.execute).toHaveBeenCalledWith({
+      kind: 'merge',
+      targetId: 'submission:AGT-001',
+      dryRun: true,
+      args: {
+        rationale: 'Independent review is complete and the tip is approved.',
+        intoRef: 'main',
+        patchsetId: 'patchset:AGT-001',
       },
     });
   });

@@ -8,7 +8,7 @@ import {
   formatMissingSettlementKeyMessage,
   formatUnsignedScrollOverrideWarning,
   missingSettlementKeyData,
-} from './artifact.js';
+} from '../../domain/services/SettlementKeyPolicy.js';
 import {
   assessSettlementGate,
   formatSettlementGateFailure,

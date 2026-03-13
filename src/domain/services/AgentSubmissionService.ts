@@ -208,7 +208,7 @@ export class AgentSubmissionService {
         kind: 'merge',
         targetId: submission.id,
         reason: 'Submission is approved and ready for settlement.',
-        supportedByActionKernel: false,
+        supportedByActionKernel: true,
       };
     }
 

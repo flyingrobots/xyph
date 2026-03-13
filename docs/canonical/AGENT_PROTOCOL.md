@@ -70,9 +70,8 @@ Current runtime tranche:
 - shipped now: `context <id>`
 - shipped now: `submissions`
 - shipped now: `handoff`
-- shipped now: `claim`, `shape`, `packet`, `ready`, `comment`, `submit`, `review`, `handoff`
+- shipped now: `claim`, `shape`, `packet`, `ready`, `comment`, `submit`, `review`, `handoff`, `seal`, `merge`
 - shipped now: `act <kind> <target>` for that subset
-- planned later in checkpoint 2: `seal`, `merge`
 
 ### 3.1 `show` vs `context`
 
@@ -192,10 +191,10 @@ Checkpoint-2 action kinds are:
 - `seal`
 - `merge`
 
-These are the only routine agent actions that should be executable through
-`act` in the checkpoint-2 kernel.
+These are the routine agent actions that should be executable through `act` in
+the checkpoint-2 kernel.
 
-The current runtime implementation ships the first tranche only:
+The current runtime now ships that routine action set:
 
 - `claim`
 - `shape`
@@ -205,6 +204,8 @@ The current runtime implementation ships the first tranche only:
 - `submit`
 - `review`
 - `handoff`
+- `seal`
+- `merge`
 
 ### 5.1 Human-only actions
 
