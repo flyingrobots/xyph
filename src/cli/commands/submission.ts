@@ -14,6 +14,7 @@ import {
   formatSettlementGateFailure,
   settlementGateFailureData,
 } from '../../domain/services/SettlementGateService.js';
+import { settlementAssessmentToDiagnostics } from '../../domain/services/DiagnosticService.js';
 
 export function registerSubmissionCommands(program: Command, ctx: CliContext): void {
   const withErrorHandler = createErrorHandler(ctx);
@@ -218,6 +219,7 @@ export function registerSubmissionCommands(program: Command, ctx: CliContext): v
               submissionId,
               ...settlementGateFailureData(assessment),
             },
+            settlementAssessmentToDiagnostics(assessment),
           );
         }
       }

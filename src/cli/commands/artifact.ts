@@ -13,6 +13,7 @@ import {
   formatSettlementGateFailure,
   settlementGateFailureData,
 } from '../../domain/services/SettlementGateService.js';
+import { settlementAssessmentToDiagnostics } from '../../domain/services/DiagnosticService.js';
 export {
   allowUnsignedScrollsForSettlement,
   formatMissingSettlementKeyMessage,
@@ -44,6 +45,7 @@ export function registerArtifactCommands(program: Command, ctx: CliContext): voi
         return ctx.failWithData(
           formatSettlementGateFailure(assessment),
           settlementGateFailureData(assessment),
+          settlementAssessmentToDiagnostics(assessment),
         );
       }
 

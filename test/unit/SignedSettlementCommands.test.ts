@@ -1,6 +1,7 @@
 import { Command } from 'commander';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CliContext, JsonEnvelope } from '../../src/cli/context.js';
+import type { Diagnostic } from '../../src/domain/models/diagnostics.js';
 import type { EntityDetail } from '../../src/domain/models/dashboard.js';
 import {
   allowUnsignedScrollsForSettlement,
@@ -214,8 +215,15 @@ function createJsonCtx(overrides: Partial<CliContext> = {}): CliContext {
       process.exit(1);
       return undefined as never;
     },
-    failWithData(msg: string, data: Record<string, unknown>): never {
-      console.log(JSON.stringify({ success: false, error: msg, data }));
+    failWithData(msg: string, data: Record<string, unknown>, diagnostics?: Diagnostic[]): never {
+      console.log(JSON.stringify({
+        success: false,
+        error: msg,
+        data,
+        ...(diagnostics === undefined || diagnostics.length === 0
+          ? {}
+          : { diagnostics }),
+      }));
       process.exit(1);
       return undefined as never;
     },
@@ -439,6 +447,12 @@ describe('signed settlement enforcement', () => {
     expect(output).toMatchObject({
       success: false,
       error: expect.stringContaining('latest submission submission:Q1 is OPEN'),
+      diagnostics: [
+        expect.objectContaining({
+          code: 'settlement-approved-submission-required',
+          category: 'workflow',
+        }),
+      ],
       data: {
         action: 'seal',
         questId: 'task:Q1',
@@ -564,6 +578,12 @@ describe('signed settlement enforcement', () => {
     expect(output).toMatchObject({
       success: false,
       error: expect.stringContaining('policy policy:TRACE blocks settlement'),
+      diagnostics: [
+        expect.objectContaining({
+          code: 'settlement-governed-work-linked-only',
+          category: 'workflow',
+        }),
+      ],
       data: {
         submissionId: 'submission:Q1',
         action: 'merge',

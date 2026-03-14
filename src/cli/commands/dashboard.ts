@@ -1,8 +1,12 @@
 import type { Command } from 'commander';
 import type { CliContext } from '../context.js';
 import { createErrorHandler } from '../errorHandler.js';
+import { renderDiagnosticsLines } from '../renderDiagnostics.js';
 import { assertPrefixOneOf, assertNodeExists } from '../validators.js';
 import { isExecutableQuestStatus } from '../../domain/entities/Quest.js';
+import { summarizeDoctorReport } from '../../domain/services/DiagnosticService.js';
+import { DoctorService } from '../../domain/services/DoctorService.js';
+import { WarpRoadmapAdapter } from '../../infrastructure/adapters/WarpRoadmapAdapter.js';
 
 export function registerDashboardCommands(program: Command, ctx: CliContext): void {
   const withErrorHandler = createErrorHandler(ctx);
@@ -89,6 +93,19 @@ export function registerDashboardCommands(program: Command, ctx: CliContext): vo
       const graphCtx = createGraphContext(ctx.graphPort);
       const raw = await graphCtx.fetchSnapshot();
       const snapshot = graphCtx.filterSnapshot(raw, { includeGraveyard: opts.includeGraveyard ?? false });
+      const doctorReport = await new DoctorService(
+        ctx.graphPort,
+        new WarpRoadmapAdapter(ctx.graphPort),
+      ).run();
+      const diagnostics = summarizeDoctorReport(doctorReport);
+      const health = {
+        status: doctorReport.status,
+        blocking: doctorReport.blocking,
+        summary: doctorReport.summary,
+      };
+      const printWithDiagnostics = (body: string): void => {
+        ctx.print([body, ...renderDiagnosticsLines(diagnostics)].join('\n'));
+      };
 
       switch (view) {
         case 'deps': {
@@ -133,9 +150,10 @@ export function registerDashboardCommands(program: Command, ctx: CliContext): vo
             const milestonesObj: Record<string, { title: string; status: string }> = {};
             for (const [k, v] of milestones) milestonesObj[k] = v;
             ctx.jsonOut({
-              success: true, command: 'status',
+              success: true, command: 'status', diagnostics,
               data: {
                 view: 'deps',
+                health,
                 frontier: frontierResult.frontier,
                 blockedBy: blockedByObj,
                 executionOrder: sorted,
@@ -153,7 +171,7 @@ export function registerDashboardCommands(program: Command, ctx: CliContext): vo
           }
 
           const { renderDeps } = await import('../../tui/render-status.js');
-          ctx.print(renderDeps({
+          printWithDiagnostics(renderDeps({
             frontier: frontierResult.frontier,
             blockedBy: frontierResult.blockedBy,
             executionOrder: sorted,
@@ -234,9 +252,10 @@ export function registerDashboardCommands(program: Command, ctx: CliContext): vo
 
           if (ctx.json) {
             ctx.jsonOut({
-              success: true, command: 'status',
+              success: true, command: 'status', diagnostics,
               data: {
                 view: 'trace',
+                health,
                 stories: snapshot.stories,
                 requirements: snapshot.requirements,
                 criteria: snapshot.criteria,
@@ -273,7 +292,7 @@ export function registerDashboardCommands(program: Command, ctx: CliContext): vo
           }
 
           const { renderTrace } = await import('../../tui/render-status.js');
-          ctx.print(renderTrace({
+          printWithDiagnostics(renderTrace({
             stories: snapshot.stories,
             requirements: snapshot.requirements,
             criteria: snapshot.criteria,
@@ -294,9 +313,10 @@ export function registerDashboardCommands(program: Command, ctx: CliContext): vo
         case 'suggestions': {
           if (ctx.json) {
             ctx.jsonOut({
-              success: true, command: 'status',
+              success: true, command: 'status', diagnostics,
               data: {
                 view: 'suggestions',
+                health,
                 suggestions: snapshot.suggestions,
                 summary: {
                   total: snapshot.suggestions.length,
@@ -310,15 +330,15 @@ export function registerDashboardCommands(program: Command, ctx: CliContext): vo
           }
 
           const { renderSuggestions } = await import('../../tui/render-status.js');
-          ctx.print(renderSuggestions({ suggestions: snapshot.suggestions }, ctx.style));
+          printWithDiagnostics(renderSuggestions({ suggestions: snapshot.suggestions }, ctx.style));
           break;
         }
 
         default: {
           if (ctx.json) {
             ctx.jsonOut({
-              success: true, command: 'status',
-              data: { ...snapshot, view },
+              success: true, command: 'status', diagnostics,
+              data: { ...snapshot, view, health },
             });
             return;
           }
@@ -326,11 +346,11 @@ export function registerDashboardCommands(program: Command, ctx: CliContext): vo
           const { renderRoadmap, renderLineage, renderAll, renderInbox, renderSubmissions } = await import('../../tui/render-status.js');
 
           switch (view) {
-            case 'lineage': ctx.print(renderLineage(snapshot, ctx.style)); break;
-            case 'all': ctx.print(renderAll(snapshot, ctx.style)); break;
-            case 'inbox': ctx.print(renderInbox(snapshot, ctx.style)); break;
-            case 'submissions': ctx.print(renderSubmissions(snapshot, ctx.style)); break;
-            default: ctx.print(renderRoadmap(snapshot, ctx.style)); break;
+            case 'lineage': printWithDiagnostics(renderLineage(snapshot, ctx.style)); break;
+            case 'all': printWithDiagnostics(renderAll(snapshot, ctx.style)); break;
+            case 'inbox': printWithDiagnostics(renderInbox(snapshot, ctx.style)); break;
+            case 'submissions': printWithDiagnostics(renderSubmissions(snapshot, ctx.style)); break;
+            default: printWithDiagnostics(renderRoadmap(snapshot, ctx.style)); break;
           }
         }
       }

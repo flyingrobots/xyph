@@ -361,15 +361,16 @@ describe('AgentBriefingService', () => {
       makeDoctor(),
     );
 
-    const candidates = await service.next(5);
+    const result = await service.next(5);
 
-    expect(candidates).toHaveLength(2);
-    expect(candidates[0]).toMatchObject({
+    expect(result.diagnostics).toEqual([]);
+    expect(result.candidates).toHaveLength(2);
+    expect(result.candidates[0]).toMatchObject({
       kind: 'claim',
       targetId: 'task:AGT-READY',
       source: 'assignment',
     });
-    expect(candidates[1]).toMatchObject({
+    expect(result.candidates[1]).toMatchObject({
       kind: 'ready',
       targetId: 'task:AGT-PLAN',
       source: 'planning',
@@ -457,10 +458,11 @@ describe('AgentBriefingService', () => {
       makeDoctor(),
     );
 
-    const candidates = await service.next(5);
+    const result = await service.next(5);
 
-    expect(candidates).toHaveLength(2);
-    expect(candidates[0]).toMatchObject({
+    expect(result.diagnostics).toEqual([]);
+    expect(result.candidates).toHaveLength(2);
+    expect(result.candidates[0]).toMatchObject({
       kind: 'merge',
       targetId: 'submission:AGT-MERGE',
       source: 'submission',
@@ -468,7 +470,7 @@ describe('AgentBriefingService', () => {
       validationCode: 'requires-additional-input',
       args: { intoRef: 'main' },
     });
-    expect(candidates[1]).toMatchObject({
+    expect(result.candidates[1]).toMatchObject({
       kind: 'review',
       targetId: 'patchset:AGT-REVIEW',
       source: 'submission',

@@ -1,11 +1,27 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Command } from 'commander';
 import type { CliContext } from '../../src/cli/context.js';
-import { registerDashboardCommands } from '../../src/cli/commands/dashboard.js';
 import { makeSnapshot } from '../helpers/snapshot.js';
 
 const fetchSnapshot = vi.fn();
 const filterSnapshot = vi.fn();
+const doctorRun = vi.fn();
+const roadmapCtor = vi.fn();
+
+vi.mock('../../src/domain/services/DoctorService.js', () => ({
+  DoctorService: vi.fn().mockImplementation(function MockDoctorService() {
+    return {
+      run: doctorRun,
+    };
+  }),
+}));
+
+vi.mock('../../src/infrastructure/adapters/WarpRoadmapAdapter.js', () => ({
+  WarpRoadmapAdapter: vi.fn().mockImplementation(function MockWarpRoadmapAdapter(graphPort: unknown) {
+    roadmapCtor(graphPort);
+    return { mocked: true };
+  }),
+}));
 
 vi.mock('../../src/infrastructure/GraphContext.js', () => ({
   createGraphContext: vi.fn(() => ({
@@ -18,6 +34,8 @@ vi.mock('../../src/infrastructure/GraphContext.js', () => ({
     },
   })),
 }));
+
+import { registerDashboardCommands } from '../../src/cli/commands/dashboard.js';
 
 function makeCtx(): CliContext {
   return {
@@ -43,6 +61,46 @@ function makeCtx(): CliContext {
 describe('dashboard trace view JSON', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    doctorRun.mockResolvedValue({
+      status: 'ok',
+      healthy: true,
+      blocking: false,
+      asOf: 1,
+      graphMeta: null,
+      auditedStatuses: ['PLANNED', 'READY'],
+      counts: {
+        campaigns: 0,
+        quests: 0,
+        intents: 0,
+        scrolls: 0,
+        approvals: 0,
+        submissions: 0,
+        patchsets: 0,
+        reviews: 0,
+        decisions: 0,
+        stories: 0,
+        requirements: 0,
+        criteria: 0,
+        evidence: 0,
+        policies: 0,
+        suggestions: 0,
+        documents: 0,
+        comments: 0,
+      },
+      summary: {
+        issueCount: 0,
+        blockingIssueCount: 0,
+        errorCount: 0,
+        warningCount: 0,
+        danglingEdges: 0,
+        orphanNodes: 0,
+        readinessGaps: 0,
+        sovereigntyViolations: 0,
+        governedCompletionGaps: 0,
+      },
+      issues: [],
+      diagnostics: [],
+    });
   });
 
   it('includes policies in the trace JSON envelope', async () => {
@@ -102,8 +160,24 @@ describe('dashboard trace view JSON', () => {
     expect(ctx.jsonOut).toHaveBeenCalledWith({
       success: true,
       command: 'status',
+      diagnostics: [],
       data: {
         view: 'trace',
+        health: {
+          status: 'ok',
+          blocking: false,
+          summary: {
+            issueCount: 0,
+            blockingIssueCount: 0,
+            errorCount: 0,
+            warningCount: 0,
+            danglingEdges: 0,
+            orphanNodes: 0,
+            readinessGaps: 0,
+            sovereigntyViolations: 0,
+            governedCompletionGaps: 0,
+          },
+        },
         stories: snapshot.stories,
         requirements: snapshot.requirements,
         criteria: snapshot.criteria,
@@ -196,7 +270,12 @@ describe('dashboard trace view JSON', () => {
     expect(ctx.jsonOut).toHaveBeenCalledWith(expect.objectContaining({
       success: true,
       command: 'status',
+      diagnostics: [],
       data: expect.objectContaining({
+        health: expect.objectContaining({
+          status: 'ok',
+          blocking: false,
+        }),
         summary: expect.objectContaining({
           evidenced: 2,
           satisfied: 0,

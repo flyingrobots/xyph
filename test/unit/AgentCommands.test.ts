@@ -131,25 +131,28 @@ describe('agent act command', () => {
   });
 
   it('emits a JSON next-candidate list', async () => {
-    mocks.nextCandidates.mockResolvedValue([
-      {
-        kind: 'claim',
-        targetId: 'task:AGT-001',
-        args: {},
-        reason: 'Quest is in READY and can be claimed immediately.',
-        confidence: 0.98,
-        requiresHumanApproval: false,
-        dryRunSummary: 'Move the quest into IN_PROGRESS and assign it to the current agent.',
-        blockedBy: [],
-        allowed: true,
-        underlyingCommand: 'xyph claim task:AGT-001',
-        sideEffects: ['status -> IN_PROGRESS'],
-        validationCode: null,
-        questTitle: 'Agent native quest',
-        questStatus: 'READY',
-        source: 'frontier',
-      },
-    ]);
+    mocks.nextCandidates.mockResolvedValue({
+      candidates: [
+        {
+          kind: 'claim',
+          targetId: 'task:AGT-001',
+          args: {},
+          reason: 'Quest is in READY and can be claimed immediately.',
+          confidence: 0.98,
+          requiresHumanApproval: false,
+          dryRunSummary: 'Move the quest into IN_PROGRESS and assign it to the current agent.',
+          blockedBy: [],
+          allowed: true,
+          underlyingCommand: 'xyph claim task:AGT-001',
+          sideEffects: ['status -> IN_PROGRESS'],
+          validationCode: null,
+          questTitle: 'Agent native quest',
+          questStatus: 'READY',
+          source: 'frontier',
+        },
+      ],
+      diagnostics: [],
+    });
 
     const ctx = makeCtx();
     const program = new Command();
@@ -161,6 +164,7 @@ describe('agent act command', () => {
     expect(ctx.jsonOut).toHaveBeenCalledWith({
       success: true,
       command: 'next',
+      diagnostics: [],
       data: {
         candidates: [
           {

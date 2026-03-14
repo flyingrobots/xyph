@@ -91,6 +91,11 @@ export interface AgentNextCandidate extends AgentActionCandidate {
   source: 'assignment' | 'frontier' | 'planning' | 'submission';
 }
 
+export interface AgentNextResult {
+  candidates: AgentNextCandidate[];
+  diagnostics: Diagnostic[];
+}
+
 function determineSource(
   quest: QuestNode,
   dependency: AgentDependencyContext,
@@ -195,7 +200,7 @@ export class AgentBriefingService {
     };
   }
 
-  public async next(limit = 5): Promise<AgentNextCandidate[]> {
+  public async next(limit = 5): Promise<AgentNextResult> {
     const snapshot = await this.fetchSnapshot();
     const candidates: AgentNextCandidate[] = [];
 
@@ -226,7 +231,11 @@ export class AgentBriefingService {
       a.targetId.localeCompare(b.targetId)
     );
 
-    return candidates.slice(0, limit);
+    const doctorReport = await this.doctor.run();
+    return {
+      candidates: candidates.slice(0, limit),
+      diagnostics: summarizeDoctorReport(doctorReport),
+    };
   }
 
   private async fetchSnapshot(): Promise<GraphSnapshot> {

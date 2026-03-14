@@ -3,6 +3,7 @@ import type { CliContext } from '../context.js';
 import { createErrorHandler } from '../errorHandler.js';
 import { assertPrefix, assertMinLength, assertPrefixOneOf, parseHours } from '../validators.js';
 import { VALID_TASK_KINDS, type QuestKind } from '../../domain/entities/Quest.js';
+import { collectReadinessDiagnostics } from '../../domain/services/DiagnosticService.js';
 
 function resolveTaskKind(raw: string | undefined): QuestKind {
   const taskKind = raw ?? 'delivery';
@@ -119,6 +120,7 @@ export function registerIntakeCommands(program: Command, ctx: CliContext): void 
       const readiness = new ReadinessService(new WarpRoadmapAdapter(ctx.graphPort));
       const assessment = await readiness.assess(id);
       if (!assessment.valid) {
+        const diagnostics = collectReadinessDiagnostics(assessment, id);
         if (ctx.json) {
           ctx.failWithData(`[NOT_READY] ${id} does not satisfy readiness requirements`, {
             valid: false,
@@ -128,7 +130,7 @@ export function registerIntakeCommands(program: Command, ctx: CliContext): void 
             intentId: assessment.intentId ?? null,
             campaignId: assessment.campaignId ?? null,
             unmet: assessment.unmet,
-          });
+          }, diagnostics);
         }
         ctx.fail(`[NOT_READY] ${assessment.unmet.map((item) => item.message).join('\n  - ')}`);
       }

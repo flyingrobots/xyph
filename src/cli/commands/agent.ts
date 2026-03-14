@@ -427,20 +427,22 @@ export function registerAgentCommands(program: Command, ctx: CliContext): void {
         new WarpRoadmapAdapter(ctx.graphPort),
         ctx.agentId,
       );
-      const candidates = await service.next(limit);
+      const result = await service.next(limit);
 
       if (ctx.json) {
         ctx.jsonOut({
           success: true,
           command: 'next',
+          diagnostics: result.diagnostics,
           data: {
-            candidates,
+            candidates: result.candidates,
           },
         });
         return;
       }
 
-      ctx.print(renderNext(candidates));
+      const lines = [renderNext(result.candidates), ...renderDiagnosticsLines(result.diagnostics)];
+      ctx.print(lines.join('\n'));
     }));
 
   program

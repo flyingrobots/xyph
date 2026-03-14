@@ -6,6 +6,7 @@ import type { ReadinessAssessment } from './ReadinessService.js';
 import {
   assessSettlementGate,
   formatSettlementGateFailure,
+  type SettlementGateAssessment,
 } from './SettlementGateService.js';
 
 function doctorBucketCategory(bucket: DoctorIssue['bucket']): DiagnosticCategory {
@@ -109,6 +110,49 @@ export function summarizeDoctorReport(report: DoctorReport): Diagnostic[] {
   return diagnostics;
 }
 
+export function collectReadinessDiagnostics(
+  assessment: ReadinessAssessment | null,
+  questId?: string,
+): Diagnostic[] {
+  if (!assessment || !readinessRelevant(assessment.status)) return [];
+
+  const diagnostics: Diagnostic[] = [];
+
+  for (const unmet of assessment.unmet) {
+    diagnostics.push({
+      code: `readiness-${unmet.code}`,
+      severity: 'warning',
+      category: 'readiness',
+      source: 'readiness',
+      summary: unmet.message,
+      message: unmet.message,
+      subjectId: unmet.nodeId ?? questId ?? assessment.questId,
+      relatedIds: unmet.nodeId ? [unmet.nodeId] : [],
+      blocking: true,
+    });
+  }
+
+  return diagnostics;
+}
+
+export function settlementAssessmentToDiagnostics(
+  assessment: SettlementGateAssessment,
+): Diagnostic[] {
+  if (assessment.allowed) return [];
+
+  return [{
+    code: `settlement-${assessment.code ?? 'blocked'}`,
+    severity: 'warning',
+    category: 'workflow',
+    source: 'settlement',
+    summary: `${assessment.questId} cannot ${assessment.action} yet.`,
+    message: formatSettlementGateFailure(assessment),
+    subjectId: assessment.questId,
+    relatedIds: assessment.submissionId ? [assessment.submissionId] : [],
+    blocking: true,
+  }];
+}
+
 export function collectQuestDiagnostics(
   detail: QuestDetail,
   readiness: ReadinessAssessment | null,
@@ -116,21 +160,7 @@ export function collectQuestDiagnostics(
   const diagnostics: Diagnostic[] = [];
   const quest = detail.quest;
 
-  if (readiness && readinessRelevant(readiness.status)) {
-    for (const unmet of readiness.unmet) {
-      diagnostics.push({
-        code: `readiness-${unmet.code}`,
-        severity: 'warning',
-        category: 'readiness',
-        source: 'readiness',
-        summary: unmet.message,
-        message: unmet.message,
-        subjectId: unmet.nodeId ?? quest.id,
-        relatedIds: unmet.nodeId ? [unmet.nodeId] : [],
-        blocking: true,
-      });
-    }
-  }
+  diagnostics.push(...collectReadinessDiagnostics(readiness, quest.id));
 
   const computed = quest.computedCompletion;
   const appliedPolicy = detail.policies.find((policy) => policy.id === computed?.policyId)
@@ -190,19 +220,7 @@ export function collectQuestDiagnostics(
 
   if (detail.submission) {
     const settlement = assessSettlementGate(detail, 'seal');
-    if (!settlement.allowed) {
-      diagnostics.push({
-        code: `settlement-${settlement.code ?? 'blocked'}`,
-        severity: 'warning',
-        category: 'workflow',
-        source: 'settlement',
-        summary: `${quest.id} cannot settle yet.`,
-        message: formatSettlementGateFailure(settlement),
-        subjectId: quest.id,
-        relatedIds: settlement.submissionId ? [settlement.submissionId] : [],
-        blocking: true,
-      });
-    }
+    diagnostics.push(...settlementAssessmentToDiagnostics(settlement));
   }
 
   return dedupeDiagnostics(diagnostics);
