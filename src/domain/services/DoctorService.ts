@@ -90,6 +90,16 @@ export interface DoctorPrescriptionBucketSummary {
   materializableCount: number;
 }
 
+export interface DoctorProgress {
+  stage: 'snapshot' | 'neighbors' | 'audit' | 'prescriptions' | 'complete';
+  message: string;
+  data?: Record<string, unknown>;
+}
+
+export interface DoctorRunOptions {
+  onProgress?: (progress: DoctorProgress) => void;
+}
+
 export interface DoctorSummary {
   issueCount: number;
   blockingIssueCount: number;
@@ -189,10 +199,18 @@ export class DoctorService {
     this.sovereignty = new SovereigntyService(roadmap);
   }
 
-  public async run(): Promise<DoctorReport> {
+  public async run(options?: DoctorRunOptions): Promise<DoctorReport> {
+    const onProgress: (progress: DoctorProgress) => void = options?.onProgress ?? ((_: DoctorProgress): void => undefined);
     const graphCtx = createGraphContext(this.graphPort);
-    const snapshot = await graphCtx.fetchSnapshot();
+    const snapshot = await graphCtx.fetchSnapshot((message) => {
+      onProgress({ stage: 'snapshot', message });
+    });
     const graph = graphCtx.graph;
+
+    onProgress({
+      stage: 'neighbors',
+      message: 'Scanning workflow, narrative, and comment node families.',
+    });
 
     const [patchsetNodes, specNodes, adrNodes, noteNodes, commentNodes] = await Promise.all([
       queryNodeFamily(graph, 'patchset:*'),
@@ -231,6 +249,11 @@ export class DoctorService {
       ...[...commentIds],
     ])];
 
+    onProgress({
+      stage: 'neighbors',
+      message: 'Resolving graph neighbors for known nodes.',
+      data: { nodeCount: allKnownIds.length },
+    });
     const outgoingNeighbors = await batchNeighbors(graph, allKnownIds, 'outgoing');
     const incomingNeighbors = await batchNeighbors(graph, allKnownIds, 'incoming');
     const patchsetToSubmissionId = new Map<string, string>();
@@ -263,6 +286,10 @@ export class DoctorService {
       issues.push(issue);
     };
 
+    onProgress({
+      stage: 'audit',
+      message: 'Auditing structural integrity, readiness, governance, and completion gaps.',
+    });
     await this.collectDanglingEdges(allKnownIds, outgoingNeighbors, incomingNeighbors, hasNode, pushIssue);
     this.collectNarrativeOrphans(specNodes, adrNodes, noteNodes, commentNodes, outgoingNeighbors, pushIssue);
     this.collectWorkflowOrphans(snapshot, patchsetNodes, outgoingNeighbors, questIds, submissionIds, patchsetIds, pushIssue);
@@ -299,6 +326,11 @@ export class DoctorService {
       documents: specNodes.length + adrNodes.length + noteNodes.length,
       comments: commentNodes.length,
     };
+    onProgress({
+      stage: 'prescriptions',
+      message: 'Deriving deterministic remediation prescriptions.',
+      data: { issueCount: issues.length },
+    });
     const prescriptions = this.buildPrescriptions(issues, {
       snapshot,
       patchsetToSubmissionId,
@@ -323,6 +355,16 @@ export class DoctorService {
         ? 'warn'
         : 'ok';
 
+    onProgress({
+      stage: 'complete',
+      message: 'Doctor audit complete.',
+      data: {
+        issueCount: issues.length,
+        prescriptionCount: prescriptions.length,
+        blocking: errorCount > 0,
+      },
+    });
+
     return {
       status,
       healthy: issues.length === 0,
@@ -338,8 +380,8 @@ export class DoctorService {
     };
   }
 
-  public async prescribe(): Promise<DoctorReport> {
-    return this.run();
+  public async prescribe(options?: DoctorRunOptions): Promise<DoctorReport> {
+    return this.run(options);
   }
 
   private buildPrescriptions(

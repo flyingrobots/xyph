@@ -84,6 +84,39 @@ describe('CliContext JSON mode', () => {
     expect(output).not.toContain('\n');
   });
 
+  it('jsonStart writes a start event record in json mode', () => {
+    const ctx = createCliContext('/tmp', 'test-graph', { json: true, identity: TEST_IDENTITY });
+
+    ctx.jsonStart('doctor', { phase: 'begin' });
+
+    expect(logSpy).toHaveBeenCalledTimes(1);
+    const output = logSpy.mock.calls[0]?.[0] as string;
+    const parsed = JSON.parse(output);
+    expect(parsed).toEqual(expect.objectContaining({
+      event: 'start',
+      command: 'doctor',
+      data: { phase: 'begin' },
+    }));
+    expect(typeof parsed.at).toBe('number');
+  });
+
+  it('jsonProgress writes a progress event record in json mode', () => {
+    const ctx = createCliContext('/tmp', 'test-graph', { json: true, identity: TEST_IDENTITY });
+
+    ctx.jsonProgress('doctor', 'Resolving graph neighbors.', { stage: 'neighbors' });
+
+    expect(logSpy).toHaveBeenCalledTimes(1);
+    const output = logSpy.mock.calls[0]?.[0] as string;
+    const parsed = JSON.parse(output);
+    expect(parsed).toEqual(expect.objectContaining({
+      event: 'progress',
+      command: 'doctor',
+      message: 'Resolving graph neighbors.',
+      data: { stage: 'neighbors' },
+    }));
+    expect(typeof parsed.at).toBe('number');
+  });
+
   it('fail in json mode writes JSON error envelope to stdout', () => {
     const ctx = createCliContext('/tmp', 'test-graph', { json: true, identity: TEST_IDENTITY });
 

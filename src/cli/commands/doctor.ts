@@ -3,6 +3,7 @@ import type { CliContext } from '../context.js';
 import { createErrorHandler } from '../errorHandler.js';
 import {
   DoctorService,
+  type DoctorProgress,
   type DoctorPrescription,
   type DoctorReport,
 } from '../../domain/services/DoctorService.js';
@@ -97,6 +98,13 @@ function renderPrescriptions(
 export function registerDoctorCommands(program: Command, ctx: CliContext): void {
   const withErrorHandler = createErrorHandler(ctx);
 
+  const emitDoctorProgress = (command: string) => (progress: DoctorProgress): void => {
+    ctx.jsonProgress(command, progress.message, {
+      stage: progress.stage,
+      ...(progress.data ?? {}),
+    });
+  };
+
   const doctorCmd = program
     .command('doctor')
     .description('Audit graph health, structural integrity, and workflow gaps')
@@ -110,7 +118,10 @@ export function registerDoctorCommands(program: Command, ctx: CliContext): void 
         ctx.graphPort,
         new WarpRoadmapAdapter(ctx.graphPort),
       );
-      const report = await service.prescribe();
+      if (ctx.json) ctx.jsonStart('doctor prescribe');
+      const report = await service.prescribe({
+        onProgress: ctx.json ? emitDoctorProgress('doctor prescribe') : undefined,
+      });
 
       if (ctx.json) {
         ctx.jsonOut({
@@ -145,7 +156,10 @@ export function registerDoctorCommands(program: Command, ctx: CliContext): void 
         ctx.graphPort,
         new WarpRoadmapAdapter(ctx.graphPort),
       );
-      const report = await service.run();
+      if (ctx.json) ctx.jsonStart('doctor');
+      const report = await service.run({
+        onProgress: ctx.json ? emitDoctorProgress('doctor') : undefined,
+      });
 
       if (ctx.json) {
         if (report.blocking) {

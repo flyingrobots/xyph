@@ -41,6 +41,9 @@ function makeCtx(json: boolean): CliContext {
       throw new Error(msg);
     }),
     failWithData: vi.fn(),
+    jsonEvent: vi.fn(),
+    jsonStart: vi.fn(),
+    jsonProgress: vi.fn(),
     jsonOut: vi.fn(),
   } as unknown as CliContext;
 }
@@ -127,7 +130,10 @@ describe('doctor command', () => {
         },
       ],
     };
-    runDoctor.mockResolvedValueOnce(report);
+    runDoctor.mockImplementationOnce(async (opts?: { onProgress?: (progress: { stage: string; message: string }) => void }) => {
+      opts?.onProgress?.({ stage: 'snapshot', message: 'Opening project graph…' });
+      return report;
+    });
 
     const ctx = makeCtx(true);
     const program = registerDoctor(ctx);
@@ -136,6 +142,10 @@ describe('doctor command', () => {
 
     expect(roadmapCtor).toHaveBeenCalledWith(ctx.graphPort);
     expect(doctorCtor).toHaveBeenCalledWith(ctx.graphPort, { mocked: true });
+    expect(ctx.jsonStart).toHaveBeenCalledWith('doctor');
+    expect(ctx.jsonProgress).toHaveBeenCalledWith('doctor', 'Opening project graph…', {
+      stage: 'snapshot',
+    });
     expect(ctx.jsonOut).toHaveBeenCalledWith({
       success: true,
       command: 'doctor',
@@ -280,13 +290,22 @@ describe('doctor command', () => {
       ],
       diagnostics: [],
     };
-    prescribeDoctor.mockResolvedValueOnce(report);
+    prescribeDoctor.mockImplementationOnce(async (opts?: { onProgress?: (progress: { stage: string; message: string }) => void }) => {
+      opts?.onProgress?.({ stage: 'prescriptions', message: 'Deriving deterministic remediation prescriptions.' });
+      return report;
+    });
 
     const ctx = makeCtx(true);
     const program = registerDoctor(ctx);
 
     await program.parseAsync(['doctor', 'prescribe'], { from: 'user' });
 
+    expect(ctx.jsonStart).toHaveBeenCalledWith('doctor prescribe');
+    expect(ctx.jsonProgress).toHaveBeenCalledWith(
+      'doctor prescribe',
+      'Deriving deterministic remediation prescriptions.',
+      { stage: 'prescriptions' },
+    );
     expect(ctx.jsonOut).toHaveBeenCalledWith({
       success: true,
       command: 'doctor prescribe',

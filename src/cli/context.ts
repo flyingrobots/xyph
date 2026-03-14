@@ -14,6 +14,14 @@ export interface JsonEnvelope {
   diagnostics?: Diagnostic[];
 }
 
+export interface JsonStreamEvent {
+  event: 'start' | 'progress';
+  command: string;
+  at: number;
+  message?: string;
+  data?: Record<string, unknown>;
+}
+
 export interface JsonErrorEnvelope {
   success: false;
   error: string;
@@ -21,7 +29,7 @@ export interface JsonErrorEnvelope {
   diagnostics?: Diagnostic[];
 }
 
-export type JsonOutput = JsonEnvelope | JsonErrorEnvelope;
+export type JsonOutput = JsonStreamEvent | JsonEnvelope | JsonErrorEnvelope;
 
 export interface CliContext {
   readonly agentId: string;
@@ -39,6 +47,9 @@ export interface CliContext {
    * error envelope; in non-JSON mode only `msg` is printed to stderr.
    */
   failWithData(msg: string, data: Record<string, unknown>, diagnostics?: Diagnostic[]): never;
+  jsonEvent(event: JsonStreamEvent): void;
+  jsonStart(command: string, data?: Record<string, unknown>): void;
+  jsonProgress(command: string, message: string, data?: Record<string, unknown>): void;
   jsonOut(envelope: JsonEnvelope): void;
 }
 
@@ -80,6 +91,10 @@ export function createCliContext(
     console.log(JSON.stringify(envelope));
   };
 
+  const emitJson = (payload: JsonOutput): void => {
+    console.log(JSON.stringify(payload));
+  };
+
   return {
     agentId,
     identity,
@@ -118,8 +133,31 @@ export function createCliContext(
       }
       process.exit(1);
     },
+    jsonEvent(event: JsonStreamEvent): void {
+      if (!jsonMode) return;
+      emitJson(event);
+    },
+    jsonStart(command: string, data?: Record<string, unknown>): void {
+      if (!jsonMode) return;
+      emitJson({
+        event: 'start',
+        command,
+        at: Date.now(),
+        ...(data === undefined ? {} : { data }),
+      });
+    },
+    jsonProgress(command: string, message: string, data?: Record<string, unknown>): void {
+      if (!jsonMode) return;
+      emitJson({
+        event: 'progress',
+        command,
+        at: Date.now(),
+        message,
+        ...(data === undefined ? {} : { data }),
+      });
+    },
     jsonOut(envelope: JsonEnvelope): void {
-      console.log(JSON.stringify(envelope));
+      emitJson(envelope);
     },
   };
 }

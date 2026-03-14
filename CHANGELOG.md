@@ -25,6 +25,7 @@ All notable changes to XYPH will be documented in this file.
 
 ### Changed
 
+- **`--json` now speaks JSONL stream semantics** — CLI JSON mode can emit newline-delimited JSON event records before the terminal success/error envelope. `xyph doctor` and `xyph doctor prescribe` now stream `start` and `progress` records while long audits run; the final result record remains the existing success/error envelope shape
 - **Dashboard restyled to single-column layout** — graph stats use bold primary labels instead of dim/muted text; health metrics (sovereignty, orphans, forked) merged into the stats area; "Inbox" label renamed to "Backlog"; Top Blockers rendered as `bijouTable()` instead of `enumeratedList()`
 - **Dashboard panel switching removed** — Tab/Shift+Tab on dashboard is now a no-op. The right column content moved to the global drawer (`m` key)
 - **Upgrade bijou 1.3.0 → 1.8.0** — all three packages (`@flyingrobots/bijou`, `bijou-node`, `bijou-tui`) bumped. Test helper imports updated to use `@flyingrobots/bijou/adapters/test` subpath
