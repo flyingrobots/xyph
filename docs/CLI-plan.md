@@ -198,6 +198,14 @@ The agent doesn't need a *different* CLI — it needs the *same* CLI with struct
 
 Every command gains `--json` output mode. This is the single highest-leverage change for agent support.
 
+The contract should be **JSONL**, not "print one JSON object and hope the
+command is fast." That means:
+
+- every `--json` command writes newline-delimited JSON records
+- records may include non-terminal lifecycle events such as `start` and `progress`
+- exactly one final record is emitted, and it is either success or error
+- commands with nothing to stream still comply by emitting a one-record JSONL stream
+
 ```
 $ xyph show task:WVR-003 --json
 {

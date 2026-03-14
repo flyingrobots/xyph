@@ -33,6 +33,16 @@ second workflow model and not an informal wrapper around raw commands.
    The primary agent API is CLI `--json`. Text and markdown are debug and
    context-injection modes, not the canonical wire shape.
 
+3a. **JSONL framing**
+   `--json` is a newline-delimited JSON stream, not a single giant blob by
+   contract. Every command emits:
+   - zero or more non-terminal event records such as `start` and `progress`
+   - exactly one terminal success or error record
+
+   Commands that have nothing meaningful to stream still comply by emitting a
+   one-record JSONL stream whose only line is the terminal success or error
+   envelope.
+
 4. **Policy-bounded authority**
    Agents may perform routine operations when XYPH gates pass. Sovereignty,
    scope control, and constitutionally sensitive changes remain human-bound.
@@ -90,6 +100,31 @@ includes:
 - recommended next actions for that specific target
 
 ## 4. JSON Contracts
+
+All `--json` commands use JSONL framing. Consumers must read records line by
+line until they receive the terminal success or error envelope.
+
+Event record shape:
+
+- `event`
+- `command`
+- `at`
+- optional `message`
+- optional `data`
+
+Terminal success record shape:
+
+- `success: true`
+- `command`
+- `data`
+- optional `diagnostics`
+
+Terminal error record shape:
+
+- `success: false`
+- `error`
+- optional `data`
+- optional `diagnostics`
 
 ### 4.1 `briefing --json`
 

@@ -110,6 +110,9 @@ Completion bar:
 - **One action kernel**: `act` and future human surfaces reuse the same domain
   validators and mutation services.
 - **JSON first**: CLI `--json` is the primary automation surface; MCP is later.
+  The `--json` contract is JSONL: commands may emit non-terminal `start` /
+  `progress` records, and they always terminate with exactly one success or
+  error record.
 - **Graph-native collaboration**: quest-linked notes, specs, comments, and
   handoffs live in the graph, not in repo files as the source of truth.
 - **Compiler track deferred**: ORACLE/FORGE remains important, but it is not a

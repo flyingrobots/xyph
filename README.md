@@ -65,6 +65,11 @@ Verify everything is working:
 npx tsx xyph-actuator.ts status --view roadmap
 ```
 
+Automation note: commands that support `--json` now emit **JSONL**. Consumers
+should read stdout line by line; commands may emit non-terminal `start` /
+`progress` records before the final success or error envelope. Commands with
+no progress still emit a valid one-record JSONL stream.
+
 Now you're all set. Let's see how we might use XYPH in our everyday workflows.
 
 ### Walkthrough: Building a Feature Together

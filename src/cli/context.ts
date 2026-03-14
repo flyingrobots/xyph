@@ -15,6 +15,7 @@ export interface JsonEnvelope {
 }
 
 export interface JsonStreamEvent {
+  /** Non-terminal JSONL record emitted before the final success/error record. */
   event: 'start' | 'progress';
   command: string;
   at: number;
@@ -43,8 +44,8 @@ export interface CliContext {
   print(msg: string): void;
   fail(msg: string): never;
   /**
-   * Fail with structured data. The `data` payload is included in the JSON
-   * error envelope; in non-JSON mode only `msg` is printed to stderr.
+   * Fail with structured data. In JSON mode this emits the terminal JSONL
+   * error record; in non-JSON mode only `msg` is printed to stderr.
    */
   failWithData(msg: string, data: Record<string, unknown>, diagnostics?: Diagnostic[]): never;
   jsonEvent(event: JsonStreamEvent): void;
