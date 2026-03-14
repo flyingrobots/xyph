@@ -92,6 +92,7 @@ describe('doctor command', () => {
       },
       summary: {
         issueCount: 1,
+        blockingIssueCount: 0,
         errorCount: 0,
         warningCount: 1,
         danglingEdges: 0,
@@ -110,6 +111,19 @@ describe('doctor command', () => {
           relatedIds: [],
         },
       ],
+      diagnostics: [
+        {
+          code: 'orphan-comment',
+          severity: 'warning',
+          category: 'structural',
+          source: 'doctor',
+          summary: 'comment:1 triggered orphan-comment',
+          message: 'comment:1 is not attached',
+          subjectId: 'comment:1',
+          relatedIds: [],
+          blocking: false,
+        },
+      ],
     };
     runDoctor.mockResolvedValueOnce(report);
 
@@ -124,6 +138,7 @@ describe('doctor command', () => {
       success: true,
       command: 'doctor',
       data: report,
+      diagnostics: report.diagnostics,
     });
     expect(ctx.failWithData).not.toHaveBeenCalled();
   });
@@ -157,6 +172,7 @@ describe('doctor command', () => {
       },
       summary: {
         issueCount: 2,
+        blockingIssueCount: 2,
         errorCount: 2,
         warningCount: 0,
         danglingEdges: 1,
@@ -166,6 +182,19 @@ describe('doctor command', () => {
         governedCompletionGaps: 0,
       },
       issues: [],
+      diagnostics: [
+        {
+          code: 'dangling-outgoing-depends-on',
+          severity: 'error',
+          category: 'structural',
+          source: 'doctor',
+          summary: 'task:BAD triggered dangling-outgoing-depends-on',
+          message: 'task:BAD has an outgoing depends-on edge to missing node task:NOPE',
+          subjectId: 'task:BAD',
+          relatedIds: ['task:NOPE'],
+          blocking: true,
+        },
+      ],
     };
     runDoctor.mockResolvedValueOnce(report);
 
@@ -177,6 +206,7 @@ describe('doctor command', () => {
     expect(ctx.failWithData).toHaveBeenCalledWith(
       '2 blocking graph health issue(s) detected',
       report as unknown as Record<string, unknown>,
+      report.diagnostics,
     );
     expect(ctx.jsonOut).not.toHaveBeenCalled();
   });

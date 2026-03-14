@@ -202,6 +202,7 @@ describe('show and narrative commands', () => {
     expect(ctx.jsonOut).toHaveBeenCalledWith({
       success: true,
       command: 'show',
+      diagnostics: [],
       data: {
         id: 'task:Q-001',
         type: 'task',

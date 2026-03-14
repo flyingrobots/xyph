@@ -1,11 +1,14 @@
 import type { QueryResultV1, AggregateResult } from '@git-stunts/git-warp';
+import type { Diagnostic } from '../models/diagnostics.js';
 import type { GraphMeta, GraphSnapshot, QuestNode } from '../models/dashboard.js';
 import type { GraphPort } from '../../ports/GraphPort.js';
 import type { RoadmapQueryPort } from '../../ports/RoadmapPort.js';
 import { createGraphContext } from '../../infrastructure/GraphContext.js';
 import { toNeighborEntries } from '../../infrastructure/helpers/isNeighborEntry.js';
+import { summarizeDoctorReport } from './DiagnosticService.js';
 import { ReadinessService } from './ReadinessService.js';
 import { AgentActionValidator } from './AgentActionService.js';
+import { DoctorService } from './DoctorService.js';
 import {
   determineSubmissionNextStep,
   isReviewableByAgent,
@@ -78,6 +81,7 @@ export interface AgentBriefing {
   frontier: AgentWorkSummary[];
   recentHandoffs: AgentHandoffSummary[];
   alerts: AgentBriefingAlert[];
+  diagnostics: Diagnostic[];
   graphMeta: GraphMeta | null;
 }
 
@@ -135,13 +139,16 @@ function sourcePriority(source: AgentNextCandidate['source']): number {
 export class AgentBriefingService {
   private readonly readiness: ReadinessService;
   private readonly recommender: AgentRecommender;
+  private readonly doctor: Pick<DoctorService, 'run'>;
 
   constructor(
     private readonly graphPort: GraphPort,
     roadmap: RoadmapQueryPort,
     private readonly agentId: string,
+    doctor?: Pick<DoctorService, 'run'>,
   ) {
     this.readiness = new ReadinessService(roadmap);
+    this.doctor = doctor ?? new DoctorService(graphPort, roadmap);
     this.recommender = new AgentRecommender(
       new AgentActionValidator(graphPort, roadmap, agentId),
       agentId,
@@ -169,7 +176,9 @@ export class AgentBriefingService {
 
     const reviewQueue = this.buildReviewQueue(snapshot);
     const recentHandoffs = await this.buildRecentHandoffs();
-    const alerts = this.buildAlerts(assignments, frontier, reviewQueue);
+    const doctorReport = await this.doctor.run();
+    const diagnostics = summarizeDoctorReport(doctorReport);
+    const alerts = this.buildAlerts(assignments, frontier, reviewQueue, diagnostics);
 
     return {
       identity: {
@@ -181,6 +190,7 @@ export class AgentBriefingService {
       frontier,
       recentHandoffs,
       alerts,
+      diagnostics,
       graphMeta: snapshot.graphMeta ?? null,
     };
   }
@@ -390,8 +400,22 @@ export class AgentBriefingService {
     assignments: AgentWorkSummary[],
     frontier: AgentWorkSummary[],
     reviewQueue: AgentReviewQueueEntry[],
+    diagnostics: Diagnostic[],
   ): AgentBriefingAlert[] {
     const alerts: AgentBriefingAlert[] = [];
+
+    for (const diagnostic of diagnostics) {
+      alerts.push({
+        code: diagnostic.code,
+        severity: diagnostic.severity === 'error'
+          ? 'critical'
+          : diagnostic.severity === 'warning'
+            ? 'warning'
+            : 'info',
+        message: diagnostic.message,
+        relatedIds: diagnostic.relatedIds,
+      });
+    }
 
     const blockedAssignments = assignments.filter((entry) => entry.dependency.blockedBy.length > 0);
     if (blockedAssignments.length > 0) {

@@ -1,6 +1,7 @@
 import type { Command } from 'commander';
 import type { CliContext } from '../context.js';
 import { createErrorHandler } from '../errorHandler.js';
+import { renderDiagnosticsLines } from '../renderDiagnostics.js';
 import { assertMinLength, assertNodeExists, assertPrefix } from '../validators.js';
 import { createPatchSession } from '../../infrastructure/helpers/createPatchSession.js';
 import type { ReadinessAssessment } from '../../domain/services/ReadinessService.js';
@@ -11,6 +12,8 @@ import type {
   QuestDetail,
   QuestTimelineEntry,
 } from '../../domain/models/dashboard.js';
+import type { Diagnostic } from '../../domain/models/diagnostics.js';
+import { collectQuestDiagnostics } from '../../domain/services/DiagnosticService.js';
 
 interface NarrativeWriteOptions {
   on: string;
@@ -106,7 +109,11 @@ function renderTimeline(entries: QuestTimelineEntry[]): string[] {
   return lines;
 }
 
-function renderQuestDetail(detail: QuestDetail, readiness?: ReadinessAssessment): string {
+function renderQuestDetail(
+  detail: QuestDetail,
+  readiness?: ReadinessAssessment,
+  diagnostics: Diagnostic[] = [],
+): string {
   const lines: string[] = [];
   const { quest } = detail;
 
@@ -171,6 +178,7 @@ function renderQuestDetail(detail: QuestDetail, readiness?: ReadinessAssessment)
 
   lines.push(...renderNarrativeLines('Documents', detail.documents));
   lines.push(...renderNarrativeLines('Comments', detail.comments));
+  lines.push(...renderDiagnosticsLines(diagnostics));
   lines.push(...renderTimeline(detail.timeline));
 
   return lines.join('\n');
@@ -231,16 +239,19 @@ export function registerShowCommands(program: Command, ctx: CliContext): void {
         throw new Error(`[NOT_FOUND] Node ${id} not found in the graph`);
       }
       let readiness: ReadinessAssessment | null = null;
+      let diagnostics: Diagnostic[] = [];
       if (detail.questDetail) {
         const { WarpRoadmapAdapter } = await import('../../infrastructure/adapters/WarpRoadmapAdapter.js');
         const { ReadinessService } = await import('../../domain/services/ReadinessService.js');
         readiness = await new ReadinessService(new WarpRoadmapAdapter(ctx.graphPort)).assess(id, { transition: false });
+        diagnostics = collectQuestDiagnostics(detail.questDetail, readiness);
       }
 
       if (ctx.json) {
         ctx.jsonOut({
           success: true,
           command: 'show',
+          diagnostics,
           data: {
             id: detail.id,
             type: detail.type,
@@ -256,7 +267,9 @@ export function registerShowCommands(program: Command, ctx: CliContext): void {
         return;
       }
 
-      ctx.print(detail.questDetail ? renderQuestDetail(detail.questDetail, readiness ?? undefined) : renderGenericEntity(detail));
+      ctx.print(detail.questDetail
+        ? renderQuestDetail(detail.questDetail, readiness ?? undefined, diagnostics)
+        : renderGenericEntity(detail));
     }));
 
   program

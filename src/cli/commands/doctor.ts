@@ -3,6 +3,7 @@ import type { CliContext } from '../context.js';
 import { createErrorHandler } from '../errorHandler.js';
 import { DoctorService, type DoctorReport } from '../../domain/services/DoctorService.js';
 import { WarpRoadmapAdapter } from '../../infrastructure/adapters/WarpRoadmapAdapter.js';
+import { renderDiagnosticsLines } from '../renderDiagnostics.js';
 
 function renderDoctorReport(report: DoctorReport): string {
   const lines: string[] = [];
@@ -22,25 +23,17 @@ function renderDoctorReport(report: DoctorReport): string {
 
   lines.push('');
   lines.push('Summary');
-  lines.push(`  issues=${report.summary.issueCount} errors=${report.summary.errorCount} warnings=${report.summary.warningCount}`);
+  lines.push(`  issues=${report.summary.issueCount} blocking=${report.summary.blockingIssueCount} errors=${report.summary.errorCount} warnings=${report.summary.warningCount}`);
   lines.push(`  danglingEdges=${report.summary.danglingEdges} orphanNodes=${report.summary.orphanNodes}`);
   lines.push(`  readinessGaps=${report.summary.readinessGaps} sovereigntyViolations=${report.summary.sovereigntyViolations} governedCompletionGaps=${report.summary.governedCompletionGaps}`);
 
-  if (report.issues.length === 0) {
+  if (report.diagnostics.length === 0) {
     lines.push('');
     lines.push('No issues found.');
     return lines.join('\n');
   }
 
-  lines.push('');
-  lines.push('Issues');
-  for (const issue of report.issues) {
-    const related = issue.relatedIds.length > 0
-      ? ` [${issue.relatedIds.join(', ')}]`
-      : '';
-    lines.push(`  [${issue.severity.toUpperCase()}] ${issue.code}${issue.nodeId ? ` ${issue.nodeId}` : ''}${related}`);
-    lines.push(`    ${issue.message}`);
-  }
+  lines.push(...renderDiagnosticsLines(report.diagnostics));
 
   return lines.join('\n');
 }
@@ -63,12 +56,14 @@ export function registerDoctorCommands(program: Command, ctx: CliContext): void 
           return ctx.failWithData(
             `${report.summary.errorCount} blocking graph health issue(s) detected`,
             report as unknown as Record<string, unknown>,
+            report.diagnostics,
           );
         }
         ctx.jsonOut({
           success: true,
           command: 'doctor',
           data: report as unknown as Record<string, unknown>,
+          diagnostics: report.diagnostics,
         });
         return;
       }

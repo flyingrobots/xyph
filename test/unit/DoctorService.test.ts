@@ -229,11 +229,24 @@ describe('DoctorService', () => {
     expect(report.counts.patchsets).toBe(1);
     expect(report.counts.documents).toBe(1);
     expect(report.counts.comments).toBe(1);
+    expect(report.summary.blockingIssueCount).toBe(report.summary.errorCount);
     expect(report.summary.danglingEdges).toBe(2);
     expect(report.summary.orphanNodes).toBeGreaterThanOrEqual(8);
     expect(report.summary.readinessGaps).toBe(1);
     expect(report.summary.sovereigntyViolations).toBe(1);
     expect(report.summary.governedCompletionGaps).toBe(1);
+    expect(report.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: 'dangling-outgoing-depends-on',
+        severity: 'error',
+        category: 'structural',
+      }),
+      expect.objectContaining({
+        code: 'orphan-comment',
+        severity: 'warning',
+        category: 'structural',
+      }),
+    ]));
     expect(report.issues).toEqual(expect.arrayContaining([
       expect.objectContaining({
         bucket: 'dangling-edge',

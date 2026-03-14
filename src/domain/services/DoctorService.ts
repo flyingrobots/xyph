@@ -2,10 +2,12 @@ import type WarpGraph from '@git-stunts/git-warp';
 import type { QueryResultV1, AggregateResult } from '@git-stunts/git-warp';
 import type { GraphPort } from '../../ports/GraphPort.js';
 import type { RoadmapQueryPort } from '../../ports/RoadmapPort.js';
+import type { Diagnostic } from '../models/diagnostics.js';
 import type { GraphMeta, GraphSnapshot } from '../models/dashboard.js';
 import { createGraphContext } from '../../infrastructure/GraphContext.js';
 import { toNeighborEntries, type NeighborEntry } from '../../infrastructure/helpers/isNeighborEntry.js';
 import { ReadinessService } from './ReadinessService.js';
+import { doctorIssueToDiagnostic } from './DiagnosticService.js';
 import {
   SovereigntyService,
   SOVEREIGNTY_AUDIT_STATUSES,
@@ -50,6 +52,7 @@ export interface DoctorIssue {
 
 export interface DoctorSummary {
   issueCount: number;
+  blockingIssueCount: number;
   errorCount: number;
   warningCount: number;
   danglingEdges: number;
@@ -89,6 +92,7 @@ export interface DoctorReport {
   counts: DoctorCounts;
   summary: DoctorSummary;
   issues: DoctorIssue[];
+  diagnostics: Diagnostic[];
 }
 
 function extractNodes(result: QueryResultV1 | AggregateResult): QNode[] {
@@ -239,6 +243,7 @@ export class DoctorService {
     };
     const summary: DoctorSummary = {
       issueCount: issues.length,
+      blockingIssueCount: errorCount,
       errorCount,
       warningCount,
       danglingEdges: issues.filter((issue) => issue.bucket === 'dangling-edge').length,
@@ -247,6 +252,7 @@ export class DoctorService {
       sovereigntyViolations: issues.filter((issue) => issue.bucket === 'sovereignty-violation').length,
       governedCompletionGaps: issues.filter((issue) => issue.bucket === 'governed-completion-gap').length,
     };
+    const diagnostics = issues.map(doctorIssueToDiagnostic);
 
     const status: DoctorStatus = errorCount > 0
       ? 'error'
@@ -264,6 +270,7 @@ export class DoctorService {
       counts,
       summary,
       issues,
+      diagnostics,
     };
   }
 

@@ -155,4 +155,32 @@ describe('CliContext JSON mode', () => {
     expect(Array.isArray(parsed.data.violations)).toBe(true);
     expect(parsed.data.violations).toHaveLength(2);
   });
+
+  it('failWithData includes diagnostics when provided', () => {
+    const ctx = createCliContext('/tmp', 'test-graph', { json: true, identity: TEST_IDENTITY });
+
+    ctx.failWithData(
+      'graph health degraded',
+      { status: 'warn' },
+      [{
+        code: 'graph-health-readiness-gaps',
+        severity: 'warning',
+        category: 'readiness',
+        source: 'briefing',
+        summary: '2 quest(s) fail the readiness contract.',
+        message: '2 quest(s) fail the readiness contract.',
+        relatedIds: [],
+        blocking: false,
+      }],
+    );
+
+    const output = logSpy.mock.calls[0]?.[0] as string;
+    const parsed = JSON.parse(output);
+    expect(parsed.diagnostics).toEqual([
+      expect.objectContaining({
+        code: 'graph-health-readiness-gaps',
+        severity: 'warning',
+      }),
+    ]);
+  });
 });

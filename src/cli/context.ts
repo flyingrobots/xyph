@@ -3,6 +3,7 @@ import { createPlainStylePort } from '../infrastructure/adapters/PlainStyleAdapt
 import type { StylePort } from '../ports/StylePort.js';
 import { WarpGraphAdapter } from '../infrastructure/adapters/WarpGraphAdapter.js';
 import { resolveIdentity, type ResolvedIdentity } from './identity.js';
+import type { Diagnostic } from '../domain/models/diagnostics.js';
 
 export { DEFAULT_AGENT_ID } from './identity.js';
 
@@ -10,12 +11,14 @@ export interface JsonEnvelope {
   success: true;
   command: string;
   data: Record<string, unknown>;
+  diagnostics?: Diagnostic[];
 }
 
 export interface JsonErrorEnvelope {
   success: false;
   error: string;
   data?: Record<string, unknown>;
+  diagnostics?: Diagnostic[];
 }
 
 export type JsonOutput = JsonEnvelope | JsonErrorEnvelope;
@@ -35,7 +38,7 @@ export interface CliContext {
    * Fail with structured data. The `data` payload is included in the JSON
    * error envelope; in non-JSON mode only `msg` is printed to stderr.
    */
-  failWithData(msg: string, data: Record<string, unknown>): never;
+  failWithData(msg: string, data: Record<string, unknown>, diagnostics?: Diagnostic[]): never;
   jsonOut(envelope: JsonEnvelope): void;
 }
 
@@ -61,10 +64,19 @@ export function createCliContext(
   const jsonMode = opts?.json ?? false;
   const style = jsonMode ? createPlainStylePort() : createStylePort();
 
-  const emitJsonError = (error: string, data?: Record<string, unknown>): void => {
-    const envelope: JsonErrorEnvelope = data === undefined
-      ? { success: false, error }
-      : { success: false, error, data };
+  const emitJsonError = (
+    error: string,
+    data?: Record<string, unknown>,
+    diagnostics?: Diagnostic[],
+  ): void => {
+    const envelope: JsonErrorEnvelope = {
+      success: false,
+      error,
+      ...(data === undefined ? {} : { data }),
+      ...(diagnostics === undefined || diagnostics.length === 0
+        ? {}
+        : { diagnostics }),
+    };
     console.log(JSON.stringify(envelope));
   };
 
@@ -98,9 +110,9 @@ export function createCliContext(
       }
       process.exit(1);
     },
-    failWithData(msg: string, data: Record<string, unknown>): never {
+    failWithData(msg: string, data: Record<string, unknown>, diagnostics?: Diagnostic[]): never {
       if (jsonMode) {
-        emitJsonError(msg, data);
+        emitJsonError(msg, data, diagnostics);
       } else {
         console.error(style.styled(style.theme.semantic.error, msg));
       }

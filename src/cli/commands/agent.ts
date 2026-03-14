@@ -1,6 +1,7 @@
 import type { Command } from 'commander';
 import type { CliContext } from '../context.js';
 import { createErrorHandler } from '../errorHandler.js';
+import { renderDiagnosticsLines } from '../renderDiagnostics.js';
 import { VALID_TASK_KINDS } from '../../domain/entities/Quest.js';
 import {
   VALID_REQUIREMENT_KINDS,
@@ -19,6 +20,7 @@ import type {
 import { AgentBriefingService } from '../../domain/services/AgentBriefingService.js';
 import { AgentSubmissionService } from '../../domain/services/AgentSubmissionService.js';
 import type { ReadinessAssessment } from '../../domain/services/ReadinessService.js';
+import type { Diagnostic } from '../../domain/models/diagnostics.js';
 import type { EntityDetail } from '../../domain/models/dashboard.js';
 
 interface ActOptions {
@@ -127,6 +129,7 @@ function renderAgentContext(
   readiness: ReadinessAssessment | null,
   dependency: AgentDependencyContext | null,
   recommendedActions: AgentActionCandidate[],
+  diagnostics: Diagnostic[],
 ): string {
   const lines: string[] = [];
   lines.push(`${detail.id}  [${detail.type}]`);
@@ -175,6 +178,8 @@ function renderAgentContext(
       lines.push(`  decisions: ${detail.questDetail.decisions.length}`);
     }
 
+    lines.push(...renderDiagnosticsLines(diagnostics));
+
     lines.push('');
     lines.push('Recommended Actions');
     if (recommendedActions.length === 0) {
@@ -216,6 +221,7 @@ function renderBriefing(briefing: {
   frontier: { quest: { id: string; title: string; status: string }; nextAction: AgentActionCandidate | null }[];
   recentHandoffs: { noteId: string; title: string; authoredAt: number; relatedIds: string[] }[];
   alerts: { severity: string; message: string }[];
+  diagnostics: Diagnostic[];
   graphMeta: { maxTick: number; writerCount: number; tipSha: string } | null;
 }): string {
   const lines: string[] = [];
@@ -279,6 +285,8 @@ function renderBriefing(briefing: {
       lines.push(`  - ${alert.severity}: ${alert.message}`);
     }
   }
+
+  lines.push(...renderDiagnosticsLines(briefing.diagnostics));
 
   if (briefing.graphMeta) {
     lines.push('');
@@ -395,6 +403,7 @@ export function registerAgentCommands(program: Command, ctx: CliContext): void {
         ctx.jsonOut({
           success: true,
           command: 'briefing',
+          diagnostics: briefing.diagnostics,
           data: { ...briefing },
         });
         return;
@@ -480,6 +489,7 @@ export function registerAgentCommands(program: Command, ctx: CliContext): void {
         ctx.jsonOut({
           success: true,
           command: 'context',
+          diagnostics: result.diagnostics,
           data: {
             id: result.detail.id,
             type: result.detail.type,
@@ -493,6 +503,7 @@ export function registerAgentCommands(program: Command, ctx: CliContext): void {
               readiness: result.readiness,
               dependency: result.dependency,
               recommendedActions: result.recommendedActions,
+              diagnostics: result.diagnostics,
             },
           },
         });
@@ -504,6 +515,7 @@ export function registerAgentCommands(program: Command, ctx: CliContext): void {
         result.readiness,
         result.dependency,
         result.recommendedActions,
+        result.diagnostics,
       ));
     }));
 

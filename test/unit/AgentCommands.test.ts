@@ -89,6 +89,7 @@ describe('agent act command', () => {
       frontier: [],
       recentHandoffs: [],
       alerts: [],
+      diagnostics: [],
       graphMeta: {
         maxTick: 42,
         myTick: 7,
@@ -107,6 +108,7 @@ describe('agent act command', () => {
     expect(ctx.jsonOut).toHaveBeenCalledWith({
       success: true,
       command: 'briefing',
+      diagnostics: [],
       data: {
         identity: {
           agentId: 'agent.hal',
@@ -117,6 +119,7 @@ describe('agent act command', () => {
         frontier: [],
         recentHandoffs: [],
         alerts: [],
+        diagnostics: [],
         graphMeta: {
           maxTick: 42,
           myTick: 7,
@@ -242,6 +245,7 @@ describe('agent act command', () => {
         sideEffects: ['status -> IN_PROGRESS'],
         validationCode: null,
       }],
+      diagnostics: [],
     });
 
     const ctx = makeCtx();
@@ -254,6 +258,7 @@ describe('agent act command', () => {
     expect(ctx.jsonOut).toHaveBeenCalledWith({
       success: true,
       command: 'context',
+      diagnostics: [],
       data: {
         id: 'task:CTX-001',
         type: 'task',
@@ -312,6 +317,7 @@ describe('agent act command', () => {
             sideEffects: ['status -> IN_PROGRESS'],
             validationCode: null,
           }],
+          diagnostics: [],
         },
       },
     });

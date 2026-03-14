@@ -56,6 +56,60 @@ function makeRoadmap(
   };
 }
 
+function makeDoctor(
+  overrides?: Partial<{
+    diagnostics: unknown[];
+    summary: Record<string, unknown>;
+    blocking: boolean;
+    healthy: boolean;
+    status: string;
+  }>,
+) {
+  return {
+    run: vi.fn().mockResolvedValue({
+      status: overrides?.status ?? 'ok',
+      healthy: overrides?.healthy ?? true,
+      blocking: overrides?.blocking ?? false,
+      asOf: 1,
+      graphMeta: null,
+      auditedStatuses: ['PLANNED', 'READY'],
+      counts: {
+        campaigns: 0,
+        quests: 0,
+        intents: 0,
+        scrolls: 0,
+        approvals: 0,
+        submissions: 0,
+        patchsets: 0,
+        reviews: 0,
+        decisions: 0,
+        stories: 0,
+        requirements: 0,
+        criteria: 0,
+        evidence: 0,
+        policies: 0,
+        suggestions: 0,
+        documents: 0,
+        comments: 0,
+      },
+      summary: {
+        issueCount: 0,
+        blockingIssueCount: 0,
+        errorCount: 0,
+        warningCount: 0,
+        danglingEdges: 0,
+        orphanNodes: 0,
+        readinessGaps: 0,
+        sovereigntyViolations: 0,
+        governedCompletionGaps: 0,
+        ...(overrides?.summary ?? {}),
+      },
+      issues: [],
+      diagnostics: overrides?.diagnostics ?? [],
+    }),
+  };
+}
+
 describe('AgentBriefingService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -179,6 +233,7 @@ describe('AgentBriefingService', () => {
         },
       ),
       'agent.hal',
+      makeDoctor(),
     );
 
     const briefing = await service.buildBriefing();
@@ -213,6 +268,7 @@ describe('AgentBriefingService', () => {
       },
     ]);
     expect(briefing.graphMeta?.tipSha).toBe('abc1234');
+    expect(briefing.diagnostics).toEqual([]);
     expect(briefing.alerts.map((alert) => alert.code)).toContain('review-queue');
   });
 
@@ -302,6 +358,7 @@ describe('AgentBriefingService', () => {
         },
       ),
       'agent.hal',
+      makeDoctor(),
     );
 
     const candidates = await service.next(5);
@@ -397,6 +454,7 @@ describe('AgentBriefingService', () => {
         }),
       ]),
       'agent.hal',
+      makeDoctor(),
     );
 
     const candidates = await service.next(5);
@@ -467,6 +525,7 @@ describe('AgentBriefingService', () => {
         }),
       ]),
       'agent.hal',
+      makeDoctor(),
     );
 
     const briefing = await service.buildBriefing();

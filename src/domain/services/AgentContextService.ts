@@ -1,9 +1,11 @@
 import { isExecutableQuestStatus } from '../entities/Quest.js';
+import type { Diagnostic } from '../models/diagnostics.js';
 import type { EntityDetail, GraphSnapshot, QuestNode } from '../models/dashboard.js';
 import type { GraphPort } from '../../ports/GraphPort.js';
 import type { RoadmapQueryPort } from '../../ports/RoadmapPort.js';
 import { createGraphContext } from '../../infrastructure/GraphContext.js';
 import { computeFrontier } from './DepAnalysis.js';
+import { collectQuestDiagnostics } from './DiagnosticService.js';
 import { ReadinessService, type ReadinessAssessment } from './ReadinessService.js';
 import { AgentActionValidator } from './AgentActionService.js';
 import { determineSubmissionNextStep } from './AgentSubmissionService.js';
@@ -19,6 +21,7 @@ export interface AgentContextResult {
   readiness: ReadinessAssessment | null;
   dependency: AgentDependencyContext | null;
   recommendedActions: AgentActionCandidate[];
+  diagnostics: Diagnostic[];
 }
 
 export function toAgentQuestRef(quest: QuestNode): AgentQuestRef {
@@ -107,6 +110,7 @@ export class AgentContextService {
         readiness: null,
         dependency: null,
         recommendedActions: [],
+        diagnostics: [],
       };
     }
 
@@ -128,12 +132,14 @@ export class AgentContextService {
         a.kind.localeCompare(b.kind)
       )
       : questActions;
+    const diagnostics = collectQuestDiagnostics(detail.questDetail, readiness);
 
     return {
       detail,
       readiness,
       dependency,
       recommendedActions,
+      diagnostics,
     };
   }
 
