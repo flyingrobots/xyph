@@ -43,16 +43,41 @@ export function normalizeQuestStatus(raw: string): QuestStatus {
 
 export type QuestType = 'task';
 export type QuestKind = 'delivery' | 'spike' | 'maintenance' | 'ops';
+export type QuestPriority = 'P0' | 'P1' | 'P2' | 'P3' | 'P4' | 'P5';
 
 export const VALID_TASK_KINDS: ReadonlySet<string> = new Set<QuestKind>([
   'delivery', 'spike', 'maintenance', 'ops',
 ]);
+export const VALID_QUEST_PRIORITIES: ReadonlySet<string> = new Set<QuestPriority>([
+  'P0', 'P1', 'P2', 'P3', 'P4', 'P5',
+]);
+export const DEFAULT_QUEST_PRIORITY: QuestPriority = 'P3';
+
+const QUEST_PRIORITY_ORDER: Readonly<Record<QuestPriority, number>> = {
+  P0: 0,
+  P1: 1,
+  P2: 2,
+  P3: 3,
+  P4: 4,
+  P5: 5,
+};
 
 export function normalizeQuestKind(raw: unknown): QuestKind {
   if (typeof raw === 'string' && VALID_TASK_KINDS.has(raw)) {
     return raw as QuestKind;
   }
   return 'delivery';
+}
+
+export function normalizeQuestPriority(raw: unknown): QuestPriority {
+  if (typeof raw === 'string' && VALID_QUEST_PRIORITIES.has(raw)) {
+    return raw as QuestPriority;
+  }
+  return DEFAULT_QUEST_PRIORITY;
+}
+
+export function compareQuestPriority(a: QuestPriority, b: QuestPriority): number {
+  return QUEST_PRIORITY_ORDER[a] - QUEST_PRIORITY_ORDER[b];
 }
 
 export function isExecutableQuestStatus(status: string): status is QuestStatus {
@@ -64,6 +89,7 @@ export interface QuestProps {
   title: string;
   status: QuestStatus;
   hours: number;
+  priority?: QuestPriority;
   description?: string;
   taskKind?: QuestKind;
   assignedTo?: string;
@@ -80,6 +106,7 @@ export class Quest {
   public readonly title: string;
   public readonly status: QuestStatus;
   public readonly hours: number;
+  public readonly priority: QuestPriority;
   public readonly description?: string;
   public readonly taskKind: QuestKind;
   public readonly assignedTo?: string;
@@ -110,11 +137,13 @@ export class Quest {
       }
     }
     const taskKind = normalizeQuestKind(props.taskKind);
+    const priority = normalizeQuestPriority(props.priority);
 
     this.id = props.id;
     this.title = props.title;
     this.status = props.status;
     this.hours = props.hours;
+    this.priority = priority;
     this.description = props.description?.trim();
     this.taskKind = taskKind;
     this.assignedTo = props.assignedTo;
@@ -132,6 +161,7 @@ export class Quest {
       title: this.title,
       status: this.status,
       hours: this.hours,
+      priority: this.priority,
       description: this.description,
       taskKind: this.taskKind,
       assignedTo: this.assignedTo,

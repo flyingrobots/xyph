@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { Quest, normalizeQuestKind } from '../../src/domain/entities/Quest.js';
+import {
+  Quest,
+  normalizeQuestKind,
+  normalizeQuestPriority,
+} from '../../src/domain/entities/Quest.js';
 
 describe('Quest Entity', () => {
   it('should create a valid quest', () => {
@@ -15,6 +19,7 @@ describe('Quest Entity', () => {
     expect(quest.id).toBe('task:001');
     expect(quest.isDone()).toBe(false);
     expect(quest.taskKind).toBe('maintenance');
+    expect(quest.priority).toBe('P3');
   });
 
   it('should identify a completed quest', () => {
@@ -92,7 +97,22 @@ describe('Quest Entity', () => {
     });
 
     expect(quest.taskKind).toBe('delivery');
+    expect(quest.priority).toBe('P3');
     expect(normalizeQuestKind(undefined)).toBe('delivery');
+    expect(normalizeQuestPriority(undefined)).toBe('P3');
+  });
+
+  it('accepts explicit quest priority', () => {
+    const quest = new Quest({
+      id: 'task:009',
+      title: 'Priority Quest',
+      status: 'BACKLOG',
+      hours: 1,
+      priority: 'P1',
+      type: 'task',
+    });
+
+    expect(quest.priority).toBe('P1');
   });
 
   it('accepts READY as a first-class quest status', () => {

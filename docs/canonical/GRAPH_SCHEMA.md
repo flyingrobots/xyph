@@ -90,6 +90,7 @@ All properties use **snake_case** in the WARP graph. Timestamps are Unix epoch n
 | `title` | string | quest command | ≥5 chars. |
 | `status` | QuestStatus | lifecycle | See valid values below. |
 | `hours` | number | quest command | ≥0, default 0. |
+| `priority` | string | intake/shape/ingest | `P0` through `P5`. Defaults to `P3`. |
 | `description` | string | intake/quest command | Optional durable summary/body preview. |
 | `task_kind` | string | intake/quest command | `delivery`, `spike`, `maintenance`, or `ops`. Defaults to `delivery`. |
 | `assigned_to` | string | claim command | Principal ID (e.g., `agent.hal`). |

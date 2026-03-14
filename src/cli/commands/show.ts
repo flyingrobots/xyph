@@ -118,7 +118,7 @@ function renderQuestDetail(
   const { quest } = detail;
 
   lines.push(`${quest.id}  ${quest.title}  [${quest.status}]`);
-  lines.push(`kind: ${quest.taskKind ?? 'delivery'}   hours: ${quest.hours}`);
+  lines.push(`priority: ${quest.priority ?? 'P3'}   kind: ${quest.taskKind ?? 'delivery'}   hours: ${quest.hours}`);
   if (quest.description) {
     lines.push('');
     lines.push(quest.description);

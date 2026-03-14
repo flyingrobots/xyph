@@ -24,7 +24,8 @@
 - `seal` and auto-sealing `merge` must reject governed work when the applied policy disallows manual settlement and computed completion is still incomplete.
 
 ## Authoring Workflow
-- Use `xyph shape <task>` while a quest is `BACKLOG` or `PLANNED` to enrich durable metadata such as `description` and `task_kind`.
+- Every quest carries an explicit operational priority from `P0` through `P5`; missing priority reads as `P3`.
+- Use `xyph shape <task>` while a quest is `BACKLOG` or `PLANNED` to enrich durable metadata such as `description`, `task_kind`, and `priority`.
 - Use `xyph packet <task>` to create or link the minimal story → requirement → criterion chain for delivery-oriented work.
 - `ready` remains strict: shaping and packet authoring are the sanctioned preparation path, not an escape hatch around readiness validation.
 

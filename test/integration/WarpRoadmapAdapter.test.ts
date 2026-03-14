@@ -36,6 +36,7 @@ describe('WarpRoadmapAdapter Integration', () => {
       title: 'Integration Task',
       status: 'BACKLOG',
       hours: 4,
+      priority: 'P1',
       description: 'Persisted quest description for integration coverage.',
       taskKind: 'ops',
       type: 'task',
@@ -50,6 +51,7 @@ describe('WarpRoadmapAdapter Integration', () => {
     expect(retrieved).not.toBeNull();
     expect(retrieved?.id).toBe('task:INT-001');
     expect(retrieved?.title).toBe('Integration Task');
+    expect(retrieved?.priority).toBe('P1');
     expect(retrieved?.description).toBe('Persisted quest description for integration coverage.');
     expect(retrieved?.taskKind).toBe('ops');
     expect(retrieved?.originContext).toBe('intent-123');

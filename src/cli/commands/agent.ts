@@ -2,7 +2,7 @@ import type { Command } from 'commander';
 import type { CliContext } from '../context.js';
 import { createErrorHandler } from '../errorHandler.js';
 import { renderDiagnosticsLines } from '../renderDiagnostics.js';
-import { VALID_TASK_KINDS } from '../../domain/entities/Quest.js';
+import { VALID_QUEST_PRIORITIES, VALID_TASK_KINDS } from '../../domain/entities/Quest.js';
 import {
   VALID_REQUIREMENT_KINDS,
   VALID_REQUIREMENT_PRIORITIES,
@@ -26,6 +26,7 @@ import type { EntityDetail } from '../../domain/models/dashboard.js';
 interface ActOptions {
   dryRun?: boolean;
   description?: string;
+  taskPriority?: string;
   title?: string;
   rationale?: string;
   artifact?: string;
@@ -56,6 +57,7 @@ interface ActOptions {
 function buildActionArgs(opts: ActOptions): Record<string, unknown> {
   const args: Record<string, unknown> = {};
   if (opts.description !== undefined) args['description'] = opts.description.trim();
+  if (opts.taskPriority !== undefined) args['taskPriority'] = opts.taskPriority.trim();
   if (opts.title !== undefined) args['title'] = opts.title.trim();
   if (opts.rationale !== undefined) args['rationale'] = opts.rationale.trim();
   if (opts.artifact !== undefined) args['artifactHash'] = opts.artifact.trim();
@@ -137,7 +139,7 @@ function renderAgentContext(
   if (detail.questDetail) {
     const quest = detail.questDetail.quest;
     lines.push(`${quest.title}  [${quest.status}]`);
-    lines.push(`kind: ${quest.taskKind ?? 'delivery'}   hours: ${quest.hours}`);
+    lines.push(`priority: ${quest.priority ?? 'P3'}   kind: ${quest.taskKind ?? 'delivery'}   hours: ${quest.hours}`);
     if (quest.description) {
       lines.push('');
       lines.push(quest.description);
@@ -526,6 +528,7 @@ export function registerAgentCommands(program: Command, ctx: CliContext): void {
     .description('Execute a validated routine action through the agent action kernel')
     .option('--dry-run', 'Validate and normalize without mutating graph or workspace')
     .option('--description <text>', 'Description for shape or submit')
+    .option('--task-priority <level>', `Quest priority for shape (${[...VALID_QUEST_PRIORITIES].join(' | ')})`)
     .option('--title <text>', 'Title for handoff')
     .option('--rationale <text>', 'Rationale for seal or merge')
     .option('--artifact <hash>', 'Artifact hash for seal')

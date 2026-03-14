@@ -1,13 +1,15 @@
-import type { QuestKind } from '../domain/entities/Quest.js';
+import type { QuestKind, QuestPriority } from '../domain/entities/Quest.js';
 
 export interface PromoteOptions {
   description?: string;
   taskKind?: QuestKind;
+  priority?: QuestPriority;
 }
 
 export interface ShapeOptions {
   description?: string;
   taskKind?: QuestKind;
+  priority?: QuestPriority;
 }
 
 export interface IntakePort {

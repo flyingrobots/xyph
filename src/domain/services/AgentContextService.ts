@@ -1,4 +1,4 @@
-import { isExecutableQuestStatus } from '../entities/Quest.js';
+import { DEFAULT_QUEST_PRIORITY, isExecutableQuestStatus } from '../entities/Quest.js';
 import type { Diagnostic } from '../models/diagnostics.js';
 import type { EntityDetail, GraphSnapshot, QuestNode } from '../models/dashboard.js';
 import type { GraphPort } from '../../ports/GraphPort.js';
@@ -30,6 +30,7 @@ export function toAgentQuestRef(quest: QuestNode): AgentQuestRef {
     title: quest.title,
     status: quest.status,
     hours: quest.hours,
+    priority: quest.priority ?? DEFAULT_QUEST_PRIORITY,
     taskKind: quest.taskKind,
     assignedTo: quest.assignedTo,
   };

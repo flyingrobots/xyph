@@ -1,7 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import type { GraphPort } from '../../ports/GraphPort.js';
 import type { RoadmapQueryPort } from '../../ports/RoadmapPort.js';
-import { VALID_TASK_KINDS, type QuestKind } from '../entities/Quest.js';
+import {
+  VALID_QUEST_PRIORITIES,
+  VALID_TASK_KINDS,
+  type QuestKind,
+  type QuestPriority,
+} from '../entities/Quest.js';
 import {
   VALID_REQUIREMENT_KINDS,
   VALID_REQUIREMENT_PRIORITIES,
@@ -86,6 +91,7 @@ interface ShapeAction {
   targetId: string;
   description?: string;
   taskKind?: QuestKind;
+  priority?: QuestPriority;
 }
 
 interface PacketAction {
@@ -373,10 +379,12 @@ export class AgentActionValidator {
       : undefined;
     const taskKindRaw = request.args['taskKind'];
     const taskKind = typeof taskKindRaw === 'string' ? taskKindRaw : undefined;
+    const taskPriorityRaw = request.args['taskPriority'];
+    const taskPriority = typeof taskPriorityRaw === 'string' ? taskPriorityRaw.trim() : undefined;
 
-    if (descriptionRaw === undefined && taskKind === undefined) {
+    if (descriptionRaw === undefined && taskKind === undefined && taskPriority === undefined) {
       return failAssessment(request, 'invalid-args', [
-        'shape requires description and/or taskKind',
+        'shape requires description, taskKind, and/or taskPriority',
       ]);
     }
     if (descriptionRaw !== undefined && descriptionRaw.length < 5) {
@@ -389,6 +397,11 @@ export class AgentActionValidator {
         `taskKind must be one of ${[...VALID_TASK_KINDS].join(', ')}`,
       ]);
     }
+    if (taskPriority !== undefined && !VALID_QUEST_PRIORITIES.has(taskPriority)) {
+      return failAssessment(request, 'invalid-args', [
+        `taskPriority must be one of ${[...VALID_QUEST_PRIORITIES].join(', ')}`,
+      ]);
+    }
 
     try {
       await this.intake.validateShape(request.targetId);
@@ -398,11 +411,13 @@ export class AgentActionValidator {
         normalizedArgs: {
           description: descriptionRaw ?? null,
           taskKind: taskKind ?? null,
+          taskPriority: taskPriority ?? null,
         },
         underlyingCommand: `xyph shape ${request.targetId}`,
         sideEffects: [
           ...(descriptionRaw !== undefined ? ['description -> updated'] : []),
           ...(taskKind !== undefined ? ['task_kind -> updated'] : []),
+          ...(taskPriority !== undefined ? ['priority -> updated'] : []),
         ],
       });
     }
@@ -414,15 +429,18 @@ export class AgentActionValidator {
         targetId: request.targetId,
         description: descriptionRaw,
         taskKind: taskKind as QuestKind | undefined,
+        priority: taskPriority as QuestPriority | undefined,
       },
       {
         description: descriptionRaw ?? null,
         taskKind: taskKind ?? null,
+        taskPriority: taskPriority ?? null,
       },
       `xyph shape ${request.targetId}`,
       [
         ...(descriptionRaw !== undefined ? ['description -> updated'] : []),
         ...(taskKind !== undefined ? ['task_kind -> updated'] : []),
+        ...(taskPriority !== undefined ? ['priority -> updated'] : []),
       ],
     );
   }
@@ -1350,6 +1368,7 @@ export class AgentActionService {
     const sha = await intake.shape(action.targetId, {
       description: action.description,
       taskKind: action.taskKind,
+      priority: action.priority,
     });
     const graph = await this.graphPort.getGraph();
     const props = await graph.getNodeProps(action.targetId);
@@ -1362,6 +1381,7 @@ export class AgentActionService {
         id: action.targetId,
         status: typeof props?.['status'] === 'string' ? props['status'] : null,
         description: typeof props?.['description'] === 'string' ? props['description'] : null,
+        priority: typeof props?.['priority'] === 'string' ? props['priority'] : null,
         taskKind: typeof props?.['task_kind'] === 'string' ? props['task_kind'] : null,
       },
     };

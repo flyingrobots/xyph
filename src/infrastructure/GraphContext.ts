@@ -14,6 +14,7 @@
 import type WarpGraph from '@git-stunts/git-warp';
 import type { QueryResultV1, AggregateResult } from '@git-stunts/git-warp';
 import {
+  normalizeQuestPriority,
   VALID_STATUSES as VALID_QUEST_STATUSES,
   isExecutableQuestStatus,
   normalizeQuestKind,
@@ -349,6 +350,7 @@ class GraphContextImpl implements GraphContext {
       }
 
       const assignedTo = n.props['assigned_to'];
+      const priority = n.props['priority'];
       const description = n.props['description'];
       const taskKind = n.props['task_kind'];
       const readyBy = n.props['ready_by'];
@@ -367,6 +369,7 @@ class GraphContextImpl implements GraphContext {
         title,
         status: rawStatus as QuestStatus,
         hours: typeof hours === 'number' && Number.isFinite(hours) && hours >= 0 ? hours : 0,
+        priority: normalizeQuestPriority(priority),
         description: typeof description === 'string' ? description : undefined,
         taskKind: normalizeQuestKind(taskKind),
         campaignId,

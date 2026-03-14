@@ -1,6 +1,6 @@
 import type { IntakePort, PromoteOptions, ShapeOptions } from '../../ports/IntakePort.js';
 import type { GraphPort } from '../../ports/GraphPort.js';
-import { VALID_TASK_KINDS } from '../../domain/entities/Quest.js';
+import { VALID_QUEST_PRIORITIES, VALID_TASK_KINDS } from '../../domain/entities/Quest.js';
 import { IntakeService } from '../../domain/services/IntakeService.js';
 import { ReadinessService } from '../../domain/services/ReadinessService.js';
 import { WarpRoadmapAdapter } from './WarpRoadmapAdapter.js';
@@ -62,6 +62,10 @@ export class WarpIntakeAdapter implements IntakePort {
     if (!VALID_TASK_KINDS.has(taskKind)) {
       throw new Error(`[MISSING_ARG] --kind must be one of ${[...VALID_TASK_KINDS].join(', ')}`);
     }
+    const priority = opts?.priority;
+    if (priority !== undefined && !VALID_QUEST_PRIORITIES.has(priority)) {
+      throw new Error(`[MISSING_ARG] --priority must be one of ${[...VALID_QUEST_PRIORITIES].join(', ')}`);
+    }
     const existingDescription = props['description'];
     if ((typeof existingDescription !== 'string' || existingDescription.trim().length < 5) && description === undefined) {
       throw new Error('[MISSING_ARG] promote requires --description when the quest has no existing description');
@@ -78,6 +82,9 @@ export class WarpIntakeAdapter implements IntakePort {
       p.setProperty(questId, 'status', 'PLANNED')
         .setProperty(questId, 'task_kind', taskKind)
         .addEdge(questId, intentId, 'authorized-by');
+      if (priority !== undefined) {
+        p.setProperty(questId, 'priority', priority);
+      }
       if (description !== undefined) {
         p.setProperty(questId, 'description', description);
       }
@@ -95,11 +102,15 @@ export class WarpIntakeAdapter implements IntakePort {
       throw new Error('[MISSING_ARG] --description must be at least 5 characters');
     }
     const taskKind = opts.taskKind;
+    const priority = opts.priority;
     if (taskKind !== undefined && !VALID_TASK_KINDS.has(taskKind)) {
       throw new Error(`[MISSING_ARG] --kind must be one of ${[...VALID_TASK_KINDS].join(', ')}`);
     }
-    if (description === undefined && taskKind === undefined) {
-      throw new Error('[MISSING_ARG] shape requires --description and/or --kind');
+    if (priority !== undefined && !VALID_QUEST_PRIORITIES.has(priority)) {
+      throw new Error(`[MISSING_ARG] --priority must be one of ${[...VALID_QUEST_PRIORITIES].join(', ')}`);
+    }
+    if (description === undefined && taskKind === undefined && priority === undefined) {
+      throw new Error('[MISSING_ARG] shape requires --description, --kind, and/or --priority');
     }
 
     const roadmap = new WarpRoadmapAdapter(this.graphPort);
@@ -124,6 +135,9 @@ export class WarpIntakeAdapter implements IntakePort {
       }
       if (taskKind !== undefined) {
         p.setProperty(questId, 'task_kind', taskKind);
+      }
+      if (priority !== undefined) {
+        p.setProperty(questId, 'priority', priority);
       }
     });
   }

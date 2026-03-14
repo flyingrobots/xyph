@@ -3,7 +3,7 @@
  * No external dependencies — only TypeScript shapes.
  */
 
-import type { QuestKind, QuestStatus } from '../entities/Quest.js';
+import type { QuestKind, QuestPriority, QuestStatus } from '../entities/Quest.js';
 import type { ApprovalGateStatus, ApprovalGateTrigger } from '../entities/ApprovalGate.js';
 import type { SubmissionStatus, ReviewVerdict, DecisionKind } from '../entities/Submission.js';
 import type { RequirementKind, RequirementPriority } from '../entities/Requirement.js';
@@ -48,6 +48,7 @@ export interface QuestNode {
   title: string;
   status: QuestStatus;
   hours: number;
+  priority?: QuestPriority;
   description?: string;
   taskKind?: QuestKind;
   campaignId?: string;

@@ -2,7 +2,12 @@ import type { Command } from 'commander';
 import type { CliContext } from '../context.js';
 import { createErrorHandler } from '../errorHandler.js';
 import { assertPrefix, assertMinLength, assertPrefixOneOf, parseHours } from '../validators.js';
-import { VALID_TASK_KINDS, type QuestKind } from '../../domain/entities/Quest.js';
+import {
+  VALID_QUEST_PRIORITIES,
+  VALID_TASK_KINDS,
+  type QuestKind,
+  type QuestPriority,
+} from '../../domain/entities/Quest.js';
 import { collectReadinessDiagnostics } from '../../domain/services/DiagnosticService.js';
 
 function resolveTaskKind(raw: string | undefined): QuestKind {
@@ -11,6 +16,14 @@ function resolveTaskKind(raw: string | undefined): QuestKind {
     throw new Error(`--kind must be one of ${[...VALID_TASK_KINDS].join(', ')}`);
   }
   return taskKind as QuestKind;
+}
+
+function resolveQuestPriority(raw: string | undefined): QuestPriority {
+  const priority = raw ?? 'P3';
+  if (!VALID_QUEST_PRIORITIES.has(priority)) {
+    throw new Error(`--priority must be one of ${[...VALID_QUEST_PRIORITIES].join(', ')}`);
+  }
+  return priority as QuestPriority;
 }
 
 export function registerIntakeCommands(program: Command, ctx: CliContext): void {
@@ -23,13 +36,15 @@ export function registerIntakeCommands(program: Command, ctx: CliContext): void 
     .requiredOption('--suggested-by <principal>', 'Who is suggesting this task (human.* or agent.*)')
     .option('--description <text>', 'Durable quest description/body preview')
     .option('--kind <kind>', `Quest kind (${[...VALID_TASK_KINDS].join(' | ')})`)
+    .option('--priority <level>', `Quest priority (${[...VALID_QUEST_PRIORITIES].join(' | ')})`)
     .option('--hours <number>', 'Estimated hours', parseHours)
-    .action(withErrorHandler(async (id: string, opts: { title: string; suggestedBy: string; description?: string; kind?: string; hours?: number }) => {
+    .action(withErrorHandler(async (id: string, opts: { title: string; suggestedBy: string; description?: string; kind?: string; priority?: string; hours?: number }) => {
       assertPrefix(id, 'task:', 'Task ID');
       assertMinLength(opts.title, 5, '--title');
       assertPrefixOneOf(opts.suggestedBy, ['human.', 'agent.'], '--suggested-by');
       if (opts.description !== undefined) assertMinLength(opts.description.trim(), 5, '--description');
       const taskKind = resolveTaskKind(opts.kind);
+      const priority = resolveQuestPriority(opts.priority);
 
       const graph = await ctx.graphPort.getGraph();
       const now = Date.now();
@@ -40,6 +55,7 @@ export function registerIntakeCommands(program: Command, ctx: CliContext): void 
           .setProperty(id, 'status', 'BACKLOG')
           .setProperty(id, 'hours', opts.hours ?? 0)
           .setProperty(id, 'type', 'task')
+          .setProperty(id, 'priority', priority)
           .setProperty(id, 'task_kind', taskKind)
           .setProperty(id, 'suggested_by', opts.suggestedBy)
           .setProperty(id, 'suggested_at', now);
@@ -57,6 +73,7 @@ export function registerIntakeCommands(program: Command, ctx: CliContext): void 
             status: 'BACKLOG',
             suggestedBy: opts.suggestedBy,
             description: opts.description?.trim() ?? null,
+            priority,
             taskKind,
             hours: opts.hours ?? 0,
             patch: sha,
@@ -77,15 +94,18 @@ export function registerIntakeCommands(program: Command, ctx: CliContext): void 
     .option('--campaign <id>', 'Campaign to assign (optional, assignable later)')
     .option('--description <text>', 'Durable quest description/body preview')
     .option('--kind <kind>', `Quest kind (${[...VALID_TASK_KINDS].join(' | ')})`)
-    .action(withErrorHandler(async (id: string, opts: { intent: string; campaign?: string; description?: string; kind?: string }) => {
+    .option('--priority <level>', `Quest priority (${[...VALID_QUEST_PRIORITIES].join(' | ')})`)
+    .action(withErrorHandler(async (id: string, opts: { intent: string; campaign?: string; description?: string; kind?: string; priority?: string }) => {
       const { WarpIntakeAdapter } = await import('../../infrastructure/adapters/WarpIntakeAdapter.js');
       if (opts.description !== undefined) assertMinLength(opts.description.trim(), 5, '--description');
       const taskKind = resolveTaskKind(opts.kind);
+      const priority = opts.priority !== undefined ? resolveQuestPriority(opts.priority) : undefined;
 
       const intake = new WarpIntakeAdapter(ctx.graphPort, ctx.agentId);
       const sha = await intake.promote(id, opts.intent, opts.campaign, {
         description: opts.description?.trim(),
         taskKind,
+        priority,
       });
 
       if (ctx.json) {
@@ -96,6 +116,7 @@ export function registerIntakeCommands(program: Command, ctx: CliContext): void 
             intent: opts.intent,
             campaign: opts.campaign ?? null,
             description: opts.description?.trim() ?? null,
+            priority: priority ?? null,
             taskKind,
             patch: sha,
           },
@@ -169,22 +190,25 @@ export function registerIntakeCommands(program: Command, ctx: CliContext): void 
     .description('Enrich a BACKLOG or PLANNED task with durable metadata before READY')
     .option('--description <text>', 'Durable quest description/body preview')
     .option('--kind <kind>', `Quest kind (${[...VALID_TASK_KINDS].join(' | ')})`)
-    .action(withErrorHandler(async (id: string, opts: { description?: string; kind?: string }) => {
+    .option('--priority <level>', `Quest priority (${[...VALID_QUEST_PRIORITIES].join(' | ')})`)
+    .action(withErrorHandler(async (id: string, opts: { description?: string; kind?: string; priority?: string }) => {
       const { WarpIntakeAdapter } = await import('../../infrastructure/adapters/WarpIntakeAdapter.js');
       const { WarpRoadmapAdapter } = await import('../../infrastructure/adapters/WarpRoadmapAdapter.js');
 
-      if (opts.description === undefined && opts.kind === undefined) {
-        throw new Error('[MISSING_ARG] shape requires --description and/or --kind');
+      if (opts.description === undefined && opts.kind === undefined && opts.priority === undefined) {
+        throw new Error('[MISSING_ARG] shape requires --description, --kind, and/or --priority');
       }
       if (opts.description !== undefined) {
         assertMinLength(opts.description.trim(), 5, '--description');
       }
       const taskKind = opts.kind !== undefined ? resolveTaskKind(opts.kind) : undefined;
+      const priority = opts.priority !== undefined ? resolveQuestPriority(opts.priority) : undefined;
 
       const intake = new WarpIntakeAdapter(ctx.graphPort, ctx.agentId);
       const sha = await intake.shape(id, {
         description: opts.description?.trim(),
         taskKind,
+        priority,
       });
 
       const roadmap = new WarpRoadmapAdapter(ctx.graphPort);
@@ -198,6 +222,7 @@ export function registerIntakeCommands(program: Command, ctx: CliContext): void 
             id,
             status: quest?.status ?? null,
             description: quest?.description ?? null,
+            priority: quest?.priority ?? null,
             taskKind: quest?.taskKind ?? null,
             patch: sha,
           },
@@ -207,6 +232,7 @@ export function registerIntakeCommands(program: Command, ctx: CliContext): void 
 
       ctx.ok(`[OK] Task ${id} shaped for planning.`);
       if (quest?.description) ctx.muted(`  Description: ${quest.description}`);
+      if (quest?.priority) ctx.muted(`  Priority:    ${quest.priority}`);
       if (quest?.taskKind) ctx.muted(`  Kind:        ${quest.taskKind}`);
       ctx.muted(`  Patch:       ${sha}`);
     }));

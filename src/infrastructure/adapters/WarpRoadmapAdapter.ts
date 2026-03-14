@@ -1,10 +1,12 @@
 import type { RoadmapPort } from '../../ports/RoadmapPort.js';
 import type WarpGraph from '@git-stunts/git-warp';
 import {
+  DEFAULT_QUEST_PRIORITY,
   Quest,
   QuestType,
   VALID_STATUSES,
   normalizeQuestKind,
+  normalizeQuestPriority,
   normalizeQuestStatus,
 } from '../../domain/entities/Quest.js';
 import { EdgeType } from '../../schema.js';
@@ -43,6 +45,7 @@ export class WarpRoadmapAdapter implements RoadmapPort {
     const assignedTo = props['assigned_to'];
     const claimedAt = props['claimed_at'];
     const completedAt = props['completed_at'];
+    const priority = props['priority'];
     const description = props['description'];
     const taskKind = props['task_kind'];
     const readyBy = props['ready_by'];
@@ -54,6 +57,7 @@ export class WarpRoadmapAdapter implements RoadmapPort {
       title,
       status: normalized,
       hours: parsedHours,
+      priority: normalizeQuestPriority(priority),
       description: typeof description === 'string' ? description : undefined,
       taskKind: normalizeQuestKind(taskKind),
       assignedTo: typeof assignedTo === 'string' ? assignedTo : undefined,
@@ -105,6 +109,7 @@ export class WarpRoadmapAdapter implements RoadmapPort {
 
       p.setProperty(quest.id, 'title', quest.title)
         .setProperty(quest.id, 'hours', quest.hours)
+        .setProperty(quest.id, 'priority', quest.priority ?? DEFAULT_QUEST_PRIORITY)
         .setProperty(quest.id, 'task_kind', quest.taskKind)
         .setProperty(quest.id, 'type', quest.type);
 

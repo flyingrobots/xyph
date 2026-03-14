@@ -139,6 +139,7 @@ export function registerWizardCommands(program: Command, ctx: CliContext): void 
           .setProperty(questId, 'title', title)
           .setProperty(questId, 'status', 'PLANNED')
           .setProperty(questId, 'hours', hours)
+          .setProperty(questId, 'priority', 'P3')
           .setProperty(questId, 'task_kind', taskKind)
           .setProperty(questId, 'type', 'task');
         if (description.trim()) {

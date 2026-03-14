@@ -17,6 +17,7 @@ export interface AgentQuestRef {
   title: string;
   status: string;
   hours: number;
+  priority?: string;
   taskKind?: string;
   assignedTo?: string;
 }
