@@ -102,9 +102,11 @@ function makeDoctor(
         readinessGaps: 0,
         sovereigntyViolations: 0,
         governedCompletionGaps: 0,
+        topRemediationBuckets: [],
         ...(overrides?.summary ?? {}),
       },
       issues: [],
+      prescriptions: [],
       diagnostics: overrides?.diagnostics ?? [],
     }),
   };

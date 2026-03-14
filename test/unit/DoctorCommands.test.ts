@@ -3,6 +3,7 @@ import { Command } from 'commander';
 import type { CliContext } from '../../src/cli/context.js';
 
 const runDoctor = vi.fn();
+const prescribeDoctor = vi.fn();
 const doctorCtor = vi.fn();
 const roadmapCtor = vi.fn();
 
@@ -11,6 +12,7 @@ vi.mock('../../src/domain/services/DoctorService.js', () => ({
     doctorCtor(graphPort, roadmap);
     return {
       run: runDoctor,
+      prescribe: prescribeDoctor,
     };
   }),
 }));
@@ -209,5 +211,93 @@ describe('doctor command', () => {
       report.diagnostics,
     );
     expect(ctx.jsonOut).not.toHaveBeenCalled();
+  });
+
+  it('emits deterministic prescriptions in JSON mode', async () => {
+    const report = {
+      status: 'warn',
+      healthy: false,
+      blocking: false,
+      asOf: 123,
+      graphMeta: null,
+      auditedStatuses: ['PLANNED', 'READY'],
+      counts: {
+        campaigns: 1,
+        quests: 1,
+        intents: 0,
+        scrolls: 0,
+        approvals: 0,
+        submissions: 0,
+        patchsets: 0,
+        reviews: 0,
+        decisions: 0,
+        stories: 0,
+        requirements: 0,
+        criteria: 0,
+        evidence: 0,
+        policies: 0,
+        suggestions: 0,
+        documents: 0,
+        comments: 0,
+      },
+      summary: {
+        issueCount: 1,
+        blockingIssueCount: 0,
+        errorCount: 0,
+        warningCount: 1,
+        danglingEdges: 0,
+        orphanNodes: 0,
+        readinessGaps: 1,
+        sovereigntyViolations: 0,
+        governedCompletionGaps: 0,
+        topRemediationBuckets: [
+          {
+            key: 'workflow-gap:ready-contract',
+            category: 'workflow-gap',
+            count: 1,
+            highestPriority: 'P1',
+            materializableCount: 0,
+          },
+        ],
+      },
+      issues: [],
+      prescriptions: [
+        {
+          dedupeKey: 'workflow-gap:ready-contract:task:RX-001',
+          groupingKey: 'workflow-gap:ready-contract',
+          category: 'workflow-gap',
+          summary: 'task:RX-001 fails the readiness contract',
+          suggestedAction: 'Backfill the quest packet and metadata until the READY contract is satisfied.',
+          subjectId: 'task:RX-001',
+          relatedIds: [],
+          blockedTransitions: ['ready'],
+          blockedTaskIds: ['task:RX-001'],
+          basePriority: 'P3',
+          effectivePriority: 'P1',
+          materializable: false,
+          sourceIssueCodes: ['quest-readiness-gap'],
+        },
+      ],
+      diagnostics: [],
+    };
+    prescribeDoctor.mockResolvedValueOnce(report);
+
+    const ctx = makeCtx(true);
+    const program = registerDoctor(ctx);
+
+    await program.parseAsync(['doctor', 'prescribe'], { from: 'user' });
+
+    expect(ctx.jsonOut).toHaveBeenCalledWith({
+      success: true,
+      command: 'doctor prescribe',
+      data: {
+        asOf: report.asOf,
+        graphMeta: report.graphMeta,
+        summary: report.summary,
+        prescriptions: report.prescriptions,
+      },
+      diagnostics: report.diagnostics,
+    });
+    expect(runDoctor).not.toHaveBeenCalled();
   });
 });

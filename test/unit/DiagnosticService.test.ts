@@ -44,8 +44,10 @@ function makeDoctorReport(): DoctorReport {
       readinessGaps: 2,
       sovereigntyViolations: 0,
       governedCompletionGaps: 1,
+      topRemediationBuckets: [],
     },
     issues: [],
+    prescriptions: [],
     diagnostics: [],
   };
 }

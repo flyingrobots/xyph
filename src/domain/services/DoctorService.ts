@@ -2,10 +2,15 @@ import type WarpGraph from '@git-stunts/git-warp';
 import type { QueryResultV1, AggregateResult } from '@git-stunts/git-warp';
 import type { GraphPort } from '../../ports/GraphPort.js';
 import type { RoadmapQueryPort } from '../../ports/RoadmapPort.js';
+import type { QuestPriority } from '../entities/Quest.js';
 import type { Diagnostic } from '../models/diagnostics.js';
 import type { GraphMeta, GraphSnapshot } from '../models/dashboard.js';
 import { createGraphContext } from '../../infrastructure/GraphContext.js';
 import { toNeighborEntries, type NeighborEntry } from '../../infrastructure/helpers/isNeighborEntry.js';
+import {
+  compareQuestPriority,
+  DEFAULT_QUEST_PRIORITY,
+} from '../entities/Quest.js';
 import { ReadinessService } from './ReadinessService.js';
 import { doctorIssueToDiagnostic } from './DiagnosticService.js';
 import {
@@ -22,6 +27,17 @@ type DoctorIssueBucket =
 
 export type DoctorIssueSeverity = 'error' | 'warning';
 export type DoctorStatus = 'ok' | 'warn' | 'error';
+export type DoctorPrescriptionCategory =
+  | 'structural-blocker'
+  | 'structural-defect'
+  | 'workflow-gap'
+  | 'hygiene-gap';
+export type DoctorBlockedTransition =
+  | 'ready'
+  | 'submit'
+  | 'review'
+  | 'merge'
+  | 'seal';
 
 interface QNode {
   id: string;
@@ -50,6 +66,30 @@ export interface DoctorIssue {
   relatedIds: string[];
 }
 
+export interface DoctorPrescription {
+  dedupeKey: string;
+  groupingKey: string;
+  category: DoctorPrescriptionCategory;
+  summary: string;
+  suggestedAction: string;
+  subjectId?: string;
+  relatedIds: string[];
+  blockedTransitions: DoctorBlockedTransition[];
+  blockedTaskIds: string[];
+  basePriority: QuestPriority;
+  effectivePriority: QuestPriority;
+  materializable: boolean;
+  sourceIssueCodes: string[];
+}
+
+export interface DoctorPrescriptionBucketSummary {
+  key: string;
+  category: DoctorPrescriptionCategory;
+  count: number;
+  highestPriority: QuestPriority;
+  materializableCount: number;
+}
+
 export interface DoctorSummary {
   issueCount: number;
   blockingIssueCount: number;
@@ -60,6 +100,7 @@ export interface DoctorSummary {
   readinessGaps: number;
   sovereigntyViolations: number;
   governedCompletionGaps: number;
+  topRemediationBuckets: DoctorPrescriptionBucketSummary[];
 }
 
 export interface DoctorCounts {
@@ -92,6 +133,7 @@ export interface DoctorReport {
   counts: DoctorCounts;
   summary: DoctorSummary;
   issues: DoctorIssue[];
+  prescriptions: DoctorPrescription[];
   diagnostics: Diagnostic[];
 }
 
@@ -124,6 +166,15 @@ async function queryNodeFamily(
   prefix: string,
 ): Promise<QNode[]> {
   return graph.query().match(prefix).select(['id', 'props']).run().then(extractNodes);
+}
+
+interface DoctorPrescriptionContext {
+  snapshot: GraphSnapshot;
+  patchsetToSubmissionId: Map<string, string>;
+}
+
+function moreUrgentPriority(a: QuestPriority, b: QuestPriority): QuestPriority {
+  return compareQuestPriority(a, b) <= 0 ? a : b;
 }
 
 export class DoctorService {
@@ -182,6 +233,13 @@ export class DoctorService {
 
     const outgoingNeighbors = await batchNeighbors(graph, allKnownIds, 'outgoing');
     const incomingNeighbors = await batchNeighbors(graph, allKnownIds, 'incoming');
+    const patchsetToSubmissionId = new Map<string, string>();
+    for (const patchsetId of patchsetIds) {
+      const submissionId = (outgoingNeighbors.get(patchsetId) ?? [])
+        .find((edge) => edge.label === 'has-patchset' && edge.nodeId.startsWith('submission:'))
+        ?.nodeId;
+      if (submissionId) patchsetToSubmissionId.set(patchsetId, submissionId);
+    }
     const hasNodeCache = new Map<string, boolean>();
     const hasNode = async (id: string): Promise<boolean> => {
       const cached = hasNodeCache.get(id);
@@ -241,6 +299,10 @@ export class DoctorService {
       documents: specNodes.length + adrNodes.length + noteNodes.length,
       comments: commentNodes.length,
     };
+    const prescriptions = this.buildPrescriptions(issues, {
+      snapshot,
+      patchsetToSubmissionId,
+    });
     const summary: DoctorSummary = {
       issueCount: issues.length,
       blockingIssueCount: errorCount,
@@ -251,6 +313,7 @@ export class DoctorService {
       readinessGaps: issues.filter((issue) => issue.bucket === 'readiness-gap').length,
       sovereigntyViolations: issues.filter((issue) => issue.bucket === 'sovereignty-violation').length,
       governedCompletionGaps: issues.filter((issue) => issue.bucket === 'governed-completion-gap').length,
+      topRemediationBuckets: this.summarizePrescriptionBuckets(prescriptions),
     };
     const diagnostics = issues.map(doctorIssueToDiagnostic);
 
@@ -270,8 +333,332 @@ export class DoctorService {
       counts,
       summary,
       issues,
+      prescriptions,
       diagnostics,
     };
+  }
+
+  public async prescribe(): Promise<DoctorReport> {
+    return this.run();
+  }
+
+  private buildPrescriptions(
+    issues: DoctorIssue[],
+    context: DoctorPrescriptionContext,
+  ): DoctorPrescription[] {
+    return issues.map((issue) => {
+      const category = this.classifyPrescriptionCategory(issue);
+      const blockedTransitions = this.blockedTransitionsForIssue(issue);
+      const blockedTaskIds = this.blockedTaskIdsForIssue(issue, context);
+      const blockedPriorities = blockedTaskIds
+        .map((taskId) => context.snapshot.quests.find((quest) => quest.id === taskId)?.priority ?? DEFAULT_QUEST_PRIORITY);
+      const basePriority = this.basePriorityForCategory(category);
+      const effectivePriority = this.effectivePriorityForPrescription(
+        category,
+        basePriority,
+        blockedPriorities,
+      );
+      const groupingKey = this.groupingKeyForIssue(issue, category);
+      return {
+        dedupeKey: `${groupingKey}:${issue.nodeId ?? issue.code}`,
+        groupingKey,
+        category,
+        summary: issue.message,
+        suggestedAction: this.suggestedActionForIssue(issue, category),
+        subjectId: issue.nodeId,
+        relatedIds: issue.relatedIds,
+        blockedTransitions,
+        blockedTaskIds,
+        basePriority,
+        effectivePriority,
+        materializable: category === 'structural-blocker' || (
+          effectivePriority === 'P0' && blockedTransitions.length > 0
+        ),
+        sourceIssueCodes: [issue.code],
+      } satisfies DoctorPrescription;
+    }).sort((a, b) =>
+      compareQuestPriority(a.effectivePriority, b.effectivePriority) ||
+      Number(b.materializable) - Number(a.materializable) ||
+      a.groupingKey.localeCompare(b.groupingKey) ||
+      (a.subjectId ?? '').localeCompare(b.subjectId ?? '')
+    );
+  }
+
+  private summarizePrescriptionBuckets(
+    prescriptions: DoctorPrescription[],
+  ): DoctorPrescriptionBucketSummary[] {
+    const buckets = new Map<string, DoctorPrescriptionBucketSummary>();
+    for (const prescription of prescriptions) {
+      const current = buckets.get(prescription.groupingKey);
+      if (!current) {
+        buckets.set(prescription.groupingKey, {
+          key: prescription.groupingKey,
+          category: prescription.category,
+          count: 1,
+          highestPriority: prescription.effectivePriority,
+          materializableCount: prescription.materializable ? 1 : 0,
+        });
+        continue;
+      }
+      current.count += 1;
+      current.highestPriority = moreUrgentPriority(
+        current.highestPriority,
+        prescription.effectivePriority,
+      );
+      if (prescription.materializable) current.materializableCount += 1;
+    }
+
+    return [...buckets.values()]
+      .sort((a, b) =>
+        compareQuestPriority(a.highestPriority, b.highestPriority) ||
+        b.count - a.count ||
+        a.key.localeCompare(b.key)
+      )
+      .slice(0, 5);
+  }
+
+  private classifyPrescriptionCategory(
+    issue: DoctorIssue,
+  ): DoctorPrescriptionCategory {
+    switch (issue.code) {
+      case 'orphan-note':
+      case 'orphan-spec':
+      case 'orphan-adr':
+      case 'orphan-comment':
+        return 'hygiene-gap';
+      case 'orphan-story':
+      case 'orphan-requirement':
+      case 'orphan-criterion':
+      case 'orphan-evidence':
+      case 'quest-readiness-gap':
+      case 'governed-quest-incomplete':
+        return 'workflow-gap';
+      case 'missing-intent-ancestry':
+      case 'orphan-policy':
+        return 'structural-defect';
+      default:
+        if (issue.bucket === 'dangling-edge') return 'structural-blocker';
+        if (issue.code.startsWith('orphan-')) return 'structural-blocker';
+        return issue.severity === 'error' ? 'structural-blocker' : 'structural-defect';
+    }
+  }
+
+  private blockedTransitionsForIssue(
+    issue: DoctorIssue,
+  ): DoctorBlockedTransition[] {
+    switch (issue.code) {
+      case 'quest-readiness-gap':
+      case 'missing-intent-ancestry':
+        return ['ready'];
+      case 'orphan-submission':
+        return ['submit'];
+      case 'orphan-patchset':
+        return ['review', 'merge'];
+      case 'orphan-review':
+      case 'orphan-decision':
+        return ['merge'];
+      case 'orphan-scroll':
+        return ['seal'];
+      case 'orphan-story':
+      case 'orphan-requirement':
+      case 'orphan-criterion':
+      case 'orphan-evidence':
+      case 'orphan-policy':
+      case 'governed-quest-incomplete':
+        return ['seal', 'merge'];
+      default:
+        return [];
+    }
+  }
+
+  private blockedTaskIdsForIssue(
+    issue: DoctorIssue,
+    context: DoctorPrescriptionContext,
+  ): string[] {
+    const taskIds = new Set<string>();
+    const addTaskIds = (nodeId?: string): void => {
+      if (!nodeId) return;
+      for (const taskId of this.lookupQuestIdsForNode(nodeId, context)) {
+        taskIds.add(taskId);
+      }
+    };
+
+    addTaskIds(issue.nodeId);
+    for (const relatedId of issue.relatedIds) addTaskIds(relatedId);
+
+    return [...taskIds].sort((a, b) => a.localeCompare(b));
+  }
+
+  private lookupQuestIdsForNode(
+    nodeId: string,
+    context: DoctorPrescriptionContext,
+  ): string[] {
+    if (nodeId.startsWith('task:')) return [nodeId];
+
+    const submissionNode = context.snapshot.submissions.find((submission) => submission.id === nodeId);
+    if (submissionNode) return [submissionNode.questId];
+
+    const reviewNode = context.snapshot.reviews.find((review) => review.id === nodeId);
+    if (reviewNode) {
+      const submissionId = context.patchsetToSubmissionId.get(reviewNode.patchsetId);
+      const questId = context.snapshot.submissions.find((submission) => submission.id === submissionId)?.questId;
+      return questId ? [questId] : [];
+    }
+
+    const scrollNode = context.snapshot.scrolls.find((scroll) => scroll.id === nodeId);
+    if (scrollNode) return [scrollNode.questId];
+
+    const decisionNode = context.snapshot.decisions.find((decision) => decision.id === nodeId);
+    if (decisionNode) {
+      const questId = context.snapshot.submissions.find((submission) => submission.id === decisionNode.submissionId)?.questId;
+      return questId ? [questId] : [];
+    }
+
+    const requirementNode = context.snapshot.requirements.find((requirement) => requirement.id === nodeId);
+    if (requirementNode) return requirementNode.taskIds;
+
+    const criterionNode = context.snapshot.criteria.find((criterion) => criterion.id === nodeId);
+    if (criterionNode?.requirementId) {
+      return context.snapshot.requirements
+        .find((requirement) => requirement.id === criterionNode.requirementId)
+        ?.taskIds ?? [];
+    }
+
+    const evidenceNode = context.snapshot.evidence.find((evidence) => evidence.id === nodeId);
+    if (evidenceNode?.requirementId) {
+      return context.snapshot.requirements
+        .find((requirement) => requirement.id === evidenceNode.requirementId)
+        ?.taskIds ?? [];
+    }
+    if (evidenceNode?.criterionId) {
+      const requirementId = context.snapshot.criteria
+        .find((criterion) => criterion.id === evidenceNode.criterionId)
+        ?.requirementId;
+      if (requirementId) {
+        return context.snapshot.requirements
+          .find((requirement) => requirement.id === requirementId)
+          ?.taskIds ?? [];
+      }
+    }
+
+    const policyNode = context.snapshot.policies.find((policy) => policy.id === nodeId);
+    if (policyNode?.campaignId) {
+      return context.snapshot.quests
+        .filter((quest) => quest.campaignId === policyNode.campaignId)
+        .map((quest) => quest.id);
+    }
+
+    return [];
+  }
+
+  private basePriorityForCategory(
+    category: DoctorPrescriptionCategory,
+  ): QuestPriority {
+    switch (category) {
+      case 'structural-blocker':
+        return 'P0';
+      case 'structural-defect':
+        return 'P2';
+      case 'workflow-gap':
+        return 'P3';
+      case 'hygiene-gap':
+      default:
+        return 'P4';
+    }
+  }
+
+  private effectivePriorityForPrescription(
+    category: DoctorPrescriptionCategory,
+    basePriority: QuestPriority,
+    blockedTaskPriorities: QuestPriority[],
+  ): QuestPriority {
+    if (blockedTaskPriorities.length === 0) return basePriority;
+
+    let highestBlocked = blockedTaskPriorities[0] ?? basePriority;
+    for (const priority of blockedTaskPriorities.slice(1)) {
+      highestBlocked = moreUrgentPriority(highestBlocked, priority);
+    }
+
+    switch (category) {
+      case 'structural-blocker':
+      case 'structural-defect':
+        return moreUrgentPriority(basePriority, highestBlocked);
+      case 'workflow-gap':
+      case 'hygiene-gap':
+      default:
+        return highestBlocked;
+    }
+  }
+
+  private groupingKeyForIssue(
+    issue: DoctorIssue,
+    category: DoctorPrescriptionCategory,
+  ): string {
+    switch (issue.code) {
+      case 'quest-readiness-gap':
+        return `${category}:ready-contract`;
+      case 'governed-quest-incomplete':
+        return `${category}:governed-completion`;
+      case 'missing-intent-ancestry':
+        return `${category}:sovereignty-lineage`;
+      case 'orphan-note':
+      case 'orphan-spec':
+      case 'orphan-adr':
+      case 'orphan-comment':
+        return `${category}:narrative-linkage`;
+      case 'orphan-story':
+      case 'orphan-requirement':
+      case 'orphan-criterion':
+      case 'orphan-evidence':
+        return `${category}:traceability-linkage`;
+      case 'orphan-submission':
+      case 'orphan-patchset':
+      case 'orphan-review':
+      case 'orphan-decision':
+      case 'orphan-scroll':
+        return `${category}:workflow-lineage`;
+      case 'orphan-policy':
+        return `${category}:governance-linkage`;
+      default:
+        return `${category}:${issue.bucket}`;
+    }
+  }
+
+  private suggestedActionForIssue(
+    issue: DoctorIssue,
+    category: DoctorPrescriptionCategory,
+  ): string {
+    switch (issue.code) {
+      case 'quest-readiness-gap':
+        return 'Backfill the quest packet and metadata until the READY contract is satisfied.';
+      case 'governed-quest-incomplete':
+        return 'Backfill traceability and evidence until governed completion becomes SATISFIED.';
+      case 'missing-intent-ancestry':
+        return 'Restore sovereign intent lineage for the affected quest before further execution.';
+      case 'orphan-note':
+      case 'orphan-spec':
+      case 'orphan-adr':
+      case 'orphan-comment':
+        return 'Link the narrative node to a live target or archive it if it is obsolete.';
+      case 'orphan-story':
+      case 'orphan-requirement':
+      case 'orphan-criterion':
+      case 'orphan-evidence':
+        return 'Repair traceability lineage so the node is attached to its parent and implementing work.';
+      case 'orphan-submission':
+      case 'orphan-patchset':
+      case 'orphan-review':
+      case 'orphan-decision':
+      case 'orphan-scroll':
+        return 'Repair workflow lineage or retire the orphaned workflow node so settlement stays trustworthy.';
+      case 'orphan-policy':
+        return 'Relink the policy to the governed campaign or retire the stray governance node.';
+      default:
+        if (category === 'structural-blocker') {
+          return 'Repair or remove the broken graph reference before relying on the affected workflow path.';
+        }
+        return 'Investigate the reported graph defect and restore the missing linkage.';
+    }
   }
 
   private async collectDanglingEdges(

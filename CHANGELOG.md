@@ -7,6 +7,7 @@ All notable changes to XYPH will be documented in this file.
 ### Added
 
 - **`xyph doctor` graph health audit** — new CLI command audits dangling edges (including incoming edges from missing nodes), orphaned workflow/narrative/traceability nodes, readiness contract gaps, sovereignty violations, and governed completion gaps. Supports both human-readable output and `--json` for automation
+- **`xyph doctor prescribe` deterministic remediation view** — doctor now derives structured prescriptions with category (`structural-blocker`, `structural-defect`, `workflow-gap`, `hygiene-gap`), blocked transitions, blocked task IDs, effective priority inheritance, and top remediation buckets for automation and agent-facing triage
 - **Global "My Stuff" drawer** — press `m` from any screen to toggle an animated drawer showing agent's quests, submissions, and recent activity. Slides in from the right with a tween animation; content is agent-scoped when `XYPH_AGENT_ID` is set. Replaces the fixed right column on the dashboard view
 - **Campaign DAG visualization** — campaigns with inter-campaign dependencies are rendered as a mini-DAG using bijou's `dagLayout()`, sorted topologically. Falls back to flat list when no dependencies exist
 - **Status bar progress bar** — compact gradient progress bar added to the status line showing quest completion percentage

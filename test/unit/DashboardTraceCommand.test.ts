@@ -97,8 +97,10 @@ describe('dashboard trace view JSON', () => {
         readinessGaps: 0,
         sovereigntyViolations: 0,
         governedCompletionGaps: 0,
+        topRemediationBuckets: [],
       },
       issues: [],
+      prescriptions: [],
       diagnostics: [],
     });
   });
@@ -176,6 +178,7 @@ describe('dashboard trace view JSON', () => {
             readinessGaps: 0,
             sovereigntyViolations: 0,
             governedCompletionGaps: 0,
+            topRemediationBuckets: [],
           },
         },
         stories: snapshot.stories,

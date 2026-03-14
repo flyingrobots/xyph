@@ -235,6 +235,42 @@ describe('DoctorService', () => {
     expect(report.summary.readinessGaps).toBe(1);
     expect(report.summary.sovereigntyViolations).toBe(1);
     expect(report.summary.governedCompletionGaps).toBe(1);
+    expect(report.summary.topRemediationBuckets).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        key: 'structural-blocker:dangling-edge',
+        highestPriority: 'P0',
+      }),
+      expect.objectContaining({
+        key: 'structural-blocker:workflow-lineage',
+      }),
+    ]));
+    expect(report.prescriptions).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        category: 'structural-blocker',
+        subjectId: 'task:GOV',
+        blockedTaskIds: expect.arrayContaining(['task:GOV']),
+        effectivePriority: 'P0',
+      }),
+      expect.objectContaining({
+        category: 'workflow-gap',
+        subjectId: 'task:READY-GAP',
+        blockedTransitions: ['ready'],
+        blockedTaskIds: expect.arrayContaining(['task:READY-GAP']),
+        effectivePriority: 'P3',
+        materializable: false,
+      }),
+      expect.objectContaining({
+        category: 'workflow-gap',
+        subjectId: 'task:GOV',
+        blockedTransitions: ['seal', 'merge'],
+        blockedTaskIds: expect.arrayContaining(['task:GOV']),
+        effectivePriority: 'P3',
+      }),
+      expect.objectContaining({
+        category: 'hygiene-gap',
+        subjectId: 'comment:ORPH',
+      }),
+    ]));
     expect(report.diagnostics).toEqual(expect.arrayContaining([
       expect.objectContaining({
         code: 'dangling-outgoing-depends-on',
@@ -418,7 +454,66 @@ describe('DoctorService', () => {
     expect(report.status).toBe('ok');
     expect(report.healthy).toBe(true);
     expect(report.blocking).toBe(false);
+    expect(report.prescriptions).toEqual([]);
+    expect(report.summary.topRemediationBuckets).toEqual([]);
     expect(report.summary.issueCount).toBe(0);
     expect(report.issues).toEqual([]);
+  });
+
+  it('elevates workflow-gap prescriptions to the blocked quest priority', async () => {
+    const snapshot = makeSnapshot({
+      quests: [
+        quest({
+          id: 'task:P0-BLOCKED',
+          title: 'P0 quest',
+          status: 'PLANNED',
+          hours: 1,
+          priority: 'P0',
+          taskKind: 'delivery',
+        }),
+      ],
+    });
+
+    const graphPort = makeGraphPort({
+      queryNodesByPrefix: {
+        'patchset:*': [],
+        'spec:*': [],
+        'adr:*': [],
+        'note:*': [],
+        'comment:*': [],
+      },
+      existingIds: ['task:P0-BLOCKED'],
+    });
+
+    mocks.createGraphContext.mockReturnValue({
+      fetchSnapshot: vi.fn().mockResolvedValue(snapshot),
+      fetchEntityDetail: vi.fn(),
+      filterSnapshot: vi.fn(),
+      invalidateCache: vi.fn(),
+      graph: await graphPort.getGraph(),
+    });
+
+    const roadmap = makeRoadmap([
+      new Quest({
+        id: 'task:P0-BLOCKED',
+        title: 'P0 quest',
+        status: 'PLANNED',
+        hours: 1,
+        priority: 'P0',
+        type: 'task',
+      }),
+    ]);
+
+    const report = await new DoctorService(graphPort, roadmap).run();
+
+    expect(report.prescriptions).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        subjectId: 'task:P0-BLOCKED',
+        category: 'workflow-gap',
+        blockedTransitions: ['ready'],
+        effectivePriority: 'P0',
+        materializable: true,
+      }),
+    ]));
   });
 });
