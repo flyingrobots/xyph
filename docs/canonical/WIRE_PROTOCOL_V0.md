@@ -163,6 +163,26 @@ Every read accepts:
 - `at`
 - optional `since`
 
+Current selector support:
+
+- `at: "tip"` or omitted: live frontier observation
+- `at: <tick>` or `at: { "tick": <n> }`: historical observation on an
+  isolated read graph
+- `since: <frontierDigest>` or `since: { "frontierDigest": "..." }`: digest
+  comparison
+- `since: <tick>` or `since: { "tick": <n> }`: tick-based diff comparison
+
+Current projection support by selector:
+
+- tick-aware now: `observe(graph.summary)`, `observe(worldline.summary)`,
+  `observe(entity.detail)`, `history`, `diff`
+- tip-only for now: `observe(slice.local)`, `observe(context)`,
+  `observe(briefing)`, `observe(next)`, `observe(submissions)`,
+  `observe(diagnostics)`, `observe(prescriptions)`
+
+Compatibility projections that remain backed by live services reject historical
+selectors with `not_implemented` rather than pretending historical support.
+
 ## Error Taxonomy
 
 Stable machine-readable error codes:
@@ -185,6 +205,10 @@ Stable machine-readable error codes:
 `explain` is the companion command for turning these codes into structured
 reasoning, basis, and remediation hints.
 
+`redacted` may also appear inside successful read payloads as a per-field
+redaction code when sealed observation preserves structure but withholds
+restricted content.
+
 ## Idempotency
 
 Durable-write commands accept `idempotencyKey` in `args`.
@@ -201,6 +225,29 @@ This applies to:
 In the current slice, `comment`, `propose`, and `attest` use the idempotency key
 to derive deterministic durable IDs when the caller does not supply an explicit
 ID.
+
+## Sealed Observation
+
+The current slice implements structured redaction for content-bearing
+`entity.detail` reads whenever the effective capability resolves to a sealed
+observation mode other than `full`.
+
+Behavior:
+
+- observation metadata is still returned
+- structural entity shape is preserved
+- protected bodies are omitted selectively
+- `redactions` describes each withheld field with:
+  - `path`
+  - `code`
+  - `reason`
+  - optional `contentOid`
+
+The current implementation redacts:
+
+- `detail.content`
+- `detail.questDetail.documents[*].body`
+- `detail.questDetail.comments[*].body`
 
 ## Audit
 

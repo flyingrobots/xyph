@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import type WarpGraph from '@git-stunts/git-warp';
 import type { GraphPort } from '../../ports/GraphPort.js';
 import type { ControlPlaneHooks, ControlPlanePort } from '../../ports/ControlPlanePort.js';
 import {
@@ -13,7 +14,8 @@ import {
   type ObservationCoordinate,
 } from '../models/controlPlane.js';
 import type { Diagnostic } from '../models/diagnostics.js';
-import { createGraphContext } from '../../infrastructure/GraphContext.js';
+import type { EntityDetail } from '../models/dashboard.js';
+import { createGraphContext, createGraphContextFromGraph } from '../../infrastructure/GraphContext.js';
 import { WarpRoadmapAdapter } from '../../infrastructure/adapters/WarpRoadmapAdapter.js';
 import { AgentBriefingService } from './AgentBriefingService.js';
 import { AgentContextService } from './AgentContextService.js';
@@ -100,6 +102,23 @@ function controlPlaneFailure(
     message,
     ...(details === undefined ? {} : { details }),
   };
+}
+
+type ObservationSelector =
+  | { kind: 'tip' }
+  | { kind: 'tick'; tick: number };
+
+interface RedactionRecord {
+  path: string;
+  code: 'redacted';
+  reason: string;
+  contentOid?: string;
+}
+
+function parseTickLike(value: unknown): number | null {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0
+    ? value
+    : null;
 }
 
 export class ControlPlaneService implements ControlPlanePort {
@@ -270,6 +289,149 @@ export class ControlPlaneService implements ControlPlanePort {
     };
   }
 
+  private resolveAtSelector(request: ControlPlaneRequestV1): ObservationSelector {
+    const raw = request.args['at'];
+    if (raw === undefined || raw === null || raw === 'tip') {
+      return { kind: 'tip' };
+    }
+    const directTick = parseTickLike(raw);
+    if (directTick !== null) {
+      return { kind: 'tick', tick: directTick };
+    }
+    if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+      const tick = parseTickLike((raw as Record<string, unknown>)['tick']);
+      if (tick !== null) {
+        return { kind: 'tick', tick };
+      }
+    }
+    throw controlPlaneFailure(
+      'invalid_args',
+      'at must be "tip", a non-negative integer tick, or an object of the form { tick }',
+    );
+  }
+
+  private resolveSinceSelector(
+    request: ControlPlaneRequestV1,
+  ): { kind: 'frontier-digest'; frontierDigest: string } | { kind: 'tick'; tick: number } | null {
+    if (typeof request.args['sinceFrontierDigest'] === 'string') {
+      return {
+        kind: 'frontier-digest',
+        frontierDigest: request.args['sinceFrontierDigest'],
+      };
+    }
+
+    const raw = request.args['since'];
+    if (raw === undefined || raw === null) return null;
+    if (typeof raw === 'string' && raw.trim().length > 0) {
+      return {
+        kind: 'frontier-digest',
+        frontierDigest: raw.trim(),
+      };
+    }
+    const directTick = parseTickLike(raw);
+    if (directTick !== null) {
+      return { kind: 'tick', tick: directTick };
+    }
+    if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+      const tick = parseTickLike((raw as Record<string, unknown>)['tick']);
+      if (tick !== null) {
+        return { kind: 'tick', tick };
+      }
+      const frontierDigest = (raw as Record<string, unknown>)['frontierDigest'];
+      if (typeof frontierDigest === 'string' && frontierDigest.trim().length > 0) {
+        return {
+          kind: 'frontier-digest',
+          frontierDigest: frontierDigest.trim(),
+        };
+      }
+    }
+    throw controlPlaneFailure(
+      'invalid_args',
+      'since must be a frontier digest, a non-negative integer tick, or an object of the form { tick } / { frontierDigest }',
+    );
+  }
+
+  private requireTipOnlyProjection(selector: ObservationSelector, projection: string): void {
+    if (selector.kind === 'tip') return;
+    throw controlPlaneFailure(
+      'not_implemented',
+      `Projection '${projection}' currently requires at=tip because it is backed by live compatibility services in this slice.`,
+      {
+        projection,
+        requestedTick: selector.tick,
+      },
+    );
+  }
+
+  private async openObservationGraph(selector: ObservationSelector): Promise<WarpGraph> {
+    if (selector.kind === 'tip') {
+      return this.graphPort.getGraph();
+    }
+
+    const isolated = this.graphPort.openIsolatedGraph;
+    if (!isolated) {
+      throw controlPlaneFailure(
+        'not_implemented',
+        'Historical observation requires an isolated read-graph provider.',
+        { selector },
+      );
+    }
+    const graph = await isolated.call(this.graphPort);
+    await graph.syncCoverage();
+    await graph.materialize({ ceiling: selector.tick });
+    return graph;
+  }
+
+  private maybeRedactEntityDetail(
+    detail: EntityDetail,
+    capability: EffectiveCapabilityGrant,
+  ): { detail: EntityDetail; redactions: RedactionRecord[] } {
+    if (capability.rights.sealedObservationMode === 'full') {
+      return { detail, redactions: [] };
+    }
+
+    const redactions: RedactionRecord[] = [];
+    const next: EntityDetail = { ...detail };
+
+    if (detail.content !== undefined) {
+      next.content = undefined;
+      redactions.push({
+        path: 'detail.content',
+        code: 'redacted',
+        reason: 'sealed-observation-content',
+        contentOid: detail.contentOid,
+      });
+    }
+
+    if (detail.questDetail) {
+      next.questDetail = {
+        ...detail.questDetail,
+        documents: detail.questDetail.documents.map((document, index) => {
+          if (document.body === undefined) return document;
+          redactions.push({
+            path: `detail.questDetail.documents[${index}].body`,
+            code: 'redacted',
+            reason: 'sealed-observation-document-body',
+            contentOid: document.contentOid,
+          });
+          return { ...document, body: undefined };
+        }),
+        comments: detail.questDetail.comments.map((comment, index) => {
+          if (comment.body === undefined) return comment;
+          redactions.push({
+            path: `detail.questDetail.comments[${index}].body`,
+            code: 'redacted',
+            reason: 'sealed-observation-comment-body',
+            contentOid: comment.contentOid,
+          });
+          return { ...comment, body: undefined };
+        }),
+      };
+    }
+
+    return { detail: next, redactions };
+  }
+
   private async observe(
     request: ControlPlaneRequestV1,
     capability: EffectiveCapabilityGrant,
@@ -282,16 +444,22 @@ export class ControlPlaneService implements ControlPlanePort {
     const projection = typeof request.args['projection'] === 'string'
       ? request.args['projection']
       : 'graph.summary';
+    const selector = this.resolveAtSelector(request);
     const principalServices = this.createPrincipalServices(capability.principal.principalId);
-
-    const graphCtx = createGraphContext(this.graphPort);
     switch (projection) {
       case 'graph.summary':
       case 'worldline.summary': {
+        const graphCtx = selector.kind === 'tip'
+          ? createGraphContext(this.graphPort)
+          : createGraphContextFromGraph(
+            await this.openObservationGraph(selector),
+            { ceiling: selector.tick, syncCoverage: false },
+          );
         const snapshot = await graphCtx.fetchSnapshot();
         return {
           data: {
             projection,
+            at: selector.kind === 'tip' ? 'tip' : { tick: selector.tick },
             asOf: snapshot.asOf,
             counts: {
               campaigns: snapshot.campaigns.length,
@@ -316,41 +484,56 @@ export class ControlPlaneService implements ControlPlanePort {
             capability,
             snapshot.asOf,
             snapshot.graphMeta ?? null,
+            false,
+            graphCtx.graph,
           ),
         };
       }
       case 'entity.detail': {
+        const graphCtx = selector.kind === 'tip'
+          ? createGraphContext(this.graphPort)
+          : createGraphContextFromGraph(
+            await this.openObservationGraph(selector),
+            { ceiling: selector.tick, syncCoverage: false },
+          );
         const targetId = this.requireString(request.args['targetId'], 'observe targetId');
         const detail = await graphCtx.fetchEntityDetail(targetId);
         if (!detail) {
           throw controlPlaneFailure('not_found', `Entity ${targetId} not found in the graph`);
         }
+        const redacted = this.maybeRedactEntityDetail(detail, capability);
         return {
           data: {
             projection,
             targetId,
-            detail,
+            at: selector.kind === 'tip' ? 'tip' : { tick: selector.tick },
+            detail: redacted.detail,
+            ...(redacted.redactions.length === 0 ? {} : { redactions: redacted.redactions }),
           },
           diagnostics: [],
-          observation: await this.buildObservationCoordinate(request, capability, Date.now(), null, true),
+          observation: await this.buildObservationCoordinate(request, capability, Date.now(), null, true, graphCtx.graph),
         };
       }
       case 'slice.local':
       case 'context': {
+        this.requireTipOnlyProjection(selector, projection);
         const targetId = this.requireString(request.args['targetId'], 'observe targetId');
         const result = await principalServices.context.fetch(targetId);
         if (!result) {
           throw controlPlaneFailure('not_found', `Entity ${targetId} not found in the graph`);
         }
+        const redacted = this.maybeRedactEntityDetail(result.detail, capability);
         return {
           data: {
             projection,
             targetId,
-            detail: result.detail,
+            at: 'tip',
+            detail: redacted.detail,
             readiness: result.readiness,
             dependency: result.dependency,
             recommendedActions: result.recommendedActions,
             recommendationRequests: result.recommendationRequests,
+            ...(redacted.redactions.length === 0 ? {} : { redactions: redacted.redactions }),
           },
           diagnostics: result.diagnostics,
           observation: await this.buildObservationCoordinate(
@@ -363,10 +546,12 @@ export class ControlPlaneService implements ControlPlanePort {
         };
       }
       case 'briefing': {
+        this.requireTipOnlyProjection(selector, projection);
         const briefing = await principalServices.briefing.buildBriefing();
         return {
           data: {
             projection,
+            at: 'tip',
             briefing,
           },
           diagnostics: briefing.diagnostics,
@@ -374,6 +559,7 @@ export class ControlPlaneService implements ControlPlanePort {
         };
       }
       case 'next': {
+        this.requireTipOnlyProjection(selector, projection);
         const limit = typeof request.args['limit'] === 'number'
           ? request.args['limit']
           : 5;
@@ -381,6 +567,7 @@ export class ControlPlaneService implements ControlPlanePort {
         return {
           data: {
             projection,
+            at: 'tip',
             candidates: next.candidates,
           },
           diagnostics: next.diagnostics,
@@ -388,6 +575,7 @@ export class ControlPlaneService implements ControlPlanePort {
         };
       }
       case 'submissions': {
+        this.requireTipOnlyProjection(selector, projection);
         const limit = typeof request.args['limit'] === 'number'
           ? request.args['limit']
           : 10;
@@ -395,6 +583,7 @@ export class ControlPlaneService implements ControlPlanePort {
         return {
           data: {
             projection,
+            at: 'tip',
             queues,
           },
           diagnostics: [],
@@ -402,6 +591,7 @@ export class ControlPlaneService implements ControlPlanePort {
         };
       }
       case 'diagnostics': {
+        this.requireTipOnlyProjection(selector, projection);
         const report = await this.doctor.run({
           onProgress: (progress) => hooks?.onEvent?.(
             buildEvent(request.id, request.cmd, 'progress', progress.message, { stage: progress.stage }),
@@ -410,6 +600,7 @@ export class ControlPlaneService implements ControlPlanePort {
         return {
           data: {
             projection,
+            at: 'tip',
             report,
           },
           diagnostics: report.diagnostics,
@@ -417,6 +608,7 @@ export class ControlPlaneService implements ControlPlanePort {
         };
       }
       case 'prescriptions': {
+        this.requireTipOnlyProjection(selector, projection);
         const report = await this.doctor.prescribe({
           onProgress: (progress) => hooks?.onEvent?.(
             buildEvent(request.id, request.cmd, 'progress', progress.message, { stage: progress.stage }),
@@ -425,6 +617,7 @@ export class ControlPlaneService implements ControlPlanePort {
         return {
           data: {
             projection,
+            at: 'tip',
             asOf: report.asOf,
             summary: report.summary,
             prescriptions: report.prescriptions,
@@ -447,20 +640,21 @@ export class ControlPlaneService implements ControlPlanePort {
     observation: ObservationCoordinate;
   }> {
     const targetId = this.requireString(request.args['targetId'], 'history targetId');
-    const graph = await this.graphPort.getGraph();
+    const selector = this.resolveAtSelector(request);
+    const graph = await this.openObservationGraph(selector);
     if (!await graph.hasNode(targetId)) {
       throw controlPlaneFailure('not_found', `Entity ${targetId} not found in the graph`);
     }
-    await graph.materialize();
     const patches = await graph.patchesFor(targetId);
     return {
       data: {
         targetId,
+        at: selector.kind === 'tip' ? 'tip' : { tick: selector.tick },
         patchCount: patches.length,
         patches,
       },
       diagnostics: [],
-      observation: await this.buildObservationCoordinate(request, capability, Date.now(), null),
+      observation: await this.buildObservationCoordinate(request, capability, Date.now(), null, false, graph),
     };
   }
 
@@ -472,25 +666,72 @@ export class ControlPlaneService implements ControlPlanePort {
     diagnostics: Diagnostic[];
     observation: ObservationCoordinate;
   }> {
-    const sinceFrontierDigest = this.requireString(
-      request.args['sinceFrontierDigest'],
-      'diff sinceFrontierDigest',
-    );
-    const observation = await this.buildObservationCoordinate(request, capability, Date.now(), null);
+    const selector = this.resolveAtSelector(request);
+    const since = this.resolveSinceSelector(request);
+    if (!since) {
+      throw controlPlaneFailure(
+        'invalid_args',
+        'diff requires sinceFrontierDigest or since',
+      );
+    }
+
+    const graph = await this.openObservationGraph(selector);
+    const observation = await this.buildObservationCoordinate(request, capability, Date.now(), null, false, graph);
     const targetId = typeof request.args['targetId'] === 'string'
       ? request.args['targetId']
       : null;
-    const graph = await this.graphPort.getGraph();
     const patches = targetId && await graph.hasNode(targetId)
       ? await graph.patchesFor(targetId)
       : [];
 
+    if (since.kind === 'frontier-digest') {
+      return {
+        data: {
+          targetId,
+          at: selector.kind === 'tip' ? 'tip' : { tick: selector.tick },
+          sinceFrontierDigest: since.frontierDigest,
+          currentFrontierDigest: observation.frontierDigest,
+          changed: since.frontierDigest !== observation.frontierDigest,
+          patchCount: patches.length,
+          patches,
+        },
+        diagnostics: [],
+        observation,
+      };
+    }
+
+    const sinceGraph = await this.openObservationGraph(since);
+    const sinceObservation = await this.buildObservationCoordinate(
+      {
+        ...request,
+        args: {
+          ...request.args,
+          at: { tick: since.tick },
+        },
+      },
+      capability,
+      Date.now(),
+      null,
+      false,
+      sinceGraph,
+    );
+    const sincePatches = targetId && await sinceGraph.hasNode(targetId)
+      ? await sinceGraph.patchesFor(targetId)
+      : [];
+    const sincePatchSet = new Set(sincePatches);
+    const newPatches = patches.filter((sha) => !sincePatchSet.has(sha));
+
     return {
       data: {
         targetId,
-        sinceFrontierDigest,
+        at: selector.kind === 'tip' ? 'tip' : { tick: selector.tick },
+        since: { tick: since.tick },
+        sinceFrontierDigest: sinceObservation.frontierDigest,
         currentFrontierDigest: observation.frontierDigest,
-        changed: sinceFrontierDigest !== observation.frontierDigest,
+        changed: sinceObservation.frontierDigest !== observation.frontierDigest,
+        sincePatchCount: sincePatches.length,
+        currentPatchCount: patches.length,
+        newPatches,
         patchCount: patches.length,
         patches,
       },
@@ -825,12 +1066,17 @@ export class ControlPlaneService implements ControlPlanePort {
     observedAt: number,
     graphMeta: GraphMeta | null,
     onlyMeta = false,
+    graphOverride?: WarpGraph,
   ): Promise<ObservationCoordinate> {
-    const graph = await this.graphPort.getGraph();
-    const frontier = await graph.getFrontier();
-    const frontierDigest = digest(
-      [...frontier.entries()].sort(([a], [b]) => a.localeCompare(b)),
-    );
+    const graph = graphOverride ?? await this.graphPort.getGraph();
+    const state = await graph.getStateSnapshot();
+    const frontierDigest = state
+      ? digest(
+        [...state.observedFrontier.entries()].sort(([a], [b]) => a.localeCompare(b)),
+      )
+      : digest(
+        [...(await graph.getFrontier()).entries()].sort(([a], [b]) => a.localeCompare(b)),
+      );
 
     return {
       worldlineId: capability.worldlineId,

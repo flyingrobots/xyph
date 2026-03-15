@@ -113,7 +113,17 @@ export interface GraphContext {
 }
 
 export function createGraphContext(graphPort: GraphPort): GraphContext {
-  return new GraphContextImpl(graphPort);
+  return new GraphContextImpl(() => graphPort.getGraph());
+}
+
+export function createGraphContextFromGraph(
+  graph: WarpGraph,
+  opts?: { ceiling?: number | null; syncCoverage?: boolean },
+): GraphContext {
+  return new GraphContextImpl(
+    async () => graph,
+    opts,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -180,7 +190,10 @@ class GraphContextImpl implements GraphContext {
   private cachedFrontierKey: string | null = null;
   private _graph: WarpGraph | null = null;
 
-  constructor(private readonly graphPort: GraphPort) {}
+  constructor(
+    private readonly graphProvider: () => Promise<WarpGraph>,
+    private readonly materialization: { ceiling?: number | null; syncCoverage?: boolean } = {},
+  ) {}
 
   get graph(): WarpGraph {
     if (!this._graph) {
@@ -224,13 +237,15 @@ class GraphContextImpl implements GraphContext {
 
     // --- Lifecycle: open → sync → materialize ---
     log('Opening project graph…');
-    const graph = await this.graphPort.getGraph();
+    const graph = await this.graphProvider();
     this._graph = graph;
 
     // Dashboard polling: discover external writers' patches before querying
-    log('Syncing coverage…');
-    await graph.syncCoverage();
-    await yieldEventLoop();
+    if (this.materialization.syncCoverage !== false) {
+      log('Syncing coverage…');
+      await graph.syncCoverage();
+      await yieldEventLoop();
+    }
 
     // Cache check: compare frontier key to detect both in-process writes
     // (via graph.patch()) and external writes (discovered by syncCoverage).
@@ -244,7 +259,9 @@ class GraphContextImpl implements GraphContext {
     }
 
     log('Materializing graph…');
-    await graph.materialize();
+    await graph.materialize({
+      ...(this.materialization.ceiling === undefined ? {} : { ceiling: this.materialization.ceiling }),
+    });
     await yieldEventLoop();
 
     // --- Query each node type in parallel ---
@@ -926,11 +943,15 @@ class GraphContextImpl implements GraphContext {
   }
 
   async fetchEntityDetail(id: string): Promise<EntityDetail | null> {
-    const graph = await this.graphPort.getGraph();
+    const graph = await this.graphProvider();
     this._graph = graph;
 
-    await graph.syncCoverage();
-    await graph.materialize();
+    if (this.materialization.syncCoverage !== false) {
+      await graph.syncCoverage();
+    }
+    await graph.materialize({
+      ...(this.materialization.ceiling === undefined ? {} : { ceiling: this.materialization.ceiling }),
+    });
 
     if (!await graph.hasNode(id)) {
       return null;

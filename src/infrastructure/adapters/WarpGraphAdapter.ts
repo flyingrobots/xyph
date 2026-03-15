@@ -28,6 +28,10 @@ export class WarpGraphAdapter implements GraphPort {
     return this.graphPromise;
   }
 
+  public async openIsolatedGraph(): Promise<WarpGraph> {
+    return this.open();
+  }
+
   public reset(): void {
     this.graphPromise = null;
   }

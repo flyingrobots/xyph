@@ -16,7 +16,9 @@ const mocks = vi.hoisted(() => ({
   createProposal: vi.fn(),
   createAttestation: vi.fn(),
   getFrontier: vi.fn(),
+  getStateSnapshot: vi.fn(),
   getGraph: vi.fn(),
+  openIsolatedGraph: vi.fn(),
   WarpRoadmapAdapter: vi.fn(),
 }));
 
@@ -24,6 +26,18 @@ vi.mock('../../src/infrastructure/GraphContext.js', () => ({
   createGraphContext: () => ({
     fetchSnapshot: mocks.fetchSnapshot,
     fetchEntityDetail: mocks.fetchEntityDetail,
+    graph: {
+      getStateSnapshot: mocks.getStateSnapshot,
+      getFrontier: mocks.getFrontier,
+    },
+  }),
+  createGraphContextFromGraph: () => ({
+    fetchSnapshot: mocks.fetchSnapshot,
+    fetchEntityDetail: mocks.fetchEntityDetail,
+    graph: {
+      getStateSnapshot: mocks.getStateSnapshot,
+      getFrontier: mocks.getFrontier,
+    },
   }),
 }));
 
@@ -126,11 +140,23 @@ describe('ControlPlaneService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getFrontier.mockResolvedValue(new Map([['agent.prime', 'abcdef123456']]));
+    mocks.getStateSnapshot.mockResolvedValue({
+      observedFrontier: new Map([['agent.prime', 12]]),
+    });
     mocks.getGraph.mockResolvedValue({
       getFrontier: mocks.getFrontier,
+      getStateSnapshot: mocks.getStateSnapshot,
       hasNode: vi.fn(async () => true),
       materialize: vi.fn(async () => null),
       patchesFor: vi.fn(async () => ['patch:1', 'patch:2']),
+    });
+    mocks.openIsolatedGraph.mockResolvedValue({
+      getFrontier: mocks.getFrontier,
+      getStateSnapshot: mocks.getStateSnapshot,
+      hasNode: vi.fn(async () => true),
+      syncCoverage: vi.fn(async () => null),
+      materialize: vi.fn(async () => null),
+      patchesFor: vi.fn(async () => ['patch:1']),
     });
     mocks.fetchSnapshot.mockResolvedValue({
       campaigns: [],
@@ -208,6 +234,7 @@ describe('ControlPlaneService', () => {
   it('returns a versioned observe graph.summary success record with observation metadata', async () => {
     const service = new ControlPlaneService({
       getGraph: mocks.getGraph,
+      openIsolatedGraph: mocks.openIsolatedGraph,
       reset: vi.fn(),
     }, 'agent.prime');
     const onEvent = vi.fn();
@@ -244,6 +271,7 @@ describe('ControlPlaneService', () => {
   it('uses the request auth principal override for durable writes and audit metadata', async () => {
     const service = new ControlPlaneService({
       getGraph: mocks.getGraph,
+      openIsolatedGraph: mocks.openIsolatedGraph,
       reset: vi.fn(),
     }, 'agent.prime');
 
@@ -300,6 +328,7 @@ describe('ControlPlaneService', () => {
 
     const service = new ControlPlaneService({
       getGraph: mocks.getGraph,
+      openIsolatedGraph: mocks.openIsolatedGraph,
       reset: vi.fn(),
     }, 'agent.prime');
 
@@ -331,6 +360,7 @@ describe('ControlPlaneService', () => {
   it('routes durable record writes through the record service', async () => {
     const service = new ControlPlaneService({
       getGraph: mocks.getGraph,
+      openIsolatedGraph: mocks.openIsolatedGraph,
       reset: vi.fn(),
     }, 'agent.prime');
 
@@ -364,6 +394,7 @@ describe('ControlPlaneService', () => {
   it('denies attest for non-human principals via effective capability resolution', async () => {
     const service = new ControlPlaneService({
       getGraph: mocks.getGraph,
+      openIsolatedGraph: mocks.openIsolatedGraph,
       reset: vi.fn(),
     }, 'agent.prime');
 
@@ -394,6 +425,7 @@ describe('ControlPlaneService', () => {
   it('requires explicit human admin capability for hidden admin commands', async () => {
     const service = new ControlPlaneService({
       getGraph: mocks.getGraph,
+      openIsolatedGraph: mocks.openIsolatedGraph,
       reset: vi.fn(),
     }, 'agent.prime');
 
@@ -440,6 +472,7 @@ describe('ControlPlaneService', () => {
   it('explains control-plane capability denials for probe commands', async () => {
     const service = new ControlPlaneService({
       getGraph: mocks.getGraph,
+      openIsolatedGraph: mocks.openIsolatedGraph,
       reset: vi.fn(),
     }, 'agent.prime');
 
@@ -467,6 +500,189 @@ describe('ControlPlaneService', () => {
           code: 'capability_denied',
           basis: expect.any(String),
         }),
+      }),
+    }));
+  });
+
+  it('supports observe at=tick for low-level projections via an isolated historical graph', async () => {
+    mocks.fetchSnapshot.mockResolvedValueOnce({
+      campaigns: [],
+      quests: [],
+      intents: [],
+      scrolls: [],
+      approvals: [],
+      submissions: [],
+      reviews: [],
+      decisions: [],
+      stories: [],
+      requirements: [],
+      criteria: [],
+      evidence: [],
+      policies: [],
+      suggestions: [],
+      asOf: 99,
+      graphMeta: { maxTick: 99, myTick: 42, writerCount: 2, tipSha: 'deadbee' },
+      sortedTaskIds: [],
+      sortedCampaignIds: [],
+      transitiveDownstream: new Map(),
+    });
+
+    const service = new ControlPlaneService({
+      getGraph: mocks.getGraph,
+      openIsolatedGraph: mocks.openIsolatedGraph,
+      reset: vi.fn(),
+    }, 'agent.prime');
+
+    const result = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'req-historical',
+      cmd: 'observe',
+      args: {
+        projection: 'graph.summary',
+        at: { tick: 42 },
+      },
+    });
+
+    expect(mocks.openIsolatedGraph).toHaveBeenCalledTimes(1);
+    expect(result).toEqual(expect.objectContaining({
+      ok: true,
+      data: expect.objectContaining({
+        at: { tick: 42 },
+      }),
+      observation: expect.objectContaining({
+        frontierDigest: expect.any(String),
+      }),
+    }));
+  });
+
+  it('returns structured redactions for content-bearing entity detail in normal capability mode', async () => {
+    mocks.fetchEntityDetail.mockResolvedValueOnce({
+      id: 'note:ONE',
+      type: 'note',
+      props: { type: 'note', title: 'Hidden note' },
+      content: 'secret body',
+      contentOid: 'oid:note',
+      outgoing: [],
+      incoming: [],
+      questDetail: {
+        id: 'task:ONE',
+        quest: { id: 'task:ONE', title: 'Task One', status: 'READY', hours: 1 },
+        reviews: [],
+        decisions: [],
+        stories: [],
+        requirements: [],
+        criteria: [],
+        evidence: [],
+        policies: [],
+        documents: [{
+          id: 'note:Q',
+          type: 'note',
+          title: 'Quest note',
+          authoredBy: 'human.ada',
+          authoredAt: 1,
+          body: 'redact me',
+          contentOid: 'oid:doc',
+          targetIds: ['task:ONE'],
+          supersededByIds: [],
+          current: true,
+        }],
+        comments: [{
+          id: 'comment:1',
+          authoredBy: 'agent.prime',
+          authoredAt: 2,
+          body: 'also redact me',
+          contentOid: 'oid:comment',
+          targetId: 'task:ONE',
+          replyIds: [],
+        }],
+        timeline: [],
+      },
+    });
+
+    const service = new ControlPlaneService({
+      getGraph: mocks.getGraph,
+      openIsolatedGraph: mocks.openIsolatedGraph,
+      reset: vi.fn(),
+    }, 'agent.prime');
+
+    const result = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'req-redact',
+      cmd: 'observe',
+      args: {
+        projection: 'entity.detail',
+        targetId: 'note:ONE',
+      },
+    });
+
+    expect(result).toEqual(expect.objectContaining({
+      ok: true,
+      data: expect.objectContaining({
+        redactions: expect.arrayContaining([
+          expect.objectContaining({ path: 'detail.content', code: 'redacted' }),
+          expect.objectContaining({ path: 'detail.questDetail.documents[0].body', code: 'redacted' }),
+          expect.objectContaining({ path: 'detail.questDetail.comments[0].body', code: 'redacted' }),
+        ]),
+        detail: expect.objectContaining({
+          content: undefined,
+          questDetail: expect.objectContaining({
+            documents: [expect.objectContaining({ body: undefined })],
+            comments: [expect.objectContaining({ body: undefined })],
+          }),
+        }),
+      }),
+      observation: expect.objectContaining({
+        sealedObservationMode: 'structured-redaction',
+      }),
+    }));
+  });
+
+  it('supports tick-based diffing and returns newly observed patch shas', async () => {
+    const currentGraph = {
+      getFrontier: mocks.getFrontier,
+      getStateSnapshot: mocks.getStateSnapshot,
+      hasNode: vi.fn(async () => true),
+      syncCoverage: vi.fn(async () => null),
+      materialize: vi.fn(async () => null),
+      patchesFor: vi.fn(async () => ['patch:1', 'patch:2', 'patch:3']),
+    };
+    const historicalGraph = {
+      getFrontier: mocks.getFrontier,
+      getStateSnapshot: vi.fn(async () => ({ observedFrontier: new Map([['agent.prime', 10]]) })),
+      hasNode: vi.fn(async () => true),
+      syncCoverage: vi.fn(async () => null),
+      materialize: vi.fn(async () => null),
+      patchesFor: vi.fn(async () => ['patch:1']),
+    };
+    mocks.openIsolatedGraph
+      .mockResolvedValueOnce(currentGraph)
+      .mockResolvedValueOnce(historicalGraph);
+
+    const service = new ControlPlaneService({
+      getGraph: mocks.getGraph,
+      openIsolatedGraph: mocks.openIsolatedGraph,
+      reset: vi.fn(),
+    }, 'agent.prime');
+
+    const result = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'req-diff-tick',
+      cmd: 'diff',
+      args: {
+        targetId: 'task:ONE',
+        at: { tick: 12 },
+        since: { tick: 10 },
+      },
+    });
+
+    expect(result).toEqual(expect.objectContaining({
+      ok: true,
+      data: expect.objectContaining({
+        at: { tick: 12 },
+        since: { tick: 10 },
+        sincePatchCount: 1,
+        currentPatchCount: 3,
+        newPatches: ['patch:2', 'patch:3'],
       }),
     }));
   });

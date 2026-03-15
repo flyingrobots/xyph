@@ -125,6 +125,15 @@ Default behavior:
 - return machine-readable redaction reasons and codes
 - avoid failing the whole observation when partial redaction is sufficient
 
+Current implemented redaction targets:
+
+- `entity.detail.content`
+- `entity.detail.questDetail.documents[*].body`
+- `entity.detail.questDetail.comments[*].body`
+
+Redaction metadata is returned alongside the successful observation payload so
+clients can distinguish withheld content from absent content.
+
 ## Current Slice
 
 The current sovereign-control-plane foundation implements:
@@ -133,6 +142,9 @@ The current sovereign-control-plane foundation implements:
 - append-only attestations
 - non-authoritative proposals
 - primitive-op `apply`
+- tick-aware low-level observation for `graph.summary`, `worldline.summary`,
+  `entity.detail`, `history`, and `diff`
+- structured redaction for content-bearing `entity.detail` observations
 
 It does **not** yet implement full comparison artifacts, collapse proposals as
 first-class executable workflows, or worldline leasing. Those remain future

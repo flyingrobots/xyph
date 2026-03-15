@@ -131,6 +131,10 @@ One `WarpGraph` instance per process, managed by `GraphPort` / `WarpGraphAdapter
 - `GraphContext` builds snapshots by querying the graph, with frontier-key caching to skip re-materialization when nothing changed.
 - `invalidateCache()` clears only `GraphContext`'s own state — never resets the shared graph.
 
+For historical sovereign-control-plane reads, the graph port may also provide an
+isolated read graph. Those reads materialize against an explicit ceiling tick so
+historical observation does not mutate or reposition the live frontier.
+
 ## Data Flow
 
 ### Write Path (CLI → Graph)
@@ -144,6 +148,16 @@ GraphContext.fetchSnapshot()
   → syncCoverage() (discover external writes)
   → frontier key check (cache hit? return cached)
   → materialize() → query() → build snapshot → cache
+```
+
+### Historical Read Path (Control Plane → Isolated Graph)
+```
+xyph api observe/history/diff with at={tick}
+  → GraphPort.openIsolatedGraph()
+  → syncCoverage()
+  → materialize({ ceiling })
+  → GraphContext over isolated graph
+  → build observation + result
 ```
 
 ### Submission Lifecycle
