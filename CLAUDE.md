@@ -1,5 +1,19 @@
 # CLAUDE.md - XYPH Agent Participant Guide
 
+## Current Active Plan
+
+XYPH is currently following the sovereign-ontology redesign documented in `docs/plans/sovereign-ontology-current.md`.
+
+Treat that plan and the canonical docs in `docs/canonical/` as the active source of truth when older workflow language conflicts with the current architecture.
+
+Key current rules:
+- XYPH owns the public ontology
+- git-warp owns substrate conflict/counterfactual facts
+- observer profiles do **not** grant authority by existing
+- do not build new XYPH conflict semantics above missing substrate truth
+- TUI is the first human surface; web follows later
+- CLI is trending toward `xyph api` plus bootstrap/debug/admin use
+
 ## Quick Start
 You're working on **XYPH** - a Causal Operating System for Agent Planning and Orchestration.
 

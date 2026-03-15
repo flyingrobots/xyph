@@ -1,5 +1,16 @@
 # Contributing to XYPH
 
+## Current Active Plan
+
+XYPH is currently following the sovereign-ontology redesign documented in `docs/plans/sovereign-ontology-current.md`.
+
+Use that plan, plus the canonical docs in `docs/canonical/`, as the current direction of travel. In particular:
+- XYPH is moving toward an observer-native, worldline-native control plane
+- observer profiles do **not** grant authority by existing
+- conflict and counterfactual substrate facts are being pushed down into git-warp instead of being re-invented in XYPH
+
+If older workflow guidance in this file conflicts with the current redesign, the plan doc and canonical docs win.
+
 ## Project Planning
 
 XYPH plans and tracks its own development through the WARP graph. The `xyph-actuator.ts` CLI is the single source of truth for what's been done, what's next, and what's in the backlog.
