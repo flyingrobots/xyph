@@ -37,6 +37,7 @@ Human surface direction:
    - git-warp must expose conflict/counterfactual facts before XYPH builds higher-level compare/collapse/debugger semantics on top.
 2. **XYPH consumes substrate truth**
    - XYPH should not invent conflict provenance above incomplete substrate signals.
+   - `xyph api observe` now exposes a substrate-backed `conflicts` projection that relays git-warp conflict facts directly.
    - Conflict meaning, governance, compare/collapse, and human workflow semantics remain XYPH concerns.
 3. **Worldline working sets after substrate facts**
    - Fork/worldline work should use logical working sets over graph observations, not Git worktrees.

@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import type WarpGraph from '@git-stunts/git-warp';
+import type { ConflictDiagnostic } from '@git-stunts/git-warp';
 import type { GraphPort } from '../../ports/GraphPort.js';
 import type { ControlPlaneHooks, ControlPlanePort } from '../../ports/ControlPlanePort.js';
 import {
@@ -108,11 +109,43 @@ type ObservationSelector =
   | { kind: 'tip' }
   | { kind: 'tick'; tick: number };
 
+type AnalyzeConflictsOptions = NonNullable<Parameters<WarpGraph['analyzeConflicts']>[0]>;
+type ConflictAnalysisResult = Awaited<ReturnType<WarpGraph['analyzeConflicts']>>;
+
 interface RedactionRecord {
   path: string;
   code: 'redacted';
   reason: string;
   contentOid?: string;
+}
+
+function conflictDiagnosticSummary(code: string): string {
+  switch (code) {
+    case 'budget_truncated':
+      return 'Conflict analysis scan truncated by budget';
+    case 'anchor_incomplete':
+      return 'Conflict analysis anchor evidence incomplete';
+    case 'receipt_unavailable':
+      return 'Conflict analysis receipt evidence unavailable';
+    case 'digest_unavailable':
+      return 'Conflict analysis effect digest unavailable';
+    default:
+      return `Conflict analysis ${code.replaceAll('_', ' ')}`;
+  }
+}
+
+function toConflictProjectionDiagnostics(diagnostics: ConflictDiagnostic[] | undefined): Diagnostic[] {
+  if (!diagnostics || diagnostics.length === 0) return [];
+  return diagnostics.map((diagnostic) => ({
+    code: diagnostic.code,
+    severity: diagnostic.severity === 'error' ? 'error' : 'warning',
+    category: 'traceability',
+    source: 'substrate',
+    summary: conflictDiagnosticSummary(diagnostic.code),
+    message: diagnostic.message,
+    relatedIds: [],
+    blocking: diagnostic.severity === 'error',
+  }));
 }
 
 function parseTickLike(value: unknown): number | null {
@@ -489,6 +522,23 @@ export class ControlPlaneService implements ControlPlanePort {
           ),
         };
       }
+      case 'conflicts': {
+        const { options, requested } = this.buildConflictAnalysisRequest(request, selector);
+        const graph = await this.graphPort.getGraph();
+        const analysis = await this.analyzeConflicts(graph, options);
+        const diagnostics = toConflictProjectionDiagnostics(analysis.diagnostics);
+        return {
+          data: {
+            projection,
+            at: 'tip',
+            scope: 'substrate',
+            requested,
+            analysis,
+          },
+          diagnostics,
+          observation: await this.buildObservationCoordinate(request, capability, Date.now(), null, false, graph),
+        };
+      }
       case 'entity.detail': {
         const graphCtx = selector.kind === 'tip'
           ? createGraphContext(this.graphPort)
@@ -628,6 +678,107 @@ export class ControlPlaneService implements ControlPlanePort {
       }
       default:
         throw controlPlaneFailure('invalid_args', `Unsupported observe projection '${projection}'`);
+    }
+  }
+
+  private buildConflictAnalysisRequest(
+    request: ControlPlaneRequestV1,
+    selector: ObservationSelector,
+  ): {
+    options: AnalyzeConflictsOptions;
+    requested: Record<string, unknown>;
+  } {
+    if (selector.kind !== 'tip') {
+      throw controlPlaneFailure(
+        'not_implemented',
+        "Projection 'conflicts' currently analyzes the current frontier only. Use lamportCeiling for current-frontier conflict analysis; historical frontier and worldline-local conflict analysis have not landed yet.",
+        {
+          projection: 'conflicts',
+          requestedTick: selector.tick,
+        },
+      );
+    }
+    if (request.args['since'] !== undefined || request.args['sinceFrontierDigest'] !== undefined) {
+      throw controlPlaneFailure(
+        'invalid_args',
+        "Projection 'conflicts' does not support since selectors. Use lamportCeiling for current-frontier conflict analysis.",
+      );
+    }
+
+    const rawLamportCeiling = request.args['lamportCeiling'];
+    let lamportCeiling: number | null = null;
+    if (rawLamportCeiling !== undefined) {
+      if (rawLamportCeiling === null) {
+        lamportCeiling = null;
+      } else {
+        const parsed = parseTickLike(rawLamportCeiling);
+        if (parsed === null) {
+          throw controlPlaneFailure(
+            'invalid_args',
+            'lamportCeiling must be a non-negative integer or null when provided',
+          );
+        }
+        lamportCeiling = parsed;
+      }
+    }
+
+    const options: AnalyzeConflictsOptions = {};
+    if (rawLamportCeiling !== undefined) {
+      options.at = { lamportCeiling };
+    }
+    if (request.args['entityId'] !== undefined) {
+      options.entityId = request.args['entityId'] as AnalyzeConflictsOptions['entityId'];
+    }
+    if (request.args['target'] !== undefined) {
+      options.target = request.args['target'] as AnalyzeConflictsOptions['target'];
+    }
+    if (request.args['kind'] !== undefined) {
+      options.kind = request.args['kind'] as AnalyzeConflictsOptions['kind'];
+    }
+    if (request.args['writerId'] !== undefined) {
+      options.writerId = request.args['writerId'] as AnalyzeConflictsOptions['writerId'];
+    }
+    if (request.args['evidence'] !== undefined) {
+      options.evidence = request.args['evidence'] as AnalyzeConflictsOptions['evidence'];
+    }
+    if (request.args['scanBudget'] !== undefined) {
+      options.scanBudget = request.args['scanBudget'] as AnalyzeConflictsOptions['scanBudget'];
+    }
+
+    const requested: Record<string, unknown> = {
+      lamportCeiling,
+      evidence: options.evidence ?? 'standard',
+    };
+    if (options.entityId !== undefined) requested['entityId'] = options.entityId;
+    if (options.target !== undefined) requested['target'] = options.target;
+    if (options.kind !== undefined) requested['kind'] = options.kind;
+    if (options.writerId !== undefined) requested['writerId'] = options.writerId;
+    if (options.scanBudget !== undefined) requested['scanBudget'] = options.scanBudget;
+
+    return { options, requested };
+  }
+
+  private async analyzeConflicts(
+    graph: WarpGraph,
+    options: AnalyzeConflictsOptions,
+  ): Promise<ConflictAnalysisResult> {
+    try {
+      return await graph.analyzeConflicts(options);
+    } catch (err) {
+      const substrateCode = typeof err === 'object'
+        && err !== null
+        && 'code' in err
+        && typeof (err as { code?: unknown }).code === 'string'
+        ? (err as { code: string }).code
+        : null;
+      if (substrateCode === 'invalid_coordinate' || substrateCode === 'unsupported_target_selector') {
+        throw controlPlaneFailure(
+          'invalid_args',
+          err instanceof Error ? err.message : String(err),
+          { substrateCode },
+        );
+      }
+      throw err;
     }
   }
 

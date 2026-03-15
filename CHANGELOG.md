@@ -6,6 +6,7 @@ All notable changes to XYPH will be documented in this file.
 
 ### Added
 
+- **Substrate-backed conflict projection** — `xyph api observe` now supports `projection: "conflicts"` backed by `git-warp@14.2.0`'s read-only `analyzeConflicts()` surface. The projection is tip-only for now, accepts optional current-frontier `lamportCeiling` and analyzer filters, and returns substrate conflict traces without inventing XYPH-side counterfactual truth
 - **Historical observation selectors and structured redaction** — `xyph api` low-level reads now support `at` / `since` tick selectors for `observe(graph.summary)`, `observe(worldline.summary)`, `observe(entity.detail)`, `history`, and `diff`, using isolated read graphs materialized at explicit ceiling ticks. Sealed observation now returns structured `redactions` metadata for content-bearing `entity.detail` payloads instead of treating partial withholding as total failure
 - **Per-request capability resolution for `xyph api`** — the sovereign control-plane now computes principal, observer profile, and effective capability grants per request instead of assuming one process-wide identity. `apply`, `attest`, `propose`, `comment`, and hidden admin/debug commands now flow through a shared capability resolver, and audit/observation metadata carry the resolved principal and capability context
 - **Sovereign control-plane foundation** — added `xyph api`, a versioned JSONL machine interface backed by `ControlPlaneService` with `observe`, `history`, `diff`, `explain`, `apply`, `comment`, `propose`, and `attest` command support. The current slice reserves `fork_worldline`, `compare_worldlines`, `collapse_worldline`, `query`, and `rewind_worldline` without pretending they are implemented yet
@@ -39,6 +40,7 @@ All notable changes to XYPH will be documented in this file.
 - **Dashboard panel switching removed** — Tab/Shift+Tab on dashboard is now a no-op. The right column content moved to the global drawer (`m` key)
 - **Upgrade bijou 1.3.0 → 1.8.0** — all three packages (`@flyingrobots/bijou`, `bijou-node`, `bijou-tui`) bumped. Test helper imports updated to use `@flyingrobots/bijou/adapters/test` subpath
 - **Upgrade git-warp 13.1.0 → 14.0.0** — major version bump, no breaking changes for current usage
+- **Upgrade git-warp 14.0.0 → 14.2.0** — XYPH now consumes the published substrate conflict analyzer and raises its explicit dependency floor accordingly
 
 - **`GuildSealService` simplified** — `generateKeypair()` and `rotateKey()` now delegate rollback to `updateKeyring()`, removing hand-written try/catch rollback choreography from the domain layer
 

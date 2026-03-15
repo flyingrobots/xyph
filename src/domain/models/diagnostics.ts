@@ -12,7 +12,8 @@ export type DiagnosticSource =
   | 'readiness'
   | 'completion'
   | 'settlement'
-  | 'briefing';
+  | 'briefing'
+  | 'substrate';
 
 export interface Diagnostic {
   code: string;

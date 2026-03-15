@@ -75,6 +75,12 @@ Current foundation slice:
 - reserved, not yet implemented: `collapse_worldline`
 - reserved, hidden admin/debug concepts: `query`, `rewind_worldline`
 
+Current `observe` projections include a substrate-backed `conflicts` view that
+delegates directly to `git-warp`'s published `analyzeConflicts()` API. This is
+an intentional boundary: git-warp owns conflict facts, and XYPH exposes them as
+observer-facing read data without inventing parallel conflict provenance in its
+own domain layer.
+
 Existing commands such as `briefing`, `next`, `context`, `submit`, `review`,
 and `merge` still exist, but they should be understood as compatibility
 projections or wrappers over graph-backed domain services, not the canonical

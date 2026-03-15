@@ -178,10 +178,36 @@ Current projection support by selector:
   `observe(entity.detail)`, `history`, `diff`
 - tip-only for now: `observe(slice.local)`, `observe(context)`,
   `observe(briefing)`, `observe(next)`, `observe(submissions)`,
-  `observe(diagnostics)`, `observe(prescriptions)`
+  `observe(diagnostics)`, `observe(prescriptions)`,
+  `observe(conflicts)`
 
 Compatibility projections that remain backed by live services reject historical
 selectors with `not_implemented` rather than pretending historical support.
+
+## Substrate Conflict Projection
+
+`observe` with `projection: "conflicts"` exposes the published read-only
+git-warp conflict analyzer through the sovereign control plane.
+
+Current behavior:
+
+- requires `at: "tip"` or omitted
+- does **not** support `since`
+- accepts optional analyzer filters:
+  - `lamportCeiling`
+  - `entityId`
+  - `target`
+  - `kind`
+  - `writerId`
+  - `evidence`
+  - `scanBudget`
+- returns:
+  - `requested` normalized analyzer inputs
+  - `analysis` as the substrate conflict-analysis payload
+
+This projection is intentionally current-frontier scoped in v1. Historical
+frontier and worldline-local conflict analysis remain substrate backlog work and
+must not be faked by XYPH.
 
 ## Error Taxonomy
 

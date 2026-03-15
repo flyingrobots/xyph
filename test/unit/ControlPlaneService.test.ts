@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   createComment: vi.fn(),
   createProposal: vi.fn(),
   createAttestation: vi.fn(),
+  analyzeConflicts: vi.fn(),
   getFrontier: vi.fn(),
   getStateSnapshot: vi.fn(),
   getGraph: vi.fn(),
@@ -149,6 +150,7 @@ describe('ControlPlaneService', () => {
       hasNode: vi.fn(async () => true),
       materialize: vi.fn(async () => null),
       patchesFor: vi.fn(async () => ['patch:1', 'patch:2']),
+      analyzeConflicts: mocks.analyzeConflicts,
     });
     mocks.openIsolatedGraph.mockResolvedValue({
       getFrontier: mocks.getFrontier,
@@ -157,6 +159,20 @@ describe('ControlPlaneService', () => {
       syncCoverage: vi.fn(async () => null),
       materialize: vi.fn(async () => null),
       patchesFor: vi.fn(async () => ['patch:1']),
+      analyzeConflicts: mocks.analyzeConflicts,
+    });
+    mocks.analyzeConflicts.mockResolvedValue({
+      analysisVersion: 'conflict-analyzer/v1',
+      resolvedCoordinate: {
+        analysisVersion: 'conflict-analyzer/v1',
+        frontier: { 'agent.prime': 'abcdef123456' },
+        frontierDigest: 'frontier:conflicts',
+        lamportCeiling: null,
+        scanBudgetApplied: { maxPatches: null },
+        truncationPolicy: 'reverse-causal-order',
+      },
+      analysisSnapshotHash: 'snapshot:conflicts',
+      conflicts: [],
     });
     mocks.fetchSnapshot.mockResolvedValue({
       campaigns: [],
@@ -551,6 +567,186 @@ describe('ControlPlaneService', () => {
       }),
       observation: expect.objectContaining({
         frontierDigest: expect.any(String),
+      }),
+    }));
+  });
+
+  it('surfaces substrate-backed conflict analysis through observe(conflicts)', async () => {
+    mocks.analyzeConflicts.mockResolvedValueOnce({
+      analysisVersion: 'conflict-analyzer/v1',
+      resolvedCoordinate: {
+        analysisVersion: 'conflict-analyzer/v1',
+        frontier: { 'agent.prime': 'abcdef123456' },
+        frontierDigest: 'frontier:conflicts',
+        lamportCeiling: 11,
+        scanBudgetApplied: { maxPatches: 25 },
+        truncationPolicy: 'reverse-causal-order',
+      },
+      analysisSnapshotHash: 'snapshot:conflicts',
+      diagnostics: [{
+        code: 'budget_truncated',
+        severity: 'warning',
+        message: 'Conflict analysis stopped after reaching the patch scan budget.',
+      }],
+      conflicts: [{
+        conflictId: 'conflict:1',
+        kind: 'supersession',
+        target: {
+          targetKind: 'node_property',
+          entityId: 'task:ONE',
+          propertyKey: 'status',
+          targetDigest: 'target:status',
+        },
+        winner: {
+          anchor: {
+            patchSha: 'patch:winner',
+            writerId: 'agent.prime',
+            lamport: 11,
+            opIndex: 0,
+          },
+          effectDigest: 'effect:winner',
+        },
+        losers: [{
+          anchor: {
+            patchSha: 'patch:loser',
+            writerId: 'agent.rival',
+            lamport: 10,
+            opIndex: 0,
+          },
+          effectDigest: 'effect:loser',
+          causalRelationToWinner: 'concurrent',
+          structurallyDistinctAlternative: true,
+          replayableFromAnchors: true,
+        }],
+        resolution: {
+          reducerId: 'lww.node_property',
+          basis: { code: 'receipt_superseded', reason: 'winner event dominates loser event' },
+          winnerMode: 'immediate',
+        },
+        whyFingerprint: 'why:1',
+        evidence: {
+          level: 'full',
+          patchRefs: ['patch:winner', 'patch:loser'],
+          receiptRefs: [{ patchSha: 'patch:winner', lamport: 11, opIndex: 0 }],
+        },
+      }],
+    });
+
+    const service = new ControlPlaneService({
+      getGraph: mocks.getGraph,
+      openIsolatedGraph: mocks.openIsolatedGraph,
+      reset: vi.fn(),
+    }, 'agent.prime');
+
+    const result = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'req-conflicts',
+      cmd: 'observe',
+      args: {
+        projection: 'conflicts',
+        entityId: 'task:ONE',
+        kind: 'supersession',
+        writerId: 'agent.rival',
+        evidence: 'full',
+        lamportCeiling: 11,
+        scanBudget: { maxPatches: 25 },
+      },
+    });
+
+    expect(mocks.analyzeConflicts).toHaveBeenCalledWith({
+      at: { lamportCeiling: 11 },
+      entityId: 'task:ONE',
+      kind: 'supersession',
+      writerId: 'agent.rival',
+      evidence: 'full',
+      scanBudget: { maxPatches: 25 },
+    });
+    expect(result).toEqual(expect.objectContaining({
+      ok: true,
+      data: expect.objectContaining({
+        projection: 'conflicts',
+        at: 'tip',
+        scope: 'substrate',
+        requested: expect.objectContaining({
+          lamportCeiling: 11,
+          entityId: 'task:ONE',
+          kind: 'supersession',
+          writerId: 'agent.rival',
+          evidence: 'full',
+          scanBudget: { maxPatches: 25 },
+        }),
+        analysis: expect.objectContaining({
+          analysisVersion: 'conflict-analyzer/v1',
+          analysisSnapshotHash: 'snapshot:conflicts',
+          conflicts: [expect.objectContaining({ conflictId: 'conflict:1' })],
+        }),
+      }),
+      diagnostics: [
+        expect.objectContaining({
+          code: 'budget_truncated',
+          source: 'substrate',
+          category: 'traceability',
+          severity: 'warning',
+        }),
+      ],
+    }));
+  });
+
+  it('rejects historical at=tick for observe(conflicts) instead of pretending frontier-local support', async () => {
+    const service = new ControlPlaneService({
+      getGraph: mocks.getGraph,
+      openIsolatedGraph: mocks.openIsolatedGraph,
+      reset: vi.fn(),
+    }, 'agent.prime');
+
+    const result = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'req-conflicts-historical',
+      cmd: 'observe',
+      args: {
+        projection: 'conflicts',
+        at: { tick: 7 },
+      },
+    });
+
+    expect(mocks.analyzeConflicts).not.toHaveBeenCalled();
+    expect(result).toEqual(expect.objectContaining({
+      ok: false,
+      error: expect.objectContaining({
+        code: 'not_implemented',
+      }),
+    }));
+  });
+
+  it('maps substrate analyzer selector validation failures onto invalid_args', async () => {
+    mocks.analyzeConflicts.mockRejectedValueOnce(Object.assign(
+      new Error('analyzeConflicts(): target selector must be an object'),
+      { code: 'unsupported_target_selector' },
+    ));
+
+    const service = new ControlPlaneService({
+      getGraph: mocks.getGraph,
+      openIsolatedGraph: mocks.openIsolatedGraph,
+      reset: vi.fn(),
+    }, 'agent.prime');
+
+    const result = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'req-conflicts-invalid',
+      cmd: 'observe',
+      args: {
+        projection: 'conflicts',
+        target: 'task:ONE',
+      },
+    });
+
+    expect(result).toEqual(expect.objectContaining({
+      ok: false,
+      error: expect.objectContaining({
+        code: 'invalid_args',
+        details: expect.objectContaining({
+          substrateCode: 'unsupported_target_selector',
+        }),
       }),
     }));
   });
