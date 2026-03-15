@@ -21,6 +21,7 @@ import { AgentBriefingService } from '../../domain/services/AgentBriefingService
 import { AgentSubmissionService } from '../../domain/services/AgentSubmissionService.js';
 import type { ReadinessAssessment } from '../../domain/services/ReadinessService.js';
 import type { Diagnostic } from '../../domain/models/diagnostics.js';
+import type { RecommendationRequest } from '../../domain/models/recommendations.js';
 import type { EntityDetail } from '../../domain/models/dashboard.js';
 
 interface ActOptions {
@@ -131,6 +132,7 @@ function renderAgentContext(
   readiness: ReadinessAssessment | null,
   dependency: AgentDependencyContext | null,
   recommendedActions: AgentActionCandidate[],
+  recommendationRequests: RecommendationRequest[],
   diagnostics: Diagnostic[],
 ): string {
   const lines: string[] = [];
@@ -183,6 +185,20 @@ function renderAgentContext(
     lines.push(...renderDiagnosticsLines(diagnostics));
 
     lines.push('');
+    lines.push(`Recommendation Requests (${recommendationRequests.length})`);
+    if (recommendationRequests.length === 0) {
+      lines.push('  none');
+    } else {
+      for (const request of recommendationRequests.slice(0, 5)) {
+        lines.push(`  - ${request.priority} ${request.category}`);
+        lines.push(`      ${request.summary}`);
+        if (request.blockedTransitions.length > 0) {
+          lines.push(`      blocks: ${request.blockedTransitions.join(', ')}`);
+        }
+      }
+    }
+
+    lines.push('');
     lines.push('Recommended Actions');
     if (recommendedActions.length === 0) {
       lines.push('  none');
@@ -221,6 +237,7 @@ function renderBriefing(briefing: {
     nextStep: { kind: string; targetId: string };
   }[];
   frontier: { quest: { id: string; title: string; status: string }; nextAction: AgentActionCandidate | null }[];
+  recommendationQueue: RecommendationRequest[];
   recentHandoffs: { noteId: string; title: string; authoredAt: number; relatedIds: string[] }[];
   alerts: { severity: string; message: string }[];
   diagnostics: Diagnostic[];
@@ -267,6 +284,20 @@ function renderBriefing(briefing: {
   }
 
   lines.push('');
+  lines.push(`Recommendation Queue (${briefing.recommendationQueue.length})`);
+  if (briefing.recommendationQueue.length === 0) {
+    lines.push('  none');
+  } else {
+    for (const entry of briefing.recommendationQueue.slice(0, 5)) {
+      lines.push(`  - ${entry.priority} ${entry.category}`);
+      lines.push(`      ${entry.summary}`);
+      if (entry.subjectId) {
+        lines.push(`      subject: ${entry.subjectId}`);
+      }
+    }
+  }
+
+  lines.push('');
   lines.push(`Recent Handoffs (${briefing.recentHandoffs.length})`);
   if (briefing.recentHandoffs.length === 0) {
     lines.push('  none');
@@ -303,6 +334,7 @@ function renderNext(candidates: {
   targetId: string;
   questTitle: string;
   source: string;
+  priority: string;
   reason: string;
   blockedBy: string[];
 }[]): string {
@@ -314,7 +346,7 @@ function renderNext(candidates: {
   }
 
   for (const candidate of candidates) {
-    lines.push(`  - ${candidate.kind} ${candidate.targetId} [${candidate.source}]`);
+    lines.push(`  - ${candidate.priority} ${candidate.kind} ${candidate.targetId} [${candidate.source}]`);
     lines.push(`      ${candidate.questTitle}`);
     lines.push(`      ${candidate.reason}`);
     if (candidate.blockedBy.length > 0) {
@@ -507,6 +539,7 @@ export function registerAgentCommands(program: Command, ctx: CliContext): void {
               readiness: result.readiness,
               dependency: result.dependency,
               recommendedActions: result.recommendedActions,
+              recommendationRequests: result.recommendationRequests,
               diagnostics: result.diagnostics,
             },
           },
@@ -519,6 +552,7 @@ export function registerAgentCommands(program: Command, ctx: CliContext): void {
         result.readiness,
         result.dependency,
         result.recommendedActions,
+        result.recommendationRequests,
         result.diagnostics,
       ));
     }));

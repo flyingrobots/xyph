@@ -13,10 +13,16 @@ import {
   type RequirementKind,
   type RequirementPriority,
 } from '../entities/Requirement.js';
+import type { RecommendationRequest } from '../models/recommendations.js';
 import { IntakeService } from './IntakeService.js';
 import { ReadinessService } from './ReadinessService.js';
 import { SubmissionService } from './SubmissionService.js';
 import { GuildSealService } from './GuildSealService.js';
+import { DoctorService, type DoctorBlockedTransition } from './DoctorService.js';
+import {
+  buildRecommendationRequests,
+  findBlockingRecommendationRequests,
+} from './RecommendationService.js';
 import {
   assessSettlementGate,
   formatSettlementGateFailure,
@@ -275,17 +281,53 @@ export class AgentActionValidator {
   private readonly intake: IntakeService;
   private readonly readiness: ReadinessService;
   private readonly submissions: SubmissionService;
+  private readonly doctor: Pick<DoctorService, 'run'>;
+  private cachedRecommendationRequests?: Promise<RecommendationRequest[]>;
 
   constructor(
     private readonly graphPort: GraphPort,
     private readonly roadmap: RoadmapQueryPort,
     private readonly agentId: string,
+    doctor?: Pick<DoctorService, 'run'>,
   ) {
     this.intake = new IntakeService(roadmap);
     this.readiness = new ReadinessService(roadmap);
     this.submissions = new SubmissionService(
       new WarpSubmissionAdapter(graphPort, agentId),
     );
+    this.doctor = doctor ?? new DoctorService(graphPort, roadmap);
+  }
+
+  private async getRecommendationRequests(): Promise<RecommendationRequest[]> {
+    this.cachedRecommendationRequests ??= this.doctor.run().then((report) => buildRecommendationRequests(report));
+    return this.cachedRecommendationRequests;
+  }
+
+  private async checkStructuralBlockers(
+    request: AgentActionRequest,
+    transition: DoctorBlockedTransition,
+    targetIds: string[],
+    opts?: {
+      normalizedArgs?: Record<string, unknown>;
+      underlyingCommand?: string;
+      sideEffects?: string[];
+    },
+  ): Promise<ValidatedAssessment | null> {
+    const blockers = findBlockingRecommendationRequests(
+      await this.getRecommendationRequests(),
+      targetIds,
+      transition,
+    );
+    if (blockers.length === 0) return null;
+
+    const reasons = blockers.map((blocker) => {
+      const blocked = blocker.blockedTransitions.length > 0
+        ? ` blocks ${blocker.blockedTransitions.join(', ')}`
+        : '';
+      return `${blocker.summary}${blocked}. ${blocker.suggestedAction}`;
+    });
+
+    return failAssessment(request, 'illegal-graph-state', reasons, opts);
   }
 
   public async validate(request: AgentActionRequest): Promise<ValidatedAssessment> {
@@ -629,6 +671,22 @@ export class AgentActionValidator {
       );
     }
 
+    const blockerFailure = await this.checkStructuralBlockers(
+      request,
+      'ready',
+      [request.targetId],
+      {
+        normalizedArgs: {},
+        underlyingCommand: `xyph ready ${request.targetId}`,
+        sideEffects: [
+          'status -> READY',
+          `ready_by -> ${this.agentId}`,
+          'ready_at -> now',
+        ],
+      },
+    );
+    if (blockerFailure) return blockerFailure;
+
     return successAssessment(
       request,
       { kind: 'ready', targetId: request.targetId },
@@ -748,6 +806,28 @@ export class AgentActionValidator {
       });
     }
 
+    const submitEffects = [
+      'create submission node',
+      'create patchset node',
+      `submits -> ${request.targetId}`,
+      'has-patchset edge',
+    ];
+    const blockerFailure = await this.checkStructuralBlockers(
+      request,
+      'submit',
+      [request.targetId],
+      {
+        normalizedArgs: {
+          description,
+          baseRef,
+          workspaceRef: typeof request.args['workspaceRef'] === 'string' ? request.args['workspaceRef'] : null,
+        },
+        underlyingCommand: `xyph submit ${request.targetId}`,
+        sideEffects: submitEffects,
+      },
+    );
+    if (blockerFailure) return blockerFailure;
+
     const workspace = new GitWorkspaceAdapter(process.cwd());
     let workspaceRef: string;
     try {
@@ -765,12 +845,7 @@ export class AgentActionValidator {
           workspaceRef: null,
         },
         underlyingCommand: `xyph submit ${request.targetId}`,
-        sideEffects: [
-          'create submission node',
-          'create patchset node',
-          `submits -> ${request.targetId}`,
-          'has-patchset edge',
-        ],
+        sideEffects: submitEffects,
       });
     }
 
@@ -868,6 +943,25 @@ export class AgentActionValidator {
         `Patchset ${request.targetId} not found or has no parent submission`,
       ]);
     }
+
+    const blockerFailure = await this.checkStructuralBlockers(
+      request,
+      'review',
+      [request.targetId, submissionId],
+      {
+        normalizedArgs: {
+          verdict: verdictRaw,
+          comment,
+          submissionId,
+        },
+        underlyingCommand: `xyph review ${request.targetId} --verdict ${verdictRaw}`,
+        sideEffects: [
+          'create review node',
+          `reviews -> ${request.targetId}`,
+        ],
+      },
+    );
+    if (blockerFailure) return blockerFailure;
 
     const reviewId = autoId('review:');
     const verdict = verdictRaw as ReviewVerdict;
@@ -1012,6 +1106,26 @@ export class AgentActionValidator {
       });
     }
 
+    const sealEffects = [
+      `create artifact:${request.targetId}`,
+      'status -> DONE',
+      'completed_at -> now',
+    ];
+    const blockerFailure = await this.checkStructuralBlockers(
+      request,
+      'seal',
+      [request.targetId],
+      {
+        normalizedArgs: {
+          artifactHash,
+          rationale,
+        },
+        underlyingCommand: `xyph seal ${request.targetId}`,
+        sideEffects: sealEffects,
+      },
+    );
+    if (blockerFailure) return blockerFailure;
+
     const keyring = new FsKeyringAdapter();
     const sealService = new GuildSealService(keyring);
     if (!sealService.hasPrivateKey(this.agentId) && !allowUnsignedScrollsForSettlement()) {
@@ -1023,11 +1137,7 @@ export class AgentActionValidator {
           rationale,
         },
         underlyingCommand: `xyph seal ${request.targetId}`,
-        sideEffects: [
-          `create artifact:${request.targetId}`,
-          'status -> DONE',
-          'completed_at -> now',
-        ],
+        sideEffects: sealEffects,
       });
     }
 
@@ -1044,11 +1154,7 @@ export class AgentActionValidator {
         rationale,
       },
       `xyph seal ${request.targetId}`,
-      [
-        `create artifact:${request.targetId}`,
-        'status -> DONE',
-        'completed_at -> now',
-      ],
+      sealEffects,
     );
   }
 
@@ -1100,6 +1206,33 @@ export class AgentActionValidator {
     const questId = await adapter.getSubmissionQuestId(request.targetId) ?? undefined;
     const questStatus = questId ? await adapter.getQuestStatus(questId) : null;
     const shouldAutoSeal = typeof questId === 'string' && questStatus !== 'DONE';
+    const mergeTargetIds = [
+      request.targetId,
+      tipPatchsetId,
+      ...(questId ? [questId] : []),
+    ];
+    const mergeEffects = [
+      `merge submission into ${intoRef}`,
+      'create merge decision',
+      'auto-seal quest when needed',
+    ];
+    const blockerFailure = await this.checkStructuralBlockers(
+      request,
+      'merge',
+      mergeTargetIds,
+      {
+        normalizedArgs: {
+          rationale,
+          intoRef,
+          patchsetId: explicitPatchsetId ?? null,
+          tipPatchsetId,
+          questId: questId ?? null,
+        },
+        underlyingCommand: `xyph merge ${request.targetId}`,
+        sideEffects: mergeEffects,
+      },
+    );
+    if (blockerFailure) return blockerFailure;
 
     if (shouldAutoSeal && questId) {
       const graphCtx = createGraphContext(this.graphPort);
@@ -1117,11 +1250,7 @@ export class AgentActionValidator {
             questId,
           },
           underlyingCommand: `xyph merge ${request.targetId}`,
-          sideEffects: [
-            `merge submission into ${intoRef}`,
-            'create merge decision',
-            'auto-seal quest when needed',
-          ],
+          sideEffects: mergeEffects,
         });
       }
 
@@ -1139,11 +1268,7 @@ export class AgentActionValidator {
             questId,
           },
           underlyingCommand: `xyph merge ${request.targetId}`,
-          sideEffects: [
-            `merge submission into ${intoRef}`,
-            'create merge decision',
-            'auto-seal quest when needed',
-          ],
+          sideEffects: mergeEffects,
         });
       }
     }
@@ -1161,11 +1286,7 @@ export class AgentActionValidator {
           questId: questId ?? null,
         },
         underlyingCommand: `xyph merge ${request.targetId}`,
-        sideEffects: [
-          `merge submission into ${intoRef}`,
-          'create merge decision',
-          'auto-seal quest when needed',
-        ],
+        sideEffects: mergeEffects,
       });
     }
     const mergeRef = await adapter.getPatchsetMergeRef(tipPatchsetId);
@@ -1231,8 +1352,9 @@ export class AgentActionService {
     private readonly graphPort: GraphPort,
     private readonly roadmap: RoadmapQueryPort,
     private readonly agentId: string,
+    doctor?: Pick<DoctorService, 'run'>,
   ) {
-    this.validator = new AgentActionValidator(graphPort, roadmap, agentId);
+    this.validator = new AgentActionValidator(graphPort, roadmap, agentId, doctor);
   }
 
   public async execute(request: AgentActionRequest): Promise<AgentActionOutcome> {

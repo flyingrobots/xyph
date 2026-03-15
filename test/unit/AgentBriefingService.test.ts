@@ -60,6 +60,7 @@ function makeDoctor(
   overrides?: Partial<{
     diagnostics: unknown[];
     summary: Record<string, unknown>;
+    prescriptions: unknown[];
     blocking: boolean;
     healthy: boolean;
     status: string;
@@ -106,7 +107,7 @@ function makeDoctor(
         ...(overrides?.summary ?? {}),
       },
       issues: [],
-      prescriptions: [],
+      prescriptions: overrides?.prescriptions ?? [],
       diagnostics: overrides?.diagnostics ?? [],
     }),
   };
@@ -249,6 +250,7 @@ describe('AgentBriefingService', () => {
     expect(briefing.assignments[0]?.nextAction?.kind).toBe('claim');
     expect(briefing.frontier).toHaveLength(1);
     expect(briefing.frontier[0]?.quest.id).toBe('task:AGT-002');
+    expect(briefing.recommendationQueue).toEqual([]);
     expect(briefing.reviewQueue).toMatchObject([
       {
         submissionId: 'submission:AGT-001',
@@ -370,12 +372,103 @@ describe('AgentBriefingService', () => {
     expect(result.candidates[0]).toMatchObject({
       kind: 'claim',
       targetId: 'task:AGT-READY',
+      priority: 'P3',
       source: 'assignment',
     });
     expect(result.candidates[1]).toMatchObject({
       kind: 'ready',
       targetId: 'task:AGT-PLAN',
+      priority: 'P3',
       source: 'planning',
+    });
+  });
+
+  it('surfaces doctor prescriptions as recommendation work in briefing and next', async () => {
+    const snapshot = makeSnapshot({
+      quests: [
+        quest({
+          id: 'task:AGT-BLOCKED',
+          title: 'Blocked quest',
+          status: 'IN_PROGRESS',
+          hours: 2,
+          priority: 'P1',
+          description: 'Quest is blocked by structural graph damage.',
+          taskKind: 'delivery',
+          assignedTo: 'agent.hal',
+        }),
+      ],
+      sortedTaskIds: ['task:AGT-BLOCKED'],
+    });
+
+    mocks.createGraphContext.mockReturnValue({
+      fetchSnapshot: vi.fn().mockResolvedValue(snapshot),
+      fetchEntityDetail: vi.fn(),
+      filterSnapshot: vi.fn(),
+      invalidateCache: vi.fn(),
+      get graph() {
+        throw new Error('not used in test');
+      },
+    });
+
+    const doctor = makeDoctor({
+      status: 'error',
+      blocking: true,
+      healthy: false,
+      summary: {
+        issueCount: 1,
+        blockingIssueCount: 1,
+        errorCount: 1,
+      },
+      prescriptions: [{
+        dedupeKey: 'structural-blocker:workflow-lineage:artifact:AGT-BLOCKED',
+        groupingKey: 'structural-blocker:workflow-lineage',
+        category: 'structural-blocker',
+        summary: 'artifact:AGT-BLOCKED references a missing quest',
+        suggestedAction: 'Repair workflow lineage before trying to settle the quest.',
+        subjectId: 'artifact:AGT-BLOCKED',
+        relatedIds: ['task:AGT-BLOCKED'],
+        blockedTransitions: ['seal'],
+        blockedTaskIds: ['task:AGT-BLOCKED'],
+        basePriority: 'P0',
+        effectivePriority: 'P0',
+        materializable: true,
+        sourceIssueCodes: ['orphan-scroll'],
+      }],
+    });
+
+    const service = new AgentBriefingService(
+      makeGraphWithHandoffs([]),
+      makeRoadmap([
+        makeQuestEntity({
+          id: 'task:AGT-BLOCKED',
+          title: 'Blocked quest',
+          status: 'IN_PROGRESS',
+          priority: 'P1',
+          description: 'Quest is blocked by structural graph damage.',
+          assignedTo: 'agent.hal',
+        }),
+      ]),
+      'agent.hal',
+      doctor,
+    );
+
+    const briefing = await service.buildBriefing();
+    expect(briefing.recommendationQueue).toEqual([
+      expect.objectContaining({
+        id: 'structural-blocker:workflow-lineage:artifact:AGT-BLOCKED',
+        category: 'structural-blocker',
+        priority: 'P0',
+        blockedTaskIds: ['task:AGT-BLOCKED'],
+      }),
+    ]);
+    expect(briefing.alerts.map((alert) => alert.code)).toContain('graph-health-blockers');
+
+    const next = await service.next(3);
+    expect(next.candidates[0]).toMatchObject({
+      kind: 'inspect',
+      targetId: 'task:AGT-BLOCKED',
+      source: 'doctor',
+      priority: 'P1',
     });
   });
 
@@ -468,6 +561,7 @@ describe('AgentBriefingService', () => {
       kind: 'merge',
       targetId: 'submission:AGT-MERGE',
       source: 'submission',
+      priority: 'P3',
       allowed: false,
       validationCode: 'requires-additional-input',
       args: { intoRef: 'main' },
@@ -476,6 +570,7 @@ describe('AgentBriefingService', () => {
       kind: 'review',
       targetId: 'patchset:AGT-REVIEW',
       source: 'submission',
+      priority: 'P3',
       allowed: false,
       validationCode: 'requires-additional-input',
     });

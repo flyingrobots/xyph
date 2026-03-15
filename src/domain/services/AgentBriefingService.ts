@@ -1,14 +1,21 @@
 import type { QueryResultV1, AggregateResult } from '@git-stunts/git-warp';
 import type { Diagnostic } from '../models/diagnostics.js';
+import type { RecommendationRequest } from '../models/recommendations.js';
 import type { GraphMeta, GraphSnapshot, QuestNode } from '../models/dashboard.js';
 import type { GraphPort } from '../../ports/GraphPort.js';
 import type { RoadmapQueryPort } from '../../ports/RoadmapPort.js';
 import { createGraphContext } from '../../infrastructure/GraphContext.js';
 import { toNeighborEntries } from '../../infrastructure/helpers/isNeighborEntry.js';
 import { summarizeDoctorReport } from './DiagnosticService.js';
+import {
+  compareQuestPriority,
+  DEFAULT_QUEST_PRIORITY,
+  type QuestPriority,
+} from '../entities/Quest.js';
 import { ReadinessService } from './ReadinessService.js';
 import { AgentActionValidator } from './AgentActionService.js';
 import { DoctorService } from './DoctorService.js';
+import { buildRecommendationRequests } from './RecommendationService.js';
 import {
   determineSubmissionNextStep,
   isReviewableByAgent,
@@ -79,6 +86,7 @@ export interface AgentBriefing {
   assignments: AgentWorkSummary[];
   reviewQueue: AgentReviewQueueEntry[];
   frontier: AgentWorkSummary[];
+  recommendationQueue: RecommendationRequest[];
   recentHandoffs: AgentHandoffSummary[];
   alerts: AgentBriefingAlert[];
   diagnostics: Diagnostic[];
@@ -88,7 +96,8 @@ export interface AgentBriefing {
 export interface AgentNextCandidate extends AgentActionCandidate {
   questTitle: string;
   questStatus: string;
-  source: 'assignment' | 'frontier' | 'planning' | 'submission';
+  priority: QuestPriority;
+  source: 'assignment' | 'frontier' | 'planning' | 'submission' | 'doctor';
 }
 
 export interface AgentNextResult {
@@ -129,15 +138,17 @@ function kindPriority(kind: string): number {
 
 function sourcePriority(source: AgentNextCandidate['source']): number {
   switch (source) {
-    case 'assignment':
+    case 'doctor':
       return 0;
-    case 'submission':
+    case 'assignment':
       return 1;
-    case 'frontier':
+    case 'submission':
       return 2;
+    case 'frontier':
+      return 3;
     case 'planning':
     default:
-      return 3;
+      return 4;
   }
 }
 
@@ -155,7 +166,7 @@ export class AgentBriefingService {
     this.readiness = new ReadinessService(roadmap);
     this.doctor = doctor ?? new DoctorService(graphPort, roadmap);
     this.recommender = new AgentRecommender(
-      new AgentActionValidator(graphPort, roadmap, agentId),
+      new AgentActionValidator(graphPort, roadmap, agentId, this.doctor),
       agentId,
     );
   }
@@ -182,8 +193,15 @@ export class AgentBriefingService {
     const reviewQueue = this.buildReviewQueue(snapshot);
     const recentHandoffs = await this.buildRecentHandoffs();
     const doctorReport = await this.doctor.run();
+    const recommendationQueue = buildRecommendationRequests(doctorReport);
     const diagnostics = summarizeDoctorReport(doctorReport);
-    const alerts = this.buildAlerts(assignments, frontier, reviewQueue, diagnostics);
+    const alerts = this.buildAlerts(
+      assignments,
+      frontier,
+      reviewQueue,
+      recommendationQueue,
+      diagnostics,
+    );
 
     return {
       identity: {
@@ -193,6 +211,7 @@ export class AgentBriefingService {
       assignments,
       reviewQueue,
       frontier,
+      recommendationQueue,
       recentHandoffs,
       alerts,
       diagnostics,
@@ -202,6 +221,8 @@ export class AgentBriefingService {
 
   public async next(limit = 5): Promise<AgentNextResult> {
     const snapshot = await this.fetchSnapshot();
+    const doctorReport = await this.doctor.run();
+    const recommendationQueue = buildRecommendationRequests(doctorReport);
     const candidates: AgentNextCandidate[] = [];
 
     for (const quest of snapshot.quests) {
@@ -214,6 +235,7 @@ export class AgentBriefingService {
       for (const candidate of recommendations) {
         candidates.push({
           ...candidate,
+          priority: quest.priority ?? DEFAULT_QUEST_PRIORITY,
           questTitle: quest.title,
           questStatus: quest.status,
           source,
@@ -222,8 +244,13 @@ export class AgentBriefingService {
     }
 
     candidates.push(...this.buildSubmissionCandidates(snapshot));
+    candidates.push(...this.buildDoctorCandidates(snapshot, recommendationQueue));
 
     candidates.sort((a, b) =>
+      compareQuestPriority(
+        a.priority as typeof DEFAULT_QUEST_PRIORITY,
+        b.priority as typeof DEFAULT_QUEST_PRIORITY,
+      ) ||
       sourcePriority(a.source) - sourcePriority(b.source) ||
       Number(b.allowed) - Number(a.allowed) ||
       kindPriority(a.kind) - kindPriority(b.kind) ||
@@ -231,7 +258,6 @@ export class AgentBriefingService {
       a.targetId.localeCompare(b.targetId)
     );
 
-    const doctorReport = await this.doctor.run();
     return {
       candidates: candidates.slice(0, limit),
       diagnostics: summarizeDoctorReport(doctorReport),
@@ -315,19 +341,23 @@ export class AgentBriefingService {
           nextStep: determineSubmissionNextStep(submission, this.agentId),
         };
 
-        const candidate = this.toSubmissionCandidate(entry);
+        const candidate = this.toSubmissionCandidate(entry, quest?.priority ?? DEFAULT_QUEST_PRIORITY);
         return candidate ? [candidate] : [];
       });
 
     return candidates;
   }
 
-  private toSubmissionCandidate(entry: AgentSubmissionEntry): AgentNextCandidate | null {
+  private toSubmissionCandidate(
+    entry: AgentSubmissionEntry,
+    priority: QuestPriority,
+  ): AgentNextCandidate | null {
     const base = {
       questTitle: entry.questTitle,
       questStatus: entry.questStatus ?? 'UNKNOWN',
       source: 'submission' as const,
       requiresHumanApproval: false,
+      priority,
     };
 
     switch (entry.nextStep.kind) {
@@ -405,10 +435,61 @@ export class AgentBriefingService {
     }
   }
 
+  private buildDoctorCandidates(
+    snapshot: GraphSnapshot,
+    recommendationQueue: RecommendationRequest[],
+  ): AgentNextCandidate[] {
+    const questById = new Map(snapshot.quests.map((quest) => [quest.id, quest] as const));
+
+    return recommendationQueue
+      .filter((request) =>
+        request.materializable ||
+        request.category === 'structural-blocker' ||
+        request.category === 'structural-defect' ||
+        request.priority === 'P0' ||
+        request.priority === 'P1'
+      )
+      .map((request) => {
+        const primaryTaskId = request.blockedTaskIds[0];
+        const quest = primaryTaskId ? questById.get(primaryTaskId) : undefined;
+        const targetId = quest?.id ?? request.subjectId ?? request.relatedIds[0] ?? request.id;
+        const command = targetId.startsWith('task:')
+          ? `xyph context ${targetId}`
+          : `xyph show ${targetId}`;
+
+        return {
+          kind: 'inspect',
+          targetId,
+          args: { requestId: request.id },
+          reason: request.summary,
+          confidence: request.category === 'structural-blocker' ? 0.97 : 0.88,
+          requiresHumanApproval: false,
+          dryRunSummary: request.suggestedAction,
+          blockedBy: [
+            ...(request.blockedTransitions.length > 0
+              ? [`Blocks: ${request.blockedTransitions.join(', ')}`]
+              : []),
+            ...(request.materializable
+              ? ['Doctor marked this remediation as materializable work.']
+              : ['Doctor surfaced this remediation as derived graph-health work.']),
+          ],
+          allowed: true,
+          underlyingCommand: command,
+          sideEffects: [],
+          validationCode: null,
+          priority: quest?.priority ?? request.priority,
+          questTitle: quest?.title ?? request.summary,
+          questStatus: quest?.status ?? 'HEALTH',
+          source: 'doctor',
+        } satisfies AgentNextCandidate;
+      });
+  }
+
   private buildAlerts(
     assignments: AgentWorkSummary[],
     frontier: AgentWorkSummary[],
     reviewQueue: AgentReviewQueueEntry[],
+    recommendationQueue: RecommendationRequest[],
     diagnostics: Diagnostic[],
   ): AgentBriefingAlert[] {
     const alerts: AgentBriefingAlert[] = [];
@@ -442,6 +523,24 @@ export class AgentBriefingService {
         severity: 'info',
         message: `${reviewQueue.length} submission(s) are waiting for review attention.`,
         relatedIds: reviewQueue.map((entry) => entry.submissionId),
+      });
+    }
+
+    const blockingRecommendations = recommendationQueue.filter((request) =>
+      request.priority === 'P0' && (
+        request.category === 'structural-blocker' || request.materializable
+      ),
+    );
+    if (blockingRecommendations.length > 0) {
+      alerts.push({
+        code: 'graph-health-blockers',
+        severity: 'critical',
+        message: `${blockingRecommendations.length} structural blocker remediation(s) are competing with normal work.`,
+        relatedIds: blockingRecommendations
+          .flatMap((request) => request.blockedTaskIds.length > 0
+            ? request.blockedTaskIds
+            : request.subjectId ? [request.subjectId] : [])
+          .sort((a, b) => a.localeCompare(b)),
       });
     }
 

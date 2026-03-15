@@ -249,6 +249,58 @@ function makeQuestDetail(
   };
 }
 
+function makeDoctorReport(overrides?: Partial<Record<string, unknown>>) {
+  return {
+    status: 'ok',
+    healthy: true,
+    blocking: false,
+    asOf: 1,
+    graphMeta: null,
+    auditedStatuses: ['PLANNED', 'READY'],
+    counts: {
+      campaigns: 0,
+      quests: 0,
+      intents: 0,
+      scrolls: 0,
+      approvals: 0,
+      submissions: 0,
+      patchsets: 0,
+      reviews: 0,
+      decisions: 0,
+      stories: 0,
+      requirements: 0,
+      criteria: 0,
+      evidence: 0,
+      policies: 0,
+      suggestions: 0,
+      documents: 0,
+      comments: 0,
+    },
+    summary: {
+      issueCount: 0,
+      blockingIssueCount: 0,
+      errorCount: 0,
+      warningCount: 0,
+      danglingEdges: 0,
+      orphanNodes: 0,
+      readinessGaps: 0,
+      sovereigntyViolations: 0,
+      governedCompletionGaps: 0,
+      topRemediationBuckets: [],
+    },
+    issues: [],
+    prescriptions: [],
+    diagnostics: [],
+    ...overrides,
+  };
+}
+
+function makeDoctor(report?: Record<string, unknown>) {
+  return {
+    run: vi.fn().mockResolvedValue(makeDoctorReport(report)),
+  };
+}
+
 describe('AgentActionService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -280,6 +332,7 @@ describe('AgentActionService', () => {
       makeGraphPort({}),
       makeRoadmap(makeQuest()),
       'agent.hal',
+      makeDoctor(),
     );
 
     const outcome = await service.execute({
@@ -542,6 +595,7 @@ describe('AgentActionService', () => {
       makeGraphPort({}),
       makeRoadmap(makeQuest()),
       'agent.hal',
+      makeDoctor(),
     );
 
     const outcome = await service.execute({
@@ -585,6 +639,7 @@ describe('AgentActionService', () => {
       makeGraphPort({}),
       makeRoadmap(makeQuest()),
       'agent.hal',
+      makeDoctor(),
     );
 
     const outcome = await service.execute({
@@ -627,6 +682,7 @@ describe('AgentActionService', () => {
       makeGraphPort(graph),
       makeRoadmap(makeQuest()),
       'agent.hal',
+      makeDoctor(),
     );
 
     const outcome = await service.execute({
@@ -661,6 +717,7 @@ describe('AgentActionService', () => {
       makeGraphPort({}),
       makeRoadmap(makeQuest()),
       'agent.hal',
+      makeDoctor(),
     );
 
     const outcome = await service.execute({
@@ -708,6 +765,7 @@ describe('AgentActionService', () => {
       makeGraphPort(graph),
       makeRoadmap(makeQuest()),
       'agent.hal',
+      makeDoctor(),
     );
 
     const outcome = await service.execute({
@@ -752,6 +810,7 @@ describe('AgentActionService', () => {
       makeGraphPort({}),
       makeRoadmap(makeQuest()),
       'agent.hal',
+      makeDoctor(),
     );
 
     const outcome = await service.execute({
@@ -794,6 +853,7 @@ describe('AgentActionService', () => {
       makeGraphPort(graph),
       makeRoadmap(makeQuest()),
       'agent.hal',
+      makeDoctor(),
     );
 
     const outcome = await service.execute({
@@ -830,6 +890,7 @@ describe('AgentActionService', () => {
       makeGraphPort({}),
       makeRoadmap(makeQuest({ status: 'IN_PROGRESS' })),
       'agent.hal',
+      makeDoctor(),
     );
 
     const outcome = await service.execute({
@@ -864,11 +925,67 @@ describe('AgentActionService', () => {
     expect(typeof outcome.normalizedArgs['patchsetId']).toBe('string');
   });
 
+  it('rejects submit when doctor reports a structural blocker on the target quest', async () => {
+    const service = new AgentActionService(
+      makeGraphPort({}),
+      makeRoadmap(makeQuest({ status: 'IN_PROGRESS', priority: 'P0' })),
+      'agent.hal',
+      makeDoctor({
+        status: 'error',
+        healthy: false,
+        blocking: true,
+        summary: {
+          issueCount: 1,
+          blockingIssueCount: 1,
+          errorCount: 1,
+        },
+        prescriptions: [{
+          dedupeKey: 'structural-blocker:workflow-lineage:submission:AGT-001',
+          groupingKey: 'structural-blocker:workflow-lineage',
+          category: 'structural-blocker',
+          summary: 'submission:AGT-001 references missing quest lineage',
+          suggestedAction: 'Repair workflow lineage before attempting a new submission.',
+          subjectId: 'submission:AGT-001',
+          relatedIds: ['task:AGT-001'],
+          blockedTransitions: ['submit'],
+          blockedTaskIds: ['task:AGT-001'],
+          basePriority: 'P0',
+          effectivePriority: 'P0',
+          materializable: true,
+          sourceIssueCodes: ['orphan-submission'],
+        }],
+      }),
+    );
+
+    const outcome = await service.execute({
+      kind: 'submit',
+      targetId: 'task:AGT-001',
+      dryRun: true,
+      args: {
+        description: 'Submit this quest through the action kernel.',
+        baseRef: 'main',
+      },
+    });
+
+    expect(outcome).toMatchObject({
+      kind: 'submit',
+      targetId: 'task:AGT-001',
+      allowed: false,
+      result: 'rejected',
+      validation: {
+        valid: false,
+        code: 'illegal-graph-state',
+      },
+    });
+    expect(outcome.validation.reasons[0]).toContain('Repair workflow lineage');
+  });
+
   it('executes review by writing a review node through the submission adapter', async () => {
     const service = new AgentActionService(
       makeGraphPort({}),
       makeRoadmap(makeQuest()),
       'agent.hal',
+      makeDoctor(),
     );
 
     const outcome = await service.execute({

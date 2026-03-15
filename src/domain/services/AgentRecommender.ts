@@ -1,4 +1,5 @@
 import type { ReadinessAssessment } from './ReadinessService.js';
+import { DEFAULT_QUEST_PRIORITY, type QuestPriority } from '../entities/Quest.js';
 import type { QuestNode } from '../models/dashboard.js';
 import type { AgentActionRequest, AgentActionValidator } from './AgentActionService.js';
 
@@ -26,6 +27,7 @@ export interface AgentActionCandidate {
   kind: string;
   targetId: string;
   args: Record<string, unknown>;
+  priority?: QuestPriority;
   reason: string;
   confidence: number;
   requiresHumanApproval: boolean;
@@ -120,6 +122,7 @@ export class AgentRecommender {
         kind: seed.request.kind,
         targetId: seed.request.targetId,
         args: assessment.normalizedArgs,
+        priority: quest.priority ?? DEFAULT_QUEST_PRIORITY,
         reason: seed.reason,
         confidence: seed.confidence,
         requiresHumanApproval: assessment.requiresHumanApproval,

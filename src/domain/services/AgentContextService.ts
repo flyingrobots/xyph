@@ -1,11 +1,14 @@
-import { DEFAULT_QUEST_PRIORITY, isExecutableQuestStatus } from '../entities/Quest.js';
+import { compareQuestPriority, DEFAULT_QUEST_PRIORITY, isExecutableQuestStatus } from '../entities/Quest.js';
 import type { Diagnostic } from '../models/diagnostics.js';
+import type { RecommendationRequest } from '../models/recommendations.js';
 import type { EntityDetail, GraphSnapshot, QuestNode } from '../models/dashboard.js';
 import type { GraphPort } from '../../ports/GraphPort.js';
 import type { RoadmapQueryPort } from '../../ports/RoadmapPort.js';
 import { createGraphContext } from '../../infrastructure/GraphContext.js';
 import { computeFrontier } from './DepAnalysis.js';
 import { collectQuestDiagnostics } from './DiagnosticService.js';
+import { DoctorService } from './DoctorService.js';
+import { buildRecommendationRequests, findRelevantRecommendationRequests } from './RecommendationService.js';
 import { ReadinessService, type ReadinessAssessment } from './ReadinessService.js';
 import { AgentActionValidator } from './AgentActionService.js';
 import { determineSubmissionNextStep } from './AgentSubmissionService.js';
@@ -21,6 +24,7 @@ export interface AgentContextResult {
   readiness: ReadinessAssessment | null;
   dependency: AgentDependencyContext | null;
   recommendedActions: AgentActionCandidate[];
+  recommendationRequests: RecommendationRequest[];
   diagnostics: Diagnostic[];
 }
 
@@ -82,17 +86,20 @@ export function buildAgentDependencyContext(
 export class AgentContextService {
   private readonly readiness: ReadinessService;
   private readonly recommender: AgentRecommender;
+  private readonly doctor: Pick<DoctorService, 'run'>;
   private readonly agentId: string;
 
   constructor(
     private readonly graphPort: GraphPort,
     roadmap: RoadmapQueryPort,
     agentId: string,
+    doctor?: Pick<DoctorService, 'run'>,
   ) {
     this.agentId = agentId;
     this.readiness = new ReadinessService(roadmap);
+    this.doctor = doctor ?? new DoctorService(graphPort, roadmap);
     this.recommender = new AgentRecommender(
-      new AgentActionValidator(graphPort, roadmap, agentId),
+      new AgentActionValidator(graphPort, roadmap, agentId, this.doctor),
       agentId,
     );
   }
@@ -111,6 +118,7 @@ export class AgentContextService {
         readiness: null,
         dependency: null,
         recommendedActions: [],
+        recommendationRequests: [],
         diagnostics: [],
       };
     }
@@ -118,21 +126,39 @@ export class AgentContextService {
     const quest = detail.questDetail.quest;
     const readiness = await this.readiness.assess(id, { transition: false });
     const dependency = buildAgentDependencyContext(snapshot, quest);
+    const doctorReport = await this.doctor.run();
+    const recommendationRequests = findRelevantRecommendationRequests(
+      buildRecommendationRequests(doctorReport),
+      id,
+    );
     const questActions = await this.recommender.recommendForQuest(
       quest,
       readiness,
       dependency,
     );
+    const doctorActions = this.toRecommendationCandidates(recommendationRequests, quest);
     const submissionAction = detail.questDetail.submission
       ? this.toSubmissionCandidate(detail.questDetail.submission)
       : null;
     const recommendedActions = submissionAction
-      ? [...questActions, submissionAction].sort((a, b) =>
+      ? [...doctorActions, ...questActions, submissionAction].sort((a, b) =>
+        compareQuestPriority(
+          (a.priority ?? DEFAULT_QUEST_PRIORITY) as typeof DEFAULT_QUEST_PRIORITY,
+          (b.priority ?? DEFAULT_QUEST_PRIORITY) as typeof DEFAULT_QUEST_PRIORITY,
+        ) ||
         Number(b.allowed) - Number(a.allowed) ||
         b.confidence - a.confidence ||
         a.kind.localeCompare(b.kind)
       )
-      : questActions;
+      : [...doctorActions, ...questActions].sort((a, b) =>
+        compareQuestPriority(
+          (a.priority ?? DEFAULT_QUEST_PRIORITY) as typeof DEFAULT_QUEST_PRIORITY,
+          (b.priority ?? DEFAULT_QUEST_PRIORITY) as typeof DEFAULT_QUEST_PRIORITY,
+        ) ||
+        Number(b.allowed) - Number(a.allowed) ||
+        b.confidence - a.confidence ||
+        a.kind.localeCompare(b.kind)
+      );
     const diagnostics = collectQuestDiagnostics(detail.questDetail, readiness);
 
     return {
@@ -140,6 +166,7 @@ export class AgentContextService {
       readiness,
       dependency,
       recommendedActions,
+      recommendationRequests,
       diagnostics,
     };
   }
@@ -156,6 +183,7 @@ export class AgentContextService {
           kind: 'review',
           targetId: nextStep.targetId,
           args: {},
+          priority: DEFAULT_QUEST_PRIORITY,
           reason: nextStep.reason,
           confidence: 0.96,
           requiresHumanApproval: false,
@@ -175,6 +203,7 @@ export class AgentContextService {
           kind: 'merge',
           targetId: submission.id,
           args: { intoRef: 'main' },
+          priority: DEFAULT_QUEST_PRIORITY,
           reason: nextStep.reason,
           confidence: 0.95,
           requiresHumanApproval: false,
@@ -194,6 +223,7 @@ export class AgentContextService {
           kind: 'revise',
           targetId: submission.id,
           args: {},
+          priority: DEFAULT_QUEST_PRIORITY,
           reason: nextStep.reason,
           confidence: 0.91,
           requiresHumanApproval: false,
@@ -209,6 +239,7 @@ export class AgentContextService {
           kind: 'inspect',
           targetId: nextStep.targetId,
           args: {},
+          priority: DEFAULT_QUEST_PRIORITY,
           reason: nextStep.reason,
           confidence: 0.78,
           requiresHumanApproval: false,
@@ -223,5 +254,33 @@ export class AgentContextService {
       default:
         return null;
     }
+  }
+
+  private toRecommendationCandidates(
+    requests: RecommendationRequest[],
+    quest: QuestNode,
+  ): AgentActionCandidate[] {
+    return requests.map((request) => ({
+      kind: 'inspect',
+      targetId: quest.id,
+      args: { requestId: request.id },
+      priority: request.priority,
+      reason: request.summary,
+      confidence: request.category === 'structural-blocker' ? 0.97 : 0.82,
+      requiresHumanApproval: false,
+      dryRunSummary: request.suggestedAction,
+      blockedBy: [
+        ...(request.blockedTransitions.length > 0
+          ? [`Blocks: ${request.blockedTransitions.join(', ')}`]
+          : []),
+        ...(request.materializable
+          ? ['Doctor marked this remediation as materializable work.']
+          : ['Doctor surfaced this remediation as derived graph-health work.']),
+      ],
+      allowed: true,
+      underlyingCommand: `xyph context ${quest.id}`,
+      sideEffects: [],
+      validationCode: null,
+    }));
   }
 }

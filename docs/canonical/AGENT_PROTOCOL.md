@@ -134,6 +134,7 @@ Terminal error record shape:
 - `assignments`
 - `reviewQueue`
 - `frontier`
+- `recommendationQueue`
 - `alerts`
 - `graphMeta`
 
@@ -151,6 +152,7 @@ Each candidate must include at least:
 
 - `kind`
 - `targetId`
+- `priority`
 - `args`
 - `reason`
 - `confidence`
@@ -162,9 +164,11 @@ The first candidate is the default recommendation. Remaining candidates are
 ordered alternatives.
 
 `next` should combine quest-shaping work with active submission workflow
-candidates such as `review`, `merge`, and `inspect`. When a candidate needs
-additional operator input, it should still be surfaced with machine-readable
-blocking reasons instead of silently disappearing from the queue.
+candidates such as `review`, `merge`, and `inspect`, plus urgent doctor-driven
+graph-health remediation work when structural blockers are competing with normal
+delivery. When a candidate needs additional operator input, it should still be
+surfaced with machine-readable blocking reasons instead of silently disappearing
+from the queue.
 
 ### 4.3 `submissions --json`
 
@@ -176,6 +180,17 @@ blocking reasons instead of silently disappearing from the queue.
 
 Each entry should expose enough normalized data for `act review ...` or
 follow-on `context` calls without forcing extra graph archaeology.
+
+### 4.3.1 `context --json`
+
+`context` remains the target-oriented work packet. For quest targets, the
+agent-specific payload must include:
+
+- `readiness`
+- `dependency`
+- `recommendedActions`
+- `recommendationRequests`
+- `diagnostics`
 
 ### 4.4 `act --json`
 
@@ -206,6 +221,8 @@ outcome must stay truthful. Non-critical follow-on failures may return success
 plus `warnings` and structured `partialFailure` data, but failures to record
 the authoritative graph-side settlement state must return a non-success outcome
 with the committed side effects included so automation can reconcile and retry.
+Actions must also refuse execution when doctor-detected structural blockers make
+the requested transition illegal under the current graph state.
 
 ### 4.5 `handoff --json`
 

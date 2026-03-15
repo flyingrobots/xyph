@@ -8,6 +8,7 @@ All notable changes to XYPH will be documented in this file.
 
 - **`xyph doctor` graph health audit** — new CLI command audits dangling edges (including incoming edges from missing nodes), orphaned workflow/narrative/traceability nodes, readiness contract gaps, sovereignty violations, and governed completion gaps. Supports both human-readable output and `--json` for automation
 - **`xyph doctor prescribe` deterministic remediation view** — doctor now derives structured prescriptions with category (`structural-blocker`, `structural-defect`, `workflow-gap`, `hygiene-gap`), blocked transitions, blocked task IDs, effective priority inheritance, and top remediation buckets for automation and agent-facing triage
+- **Doctor-backed recommendation work in the agent protocol** — `briefing`, `next`, and `context` now surface doctor prescriptions as recommendation work instead of burying graph-health findings inside diagnostics only. `briefing` includes a `recommendationQueue`, `context` includes `recommendationRequests`, and `next` can surface urgent doctor-driven `inspect` candidates
 - **Global "My Stuff" drawer** — press `m` from any screen to toggle an animated drawer showing agent's quests, submissions, and recent activity. Slides in from the right with a tween animation; content is agent-scoped when `XYPH_AGENT_ID` is set. Replaces the fixed right column on the dashboard view
 - **Campaign DAG visualization** — campaigns with inter-campaign dependencies are rendered as a mini-DAG using bijou's `dagLayout()`, sorted topologically. Falls back to flat list when no dependencies exist
 - **Status bar progress bar** — compact gradient progress bar added to the status line showing quest completion percentage
@@ -26,6 +27,7 @@ All notable changes to XYPH will be documented in this file.
 ### Changed
 
 - **`--json` now speaks JSONL stream semantics** — CLI JSON mode can emit newline-delimited JSON event records before the terminal success/error envelope. `xyph doctor` and `xyph doctor prescribe` now stream `start` and `progress` records while long audits run; the final result record remains the existing success/error envelope shape
+- **Agent action validation now refuses structurally illegal transitions** — the action kernel consults cached doctor prescriptions before `ready`, `submit`, `review`, `seal`, and `merge`; transitions blocked by impossible or broken graph state now fail with `illegal-graph-state` instead of limping forward
 - **Dashboard restyled to single-column layout** — graph stats use bold primary labels instead of dim/muted text; health metrics (sovereignty, orphans, forked) merged into the stats area; "Inbox" label renamed to "Backlog"; Top Blockers rendered as `bijouTable()` instead of `enumeratedList()`
 - **Dashboard panel switching removed** — Tab/Shift+Tab on dashboard is now a no-op. The right column content moved to the global drawer (`m` key)
 - **Upgrade bijou 1.3.0 → 1.8.0** — all three packages (`@flyingrobots/bijou`, `bijou-node`, `bijou-tui`) bumped. Test helper imports updated to use `@flyingrobots/bijou/adapters/test` subpath
