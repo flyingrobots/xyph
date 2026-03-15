@@ -46,35 +46,54 @@ vi.mock('../../src/domain/services/DoctorService.js', () => ({
 
 vi.mock('../../src/domain/services/AgentBriefingService.js', () => ({
   AgentBriefingService: class AgentBriefingService {
+    constructor(
+      _graphPort: unknown,
+      _roadmap: unknown,
+      private readonly agentId: string,
+    ) {}
     buildBriefing() {
-      return mocks.buildBriefing();
+      return mocks.buildBriefing(this.agentId);
     }
     next(limit?: number) {
-      return mocks.next(limit);
+      return mocks.next(limit, this.agentId);
     }
   },
 }));
 
 vi.mock('../../src/domain/services/AgentContextService.js', () => ({
   AgentContextService: class AgentContextService {
+    constructor(
+      _graphPort: unknown,
+      _roadmap: unknown,
+      private readonly agentId: string,
+    ) {}
     fetch(id: string) {
-      return mocks.fetchContext(id);
+      return mocks.fetchContext(id, this.agentId);
     }
   },
 }));
 
 vi.mock('../../src/domain/services/AgentSubmissionService.js', () => ({
   AgentSubmissionService: class AgentSubmissionService {
+    constructor(
+      _graphPort: unknown,
+      private readonly agentId: string,
+    ) {}
     list(limit?: number) {
-      return mocks.listSubmissions(limit);
+      return mocks.listSubmissions(limit, this.agentId);
     }
   },
 }));
 
 vi.mock('../../src/domain/services/AgentActionService.js', () => ({
   AgentActionService: class AgentActionService {
+    constructor(
+      _graphPort: unknown,
+      _roadmap: unknown,
+      private readonly agentId: string,
+    ) {}
     execute(request: unknown) {
-      return mocks.executeAction(request);
+      return mocks.executeAction(request, this.agentId);
     }
   },
 }));
@@ -134,8 +153,11 @@ describe('ControlPlaneService', () => {
       sortedCampaignIds: [],
       transitiveDownstream: new Map(),
     });
-    mocks.buildBriefing.mockResolvedValue({
-      identity: { agentId: 'agent.prime', principalType: 'agent' },
+    mocks.buildBriefing.mockImplementation(async (agentId: string) => ({
+      identity: {
+        agentId,
+        principalType: agentId.startsWith('human.') ? 'human' : 'agent',
+      },
       assignments: [],
       reviewQueue: [],
       frontier: [],
@@ -144,7 +166,7 @@ describe('ControlPlaneService', () => {
       alerts: [],
       diagnostics: [],
       graphMeta: { maxTick: 12, myTick: 12, writerCount: 1, tipSha: 'abcdef1' },
-    });
+    }));
     mocks.next.mockResolvedValue({ candidates: [], diagnostics: [] });
     mocks.fetchContext.mockResolvedValue(null);
     mocks.listSubmissions.mockResolvedValue({
@@ -211,8 +233,47 @@ describe('ControlPlaneService', () => {
       }),
       observation: expect.objectContaining({
         worldlineId: 'worldline:live',
+        principalId: 'agent.prime',
+        principalType: 'agent',
         observerProfileId: 'observer:default',
         graphMeta: { maxTick: 12, myTick: 12, writerCount: 1, tipSha: 'abcdef1' },
+      }),
+    }));
+  });
+
+  it('uses the request auth principal override for durable writes and audit metadata', async () => {
+    const service = new ControlPlaneService({
+      getGraph: mocks.getGraph,
+      reset: vi.fn(),
+    }, 'agent.prime');
+
+    const result = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'req-auth',
+      cmd: 'comment',
+      args: {
+        targetId: 'task:ONE',
+        message: 'Written as a different principal.',
+      },
+      auth: {
+        principalId: 'human.ada',
+      },
+    });
+
+    expect(mocks.createComment).toHaveBeenCalledWith({
+      id: undefined,
+      targetId: 'task:ONE',
+      message: 'Written as a different principal.',
+      replyTo: undefined,
+      authoredBy: 'human.ada',
+      idempotencyKey: undefined,
+    });
+    expect(result).toEqual(expect.objectContaining({
+      ok: true,
+      audit: expect.objectContaining({
+        principalId: 'human.ada',
+        principalType: 'human',
+        principalSource: 'request-auth',
       }),
     }));
   });
@@ -296,6 +357,116 @@ describe('ControlPlaneService', () => {
       data: expect.objectContaining({
         id: 'comment:1',
         patch: 'patch:comment',
+      }),
+    }));
+  });
+
+  it('denies attest for non-human principals via effective capability resolution', async () => {
+    const service = new ControlPlaneService({
+      getGraph: mocks.getGraph,
+      reset: vi.fn(),
+    }, 'agent.prime');
+
+    const result = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'req-attest',
+      cmd: 'attest',
+      args: {
+        targetId: 'task:ONE',
+        decision: 'approve',
+        rationale: 'Agents should not adjudicate directly in this slice.',
+      },
+    });
+
+    expect(mocks.createAttestation).not.toHaveBeenCalled();
+    expect(result).toEqual(expect.objectContaining({
+      ok: false,
+      error: expect.objectContaining({
+        code: 'capability_denied',
+      }),
+      audit: expect.objectContaining({
+        principalId: 'agent.prime',
+        capabilityMode: 'normal',
+      }),
+    }));
+  });
+
+  it('requires explicit human admin capability for hidden admin commands', async () => {
+    const service = new ControlPlaneService({
+      getGraph: mocks.getGraph,
+      reset: vi.fn(),
+    }, 'agent.prime');
+
+    const denied = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'req-query-denied',
+      cmd: 'query',
+      args: {},
+      auth: {
+        principalId: 'human.ada',
+      },
+    });
+
+    expect(denied).toEqual(expect.objectContaining({
+      ok: false,
+      error: expect.objectContaining({
+        code: 'capability_denied',
+      }),
+    }));
+
+    const admin = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'req-query-admin',
+      cmd: 'query',
+      args: {},
+      auth: {
+        principalId: 'human.ada',
+        admin: true,
+      },
+    });
+
+    expect(admin).toEqual(expect.objectContaining({
+      ok: false,
+      error: expect.objectContaining({
+        code: 'not_implemented',
+      }),
+      audit: expect.objectContaining({
+        principalId: 'human.ada',
+        capabilityMode: 'admin',
+      }),
+    }));
+  });
+
+  it('explains control-plane capability denials for probe commands', async () => {
+    const service = new ControlPlaneService({
+      getGraph: mocks.getGraph,
+      reset: vi.fn(),
+    }, 'agent.prime');
+
+    const result = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'req-explain-cap',
+      cmd: 'explain',
+      args: {
+        command: 'rewind_worldline',
+        commandAuth: {
+          principalId: 'human.ada',
+        },
+      },
+    });
+
+    expect(result).toEqual(expect.objectContaining({
+      ok: true,
+      data: expect.objectContaining({
+        command: 'rewind_worldline',
+        capability: expect.objectContaining({
+          principalId: 'human.ada',
+          allowed: false,
+        }),
+        explanation: expect.objectContaining({
+          code: 'capability_denied',
+          basis: expect.any(String),
+        }),
       }),
     }));
   });

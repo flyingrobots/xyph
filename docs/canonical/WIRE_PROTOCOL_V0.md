@@ -41,7 +41,12 @@ Fields:
 - `id`: caller-supplied request ID
 - `cmd`: canonical command name
 - `args`: command arguments
-- `auth`: optional auth material for future adapters
+- `auth`: optional auth claims for the current bootstrap slice
+
+Current bootstrap auth fields:
+
+- `principalId`
+- `admin`
 
 ## Event Record
 
@@ -138,10 +143,16 @@ Every read returns a reproducible observation coordinate:
 
 - `worldlineId`
 - `observedAt`
+- `principalId`
+- `principalType`
 - `observerProfileId`
+- `basis`
 - `basisVersion`
+- `aperture`
 - `apertureVersion`
 - `policyPackVersion`
+- `capabilityMode`
+- `sealedObservationMode`
 - `selectorDigest`
 - `frontierDigest`
 - `graphMeta`
@@ -196,6 +207,11 @@ ID.
 Every terminal record carries audit metadata describing:
 
 - principal
+- principal type
+- principal source
+- observer profile
+- policy pack version
+- capability mode
 - attempted time
 - completed time
 - outcome

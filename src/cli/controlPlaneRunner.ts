@@ -1,5 +1,7 @@
 import {
   CONTROL_PLANE_VERSION,
+  DEFAULT_OBSERVER_PROFILE_ID,
+  DEFAULT_POLICY_PACK_VERSION,
   type ControlPlaneErrorRecordV1,
   type ControlPlaneOutputRecordV1,
   type ControlPlaneRequestV1,
@@ -23,6 +25,15 @@ function invalidEnvelopeRecord(
     },
     audit: {
       principalId,
+      principalType: principalId.startsWith('human.')
+        ? 'human'
+        : principalId.startsWith('service.')
+          ? 'service'
+          : 'agent',
+      principalSource: 'runtime-default',
+      observerProfileId: DEFAULT_OBSERVER_PROFILE_ID,
+      policyPackVersion: DEFAULT_POLICY_PACK_VERSION,
+      capabilityMode: 'normal',
       attemptedAt: now,
       completedAt: now,
       outcome: 'error',

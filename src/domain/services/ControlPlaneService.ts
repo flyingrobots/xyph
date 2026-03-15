@@ -3,16 +3,11 @@ import type { GraphPort } from '../../ports/GraphPort.js';
 import type { ControlPlaneHooks, ControlPlanePort } from '../../ports/ControlPlanePort.js';
 import {
   CONTROL_PLANE_VERSION,
-  DEFAULT_APERTURE_VERSION,
-  DEFAULT_BASIS_VERSION,
-  DEFAULT_COMPARISON_POLICY_VERSION,
-  DEFAULT_OBSERVER_PROFILE_ID,
-  DEFAULT_POLICY_PACK_VERSION,
-  DEFAULT_WORLDLINE_ID,
   type ControlPlaneAudit,
   type ControlPlaneError,
   type ControlPlaneErrorCode,
   type ControlPlaneEventRecordV1,
+  type EffectiveCapabilityGrant,
   type ControlPlaneRequestV1,
   type ControlPlaneTerminalRecordV1,
   type ObservationCoordinate,
@@ -29,6 +24,7 @@ import { explainError, explainErrorCode } from './ExplainService.js';
 import { MutationKernelService } from './MutationKernelService.js';
 import { RecordService } from './RecordService.js';
 import type { GraphMeta } from '../models/dashboard.js';
+import { CapabilityResolverService } from './CapabilityResolverService.js';
 
 function stable(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(stable);
@@ -109,25 +105,19 @@ function controlPlaneFailure(
 export class ControlPlaneService implements ControlPlanePort {
   private readonly roadmap: WarpRoadmapAdapter;
   private readonly doctor: DoctorService;
-  private readonly briefing: AgentBriefingService;
-  private readonly context: AgentContextService;
-  private readonly submissions: AgentSubmissionService;
-  private readonly actions: AgentActionService;
   private readonly mutations: MutationKernelService;
   private readonly records: RecordService;
+  private readonly capabilities: CapabilityResolverService;
 
   constructor(
     private readonly graphPort: GraphPort,
-    private readonly agentId: string,
+    agentId: string,
   ) {
     this.roadmap = new WarpRoadmapAdapter(graphPort);
     this.doctor = new DoctorService(graphPort, this.roadmap);
-    this.briefing = new AgentBriefingService(graphPort, this.roadmap, agentId, this.doctor);
-    this.context = new AgentContextService(graphPort, this.roadmap, agentId, this.doctor);
-    this.submissions = new AgentSubmissionService(graphPort, agentId);
-    this.actions = new AgentActionService(graphPort, this.roadmap, agentId);
     this.mutations = new MutationKernelService(graphPort);
     this.records = new RecordService(graphPort);
+    this.capabilities = new CapabilityResolverService(agentId);
   }
 
   public async execute(
@@ -135,10 +125,13 @@ export class ControlPlaneService implements ControlPlanePort {
     hooks?: ControlPlaneHooks,
   ): Promise<ControlPlaneTerminalRecordV1> {
     const attemptedAt = Date.now();
+    let capability: EffectiveCapabilityGrant | null = null;
     hooks?.onEvent?.(buildEvent(request.id, request.cmd, 'start'));
 
     try {
-      const response = await this.dispatch(request, hooks);
+      capability = this.capabilities.resolve(request);
+      this.requireCapability(request.cmd, capability);
+      const response = await this.dispatch(request, capability, hooks);
       const completedAt = Date.now();
       return {
         v: CONTROL_PLANE_VERSION,
@@ -148,7 +141,12 @@ export class ControlPlaneService implements ControlPlanePort {
         data: response.data,
         ...(response.diagnostics.length === 0 ? {} : { diagnostics: response.diagnostics }),
         ...(response.observation === undefined ? {} : { observation: response.observation }),
-        audit: this.audit(attemptedAt, completedAt, request.args['idempotencyKey']),
+        audit: this.audit(
+          capability,
+          attemptedAt,
+          completedAt,
+          request.args['idempotencyKey'],
+        ),
       };
     } catch (err) {
       const completedAt = Date.now();
@@ -159,19 +157,34 @@ export class ControlPlaneService implements ControlPlanePort {
         ok: false,
         cmd: request.cmd,
         error,
-        audit: this.audit(attemptedAt, completedAt, request.args['idempotencyKey'], 'error'),
+        audit: this.audit(
+          capability ?? this.capabilities.resolve({
+            ...request,
+            auth: undefined,
+          }),
+          attemptedAt,
+          completedAt,
+          request.args['idempotencyKey'],
+          'error',
+        ),
       };
     }
   }
 
   private audit(
+    capability: EffectiveCapabilityGrant,
     attemptedAt: number,
     completedAt: number,
     idempotencyKey: unknown,
     outcome: ControlPlaneAudit['outcome'] = 'ok',
   ): ControlPlaneAudit {
     return {
-      principalId: this.agentId,
+      principalId: capability.principal.principalId,
+      principalType: capability.principal.principalType,
+      principalSource: capability.principal.source,
+      observerProfileId: capability.observer.observerProfileId,
+      policyPackVersion: capability.policyPackVersion,
+      capabilityMode: capability.capabilityMode,
       attemptedAt,
       completedAt,
       outcome,
@@ -181,6 +194,7 @@ export class ControlPlaneService implements ControlPlanePort {
 
   private async dispatch(
     request: ControlPlaneRequestV1,
+    capability: EffectiveCapabilityGrant,
     hooks?: ControlPlaneHooks,
   ): Promise<{
     data: Record<string, unknown>;
@@ -189,21 +203,21 @@ export class ControlPlaneService implements ControlPlanePort {
   }> {
     switch (request.cmd) {
       case 'observe':
-        return this.observe(request, hooks);
+        return this.observe(request, capability, hooks);
       case 'history':
-        return this.history(request);
+        return this.history(request, capability);
       case 'diff':
-        return this.diff(request);
+        return this.diff(request, capability);
       case 'explain':
-        return this.explain(request);
+        return this.explain(request, capability);
       case 'apply':
-        return this.apply(request);
+        return this.apply(request, capability);
       case 'comment':
-        return this.comment(request);
+        return this.comment(request, capability);
       case 'propose':
-        return this.propose(request);
+        return this.propose(request, capability);
       case 'attest':
-        return this.attest(request);
+        return this.attest(request, capability);
       case 'fork_worldline':
       case 'compare_worldlines':
       case 'collapse_worldline':
@@ -221,8 +235,44 @@ export class ControlPlaneService implements ControlPlanePort {
     }
   }
 
+  private requireCapability(
+    cmd: string,
+    capability: EffectiveCapabilityGrant,
+  ): void {
+    const decision = this.capabilities.authorize(capability, cmd);
+    if (decision.allowed) return;
+    throw controlPlaneFailure(
+      decision.code ?? 'capability_denied',
+      decision.reason ?? `Capability denied for ${cmd}`,
+      {
+        basis: decision.basis,
+        principalId: capability.principal.principalId,
+        principalType: capability.principal.principalType,
+        principalSource: capability.principal.source,
+        observerProfileId: capability.observer.observerProfileId,
+        policyPackVersion: capability.policyPackVersion,
+        capabilityMode: capability.capabilityMode,
+      },
+    );
+  }
+
+  private createPrincipalServices(principalId: string): {
+    briefing: AgentBriefingService;
+    context: AgentContextService;
+    submissions: AgentSubmissionService;
+    actions: AgentActionService;
+  } {
+    return {
+      briefing: new AgentBriefingService(this.graphPort, this.roadmap, principalId, this.doctor),
+      context: new AgentContextService(this.graphPort, this.roadmap, principalId, this.doctor),
+      submissions: new AgentSubmissionService(this.graphPort, principalId),
+      actions: new AgentActionService(this.graphPort, this.roadmap, principalId),
+    };
+  }
+
   private async observe(
     request: ControlPlaneRequestV1,
+    capability: EffectiveCapabilityGrant,
     hooks?: ControlPlaneHooks,
   ): Promise<{
     data: Record<string, unknown>;
@@ -232,6 +282,7 @@ export class ControlPlaneService implements ControlPlanePort {
     const projection = typeof request.args['projection'] === 'string'
       ? request.args['projection']
       : 'graph.summary';
+    const principalServices = this.createPrincipalServices(capability.principal.principalId);
 
     const graphCtx = createGraphContext(this.graphPort);
     switch (projection) {
@@ -260,7 +311,12 @@ export class ControlPlaneService implements ControlPlanePort {
             graphMeta: snapshot.graphMeta ?? null,
           },
           diagnostics: [],
-          observation: await this.buildObservationCoordinate(request, snapshot.asOf, snapshot.graphMeta ?? null),
+          observation: await this.buildObservationCoordinate(
+            request,
+            capability,
+            snapshot.asOf,
+            snapshot.graphMeta ?? null,
+          ),
         };
       }
       case 'entity.detail': {
@@ -276,13 +332,13 @@ export class ControlPlaneService implements ControlPlanePort {
             detail,
           },
           diagnostics: [],
-          observation: await this.buildObservationCoordinate(request, Date.now(), null, true),
+          observation: await this.buildObservationCoordinate(request, capability, Date.now(), null, true),
         };
       }
       case 'slice.local':
       case 'context': {
         const targetId = this.requireString(request.args['targetId'], 'observe targetId');
-        const result = await this.context.fetch(targetId);
+        const result = await principalServices.context.fetch(targetId);
         if (!result) {
           throw controlPlaneFailure('not_found', `Entity ${targetId} not found in the graph`);
         }
@@ -299,6 +355,7 @@ export class ControlPlaneService implements ControlPlanePort {
           diagnostics: result.diagnostics,
           observation: await this.buildObservationCoordinate(
             request,
+            capability,
             Date.now(),
             null,
             false,
@@ -306,42 +363,42 @@ export class ControlPlaneService implements ControlPlanePort {
         };
       }
       case 'briefing': {
-        const briefing = await this.briefing.buildBriefing();
+        const briefing = await principalServices.briefing.buildBriefing();
         return {
           data: {
             projection,
             briefing,
           },
           diagnostics: briefing.diagnostics,
-          observation: await this.buildObservationCoordinate(request, Date.now(), briefing.graphMeta),
+          observation: await this.buildObservationCoordinate(request, capability, Date.now(), briefing.graphMeta),
         };
       }
       case 'next': {
         const limit = typeof request.args['limit'] === 'number'
           ? request.args['limit']
           : 5;
-        const next = await this.briefing.next(limit);
+        const next = await principalServices.briefing.next(limit);
         return {
           data: {
             projection,
             candidates: next.candidates,
           },
           diagnostics: next.diagnostics,
-          observation: await this.buildObservationCoordinate(request, Date.now(), null),
+          observation: await this.buildObservationCoordinate(request, capability, Date.now(), null),
         };
       }
       case 'submissions': {
         const limit = typeof request.args['limit'] === 'number'
           ? request.args['limit']
           : 10;
-        const queues = await this.submissions.list(limit);
+        const queues = await principalServices.submissions.list(limit);
         return {
           data: {
             projection,
             queues,
           },
           diagnostics: [],
-          observation: await this.buildObservationCoordinate(request, queues.asOf, null),
+          observation: await this.buildObservationCoordinate(request, capability, queues.asOf, null),
         };
       }
       case 'diagnostics': {
@@ -356,7 +413,7 @@ export class ControlPlaneService implements ControlPlanePort {
             report,
           },
           diagnostics: report.diagnostics,
-          observation: await this.buildObservationCoordinate(request, report.asOf, report.graphMeta ?? null),
+          observation: await this.buildObservationCoordinate(request, capability, report.asOf, report.graphMeta ?? null),
         };
       }
       case 'prescriptions': {
@@ -373,7 +430,7 @@ export class ControlPlaneService implements ControlPlanePort {
             prescriptions: report.prescriptions,
           },
           diagnostics: report.diagnostics,
-          observation: await this.buildObservationCoordinate(request, report.asOf, report.graphMeta ?? null),
+          observation: await this.buildObservationCoordinate(request, capability, report.asOf, report.graphMeta ?? null),
         };
       }
       default:
@@ -383,6 +440,7 @@ export class ControlPlaneService implements ControlPlanePort {
 
   private async history(
     request: ControlPlaneRequestV1,
+    capability: EffectiveCapabilityGrant,
   ): Promise<{
     data: Record<string, unknown>;
     diagnostics: Diagnostic[];
@@ -402,12 +460,13 @@ export class ControlPlaneService implements ControlPlanePort {
         patches,
       },
       diagnostics: [],
-      observation: await this.buildObservationCoordinate(request, Date.now(), null),
+      observation: await this.buildObservationCoordinate(request, capability, Date.now(), null),
     };
   }
 
   private async diff(
     request: ControlPlaneRequestV1,
+    capability: EffectiveCapabilityGrant,
   ): Promise<{
     data: Record<string, unknown>;
     diagnostics: Diagnostic[];
@@ -417,7 +476,7 @@ export class ControlPlaneService implements ControlPlanePort {
       request.args['sinceFrontierDigest'],
       'diff sinceFrontierDigest',
     );
-    const observation = await this.buildObservationCoordinate(request, Date.now(), null);
+    const observation = await this.buildObservationCoordinate(request, capability, Date.now(), null);
     const targetId = typeof request.args['targetId'] === 'string'
       ? request.args['targetId']
       : null;
@@ -442,6 +501,7 @@ export class ControlPlaneService implements ControlPlanePort {
 
   private async explain(
     request: ControlPlaneRequestV1,
+    capability: EffectiveCapabilityGrant,
   ): Promise<{
     data: Record<string, unknown>;
     diagnostics: Diagnostic[];
@@ -458,11 +518,64 @@ export class ControlPlaneService implements ControlPlanePort {
       };
     }
 
+    if (typeof request.args['command'] === 'string') {
+      const commandArgs = (request.args['commandArgs'] && typeof request.args['commandArgs'] === 'object')
+        ? request.args['commandArgs'] as Record<string, unknown>
+        : {};
+      const commandAuth = (request.args['commandAuth'] && typeof request.args['commandAuth'] === 'object')
+        ? request.args['commandAuth'] as ControlPlaneRequestV1['auth']
+        : undefined;
+      const probeRequest: ControlPlaneRequestV1 = {
+        v: request.v,
+        id: `${request.id}:probe`,
+        cmd: request.args['command'],
+        args: commandArgs,
+        ...(commandAuth === undefined ? {} : { auth: commandAuth }),
+      };
+      const probeCapability = this.capabilities.resolve(probeRequest);
+      const decision = this.capabilities.authorize(probeCapability, probeRequest.cmd);
+      const explanation = decision.allowed
+        ? null
+        : explainError({
+          code: decision.code ?? 'capability_denied',
+          message: decision.reason ?? 'Capability denied',
+          details: {
+            basis: decision.basis,
+            principalId: probeCapability.principal.principalId,
+            principalType: probeCapability.principal.principalType,
+            principalSource: probeCapability.principal.source,
+            observerProfileId: probeCapability.observer.observerProfileId,
+            policyPackVersion: probeCapability.policyPackVersion,
+            capabilityMode: probeCapability.capabilityMode,
+          },
+        });
+
+      return {
+        data: {
+          command: probeRequest.cmd,
+          capability: {
+            principalId: probeCapability.principal.principalId,
+            principalType: probeCapability.principal.principalType,
+            principalSource: probeCapability.principal.source,
+            observerProfileId: probeCapability.observer.observerProfileId,
+            policyPackVersion: probeCapability.policyPackVersion,
+            capabilityMode: probeCapability.capabilityMode,
+            allowed: decision.allowed,
+            reason: decision.reason,
+            basis: decision.basis,
+          },
+          explanation,
+        },
+        diagnostics: [],
+      };
+    }
+
     if (typeof request.args['actionKind'] === 'string' && typeof request.args['targetId'] === 'string') {
+      const principalServices = this.createPrincipalServices(capability.principal.principalId);
       const actionArgs = (request.args['actionArgs'] && typeof request.args['actionArgs'] === 'object')
         ? request.args['actionArgs'] as Record<string, unknown>
         : {};
-      const outcome = await this.actions.execute({
+      const outcome = await principalServices.actions.execute({
         kind: request.args['actionKind'],
         targetId: request.args['targetId'],
         dryRun: true,
@@ -497,7 +610,8 @@ export class ControlPlaneService implements ControlPlanePort {
     }
 
     if (typeof request.args['targetId'] === 'string') {
-      const result = await this.context.fetch(request.args['targetId']);
+      const principalServices = this.createPrincipalServices(capability.principal.principalId);
+      const result = await principalServices.context.fetch(request.args['targetId']);
       if (!result) {
         throw controlPlaneFailure('not_found', `Entity ${request.args['targetId']} not found in the graph`);
       }
@@ -508,7 +622,7 @@ export class ControlPlaneService implements ControlPlanePort {
           recommendationRequests: result.recommendationRequests,
         },
         diagnostics: result.diagnostics,
-        observation: await this.buildObservationCoordinate(request, Date.now(), null),
+        observation: await this.buildObservationCoordinate(request, capability, Date.now(), null),
       };
     }
 
@@ -520,6 +634,7 @@ export class ControlPlaneService implements ControlPlanePort {
 
   private async apply(
     request: ControlPlaneRequestV1,
+    capability: EffectiveCapabilityGrant,
   ): Promise<{
     data: Record<string, unknown>;
     diagnostics: Diagnostic[];
@@ -558,12 +673,13 @@ export class ControlPlaneService implements ControlPlanePort {
         opCount: ops.length,
       },
       diagnostics: [],
-      observation: await this.buildObservationCoordinate(request, Date.now(), null),
+      observation: await this.buildObservationCoordinate(request, capability, Date.now(), null),
     };
   }
 
   private async comment(
     request: ControlPlaneRequestV1,
+    capability: EffectiveCapabilityGrant,
   ): Promise<{
     data: Record<string, unknown>;
     diagnostics: Diagnostic[];
@@ -576,7 +692,7 @@ export class ControlPlaneService implements ControlPlanePort {
       targetId,
       message,
       replyTo: typeof request.args['replyTo'] === 'string' ? request.args['replyTo'] : undefined,
-      authoredBy: this.agentId,
+      authoredBy: capability.principal.principalId,
       idempotencyKey: typeof request.args['idempotencyKey'] === 'string'
         ? request.args['idempotencyKey']
         : undefined,
@@ -586,18 +702,19 @@ export class ControlPlaneService implements ControlPlanePort {
       data: {
         id: result.id,
         targetId,
-        authoredBy: this.agentId,
+        authoredBy: capability.principal.principalId,
         authoredAt: result.authoredAt,
         patch: result.patch,
         contentOid: result.contentOid,
       },
       diagnostics: [],
-      observation: await this.buildObservationCoordinate(request, Date.now(), null),
+      observation: await this.buildObservationCoordinate(request, capability, Date.now(), null),
     };
   }
 
   private async propose(
     request: ControlPlaneRequestV1,
+    capability: EffectiveCapabilityGrant,
   ): Promise<{
     data: Record<string, unknown>;
     diagnostics: Diagnostic[];
@@ -612,9 +729,9 @@ export class ControlPlaneService implements ControlPlanePort {
       targetId: typeof request.args['targetId'] === 'string' ? request.args['targetId'] : undefined,
       payload: request.args['payload'],
       rationale: typeof request.args['rationale'] === 'string' ? request.args['rationale'] : undefined,
-      proposedBy: this.agentId,
-      observerProfileId: this.resolveObserverProfileId(request),
-      policyPackVersion: this.resolvePolicyPackVersion(request),
+      proposedBy: capability.principal.principalId,
+      observerProfileId: capability.observer.observerProfileId,
+      policyPackVersion: capability.policyPackVersion,
       idempotencyKey: typeof request.args['idempotencyKey'] === 'string'
         ? request.args['idempotencyKey']
         : undefined,
@@ -626,18 +743,19 @@ export class ControlPlaneService implements ControlPlanePort {
         kind,
         subjectId,
         targetId: typeof request.args['targetId'] === 'string' ? request.args['targetId'] : null,
-        proposedBy: this.agentId,
+        proposedBy: capability.principal.principalId,
         proposedAt: result.proposedAt,
         patch: result.patch,
         contentOid: result.contentOid,
       },
       diagnostics: [],
-      observation: await this.buildObservationCoordinate(request, Date.now(), null),
+      observation: await this.buildObservationCoordinate(request, capability, Date.now(), null),
     };
   }
 
   private async attest(
     request: ControlPlaneRequestV1,
+    capability: EffectiveCapabilityGrant,
   ): Promise<{
     data: Record<string, unknown>;
     diagnostics: Diagnostic[];
@@ -652,9 +770,9 @@ export class ControlPlaneService implements ControlPlanePort {
       decision,
       rationale,
       scope: request.args['scope'],
-      attestedBy: this.agentId,
-      observerProfileId: this.resolveObserverProfileId(request),
-      policyPackVersion: this.resolvePolicyPackVersion(request),
+      attestedBy: capability.principal.principalId,
+      observerProfileId: capability.observer.observerProfileId,
+      policyPackVersion: capability.policyPackVersion,
       idempotencyKey: typeof request.args['idempotencyKey'] === 'string'
         ? request.args['idempotencyKey']
         : undefined,
@@ -665,13 +783,13 @@ export class ControlPlaneService implements ControlPlanePort {
         id: result.id,
         targetId,
         decision,
-        attestedBy: this.agentId,
+        attestedBy: capability.principal.principalId,
         attestedAt: result.attestedAt,
         patch: result.patch,
         contentOid: result.contentOid,
       },
       diagnostics: [],
-      observation: await this.buildObservationCoordinate(request, Date.now(), null),
+      observation: await this.buildObservationCoordinate(request, capability, Date.now(), null),
     };
   }
 
@@ -680,18 +798,6 @@ export class ControlPlaneService implements ControlPlanePort {
       throw controlPlaneFailure('invalid_args', `${label} must be a non-empty string`);
     }
     return value.trim();
-  }
-
-  private resolveObserverProfileId(request: ControlPlaneRequestV1): string {
-    return typeof request.args['observerProfileId'] === 'string'
-      ? request.args['observerProfileId']
-      : DEFAULT_OBSERVER_PROFILE_ID;
-  }
-
-  private resolvePolicyPackVersion(request: ControlPlaneRequestV1): string {
-    return typeof request.args['policyPackVersion'] === 'string'
-      ? request.args['policyPackVersion']
-      : DEFAULT_POLICY_PACK_VERSION;
   }
 
   private mapActionCode(code: string): ControlPlaneErrorCode {
@@ -715,6 +821,7 @@ export class ControlPlaneService implements ControlPlanePort {
 
   private async buildObservationCoordinate(
     request: ControlPlaneRequestV1,
+    capability: EffectiveCapabilityGrant,
     observedAt: number,
     graphMeta: GraphMeta | null,
     onlyMeta = false,
@@ -726,16 +833,18 @@ export class ControlPlaneService implements ControlPlanePort {
     );
 
     return {
-      worldlineId: DEFAULT_WORLDLINE_ID,
+      worldlineId: capability.worldlineId,
       observedAt,
-      observerProfileId: this.resolveObserverProfileId(request),
-      basisVersion: typeof request.args['basisVersion'] === 'string'
-        ? request.args['basisVersion']
-        : DEFAULT_BASIS_VERSION,
-      apertureVersion: typeof request.args['apertureVersion'] === 'string'
-        ? request.args['apertureVersion']
-        : DEFAULT_APERTURE_VERSION,
-      policyPackVersion: this.resolvePolicyPackVersion(request),
+      principalId: capability.principal.principalId,
+      principalType: capability.principal.principalType,
+      observerProfileId: capability.observer.observerProfileId,
+      basis: capability.observer.basis,
+      basisVersion: capability.observer.basisVersion,
+      aperture: capability.observer.aperture,
+      apertureVersion: capability.observer.apertureVersion,
+      policyPackVersion: capability.policyPackVersion,
+      capabilityMode: capability.capabilityMode,
+      sealedObservationMode: capability.rights.sealedObservationMode,
       selectorDigest: digest({
         cmd: request.cmd,
         args: request.args,
@@ -743,9 +852,7 @@ export class ControlPlaneService implements ControlPlanePort {
       }),
       frontierDigest,
       graphMeta,
-      comparisonPolicyVersion: typeof request.args['comparisonPolicyVersion'] === 'string'
-        ? request.args['comparisonPolicyVersion']
-        : DEFAULT_COMPARISON_POLICY_VERSION,
+      comparisonPolicyVersion: capability.comparisonPolicyVersion,
     };
   }
 }

@@ -6,6 +6,7 @@ All notable changes to XYPH will be documented in this file.
 
 ### Added
 
+- **Per-request capability resolution for `xyph api`** — the sovereign control-plane now computes principal, observer profile, and effective capability grants per request instead of assuming one process-wide identity. `apply`, `attest`, `propose`, `comment`, and hidden admin/debug commands now flow through a shared capability resolver, and audit/observation metadata carry the resolved principal and capability context
 - **Sovereign control-plane foundation** — added `xyph api`, a versioned JSONL machine interface backed by `ControlPlaneService` with `observe`, `history`, `diff`, `explain`, `apply`, `comment`, `propose`, and `attest` command support. The current slice reserves `fork_worldline`, `compare_worldlines`, `collapse_worldline`, `query`, and `rewind_worldline` without pretending they are implemented yet
 - **Generic mutation kernel** — added `MutationKernelService`, a single allowlisted primitive-op mutation path (`add_node`, `remove_node`, `set_node_property`, `add_edge`, `remove_edge`, `set_edge_property`, `attach_node_content`, `attach_edge_content`) for sovereign control-plane writes and future collapse lowering
 - **Append-only proposal and attestation records** — added `RecordService` support for `proposal:*` and `attestation:*` durable records, alongside comment creation routed through the same mutation kernel instead of ad hoc CLI patch logic

@@ -128,6 +128,16 @@ The diagnostic should consider dangerous concentration of:
 
 The current sovereign-control-plane foundation carries observer and policy
 metadata in its JSONL observation coordinate and durable proposal/attestation
-records. It does **not** yet implement full capability-resolution policies or
-worldline-specific observer governance. This document defines the target
-contract that future slices must satisfy.
+records. It now also computes a bootstrap per-request effective capability grant
+for `xyph api`, including:
+
+- runtime-default vs request-auth principal source
+- observer-profile-derived perception context
+- explicit admin-mode requests for hidden admin/debug commands
+- current-slice command gating for `apply`, `attest`, `propose`, `comment`,
+  `query`, and `rewind_worldline`
+
+This is still a bootstrap authority engine, not the final rights model. It does
+**not** yet implement full worldline-specific observer governance, replay
+consent, due-process override flows, or sealed-observation policy packs. This
+document defines the target contract that future slices must satisfy.

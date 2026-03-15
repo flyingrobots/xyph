@@ -11,7 +11,8 @@ vocabulary, or type system.
 
 Load-bearing rule: **Observer profiles do not grant authority by existing.**
 Observer profiles shape perception. Effective capability is resolved from the
-principal, observer profile, policy pack, and observation/worldline coordinate.
+principal, observer profile, policy pack, observation/worldline coordinate, and
+the active command family.
 
 ## Hexagonal Architecture (Ports & Adapters)
 
@@ -34,7 +35,7 @@ principal, observer profile, policy pack, and observation/worldline coordinate.
 ### Layers
 
 - **`src/domain/entities/`** — Core business objects: `Quest`, `Intent`, `Submission`, `ApprovalGate`, `Orchestration`.
-- **`src/domain/services/`** — Domain logic: `CoordinatorService`, `SubmissionService`, `IntakeService`, `DepAnalysis`, `GuildSealService`, `SovereigntyService`, `IngestService`, `NormalizeService`, `RebalanceService`, the agent-kernel services defined by `AGENT_PROTOCOL.md`, and the sovereign control-plane services such as `ControlPlaneService`, `MutationKernelService`, `RecordService`, and `ExplainService`.
+- **`src/domain/services/`** — Domain logic: `CoordinatorService`, `SubmissionService`, `IntakeService`, `DepAnalysis`, `GuildSealService`, `SovereigntyService`, `IngestService`, `NormalizeService`, `RebalanceService`, the agent-kernel services defined by `AGENT_PROTOCOL.md`, and the sovereign control-plane services such as `ControlPlaneService`, `CapabilityResolverService`, `MutationKernelService`, `RecordService`, and `ExplainService`.
 - **`src/domain/models/`** — View models and protocol models, including dashboard snapshots and versioned control-plane JSONL envelopes.
 - **`src/ports/`** — Boundary interfaces: `GraphPort`, `RoadmapPort`, `IntakePort`, `SubmissionPort`, `WorkspacePort`, `ControlPlanePort`.
 - **`src/infrastructure/adapters/`** — Concrete implementations backed by git-warp and git: `WarpGraphAdapter`, `WarpIntakeAdapter`, `WarpSubmissionAdapter`, `WarpRoadmapAdapter`, `GitWorkspaceAdapter`.

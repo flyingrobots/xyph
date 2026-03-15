@@ -4,10 +4,15 @@ import type { GraphMeta } from './dashboard.js';
 export const CONTROL_PLANE_VERSION = 1 as const;
 export const DEFAULT_WORLDLINE_ID = 'worldline:live' as const;
 export const DEFAULT_OBSERVER_PROFILE_ID = 'observer:default' as const;
+export const DEFAULT_BASIS = 'compat' as const;
 export const DEFAULT_BASIS_VERSION = 'compat-v0' as const;
+export const DEFAULT_APERTURE = 'compat' as const;
 export const DEFAULT_APERTURE_VERSION = 'compat-v0' as const;
 export const DEFAULT_POLICY_PACK_VERSION = 'compat-v0' as const;
 export const DEFAULT_COMPARISON_POLICY_VERSION = 'compat-v0' as const;
+export const DEFAULT_DIAGNOSTIC_SCOPE = 'standard' as const;
+export const DEFAULT_COMPARISON_POLICY_DEFAULTS = 'compat' as const;
+export const DEFAULT_SEALED_OBSERVATION_MODE = 'structured-redaction' as const;
 
 export const CANONICAL_ARTIFACT_KINDS = [
   'observation-record',
@@ -19,6 +24,12 @@ export const CANONICAL_ARTIFACT_KINDS = [
 ] as const;
 
 export type CanonicalArtifactKind = typeof CANONICAL_ARTIFACT_KINDS[number];
+
+export type PrincipalType = 'human' | 'agent' | 'service' | 'unknown';
+export type PrincipalSource = 'runtime-default' | 'request-auth';
+export type CapabilityMode = 'normal' | 'admin';
+export type ReplayTier = 'none' | 'observe' | 'admin';
+export type SealedObservationMode = 'structured-redaction' | 'full';
 
 export const CONTROL_PLANE_ERROR_CODES = [
   'invalid_envelope',
@@ -45,8 +56,55 @@ export interface ControlPlaneError {
   details?: Record<string, unknown>;
 }
 
+export interface ControlPlaneAuthClaimsV1 {
+  principalId?: string;
+  admin?: boolean;
+}
+
+export interface ResolvedPrincipal {
+  principalId: string;
+  principalType: PrincipalType;
+  source: PrincipalSource;
+}
+
+export interface ObserverProfileContext {
+  observerProfileId: string;
+  basis: string;
+  basisVersion: string;
+  aperture: string;
+  apertureVersion: string;
+  diagnosticScope: string;
+  comparisonPolicyDefaults: string;
+}
+
+export interface EffectiveCapabilityGrant {
+  principal: ResolvedPrincipal;
+  observer: ObserverProfileContext;
+  worldlineId: string;
+  policyPackVersion: string;
+  comparisonPolicyVersion: string;
+  capabilityMode: CapabilityMode;
+  adminRequested: boolean;
+  rights: {
+    replayTier: ReplayTier;
+    sealedObservationMode: SealedObservationMode;
+  };
+}
+
+export interface CapabilityDecision {
+  allowed: boolean;
+  code: ControlPlaneErrorCode | null;
+  reason: string | null;
+  basis: string | null;
+}
+
 export interface ControlPlaneAudit {
   principalId: string;
+  principalType: PrincipalType;
+  principalSource: PrincipalSource;
+  observerProfileId: string;
+  policyPackVersion: string;
+  capabilityMode: CapabilityMode;
   attemptedAt: number;
   completedAt: number;
   outcome: 'ok' | 'error';
@@ -56,10 +114,16 @@ export interface ControlPlaneAudit {
 export interface ObservationCoordinate {
   worldlineId: string;
   observedAt: number;
+  principalId: string;
+  principalType: PrincipalType;
   observerProfileId: string;
+  basis: string;
   basisVersion: string;
+  aperture: string;
   apertureVersion: string;
   policyPackVersion: string;
+  capabilityMode: CapabilityMode;
+  sealedObservationMode: SealedObservationMode;
   selectorDigest: string;
   frontierDigest: string;
   graphMeta: GraphMeta | null;
@@ -71,7 +135,7 @@ export interface ControlPlaneRequestV1 {
   id: string;
   cmd: string;
   args: Record<string, unknown>;
-  auth?: Record<string, unknown>;
+  auth?: ControlPlaneAuthClaimsV1;
 }
 
 export interface ControlPlaneEventRecordV1 {
