@@ -14,6 +14,7 @@ import type {
 } from '../../domain/models/dashboard.js';
 import type { Diagnostic } from '../../domain/models/diagnostics.js';
 import { collectQuestDiagnostics } from '../../domain/services/DiagnosticService.js';
+import { RecordService } from '../../domain/services/RecordService.js';
 
 interface NarrativeWriteOptions {
   on: string;
@@ -282,28 +283,16 @@ export function registerShowCommands(program: Command, ctx: CliContext): void {
       assertPrefix(id, 'comment:', 'Comment ID');
       assertMinLength(opts.on, 3, '--on');
       assertMinLength(opts.message.trim(), 1, '--message');
-
-      const graph = await ctx.graphPort.getGraph();
-      await assertNodeExists(graph, opts.on, 'Target');
       if (opts.replyTo) {
         assertPrefix(opts.replyTo, 'comment:', '--reply-to');
-        await assertNodeExists(graph, opts.replyTo, 'Reply target');
       }
-
-      const patch = await createPatchSession(graph);
-      const now = Date.now();
-      patch
-        .addNode(id)
-        .setProperty(id, 'type', 'comment')
-        .setProperty(id, 'authored_by', ctx.agentId)
-        .setProperty(id, 'authored_at', now)
-        .addEdge(id, opts.on, 'comments-on');
-      if (opts.replyTo) {
-        patch.addEdge(id, opts.replyTo, 'replies-to');
-      }
-      await patch.attachContent(id, opts.message.trim());
-      const sha = await patch.commit();
-      const contentOid = await graph.getContentOid(id) ?? undefined;
+      const result = await new RecordService(ctx.graphPort).createComment({
+        id,
+        targetId: opts.on,
+        message: opts.message.trim(),
+        replyTo: opts.replyTo,
+        authoredBy: ctx.agentId,
+      });
 
       if (ctx.json) {
         ctx.jsonOut({
@@ -314,16 +303,16 @@ export function registerShowCommands(program: Command, ctx: CliContext): void {
             on: opts.on,
             replyTo: opts.replyTo ?? null,
             authoredBy: ctx.agentId,
-            authoredAt: now,
-            contentOid: contentOid ?? null,
-            patch: sha,
+            authoredAt: result.authoredAt,
+            contentOid: result.contentOid ?? null,
+            patch: result.patch,
           },
         });
         return;
       }
 
       ctx.ok(`[OK] Comment ${id} attached to ${opts.on}.`);
-      ctx.muted(`  Patch: ${sha}`);
+      ctx.muted(`  Patch: ${result.patch}`);
     }));
 
   program

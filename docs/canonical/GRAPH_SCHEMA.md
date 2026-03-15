@@ -1,5 +1,5 @@
 # GRAPH SCHEMA
-**Version:** 2.1.0
+**Version:** 2.2.0
 **Status:** AUTHORITATIVE
 
 ## 1. Node ID Grammar
@@ -24,6 +24,8 @@ Example: `task:BDK-001`, `campaign:BEDROCK`, `submission:abc123`
 | `adr` | ADR | Graph-native architecture decision record. | `adr:0007` |
 | `note` | Note | Graph-native working note or quest memo. | `note:quest-brief` |
 | `comment` | Comment | Append-only discussion event. | `comment:019xyz` |
+| `proposal` | Proposal | Non-authoritative candidate transform or plan. | `proposal:019xyz` |
+| `attestation` | Attestation | Append-only approval/rejection/certification record. | `attestation:019xyz` |
 | `artifact` | Scroll | Sealed output of completed quest. | `artifact:task:BDK-001` |
 | `approval` | ApprovalGate | Formal human approval requirement. | `approval:cp-001` |
 | `submission` | Submission | Review lifecycle envelope. | `submission:abc123` |
@@ -57,6 +59,9 @@ Example: `task:BDK-001`, `campaign:BEDROCK`, `submission:abc123`
 | `documents` | spec/adr/note → target | Graph-native document records durable context for a node. |
 | `comments-on` | comment → target | Append-only discussion attached to a node. |
 | `replies-to` | comment → comment | Comment-thread reply chain. |
+| `proposes` | proposal → subject | Proposal is about the subject node. |
+| `targets` | proposal → target | Optional secondary target of a proposal. |
+| `attests` | attestation → target | Attestation records a decision over a target artifact. |
 | `fulfills` | artifact → task | Scroll is the sealed output of a quest. |
 | `submits` | submission → task | Submission proposes work for a quest. |
 | `has-patchset` | patchset → submission | Patchset belongs to a submission. |
@@ -160,6 +165,57 @@ These node families keep durable coordination narrative inside the XYPH graph.
 - `comments-on` → any node ID (discussion attachment)
 - `replies-to` → comment: (threading)
 - `supersedes` → prior spec:/adr:/note: revision (append-only history)
+
+---
+
+### Proposal (`proposal:*`)
+
+Proposals are non-authoritative candidate transforms. They may suggest
+dependencies, packets, doctor fixes, collapse plans, or other future-safe graph
+changes, but they do not become truth by existing.
+
+| Property | Type | Set By | Notes |
+|----------|------|--------|-------|
+| `type` | `'proposal'` | control plane | Required. |
+| `proposal_kind` | string | control plane | E.g. `dependency`, `packet`, `doctor-fix`. |
+| `subject_id` | string | control plane | Primary subject of the proposal. |
+| `target_id` | string | control plane | Optional secondary target. |
+| `proposed_by` | string | control plane | Principal ID. |
+| `proposed_at` | number | control plane | Timestamp. |
+| `observer_profile_id` | string | control plane | Observer used when authoring the proposal. |
+| `policy_pack_version` | string | control plane | Policy pack in force when authored. |
+
+**Bodies:** stored via `attachContent()` on the node as structured proposal
+content. The current control-plane slice stores JSON containing at least
+`rationale` and `payload`.
+
+**Edges:**
+- `proposes` → subject node (required)
+- `targets` → target node (optional)
+
+---
+
+### Attestation (`attestation:*`)
+
+Attestations are append-only decision records. They record approval, rejection,
+certification, waiver, endorsement, or escalation with explicit provenance.
+
+| Property | Type | Set By | Notes |
+|----------|------|--------|-------|
+| `type` | `'attestation'` | control plane | Required. |
+| `decision` | string | control plane | Approval/rejection/certification style decision. |
+| `target_id` | string | control plane | Artifact or entity being attested. |
+| `attested_by` | string | control plane | Principal ID. |
+| `attested_at` | number | control plane | Timestamp. |
+| `observer_profile_id` | string | control plane | Observer used for the decision context. |
+| `policy_pack_version` | string | control plane | Policy pack in force when attested. |
+
+**Bodies:** stored via `attachContent()` on the node as structured decision
+content. The current control-plane slice stores JSON containing at least
+`rationale` and `scope`.
+
+**Edges:**
+- `attests` → target node (required)
 
 ---
 

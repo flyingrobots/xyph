@@ -5,8 +5,13 @@
 
 ## 1. Purpose
 
-XYPH's agent protocol defines the **agent-native CLI** and the **action kernel**
-that sits behind it.
+XYPH's agent protocol defines the **agent-facing compatibility projection** and
+the **action kernel** that sits behind it.
+
+The canonical machine-facing protocol is the sovereign `xyph api` JSONL control
+plane. This document describes the higher-level agent workflow surface layered
+over that control plane while XYPH transitions away from workflow-first CLI
+thinking.
 
 The goal is not "friendlier scripting." The goal is that an agent can:
 
@@ -19,6 +24,11 @@ The goal is not "friendlier scripting." The goal is that an agent can:
 The agent protocol is therefore a **policy-bounded operating interface**, not a
 second workflow model and not an informal wrapper around raw commands.
 
+Load-bearing rule: **Observer profiles do not grant authority by existing.**
+The agent protocol may name observer-facing projections, but effective
+capability is still resolved from the principal, observer profile, policy pack,
+and observation/worldline coordinate.
+
 ## 2. Core Rules
 
 1. **One source of truth**
@@ -29,9 +39,11 @@ second workflow model and not an informal wrapper around raw commands.
    Agent writes must reuse the same validators and domain services that govern
    normal CLI commands. `act` is a strict door, not a shortcut.
 
-3. **JSON first**
-   The primary agent API is CLI `--json`. Text and markdown are debug and
-   context-injection modes, not the canonical wire shape.
+3. **JSONL first**
+   The canonical machine interface is `xyph api`, which uses versioned JSONL
+   request and result envelopes. The legacy agent-facing CLI still uses `--json`
+   JSONL streams and is a compatibility layer over the same graph-backed domain
+   services.
 
 3a. **JSONL framing**
    `--json` is a newline-delimited JSON stream, not a single giant blob by
@@ -72,6 +84,9 @@ The agent-native CLI surface is:
 Existing domain commands such as `submit`, `review`, `seal`, and `merge` remain
 the underlying mutation primitives. `act` wraps them with a common validation
 and response contract.
+
+These commands should be understood as named projections or wrappers over the
+canonical control plane, not as the long-term center of the system's ontology.
 
 Current runtime tranche:
 

@@ -15,6 +15,9 @@ An offline-first, decentralized, deterministic **planning compiler + collaborati
 **No server. No database. Just Git.**  
 Instead of hand-orchestrating workflows, you compile intent into a living graph, execute it to completion, and settle outcomes with receipts.
 
+**XYPH's ontology is sovereign.**  
+XYPH defines the public concepts of observation, worldlines, comparison, collapse, and lawful transformation. [git-warp](https://github.com/git-stunts/git-warp) provides the versioned graph-state substrate. Alfred-derived components may be used internally for resilience, transport, audit, auth, or control-plane plumbing, but they are not part of XYPH's public ontology, API vocabulary, or type system. XYPH is not Alfred with extra steps.
+
 ### xyph (verb)
 To compile intent into an executable plan, run it to completion, and settle the result into history with verifiable receipts.
 
@@ -69,6 +72,26 @@ Automation note: commands that support `--json` now emit **JSONL**. Consumers
 should read stdout line by line; commands may emit non-terminal `start` /
 `progress` records before the final success or error envelope. Commands with
 no progress still emit a valid one-record JSONL stream.
+
+#### Canonical Machine Interface
+
+For agents and automation, XYPH is moving toward a single machine-facing control
+plane:
+
+```bash
+printf '%s\n' \
+  '{"v":1,"id":"req-1","cmd":"observe","args":{"projection":"graph.summary"}}' \
+  | node ./xyph.ts api
+```
+
+`xyph api` speaks versioned JSONL request/response envelopes. The current
+imperative CLI remains available, but it is increasingly treated as a set of
+human-friendly compatibility projections over the same graph-backed domain
+services rather than the canonical machine protocol.
+
+Load-bearing rule: **Observer profiles do not grant authority by existing.**
+Authority is resolved from the acting principal, the observer profile, the
+policy pack, and the observation/worldline coordinate in play.
 
 Now you're all set. Let's see how we might use XYPH in our everyday workflows.
 

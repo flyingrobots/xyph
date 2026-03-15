@@ -6,6 +6,11 @@ All notable changes to XYPH will be documented in this file.
 
 ### Added
 
+- **Sovereign control-plane foundation** — added `xyph api`, a versioned JSONL machine interface backed by `ControlPlaneService` with `observe`, `history`, `diff`, `explain`, `apply`, `comment`, `propose`, and `attest` command support. The current slice reserves `fork_worldline`, `compare_worldlines`, `collapse_worldline`, `query`, and `rewind_worldline` without pretending they are implemented yet
+- **Generic mutation kernel** — added `MutationKernelService`, a single allowlisted primitive-op mutation path (`add_node`, `remove_node`, `set_node_property`, `add_edge`, `remove_edge`, `set_edge_property`, `attach_node_content`, `attach_edge_content`) for sovereign control-plane writes and future collapse lowering
+- **Append-only proposal and attestation records** — added `RecordService` support for `proposal:*` and `attestation:*` durable records, alongside comment creation routed through the same mutation kernel instead of ad hoc CLI patch logic
+- **Canonical sovereign-control-plane docs** — public docs now state that XYPH's ontology is sovereign, that observer profiles do not grant authority by existing, and that Alfred-derived components may sit behind ports without leaking into XYPH's public API vocabulary
+
 - **`xyph doctor` graph health audit** — new CLI command audits dangling edges (including incoming edges from missing nodes), orphaned workflow/narrative/traceability nodes, readiness contract gaps, sovereignty violations, and governed completion gaps. Supports both human-readable output and `--json` for automation
 - **`xyph doctor prescribe` deterministic remediation view** — doctor now derives structured prescriptions with category (`structural-blocker`, `structural-defect`, `workflow-gap`, `hygiene-gap`), blocked transitions, blocked task IDs, effective priority inheritance, and top remediation buckets for automation and agent-facing triage
 - **Doctor-backed recommendation work in the agent protocol** — `briefing`, `next`, and `context` now surface doctor prescriptions as recommendation work instead of burying graph-health findings inside diagnostics only. `briefing` includes a `recommendationQueue`, `context` includes `recommendationRequests`, and `next` can surface urgent doctor-driven `inspect` candidates

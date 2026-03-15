@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   createGraphContext: vi.fn(),
   WarpRoadmapAdapter: vi.fn(),
   readinessAssess: vi.fn(),
+  createComment: vi.fn(),
 }));
 
 vi.mock('../../src/infrastructure/helpers/createPatchSession.js', () => ({
@@ -28,6 +29,14 @@ vi.mock('../../src/domain/services/ReadinessService.js', () => ({
   ReadinessService: class ReadinessService {
     assess(questId: string) {
       return mocks.readinessAssess(questId);
+    }
+  },
+}));
+
+vi.mock('../../src/domain/services/RecordService.js', () => ({
+  RecordService: class RecordService {
+    createComment(input: unknown) {
+      return mocks.createComment(input);
     }
   },
 }));
@@ -77,15 +86,18 @@ describe('show and narrative commands', () => {
       taskKind: 'delivery',
       unmet: [],
     });
+    mocks.createComment.mockResolvedValue({
+      id: 'comment:Q-001',
+      patch: 'patch:comment',
+      authoredAt: 123,
+      contentOid: 'oid:comment',
+    });
   });
 
   it('comment writes an append-only content-backed node', async () => {
     const graph = {
       hasNode: vi.fn().mockResolvedValue(true),
-      getContentOid: vi.fn().mockResolvedValue('oid:comment'),
     };
-    const patch = makePatchSession();
-    mocks.createPatchSession.mockResolvedValue(patch);
 
     const ctx = makeCtx(graph);
     const program = new Command();
@@ -96,25 +108,26 @@ describe('show and narrative commands', () => {
       { from: 'user' },
     );
 
-    expect(graph.hasNode).toHaveBeenCalledWith('task:Q-001');
-    expect(patch.addNode).toHaveBeenCalledWith('comment:Q-001');
-    expect(patch.setProperty).toHaveBeenCalledWith('comment:Q-001', 'type', 'comment');
-    expect(patch.setProperty).toHaveBeenCalledWith('comment:Q-001', 'authored_by', 'human.architect');
-    expect(patch.addEdge).toHaveBeenCalledWith('comment:Q-001', 'task:Q-001', 'comments-on');
-    expect(patch.attachContent).toHaveBeenCalledWith('comment:Q-001', 'Need acceptance criteria first.');
+    expect(mocks.createComment).toHaveBeenCalledWith({
+      id: 'comment:Q-001',
+      targetId: 'task:Q-001',
+      message: 'Need acceptance criteria first.',
+      replyTo: undefined,
+      authoredBy: 'human.architect',
+    });
     expect(ctx.jsonOut).toHaveBeenCalledWith({
       success: true,
       command: 'comment',
       data: {
-        id: 'comment:Q-001',
-        on: 'task:Q-001',
-        replyTo: null,
-        authoredBy: 'human.architect',
-        authoredAt: expect.any(Number),
-        contentOid: 'oid:comment',
-        patch: 'patch:narrative',
-      },
-    });
+            id: 'comment:Q-001',
+            on: 'task:Q-001',
+            replyTo: null,
+            authoredBy: 'human.architect',
+            authoredAt: 123,
+            contentOid: 'oid:comment',
+            patch: 'patch:comment',
+          },
+        });
   });
 
   it('note writes graph-native content and revision lineage', async () => {

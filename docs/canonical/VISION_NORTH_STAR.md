@@ -33,12 +33,16 @@ But XYPH also compiles *execution itself*: jobs, automation, orchestration, and 
 ## 4. Layering: Git as Settlement, Not Identity
 XYPH may use Git today, but Git is not "the product."
 
+- **Ontology:** XYPH is sovereign. Worldlines, observation, comparison,
+  collapse, lawful transformation, and authority are XYPH concepts.
 - **Settlement / Object Store (Today):** Git CAS as a ubiquitous, battle-tested content-addressed store.
 - **Causal Substrate:** WARP graph + multi-writer convergence.
 - **Runtime:** JIT — Just-In-Time graph execution (SWS, promotion, collapse, receipts).
 - **Experience Layer:** XYPH CLI/TUI and observer views (status, diff, slice, provenance).
 
 Swapping the settlement layer is allowed long-term; the invariants are not.
+Alfred-derived components may help at the edges, but Alfred is not XYPH's
+public ontology.
 
 ![Vision layer stack](../diagrams/vision-layer-stack.svg)
 

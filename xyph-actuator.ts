@@ -18,6 +18,7 @@ import { registerIdentityCommands } from './src/cli/commands/identity.js';
 import { registerShowCommands } from './src/cli/commands/show.js';
 import { registerAgentCommands } from './src/cli/commands/agent.js';
 import { registerDoctorCommands } from './src/cli/commands/doctor.js';
+import { registerApiCommands } from './src/cli/commands/api.js';
 
 // Best-effort pre-scan for --json before Commander parses.
 // createCliContext() handles theme init internally based on this flag.
@@ -57,5 +58,6 @@ registerIdentityCommands(program, ctx);
 registerShowCommands(program, ctx);
 registerAgentCommands(program, ctx);
 registerDoctorCommands(program, ctx);
+registerApiCommands(program, ctx);
 
 await program.parseAsync(process.argv);
