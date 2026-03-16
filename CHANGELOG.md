@@ -4,6 +4,10 @@ All notable changes to XYPH will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- **Substrate floor raised to `@git-stunts/git-warp@^14.6.0`** — XYPH now consumes the published working-set overlay substrate, including overlay-backed working-set materialization and the `createWorkingSetPatch()` / `patchWorkingSet()` API surface that future `fork_worldline` work will target.
+
 ### Added
 
 - **Substrate-backed conflict projection** — `xyph api observe` now supports `projection: "conflicts"` backed by `git-warp`'s read-only `analyzeConflicts()` surface. The projection is tip-only for now, accepts optional current-frontier `lamportCeiling` and analyzer filters, and returns substrate conflict traces without inventing XYPH-side counterfactual truth
