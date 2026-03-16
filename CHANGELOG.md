@@ -43,6 +43,7 @@ All notable changes to XYPH will be documented in this file.
 - **Upgrade git-warp 14.0.0 → 14.2.0** — XYPH now consumes the published substrate conflict analyzer and raises its explicit dependency floor accordingly
 - **Upgrade git-warp 14.2.0 → 14.3.0** — XYPH now tracks the published substrate release that expands the git-warp time-travel debug CLI and its debugger architecture/docs, keeping the dependency floor aligned with the released substrate toolchain
 - **Upgrade git-warp 14.3.0 → 14.4.0** — XYPH now tracks the published substrate release that expands the built-in `git warp debug` time-travel CLI with `coordinate` and `timeline` inspection, keeping the released debugger surface aligned with the substrate version XYPH depends on
+- **Upgrade git-warp 14.4.0 → 14.5.0** — XYPH now tracks the published substrate release that adds the working-set foundation: explicit coordinate materialization plus durable `git warp working-set` management for pinned substrate coordinates, without forcing XYPH to consume unreleased git state
 
 - **`GuildSealService` simplified** — `generateKeypair()` and `rotateKey()` now delegate rollback to `updateKeyring()`, removing hand-written try/catch rollback choreography from the domain layer
 
