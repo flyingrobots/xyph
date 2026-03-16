@@ -27,6 +27,23 @@ function makeGraph() {
   return {
     getNodes: vi.fn(async () => ['task:ONE', 'task:TWO']),
     getEdges: vi.fn(async () => [{ from: 'task:ONE', to: 'task:TWO', label: 'depends-on', props: {} }]),
+    materializeWorkingSet: vi.fn(async () => ({
+      nodeAlive: {
+        entries: new Map([
+          ['task:ONE', new Set(['dot:1'])],
+          ['task:TWO', new Set(['dot:2'])],
+        ]),
+        tombstones: new Set<string>(),
+      },
+      edgeAlive: {
+        entries: new Map(),
+        tombstones: new Set<string>(),
+      },
+      prop: new Map(),
+      observedFrontier: new Map([['agent.prime', 12], ['wl_review-auth', 0]]),
+      edgeBirthEvent: new Map(),
+    })),
+    patchWorkingSet: vi.fn(async () => 'patch:working-set'),
   };
 }
 
@@ -105,5 +122,31 @@ describe('MutationKernelService', () => {
     expect(patch.addNode).toHaveBeenCalledWith('proposal:1');
     expect(patch.setProperty).toHaveBeenCalledWith('proposal:1', 'type', 'proposal');
     expect(patch.addEdge).toHaveBeenCalledWith('proposal:1', 'task:ONE', 'proposes');
+  });
+
+  it('validates and commits a valid op batch through a working-set overlay patch', async () => {
+    const graph = makeGraph();
+    const service = new MutationKernelService({
+      getGraph: async () => graph,
+      reset: vi.fn(),
+    });
+
+    const result = await service.execute({
+      rationale: 'Advance speculative work inside the derived worldline overlay.',
+      ops: [
+        { op: 'add_node', nodeId: 'proposal:1' },
+        { op: 'set_node_property', nodeId: 'proposal:1', key: 'type', value: 'proposal' },
+        { op: 'add_edge', from: 'proposal:1', to: 'task:ONE', label: 'proposes' },
+      ],
+    }, { workingSetId: 'wl_review-auth' });
+
+    expect(graph.materializeWorkingSet).toHaveBeenCalledWith('wl_review-auth');
+    expect(graph.patchWorkingSet).toHaveBeenCalledTimes(1);
+    expect(result).toEqual(expect.objectContaining({
+      valid: true,
+      executed: true,
+      patch: 'patch:working-set',
+    }));
+    expect(mocks.createPatchSession).not.toHaveBeenCalled();
   });
 });

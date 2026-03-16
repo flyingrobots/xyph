@@ -43,7 +43,8 @@ Human surface direction:
    - Fork/worldline work should use logical working sets over graph observations, not Git worktrees.
    - Materialized graph states are caches, not authoritative models.
    - `fork_worldline` is now implemented as a thin mapping onto git-warp working-set creation for `worldline:live`, with optional current-frontier Lamport ceiling support via `at: { tick }`.
-   - Arbitrary historical frontiers, derived-from-derived forking, and worldline-local mutation routing remain future slices.
+   - Canonical derived worldlines now support working-set-backed `history`, `diff`, `apply`, and `observe(conflicts)` slices.
+   - Arbitrary historical frontiers, derived-from-derived forking, and general worldline-local GraphContext projections remain future slices.
 
 ## Canonical Docs
 

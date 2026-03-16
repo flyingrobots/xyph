@@ -92,6 +92,19 @@ optional tick ceiling that lowers to git-warp's current-frontier Lamport-ceiled
 working-set coordinate. Arbitrary historical frontier selection and
 derived-from-derived worldline forking remain future substrate work.
 
+That substrate mapping is now materially useful rather than purely declarative.
+For canonical derived worldlines backed by git-warp working sets, XYPH routes:
+
+- `history` through `patchesForWorkingSet(...)`
+- `diff` through working-set-local materialization plus working-set provenance
+- `apply` through the same mutation kernel as live writes, lowered into
+  `patchWorkingSet(...)`
+
+This keeps the reducer and conflict rules worldline-blind while letting the
+visible patch universe vary by worldline. Higher GraphContext-backed projections
+still read from the live or isolated graph services until git-warp exposes the
+right substrate query surfaces for working sets.
+
 Existing commands such as `briefing`, `next`, `context`, `submit`, `review`,
 and `merge` still exist, but they should be understood as compatibility
 projections or wrappers over graph-backed domain services, not the canonical

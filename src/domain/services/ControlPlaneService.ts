@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import type WarpGraph from '@git-stunts/git-warp';
 import type { ConflictDiagnostic } from '@git-stunts/git-warp';
+import { projectStateV5, type VisibleStateProjectionV5, type WarpStateV5 } from '@git-stunts/git-warp';
 import type { GraphPort } from '../../ports/GraphPort.js';
 import type { ControlPlaneHooks, ControlPlanePort } from '../../ports/ControlPlanePort.js';
 import {
@@ -115,6 +116,13 @@ type ObservationSelector =
 type AnalyzeConflictsOptions = NonNullable<Parameters<WarpGraph['analyzeConflicts']>[0]>;
 type ConflictAnalysisResult = Awaited<ReturnType<WarpGraph['analyzeConflicts']>>;
 
+interface WorkingSetProjectionContext {
+  workingSetId: string;
+  state: WarpStateV5;
+  projection: VisibleStateProjectionV5;
+  frontierDigest: string;
+}
+
 interface RedactionRecord {
   path: string;
   code: 'redacted';
@@ -164,6 +172,10 @@ function workingSetErrorCode(err: unknown): string | null {
     && typeof (err as { code?: unknown }).code === 'string'
     ? (err as { code: string }).code
     : null;
+}
+
+function frontierDigestFromObservedFrontier(frontier: Map<string, unknown>): string {
+  return digest([...frontier.entries()].sort(([a], [b]) => a.localeCompare(b)));
 }
 
 export class ControlPlaneService implements ControlPlanePort {
@@ -549,7 +561,15 @@ export class ControlPlaneService implements ControlPlanePort {
             analysis,
           },
           diagnostics,
-          observation: await this.buildObservationCoordinate(request, capability, Date.now(), null, false, graph),
+          observation: await this.buildObservationCoordinate(
+            request,
+            capability,
+            Date.now(),
+            null,
+            false,
+            graph,
+            analysis.resolvedCoordinate.frontierDigest,
+          ),
         };
       }
       case 'entity.detail': {
@@ -814,6 +834,92 @@ export class ControlPlaneService implements ControlPlanePort {
     }
   }
 
+  private resolveDerivedWorkingSetId(
+    capability: EffectiveCapabilityGrant,
+    cmd: string,
+  ): string | null {
+    if (capability.worldlineId === DEFAULT_WORLDLINE_ID) return null;
+    const workingSetId = toSubstrateWorkingSetId(capability.worldlineId);
+    if (!workingSetId) {
+      throw controlPlaneFailure(
+        'invalid_args',
+        `${cmd} currently supports only worldline:live or canonical derived worldline ids backed by git-warp working sets.`,
+        {
+          cmd,
+          worldlineId: capability.worldlineId,
+        },
+      );
+    }
+    return workingSetId;
+  }
+
+  private workingSetReadOptions(selector: ObservationSelector): { ceiling?: number | null } | undefined {
+    return selector.kind === 'tick'
+      ? { ceiling: selector.tick }
+      : undefined;
+  }
+
+  private rethrowWorkingSetError(
+    err: unknown,
+    worldlineId: string,
+    workingSetId: string,
+  ): never {
+    const substrateCode = workingSetErrorCode(err);
+    switch (substrateCode) {
+      case 'E_WORKING_SET_NOT_FOUND':
+        throw controlPlaneFailure(
+          'not_found',
+          err instanceof Error ? err.message : String(err),
+          { worldlineId, workingSetId, substrateCode },
+        );
+      case 'E_WORKING_SET_INVALID_ARGS':
+      case 'E_WORKING_SET_ID_INVALID':
+      case 'E_WORKING_SET_COORDINATE_INVALID':
+        throw controlPlaneFailure(
+          'invalid_args',
+          err instanceof Error ? err.message : String(err),
+          { worldlineId, workingSetId, substrateCode },
+        );
+      case 'E_WORKING_SET_ALREADY_EXISTS':
+      case 'E_WORKING_SET_CORRUPT':
+      case 'E_WORKING_SET_MISSING_OBJECT':
+        throw controlPlaneFailure(
+          'invariant_violation',
+          err instanceof Error ? err.message : String(err),
+          { worldlineId, workingSetId, substrateCode },
+        );
+      default:
+        throw err;
+    }
+  }
+
+  private async materializeWorkingSetProjection(
+    capability: EffectiveCapabilityGrant,
+    selector: ObservationSelector,
+  ): Promise<WorkingSetProjectionContext> {
+    const workingSetId = this.resolveDerivedWorkingSetId(capability, 'worldline-backed reads');
+    if (!workingSetId) {
+      throw controlPlaneFailure(
+        'invalid_args',
+        'Derived worldline projection requires a backing git-warp working set.',
+        { worldlineId: capability.worldlineId },
+      );
+    }
+
+    const graph = await this.graphPort.getGraph();
+    try {
+      const state = await graph.materializeWorkingSet(workingSetId, this.workingSetReadOptions(selector));
+      return {
+        workingSetId,
+        state,
+        projection: projectStateV5(state),
+        frontierDigest: frontierDigestFromObservedFrontier(state.observedFrontier),
+      };
+    } catch (err) {
+      this.rethrowWorkingSetError(err, capability.worldlineId, workingSetId);
+    }
+  }
+
   private async history(
     request: ControlPlaneRequestV1,
     capability: EffectiveCapabilityGrant,
@@ -824,6 +930,51 @@ export class ControlPlaneService implements ControlPlanePort {
   }> {
     const targetId = this.requireString(request.args['targetId'], 'history targetId');
     const selector = this.resolveAtSelector(request);
+    const workingSetId = this.resolveDerivedWorkingSetId(capability, 'history');
+    if (workingSetId) {
+      const graph = await this.graphPort.getGraph();
+      const materialized = await this.materializeWorkingSetProjection(capability, selector);
+      const exists = materialized.projection.nodes.includes(targetId);
+      if (!exists) {
+        throw controlPlaneFailure(
+          'not_found',
+          `Entity ${targetId} not found in worldline ${capability.worldlineId}`,
+          {
+            worldlineId: capability.worldlineId,
+            workingSetId,
+          },
+        );
+      }
+      let patches: string[];
+      try {
+        patches = await graph.patchesForWorkingSet(
+          workingSetId,
+          targetId,
+          this.workingSetReadOptions(selector),
+        );
+      } catch (err) {
+        this.rethrowWorkingSetError(err, capability.worldlineId, workingSetId);
+      }
+      return {
+        data: {
+          targetId,
+          at: selector.kind === 'tip' ? 'tip' : { tick: selector.tick },
+          patchCount: patches.length,
+          patches,
+        },
+        diagnostics: [],
+        observation: await this.buildObservationCoordinate(
+          request,
+          capability,
+          Date.now(),
+          null,
+          false,
+          graph,
+          materialized.frontierDigest,
+        ),
+      };
+    }
+
     const graph = await this.openObservationGraph(selector);
     if (!await graph.hasNode(targetId)) {
       throw controlPlaneFailure('not_found', `Entity ${targetId} not found in the graph`);
@@ -856,6 +1007,105 @@ export class ControlPlaneService implements ControlPlanePort {
         'invalid_args',
         'diff requires sinceFrontierDigest or since',
       );
+    }
+
+    const workingSetId = this.resolveDerivedWorkingSetId(capability, 'diff');
+    if (workingSetId) {
+      const graph = await this.graphPort.getGraph();
+      const current = await this.materializeWorkingSetProjection(capability, selector);
+      const targetId = typeof request.args['targetId'] === 'string'
+        ? request.args['targetId']
+        : null;
+      let patches: string[] = [];
+      if (targetId && current.projection.nodes.includes(targetId)) {
+        try {
+          patches = await graph.patchesForWorkingSet(
+            workingSetId,
+            targetId,
+            this.workingSetReadOptions(selector),
+          );
+        } catch (err) {
+          this.rethrowWorkingSetError(err, capability.worldlineId, workingSetId);
+        }
+      }
+
+      const observation = await this.buildObservationCoordinate(
+        request,
+        capability,
+        Date.now(),
+        null,
+        false,
+        graph,
+        current.frontierDigest,
+      );
+
+      if (since.kind === 'frontier-digest') {
+        return {
+          data: {
+            targetId,
+            at: selector.kind === 'tip' ? 'tip' : { tick: selector.tick },
+            sinceFrontierDigest: since.frontierDigest,
+            currentFrontierDigest: observation.frontierDigest,
+            changed: since.frontierDigest !== observation.frontierDigest,
+            patchCount: patches.length,
+            patches,
+          },
+          diagnostics: [],
+          observation,
+        };
+      }
+
+      const sinceMaterialized = await this.materializeWorkingSetProjection(
+        capability,
+        { kind: 'tick', tick: since.tick },
+      );
+      let sincePatches: string[] = [];
+      if (targetId && sinceMaterialized.projection.nodes.includes(targetId)) {
+        try {
+          sincePatches = await graph.patchesForWorkingSet(
+            workingSetId,
+            targetId,
+            { ceiling: since.tick },
+          );
+        } catch (err) {
+          this.rethrowWorkingSetError(err, capability.worldlineId, workingSetId);
+        }
+      }
+      const sincePatchSet = new Set(sincePatches);
+      const newPatches = patches.filter((sha) => !sincePatchSet.has(sha));
+      const sinceObservation = await this.buildObservationCoordinate(
+        {
+          ...request,
+          args: {
+            ...request.args,
+            at: { tick: since.tick },
+          },
+        },
+        capability,
+        Date.now(),
+        null,
+        false,
+        graph,
+        sinceMaterialized.frontierDigest,
+      );
+
+      return {
+        data: {
+          targetId,
+          at: selector.kind === 'tip' ? 'tip' : { tick: selector.tick },
+          since: { tick: since.tick },
+          sinceFrontierDigest: sinceObservation.frontierDigest,
+          currentFrontierDigest: observation.frontierDigest,
+          changed: sinceObservation.frontierDigest !== observation.frontierDigest,
+          sincePatchCount: sincePatches.length,
+          currentPatchCount: patches.length,
+          newPatches,
+          patchCount: patches.length,
+          patches,
+        },
+        diagnostics: [],
+        observation,
+      };
     }
 
     const graph = await this.openObservationGraph(selector);
@@ -1188,6 +1438,7 @@ export class ControlPlaneService implements ControlPlanePort {
       null,
       false,
       graph,
+      descriptor.baseObservation.frontierDigest,
     );
 
     return {
@@ -1234,15 +1485,25 @@ export class ControlPlaneService implements ControlPlanePort {
     if (!ops) {
       throw controlPlaneFailure('invalid_args', 'apply requires an ops array');
     }
-    const result = await this.mutations.execute({
-      ops: ops as never[],
-      rationale,
-      ...(typeof request.args['idempotencyKey'] === 'string'
-        ? { idempotencyKey: request.args['idempotencyKey'] }
-        : {}),
-    }, {
-      dryRun: request.args['dryRun'] === true,
-    });
+    const workingSetId = this.resolveDerivedWorkingSetId(capability, 'apply');
+    let result: Awaited<ReturnType<MutationKernelService['execute']>>;
+    try {
+      result = await this.mutations.execute({
+        ops: ops as never[],
+        rationale,
+        ...(typeof request.args['idempotencyKey'] === 'string'
+          ? { idempotencyKey: request.args['idempotencyKey'] }
+          : {}),
+      }, {
+        dryRun: request.args['dryRun'] === true,
+        ...(workingSetId ? { workingSetId } : {}),
+      });
+    } catch (err) {
+      if (workingSetId) {
+        this.rethrowWorkingSetError(err, capability.worldlineId, workingSetId);
+      }
+      throw err;
+    }
 
     if (!result.valid) {
       throw controlPlaneFailure(
@@ -1254,6 +1515,17 @@ export class ControlPlaneService implements ControlPlanePort {
       );
     }
 
+    const graph = await this.graphPort.getGraph();
+    let frontierDigestOverride: string | undefined;
+    if (workingSetId) {
+      try {
+        const state = await graph.materializeWorkingSet(workingSetId);
+        frontierDigestOverride = frontierDigestFromObservedFrontier(state.observedFrontier);
+      } catch (err) {
+        this.rethrowWorkingSetError(err, capability.worldlineId, workingSetId);
+      }
+    }
+
     return {
       data: {
         dryRun: request.args['dryRun'] === true,
@@ -1262,7 +1534,15 @@ export class ControlPlaneService implements ControlPlanePort {
         opCount: ops.length,
       },
       diagnostics: [],
-      observation: await this.buildObservationCoordinate(request, capability, Date.now(), null),
+      observation: await this.buildObservationCoordinate(
+        request,
+        capability,
+        Date.now(),
+        null,
+        false,
+        graph,
+        frontierDigestOverride,
+      ),
     };
   }
 
@@ -1415,16 +1695,18 @@ export class ControlPlaneService implements ControlPlanePort {
     graphMeta: GraphMeta | null,
     onlyMeta = false,
     graphOverride?: WarpGraph,
+    frontierDigestOverride?: string,
   ): Promise<ObservationCoordinate> {
-    const graph = graphOverride ?? await this.graphPort.getGraph();
-    const state = await graph.getStateSnapshot();
-    const frontierDigest = state
-      ? digest(
-        [...state.observedFrontier.entries()].sort(([a], [b]) => a.localeCompare(b)),
-      )
-      : digest(
-        [...(await graph.getFrontier()).entries()].sort(([a], [b]) => a.localeCompare(b)),
-      );
+    let frontierDigest = frontierDigestOverride;
+    if (!frontierDigest) {
+      const graph = graphOverride ?? await this.graphPort.getGraph();
+      const state = await graph.getStateSnapshot();
+      frontierDigest = state
+        ? frontierDigestFromObservedFrontier(state.observedFrontier)
+        : digest(
+          [...(await graph.getFrontier()).entries()].sort(([a], [b]) => a.localeCompare(b)),
+        );
+    }
 
     return {
       worldlineId: capability.worldlineId,

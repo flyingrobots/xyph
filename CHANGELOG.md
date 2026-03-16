@@ -6,10 +6,11 @@ All notable changes to XYPH will be documented in this file.
 
 ### Changed
 
-- **Substrate floor raised to `@git-stunts/git-warp@^14.7.0`** — XYPH now consumes the published working-set-aware debugger substrate, including working-set-local conflict, provenance, receipts, and timeline inspection in git-warp's built-in debug and analyzer surfaces.
+- **Substrate floor raised to `@git-stunts/git-warp@^14.8.0`** — XYPH now consumes the published working-set-aware debugger substrate plus the public `projectStateV5()` helper used to validate and observe derived-worldline materializations without depending on git-warp's internal OR-Set layout.
 
 ### Added
 
+- **Working-set-backed derived-worldline execution** — canonical derived worldlines now support working-set-local `history`, `diff`, and `apply`. `history` and `diff` read the backing git-warp working set rather than the shared live graph, and `apply` lowers through the same mutation kernel as live writes while committing to the working-set overlay patch log. Observation coordinates for these commands now reflect the working-set frontier instead of quietly reporting the live graph digest
 - **Working-set-backed `fork_worldline`** — `xyph api fork_worldline` now creates derived XYPH worldlines by delegating to git-warp working-set creation. The current slice is intentionally narrow: it supports `worldline:live` as the source worldline, accepts optional `at: { tick }` as a current-frontier Lamport ceiling, and returns an XYPH worldline payload plus the backing git-warp working-set identifier without pretending arbitrary historical frontier or nested derived-worldline support already exists
 - **Worldline-aware substrate conflict projection** — `xyph api observe` now supports `projection: "conflicts"` backed by `git-warp`'s read-only `analyzeConflicts()` surface for the live frontier or a canonical derived worldline's backing working set. The projection remains tip-only, accepts optional `lamportCeiling` and analyzer filters, and returns substrate conflict traces without inventing XYPH-side counterfactual truth
 - **Historical observation selectors and structured redaction** — `xyph api` low-level reads now support `at` / `since` tick selectors for `observe(graph.summary)`, `observe(worldline.summary)`, `observe(entity.detail)`, `history`, and `diff`, using isolated read graphs materialized at explicit ceiling ticks. Sealed observation now returns structured `redactions` metadata for content-bearing `entity.detail` payloads instead of treating partial withholding as total failure

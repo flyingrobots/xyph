@@ -147,6 +147,8 @@ The current sovereign-control-plane foundation implements:
   `entity.detail`, `history`, and `diff`
 - tip-scoped `observe(conflicts)` backed by git-warp conflict analysis for the
   live frontier or a derived worldline's backing working set
+- derived-worldline `history`, `diff`, and `apply` routed through git-warp
+  working sets rather than the shared live graph
 - structured redaction for content-bearing `entity.detail` observations
 
 Current `fork_worldline` is intentionally narrow:
@@ -154,8 +156,10 @@ Current `fork_worldline` is intentionally narrow:
 - it creates a derived worldline descriptor backed by a git-warp working set
 - it may carry owner, scope, and lease metadata
 - `at: <tick>` currently lowers to a current-frontier Lamport ceiling
-- it does **not** yet provide worldline-local read models, worldline-local
-  mutation routing for general projections, or nested derived-worldline forking
+- it now provides working-set-backed `history`, `diff`, `apply`, and
+  `observe(conflicts)` for canonical derived worldlines
+- it does **not** yet provide general worldline-local GraphContext projections
+  or nested derived-worldline forking
 
 It does **not** yet implement full comparison artifacts, collapse proposals as
 first-class executable workflows, full worldline-local execution, or lease

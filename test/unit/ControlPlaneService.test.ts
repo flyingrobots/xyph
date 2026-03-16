@@ -17,12 +17,36 @@ const mocks = vi.hoisted(() => ({
   createAttestation: vi.fn(),
   createWorkingSet: vi.fn(),
   analyzeConflicts: vi.fn(),
+  materializeWorkingSet: vi.fn(),
+  patchesForWorkingSet: vi.fn(),
   getFrontier: vi.fn(),
   getStateSnapshot: vi.fn(),
   getGraph: vi.fn(),
   openIsolatedGraph: vi.fn(),
   WarpRoadmapAdapter: vi.fn(),
 }));
+
+function makeOrSet(elements: string[]) {
+  return {
+    entries: new Map(
+      elements.map((element, index) => [element, new Set([`dot:${index}`])]),
+    ),
+    tombstones: new Set<string>(),
+  };
+}
+
+function makeWorkingSetState(
+  nodes: string[],
+  observedFrontier: [string, number][] = [['agent.prime', 12]],
+) {
+  return {
+    nodeAlive: makeOrSet(nodes),
+    edgeAlive: makeOrSet([]),
+    prop: new Map<string, unknown>(),
+    observedFrontier: new Map(observedFrontier),
+    edgeBirthEvent: new Map<string, unknown>(),
+  };
+}
 
 vi.mock('../../src/infrastructure/GraphContext.js', () => ({
   createGraphContext: () => ({
@@ -145,6 +169,10 @@ describe('ControlPlaneService', () => {
     mocks.getStateSnapshot.mockResolvedValue({
       observedFrontier: new Map([['agent.prime', 12]]),
     });
+    mocks.materializeWorkingSet.mockResolvedValue(
+      makeWorkingSetState(['task:ONE'], [['agent.prime', 12], ['wl_review-auth', 0]]),
+    );
+    mocks.patchesForWorkingSet.mockResolvedValue(['patch:1', 'patch:2']);
     mocks.getGraph.mockResolvedValue({
       getFrontier: mocks.getFrontier,
       getStateSnapshot: mocks.getStateSnapshot,
@@ -153,6 +181,8 @@ describe('ControlPlaneService', () => {
       patchesFor: vi.fn(async () => ['patch:1', 'patch:2']),
       createWorkingSet: mocks.createWorkingSet,
       analyzeConflicts: mocks.analyzeConflicts,
+      materializeWorkingSet: mocks.materializeWorkingSet,
+      patchesForWorkingSet: mocks.patchesForWorkingSet,
     });
     mocks.openIsolatedGraph.mockResolvedValue({
       getFrontier: mocks.getFrontier,
@@ -455,6 +485,145 @@ describe('ControlPlaneService', () => {
           kind: 'git-warp-working-set',
           workingSetId: 'wl_review-auth',
         },
+      }),
+      observation: expect.objectContaining({
+        worldlineId: 'worldline:review-auth',
+      }),
+    }));
+  });
+
+  it('reads history for derived worldlines through the backing working set', async () => {
+    mocks.materializeWorkingSet.mockResolvedValueOnce(
+      makeWorkingSetState(['task:ONE'], [['agent.prime', 12], ['wl_review-auth', 3]]),
+    );
+    mocks.patchesForWorkingSet.mockResolvedValueOnce(['patch:base', 'patch:overlay']);
+
+    const service = new ControlPlaneService({
+      getGraph: mocks.getGraph,
+      openIsolatedGraph: mocks.openIsolatedGraph,
+      reset: vi.fn(),
+    }, 'agent.prime');
+
+    const result = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'req-history-worldline',
+      cmd: 'history',
+      args: {
+        worldlineId: 'worldline:review-auth',
+        targetId: 'task:ONE',
+      },
+    });
+
+    expect(mocks.materializeWorkingSet).toHaveBeenCalledWith('wl_review-auth', undefined);
+    expect(mocks.patchesForWorkingSet).toHaveBeenCalledWith('wl_review-auth', 'task:ONE', undefined);
+    expect(result).toEqual(expect.objectContaining({
+      ok: true,
+      data: expect.objectContaining({
+        targetId: 'task:ONE',
+        patchCount: 2,
+        patches: ['patch:base', 'patch:overlay'],
+      }),
+      observation: expect.objectContaining({
+        worldlineId: 'worldline:review-auth',
+      }),
+    }));
+  });
+
+  it('diffs derived worldlines through working-set materialization and provenance', async () => {
+    mocks.materializeWorkingSet
+      .mockResolvedValueOnce(
+        makeWorkingSetState(['task:ONE'], [['agent.prime', 12], ['wl_review-auth', 3]]),
+      )
+      .mockResolvedValueOnce(
+        makeWorkingSetState(['task:ONE'], [['agent.prime', 10], ['wl_review-auth', 1]]),
+      );
+    mocks.patchesForWorkingSet
+      .mockResolvedValueOnce(['patch:1', 'patch:2', 'patch:3'])
+      .mockResolvedValueOnce(['patch:1']);
+
+    const service = new ControlPlaneService({
+      getGraph: mocks.getGraph,
+      openIsolatedGraph: mocks.openIsolatedGraph,
+      reset: vi.fn(),
+    }, 'agent.prime');
+
+    const result = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'req-diff-worldline',
+      cmd: 'diff',
+      args: {
+        worldlineId: 'worldline:review-auth',
+        targetId: 'task:ONE',
+        at: { tick: 12 },
+        since: { tick: 10 },
+      },
+    });
+
+    expect(mocks.materializeWorkingSet).toHaveBeenNthCalledWith(1, 'wl_review-auth', { ceiling: 12 });
+    expect(mocks.materializeWorkingSet).toHaveBeenNthCalledWith(2, 'wl_review-auth', { ceiling: 10 });
+    expect(mocks.patchesForWorkingSet).toHaveBeenNthCalledWith(1, 'wl_review-auth', 'task:ONE', { ceiling: 12 });
+    expect(mocks.patchesForWorkingSet).toHaveBeenNthCalledWith(2, 'wl_review-auth', 'task:ONE', { ceiling: 10 });
+    expect(result).toEqual(expect.objectContaining({
+      ok: true,
+      data: expect.objectContaining({
+        at: { tick: 12 },
+        since: { tick: 10 },
+        sincePatchCount: 1,
+        currentPatchCount: 3,
+        newPatches: ['patch:2', 'patch:3'],
+      }),
+      observation: expect.objectContaining({
+        worldlineId: 'worldline:review-auth',
+      }),
+    }));
+  });
+
+  it('routes apply for derived worldlines through the mutation kernel with a working-set id', async () => {
+    mocks.executeMutation.mockResolvedValueOnce({
+      valid: true,
+      code: null,
+      reasons: [],
+      sideEffects: ['set task:ONE.status'],
+      patch: 'patch:worldline-apply',
+      executed: true,
+    });
+    mocks.materializeWorkingSet.mockResolvedValueOnce(
+      makeWorkingSetState(['task:ONE'], [['agent.prime', 12], ['wl_review-auth', 4]]),
+    );
+
+    const service = new ControlPlaneService({
+      getGraph: mocks.getGraph,
+      openIsolatedGraph: mocks.openIsolatedGraph,
+      reset: vi.fn(),
+    }, 'agent.prime');
+
+    const result = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'req-apply-worldline',
+      cmd: 'apply',
+      args: {
+        worldlineId: 'worldline:review-auth',
+        rationale: 'Advance the speculative task state inside the derived worldline.',
+        ops: [
+          { op: 'set_node_property', nodeId: 'task:ONE', key: 'status', value: 'IN_PROGRESS' },
+        ],
+      },
+    });
+
+    expect(mocks.executeMutation).toHaveBeenCalledWith({
+      rationale: 'Advance the speculative task state inside the derived worldline.',
+      ops: [
+        { op: 'set_node_property', nodeId: 'task:ONE', key: 'status', value: 'IN_PROGRESS' },
+      ],
+    }, {
+      dryRun: false,
+      workingSetId: 'wl_review-auth',
+    });
+    expect(mocks.materializeWorkingSet).toHaveBeenCalledWith('wl_review-auth');
+    expect(result).toEqual(expect.objectContaining({
+      ok: true,
+      data: expect.objectContaining({
+        patch: 'patch:worldline-apply',
       }),
       observation: expect.objectContaining({
         worldlineId: 'worldline:review-auth',
