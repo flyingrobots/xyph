@@ -145,6 +145,8 @@ The current sovereign-control-plane foundation implements:
 - working-set-backed `fork_worldline` creation from `worldline:live`
 - tick-aware low-level observation for `graph.summary`, `worldline.summary`,
   `entity.detail`, `history`, and `diff`
+- tip-scoped `observe(conflicts)` backed by git-warp conflict analysis for the
+  live frontier or a derived worldline's backing working set
 - structured redaction for content-bearing `entity.detail` observations
 
 Current `fork_worldline` is intentionally narrow:
@@ -153,7 +155,7 @@ Current `fork_worldline` is intentionally narrow:
 - it may carry owner, scope, and lease metadata
 - `at: <tick>` currently lowers to a current-frontier Lamport ceiling
 - it does **not** yet provide worldline-local read models, worldline-local
-  mutation routing, or nested derived-worldline forking
+  mutation routing for general projections, or nested derived-worldline forking
 
 It does **not** yet implement full comparison artifacts, collapse proposals as
 first-class executable workflows, full worldline-local execution, or lease

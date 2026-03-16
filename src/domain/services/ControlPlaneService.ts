@@ -536,7 +536,7 @@ export class ControlPlaneService implements ControlPlanePort {
         };
       }
       case 'conflicts': {
-        const { options, requested } = this.buildConflictAnalysisRequest(request, selector);
+        const { options, requested } = this.buildConflictAnalysisRequest(request, selector, capability);
         const graph = await this.graphPort.getGraph();
         const analysis = await this.analyzeConflicts(graph, options);
         const diagnostics = toConflictProjectionDiagnostics(analysis.diagnostics);
@@ -697,6 +697,7 @@ export class ControlPlaneService implements ControlPlanePort {
   private buildConflictAnalysisRequest(
     request: ControlPlaneRequestV1,
     selector: ObservationSelector,
+    capability: EffectiveCapabilityGrant,
   ): {
     options: AnalyzeConflictsOptions;
     requested: Record<string, unknown>;
@@ -704,7 +705,7 @@ export class ControlPlaneService implements ControlPlanePort {
     if (selector.kind !== 'tip') {
       throw controlPlaneFailure(
         'not_implemented',
-        "Projection 'conflicts' currently analyzes the current frontier only. Use lamportCeiling for current-frontier conflict analysis; historical frontier and worldline-local conflict analysis have not landed yet.",
+        "Projection 'conflicts' currently supports live-frontier or derived-worldline tip analysis only. Use lamportCeiling for current-coordinate analysis; arbitrary historical frontier conflict analysis has not landed yet.",
         {
           projection: 'conflicts',
           requestedTick: selector.tick,
@@ -714,7 +715,7 @@ export class ControlPlaneService implements ControlPlanePort {
     if (request.args['since'] !== undefined || request.args['sinceFrontierDigest'] !== undefined) {
       throw controlPlaneFailure(
         'invalid_args',
-        "Projection 'conflicts' does not support since selectors. Use lamportCeiling for current-frontier conflict analysis.",
+        "Projection 'conflicts' does not support since selectors. Use lamportCeiling for live-frontier or derived-worldline tip conflict analysis.",
       );
     }
 
@@ -758,10 +759,28 @@ export class ControlPlaneService implements ControlPlanePort {
       options.scanBudget = request.args['scanBudget'] as AnalyzeConflictsOptions['scanBudget'];
     }
 
+    const worldlineId = capability.worldlineId;
+    if (worldlineId !== DEFAULT_WORLDLINE_ID) {
+      const workingSetId = toSubstrateWorkingSetId(worldlineId);
+      if (!workingSetId) {
+        throw controlPlaneFailure(
+          'invalid_args',
+          "Projection 'conflicts' currently supports only worldline:live or canonical derived worldline ids backed by git-warp working sets.",
+          {
+            projection: 'conflicts',
+            worldlineId,
+          },
+        );
+      }
+      options.workingSetId = workingSetId;
+    }
+
     const requested: Record<string, unknown> = {
+      worldlineId,
       lamportCeiling,
       evidence: options.evidence ?? 'standard',
     };
+    if (options.workingSetId !== undefined) requested['workingSetId'] = options.workingSetId;
     if (options.entityId !== undefined) requested['entityId'] = options.entityId;
     if (options.target !== undefined) requested['target'] = options.target;
     if (options.kind !== undefined) requested['kind'] = options.kind;

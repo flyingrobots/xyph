@@ -165,9 +165,10 @@ describe('ControlPlaneService', () => {
       analyzeConflicts: mocks.analyzeConflicts,
     });
     mocks.analyzeConflicts.mockResolvedValue({
-      analysisVersion: 'conflict-analyzer/v1',
+      analysisVersion: 'conflict-analyzer/v2',
       resolvedCoordinate: {
-        analysisVersion: 'conflict-analyzer/v1',
+        analysisVersion: 'conflict-analyzer/v2',
+        coordinateKind: 'frontier',
         frontier: { 'agent.prime': 'abcdef123456' },
         frontierDigest: 'frontier:conflicts',
         lamportCeiling: null,
@@ -721,9 +722,10 @@ describe('ControlPlaneService', () => {
 
   it('surfaces substrate-backed conflict analysis through observe(conflicts)', async () => {
     mocks.analyzeConflicts.mockResolvedValueOnce({
-      analysisVersion: 'conflict-analyzer/v1',
+      analysisVersion: 'conflict-analyzer/v2',
       resolvedCoordinate: {
-        analysisVersion: 'conflict-analyzer/v1',
+        analysisVersion: 'conflict-analyzer/v2',
+        coordinateKind: 'frontier',
         frontier: { 'agent.prime': 'abcdef123456' },
         frontierDigest: 'frontier:conflicts',
         lamportCeiling: 11,
@@ -816,6 +818,7 @@ describe('ControlPlaneService', () => {
         at: 'tip',
         scope: 'substrate',
         requested: expect.objectContaining({
+          worldlineId: 'worldline:live',
           lamportCeiling: 11,
           entityId: 'task:ONE',
           kind: 'supersession',
@@ -824,7 +827,7 @@ describe('ControlPlaneService', () => {
           scanBudget: { maxPatches: 25 },
         }),
         analysis: expect.objectContaining({
-          analysisVersion: 'conflict-analyzer/v1',
+          analysisVersion: 'conflict-analyzer/v2',
           analysisSnapshotHash: 'snapshot:conflicts',
           conflicts: [expect.objectContaining({ conflictId: 'conflict:1' })],
         }),
@@ -837,6 +840,74 @@ describe('ControlPlaneService', () => {
           severity: 'warning',
         }),
       ],
+    }));
+  });
+
+  it('routes observe(conflicts) for derived worldlines through the backing git-warp working set', async () => {
+    mocks.analyzeConflicts.mockResolvedValueOnce({
+      analysisVersion: 'conflict-analyzer/v2',
+      resolvedCoordinate: {
+        analysisVersion: 'conflict-analyzer/v2',
+        coordinateKind: 'working_set',
+        frontier: { 'agent.prime': 'abcdef123456' },
+        frontierDigest: 'frontier:working-set',
+        lamportCeiling: null,
+        scanBudgetApplied: { maxPatches: null },
+        truncationPolicy: 'reverse-causal-order',
+        workingSet: {
+          workingSetId: 'wl_review-auth',
+          baseLamportCeiling: null,
+          overlayHeadPatchSha: null,
+          overlayPatchCount: 0,
+        },
+      },
+      analysisSnapshotHash: 'snapshot:working-set',
+      conflicts: [],
+    });
+
+    const service = new ControlPlaneService({
+      getGraph: mocks.getGraph,
+      openIsolatedGraph: mocks.openIsolatedGraph,
+      reset: vi.fn(),
+    }, 'agent.prime');
+
+    const result = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'req-conflicts-worldline',
+      cmd: 'observe',
+      args: {
+        projection: 'conflicts',
+        worldlineId: 'worldline:review-auth',
+        evidence: 'full',
+      },
+    });
+
+    expect(mocks.analyzeConflicts).toHaveBeenCalledWith({
+      evidence: 'full',
+      workingSetId: 'wl_review-auth',
+    });
+    expect(result).toEqual(expect.objectContaining({
+      ok: true,
+      data: expect.objectContaining({
+        projection: 'conflicts',
+        requested: expect.objectContaining({
+          worldlineId: 'worldline:review-auth',
+          workingSetId: 'wl_review-auth',
+          evidence: 'full',
+        }),
+        analysis: expect.objectContaining({
+          analysisVersion: 'conflict-analyzer/v2',
+          resolvedCoordinate: expect.objectContaining({
+            coordinateKind: 'working_set',
+            workingSet: expect.objectContaining({
+              workingSetId: 'wl_review-auth',
+            }),
+          }),
+        }),
+      }),
+      observation: expect.objectContaining({
+        worldlineId: 'worldline:review-auth',
+      }),
     }));
   });
 

@@ -79,7 +79,10 @@ Current `observe` projections include a substrate-backed `conflicts` view that
 delegates directly to `git-warp`'s published `analyzeConflicts()` API. This is
 an intentional boundary: git-warp owns conflict facts, and XYPH exposes them as
 observer-facing read data without inventing parallel conflict provenance in its
-own domain layer.
+own domain layer. In the current slice, that projection is tip-only but is now
+worldline-aware for canonical derived worldlines: XYPH lowers those reads to
+the backing git-warp working-set tip rather than pretending the live frontier
+is the only reality.
 
 Current `fork_worldline` behavior is likewise substrate-thin. XYPH now maps the
 command onto git-warp working-set creation, preserving XYPH worldline IDs in

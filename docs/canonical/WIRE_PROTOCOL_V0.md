@@ -193,6 +193,9 @@ Current behavior:
 
 - requires `at: "tip"` or omitted
 - does **not** support `since`
+- respects the effective `worldlineId`
+  - `worldline:live` analyzes the live frontier
+  - canonical derived worldlines analyze the backing git-warp working-set tip
 - accepts optional analyzer filters:
   - `lamportCeiling`
   - `entityId`
@@ -205,9 +208,10 @@ Current behavior:
   - `requested` normalized analyzer inputs
   - `analysis` as the substrate conflict-analysis payload
 
-This projection is intentionally current-frontier scoped in v1. Historical
-frontier and worldline-local conflict analysis remain substrate backlog work and
-must not be faked by XYPH.
+This projection is intentionally **tip-scoped** in v1. XYPH now supports
+live-frontier or derived-worldline tip conflict analysis through git-warp
+working sets, but arbitrary historical frontier conflict analysis remains
+substrate backlog work and must not be faked by XYPH.
 
 ## `fork_worldline` Current Slice
 
