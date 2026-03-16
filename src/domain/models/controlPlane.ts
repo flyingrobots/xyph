@@ -3,6 +3,7 @@ import type { GraphMeta } from './dashboard.js';
 
 export const CONTROL_PLANE_VERSION = 1 as const;
 export const DEFAULT_WORLDLINE_ID = 'worldline:live' as const;
+export const WORLDLINE_ID_PREFIX = 'worldline:' as const;
 export const DEFAULT_OBSERVER_PROFILE_ID = 'observer:default' as const;
 export const DEFAULT_BASIS = 'compat' as const;
 export const DEFAULT_BASIS_VERSION = 'compat-v0' as const;
@@ -192,4 +193,29 @@ export interface MutationPlan {
   ops: ApplyOp[];
   rationale: string;
   idempotencyKey?: string;
+}
+
+const DERIVED_WORLDLINE_SUFFIX_PATTERN = /^[A-Za-z0-9._-]+$/;
+const MAX_SUBSTRATE_WORKING_SET_ID_LENGTH = 64;
+const SUBSTRATE_WORKING_SET_PREFIX = 'wl_';
+
+export function isCanonicalWorldlineId(value: string): boolean {
+  return value.startsWith(WORLDLINE_ID_PREFIX) && value.length > WORLDLINE_ID_PREFIX.length;
+}
+
+export function isCanonicalDerivedWorldlineId(value: string): boolean {
+  if (value === DEFAULT_WORLDLINE_ID) return false;
+  if (!isCanonicalWorldlineId(value)) return false;
+  const suffix = value.slice(WORLDLINE_ID_PREFIX.length);
+  return DERIVED_WORLDLINE_SUFFIX_PATTERN.test(suffix);
+}
+
+export function toSubstrateWorkingSetId(worldlineId: string): string | null {
+  if (!isCanonicalDerivedWorldlineId(worldlineId)) return null;
+  const suffix = worldlineId.slice(WORLDLINE_ID_PREFIX.length);
+  const workingSetId = `${SUBSTRATE_WORKING_SET_PREFIX}${suffix}`;
+  if (workingSetId.length > MAX_SUBSTRATE_WORKING_SET_ID_LENGTH) {
+    return null;
+  }
+  return workingSetId;
 }

@@ -5,6 +5,9 @@ import type { GraphPort } from '../../ports/GraphPort.js';
 import type { ControlPlaneHooks, ControlPlanePort } from '../../ports/ControlPlanePort.js';
 import {
   CONTROL_PLANE_VERSION,
+  DEFAULT_WORLDLINE_ID,
+  isCanonicalDerivedWorldlineId,
+  toSubstrateWorkingSetId,
   type ControlPlaneAudit,
   type ControlPlaneError,
   type ControlPlaneErrorCode,
@@ -154,6 +157,15 @@ function parseTickLike(value: unknown): number | null {
     : null;
 }
 
+function workingSetErrorCode(err: unknown): string | null {
+  return typeof err === 'object'
+    && err !== null
+    && 'code' in err
+    && typeof (err as { code?: unknown }).code === 'string'
+    ? (err as { code: string }).code
+    : null;
+}
+
 export class ControlPlaneService implements ControlPlanePort {
   private readonly roadmap: WarpRoadmapAdapter;
   private readonly doctor: DoctorService;
@@ -262,6 +274,8 @@ export class ControlPlaneService implements ControlPlanePort {
         return this.diff(request, capability);
       case 'explain':
         return this.explain(request, capability);
+      case 'fork_worldline':
+        return this.forkWorldline(request, capability);
       case 'apply':
         return this.apply(request, capability);
       case 'comment':
@@ -270,7 +284,6 @@ export class ControlPlaneService implements ControlPlanePort {
         return this.propose(request, capability);
       case 'attest':
         return this.attest(request, capability);
-      case 'fork_worldline':
       case 'compare_worldlines':
       case 'collapse_worldline':
       case 'query':
@@ -1022,6 +1035,171 @@ export class ControlPlaneService implements ControlPlanePort {
       'invalid_args',
       'explain requires errorCode, actionKind+targetId, or targetId',
     );
+  }
+
+  private async forkWorldline(
+    request: ControlPlaneRequestV1,
+    capability: EffectiveCapabilityGrant,
+  ): Promise<{
+    data: Record<string, unknown>;
+    diagnostics: Diagnostic[];
+    observation: ObservationCoordinate;
+  }> {
+    const sourceWorldlineId = capability.worldlineId;
+    if (sourceWorldlineId !== DEFAULT_WORLDLINE_ID) {
+      throw controlPlaneFailure(
+        'not_implemented',
+        'fork_worldline currently supports only worldline:live as its source worldline.',
+        {
+          sourceWorldlineId,
+        },
+      );
+    }
+
+    if (request.args['since'] !== undefined || request.args['sinceFrontierDigest'] !== undefined) {
+      throw controlPlaneFailure(
+        'invalid_args',
+        'fork_worldline does not support since selectors. Use at or omit selectors for the live frontier.',
+      );
+    }
+
+    const worldlineId = this.requireString(request.args['newWorldlineId'], 'fork_worldline newWorldlineId');
+    if (!isCanonicalDerivedWorldlineId(worldlineId)) {
+      throw controlPlaneFailure(
+        'invalid_args',
+        'newWorldlineId must be a canonical derived worldline id of the form worldline:<slug>, where <slug> uses only [A-Za-z0-9._-] and is not live.',
+        {
+          newWorldlineId: worldlineId,
+        },
+      );
+    }
+
+    const workingSetId = toSubstrateWorkingSetId(worldlineId);
+    if (!workingSetId) {
+      throw controlPlaneFailure(
+        'invalid_args',
+        'newWorldlineId exceeds the current working-set backing limit after XYPH-to-substrate normalization.',
+        {
+          newWorldlineId: worldlineId,
+        },
+      );
+    }
+
+    const selector = this.resolveAtSelector(request);
+    const owner = request.args['owner'] === undefined
+      ? capability.principal.principalId
+      : this.requireString(request.args['owner'], 'fork_worldline owner');
+    const scope = request.args['scope'] === undefined
+      ? null
+      : this.requireString(request.args['scope'], 'fork_worldline scope');
+    const leaseExpiresAt = request.args['leaseExpiresAt'];
+    if (leaseExpiresAt !== undefined && leaseExpiresAt !== null && typeof leaseExpiresAt !== 'string') {
+      throw controlPlaneFailure(
+        'invalid_args',
+        'fork_worldline leaseExpiresAt must be an ISO-8601 string when provided.',
+      );
+    }
+
+    const graph = await this.graphPort.getGraph();
+
+    let descriptor: Awaited<ReturnType<WarpGraph['createWorkingSet']>>;
+    try {
+      descriptor = await graph.createWorkingSet({
+        workingSetId,
+        ...(selector.kind === 'tick' ? { lamportCeiling: selector.tick } : {}),
+        owner,
+        ...(scope === null ? {} : { scope }),
+        ...(leaseExpiresAt === undefined || leaseExpiresAt === null ? {} : { leaseExpiresAt }),
+      });
+    } catch (err) {
+      const substrateCode = workingSetErrorCode(err);
+      switch (substrateCode) {
+        case 'E_WORKING_SET_ALREADY_EXISTS':
+          throw controlPlaneFailure(
+            'invariant_violation',
+            `Worldline '${worldlineId}' already exists.`,
+            {
+              worldlineId,
+              workingSetId,
+              substrateCode,
+            },
+          );
+        case 'E_WORKING_SET_INVALID_ARGS':
+        case 'E_WORKING_SET_ID_INVALID':
+        case 'E_WORKING_SET_COORDINATE_INVALID':
+          throw controlPlaneFailure(
+            'invalid_args',
+            err instanceof Error ? err.message : String(err),
+            {
+              worldlineId,
+              workingSetId,
+              substrateCode,
+            },
+          );
+        case 'E_WORKING_SET_NOT_FOUND':
+          throw controlPlaneFailure(
+            'not_found',
+            err instanceof Error ? err.message : String(err),
+            {
+              worldlineId,
+              workingSetId,
+              substrateCode,
+            },
+          );
+        case 'E_WORKING_SET_CORRUPT':
+        case 'E_WORKING_SET_MISSING_OBJECT':
+          throw controlPlaneFailure(
+            'invariant_violation',
+            err instanceof Error ? err.message : String(err),
+            {
+              worldlineId,
+              workingSetId,
+              substrateCode,
+            },
+          );
+        default:
+          throw err;
+      }
+    }
+
+    const observation = await this.buildObservationCoordinate(
+      request,
+      { ...capability, worldlineId },
+      Date.now(),
+      null,
+      false,
+      graph,
+    );
+
+    return {
+      data: {
+        worldlineId,
+        baseWorldlineId: sourceWorldlineId,
+        forkAt: selector.kind === 'tip'
+          ? 'tip'
+          : {
+            tick: selector.tick,
+            mode: 'current-frontier-lamport-ceiling',
+          },
+        worldline: {
+          worldlineId,
+          createdAt: descriptor.createdAt,
+          updatedAt: descriptor.updatedAt,
+          owner: descriptor.owner,
+          scope: descriptor.scope,
+          lease: descriptor.lease,
+          baseObservation: descriptor.baseObservation,
+          overlay: descriptor.overlay,
+          materialization: descriptor.materialization,
+        },
+        substrate: {
+          kind: 'git-warp-working-set',
+          workingSetId,
+        },
+      },
+      diagnostics: [],
+      observation,
+    };
   }
 
   private async apply(

@@ -66,11 +66,11 @@ Current foundation slice:
 - implemented now: `explain`
 - implemented now: `history`
 - implemented now: `diff`
+- implemented now: `fork_worldline`
 - implemented now: `apply`
 - implemented now: `comment`
 - implemented now: `propose`
 - implemented now: `attest`
-- reserved, not yet implemented: `fork_worldline`
 - reserved, not yet implemented: `compare_worldlines`
 - reserved, not yet implemented: `collapse_worldline`
 - reserved, hidden admin/debug concepts: `query`, `rewind_worldline`
@@ -80,6 +80,14 @@ delegates directly to `git-warp`'s published `analyzeConflicts()` API. This is
 an intentional boundary: git-warp owns conflict facts, and XYPH exposes them as
 observer-facing read data without inventing parallel conflict provenance in its
 own domain layer.
+
+Current `fork_worldline` behavior is likewise substrate-thin. XYPH now maps the
+command onto git-warp working-set creation, preserving XYPH worldline IDs in
+the public control plane while recording a separate substrate backing ID for the
+working set. In this slice, forking is limited to `worldline:live` plus an
+optional tick ceiling that lowers to git-warp's current-frontier Lamport-ceiled
+working-set coordinate. Arbitrary historical frontier selection and
+derived-from-derived worldline forking remain future substrate work.
 
 Existing commands such as `briefing`, `next`, `context`, `submit`, `review`,
 and `merge` still exist, but they should be understood as compatibility

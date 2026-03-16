@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   createComment: vi.fn(),
   createProposal: vi.fn(),
   createAttestation: vi.fn(),
+  createWorkingSet: vi.fn(),
   analyzeConflicts: vi.fn(),
   getFrontier: vi.fn(),
   getStateSnapshot: vi.fn(),
@@ -150,6 +151,7 @@ describe('ControlPlaneService', () => {
       hasNode: vi.fn(async () => true),
       materialize: vi.fn(async () => null),
       patchesFor: vi.fn(async () => ['patch:1', 'patch:2']),
+      createWorkingSet: mocks.createWorkingSet,
       analyzeConflicts: mocks.analyzeConflicts,
     });
     mocks.openIsolatedGraph.mockResolvedValue({
@@ -159,6 +161,7 @@ describe('ControlPlaneService', () => {
       syncCoverage: vi.fn(async () => null),
       materialize: vi.fn(async () => null),
       patchesFor: vi.fn(async () => ['patch:1']),
+      createWorkingSet: mocks.createWorkingSet,
       analyzeConflicts: mocks.analyzeConflicts,
     });
     mocks.analyzeConflicts.mockResolvedValue({
@@ -244,6 +247,33 @@ describe('ControlPlaneService', () => {
       patch: 'patch:attestation',
       attestedAt: 102,
       contentOid: 'oid:attestation',
+    });
+    mocks.createWorkingSet.mockResolvedValue({
+      schemaVersion: 1,
+      workingSetId: 'wl_review-auth',
+      graphName: 'xyph-roadmap',
+      createdAt: '2026-03-16T00:00:00.000Z',
+      updatedAt: '2026-03-16T00:00:00.000Z',
+      owner: 'agent.prime',
+      scope: 'OAuth review',
+      lease: {
+        expiresAt: '2026-03-20T00:00:00.000Z',
+      },
+      baseObservation: {
+        coordinateVersion: 'frontier-lamport/v1',
+        frontier: { 'agent.prime': 'abcdef123456' },
+        frontierDigest: 'frontier:working-set',
+        lamportCeiling: 11,
+      },
+      overlay: {
+        overlayId: 'wl_review-auth',
+        kind: 'patch-log',
+        headPatchSha: null,
+        patchCount: 0,
+      },
+      materialization: {
+        cacheAuthority: 'derived',
+      },
     });
   });
 
@@ -369,6 +399,64 @@ describe('ControlPlaneService', () => {
           code: 'policy_blocked',
           summary: expect.any(String),
         }),
+      }),
+    }));
+  });
+
+  it('creates a derived worldline by delegating to the substrate working-set API', async () => {
+    const service = new ControlPlaneService({
+      getGraph: mocks.getGraph,
+      openIsolatedGraph: mocks.openIsolatedGraph,
+      reset: vi.fn(),
+    }, 'agent.prime');
+
+    const result = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'req-fork',
+      cmd: 'fork_worldline',
+      args: {
+        newWorldlineId: 'worldline:review-auth',
+        at: { tick: 11 },
+        scope: 'OAuth review',
+        leaseExpiresAt: '2026-03-20T00:00:00.000Z',
+      },
+    });
+
+    expect(mocks.createWorkingSet).toHaveBeenCalledWith({
+      workingSetId: 'wl_review-auth',
+      lamportCeiling: 11,
+      owner: 'agent.prime',
+      scope: 'OAuth review',
+      leaseExpiresAt: '2026-03-20T00:00:00.000Z',
+    });
+    expect(result).toEqual(expect.objectContaining({
+      ok: true,
+      cmd: 'fork_worldline',
+      data: expect.objectContaining({
+        worldlineId: 'worldline:review-auth',
+        baseWorldlineId: 'worldline:live',
+        forkAt: {
+          tick: 11,
+          mode: 'current-frontier-lamport-ceiling',
+        },
+        worldline: expect.objectContaining({
+          worldlineId: 'worldline:review-auth',
+          owner: 'agent.prime',
+          scope: 'OAuth review',
+          baseObservation: expect.objectContaining({
+            lamportCeiling: 11,
+          }),
+          overlay: expect.objectContaining({
+            patchCount: 0,
+          }),
+        }),
+        substrate: {
+          kind: 'git-warp-working-set',
+          workingSetId: 'wl_review-auth',
+        },
+      }),
+      observation: expect.objectContaining({
+        worldlineId: 'worldline:review-auth',
       }),
     }));
   });
@@ -567,6 +655,66 @@ describe('ControlPlaneService', () => {
       }),
       observation: expect.objectContaining({
         frontierDigest: expect.any(String),
+      }),
+    }));
+  });
+
+  it('rejects fork_worldline from a non-live source worldline instead of pretending nested substrate support', async () => {
+    const service = new ControlPlaneService({
+      getGraph: mocks.getGraph,
+      openIsolatedGraph: mocks.openIsolatedGraph,
+      reset: vi.fn(),
+    }, 'agent.prime');
+
+    const result = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'req-fork-derived',
+      cmd: 'fork_worldline',
+      args: {
+        worldlineId: 'worldline:review-auth',
+        newWorldlineId: 'worldline:review-auth-2',
+      },
+    });
+
+    expect(mocks.createWorkingSet).not.toHaveBeenCalled();
+    expect(result).toEqual(expect.objectContaining({
+      ok: false,
+      error: expect.objectContaining({
+        code: 'not_implemented',
+      }),
+    }));
+  });
+
+  it('maps substrate working-set collisions onto invariant_violation for fork_worldline', async () => {
+    mocks.createWorkingSet.mockRejectedValueOnce(Object.assign(
+      new Error("Working set 'wl_review-auth' already exists"),
+      { code: 'E_WORKING_SET_ALREADY_EXISTS' },
+    ));
+
+    const service = new ControlPlaneService({
+      getGraph: mocks.getGraph,
+      openIsolatedGraph: mocks.openIsolatedGraph,
+      reset: vi.fn(),
+    }, 'agent.prime');
+
+    const result = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'req-fork-collision',
+      cmd: 'fork_worldline',
+      args: {
+        newWorldlineId: 'worldline:review-auth',
+      },
+    });
+
+    expect(result).toEqual(expect.objectContaining({
+      ok: false,
+      error: expect.objectContaining({
+        code: 'invariant_violation',
+        details: expect.objectContaining({
+          worldlineId: 'worldline:review-auth',
+          workingSetId: 'wl_review-auth',
+          substrateCode: 'E_WORKING_SET_ALREADY_EXISTS',
+        }),
       }),
     }));
   });

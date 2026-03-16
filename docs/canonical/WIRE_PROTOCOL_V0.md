@@ -123,11 +123,11 @@ Current foundation-slice implementation status:
 - implemented now: `explain`
 - implemented now: `history`
 - implemented now: `diff`
+- implemented now: `fork_worldline`
 - implemented now: `apply`
 - implemented now: `propose`
 - implemented now: `comment`
 - implemented now: `attest`
-- reserved, not yet implemented: `fork_worldline`
 - reserved, not yet implemented: `compare_worldlines`
 - reserved, not yet implemented: `collapse_worldline`
 - reserved, not yet implemented: `query`
@@ -208,6 +208,28 @@ Current behavior:
 This projection is intentionally current-frontier scoped in v1. Historical
 frontier and worldline-local conflict analysis remain substrate backlog work and
 must not be faked by XYPH.
+
+## `fork_worldline` Current Slice
+
+`fork_worldline` is now implemented as a thin XYPH mapping onto git-warp working
+sets.
+
+Current behavior:
+
+- requires `newWorldlineId`
+- uses the effective `worldlineId` as the source worldline
+- currently supports only `worldline:live` as that source
+- accepts `at: "tip"` or omitted for live-frontier forks
+- accepts `at: <tick>` or `at: { "tick": <n> }`, which currently lowers to a
+  **current-frontier Lamport ceiling** in the substrate working-set API
+- accepts optional `owner`, `scope`, and `leaseExpiresAt`
+- returns:
+  - the XYPH worldline descriptor payload
+  - a substrate backing block identifying the git-warp working set
+
+This is intentionally narrower than the long-term worldline model. Arbitrary
+historical frontiers, derived-from-derived forking, and worldline-local replay
+remain future slices.
 
 ## Error Taxonomy
 

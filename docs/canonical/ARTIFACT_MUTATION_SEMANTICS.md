@@ -142,10 +142,19 @@ The current sovereign-control-plane foundation implements:
 - append-only attestations
 - non-authoritative proposals
 - primitive-op `apply`
+- working-set-backed `fork_worldline` creation from `worldline:live`
 - tick-aware low-level observation for `graph.summary`, `worldline.summary`,
   `entity.detail`, `history`, and `diff`
 - structured redaction for content-bearing `entity.detail` observations
 
+Current `fork_worldline` is intentionally narrow:
+
+- it creates a derived worldline descriptor backed by a git-warp working set
+- it may carry owner, scope, and lease metadata
+- `at: <tick>` currently lowers to a current-frontier Lamport ceiling
+- it does **not** yet provide worldline-local read models, worldline-local
+  mutation routing, or nested derived-worldline forking
+
 It does **not** yet implement full comparison artifacts, collapse proposals as
-first-class executable workflows, or worldline leasing. Those remain future
-slices governed by this contract.
+first-class executable workflows, full worldline-local execution, or lease
+enforcement. Those remain future slices governed by this contract.
