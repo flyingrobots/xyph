@@ -93,6 +93,125 @@ Load-bearing rule: **Observer profiles do not grant authority by existing.**
 Authority is resolved from the acting principal, the observer profile, the
 policy pack, and the observation/worldline coordinate in play.
 
+### Why Worldlines Exist
+
+**The graph is still the plan.**  
+`worldline:live` is the shared, stigmergic coordination surface that humans and
+agents should react to by default.
+
+A derived worldline is **not** a second-class draft or a Git branch with a new
+name. It is a **candidate continuation of the plan**: a pinned observation plus
+an overlay patch log stored in git-warp as a working set.
+
+That matters because changing the live plan is not a private act. In XYPH, the
+shared graph is the environment everyone reacts to. If an agent lands a
+half-formed structural rewrite directly in `worldline:live`, other agents and
+humans may immediately re-route work, generate diagnostics against it, or
+respond to it as if it were settled truth.
+
+Worldlines exist to preserve **signal hygiene** in that shared environment.
+
+#### Default Rule
+
+Use `worldline:live` for:
+
+- ordinary execution
+- truthful progress/status updates
+- routine evidence attachment
+- normal collaborative work
+
+Use a derived worldline when the work is:
+
+- speculative
+- structurally disruptive
+- multi-step and only coherent as a set
+- high-blast-radius
+- explicitly counterfactual
+- intended for review before it becomes shared truth
+
+#### Concrete Use Cases
+
+**1. Structural replanning**
+
+An agent wants to split one quest into five quests, redistribute dependencies,
+and change ownership. That should not hit the live graph one mutation at a
+time, because the intermediate states would send misleading stigmergic signals.
+
+```bash
+printf '%s\n' \
+  '{"v":1,"id":"fork-1","cmd":"fork_worldline","args":{"newWorldlineId":"worldline:plan-rewrite","scope":"campaign restructure"}}' \
+  | node ./xyph.ts api
+```
+
+The agent can then use `worldline:plan-rewrite` for `history`, `diff`,
+`apply`, and `observe(conflicts)` without perturbing `worldline:live`.
+
+**2. High-blast-radius what-if execution**
+
+A human or agent wants to know what happens if a submission lineage is rejected,
+tasks are reopened, and a dependency corridor is rewritten. That is not just a
+comment or proposal. It is an executable alternative graph state.
+
+**3. Multi-step speculative execution**
+
+Some changes only make sense as a bundle:
+
+- create new nodes
+- retarget dependencies
+- change statuses
+- attach evidence
+- rewrite criteria
+
+If those land incrementally in the live graph, the plan is briefly incoherent.
+A worldline gives that bundle a coherent execution surface.
+
+**4. Review lanes**
+
+A reviewer can inspect a candidate future instead of a prose suggestion. That
+lets XYPH answer a stronger question than “what is proposed?”:
+
+> what would the plan look like if this path were taken?
+
+**5. Offline continuation**
+
+Because git-warp is offline-first, an agent can continue from a pinned
+observation while disconnected or asynchronous, record overlay patches in a
+working set, and settle those changes later without pretending they were always
+the shared truth.
+
+#### Why Comments and Proposals Are Not Enough
+
+Comments and proposals are good for discussion and recommendation. They are not
+enough for:
+
+- executable alternate state
+- coherent speculative multi-step mutation
+- local causal continuation from a past observation
+- time-travel workflows that continue instead of merely inspect
+
+A proposal says **what should happen**.  
+A worldline says **here is the graph if this path is taken**.
+
+That is the practical XYPH use case.
+
+#### Current Slice
+
+Canonical derived worldlines are currently honest on this substrate surface:
+
+- `fork_worldline`
+- `history`
+- `diff`
+- `apply`
+- `observe(conflicts)`
+
+GraphContext-backed projections such as `observe(graph.summary)` and
+`observe(entity.detail)` are still catching up. Until they are worldline-aware,
+they should be treated as live-service compatibility views rather than full
+derived-worldline truth.
+
+For the broader technical framing of XYPH as a WARP-native application, see
+[XYPH As A WARP App](docs/XYPH_AS_A_WARP_APP.md).
+
 Now you're all set. Let's see how we might use XYPH in our everyday workflows.
 
 ### Walkthrough: Building a Feature Together
