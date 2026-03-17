@@ -57,12 +57,23 @@ vi.mock('../../src/infrastructure/GraphContext.js', () => ({
       getFrontier: mocks.getFrontier,
     },
   }),
-  createGraphContextFromGraph: () => ({
-    fetchSnapshot: mocks.fetchSnapshot,
-    fetchEntityDetail: mocks.fetchEntityDetail,
+  createGraphContextFromGraph: (graph: {
+    getStateSnapshot: typeof mocks.getStateSnapshot;
+    getFrontier: typeof mocks.getFrontier;
+  }, opts?: {
+    materializeGraph?: (graph: unknown) => Promise<void>;
+  }) => ({
+    fetchSnapshot: async () => {
+      await opts?.materializeGraph?.(graph);
+      return mocks.fetchSnapshot();
+    },
+    fetchEntityDetail: async (id: string) => {
+      await opts?.materializeGraph?.(graph);
+      return mocks.fetchEntityDetail(id);
+    },
     graph: {
-      getStateSnapshot: mocks.getStateSnapshot,
-      getFrontier: mocks.getFrontier,
+      getStateSnapshot: graph.getStateSnapshot,
+      getFrontier: graph.getFrontier,
     },
   }),
 }));
@@ -191,6 +202,8 @@ describe('ControlPlaneService', () => {
       syncCoverage: vi.fn(async () => null),
       materialize: vi.fn(async () => null),
       patchesFor: vi.fn(async () => ['patch:1']),
+      materializeWorkingSet: mocks.materializeWorkingSet,
+      patchesForWorkingSet: mocks.patchesForWorkingSet,
       createWorkingSet: mocks.createWorkingSet,
       analyzeConflicts: mocks.analyzeConflicts,
     });
@@ -341,6 +354,38 @@ describe('ControlPlaneService', () => {
         principalType: 'agent',
         observerProfileId: 'observer:default',
         graphMeta: { maxTick: 12, myTick: 12, writerCount: 1, tipSha: 'abcdef1' },
+      }),
+    }));
+  });
+
+  it('routes observe(worldline.summary) for derived worldlines through isolated working-set materialization', async () => {
+    const service = new ControlPlaneService({
+      getGraph: mocks.getGraph,
+      openIsolatedGraph: mocks.openIsolatedGraph,
+      reset: vi.fn(),
+    }, 'agent.prime');
+
+    const result = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'req-worldline-summary',
+      cmd: 'observe',
+      args: {
+        projection: 'worldline.summary',
+        worldlineId: 'worldline:review-auth',
+        at: { tick: 10 },
+      },
+    });
+
+    expect(mocks.openIsolatedGraph).toHaveBeenCalledTimes(1);
+    expect(mocks.materializeWorkingSet).toHaveBeenCalledWith('wl_review-auth', { ceiling: 10 });
+    expect(result).toEqual(expect.objectContaining({
+      ok: true,
+      data: expect.objectContaining({
+        projection: 'worldline.summary',
+        at: { tick: 10 },
+      }),
+      observation: expect.objectContaining({
+        worldlineId: 'worldline:review-auth',
       }),
     }));
   });
@@ -1217,6 +1262,60 @@ describe('ControlPlaneService', () => {
       }),
       observation: expect.objectContaining({
         sealedObservationMode: 'structured-redaction',
+      }),
+    }));
+  });
+
+  it('routes observe(entity.detail) for derived worldlines through isolated working-set materialization', async () => {
+    mocks.fetchEntityDetail.mockResolvedValueOnce({
+      id: 'task:ONE',
+      type: 'task',
+      props: { type: 'task', title: 'Task One', status: 'READY', hours: 1 },
+      outgoing: [],
+      incoming: [],
+      questDetail: {
+        id: 'task:ONE',
+        quest: { id: 'task:ONE', title: 'Task One', status: 'READY', hours: 1 },
+        reviews: [],
+        decisions: [],
+        stories: [],
+        requirements: [],
+        criteria: [],
+        evidence: [],
+        policies: [],
+        documents: [],
+        comments: [],
+        timeline: [],
+      },
+    });
+
+    const service = new ControlPlaneService({
+      getGraph: mocks.getGraph,
+      openIsolatedGraph: mocks.openIsolatedGraph,
+      reset: vi.fn(),
+    }, 'agent.prime');
+
+    const result = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'req-worldline-detail',
+      cmd: 'observe',
+      args: {
+        projection: 'entity.detail',
+        worldlineId: 'worldline:review-auth',
+        targetId: 'task:ONE',
+      },
+    });
+
+    expect(mocks.openIsolatedGraph).toHaveBeenCalledTimes(1);
+    expect(mocks.materializeWorkingSet).toHaveBeenCalledWith('wl_review-auth', undefined);
+    expect(result).toEqual(expect.objectContaining({
+      ok: true,
+      data: expect.objectContaining({
+        projection: 'entity.detail',
+        targetId: 'task:ONE',
+      }),
+      observation: expect.objectContaining({
+        worldlineId: 'worldline:review-auth',
       }),
     }));
   });

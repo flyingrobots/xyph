@@ -189,11 +189,12 @@ selectors with `not_implemented` rather than pretending historical support.
 Canonical derived worldlines are currently supported on a narrower substrate
 surface than `worldline:live`:
 
-- working-set-aware now: `history`, `diff`, `apply`, `observe(conflicts)`
-- still live-service-backed for now: `observe(graph.summary)`,
-  `observe(worldline.summary)`, `observe(entity.detail)`, compatibility
-  projections such as `briefing`, `context`, `next`, `submissions`,
-  `diagnostics`, and `prescriptions`
+- working-set-aware now: `observe(graph.summary)`,
+  `observe(worldline.summary)`, `observe(entity.detail)`, `history`, `diff`,
+  `apply`, `observe(conflicts)`
+- still live-service-backed for now: compatibility projections such as
+  `briefing`, `context`, `next`, `submissions`, `diagnostics`, and
+  `prescriptions`
 
 ## Substrate Conflict Projection
 
@@ -267,17 +268,21 @@ implementation does not drift into branch-shaped vocabulary.
 Canonical derived worldlines backed by git-warp working sets now support a
 first honest execution slice:
 
+- `observe(graph.summary)`, `observe(worldline.summary)`, and
+  `observe(entity.detail)` materialize isolated working-set-visible read
+  graphs instead of silently reading `worldline:live`
 - `history` reads the working set's pinned base plus overlay patch universe
 - `diff` compares working-set-local coordinates rather than pretending the live
   frontier is the only truth
 - `apply` lowers through the same mutation kernel as live writes, but commits to
   the working-set overlay patch log instead of the shared graph
-- observation metadata for these commands uses the working set's observed
+- observation metadata for these commands uses the working set's visible
   frontier digest
 
 This is still intentionally partial. XYPH does **not** yet expose general
-working-set-backed `observe(graph.summary)` / `observe(entity.detail)` or
-collapse semantics in this slice.
+working-set-backed compatibility projections such as `briefing`, `context`,
+`next`, `submissions`, `diagnostics`, or `prescriptions`, and it does **not**
+yet expose collapse semantics in this slice.
 
 ## Error Taxonomy
 

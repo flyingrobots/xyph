@@ -1,7 +1,12 @@
 import { createHash } from 'node:crypto';
 import type WarpGraph from '@git-stunts/git-warp';
 import type { ConflictDiagnostic } from '@git-stunts/git-warp';
-import { projectStateV5, type VisibleStateProjectionV5, type WarpStateV5 } from '@git-stunts/git-warp';
+import {
+  createStateReaderV5,
+  type VisibleStateProjectionV5,
+  type VisibleStateReaderV5,
+  type WarpStateV5,
+} from '@git-stunts/git-warp';
 import type { GraphPort } from '../../ports/GraphPort.js';
 import type { ControlPlaneHooks, ControlPlanePort } from '../../ports/ControlPlanePort.js';
 import {
@@ -117,9 +122,16 @@ type AnalyzeConflictsOptions = NonNullable<Parameters<WarpGraph['analyzeConflict
 type ConflictAnalysisResult = Awaited<ReturnType<WarpGraph['analyzeConflicts']>>;
 
 interface WorkingSetProjectionContext {
+  graph: WarpGraph;
   workingSetId: string;
   state: WarpStateV5;
+  reader: VisibleStateReaderV5;
   projection: VisibleStateProjectionV5;
+  frontierDigest: string;
+}
+
+interface DerivedWorldlineGraphContext {
+  graphCtx: ReturnType<typeof createGraphContextFromGraph>;
   frontierDigest: string;
 }
 
@@ -426,18 +438,28 @@ export class ControlPlaneService implements ControlPlanePort {
       return this.graphPort.getGraph();
     }
 
+    const graph = await this.openIsolatedReadGraph(
+      'Historical observation requires an isolated read-graph provider.',
+      { selector },
+    );
+    await graph.syncCoverage();
+    await graph.materialize({ ceiling: selector.tick });
+    return graph;
+  }
+
+  private async openIsolatedReadGraph(
+    message: string,
+    details?: Record<string, unknown>,
+  ): Promise<WarpGraph> {
     const isolated = this.graphPort.openIsolatedGraph;
     if (!isolated) {
       throw controlPlaneFailure(
         'not_implemented',
-        'Historical observation requires an isolated read-graph provider.',
-        { selector },
+        message,
+        details,
       );
     }
-    const graph = await isolated.call(this.graphPort);
-    await graph.syncCoverage();
-    await graph.materialize({ ceiling: selector.tick });
-    return graph;
+    return await isolated.call(this.graphPort);
   }
 
   private maybeRedactEntityDetail(
@@ -507,12 +529,17 @@ export class ControlPlaneService implements ControlPlanePort {
     switch (projection) {
       case 'graph.summary':
       case 'worldline.summary': {
-        const graphCtx = selector.kind === 'tip'
-          ? createGraphContext(this.graphPort)
-          : createGraphContextFromGraph(
-            await this.openObservationGraph(selector),
-            { ceiling: selector.tick, syncCoverage: false },
-          );
+        const derived = capability.worldlineId === DEFAULT_WORLDLINE_ID
+          ? null
+          : await this.createDerivedWorldlineGraphContext(capability, selector);
+        const graphCtx = derived?.graphCtx ?? (
+          selector.kind === 'tip'
+            ? createGraphContext(this.graphPort)
+            : createGraphContextFromGraph(
+              await this.openObservationGraph(selector),
+              { ceiling: selector.tick, syncCoverage: false },
+            )
+        );
         const snapshot = await graphCtx.fetchSnapshot();
         return {
           data: {
@@ -544,6 +571,7 @@ export class ControlPlaneService implements ControlPlanePort {
             snapshot.graphMeta ?? null,
             false,
             graphCtx.graph,
+            derived?.frontierDigest,
           ),
         };
       }
@@ -552,6 +580,9 @@ export class ControlPlaneService implements ControlPlanePort {
         const graph = await this.graphPort.getGraph();
         const analysis = await this.analyzeConflicts(graph, options);
         const diagnostics = toConflictProjectionDiagnostics(analysis.diagnostics);
+        const frontierDigest = capability.worldlineId === DEFAULT_WORLDLINE_ID
+          ? analysis.resolvedCoordinate.frontierDigest
+          : (await this.materializeWorkingSetProjection(capability, selector)).frontierDigest;
         return {
           data: {
             projection,
@@ -568,21 +599,31 @@ export class ControlPlaneService implements ControlPlanePort {
             null,
             false,
             graph,
-            analysis.resolvedCoordinate.frontierDigest,
+            frontierDigest,
           ),
         };
       }
       case 'entity.detail': {
-        const graphCtx = selector.kind === 'tip'
-          ? createGraphContext(this.graphPort)
-          : createGraphContextFromGraph(
-            await this.openObservationGraph(selector),
-            { ceiling: selector.tick, syncCoverage: false },
-          );
+        const derived = capability.worldlineId === DEFAULT_WORLDLINE_ID
+          ? null
+          : await this.createDerivedWorldlineGraphContext(capability, selector);
+        const graphCtx = derived?.graphCtx ?? (
+          selector.kind === 'tip'
+            ? createGraphContext(this.graphPort)
+            : createGraphContextFromGraph(
+              await this.openObservationGraph(selector),
+              { ceiling: selector.tick, syncCoverage: false },
+            )
+        );
         const targetId = this.requireString(request.args['targetId'], 'observe targetId');
         const detail = await graphCtx.fetchEntityDetail(targetId);
         if (!detail) {
-          throw controlPlaneFailure('not_found', `Entity ${targetId} not found in the graph`);
+          throw controlPlaneFailure(
+            'not_found',
+            capability.worldlineId === DEFAULT_WORLDLINE_ID
+              ? `Entity ${targetId} not found in the graph`
+              : `Entity ${targetId} not found in worldline ${capability.worldlineId}`,
+          );
         }
         const redacted = this.maybeRedactEntityDetail(detail, capability);
         return {
@@ -594,7 +635,15 @@ export class ControlPlaneService implements ControlPlanePort {
             ...(redacted.redactions.length === 0 ? {} : { redactions: redacted.redactions }),
           },
           diagnostics: [],
-          observation: await this.buildObservationCoordinate(request, capability, Date.now(), null, true, graphCtx.graph),
+          observation: await this.buildObservationCoordinate(
+            request,
+            capability,
+            Date.now(),
+            null,
+            true,
+            graphCtx.graph,
+            derived?.frontierDigest,
+          ),
         };
       }
       case 'slice.local':
@@ -906,18 +955,70 @@ export class ControlPlaneService implements ControlPlanePort {
       );
     }
 
-    const graph = await this.graphPort.getGraph();
+    const graph = await this.openIsolatedReadGraph(
+      'Derived-worldline reads require an isolated read-graph provider.',
+      {
+        worldlineId: capability.worldlineId,
+        selector,
+      },
+    );
     try {
       const state = await graph.materializeWorkingSet(workingSetId, this.workingSetReadOptions(selector));
+      const reader = createStateReaderV5(state);
       return {
+        graph,
         workingSetId,
         state,
-        projection: projectStateV5(state),
+        reader,
+        projection: reader.project(),
         frontierDigest: frontierDigestFromObservedFrontier(state.observedFrontier),
       };
     } catch (err) {
       this.rethrowWorkingSetError(err, capability.worldlineId, workingSetId);
     }
+  }
+
+  private async createDerivedWorldlineGraphContext(
+    capability: EffectiveCapabilityGrant,
+    selector: ObservationSelector,
+  ): Promise<DerivedWorldlineGraphContext> {
+    const workingSetId = this.resolveDerivedWorkingSetId(capability, 'observe');
+    if (!workingSetId) {
+      throw controlPlaneFailure(
+        'invalid_args',
+        'Derived worldline projection requires a backing git-warp working set.',
+        { worldlineId: capability.worldlineId },
+      );
+    }
+
+    const graph = await this.openIsolatedReadGraph(
+      'Derived-worldline observe projections require an isolated read-graph provider.',
+      {
+        worldlineId: capability.worldlineId,
+        selector,
+      },
+    );
+
+    let frontierDigest: string;
+    try {
+      const state = await graph.materializeWorkingSet(
+        workingSetId,
+        this.workingSetReadOptions(selector),
+      );
+      frontierDigest = frontierDigestFromObservedFrontier(state.observedFrontier);
+    } catch (err) {
+      this.rethrowWorkingSetError(err, capability.worldlineId, workingSetId);
+    }
+
+    return {
+      frontierDigest,
+      graphCtx: createGraphContextFromGraph(graph, {
+        syncCoverage: false,
+        materializeGraph: async (workingGraph) => {
+          void workingGraph;
+        },
+      }),
+    };
   }
 
   private async history(
@@ -932,9 +1033,8 @@ export class ControlPlaneService implements ControlPlanePort {
     const selector = this.resolveAtSelector(request);
     const workingSetId = this.resolveDerivedWorkingSetId(capability, 'history');
     if (workingSetId) {
-      const graph = await this.graphPort.getGraph();
       const materialized = await this.materializeWorkingSetProjection(capability, selector);
-      const exists = materialized.projection.nodes.includes(targetId);
+      const exists = materialized.reader.hasNode(targetId);
       if (!exists) {
         throw controlPlaneFailure(
           'not_found',
@@ -947,7 +1047,7 @@ export class ControlPlaneService implements ControlPlanePort {
       }
       let patches: string[];
       try {
-        patches = await graph.patchesForWorkingSet(
+        patches = await materialized.graph.patchesForWorkingSet(
           workingSetId,
           targetId,
           this.workingSetReadOptions(selector),
@@ -969,7 +1069,7 @@ export class ControlPlaneService implements ControlPlanePort {
           Date.now(),
           null,
           false,
-          graph,
+          materialized.graph,
           materialized.frontierDigest,
         ),
       };
@@ -1011,15 +1111,14 @@ export class ControlPlaneService implements ControlPlanePort {
 
     const workingSetId = this.resolveDerivedWorkingSetId(capability, 'diff');
     if (workingSetId) {
-      const graph = await this.graphPort.getGraph();
       const current = await this.materializeWorkingSetProjection(capability, selector);
       const targetId = typeof request.args['targetId'] === 'string'
         ? request.args['targetId']
         : null;
       let patches: string[] = [];
-      if (targetId && current.projection.nodes.includes(targetId)) {
+      if (targetId && current.reader.hasNode(targetId)) {
         try {
-          patches = await graph.patchesForWorkingSet(
+          patches = await current.graph.patchesForWorkingSet(
             workingSetId,
             targetId,
             this.workingSetReadOptions(selector),
@@ -1035,7 +1134,7 @@ export class ControlPlaneService implements ControlPlanePort {
         Date.now(),
         null,
         false,
-        graph,
+        current.graph,
         current.frontierDigest,
       );
 
@@ -1060,9 +1159,9 @@ export class ControlPlaneService implements ControlPlanePort {
         { kind: 'tick', tick: since.tick },
       );
       let sincePatches: string[] = [];
-      if (targetId && sinceMaterialized.projection.nodes.includes(targetId)) {
+      if (targetId && sinceMaterialized.reader.hasNode(targetId)) {
         try {
-          sincePatches = await graph.patchesForWorkingSet(
+          sincePatches = await sinceMaterialized.graph.patchesForWorkingSet(
             workingSetId,
             targetId,
             { ceiling: since.tick },
@@ -1085,7 +1184,7 @@ export class ControlPlaneService implements ControlPlanePort {
         Date.now(),
         null,
         false,
-        graph,
+        current.graph,
         sinceMaterialized.frontierDigest,
       );
 

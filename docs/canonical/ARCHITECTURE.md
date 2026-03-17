@@ -97,15 +97,20 @@ derived-from-derived worldline forking remain future substrate work.
 That substrate mapping is now materially useful rather than purely declarative.
 For canonical derived worldlines backed by git-warp working sets, XYPH routes:
 
+- `observe(graph.summary)` / `observe(worldline.summary)` /
+  `observe(entity.detail)` through isolated working-set-aware read graphs, with
+  observation coordinates pinned to the working set's visible frontier
 - `history` through `patchesForWorkingSet(...)`
 - `diff` through working-set-local materialization plus working-set provenance
 - `apply` through the same mutation kernel as live writes, lowered into
   `patchWorkingSet(...)`
 
 This keeps the reducer and conflict rules worldline-blind while letting the
-visible patch universe vary by worldline. Higher GraphContext-backed projections
-still read from the live or isolated graph services until git-warp exposes the
-right substrate query surfaces for working sets.
+visible patch universe vary by worldline. Compatibility projections such as
+`briefing`, `context`, `next`, `submissions`, `diagnostics`, and
+`prescriptions` still read from the live or isolated graph services until
+git-warp exposes the right substrate query surfaces for broader working-set
+parity.
 
 The next worldline-composition term is also now fixed: XYPH will use
 **`braid_worldlines`** for the future operation that keeps multiple

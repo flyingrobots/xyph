@@ -220,19 +220,27 @@ worldline-derived effects in play at once.
 Canonical derived worldlines are currently honest on this substrate surface:
 
 - `fork_worldline`
+- `observe(graph.summary)`
+- `observe(worldline.summary)`
+- `observe(entity.detail)`
 - `history`
 - `diff`
 - `apply`
 - `observe(conflicts)`
+
+Observation coordinates across these derived-worldline reads now report the
+working-set-local frontier digest instead of silently falling back to
+`worldline:live`.
 
 Reserved next-step terminology:
 
 - `braid_worldlines` will name the future composition operation for co-present
   worldline effects
 
-GraphContext-backed projections such as `observe(graph.summary)` and
-`observe(entity.detail)` are still catching up. Until they are worldline-aware,
-they should be treated as live-service compatibility views rather than full
+Compatibility projections such as `observe(slice.local)`, `observe(context)`,
+`observe(briefing)`, `observe(next)`, `observe(submissions)`,
+`observe(diagnostics)`, and `observe(prescriptions)` are still catching up.
+They remain live-service-backed compatibility views rather than full
 derived-worldline truth.
 
 For the broader technical framing of XYPH as a WARP-native application, see

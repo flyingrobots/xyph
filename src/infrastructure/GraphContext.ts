@@ -118,7 +118,11 @@ export function createGraphContext(graphPort: GraphPort): GraphContext {
 
 export function createGraphContextFromGraph(
   graph: WarpGraph,
-  opts?: { ceiling?: number | null; syncCoverage?: boolean },
+  opts?: {
+    ceiling?: number | null;
+    syncCoverage?: boolean;
+    materializeGraph?: (graph: WarpGraph) => Promise<void>;
+  },
 ): GraphContext {
   return new GraphContextImpl(
     async () => graph,
@@ -192,7 +196,11 @@ class GraphContextImpl implements GraphContext {
 
   constructor(
     private readonly graphProvider: () => Promise<WarpGraph>,
-    private readonly materialization: { ceiling?: number | null; syncCoverage?: boolean } = {},
+    private readonly materialization: {
+      ceiling?: number | null;
+      syncCoverage?: boolean;
+      materializeGraph?: (graph: WarpGraph) => Promise<void>;
+    } = {},
   ) {}
 
   get graph(): WarpGraph {
@@ -205,6 +213,16 @@ class GraphContextImpl implements GraphContext {
   invalidateCache(): void {
     this.cachedSnapshot = null;
     this.cachedFrontierKey = null;
+  }
+
+  private async materializeGraph(graph: WarpGraph): Promise<void> {
+    if (this.materialization.materializeGraph) {
+      await this.materialization.materializeGraph(graph);
+      return;
+    }
+    await graph.materialize({
+      ...(this.materialization.ceiling === undefined ? {} : { ceiling: this.materialization.ceiling }),
+    });
   }
 
   filterSnapshot(
@@ -250,7 +268,7 @@ class GraphContextImpl implements GraphContext {
     // Cache check: compare frontier key to detect both in-process writes
     // (via graph.patch()) and external writes (discovered by syncCoverage).
     // hasFrontierChanged() only detects external patches, missing same-instance mutations.
-    if (this.cachedSnapshot !== null) {
+    if (this.cachedSnapshot !== null && !this.materialization.materializeGraph) {
       const currentKey = this.frontierKeyFromState(await graph.getStateSnapshot());
       if (currentKey === this.cachedFrontierKey) {
         log('No changes detected — using cached snapshot');
@@ -259,9 +277,7 @@ class GraphContextImpl implements GraphContext {
     }
 
     log('Materializing graph…');
-    await graph.materialize({
-      ...(this.materialization.ceiling === undefined ? {} : { ceiling: this.materialization.ceiling }),
-    });
+    await this.materializeGraph(graph);
     await yieldEventLoop();
 
     // --- Query each node type in parallel ---
@@ -949,9 +965,7 @@ class GraphContextImpl implements GraphContext {
     if (this.materialization.syncCoverage !== false) {
       await graph.syncCoverage();
     }
-    await graph.materialize({
-      ...(this.materialization.ceiling === undefined ? {} : { ceiling: this.materialization.ceiling }),
-    });
+    await this.materializeGraph(graph);
 
     if (!await graph.hasNode(id)) {
       return null;
