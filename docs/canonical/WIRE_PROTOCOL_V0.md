@@ -105,6 +105,7 @@ Current command family:
 - `history`
 - `diff`
 - `fork_worldline`
+- `braid_worldlines`
 - `compare_worldlines`
 - `attest`
 - `collapse_worldline`
@@ -128,6 +129,7 @@ Current foundation-slice implementation status:
 - implemented now: `propose`
 - implemented now: `comment`
 - implemented now: `attest`
+- reserved, not yet implemented: `braid_worldlines`
 - reserved, not yet implemented: `compare_worldlines`
 - reserved, not yet implemented: `collapse_worldline`
 - reserved, not yet implemented: `query`
@@ -243,6 +245,22 @@ Current behavior:
 This is intentionally narrower than the long-term worldline model. Arbitrary
 historical frontiers, derived-from-derived forking, and worldline-local replay
 remain future slices.
+
+## Future Worldline Composition Term
+
+The canonical future verb for co-present worldline composition is
+`braid_worldlines`.
+
+This term is intentional:
+
+- it is **not** plain merge
+- it is **not** Git rebase
+- it is **not** a silent collapse of one line into another
+
+At the protocol level, braiding means keeping multiple worldline-derived
+effects visible together at one observation surface. The exact substrate API is
+still backlog work, but the public XYPH term is fixed now so later
+implementation does not drift into branch-shaped vocabulary.
 
 ## Derived Worldline Execution Slice
 

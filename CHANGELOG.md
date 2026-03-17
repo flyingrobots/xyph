@@ -7,6 +7,7 @@ All notable changes to XYPH will be documented in this file.
 ### Changed
 
 - **Substrate floor raised to `@git-stunts/git-warp@^14.8.0`** — XYPH now consumes the published working-set-aware debugger substrate plus the public `projectStateV5()` helper used to validate and observe derived-worldline materializations without depending on git-warp's internal OR-Set layout.
+- **Worldline composition terminology frozen to `braid`** — the active README and canonical control-plane docs now use `braid_worldlines` as the future public term for co-present worldline composition, explicitly rejecting branch/rebase vocabulary for this capability.
 
 ### Added
 

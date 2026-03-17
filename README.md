@@ -179,6 +179,22 @@ observation while disconnected or asynchronous, record overlay patches in a
 working set, and settle those changes later without pretending they were always
 the shared truth.
 
+**6. Braided execution**
+
+Some futures are not “pick one branch later.” They are “keep one completed
+support line present while another line continues.”
+
+That future operation is best described as a **braid**:
+
+- one worldline advances to produce an effect
+- that effect is kept co-present as a frozen support line
+- another worldline continues on top of the same shared base
+
+Example: one line keeps a gate button depressed while another line advances
+through the newly opened path. This is not ordinary merge, and it is not Git
+rebase. It is a way of making two causally meaningful continuations visible at
+once.
+
 #### Why Comments and Proposals Are Not Enough
 
 Comments and proposals are good for discussion and recommendation. They are not
@@ -194,6 +210,11 @@ A worldline says **here is the graph if this path is taken**.
 
 That is the practical XYPH use case.
 
+The future composition verb in XYPH’s ontology is **`braid_worldlines`**.
+Terms like “rebase,” “superpose,” or “compose” may still appear informally in
+discussion, but `braid` is the canonical name for keeping multiple
+worldline-derived effects in play at once.
+
 #### Current Slice
 
 Canonical derived worldlines are currently honest on this substrate surface:
@@ -203,6 +224,11 @@ Canonical derived worldlines are currently honest on this substrate surface:
 - `diff`
 - `apply`
 - `observe(conflicts)`
+
+Reserved next-step terminology:
+
+- `braid_worldlines` will name the future composition operation for co-present
+  worldline effects
 
 GraphContext-backed projections such as `observe(graph.summary)` and
 `observe(entity.detail)` are still catching up. Until they are worldline-aware,

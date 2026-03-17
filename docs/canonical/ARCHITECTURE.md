@@ -53,6 +53,7 @@ plane. The canonical command vocabulary is moving toward:
 - `history`
 - `diff`
 - `fork_worldline`
+- `braid_worldlines`
 - `compare_worldlines`
 - `attest`
 - `collapse_worldline`
@@ -71,6 +72,7 @@ Current foundation slice:
 - implemented now: `comment`
 - implemented now: `propose`
 - implemented now: `attest`
+- reserved, not yet implemented: `braid_worldlines`
 - reserved, not yet implemented: `compare_worldlines`
 - reserved, not yet implemented: `collapse_worldline`
 - reserved, hidden admin/debug concepts: `query`, `rewind_worldline`
@@ -104,6 +106,12 @@ This keeps the reducer and conflict rules worldline-blind while letting the
 visible patch universe vary by worldline. Higher GraphContext-backed projections
 still read from the live or isolated graph services until git-warp exposes the
 right substrate query surfaces for working sets.
+
+The next worldline-composition term is also now fixed: XYPH will use
+**`braid_worldlines`** for the future operation that keeps multiple
+worldline-derived effects co-present at once. That naming matters because the
+operation is not ordinary merge or rebase; it changes the visible patch
+universe without pretending one line replaced the other.
 
 Existing commands such as `briefing`, `next`, `context`, `submit`, `review`,
 and `merge` still exist, but they should be understood as compatibility

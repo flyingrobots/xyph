@@ -18,6 +18,7 @@ The canonical control-plane model is:
 - `diff`
 - `explain`
 - `fork_worldline`
+- `braid_worldlines`
 - `compare_worldlines`
 - `attest`
 - `collapse_worldline`
@@ -44,6 +45,7 @@ Human surface direction:
    - Materialized graph states are caches, not authoritative models.
    - `fork_worldline` is now implemented as a thin mapping onto git-warp working-set creation for `worldline:live`, with optional current-frontier Lamport ceiling support via `at: { tick }`.
    - Canonical derived worldlines now support working-set-backed `history`, `diff`, `apply`, and `observe(conflicts)` slices.
+   - The canonical future composition verb is `braid_worldlines`: multiple worldline-derived effects kept co-present rather than silently merged or rebased.
    - Arbitrary historical frontiers, derived-from-derived forking, and general worldline-local GraphContext projections remain future slices.
 
 ## Canonical Docs

@@ -223,6 +223,10 @@ A real one that can answer:
 
 That is why XYPH’s future “AION” / Time Travel surface is plausible.
 
+It is also why XYPH can grow beyond simple forks into **braids**: co-present
+worldline effects that stay visible together without pretending history was
+rewritten. In XYPH terms, that future operation is `braid_worldlines`.
+
 ## Why Worldlines Matter In A Stigmergic System
 
 This is the most important conceptual point.
@@ -248,6 +252,13 @@ Use a derived worldline for:
 - coherent multi-step speculative change
 - review lanes
 - offline continuation from a pinned observation
+
+Worldlines also create the substrate precondition for future **braided**
+execution. Some plans are not just “branch and choose later.” Some are “carry
+one completed support line forward while another line continues.” A dungeon
+button that must remain pressed while another actor-path advances is the simple
+example, but the same pattern appears in planning when one speculative support
+lane must stay active while another path executes.
 
 So worldlines do not replace stigmergy. They protect it by keeping the live
 signal clean.
