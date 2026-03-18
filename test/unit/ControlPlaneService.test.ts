@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createHash } from 'node:crypto';
 import { CONTROL_PLANE_VERSION } from '../../src/domain/models/controlPlane.js';
 
 const mocks = vi.hoisted(() => ({
@@ -22,12 +23,46 @@ const mocks = vi.hoisted(() => ({
   getWorkingSet: vi.fn(),
   patchesForWorkingSet: vi.fn(),
   compareCoordinates: vi.fn(),
+  planCoordinateTransfer: vi.fn(),
   getFrontier: vi.fn(),
   getStateSnapshot: vi.fn(),
   getGraph: vi.fn(),
   openIsolatedGraph: vi.fn(),
   WarpRoadmapAdapter: vi.fn(),
 }));
+
+function stable(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stable);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([key, inner]) => [key, stable(inner)]),
+    );
+  }
+  return value;
+}
+
+function digest(value: unknown): string {
+  return createHash('sha256').update(JSON.stringify(stable(value))).digest('hex');
+}
+
+function buildComparisonArtifactDigest(comparisonDigest: string, leftWorldlineId: string, rightWorldlineId: string): string {
+  return digest({
+    kind: 'comparison-artifact',
+    comparisonDigest,
+    comparisonPolicyVersion: 'compat-v0',
+    left: {
+      worldlineId: leftWorldlineId,
+      at: 'tip',
+    },
+    right: {
+      worldlineId: rightWorldlineId,
+      at: 'tip',
+    },
+    targetId: null,
+  });
+}
 
 function makeOrSet(elements: string[]) {
   return {
@@ -291,6 +326,119 @@ function makeCoordinateComparison(
   };
 }
 
+function makeCoordinateTransferPlan(
+  overrides: Partial<{
+    comparisonDigest: string;
+    transferDigest: string;
+    changed: boolean;
+    sourceWorkingSetId: string | null;
+    targetWorkingSetId: string | null;
+    ops: unknown[];
+  }> = {},
+) {
+  const sourceWorkingSetId = overrides.sourceWorkingSetId ?? 'wl_review-auth';
+  const targetWorkingSetId = overrides.targetWorkingSetId ?? null;
+  return {
+    transferVersion: 'coordinate-transfer-plan/v1',
+    transferDigest: overrides.transferDigest ?? 'transfer:123',
+    comparisonDigest: overrides.comparisonDigest ?? 'comparison:123',
+    changed: overrides.changed ?? true,
+    source: {
+      requested: sourceWorkingSetId
+        ? { kind: 'working_set', workingSetId: sourceWorkingSetId }
+        : { kind: 'live' },
+      resolved: {
+        coordinateKind: sourceWorkingSetId ? 'working_set' : 'frontier',
+        patchFrontier: { 'agent.prime': 'patch:left' },
+        patchFrontierDigest: 'patch-frontier:left',
+        lamportFrontier: { 'agent.prime': 12 },
+        lamportFrontierDigest: 'lamport:left',
+        lamportCeiling: null,
+        stateHash: 'state:left',
+        patchUniverseDigest: 'universe:left',
+        summary: {
+          patchCount: 2,
+          nodeCount: 3,
+          edgeCount: 1,
+          nodePropertyCount: 4,
+          edgePropertyCount: 0,
+        },
+        ...(sourceWorkingSetId === null
+          ? {}
+          : {
+            workingSet: {
+              workingSetId: sourceWorkingSetId,
+              baseLamportCeiling: null,
+              overlayHeadPatchSha: null,
+              overlayPatchCount: 1,
+              overlayWritable: true,
+              braid: {
+                readOverlayCount: 0,
+                braidedWorkingSetIds: [],
+              },
+            },
+          }),
+      },
+    },
+    target: {
+      requested: targetWorkingSetId
+        ? { kind: 'working_set', workingSetId: targetWorkingSetId }
+        : { kind: 'live' },
+      resolved: {
+        coordinateKind: targetWorkingSetId ? 'working_set' : 'frontier',
+        patchFrontier: { 'agent.prime': 'patch:right' },
+        patchFrontierDigest: 'patch-frontier:right',
+        lamportFrontier: { 'agent.prime': 12 },
+        lamportFrontierDigest: 'lamport:right',
+        lamportCeiling: null,
+        stateHash: 'state:right',
+        patchUniverseDigest: 'universe:right',
+        summary: {
+          patchCount: 1,
+          nodeCount: 2,
+          edgeCount: 1,
+          nodePropertyCount: 3,
+          edgePropertyCount: 0,
+        },
+        ...(targetWorkingSetId === null
+          ? {}
+          : {
+            workingSet: {
+              workingSetId: targetWorkingSetId,
+              baseLamportCeiling: null,
+              overlayHeadPatchSha: null,
+              overlayPatchCount: 0,
+              overlayWritable: true,
+              braid: {
+                readOverlayCount: 0,
+                braidedWorkingSetIds: [],
+              },
+            },
+          }),
+      },
+    },
+    summary: {
+      opCount: overrides.ops?.length ?? 2,
+      addNodeCount: 0,
+      removeNodeCount: 0,
+      setNodePropertyCount: 1,
+      clearNodePropertyCount: 0,
+      addEdgeCount: 0,
+      removeEdgeCount: 0,
+      setEdgePropertyCount: 0,
+      clearEdgePropertyCount: 0,
+      attachNodeContentCount: 0,
+      clearNodeContentCount: 1,
+      attachEdgeContentCount: 0,
+      clearEdgeContentCount: 0,
+    },
+    ops: overrides.ops ?? [
+      { op: 'set_node_property', nodeId: 'task:ONE', key: 'status', value: 'READY' },
+      { op: 'clear_node_content', nodeId: 'task:ONE' },
+    ],
+  };
+}
+
 vi.mock('../../src/infrastructure/GraphContext.js', () => ({
   createGraphContext: () => ({
     fetchSnapshot: mocks.fetchSnapshot,
@@ -394,7 +542,7 @@ vi.mock('../../src/domain/services/AgentActionService.js', () => ({
 
 vi.mock('../../src/domain/services/MutationKernelService.js', () => ({
   MutationKernelService: class MutationKernelService {
-    execute(plan: unknown, opts?: { dryRun?: boolean }) {
+    execute(plan: unknown, opts?: { dryRun?: boolean; allowEmptyPlan?: boolean }) {
       return mocks.executeMutation(plan, opts);
     }
   },
@@ -437,6 +585,12 @@ describe('ControlPlaneService', () => {
         targetId: 'task:ONE',
       }),
     );
+    mocks.planCoordinateTransfer.mockResolvedValue(
+      makeCoordinateTransferPlan({
+        sourceWorkingSetId: 'wl_review-auth',
+        targetWorkingSetId: null,
+      }),
+    );
     mocks.getGraph.mockResolvedValue({
       getFrontier: mocks.getFrontier,
       getStateSnapshot: mocks.getStateSnapshot,
@@ -450,6 +604,7 @@ describe('ControlPlaneService', () => {
       getWorkingSet: mocks.getWorkingSet,
       patchesForWorkingSet: mocks.patchesForWorkingSet,
       compareCoordinates: mocks.compareCoordinates,
+      planCoordinateTransfer: mocks.planCoordinateTransfer,
     });
     mocks.openIsolatedGraph.mockResolvedValue({
       getFrontier: mocks.getFrontier,
@@ -465,6 +620,7 @@ describe('ControlPlaneService', () => {
       braidWorkingSet: mocks.braidWorkingSet,
       analyzeConflicts: mocks.analyzeConflicts,
       compareCoordinates: mocks.compareCoordinates,
+      planCoordinateTransfer: mocks.planCoordinateTransfer,
     });
     mocks.analyzeConflicts.mockResolvedValue({
       analysisVersion: 'conflict-analyzer/v2',
@@ -1170,6 +1326,148 @@ describe('ControlPlaneService', () => {
       ok: false,
       error: expect.objectContaining({
         code: 'invalid_args',
+      }),
+    }));
+  });
+
+  it('previews collapse_worldline against live through transfer planning and dry-run mutation lowering', async () => {
+    mocks.compareCoordinates.mockResolvedValueOnce(
+      makeCoordinateComparison({
+        comparisonDigest: 'comparison:collapse-preview',
+        leftWorkingSetId: 'wl_review-auth',
+        rightWorkingSetId: null,
+        targetId: null,
+      }),
+    );
+    mocks.planCoordinateTransfer.mockResolvedValueOnce(
+      makeCoordinateTransferPlan({
+        comparisonDigest: 'comparison:collapse-preview',
+        transferDigest: 'transfer:collapse-preview',
+        sourceWorkingSetId: 'wl_review-auth',
+        targetWorkingSetId: null,
+        ops: [
+          { op: 'set_node_property', nodeId: 'task:ONE', key: 'status', value: 'READY' },
+          { op: 'clear_node_content', nodeId: 'task:ONE' },
+        ],
+      }),
+    );
+    mocks.executeMutation.mockResolvedValueOnce({
+      valid: true,
+      code: null,
+      reasons: [],
+      sideEffects: ['set task:ONE.status', 'clear content from task:ONE'],
+      patch: null,
+      executed: false,
+    });
+
+    const service = new ControlPlaneService({
+      getGraph: mocks.getGraph,
+      openIsolatedGraph: mocks.openIsolatedGraph,
+      reset: vi.fn(),
+    }, 'agent.prime');
+
+    const comparisonArtifactDigest = buildComparisonArtifactDigest(
+      'comparison:collapse-preview',
+      'worldline:review-auth',
+      'worldline:live',
+    );
+    const result = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'req-collapse-worldline',
+      cmd: 'collapse_worldline',
+      args: {
+        worldlineId: 'worldline:review-auth',
+        comparisonArtifactDigest,
+      },
+    });
+
+    expect(mocks.compareCoordinates).toHaveBeenCalledWith({
+      left: { kind: 'working_set', workingSetId: 'wl_review-auth' },
+      right: { kind: 'live' },
+    });
+    expect(mocks.planCoordinateTransfer).toHaveBeenCalledWith({
+      source: { kind: 'working_set', workingSetId: 'wl_review-auth' },
+      target: { kind: 'live' },
+    });
+    expect(mocks.executeMutation).toHaveBeenCalledWith({
+      rationale: 'Preview collapse of worldline:review-auth into worldline:live.',
+      ops: [
+        { op: 'set_node_property', nodeId: 'task:ONE', key: 'status', value: 'READY' },
+        { op: 'clear_node_content', nodeId: 'task:ONE' },
+      ],
+    }, {
+      dryRun: true,
+      allowEmptyPlan: true,
+    });
+    expect(result).toEqual(expect.objectContaining({
+      ok: true,
+      cmd: 'collapse_worldline',
+      data: expect.objectContaining({
+        kind: 'collapse-proposal',
+        artifactId: expect.stringMatching(/^collapse-proposal:/),
+        dryRun: true,
+        executable: false,
+        comparison: expect.objectContaining({
+          artifactDigest: comparisonArtifactDigest,
+          changed: true,
+        }),
+        transfer: expect.objectContaining({
+          transferDigest: 'transfer:collapse-preview',
+          ops: [
+            { op: 'set_node_property', nodeId: 'task:ONE', key: 'status', value: 'READY' },
+            { op: 'clear_node_content', nodeId: 'task:ONE' },
+          ],
+        }),
+        mutationPreview: {
+          dryRun: true,
+          valid: true,
+          executed: false,
+          opCount: 2,
+          sideEffects: ['set task:ONE.status', 'clear content from task:ONE'],
+        },
+        substrate: expect.objectContaining({
+          kind: 'git-warp-coordinate-transfer-plan',
+          sourceWorkingSetId: 'wl_review-auth',
+          transferDigest: 'transfer:collapse-preview',
+          comparisonDigest: 'comparison:collapse-preview',
+        }),
+      }),
+    }));
+    expect(result).not.toHaveProperty('observation');
+  });
+
+  it('rejects collapse_worldline when the comparison artifact digest is stale', async () => {
+    mocks.compareCoordinates.mockResolvedValueOnce(
+      makeCoordinateComparison({
+        comparisonDigest: 'comparison:current',
+        leftWorkingSetId: 'wl_review-auth',
+        rightWorkingSetId: null,
+        targetId: null,
+      }),
+    );
+
+    const service = new ControlPlaneService({
+      getGraph: mocks.getGraph,
+      openIsolatedGraph: mocks.openIsolatedGraph,
+      reset: vi.fn(),
+    }, 'agent.prime');
+
+    const result = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'req-collapse-stale',
+      cmd: 'collapse_worldline',
+      args: {
+        worldlineId: 'worldline:review-auth',
+        comparisonArtifactDigest: 'comparison-artifact:stale',
+      },
+    });
+
+    expect(mocks.planCoordinateTransfer).not.toHaveBeenCalled();
+    expect(mocks.executeMutation).not.toHaveBeenCalled();
+    expect(result).toEqual(expect.objectContaining({
+      ok: false,
+      error: expect.objectContaining({
+        code: 'stale_base_observation',
       }),
     }));
   });

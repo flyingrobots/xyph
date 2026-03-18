@@ -229,6 +229,7 @@ Canonical derived worldlines are currently honest on this substrate surface:
 - `apply`
 - `observe(conflicts)`
 - `compare_worldlines`
+- `collapse_worldline`
 
 Observation coordinates across these derived-worldline reads now report the
 working-set-local frontier digest and explicit substrate backing details:
@@ -248,6 +249,18 @@ published git-warp coordinate comparison facts. It supports:
 The result is a typed XYPH `comparison-artifact` preview with per-side
 observation coordinates and substrate-backed divergence facts. It is
 intentionally read-only and does **not** perform collapse or settlement.
+
+`collapse_worldline` now provides the first settlement runway preview in XYPH
+language, still backed by published git-warp substrate facts. In the current
+slice it:
+
+- requires the effective worldline to be a canonical derived worldline
+- requires a fresh `comparisonArtifactDigest` from `compare_worldlines`
+- currently previews settlement into `worldline:live` only
+- always dry-runs through the same mutation kernel used by `apply`
+- returns a typed `collapse-proposal` with per-side observations, substrate
+  transfer facts, sanitized transfer ops, and mutation side-effect preview
+- does **not** mutate live truth yet
 
 `braid_worldlines` is now implemented as a thin mapping onto git-warp’s
 published braid substrate for canonical derived worldlines. It:
@@ -270,6 +283,23 @@ Compatibility projections such as `observe(slice.local)`, `observe(context)`,
 `observe(diagnostics)`, and `observe(prescriptions)` are still catching up.
 They remain live-service-backed compatibility views rather than full
 derived-worldline truth.
+
+#### Agent Usage
+
+- Stay on `worldline:live` for ordinary low-blast-radius work that should land
+  directly on the shared stigmergic surface.
+- `fork_worldline` when you need a coherent speculative continuation, a review
+  lane, an offline continuation from a pinned observation, or a structural
+  replanning path that should not pollute live truth yet.
+- `braid_worldlines` when one continuation needs another continuation’s effects
+  to stay co-present without pretending merge or rebase semantics.
+- `compare_worldlines` before governance or settlement decisions; it is the
+  factual preview surface, not the decision itself.
+- `collapse_worldline` when you want a candidate settlement runway preview that
+  lowers through the same mutation kernel as `apply` without mutating live
+  truth yet.
+- Hand off explicit `worldlineId` values between humans and agents. Do not pass
+  substrate working-set IDs as the public coordination handle.
 
 For the broader technical framing of XYPH as a WARP-native application, see
 [XYPH As A WARP App](docs/XYPH_AS_A_WARP_APP.md).

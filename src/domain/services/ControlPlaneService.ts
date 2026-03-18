@@ -4,6 +4,8 @@ import type {
   ConflictDiagnostic,
   CoordinateComparisonSelectorV1,
   CoordinateComparisonV1,
+  CoordinateTransferPlanV1,
+  VisibleStateTransferOperationV1,
 } from '@git-stunts/git-warp';
 import {
   createStateReaderV5,
@@ -151,6 +153,104 @@ interface RedactionRecord {
   code: 'redacted';
   reason: string;
   contentOid?: string;
+}
+
+type LoweredCollapseMutationOp =
+  | { op: 'add_node'; nodeId: string }
+  | { op: 'remove_node'; nodeId: string }
+  | { op: 'set_node_property'; nodeId: string; key: string; value: unknown }
+  | { op: 'add_edge'; from: string; to: string; label: string }
+  | { op: 'remove_edge'; from: string; to: string; label: string }
+  | { op: 'set_edge_property'; from: string; to: string; label: string; key: string; value: unknown }
+  | { op: 'attach_node_content'; nodeId: string; content: Uint8Array; contentOid: string; mime?: string | null; size?: number | null }
+  | { op: 'clear_node_content'; nodeId: string }
+  | { op: 'attach_edge_content'; from: string; to: string; label: string; content: Uint8Array; contentOid: string; mime?: string | null; size?: number | null }
+  | { op: 'clear_edge_content'; from: string; to: string; label: string };
+
+function buildComparisonArtifactDigest(fields: {
+  comparisonDigest: string;
+  comparisonPolicyVersion: string;
+  leftWorldlineId: string;
+  leftSelector: ObservationSelector;
+  rightWorldlineId: string;
+  rightSelector: ObservationSelector;
+  targetId: string | null;
+}): string {
+  return digest({
+    kind: 'comparison-artifact',
+    comparisonDigest: fields.comparisonDigest,
+    comparisonPolicyVersion: fields.comparisonPolicyVersion,
+    left: {
+      worldlineId: fields.leftWorldlineId,
+      at: normalizeSelectorValue(fields.leftSelector),
+    },
+    right: {
+      worldlineId: fields.rightWorldlineId,
+      at: normalizeSelectorValue(fields.rightSelector),
+    },
+    targetId: fields.targetId,
+  });
+}
+
+function sanitizeTransferOperation(op: VisibleStateTransferOperationV1): Record<string, unknown> {
+  switch (op.op) {
+    case 'attach_node_content':
+      return {
+        op: op.op,
+        nodeId: op.nodeId,
+        contentOid: op.contentOid,
+        mime: op.mime ?? null,
+        size: op.size ?? null,
+      };
+    case 'attach_edge_content':
+      return {
+        op: op.op,
+        from: op.from,
+        to: op.to,
+        label: op.label,
+        contentOid: op.contentOid,
+        mime: op.mime ?? null,
+        size: op.size ?? null,
+      };
+    default:
+      return { ...op };
+  }
+}
+
+function lowerTransferOpsToMutationOps(ops: VisibleStateTransferOperationV1[]): LoweredCollapseMutationOp[] {
+  return ops.map((op) => {
+    switch (op.op) {
+      case 'add_node':
+      case 'remove_node':
+      case 'set_node_property':
+      case 'add_edge':
+      case 'remove_edge':
+      case 'set_edge_property':
+      case 'clear_node_content':
+      case 'clear_edge_content':
+        return { ...op };
+      case 'attach_node_content':
+        return {
+          op: op.op,
+          nodeId: op.nodeId,
+          content: op.content,
+          contentOid: op.contentOid,
+          mime: op.mime ?? null,
+          size: op.size ?? null,
+        };
+      case 'attach_edge_content':
+        return {
+          op: op.op,
+          from: op.from,
+          to: op.to,
+          label: op.label,
+          content: op.content,
+          contentOid: op.contentOid,
+          mime: op.mime ?? null,
+          size: op.size ?? null,
+        };
+    }
+  });
 }
 
 function conflictDiagnosticSummary(code: string): string {
@@ -430,6 +530,7 @@ export class ControlPlaneService implements ControlPlanePort {
       case 'attest':
         return this.attest(request, capability);
       case 'collapse_worldline':
+        return this.collapseWorldline(request, capability);
       case 'query':
       case 'rewind_worldline':
         throw controlPlaneFailure(
@@ -2226,18 +2327,13 @@ export class ControlPlaneService implements ControlPlanePort {
 
     const patchDiverged = comparison.visiblePatchDivergence.leftOnlyCount > 0
       || comparison.visiblePatchDivergence.rightOnlyCount > 0;
-    const artifactDigest = digest({
-      kind: 'comparison-artifact',
+    const artifactDigest = buildComparisonArtifactDigest({
       comparisonDigest: comparison.comparisonDigest,
       comparisonPolicyVersion: capability.comparisonPolicyVersion,
-      left: {
-        worldlineId: leftWorldlineId,
-        at: normalizeSelectorValue(leftSelector),
-      },
-      right: {
-        worldlineId: rightWorldlineId,
-        at: normalizeSelectorValue(rightSelector),
-      },
+      leftWorldlineId,
+      leftSelector,
+      rightWorldlineId,
+      rightSelector,
       targetId,
     });
 
@@ -2286,6 +2382,277 @@ export class ControlPlaneService implements ControlPlanePort {
           kind: 'git-warp-coordinate-comparison',
           comparisonVersion: comparison.comparisonVersion,
           comparisonDigest: comparison.comparisonDigest,
+        },
+      },
+      diagnostics: [],
+    };
+  }
+
+  private async collapseWorldline(
+    request: ControlPlaneRequestV1,
+    capability: EffectiveCapabilityGrant,
+  ): Promise<{
+    data: Record<string, unknown>;
+    diagnostics: Diagnostic[];
+  }> {
+    const sourceWorldlineId = capability.worldlineId;
+    const sourceWorkingSetId = this.resolveDerivedWorkingSetId(capability, 'collapse_worldline');
+    if (!sourceWorkingSetId) {
+      throw controlPlaneFailure(
+        'invalid_args',
+        'collapse_worldline requires a canonical derived source worldline backed by a git-warp working set.',
+        {
+          worldlineId: sourceWorldlineId,
+        },
+      );
+    }
+
+    if (
+      request.args['at'] !== undefined
+      || request.args['againstAt'] !== undefined
+      || request.args['since'] !== undefined
+      || request.args['sinceFrontierDigest'] !== undefined
+      || request.args['targetId'] !== undefined
+    ) {
+      throw controlPlaneFailure(
+        'invalid_args',
+        'collapse_worldline currently previews only the effective source worldline tip against a whole-target worldline tip. at/againstAt/since/targetId selectors are not supported in this slice.',
+      );
+    }
+
+    if (request.args['againstWorldlineId'] !== undefined) {
+      throw controlPlaneFailure(
+        'invalid_args',
+        'collapse_worldline uses targetWorldlineId rather than compare_worldlines-style againstWorldlineId.',
+      );
+    }
+
+    const rawDryRun = request.args['dryRun'];
+    if (rawDryRun !== undefined && typeof rawDryRun !== 'boolean') {
+      throw controlPlaneFailure(
+        'invalid_args',
+        'collapse_worldline dryRun must be a boolean when provided.',
+      );
+    }
+    if (rawDryRun === false) {
+      throw controlPlaneFailure(
+        'collapse_not_allowed',
+        'collapse_worldline is preview-only in this slice. Use dryRun=true or omit it.',
+      );
+    }
+
+    const providedComparisonArtifactDigest = this.requireString(
+      request.args['comparisonArtifactDigest'],
+      'collapse_worldline comparisonArtifactDigest',
+    );
+    const targetWorldlineId = request.args['targetWorldlineId'] === undefined
+      ? DEFAULT_WORLDLINE_ID
+      : this.requireString(request.args['targetWorldlineId'], 'collapse_worldline targetWorldlineId');
+    if (targetWorldlineId !== DEFAULT_WORLDLINE_ID) {
+      throw controlPlaneFailure(
+        'collapse_not_allowed',
+        'collapse_worldline currently previews settlement into worldline:live only.',
+        {
+          sourceWorldlineId,
+          targetWorldlineId,
+        },
+      );
+    }
+
+    const attestationIds = request.args['attestationIds'] === undefined
+      ? null
+      : this.requireStringArray(request.args['attestationIds'], 'collapse_worldline attestationIds');
+    const rationale = typeof request.args['rationale'] === 'string'
+      && request.args['rationale'].trim().length >= 11
+      ? request.args['rationale'].trim()
+      : `Preview collapse of ${sourceWorldlineId} into ${targetWorldlineId}.`;
+    const sourceSelector = { kind: 'tip' } as const;
+    const targetSelector = { kind: 'tip' } as const;
+
+    const graph = await this.openIsolatedReadGraph(
+      'collapse_worldline requires an isolated read-graph provider.',
+      {
+        leftWorldlineId: sourceWorldlineId,
+        rightWorldlineId: targetWorldlineId,
+      },
+    );
+    await graph.syncCoverage();
+
+    let comparison: CoordinateComparisonV1;
+    try {
+      comparison = await graph.compareCoordinates({
+        left: this.buildComparisonSelector(sourceWorldlineId, sourceSelector, 'collapse_worldline'),
+        right: this.buildComparisonSelector(targetWorldlineId, targetSelector, 'collapse_worldline'),
+      });
+    } catch (err) {
+      this.rethrowComparisonError(err, sourceWorldlineId, targetWorldlineId);
+    }
+
+    const currentComparisonArtifactDigest = buildComparisonArtifactDigest({
+      comparisonDigest: comparison.comparisonDigest,
+      comparisonPolicyVersion: capability.comparisonPolicyVersion,
+      leftWorldlineId: sourceWorldlineId,
+      leftSelector: sourceSelector,
+      rightWorldlineId: targetWorldlineId,
+      rightSelector: targetSelector,
+      targetId: null,
+    });
+    if (providedComparisonArtifactDigest !== currentComparisonArtifactDigest) {
+      throw controlPlaneFailure(
+        'stale_base_observation',
+        'collapse_worldline comparisonArtifactDigest is stale for the current source and target tips. Re-run compare_worldlines before requesting a collapse preview.',
+        {
+          sourceWorldlineId,
+          targetWorldlineId,
+          providedComparisonArtifactDigest,
+          currentComparisonArtifactDigest,
+        },
+      );
+    }
+
+    let transferPlan: CoordinateTransferPlanV1;
+    try {
+      transferPlan = await graph.planCoordinateTransfer({
+        source: this.buildComparisonSelector(sourceWorldlineId, sourceSelector, 'collapse_worldline'),
+        target: this.buildComparisonSelector(targetWorldlineId, targetSelector, 'collapse_worldline'),
+      });
+    } catch (err) {
+      this.rethrowComparisonError(err, sourceWorldlineId, targetWorldlineId);
+    }
+
+    const mutationPreview = await this.mutations.execute({
+      rationale,
+      ops: lowerTransferOpsToMutationOps(transferPlan.ops),
+      ...(typeof request.args['idempotencyKey'] === 'string'
+        ? { idempotencyKey: request.args['idempotencyKey'] }
+        : {}),
+    }, {
+      dryRun: true,
+      allowEmptyPlan: true,
+    });
+    if (!mutationPreview.valid) {
+      throw controlPlaneFailure(
+        mutationPreview.code ?? 'invariant_violation',
+        mutationPreview.reasons[0] ?? 'Mutation kernel rejected the requested collapse preview',
+        {
+          reasons: mutationPreview.reasons,
+          sourceWorldlineId,
+          targetWorldlineId,
+          transferDigest: transferPlan.transferDigest,
+        },
+      );
+    }
+
+    const preparedAt = Date.now();
+    const sourceObservation = await this.buildObservationCoordinate(
+      {
+        ...request,
+        args: {
+          side: 'source',
+          worldlineId: sourceWorldlineId,
+          at: 'tip',
+          comparisonArtifactDigest: currentComparisonArtifactDigest,
+        },
+      },
+      capability,
+      preparedAt,
+      null,
+      false,
+      graph,
+      transferPlan.source.resolved.lamportFrontierDigest,
+      comparisonResolvedSideBacking(transferPlan.source.resolved),
+    );
+    const targetObservation = await this.buildObservationCoordinate(
+      {
+        ...request,
+        args: {
+          side: 'target',
+          worldlineId: targetWorldlineId,
+          at: 'tip',
+          comparisonArtifactDigest: currentComparisonArtifactDigest,
+        },
+      },
+      {
+        ...capability,
+        worldlineId: targetWorldlineId,
+      },
+      preparedAt,
+      null,
+      false,
+      graph,
+      transferPlan.target.resolved.lamportFrontierDigest,
+      comparisonResolvedSideBacking(transferPlan.target.resolved),
+    );
+
+    const patchDiverged = comparison.visiblePatchDivergence.leftOnlyCount > 0
+      || comparison.visiblePatchDivergence.rightOnlyCount > 0;
+    const artifactDigest = digest({
+      kind: 'collapse-proposal',
+      comparisonArtifactDigest: currentComparisonArtifactDigest,
+      transferDigest: transferPlan.transferDigest,
+      source: {
+        worldlineId: sourceWorldlineId,
+        at: 'tip',
+      },
+      target: {
+        worldlineId: targetWorldlineId,
+        at: 'tip',
+      },
+      attestationIds: attestationIds ?? [],
+    });
+
+    return {
+      data: {
+        kind: 'collapse-proposal',
+        artifactId: `collapse-proposal:${artifactDigest}`,
+        artifactDigest,
+        preparedAt,
+        dryRun: true,
+        executable: false,
+        source: {
+          worldlineId: sourceWorldlineId,
+          at: 'tip',
+          observation: sourceObservation,
+          summary: transferPlan.source.resolved.summary,
+        },
+        target: {
+          worldlineId: targetWorldlineId,
+          at: 'tip',
+          observation: targetObservation,
+          summary: transferPlan.target.resolved.summary,
+        },
+        comparison: {
+          artifactDigest: currentComparisonArtifactDigest,
+          changed: comparison.visibleState.changed || patchDiverged,
+          summary: {
+            visibleStateChanged: comparison.visibleState.changed,
+            patchDiverged,
+            visiblePatchDivergence: comparison.visiblePatchDivergence,
+            visibleState: comparison.visibleState.summary,
+          },
+        },
+        transfer: {
+          changed: transferPlan.changed,
+          transferVersion: transferPlan.transferVersion,
+          transferDigest: transferPlan.transferDigest,
+          comparisonDigest: transferPlan.comparisonDigest,
+          summary: transferPlan.summary,
+          ops: transferPlan.ops.map((op) => sanitizeTransferOperation(op)),
+        },
+        mutationPreview: {
+          dryRun: true,
+          valid: mutationPreview.valid,
+          executed: mutationPreview.executed,
+          opCount: transferPlan.summary.opCount,
+          sideEffects: mutationPreview.sideEffects,
+        },
+        ...(attestationIds === null ? {} : { attestationIds }),
+        substrate: {
+          kind: 'git-warp-coordinate-transfer-plan',
+          sourceWorkingSetId,
+          transferVersion: transferPlan.transferVersion,
+          transferDigest: transferPlan.transferDigest,
+          comparisonDigest: transferPlan.comparisonDigest,
         },
       },
       diagnostics: [],

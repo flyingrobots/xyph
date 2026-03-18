@@ -77,6 +77,37 @@ describe('MutationKernelService', () => {
     expect(mocks.createPatchSession).not.toHaveBeenCalled();
   });
 
+  it('dry-runs preview-only collapse ops including binary attachments and content clears', async () => {
+    const graph = makeGraph();
+    const service = new MutationKernelService({
+      getGraph: async () => graph,
+      reset: vi.fn(),
+    });
+
+    const result = await service.execute({
+      rationale: 'Preview a collapse transfer plan without mutating live truth.',
+      ops: [
+        {
+          op: 'attach_node_content',
+          nodeId: 'task:ONE',
+          content: new TextEncoder().encode('hello'),
+          mime: 'text/plain',
+          size: 5,
+        },
+        { op: 'clear_edge_content', from: 'task:ONE', to: 'task:TWO', label: 'depends-on' },
+      ],
+    }, { dryRun: true });
+
+    expect(result.valid).toBe(true);
+    expect(result.executed).toBe(false);
+    expect(result.patch).toBeNull();
+    expect(result.sideEffects).toEqual([
+      'attach content to task:ONE',
+      'clear content from edge task:ONE -[depends-on]-> task:TWO',
+    ]);
+    expect(mocks.createPatchSession).not.toHaveBeenCalled();
+  });
+
   it('rejects operations that reference missing nodes or edges', async () => {
     const graph = makeGraph();
     const service = new MutationKernelService({
@@ -122,6 +153,26 @@ describe('MutationKernelService', () => {
     expect(patch.addNode).toHaveBeenCalledWith('proposal:1');
     expect(patch.setProperty).toHaveBeenCalledWith('proposal:1', 'type', 'proposal');
     expect(patch.addEdge).toHaveBeenCalledWith('proposal:1', 'task:ONE', 'proposes');
+  });
+
+  it('rejects non-dry-run clear-content ops because collapse execution is preview-only in this slice', async () => {
+    const graph = makeGraph();
+    const service = new MutationKernelService({
+      getGraph: async () => graph,
+      reset: vi.fn(),
+    });
+
+    const result = await service.execute({
+      rationale: 'Attempt to commit a preview-only clear-content transfer op.',
+      ops: [
+        { op: 'clear_node_content', nodeId: 'task:ONE' },
+      ],
+    });
+
+    expect(result.valid).toBe(false);
+    expect(result.code).toBe('not_implemented');
+    expect(result.executed).toBe(false);
+    expect(result.patch).toBeNull();
   });
 
   it('validates and commits a valid op batch through a working-set overlay patch', async () => {

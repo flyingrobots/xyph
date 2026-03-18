@@ -459,4 +459,89 @@ describe('ControlPlaneService worldline parity', () => {
       error: expect.objectContaining({ code: 'not_found' }),
     }));
   });
+
+  it('previews collapse of a braided worldline without mutating live truth', { timeout: 30_000 }, async () => {
+    const comparison = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'compare-braided-collapse',
+      cmd: 'compare_worldlines',
+      args: {
+        worldlineId: 'worldline:braid-target',
+      },
+    });
+    expect(comparison.ok).toBe(true);
+    if (!comparison.ok) throw new Error(comparison.error.message);
+
+    const collapse = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'collapse-braided-preview',
+      cmd: 'collapse_worldline',
+      args: {
+        worldlineId: 'worldline:braid-target',
+        comparisonArtifactDigest: comparison.data.artifactDigest,
+      },
+    });
+    expect(collapse.ok).toBe(true);
+    if (!collapse.ok) throw new Error(collapse.error.message);
+    expect(collapse.data).toEqual(expect.objectContaining({
+      kind: 'collapse-proposal',
+      dryRun: true,
+      executable: false,
+      source: expect.objectContaining({
+        worldlineId: 'worldline:braid-target',
+        observation: expect.objectContaining({
+          worldlineId: 'worldline:braid-target',
+          backing: expect.objectContaining({
+            kind: 'derived_working_set',
+            substrate: expect.objectContaining({
+              braid: expect.objectContaining({
+                supportWorldlineIds: ['worldline:braid-support'],
+              }),
+            }),
+          }),
+        }),
+      }),
+      target: expect.objectContaining({
+        worldlineId: 'worldline:live',
+      }),
+      transfer: expect.objectContaining({
+        changed: true,
+        summary: expect.objectContaining({
+          opCount: expect.any(Number),
+        }),
+        ops: expect.arrayContaining([
+          expect.objectContaining({
+            op: 'add_node',
+            nodeId: 'task:BRAID-001',
+          }),
+          expect.objectContaining({
+            op: 'set_node_property',
+            nodeId: 'task:BRAID-001',
+            key: 'status',
+            value: 'IN_PROGRESS',
+          }),
+        ]),
+      }),
+      mutationPreview: expect.objectContaining({
+        dryRun: true,
+        valid: true,
+        executed: false,
+      }),
+    }));
+    expect(collapse).not.toHaveProperty('observation');
+
+    const liveDetail = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'observe-live-after-collapse-preview',
+      cmd: 'observe',
+      args: {
+        projection: 'entity.detail',
+        targetId: 'task:BRAID-001',
+      },
+    });
+    expect(liveDetail).toEqual(expect.objectContaining({
+      ok: false,
+      error: expect.objectContaining({ code: 'not_found' }),
+    }));
+  });
 });

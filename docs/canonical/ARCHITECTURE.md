@@ -70,11 +70,11 @@ Current foundation slice:
 - implemented now: `fork_worldline`
 - implemented now: `braid_worldlines`
 - implemented now: `compare_worldlines`
+- implemented now: `collapse_worldline`
 - implemented now: `apply`
 - implemented now: `comment`
 - implemented now: `propose`
 - implemented now: `attest`
-- reserved, not yet implemented: `collapse_worldline`
 - reserved, hidden admin/debug concepts: `query`, `rewind_worldline`
 
 Current `observe` projections include a substrate-backed `conflicts` view that
@@ -149,6 +149,20 @@ effects on that surface across `observe(graph.summary)`,
 work, but the canonical derived-worldline control-plane slice is now
 explicitly braid-aware on the published substrate boundary.
 
+`collapse_worldline` now uses that same substrate boundary for a first
+settlement runway. XYPH:
+
+- requires a fresh XYPH `comparison-artifact` digest from `compare_worldlines`
+- recomputes the current substrate comparison to detect drift
+- asks git-warp for a substrate-factual transfer plan from the source
+  worldline’s visible state into the target coordinate
+- lowers that plan through the same mutation kernel used by `apply`
+- keeps the current slice preview-only, so no live mutation happens yet
+
+That keeps settlement planning factual at the substrate boundary while
+preserving XYPH ownership of governance meaning, attestation policy, and
+eventual execution semantics.
+
 Existing commands such as `briefing`, `next`, `context`, `submit`, `review`,
 and `merge` still exist, but they should be understood as compatibility
 projections or wrappers over graph-backed domain services, not the canonical
@@ -182,8 +196,14 @@ small allowlisted primitive-op vocabulary over git-warp patch sessions:
 - `attach_edge_content`
 
 `collapse_worldline` is not allowed to become a special-case mutation engine.
-When implemented, it must lower to a validated mutation plan through the same
-mutation, audit, and capability pipeline as `apply`.
+The current slice now enforces that in preview mode: collapse transfer plans are
+lowered through the same mutation, audit, and capability pipeline as `apply`
+and dry-run against the mutation kernel before XYPH returns a
+`collapse-proposal`.
+
+Preview-only collapse lowering also carries explicit `clear_*_content` transfer
+ops internally so XYPH can represent substrate settlement truth honestly
+without pretending live execution support already exists for that primitive.
 
 ## Shared Graph Architecture
 

@@ -91,8 +91,9 @@ the only sanctioned foundation for sovereign control-plane writes.
 
 `collapse_worldline` must not become a second mutation engine.
 
-When implemented, `collapse_worldline` must lower to a validated mutation plan
-through the same:
+The current slice now enforces that in preview mode: `collapse_worldline`
+lowers a substrate transfer plan to a validated dry-run mutation plan through
+the same:
 
 - mutation validator
 - capability-resolution path
@@ -100,6 +101,10 @@ through the same:
 - idempotency model
 
 used by `apply`.
+
+This preview path may carry explicit content-clear transfer ops internally so
+XYPH can represent substrate settlement truth honestly before live execution
+support exists for that primitive.
 
 ## Lease Semantics
 
@@ -160,6 +165,8 @@ The current sovereign-control-plane foundation implements:
 - structured redaction for content-bearing `entity.detail` observations
 - substrate-backed worldline comparison previews that remain separate from
   attestation, approval, or collapse execution
+- preview-only `collapse-proposal` artifacts that lower substrate transfer
+  plans through the shared mutation kernel without mutating live truth
 
 Current `fork_worldline` is intentionally narrow:
 
@@ -183,6 +190,6 @@ Current `braid_worldlines` is likewise intentionally thin:
   observation coordinate instead of silently reporting only the worldline ID
 - it does **not** merge, rebase, collapse, or settle anything into live truth
 
-It does **not** yet implement durable comparison artifact records, collapse
-proposals as first-class executable workflows, full worldline-local execution,
-or lease enforcement. Those remain future slices governed by this contract.
+It does **not** yet implement durable comparison artifact records, live
+collapse execution, full worldline-local execution, or lease enforcement.
+Those remain future slices governed by this contract.

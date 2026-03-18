@@ -40,13 +40,14 @@ Human surface direction:
    - XYPH should not invent conflict provenance above incomplete substrate signals.
    - `xyph api observe` now exposes a substrate-backed `conflicts` projection that relays git-warp conflict facts directly for the live frontier or a derived worldline's backing working-set tip.
    - `xyph api compare_worldlines` now exposes the published git-warp coordinate comparison surface for live-vs-derived and derived-vs-derived preview, while keeping decision and settlement semantics in XYPH.
+   - `xyph api collapse_worldline` now exposes the first preview-only settlement runway over published git-warp transfer planning, requiring a fresh `comparison-artifact` digest and dry-running the lowered plan through the shared mutation kernel instead of inventing a second collapse engine.
    - Conflict meaning, governance, compare/collapse, and human workflow semantics remain XYPH concerns.
 3. **Worldline working sets after substrate facts**
    - Fork/worldline work should use logical working sets over graph observations, not Git worktrees.
    - Materialized graph states are caches, not authoritative models.
    - `fork_worldline` is now implemented as a thin mapping onto git-warp working-set creation for `worldline:live`, with optional current-frontier Lamport ceiling support via `at: { tick }`.
    - `braid_worldlines` is now implemented as a thin mapping onto git-warp braid descriptors for canonical derived worldlines, using `supportWorldlineIds` and optional `readOnly` while keeping the public API worldline-first.
-   - Canonical derived worldlines now support working-set-backed `observe(graph.summary)`, `observe(worldline.summary)`, `observe(entity.detail)`, `history`, `diff`, `apply`, `observe(conflicts)`, and `compare_worldlines` slices.
+   - Canonical derived worldlines now support working-set-backed `observe(graph.summary)`, `observe(worldline.summary)`, `observe(entity.detail)`, `history`, `diff`, `apply`, `observe(conflicts)`, `compare_worldlines`, and preview-only `collapse_worldline` slices.
    - Observation coordinates for those slices now make the substrate backing explicit, including braid support-worldline IDs when the selected worldline is braided.
    - `observe(conflicts)` now warns when braided overlays are fighting over singleton LWW properties in a way that self-erases co-presence in the application projection.
    - `braid_worldlines` is the canonical composition verb: multiple worldline-derived effects kept co-present rather than silently merged or rebased.

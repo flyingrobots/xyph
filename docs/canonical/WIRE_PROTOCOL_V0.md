@@ -127,11 +127,11 @@ Current foundation-slice implementation status:
 - implemented now: `fork_worldline`
 - implemented now: `braid_worldlines`
 - implemented now: `compare_worldlines`
+- implemented now: `collapse_worldline`
 - implemented now: `apply`
 - implemented now: `propose`
 - implemented now: `comment`
 - implemented now: `attest`
-- reserved, not yet implemented: `collapse_worldline`
 - reserved, not yet implemented: `query`
 - reserved, not yet implemented: `rewind_worldline`
 
@@ -176,9 +176,9 @@ Every read returns a reproducible observation coordinate:
   - `braid.supportWorldlineIds`
   - `braid.supportWorkingSetIds`
 
-`compare_worldlines` is the exception to the single-coordinate return shape.
-Because it spans two worldline/selector surfaces, it returns per-side
-observation coordinates inside the `comparison-artifact` payload instead of a
+`compare_worldlines` and preview `collapse_worldline` are the exceptions to the
+single-coordinate return shape. Because they span two worldline surfaces, they
+return per-side observation coordinates inside the artifact payload instead of a
 single top-level `observation`.
 
 Every read accepts:
@@ -212,7 +212,7 @@ surface than `worldline:live`:
 
 - working-set-aware now: `observe(graph.summary)`,
   `observe(worldline.summary)`, `observe(entity.detail)`, `history`, `diff`,
-  `apply`, `observe(conflicts)`, `compare_worldlines`
+  `apply`, `observe(conflicts)`, `compare_worldlines`, `collapse_worldline`
 - still live-service-backed for now: compatibility projections such as
   `briefing`, `context`, `next`, `submissions`, `diagnostics`, and
   `prescriptions`
@@ -302,6 +302,32 @@ Current behavior:
 This slice is intentionally comparison-only. It does **not** collapse, approve,
 or otherwise execute settlement. Comparison remains separate from decision and
 execution.
+
+## `collapse_worldline` Current Slice
+
+`collapse_worldline` is now implemented as the first XYPH settlement runway
+preview over git-warp's published transfer-planning helpers.
+
+Current behavior:
+
+- uses the effective `worldlineId` as the source worldline
+- currently supports only canonical derived source worldlines backed by
+  git-warp working sets
+- requires `comparisonArtifactDigest` from a fresh `compare_worldlines` call
+- recomputes the current comparison at source tip vs target tip and rejects
+  stale digest input with `stale_base_observation`
+- currently supports only `targetWorldlineId: "worldline:live"` or omission
+- rejects `at`, `againstAt`, `since`, and `targetId` selectors in this slice
+- always dry-runs through the same mutation kernel used by `apply`
+- returns:
+  - a typed XYPH `collapse-proposal`
+  - per-side observation coordinates for source and target
+  - substrate-backed transfer summary and sanitized transfer ops
+  - dry-run mutation side-effect preview
+
+This slice is intentionally preview-only. It does **not** mutate live truth
+yet, and it does not introduce a special collapse engine outside the shared
+mutation kernel path.
 
 ## `braid_worldlines` Current Slice
 
