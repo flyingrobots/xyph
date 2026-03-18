@@ -6,11 +6,13 @@
 import WarpGraph, { GitGraphAdapter } from '@git-stunts/git-warp';
 import Plumbing from '@git-stunts/plumbing';
 import { toNeighborEntries } from '../src/infrastructure/helpers/isNeighborEntry.js';
+import { resolveGraphRuntime } from '../src/cli/runtimeGraph.js';
 
 async function main(): Promise<void> {
-  const plumbing = Plumbing.createDefault({ cwd: process.cwd() });
+  const runtime = resolveGraphRuntime({ cwd: process.cwd() });
+  const plumbing = Plumbing.createDefault({ cwd: runtime.repoPath });
   const persistence = new GitGraphAdapter({ plumbing });
-  const graph = await WarpGraph.open({ persistence, graphName: 'xyph-roadmap', writerId: 'agent.prime', autoMaterialize: true });
+  const graph = await WarpGraph.open({ persistence, graphName: runtime.graphName, writerId: 'agent.prime', autoMaterialize: true });
   await graph.syncCoverage();
   await graph.materialize();
 

@@ -35,7 +35,13 @@ Humans decide _what_ to build and _why_. Agents figure out _how_ and do the work
 
 Everything lives in a single [**WARP graph**](https://github.com/git-stunts/git-warp) — a multi-writer CRDT graph database stored in Git. Conflicts are resolved deterministically via **Last-Writer-Wins** using Lamport timestamps. Multiple entities can work with XYPH simultaneously, deterministically, and without fear of merge conflicts.
 
-XYPH is offline-first, distributed, decentralized, and lives in your Git repo alongside the rest of your project. It's invisible to normal Git workflows and tools — it never interacts with any Git worktrees. It works anywhere that Git can push or pull, built on top of the most widely-used, battle-hardened, distributed version control system on Earth.
+XYPH is offline-first, distributed, decentralized, and defaults to living in
+your current Git repo alongside the rest of your project. It can also target a
+different Git repo via bootstrap config when you want a sidecar operational
+graph. It is invisible to normal Git workflows and tools — it never interacts
+with any Git worktrees. It works anywhere that Git can push or pull, built on
+top of the most widely-used, battle-hardened, distributed version control
+system on Earth.
 
 ## How To Use XYPH
 
@@ -61,6 +67,44 @@ export XYPH_AGENT_ID=agent.hal    # Hal is an agent
 ```
 
 If `XYPH_AGENT_ID` is not set, it defaults to `agent.prime`.
+
+#### Selecting The Runtime Graph
+
+XYPH resolves its runtime graph before it can read any graph-backed config, so
+graph selection is a bootstrap concern rather than a `config:xyph` node
+concern.
+
+Bootstrap precedence is:
+
+- local `.xyph.json`
+- user config `~/.xyph/config`
+- defaults: current Git repo + graph name `xyph`
+
+Example local config:
+
+```json
+{
+  "graph": {
+    "name": "xyph-roadmap"
+  }
+}
+```
+
+Example sidecar-style user config:
+
+```json
+{
+  "identity": "human.ada",
+  "graph": {
+    "repoPath": "/Users/ada/git/xyph-dev",
+    "name": "xyph"
+  }
+}
+```
+
+If the target repo already contains multiple git-warp graphs, or only a single
+non-default graph, XYPH now fails loudly until `graph.name` is set explicitly.
+It will not guess and silently mint a second graph.
 
 Verify everything is working:
 

@@ -6,6 +6,7 @@ import { NormalizeService } from './domain/services/NormalizeService.js';
 import { RebalanceService } from './domain/services/RebalanceService.js';
 import { createStylePort } from './infrastructure/adapters/BijouStyleAdapter.js';
 import type { StylePort } from './ports/StylePort.js';
+import { resolveGraphRuntime } from './cli/runtimeGraph.js';
 
 /**
  * Coordinator Daemon
@@ -13,7 +14,6 @@ import type { StylePort } from './ports/StylePort.js';
  */
 
 const REPO_PATH = process.cwd();
-const GRAPH_NAME = 'xyph-roadmap';
 const AGENT_ID = process.env['XYPH_AGENT_ID'] ?? 'agent.coordinator';
 const MIN_INTERVAL_MS = 1000;
 const DEFAULT_INTERVAL_MS = 60000;
@@ -34,10 +34,11 @@ const style = createStylePort();
 
 async function main(): Promise<void> {
   const INTERVAL_MS = parseInterval(style);
+  const runtime = resolveGraphRuntime({ cwd: REPO_PATH });
   const t = style.theme;
   console.log(style.styled({ ...t.semantic.success, modifiers: [...(t.semantic.success.modifiers ?? []), 'bold'] }, 'XYPH Coordinator Daemon starting...'));
 
-  const graphPort = new WarpGraphAdapter(REPO_PATH, GRAPH_NAME, AGENT_ID);
+  const graphPort = new WarpGraphAdapter(runtime.repoPath, runtime.graphName, AGENT_ID);
   const roadmap = new WarpRoadmapAdapter(graphPort);
   const coordinator = new CoordinatorService(roadmap, AGENT_ID, new IngestService(), new NormalizeService(), new RebalanceService());
 

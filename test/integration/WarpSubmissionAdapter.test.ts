@@ -18,7 +18,7 @@ describe('WarpSubmissionAdapter Integration', () => {
     execSync('git config user.email "test@xyph.dev"', { cwd: repoPath });
     execSync('git config user.name "Test Runner"', { cwd: repoPath });
 
-    graphPort = new WarpGraphAdapter(repoPath, 'xyph-roadmap', agentId);
+    graphPort = new WarpGraphAdapter(repoPath, 'xyph', agentId);
     const graph = await graphPort.getGraph();
 
     // Seed: intent + two IN_PROGRESS quests

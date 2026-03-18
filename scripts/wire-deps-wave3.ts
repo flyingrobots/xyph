@@ -9,15 +9,17 @@ import Plumbing from '@git-stunts/plumbing';
 import chalk from 'chalk';
 import { createPatchSession } from '../src/infrastructure/helpers/createPatchSession.js';
 import { toNeighborEntries } from '../src/infrastructure/helpers/isNeighborEntry.js';
+import { resolveGraphRuntime } from '../src/cli/runtimeGraph.js';
 
 const WRITER_ID = process.env['XYPH_AGENT_ID'] ?? 'agent.prime';
-const plumbing = Plumbing.createDefault({ cwd: process.cwd() });
+const runtime = resolveGraphRuntime({ cwd: process.cwd() });
+const plumbing = Plumbing.createDefault({ cwd: runtime.repoPath });
 const persistence = new GitGraphAdapter({ plumbing });
 
 async function openGraph(): Promise<WarpGraph> {
   const graph = await WarpGraph.open({
     persistence,
-    graphName: 'xyph-roadmap',
+    graphName: runtime.graphName,
     writerId: WRITER_ID,
     autoMaterialize: true,
   });

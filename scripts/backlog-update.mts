@@ -15,15 +15,17 @@ import WarpGraph, { GitGraphAdapter } from '@git-stunts/git-warp';
 import Plumbing from '@git-stunts/plumbing';
 import chalk from 'chalk';
 import { createPatchSession } from '../src/infrastructure/helpers/createPatchSession.js';
+import { resolveGraphRuntime } from '../src/cli/runtimeGraph.js';
 
 const agentId = process.env['XYPH_AGENT_ID'] ?? 'human.james';
 const now = Date.now();
+const runtime = resolveGraphRuntime({ cwd: process.cwd() });
 
-const plumbing = Plumbing.createDefault({ cwd: process.cwd() });
+const plumbing = Plumbing.createDefault({ cwd: runtime.repoPath });
 const persistence = new GitGraphAdapter({ plumbing });
 const graph = await WarpGraph.open({
   persistence,
-  graphName: 'xyph-roadmap',
+  graphName: runtime.graphName,
   writerId: agentId,
   autoMaterialize: true,
 });

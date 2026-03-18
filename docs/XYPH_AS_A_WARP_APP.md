@@ -85,6 +85,12 @@ without turning the app into “a bunch of JSON files committed to main.”
 For XYPH, that is crucial. The graph can evolve independently of the codebase
 while still traveling with the repository.
 
+XYPH now treats selection of that repository and named git-warp graph as a
+bootstrap concern outside the graph itself. The app defaults to the current Git
+repo and graph name `xyph`, but a user can point it at a different repo or
+graph through `.xyph.json` or `~/.xyph/config`. That keeps sidecar operational
+graphs possible without teaching the graph to bootstrap itself.
+
 ### 2. Multi-writer collaboration without a coordinator
 
 Each writer in git-warp maintains its own patch chain. Materialization merges

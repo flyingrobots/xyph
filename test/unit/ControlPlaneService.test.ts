@@ -109,7 +109,7 @@ function makeWorkingSetDescriptor(
   return {
     schemaVersion: 1,
     workingSetId: overrides.workingSetId ?? 'wl_review-auth',
-    graphName: 'xyph-roadmap',
+    graphName: 'xyph',
     createdAt: '2026-03-16T00:00:00.000Z',
     updatedAt: '2026-03-16T00:00:00.000Z',
     owner: overrides.owner ?? 'agent.prime',

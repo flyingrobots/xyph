@@ -6,6 +6,8 @@ All notable changes to XYPH will be documented in this file.
 
 ### Changed
 
+- **Runtime graph selection no longer hardcodes `xyph-roadmap`** — the CLI, TUI, coordinator daemon, graph inspection helper, ref-sync scripts, and maintenance scripts now resolve the runtime graph through a shared bootstrap resolver instead of assuming one baked-in graph name.
+- **Graph bootstrap now defaults to `xyph` and fails loudly on ambiguity** — XYPH now resolves graph bootstrap from local `.xyph.json`, then `~/.xyph/config`, then defaults. If the target repo already contains multiple git-warp graphs, or only a single non-default graph, XYPH now rejects startup until `graph.name` is configured explicitly instead of silently picking or creating the wrong graph.
 - **Substrate floor raised to `@git-stunts/git-warp@^14.14.0`** — XYPH now consumes the published substrate release that adds canonical coordinate fact exports on top of the already-published comparison and transfer-planning helpers, keeping compare/collapse previews pinned to a real released substrate version.
 - **Worldline composition terminology stays braid-shaped in the public API** — the active README and canonical control-plane docs continue to use `braid_worldlines` as the public composition verb for co-present worldline effects, explicitly rejecting branch/rebase vocabulary for this capability.
 - **Observation coordinates now make braid backing explicit** — working-set-backed canonical derived-worldline reads now report the backing working-set ID plus overlay/braid details in `observation.backing` instead of only exposing a derived frontier digest.

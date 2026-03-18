@@ -26,7 +26,7 @@ describe('Cross-Adapter Visibility (GraphContext sees Intake mutations)', () => 
     execSync('git config user.email "test@xyph.dev"', { cwd: repoPath });
     execSync('git config user.name "Test Runner"', { cwd: repoPath });
 
-    graphPort = new WarpGraphAdapter(repoPath, 'xyph-roadmap', writerId);
+    graphPort = new WarpGraphAdapter(repoPath, 'xyph', writerId);
     const graph = await graphPort.getGraph();
 
     await graph.patch((p) => {

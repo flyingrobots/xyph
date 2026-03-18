@@ -34,6 +34,9 @@ export type JsonOutput = JsonStreamEvent | JsonEnvelope | JsonErrorEnvelope;
 
 export interface CliContext {
   readonly agentId: string;
+  readonly cwd: string;
+  readonly repoPath: string;
+  readonly graphName: string;
   readonly identity: ResolvedIdentity;
   readonly json: boolean;
   readonly graphPort: WarpGraphAdapter;
@@ -56,6 +59,7 @@ export interface CliContext {
 
 export function createCliContext(
   cwd: string,
+  repoPath: string,
   graphName: string,
   opts?: {
     json?: boolean;
@@ -72,7 +76,7 @@ export function createCliContext(
     homeDir: opts?.homeDir,
   });
   const agentId = identity.agentId;
-  const graphPort = new WarpGraphAdapter(cwd, graphName, agentId);
+  const graphPort = new WarpGraphAdapter(repoPath, graphName, agentId);
   const jsonMode = opts?.json ?? false;
   const style = jsonMode ? createPlainStylePort() : createStylePort();
 
@@ -98,6 +102,9 @@ export function createCliContext(
 
   return {
     agentId,
+    cwd,
+    repoPath,
+    graphName,
     identity,
     json: jsonMode,
     graphPort,

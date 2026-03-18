@@ -13,8 +13,8 @@
     "verify:patch-ops": "npm run build && node scripts/verify-patch-ops.mjs patches",
     "test": "docker build -t xyph-test . && docker run --rm xyph-test npm run test:local",
     "test:local": "vitest run",
-    "graph:pull": "git fetch origin 'refs/warp/xyph-roadmap/writers/*:refs/warp/xyph-roadmap/writers/*'",
-    "graph:push": "git push origin 'refs/warp/xyph-roadmap/writers/*:refs/warp/xyph-roadmap/writers/*'",
+    "graph:pull": "npx tsx scripts/warp-ref-sync.ts pull",
+    "graph:push": "npx tsx scripts/warp-ref-sync.ts push",
     "graph:work": "npx tsx scripts/generate-work-dag.ts",
     "postinstall": "patch-package"
   },

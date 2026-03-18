@@ -19,7 +19,7 @@ describe('ControlPlaneService worldline parity', () => {
     execSync('git config user.email "test@xyph.dev"', { cwd: repoPath });
     execSync('git config user.name "Test Runner"', { cwd: repoPath });
 
-    graphPort = new WarpGraphAdapter(repoPath, 'xyph-roadmap', 'agent.prime');
+    graphPort = new WarpGraphAdapter(repoPath, 'xyph', 'agent.prime');
     service = new ControlPlaneService(graphPort, 'agent.prime');
 
     const graph = await graphPort.getGraph();

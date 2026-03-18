@@ -37,6 +37,7 @@ import { createDashboardApp } from './src/tui/bijou/DashboardApp.js';
 import { loadRandomLogo, selectLogoSize } from './src/tui/logo-loader.js';
 import { TuiLogger } from './src/tui/TuiLogger.js';
 import { parseAsOverrideFromArgv, resolveIdentity } from './src/cli/identity.js';
+import { resolveGraphRuntime } from './src/cli/runtimeGraph.js';
 
 // Initialize bijou context with XYPH presets via StylePort.
 const style = createStylePort();
@@ -47,6 +48,7 @@ const identity = resolveIdentity({
 });
 const agentId = identity.agentId;
 const cwd = process.cwd();
+const runtime = resolveGraphRuntime({ cwd });
 
 const currentFilePath = fileURLToPath(import.meta.url);
 const currentDir = dirname(currentFilePath);
@@ -61,7 +63,7 @@ const splash = loadRandomLogo(logosDir, 'xyph', selectLogoSize(cols, rows), {
   maxHeight: rows - 12,
 });
 const logger = new TuiLogger({ component: 'xyph-dashboard' });
-const graphPort = new WarpGraphAdapter(cwd, 'xyph-roadmap', agentId, logger);
+const graphPort = new WarpGraphAdapter(runtime.repoPath, runtime.graphName, agentId, logger);
 const ctx = createGraphContext(graphPort);
 const intake = new WarpIntakeAdapter(graphPort, agentId);
 const submissionPort = new WarpSubmissionAdapter(graphPort, agentId);

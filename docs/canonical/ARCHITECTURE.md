@@ -32,6 +32,42 @@ the active command family.
 
 ![Hexagonal architecture](../diagrams/hexagonal-architecture.svg)
 
+## Bootstrap Graph Selection
+
+XYPH resolves its runtime graph from bootstrap config outside the graph. That
+boundary is load-bearing: the control plane must know which Git repo and which
+git-warp graph to open before it can read any in-graph config such as
+`config:xyph`.
+
+Current precedence:
+
+- local `.xyph.json`
+- user config `~/.xyph/config`
+- defaults: current Git repo + graph name `xyph`
+
+The bootstrap file shape is:
+
+```json
+{
+  "graph": {
+    "repoPath": "/abs/or/relative/path",
+    "name": "xyph"
+  }
+}
+```
+
+`repoPath` is optional. `name` is optional only when the target repo has no
+warp graphs yet, or already has exactly one graph named `xyph`. If the target
+repo contains multiple graphs, or only a single non-default graph such as
+`xyph-roadmap`, XYPH now fails loudly until `graph.name` is explicit. Silent
+guessing here would create or select the wrong graph and violate the “graph is
+the plan” rule.
+
+This is intentionally separate from the layered app config resolved by
+`ConfigAdapter`. Graph bootstrap is an out-of-band runtime concern. In-graph
+config remains appropriate only after the runtime graph is already selected and
+opened.
+
 ### Layers
 
 - **`src/domain/entities/`** — Core business objects: `Quest`, `Intent`, `Submission`, `ApprovalGate`, `Orchestration`.

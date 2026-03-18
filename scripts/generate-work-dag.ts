@@ -31,6 +31,7 @@ import {
   scheduleWorkers,
   computeAntiChains,
 } from '../src/domain/services/DagAnalysis.js';
+import { resolveGraphRuntime } from '../src/cli/runtimeGraph.js';
 
 // ---------------------------------------------------------------------------
 // Config
@@ -39,6 +40,7 @@ import {
 const WRITER_ID = process.env['XYPH_AGENT_ID'] ?? 'agent.prime';
 const OUTPUT_DIR = join(process.cwd(), 'docs', 'work');
 const WORKERS = 4;
+const runtime = resolveGraphRuntime({ cwd: process.cwd() });
 
 // Dark theme colors
 const STATUS_COLORS: Record<string, { fill: string; font: string; border: string }> = {
@@ -100,12 +102,12 @@ async function loadGraph(): Promise<{
   campaigns: Map<string, string>;
   sorted: string[];
 }> {
-  const plumbing = Plumbing.createDefault({ cwd: process.cwd() });
+  const plumbing = Plumbing.createDefault({ cwd: runtime.repoPath });
   const persistence = new GitGraphAdapter({ plumbing });
 
   const graph = await WarpGraph.open({
     persistence,
-    graphName: 'xyph-roadmap',
+    graphName: runtime.graphName,
     writerId: WRITER_ID,
     autoMaterialize: true,
   });
