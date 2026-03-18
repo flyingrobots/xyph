@@ -45,9 +45,10 @@ export function resolveGraphRuntime(opts?: {
   const userLayer = readGraphConfigLayer(userPath);
   const selected = localLayer ?? userLayer;
 
+  const workingRepoPath = tryNormalizeGitRepoPath(cwd);
   const configuredRepoPath = resolveConfiguredRepoPath(selected?.graph.repoPath, selected?.origin, cwd);
   const repoPath = normalizeGitRepoPath(configuredRepoPath);
-  const graphName = resolveGraphName(selected, repoPath);
+  const graphName = resolveGraphName(selected, repoPath, workingRepoPath, cwd);
 
   return {
     cwd,
@@ -127,8 +128,41 @@ function normalizeGitRepoPath(repoPath: string): string {
   }
 }
 
-function resolveGraphName(layer: GraphConfigLayer | null, repoPath: string): string {
+function tryNormalizeGitRepoPath(repoPath: string): string | null {
+  try {
+    return normalizeGitRepoPath(repoPath);
+  } catch {
+    return null;
+  }
+}
+
+function resolveGraphName(
+  layer: GraphConfigLayer | null,
+  repoPath: string,
+  workingRepoPath: string | null,
+  cwd: string,
+): string {
   if (layer?.graph.name !== undefined) return layer.graph.name;
+
+  if (workingRepoPath === null) {
+    throw new Error(
+      [
+        `XYPH can only auto-discover graph.name inside the current Git working repo.`,
+        `The current working directory is not inside a Git repo: ${cwd}.`,
+        `Set graph.name explicitly in ${LOCAL_CONFIG_FILE} or ${userConfigPath()} before running XYPH.`,
+      ].join(' '),
+    );
+  }
+
+  if (repoPath !== workingRepoPath) {
+    throw new Error(
+      [
+        `XYPH will not inspect git-warp ref namespaces outside the current working repo.`,
+        `Configured graph repo ${repoPath} is outside the working repo ${workingRepoPath}.`,
+        `Set graph.name explicitly in ${LOCAL_CONFIG_FILE} or ${userConfigPath()} before running XYPH.`,
+      ].join(' '),
+    );
+  }
 
   const graphs = listWarpGraphNames(repoPath);
   if (graphs.length === 0) return DEFAULT_GRAPH_NAME;

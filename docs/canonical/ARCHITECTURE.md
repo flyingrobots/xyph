@@ -56,12 +56,14 @@ The bootstrap file shape is:
 }
 ```
 
-`repoPath` is optional. `name` is optional only when the target repo has no
-warp graphs yet, or already has exactly one graph named `xyph`. If the target
-repo contains multiple graphs, or only a single non-default graph such as
-`xyph-roadmap`, XYPH now fails loudly until `graph.name` is explicit. Silent
-guessing here would create or select the wrong graph and violate the “graph is
-the plan” rule.
+`repoPath` is optional. `name` is optional only when the target repo is the
+current working repo and it either has no warp graphs yet, or already has
+exactly one graph named `xyph`. If the target repo contains multiple graphs, or
+only a single non-default graph, XYPH now fails loudly until `graph.name` is
+explicit. If `repoPath` points at a different repo, `graph.name` is always
+required; XYPH will not inspect git-warp ref namespaces outside the current
+working repo. Silent guessing here would create or select the wrong graph and
+violate the “graph is the plan” rule.
 
 This is intentionally separate from the layered app config resolved by
 `ConfigAdapter`. Graph bootstrap is an out-of-band runtime concern. In-graph

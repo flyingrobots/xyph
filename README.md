@@ -85,7 +85,7 @@ Example local config:
 ```json
 {
   "graph": {
-    "name": "xyph-roadmap"
+    "name": "xyph-review"
   }
 }
 ```
@@ -104,7 +104,9 @@ Example sidecar-style user config:
 
 If the target repo already contains multiple git-warp graphs, or only a single
 non-default graph, XYPH now fails loudly until `graph.name` is set explicitly.
-It will not guess and silently mint a second graph.
+It will not guess and silently mint a second graph. If `repoPath` points at a
+different repo, `graph.name` is also required explicitly; XYPH will not inspect
+git-warp ref namespaces outside the current working repo.
 
 Verify everything is working:
 

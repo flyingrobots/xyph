@@ -8,12 +8,14 @@ import { DEFAULT_GRAPH_NAME, resolveGraphRuntime } from '../../src/cli/runtimeGr
 describe('graph runtime resolution', () => {
   let workspacePath: string;
   let repoPath: string;
+  let secondaryRepoPath: string;
   let homePath: string;
   let originalHome: string | undefined;
 
   beforeEach(() => {
     workspacePath = fs.mkdtempSync(path.join(os.tmpdir(), 'xyph-graph-workspace-'));
     repoPath = fs.mkdtempSync(path.join(os.tmpdir(), 'xyph-graph-repo-'));
+    secondaryRepoPath = fs.mkdtempSync(path.join(os.tmpdir(), 'xyph-graph-secondary-repo-'));
     homePath = fs.mkdtempSync(path.join(os.tmpdir(), 'xyph-graph-home-'));
     originalHome = process.env['HOME'];
     process.env['HOME'] = homePath;
@@ -22,6 +24,11 @@ describe('graph runtime resolution', () => {
     execSync('git config user.email "test@xyph.dev"', { cwd: repoPath, stdio: 'ignore' });
     execSync('git config user.name "Test Runner"', { cwd: repoPath, stdio: 'ignore' });
     execSync('git commit --allow-empty -m init', { cwd: repoPath, stdio: 'ignore' });
+
+    execSync('git init', { cwd: secondaryRepoPath, stdio: 'ignore' });
+    execSync('git config user.email "test@xyph.dev"', { cwd: secondaryRepoPath, stdio: 'ignore' });
+    execSync('git config user.name "Test Runner"', { cwd: secondaryRepoPath, stdio: 'ignore' });
+    execSync('git commit --allow-empty -m init', { cwd: secondaryRepoPath, stdio: 'ignore' });
   });
 
   afterEach(() => {
@@ -33,6 +40,7 @@ describe('graph runtime resolution', () => {
 
     fs.rmSync(workspacePath, { recursive: true, force: true });
     fs.rmSync(repoPath, { recursive: true, force: true });
+    fs.rmSync(secondaryRepoPath, { recursive: true, force: true });
     fs.rmSync(homePath, { recursive: true, force: true });
   });
 
@@ -96,6 +104,30 @@ describe('graph runtime resolution', () => {
     expect(resolved.graphName).toBe('xyph-roadmap');
     expect(resolved.source).toBe('user-config');
     expect(resolved.origin).toBe(path.join(homePath, '.xyph', 'config'));
+  });
+
+  it('requires graph.name when the current working directory is not inside a Git repo', () => {
+    fs.mkdirSync(path.join(homePath, '.xyph'), { recursive: true });
+    fs.writeFileSync(
+      path.join(homePath, '.xyph', 'config'),
+      JSON.stringify({ graph: { repoPath } }, null, 2),
+    );
+
+    expect(() => resolveGraphRuntime({ cwd: workspacePath, homeDir: homePath })).toThrow(
+      /can only auto-discover graph.name inside the current Git working repo/i,
+    );
+  });
+
+  it('requires graph.name when repoPath points outside the current working repo', () => {
+    fs.mkdirSync(path.join(homePath, '.xyph'), { recursive: true });
+    fs.writeFileSync(
+      path.join(homePath, '.xyph', 'config'),
+      JSON.stringify({ graph: { repoPath } }, null, 2),
+    );
+
+    expect(() => resolveGraphRuntime({ cwd: secondaryRepoPath, homeDir: homePath })).toThrow(
+      /will not inspect git-warp ref namespaces outside the current working repo/i,
+    );
   });
 });
 
