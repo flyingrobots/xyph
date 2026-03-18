@@ -144,6 +144,8 @@ The current sovereign-control-plane foundation implements:
 - read-only `comparison-artifact` previews from `compare_worldlines`
 - primitive-op `apply`
 - working-set-backed `fork_worldline` creation from `worldline:live`
+- working-set-backed `braid_worldlines` composition for canonical derived
+  worldlines
 - tick-aware low-level observation for `graph.summary`, `worldline.summary`,
   `entity.detail`, `history`, and `diff`
 - tip-scoped `observe(conflicts)` backed by git-warp conflict analysis for the
@@ -165,6 +167,15 @@ Current `fork_worldline` is intentionally narrow:
   `apply`, and `observe(conflicts)` for canonical derived worldlines
 - it does **not** yet provide broader compatibility projections or nested
   derived-worldline forking
+
+Current `braid_worldlines` is likewise intentionally thin:
+
+- it rewrites only the selected worldline’s backing working-set visibility
+  descriptor
+- it requires canonical derived support worldlines
+- it may pin one or more read-only support overlays and optionally freeze the
+  target overlay with `readOnly`
+- it does **not** merge, rebase, collapse, or settle anything into live truth
 
 It does **not** yet implement durable comparison artifact records, collapse
 proposals as first-class executable workflows, full worldline-local execution,

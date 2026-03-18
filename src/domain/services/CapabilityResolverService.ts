@@ -126,6 +126,7 @@ export class CapabilityResolverService {
       case 'diff':
       case 'explain':
       case 'fork_worldline':
+      case 'braid_worldlines':
       case 'compare_worldlines':
       case 'collapse_worldline':
         return allow();

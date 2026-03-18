@@ -225,7 +225,7 @@ That is why XYPH’s future “AION” / Time Travel surface is plausible.
 
 It is also why XYPH can grow beyond simple forks into **braids**: co-present
 worldline effects that stay visible together without pretending history was
-rewritten. In XYPH terms, that future operation is `braid_worldlines`.
+rewritten. In XYPH terms, that operation is `braid_worldlines`.
 
 ## Why Worldlines Matter In A Stigmergic System
 

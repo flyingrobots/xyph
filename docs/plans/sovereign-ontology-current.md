@@ -45,8 +45,9 @@ Human surface direction:
    - Fork/worldline work should use logical working sets over graph observations, not Git worktrees.
    - Materialized graph states are caches, not authoritative models.
    - `fork_worldline` is now implemented as a thin mapping onto git-warp working-set creation for `worldline:live`, with optional current-frontier Lamport ceiling support via `at: { tick }`.
+   - `braid_worldlines` is now implemented as a thin mapping onto git-warp braid descriptors for canonical derived worldlines, using `supportWorldlineIds` and optional `readOnly` while keeping the public API worldline-first.
    - Canonical derived worldlines now support working-set-backed `observe(graph.summary)`, `observe(worldline.summary)`, `observe(entity.detail)`, `history`, `diff`, `apply`, `observe(conflicts)`, and `compare_worldlines` slices.
-   - The canonical future composition verb is `braid_worldlines`: multiple worldline-derived effects kept co-present rather than silently merged or rebased.
+   - `braid_worldlines` is the canonical composition verb: multiple worldline-derived effects kept co-present rather than silently merged or rebased.
    - Arbitrary historical frontiers, derived-from-derived forking, and broader compatibility-projection parity remain future slices.
 
 ## Canonical Docs

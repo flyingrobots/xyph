@@ -68,12 +68,12 @@ Current foundation slice:
 - implemented now: `history`
 - implemented now: `diff`
 - implemented now: `fork_worldline`
+- implemented now: `braid_worldlines`
 - implemented now: `compare_worldlines`
 - implemented now: `apply`
 - implemented now: `comment`
 - implemented now: `propose`
 - implemented now: `attest`
-- reserved, not yet implemented: `braid_worldlines`
 - reserved, not yet implemented: `collapse_worldline`
 - reserved, hidden admin/debug concepts: `query`, `rewind_worldline`
 
@@ -125,11 +125,22 @@ That keeps comparison factual and read-only. Decision, attestation, and future
 collapse semantics remain XYPH concerns built on top of this substrate-backed
 preview rather than hidden inside it.
 
-The next worldline-composition term is also now fixed: XYPH will use
-**`braid_worldlines`** for the future operation that keeps multiple
-worldline-derived effects co-present at once. That naming matters because the
-operation is not ordinary merge or rebase; it changes the visible patch
-universe without pretending one line replaced the other.
+`braid_worldlines` is now the thin control-plane mapping for that composition
+step. XYPH keeps the public API in worldline terms while delegating the actual
+visible-patch-universe math to git-warp’s published braid substrate. Current
+behavior:
+
+- targets the effective canonical derived worldline
+- pins one or more canonical derived support worldlines as read-only overlays
+- accepts optional `readOnly` to freeze the target overlay too
+- returns XYPH-first braid metadata plus the substrate backing IDs
+
+That matters because the operation is not ordinary merge or rebase; it changes
+the visible patch universe without pretending one line replaced the other.
+Because the core materialized projections already lower through working-set
+truth, selecting a braided target worldline now exposes those co-present
+effects on that surface. The next slice is still responsible for explicit
+braid-wide parity and diagnostics across the rest of the control plane.
 
 Existing commands such as `briefing`, `next`, `context`, `submit`, `review`,
 and `merge` still exist, but they should be understood as compatibility

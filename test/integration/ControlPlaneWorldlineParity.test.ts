@@ -209,4 +209,132 @@ describe('ControlPlaneService worldline parity', () => {
     expect(new Set(frontierDigests)).toHaveLength(1);
     expect(frontierDigests[0]).not.toBe(liveSummary.observation.frontierDigest);
   });
+
+  it('makes braided support effects visible on the target worldline without mutating live truth', { timeout: 30_000 }, async () => {
+    const forkTarget = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'fork-braid-target',
+      cmd: 'fork_worldline',
+      args: {
+        newWorldlineId: 'worldline:braid-target',
+        scope: 'Braid target',
+      },
+    });
+    expect(forkTarget.ok).toBe(true);
+
+    const forkSupport = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'fork-braid-support',
+      cmd: 'fork_worldline',
+      args: {
+        newWorldlineId: 'worldline:braid-support',
+        scope: 'Braid support',
+      },
+    });
+    expect(forkSupport.ok).toBe(true);
+
+    const beforeBraid = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'before-braid-detail',
+      cmd: 'observe',
+      args: {
+        projection: 'entity.detail',
+        worldlineId: 'worldline:braid-target',
+        targetId: 'task:BRAID-001',
+      },
+    });
+    expect(beforeBraid).toEqual(expect.objectContaining({
+      ok: false,
+      error: expect.objectContaining({ code: 'not_found' }),
+    }));
+
+    const supportApply = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'apply-braid-support',
+      cmd: 'apply',
+      args: {
+        worldlineId: 'worldline:braid-support',
+        rationale: 'Hold a support effect in a co-present braid.',
+        ops: [
+          { op: 'add_node', nodeId: 'task:BRAID-001' },
+          { op: 'set_node_property', nodeId: 'task:BRAID-001', key: 'type', value: 'task' },
+          { op: 'set_node_property', nodeId: 'task:BRAID-001', key: 'title', value: 'Braided support task' },
+          { op: 'set_node_property', nodeId: 'task:BRAID-001', key: 'status', value: 'READY' },
+          { op: 'add_edge', from: 'task:BRAID-001', to: 'campaign:LIVE', label: 'belongs-to' },
+        ],
+      },
+    });
+    expect(supportApply.ok).toBe(true);
+
+    const braid = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'braid-worldlines',
+      cmd: 'braid_worldlines',
+      args: {
+        worldlineId: 'worldline:braid-target',
+        supportWorldlineIds: ['worldline:braid-support'],
+      },
+    });
+    expect(braid.ok).toBe(true);
+    if (!braid.ok) throw new Error(braid.error.message);
+    expect(braid.data).toEqual(expect.objectContaining({
+      worldlineId: 'worldline:braid-target',
+      supportWorldlineIds: ['worldline:braid-support'],
+      braid: expect.objectContaining({
+        supportCount: 1,
+        supports: [
+          expect.objectContaining({
+            worldlineId: 'worldline:braid-support',
+          }),
+        ],
+      }),
+    }));
+
+    const braidedSummary = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'observe-braided-summary',
+      cmd: 'observe',
+      args: {
+        projection: 'graph.summary',
+        worldlineId: 'worldline:braid-target',
+      },
+    });
+    expect(braidedSummary.ok).toBe(true);
+    if (!braidedSummary.ok) throw new Error(braidedSummary.error.message);
+    expect(braidedSummary.data.counts).toEqual(expect.objectContaining({ quests: 2 }));
+
+    const braidedDetail = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'observe-braided-detail',
+      cmd: 'observe',
+      args: {
+        projection: 'entity.detail',
+        worldlineId: 'worldline:braid-target',
+        targetId: 'task:BRAID-001',
+      },
+    });
+    expect(braidedDetail.ok).toBe(true);
+    if (!braidedDetail.ok) throw new Error(braidedDetail.error.message);
+    expect(braidedDetail.data.detail).toEqual(expect.objectContaining({
+      id: 'task:BRAID-001',
+      props: expect.objectContaining({
+        title: 'Braided support task',
+        status: 'READY',
+      }),
+    }));
+
+    const liveDetail = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'observe-live-braided-detail',
+      cmd: 'observe',
+      args: {
+        projection: 'entity.detail',
+        targetId: 'task:BRAID-001',
+      },
+    });
+    expect(liveDetail).toEqual(expect.objectContaining({
+      ok: false,
+      error: expect.objectContaining({ code: 'not_found' }),
+    }));
+  });
 });

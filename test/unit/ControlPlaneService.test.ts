@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   createProposal: vi.fn(),
   createAttestation: vi.fn(),
   createWorkingSet: vi.fn(),
+  braidWorkingSet: vi.fn(),
   analyzeConflicts: vi.fn(),
   materializeWorkingSet: vi.fn(),
   patchesForWorkingSet: vi.fn(),
@@ -46,6 +47,58 @@ function makeWorkingSetState(
     prop: new Map<string, unknown>(),
     observedFrontier: new Map(observedFrontier),
     edgeBirthEvent: new Map<string, unknown>(),
+  };
+}
+
+function makeWorkingSetDescriptor(
+  overrides: Partial<{
+    workingSetId: string;
+    owner: string | null;
+    scope: string | null;
+    leaseExpiresAt: string | null;
+    lamportCeiling: number | null;
+    overlayHeadPatchSha: string | null;
+    overlayPatchCount: number;
+    overlayWritable: boolean;
+    braidReadOverlays: {
+      workingSetId: string;
+      overlayId: string;
+      kind: string;
+      headPatchSha: string | null;
+      patchCount: number;
+    }[];
+  }> = {},
+) {
+  return {
+    schemaVersion: 1,
+    workingSetId: overrides.workingSetId ?? 'wl_review-auth',
+    graphName: 'xyph-roadmap',
+    createdAt: '2026-03-16T00:00:00.000Z',
+    updatedAt: '2026-03-16T00:00:00.000Z',
+    owner: overrides.owner ?? 'agent.prime',
+    scope: overrides.scope ?? 'OAuth review',
+    lease: {
+      expiresAt: overrides.leaseExpiresAt ?? '2026-03-20T00:00:00.000Z',
+    },
+    baseObservation: {
+      coordinateVersion: 'frontier-lamport/v1',
+      frontier: { 'agent.prime': 'abcdef123456' },
+      frontierDigest: 'frontier:working-set',
+      lamportCeiling: overrides.lamportCeiling ?? 11,
+    },
+    overlay: {
+      overlayId: overrides.workingSetId ?? 'wl_review-auth',
+      kind: 'patch-log',
+      headPatchSha: overrides.overlayHeadPatchSha ?? null,
+      patchCount: overrides.overlayPatchCount ?? 0,
+      writable: overrides.overlayWritable ?? true,
+    },
+    braid: {
+      readOverlays: overrides.braidReadOverlays ?? [],
+    },
+    materialization: {
+      cacheAuthority: 'derived' as const,
+    },
   };
 }
 
@@ -377,6 +430,7 @@ describe('ControlPlaneService', () => {
       materialize: vi.fn(async () => null),
       patchesFor: vi.fn(async () => ['patch:1', 'patch:2']),
       createWorkingSet: mocks.createWorkingSet,
+      braidWorkingSet: mocks.braidWorkingSet,
       analyzeConflicts: mocks.analyzeConflicts,
       materializeWorkingSet: mocks.materializeWorkingSet,
       patchesForWorkingSet: mocks.patchesForWorkingSet,
@@ -392,6 +446,7 @@ describe('ControlPlaneService', () => {
       materializeWorkingSet: mocks.materializeWorkingSet,
       patchesForWorkingSet: mocks.patchesForWorkingSet,
       createWorkingSet: mocks.createWorkingSet,
+      braidWorkingSet: mocks.braidWorkingSet,
       analyzeConflicts: mocks.analyzeConflicts,
       compareCoordinates: mocks.compareCoordinates,
     });
@@ -480,33 +535,8 @@ describe('ControlPlaneService', () => {
       attestedAt: 102,
       contentOid: 'oid:attestation',
     });
-    mocks.createWorkingSet.mockResolvedValue({
-      schemaVersion: 1,
-      workingSetId: 'wl_review-auth',
-      graphName: 'xyph-roadmap',
-      createdAt: '2026-03-16T00:00:00.000Z',
-      updatedAt: '2026-03-16T00:00:00.000Z',
-      owner: 'agent.prime',
-      scope: 'OAuth review',
-      lease: {
-        expiresAt: '2026-03-20T00:00:00.000Z',
-      },
-      baseObservation: {
-        coordinateVersion: 'frontier-lamport/v1',
-        frontier: { 'agent.prime': 'abcdef123456' },
-        frontierDigest: 'frontier:working-set',
-        lamportCeiling: 11,
-      },
-      overlay: {
-        overlayId: 'wl_review-auth',
-        kind: 'patch-log',
-        headPatchSha: null,
-        patchCount: 0,
-      },
-      materialization: {
-        cacheAuthority: 'derived',
-      },
-    });
+    mocks.createWorkingSet.mockResolvedValue(makeWorkingSetDescriptor());
+    mocks.braidWorkingSet.mockResolvedValue(makeWorkingSetDescriptor());
   });
 
   it('returns a versioned observe graph.summary success record with observation metadata', async () => {
@@ -721,6 +751,175 @@ describe('ControlPlaneService', () => {
       }),
       observation: expect.objectContaining({
         worldlineId: 'worldline:review-auth',
+      }),
+    }));
+  });
+
+  it('braids canonical derived support worldlines onto a target worldline through the substrate braid API', async () => {
+    mocks.braidWorkingSet.mockResolvedValueOnce(
+      makeWorkingSetDescriptor({
+        overlayWritable: false,
+        braidReadOverlays: [
+          {
+            workingSetId: 'wl_hold-auth',
+            overlayId: 'wl_hold-auth',
+            kind: 'patch-log',
+            headPatchSha: 'patch:support-1',
+            patchCount: 2,
+          },
+          {
+            workingSetId: 'wl_audit-auth',
+            overlayId: 'wl_audit-auth',
+            kind: 'patch-log',
+            headPatchSha: 'patch:support-2',
+            patchCount: 1,
+          },
+        ],
+      }),
+    );
+    mocks.materializeWorkingSet.mockResolvedValueOnce(
+      makeWorkingSetState(['task:ONE', 'task:TWO'], [['agent.prime', 12], ['wl_review-auth', 3], ['wl_hold-auth', 2]]),
+    );
+
+    const service = new ControlPlaneService({
+      getGraph: mocks.getGraph,
+      openIsolatedGraph: mocks.openIsolatedGraph,
+      reset: vi.fn(),
+    }, 'agent.prime');
+
+    const result = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'req-braid',
+      cmd: 'braid_worldlines',
+      args: {
+        worldlineId: 'worldline:review-auth',
+        supportWorldlineIds: ['worldline:hold-auth', 'worldline:audit-auth'],
+        readOnly: true,
+      },
+    });
+
+    expect(mocks.braidWorkingSet).toHaveBeenCalledWith('wl_review-auth', {
+      braidedWorkingSetIds: ['wl_hold-auth', 'wl_audit-auth'],
+      writable: false,
+    });
+    expect(mocks.materializeWorkingSet).toHaveBeenCalledWith('wl_review-auth');
+    expect(result).toEqual(expect.objectContaining({
+      ok: true,
+      cmd: 'braid_worldlines',
+      data: expect.objectContaining({
+        worldlineId: 'worldline:review-auth',
+        supportWorldlineIds: ['worldline:hold-auth', 'worldline:audit-auth'],
+        braid: expect.objectContaining({
+          targetWorldlineId: 'worldline:review-auth',
+          supportCount: 2,
+          readOnly: true,
+          supports: [
+            {
+              worldlineId: 'worldline:hold-auth',
+              headPatchSha: 'patch:support-1',
+              patchCount: 2,
+            },
+            {
+              worldlineId: 'worldline:audit-auth',
+              headPatchSha: 'patch:support-2',
+              patchCount: 1,
+            },
+          ],
+        }),
+        worldline: expect.objectContaining({
+          worldlineId: 'worldline:review-auth',
+          overlay: expect.objectContaining({
+            writable: false,
+          }),
+          braid: expect.objectContaining({
+            supportWorldlineIds: ['worldline:hold-auth', 'worldline:audit-auth'],
+            readOverlays: [
+              expect.objectContaining({
+                worldlineId: 'worldline:hold-auth',
+                overlayId: 'wl_hold-auth',
+              }),
+              expect.objectContaining({
+                worldlineId: 'worldline:audit-auth',
+                overlayId: 'wl_audit-auth',
+              }),
+            ],
+          }),
+        }),
+        substrate: {
+          kind: 'git-warp-working-set-braid',
+          workingSetId: 'wl_review-auth',
+          supportWorkingSetIds: ['wl_hold-auth', 'wl_audit-auth'],
+        },
+      }),
+      observation: expect.objectContaining({
+        worldlineId: 'worldline:review-auth',
+      }),
+    }));
+  });
+
+  it('rejects braid_worldlines when the target worldline is live', async () => {
+    const service = new ControlPlaneService({
+      getGraph: mocks.getGraph,
+      openIsolatedGraph: mocks.openIsolatedGraph,
+      reset: vi.fn(),
+    }, 'agent.prime');
+
+    const result = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'req-braid-live',
+      cmd: 'braid_worldlines',
+      args: {
+        supportWorldlineIds: ['worldline:hold-auth'],
+      },
+    });
+
+    expect(mocks.braidWorkingSet).not.toHaveBeenCalled();
+    expect(result).toEqual(expect.objectContaining({
+      ok: false,
+      error: expect.objectContaining({
+        code: 'invalid_args',
+      }),
+    }));
+  });
+
+  it('rejects duplicate or non-derived support ids for braid_worldlines instead of leaking substrate argument rules', async () => {
+    const service = new ControlPlaneService({
+      getGraph: mocks.getGraph,
+      openIsolatedGraph: mocks.openIsolatedGraph,
+      reset: vi.fn(),
+    }, 'agent.prime');
+
+    const duplicateResult = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'req-braid-duplicate',
+      cmd: 'braid_worldlines',
+      args: {
+        worldlineId: 'worldline:review-auth',
+        supportWorldlineIds: ['worldline:hold-auth', 'worldline:hold-auth'],
+      },
+    });
+    const leakedArgResult = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'req-braid-leaked-args',
+      cmd: 'braid_worldlines',
+      args: {
+        worldlineId: 'worldline:review-auth',
+        supportWorldlineIds: ['worldline:hold-auth'],
+        writable: false,
+      },
+    });
+
+    expect(mocks.braidWorkingSet).not.toHaveBeenCalled();
+    expect(duplicateResult).toEqual(expect.objectContaining({
+      ok: false,
+      error: expect.objectContaining({
+        code: 'invalid_args',
+      }),
+    }));
+    expect(leakedArgResult).toEqual(expect.objectContaining({
+      ok: false,
+      error: expect.objectContaining({
+        code: 'invalid_args',
       }),
     }));
   });

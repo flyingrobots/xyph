@@ -310,6 +310,8 @@ export class ControlPlaneService implements ControlPlanePort {
         return this.explain(request, capability);
       case 'fork_worldline':
         return this.forkWorldline(request, capability);
+      case 'braid_worldlines':
+        return this.braidWorldlines(request, capability);
       case 'compare_worldlines':
         return this.compareWorldlines(request, capability);
       case 'apply':
@@ -1024,6 +1026,60 @@ export class ControlPlaneService implements ControlPlanePort {
     }
   }
 
+  private rethrowBraidError(
+    err: unknown,
+    targetWorldlineId: string,
+    targetWorkingSetId: string,
+    supportWorldlineIds: string[],
+    supportWorkingSetIds: string[],
+  ): never {
+    const substrateCode = workingSetErrorCode(err);
+    switch (substrateCode) {
+      case 'E_WORKING_SET_NOT_FOUND':
+        throw controlPlaneFailure(
+          'not_found',
+          err instanceof Error ? err.message : String(err),
+          {
+            targetWorldlineId,
+            targetWorkingSetId,
+            supportWorldlineIds,
+            supportWorkingSetIds,
+            substrateCode,
+          },
+        );
+      case 'E_WORKING_SET_INVALID_ARGS':
+      case 'E_WORKING_SET_ID_INVALID':
+      case 'E_WORKING_SET_COORDINATE_INVALID':
+        throw controlPlaneFailure(
+          'invalid_args',
+          err instanceof Error ? err.message : String(err),
+          {
+            targetWorldlineId,
+            targetWorkingSetId,
+            supportWorldlineIds,
+            supportWorkingSetIds,
+            substrateCode,
+          },
+        );
+      case 'E_WORKING_SET_ALREADY_EXISTS':
+      case 'E_WORKING_SET_CORRUPT':
+      case 'E_WORKING_SET_MISSING_OBJECT':
+        throw controlPlaneFailure(
+          'invariant_violation',
+          err instanceof Error ? err.message : String(err),
+          {
+            targetWorldlineId,
+            targetWorkingSetId,
+            supportWorldlineIds,
+            supportWorkingSetIds,
+            substrateCode,
+          },
+        );
+      default:
+        throw err;
+    }
+  }
+
   private workingSetReadOptions(selector: ObservationSelector): { ceiling?: number | null } | undefined {
     return selector.kind === 'tick'
       ? { ceiling: selector.tick }
@@ -1681,6 +1737,7 @@ export class ControlPlaneService implements ControlPlanePort {
           lease: descriptor.lease,
           baseObservation: descriptor.baseObservation,
           overlay: descriptor.overlay,
+          braid: descriptor.braid,
           materialization: descriptor.materialization,
         },
         substrate: {
@@ -1690,6 +1747,212 @@ export class ControlPlaneService implements ControlPlanePort {
       },
       diagnostics: [],
       observation,
+    };
+  }
+
+  private async braidWorldlines(
+    request: ControlPlaneRequestV1,
+    capability: EffectiveCapabilityGrant,
+  ): Promise<{
+    data: Record<string, unknown>;
+    diagnostics: Diagnostic[];
+    observation: ObservationCoordinate;
+  }> {
+    const targetWorldlineId = capability.worldlineId;
+    const targetWorkingSetId = this.resolveDerivedWorkingSetId(capability, 'braid_worldlines');
+    if (!targetWorkingSetId) {
+      throw controlPlaneFailure(
+        'invalid_args',
+        'braid_worldlines requires a canonical derived target worldline backed by a git-warp working set.',
+        {
+          worldlineId: targetWorldlineId,
+        },
+      );
+    }
+
+    if (
+      request.args['at'] !== undefined
+      || request.args['since'] !== undefined
+      || request.args['sinceFrontierDigest'] !== undefined
+      || request.args['againstAt'] !== undefined
+    ) {
+      throw controlPlaneFailure(
+        'invalid_args',
+        'braid_worldlines currently operates on the effective derived-worldline tip only and does not accept at/since selectors.',
+      );
+    }
+
+    if (
+      request.args['writable'] !== undefined
+      || request.args['braidedWorkingSetIds'] !== undefined
+      || request.args['supportWorkingSetIds'] !== undefined
+    ) {
+      throw controlPlaneFailure(
+        'invalid_args',
+        'braid_worldlines is a sovereign XYPH command. Use supportWorldlineIds and optional readOnly instead of substrate working-set arguments.',
+      );
+    }
+
+    const supportWorldlineIds = this.requireStringArray(
+      request.args['supportWorldlineIds'],
+      'braid_worldlines supportWorldlineIds',
+    );
+    const seenSupportWorldlineIds = new Set<string>();
+    const supportWorkingSetIds = supportWorldlineIds.map((worldlineId) => {
+      if (worldlineId === targetWorldlineId) {
+        throw controlPlaneFailure(
+          'invalid_args',
+          'braid_worldlines supportWorldlineIds must not include the target worldline.',
+          {
+            worldlineId: targetWorldlineId,
+          },
+        );
+      }
+      if (seenSupportWorldlineIds.has(worldlineId)) {
+        throw controlPlaneFailure(
+          'invalid_args',
+          'braid_worldlines supportWorldlineIds must not contain duplicates.',
+          {
+            worldlineId: targetWorldlineId,
+            duplicateWorldlineId: worldlineId,
+          },
+        );
+      }
+      seenSupportWorldlineIds.add(worldlineId);
+
+      const workingSetId = toSubstrateWorkingSetId(worldlineId);
+      if (!workingSetId) {
+        throw controlPlaneFailure(
+          'invalid_args',
+          'braid_worldlines currently supports only canonical derived support worldlines backed by git-warp working sets.',
+          {
+            worldlineId: targetWorldlineId,
+            supportWorldlineId: worldlineId,
+          },
+        );
+      }
+      return workingSetId;
+    });
+
+    const readOnly = request.args['readOnly'];
+    if (readOnly !== undefined && typeof readOnly !== 'boolean') {
+      throw controlPlaneFailure(
+        'invalid_args',
+        'braid_worldlines readOnly must be a boolean when provided.',
+      );
+    }
+
+    const graph = await this.graphPort.getGraph();
+
+    let descriptor: Awaited<ReturnType<WarpGraph['braidWorkingSet']>>;
+    try {
+      descriptor = await graph.braidWorkingSet(targetWorkingSetId, {
+        braidedWorkingSetIds: supportWorkingSetIds,
+        ...(typeof readOnly === 'boolean' ? { writable: !readOnly } : {}),
+      });
+    } catch (err) {
+      this.rethrowBraidError(
+        err,
+        targetWorldlineId,
+        targetWorkingSetId,
+        supportWorldlineIds,
+        supportWorkingSetIds,
+      );
+    }
+
+    const supportWorldlineByWorkingSetId = new Map<string, string>(
+      supportWorkingSetIds.map((workingSetId, index) => [workingSetId, supportWorldlineIds[index] ?? '']),
+    );
+    const supportDescriptors = descriptor.braid.readOverlays.map((overlay) => {
+      const supportWorldlineId = supportWorldlineByWorkingSetId.get(overlay.workingSetId);
+      if (!supportWorldlineId) {
+        throw controlPlaneFailure(
+          'invariant_violation',
+          'braid_worldlines returned an unmapped support overlay from the substrate.',
+          {
+            worldlineId: targetWorldlineId,
+            workingSetId: targetWorkingSetId,
+            overlayWorkingSetId: overlay.workingSetId,
+          },
+        );
+      }
+      return {
+        worldlineId: supportWorldlineId,
+        headPatchSha: overlay.headPatchSha,
+        patchCount: overlay.patchCount,
+      };
+    });
+
+    let frontierDigestOverride: string | undefined;
+    try {
+      const state = await graph.materializeWorkingSet(targetWorkingSetId);
+      frontierDigestOverride = frontierDigestFromObservedFrontier(state.observedFrontier);
+    } catch (err) {
+      this.rethrowWorkingSetError(err, targetWorldlineId, targetWorkingSetId);
+    }
+
+    return {
+      data: {
+        worldlineId: targetWorldlineId,
+        supportWorldlineIds,
+        braid: {
+          targetWorldlineId,
+          supportWorldlineIds,
+          supportCount: supportDescriptors.length,
+          readOnly: !descriptor.overlay.writable,
+          supports: supportDescriptors,
+        },
+        worldline: {
+          worldlineId: targetWorldlineId,
+          createdAt: descriptor.createdAt,
+          updatedAt: descriptor.updatedAt,
+          owner: descriptor.owner,
+          scope: descriptor.scope,
+          lease: descriptor.lease,
+          baseObservation: descriptor.baseObservation,
+          overlay: descriptor.overlay,
+          braid: {
+            supportWorldlineIds,
+            readOverlays: descriptor.braid.readOverlays.map((overlay) => {
+              const supportWorldlineId = supportWorldlineByWorkingSetId.get(overlay.workingSetId);
+              if (!supportWorldlineId) {
+                throw controlPlaneFailure(
+                  'invariant_violation',
+                  'braid_worldlines returned an unmapped support overlay from the substrate.',
+                  {
+                    worldlineId: targetWorldlineId,
+                    workingSetId: targetWorkingSetId,
+                    overlayWorkingSetId: overlay.workingSetId,
+                  },
+                );
+              }
+              return {
+                worldlineId: supportWorldlineId,
+                overlayId: overlay.overlayId,
+                kind: overlay.kind,
+                headPatchSha: overlay.headPatchSha,
+                patchCount: overlay.patchCount,
+              };
+            }),
+          },
+          materialization: descriptor.materialization,
+        },
+        substrate: {
+          kind: 'git-warp-working-set-braid',
+          workingSetId: targetWorkingSetId,
+          supportWorkingSetIds,
+        },
+      },
+      diagnostics: [],
+      observation: await this.buildObservationCoordinate(
+        request,
+        capability,
+        Date.now(),
+        null,
+        false,
+        graph,
+        frontierDigestOverride,
+      ),
     };
   }
 
@@ -2030,6 +2293,13 @@ export class ControlPlaneService implements ControlPlanePort {
       throw controlPlaneFailure('invalid_args', `${label} must be a non-empty string`);
     }
     return value.trim();
+  }
+
+  private requireStringArray(value: unknown, label: string): string[] {
+    if (!Array.isArray(value) || value.length === 0) {
+      throw controlPlaneFailure('invalid_args', `${label} must be a non-empty string array`);
+    }
+    return value.map((entry, index) => this.requireString(entry, `${label}[${index}]`));
   }
 
   private mapActionCode(code: string): ControlPlaneErrorCode {

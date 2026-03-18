@@ -184,7 +184,7 @@ the shared truth.
 Some futures are not “pick one branch later.” They are “keep one completed
 support line present while another line continues.”
 
-That future operation is best described as a **braid**:
+That operation is best described as a **braid**:
 
 - one worldline advances to produce an effect
 - that effect is kept co-present as a frozen support line
@@ -210,7 +210,7 @@ A worldline says **here is the graph if this path is taken**.
 
 That is the practical XYPH use case.
 
-The future composition verb in XYPH’s ontology is **`braid_worldlines`**.
+The composition verb in XYPH’s ontology is **`braid_worldlines`**.
 Terms like “rebase,” “superpose,” or “compose” may still appear informally in
 discussion, but `braid` is the canonical name for keeping multiple
 worldline-derived effects in play at once.
@@ -220,6 +220,7 @@ worldline-derived effects in play at once.
 Canonical derived worldlines are currently honest on this substrate surface:
 
 - `fork_worldline`
+- `braid_worldlines`
 - `observe(graph.summary)`
 - `observe(worldline.summary)`
 - `observe(entity.detail)`
@@ -245,10 +246,19 @@ The result is a typed XYPH `comparison-artifact` preview with per-side
 observation coordinates and substrate-backed divergence facts. It is
 intentionally read-only and does **not** perform collapse or settlement.
 
-Reserved next-step terminology:
+`braid_worldlines` is now implemented as a thin mapping onto git-warp’s
+published braid substrate for canonical derived worldlines. It:
 
-- `braid_worldlines` will name the future composition operation for co-present
-  worldline effects
+- targets the effective derived worldline
+- requires one or more `supportWorldlineIds`
+- accepts optional `readOnly`
+- returns XYPH-first braid/worldline metadata plus substrate backing IDs
+- changes co-present visibility without pretending merge, rebase, or collapse
+
+Core materialized projections now follow that braid-visible substrate truth
+when the braided target worldline is selected. Broader explicit braid-aware
+parity and diagnostics across every worldline-backed command remain the next
+slice.
 
 Compatibility projections such as `observe(slice.local)`, `observe(context)`,
 `observe(briefing)`, `observe(next)`, `observe(submissions)`,

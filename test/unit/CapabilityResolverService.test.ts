@@ -92,4 +92,17 @@ describe('CapabilityResolverService', () => {
       code: 'capability_denied',
     }));
   });
+
+  it('allows braid_worldlines as a normal worldline-management command', () => {
+    const resolver = new CapabilityResolverService('agent.prime');
+
+    const capability = resolver.resolve(request('braid_worldlines', {
+      worldlineId: 'worldline:review-auth',
+      supportWorldlineIds: ['worldline:hold-auth'],
+    }));
+
+    expect(resolver.authorize(capability, 'braid_worldlines')).toEqual(expect.objectContaining({
+      allowed: true,
+    }));
+  });
 });

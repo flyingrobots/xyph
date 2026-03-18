@@ -125,12 +125,12 @@ Current foundation-slice implementation status:
 - implemented now: `history`
 - implemented now: `diff`
 - implemented now: `fork_worldline`
+- implemented now: `braid_worldlines`
 - implemented now: `compare_worldlines`
 - implemented now: `apply`
 - implemented now: `propose`
 - implemented now: `comment`
 - implemented now: `attest`
-- reserved, not yet implemented: `braid_worldlines`
 - reserved, not yet implemented: `collapse_worldline`
 - reserved, not yet implemented: `query`
 - reserved, not yet implemented: `rewind_worldline`
@@ -282,10 +282,10 @@ This slice is intentionally comparison-only. It does **not** collapse, approve,
 or otherwise execute settlement. Comparison remains separate from decision and
 execution.
 
-## Future Worldline Composition Term
+## `braid_worldlines` Current Slice
 
-The canonical future verb for co-present worldline composition is
-`braid_worldlines`.
+`braid_worldlines` is now implemented as a thin XYPH mapping over git-warp’s
+published braid working-set substrate.
 
 This term is intentional:
 
@@ -294,15 +294,32 @@ This term is intentional:
 - it is **not** a silent collapse of one line into another
 
 At the protocol level, braiding means keeping multiple worldline-derived
-effects visible together at one observation surface. The exact substrate API is
-still backlog work, but the public XYPH term is fixed now so later
-implementation does not drift into branch-shaped vocabulary.
+effects visible together at one observation surface.
+
+Current behavior:
+
+- uses the effective `worldlineId` as the target worldline
+- currently supports only canonical derived target/support worldlines backed by
+  git-warp working sets
+- requires `supportWorldlineIds`
+- rejects `at`, `since`, and substrate working-set argument names
+- accepts optional `readOnly`
+- returns:
+  - XYPH-first braid metadata in worldline terms
+  - the updated worldline descriptor payload
+  - a substrate backing block identifying the target/support working-set IDs
+
+This slice intentionally establishes co-present composition without settlement.
+It does **not** merge, rebase, collapse, or otherwise decide what should
+happen to live truth.
 
 ## Derived Worldline Execution Slice
 
 Canonical derived worldlines backed by git-warp working sets now support a
 first honest execution slice:
 
+- `braid_worldlines` updates the selected target worldline’s visible patch
+  universe by pinning support-worldline overlays without mutating live truth
 - `observe(graph.summary)`, `observe(worldline.summary)`, and
   `observe(entity.detail)` materialize isolated working-set-visible read
   graphs instead of silently reading `worldline:live`
@@ -317,7 +334,8 @@ first honest execution slice:
 This is still intentionally partial. XYPH does **not** yet expose general
 working-set-backed compatibility projections such as `briefing`, `context`,
 `next`, `submissions`, `diagnostics`, or `prescriptions`, and it does **not**
-yet expose collapse semantics in this slice.
+yet expose collapse semantics in this slice. Explicit braid-wide parity and
+diagnostics across every worldline-backed command remain the next slice.
 
 ## Error Taxonomy
 
