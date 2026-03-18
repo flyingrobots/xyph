@@ -39,8 +39,8 @@ Human surface direction:
 2. **XYPH consumes substrate truth**
    - XYPH should not invent conflict provenance above incomplete substrate signals.
    - `xyph api observe` now exposes a substrate-backed `conflicts` projection that relays git-warp conflict facts directly for the live frontier or a derived worldline's backing working-set tip.
-   - `xyph api compare_worldlines` now exposes the published git-warp coordinate comparison surface for live-vs-derived and derived-vs-derived preview, while keeping decision and settlement semantics in XYPH.
-   - `xyph api collapse_worldline` now exposes the first preview-only settlement runway over published git-warp transfer planning, requiring a fresh `comparison-artifact` digest and dry-running the lowered plan through the shared mutation kernel instead of inventing a second collapse engine.
+   - `xyph api compare_worldlines` now exposes the published git-warp coordinate comparison surface for live-vs-derived and derived-vs-derived preview, and carries git-warp’s exported comparison fact through the substrate block rather than inventing an XYPH-side substrate wrapper.
+   - `xyph api collapse_worldline` now exposes the first preview-only settlement runway over published git-warp transfer planning, requiring a fresh `comparison-artifact` digest, dry-running the lowered plan through the shared mutation kernel, and carrying git-warp’s exported comparison/transfer facts through the substrate block instead of inventing a second collapse engine.
    - Conflict meaning, governance, compare/collapse, and human workflow semantics remain XYPH concerns.
 3. **Worldline working sets after substrate facts**
    - Fork/worldline work should use logical working sets over graph observations, not Git worktrees.

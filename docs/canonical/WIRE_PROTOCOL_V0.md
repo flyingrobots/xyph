@@ -298,6 +298,7 @@ Current behavior:
   - substrate-backed visible patch divergence
   - substrate-backed visible node / edge / property deltas
   - optional target-local comparison details when `targetId` is provided
+  - substrate comparison-fact export from git-warp in `data.substrate`
 
 This slice is intentionally comparison-only. It does **not** collapse, approve,
 or otherwise execute settlement. Comparison remains separate from decision and
@@ -324,6 +325,8 @@ Current behavior:
   - per-side observation coordinates for source and target
   - substrate-backed transfer summary and sanitized transfer ops
   - dry-run mutation side-effect preview
+  - substrate comparison-fact and transfer-fact exports from git-warp in
+    `data.substrate`
 
 This slice is intentionally preview-only. It does **not** mutate live truth
 yet, and it does not introduce a special collapse engine outside the shared

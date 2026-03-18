@@ -124,6 +124,8 @@ with:
 - left/right worldline metadata in XYPH terms
 - per-side observation coordinates
 - substrate divergence facts carried explicitly instead of re-derived in XYPH
+- the published git-warp comparison-fact export carried through in the
+  substrate block for later XYPH recording or attestation
 
 That keeps comparison factual and read-only. Decision, attestation, and future
 collapse semantics remain XYPH concerns built on top of this substrate-backed
@@ -157,6 +159,9 @@ settlement runway. XYPH:
 - asks git-warp for a substrate-factual transfer plan from the source
   worldline’s visible state into the target coordinate
 - lowers that plan through the same mutation kernel used by `apply`
+- carries the published git-warp comparison and transfer-fact exports through
+  to the substrate block instead of inventing a second XYPH-side substrate
+  wrapper
 - keeps the current slice preview-only, so no live mutation happens yet
 
 That keeps settlement planning factual at the substrate boundary while

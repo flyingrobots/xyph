@@ -6,10 +6,11 @@ All notable changes to XYPH will be documented in this file.
 
 ### Changed
 
-- **Substrate floor raised to `@git-stunts/git-warp@^14.13.0`** — XYPH now consumes the published substrate release that adds substrate-factual transfer-planning helpers on top of braid-aware visible-state truth, keeping the collapse runway pinned to a real released substrate version.
+- **Substrate floor raised to `@git-stunts/git-warp@^14.14.0`** — XYPH now consumes the published substrate release that adds canonical coordinate fact exports on top of the already-published comparison and transfer-planning helpers, keeping compare/collapse previews pinned to a real released substrate version.
 - **Worldline composition terminology stays braid-shaped in the public API** — the active README and canonical control-plane docs continue to use `braid_worldlines` as the public composition verb for co-present worldline effects, explicitly rejecting branch/rebase vocabulary for this capability.
 - **Observation coordinates now make braid backing explicit** — working-set-backed canonical derived-worldline reads now report the backing working-set ID plus overlay/braid details in `observation.backing` instead of only exposing a derived frontier digest.
 - **Braided conflict reads now warn on singleton self-erasure** — `observe(conflicts)` now adds an explicit structural warning when braided overlays compete on a singleton LWW property winner, because that application modeling pattern cannot honestly represent co-presence under braid.
+- **Compare/collapse previews now carry published substrate fact exports instead of local persistence hooks** — `compare_worldlines` and `collapse_worldline` now return git-warp’s canonical exported comparison/transfer facts in `data.substrate`, and the local `persist` detour was dropped so XYPH can add governance meaning later without owning substrate serialization.
 
 ### Added
 

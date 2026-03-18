@@ -1253,6 +1253,15 @@ describe('ControlPlaneService', () => {
           kind: 'git-warp-coordinate-comparison',
           comparisonVersion: 'coordinate-compare/v1',
           comparisonDigest: 'comparison:derived-vs-live',
+          comparisonFact: expect.objectContaining({
+            exportVersion: 'coordinate-comparison-fact/v1',
+            factKind: 'coordinate-comparison',
+            factDigest: 'comparison:derived-vs-live',
+            canonicalFactJson: expect.any(String),
+            fact: expect.objectContaining({
+              comparisonVersion: 'coordinate-compare/v1',
+            }),
+          }),
         },
       }),
     }));
@@ -1430,6 +1439,17 @@ describe('ControlPlaneService', () => {
           sourceWorkingSetId: 'wl_review-auth',
           transferDigest: 'transfer:collapse-preview',
           comparisonDigest: 'comparison:collapse-preview',
+          comparisonFact: expect.objectContaining({
+            exportVersion: 'coordinate-comparison-fact/v1',
+            factKind: 'coordinate-comparison',
+            factDigest: 'comparison:collapse-preview',
+          }),
+          transferFact: expect.objectContaining({
+            exportVersion: 'coordinate-transfer-plan-fact/v1',
+            factKind: 'coordinate-transfer-plan',
+            factDigest: 'transfer:collapse-preview',
+            canonicalFactJson: expect.any(String),
+          }),
         }),
       }),
     }));

@@ -248,7 +248,10 @@ published git-warp coordinate comparison facts. It supports:
 
 The result is a typed XYPH `comparison-artifact` preview with per-side
 observation coordinates and substrate-backed divergence facts. It is
-intentionally read-only and does **not** perform collapse or settlement.
+intentionally comparison-only and does **not** perform collapse or settlement.
+Its substrate block now also carries git-warp’s canonical exported comparison
+fact, so later XYPH governance can record or attest the same substrate truth
+without inventing its own serialization boundary first.
 
 `collapse_worldline` now provides the first settlement runway preview in XYPH
 language, still backed by published git-warp substrate facts. In the current
@@ -260,6 +263,8 @@ slice it:
 - always dry-runs through the same mutation kernel used by `apply`
 - returns a typed `collapse-proposal` with per-side observations, substrate
   transfer facts, sanitized transfer ops, and mutation side-effect preview
+- carries git-warp’s exported comparison and transfer facts in the substrate
+  block for later XYPH recording or attestation work
 - does **not** mutate live truth yet
 
 `braid_worldlines` is now implemented as a thin mapping onto git-warp’s

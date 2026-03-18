@@ -167,6 +167,9 @@ The current sovereign-control-plane foundation implements:
   attestation, approval, or collapse execution
 - preview-only `collapse-proposal` artifacts that lower substrate transfer
   plans through the shared mutation kernel without mutating live truth
+- published git-warp comparison/transfer fact exports carried through XYPH’s
+  substrate blocks so later governance can record the same fact without
+  re-serializing it in XYPH first
 
 Current `fork_worldline` is intentionally narrow:
 
@@ -190,6 +193,6 @@ Current `braid_worldlines` is likewise intentionally thin:
   observation coordinate instead of silently reporting only the worldline ID
 - it does **not** merge, rebase, collapse, or settle anything into live truth
 
-It does **not** yet implement durable comparison artifact records, live
-collapse execution, full worldline-local execution, or lease enforcement.
+It does **not** yet implement durable comparison/collapse artifact records,
+live collapse execution, full worldline-local execution, or lease enforcement.
 Those remain future slices governed by this contract.

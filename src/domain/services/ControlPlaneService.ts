@@ -9,6 +9,8 @@ import type {
 } from '@git-stunts/git-warp';
 import {
   createStateReaderV5,
+  exportCoordinateComparisonFact,
+  exportCoordinateTransferPlanFact,
   type VisibleStateProjectionV5,
   type VisibleStateReaderV5,
   type WarpStateV5,
@@ -2327,6 +2329,7 @@ export class ControlPlaneService implements ControlPlanePort {
 
     const patchDiverged = comparison.visiblePatchDivergence.leftOnlyCount > 0
       || comparison.visiblePatchDivergence.rightOnlyCount > 0;
+    const comparisonFact = exportCoordinateComparisonFact(comparison);
     const artifactDigest = buildComparisonArtifactDigest({
       comparisonDigest: comparison.comparisonDigest,
       comparisonPolicyVersion: capability.comparisonPolicyVersion,
@@ -2336,54 +2339,57 @@ export class ControlPlaneService implements ControlPlanePort {
       rightSelector,
       targetId,
     });
-
-    return {
-      data: {
-        kind: 'comparison-artifact',
-        artifactId: `comparison-artifact:${artifactDigest}`,
-        artifactDigest,
-        comparedAt,
-        comparisonPolicyVersion: capability.comparisonPolicyVersion,
-        changed: comparison.visibleState.changed || patchDiverged,
-        ...(targetId === null ? {} : { targetId }),
-        left: {
-          worldlineId: leftWorldlineId,
-          at: normalizeSelectorValue(leftSelector),
-          observation: leftObservation,
-          summary: comparison.left.resolved.summary,
-          substrate: comparison.left,
-        },
-        right: {
-          worldlineId: rightWorldlineId,
-          at: normalizeSelectorValue(rightSelector),
-          observation: rightObservation,
-          summary: comparison.right.resolved.summary,
-          substrate: comparison.right,
-        },
-        summary: {
-          visibleStateChanged: comparison.visibleState.changed,
-          patchDiverged,
-          visiblePatchDivergence: comparison.visiblePatchDivergence,
-          visibleState: comparison.visibleState.summary,
-        },
-        preview: {
-          visiblePatchDivergence: comparison.visiblePatchDivergence,
-          visibleState: {
-            nodes: comparison.visibleState.nodes,
-            edges: comparison.visibleState.edges,
-            nodeProperties: comparison.visibleState.nodeProperties,
-            edgeProperties: comparison.visibleState.edgeProperties,
-            ...(comparison.visibleState.target === undefined
-              ? {}
-              : { target: comparison.visibleState.target }),
-          },
-        },
-        substrate: {
-          kind: 'git-warp-coordinate-comparison',
-          comparisonVersion: comparison.comparisonVersion,
-          comparisonDigest: comparison.comparisonDigest,
+    const artifactId = `comparison-artifact:${artifactDigest}`;
+    const data = {
+      kind: 'comparison-artifact',
+      artifactId,
+      artifactDigest,
+      comparedAt,
+      comparisonPolicyVersion: capability.comparisonPolicyVersion,
+      changed: comparison.visibleState.changed || patchDiverged,
+      ...(targetId === null ? {} : { targetId }),
+      left: {
+        worldlineId: leftWorldlineId,
+        at: normalizeSelectorValue(leftSelector),
+        observation: leftObservation,
+        summary: comparison.left.resolved.summary,
+        substrate: comparison.left,
+      },
+      right: {
+        worldlineId: rightWorldlineId,
+        at: normalizeSelectorValue(rightSelector),
+        observation: rightObservation,
+        summary: comparison.right.resolved.summary,
+        substrate: comparison.right,
+      },
+      summary: {
+        visibleStateChanged: comparison.visibleState.changed,
+        patchDiverged,
+        visiblePatchDivergence: comparison.visiblePatchDivergence,
+        visibleState: comparison.visibleState.summary,
+      },
+      preview: {
+        visiblePatchDivergence: comparison.visiblePatchDivergence,
+        visibleState: {
+          nodes: comparison.visibleState.nodes,
+          edges: comparison.visibleState.edges,
+          nodeProperties: comparison.visibleState.nodeProperties,
+          edgeProperties: comparison.visibleState.edgeProperties,
+          ...(comparison.visibleState.target === undefined
+            ? {}
+            : { target: comparison.visibleState.target }),
         },
       },
+      substrate: {
+        kind: 'git-warp-coordinate-comparison',
+        comparisonVersion: comparison.comparisonVersion,
+        comparisonDigest: comparison.comparisonDigest,
+        comparisonFact,
+      },
+    } satisfies Record<string, unknown>;
+
+    return {
+      data,
       diagnostics: [],
     };
   }
@@ -2586,6 +2592,8 @@ export class ControlPlaneService implements ControlPlanePort {
 
     const patchDiverged = comparison.visiblePatchDivergence.leftOnlyCount > 0
       || comparison.visiblePatchDivergence.rightOnlyCount > 0;
+    const comparisonFact = exportCoordinateComparisonFact(comparison);
+    const transferFact = exportCoordinateTransferPlanFact(transferPlan);
     const artifactDigest = digest({
       kind: 'collapse-proposal',
       comparisonArtifactDigest: currentComparisonArtifactDigest,
@@ -2600,61 +2608,65 @@ export class ControlPlaneService implements ControlPlanePort {
       },
       attestationIds: attestationIds ?? [],
     });
-
-    return {
-      data: {
-        kind: 'collapse-proposal',
-        artifactId: `collapse-proposal:${artifactDigest}`,
-        artifactDigest,
-        preparedAt,
-        dryRun: true,
-        executable: false,
-        source: {
-          worldlineId: sourceWorldlineId,
-          at: 'tip',
-          observation: sourceObservation,
-          summary: transferPlan.source.resolved.summary,
-        },
-        target: {
-          worldlineId: targetWorldlineId,
-          at: 'tip',
-          observation: targetObservation,
-          summary: transferPlan.target.resolved.summary,
-        },
-        comparison: {
-          artifactDigest: currentComparisonArtifactDigest,
-          changed: comparison.visibleState.changed || patchDiverged,
-          summary: {
-            visibleStateChanged: comparison.visibleState.changed,
-            patchDiverged,
-            visiblePatchDivergence: comparison.visiblePatchDivergence,
-            visibleState: comparison.visibleState.summary,
-          },
-        },
-        transfer: {
-          changed: transferPlan.changed,
-          transferVersion: transferPlan.transferVersion,
-          transferDigest: transferPlan.transferDigest,
-          comparisonDigest: transferPlan.comparisonDigest,
-          summary: transferPlan.summary,
-          ops: transferPlan.ops.map((op) => sanitizeTransferOperation(op)),
-        },
-        mutationPreview: {
-          dryRun: true,
-          valid: mutationPreview.valid,
-          executed: mutationPreview.executed,
-          opCount: transferPlan.summary.opCount,
-          sideEffects: mutationPreview.sideEffects,
-        },
-        ...(attestationIds === null ? {} : { attestationIds }),
-        substrate: {
-          kind: 'git-warp-coordinate-transfer-plan',
-          sourceWorkingSetId,
-          transferVersion: transferPlan.transferVersion,
-          transferDigest: transferPlan.transferDigest,
-          comparisonDigest: transferPlan.comparisonDigest,
+    const artifactId = `collapse-proposal:${artifactDigest}`;
+    const data = {
+      kind: 'collapse-proposal',
+      artifactId,
+      artifactDigest,
+      preparedAt,
+      dryRun: true,
+      executable: false,
+      source: {
+        worldlineId: sourceWorldlineId,
+        at: 'tip',
+        observation: sourceObservation,
+        summary: transferPlan.source.resolved.summary,
+      },
+      target: {
+        worldlineId: targetWorldlineId,
+        at: 'tip',
+        observation: targetObservation,
+        summary: transferPlan.target.resolved.summary,
+      },
+      comparison: {
+        artifactDigest: currentComparisonArtifactDigest,
+        changed: comparison.visibleState.changed || patchDiverged,
+        summary: {
+          visibleStateChanged: comparison.visibleState.changed,
+          patchDiverged,
+          visiblePatchDivergence: comparison.visiblePatchDivergence,
+          visibleState: comparison.visibleState.summary,
         },
       },
+      transfer: {
+        changed: transferPlan.changed,
+        transferVersion: transferPlan.transferVersion,
+        transferDigest: transferPlan.transferDigest,
+        comparisonDigest: transferPlan.comparisonDigest,
+        summary: transferPlan.summary,
+        ops: transferPlan.ops.map((op) => sanitizeTransferOperation(op)),
+      },
+      mutationPreview: {
+        dryRun: true,
+        valid: mutationPreview.valid,
+        executed: mutationPreview.executed,
+        opCount: transferPlan.summary.opCount,
+        sideEffects: mutationPreview.sideEffects,
+      },
+      ...(attestationIds === null ? {} : { attestationIds }),
+      substrate: {
+        kind: 'git-warp-coordinate-transfer-plan',
+        sourceWorkingSetId,
+        transferVersion: transferPlan.transferVersion,
+        transferDigest: transferPlan.transferDigest,
+        comparisonDigest: transferPlan.comparisonDigest,
+        comparisonFact,
+        transferFact,
+      },
+    } satisfies Record<string, unknown>;
+
+    return {
+      data,
       diagnostics: [],
     };
   }

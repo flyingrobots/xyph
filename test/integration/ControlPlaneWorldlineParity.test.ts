@@ -527,6 +527,18 @@ describe('ControlPlaneService worldline parity', () => {
         valid: true,
         executed: false,
       }),
+      substrate: expect.objectContaining({
+        comparisonFact: expect.objectContaining({
+          exportVersion: 'coordinate-comparison-fact/v1',
+          factKind: 'coordinate-comparison',
+          factDigest: expect.any(String),
+        }),
+        transferFact: expect.objectContaining({
+          exportVersion: 'coordinate-transfer-plan-fact/v1',
+          factKind: 'coordinate-transfer-plan',
+          factDigest: expect.any(String),
+        }),
+      }),
     }));
     expect(collapse).not.toHaveProperty('observation');
 
