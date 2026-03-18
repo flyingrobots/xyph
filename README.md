@@ -295,12 +295,15 @@ published git-warp coordinate comparison facts. It supports:
 The result is a typed XYPH `comparison-artifact` preview with per-side
 observation coordinates and substrate-backed divergence facts. It is
 intentionally comparison-only and does **not** perform collapse or settlement.
-Its substrate block now also carries git-warp’s canonical exported comparison
-fact, so later XYPH governance can record or attest the same substrate truth
-without inventing its own serialization boundary first. `persist: true` is
-currently rejected for `compare_worldlines`, because recording a comparison
-artifact into `worldline:live` would perturb the very live tip the command is
-comparing against.
+Its substrate block now carries two published git-warp facts:
+
+- the XYPH operationally scoped comparison fact used for freshness and
+  settlement preview
+- the raw whole-graph comparison fact kept for audit and provenance
+
+That split lets `compare_worldlines persist:true` record a durable
+`comparison-artifact:*` node on `worldline:live` without invalidating its own
+operational freshness token.
 
 `collapse_worldline` now provides the first settlement runway preview in XYPH
 language, still backed by published git-warp substrate facts. In the current
@@ -351,9 +354,8 @@ derived-worldline truth.
   to stay co-present without pretending merge or rebase semantics.
 - `compare_worldlines` before governance or settlement decisions; it is the
   factual preview surface, not the decision itself.
-- `compare_worldlines persist:true` is intentionally unavailable until XYPH can
-  record durable comparison artifacts without self-perturbing live tip
-  comparisons.
+- add `persist: true` to `compare_worldlines` when the factual preview should
+  become a durable `comparison-artifact:*` governance record on live truth.
 - `collapse_worldline` when you want a candidate settlement runway preview that
   lowers through the same mutation kernel as `apply` without mutating live
   truth yet. Add `persist: true` when that preview should become a durable

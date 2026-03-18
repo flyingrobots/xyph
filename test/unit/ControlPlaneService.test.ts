@@ -2,6 +2,23 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createHash } from 'node:crypto';
 import { CONTROL_PLANE_VERSION } from '../../src/domain/models/controlPlane.js';
 
+const XYPH_OPERATIONAL_COMPARISON_SCOPE_VERSION = 'xyph-operational-visible-state/v1' as const;
+const XYPH_OPERATIONAL_COMPARISON_SCOPE = {
+  nodeIdPrefixes: {
+    exclude: [
+      'attestation-record:',
+      'attestation:',
+      'audit-record:',
+      'collapse-proposal:',
+      'comment:',
+      'comparison-artifact:',
+      'conflict-artifact:',
+      'observation-record:',
+      'proposal:',
+    ],
+  },
+} as const;
+
 const mocks = vi.hoisted(() => ({
   fetchSnapshot: vi.fn(),
   fetchEntityDetail: vi.fn(),
@@ -53,6 +70,7 @@ function buildComparisonArtifactDigest(comparisonDigest: string, leftWorldlineId
     kind: 'comparison-artifact',
     comparisonDigest,
     comparisonPolicyVersion: 'compat-v0',
+    comparisonScopeVersion: XYPH_OPERATIONAL_COMPARISON_SCOPE_VERSION,
     left: {
       worldlineId: leftWorldlineId,
       at: 'tip',
@@ -142,6 +160,7 @@ function makeWorkingSetDescriptor(
 function makeCoordinateComparison(
   overrides: Partial<{
     comparisonDigest: string;
+    scope: typeof XYPH_OPERATIONAL_COMPARISON_SCOPE | null;
     leftLamportFrontierDigest: string;
     rightLamportFrontierDigest: string;
     leftWorkingSetId: string | null;
@@ -155,6 +174,7 @@ function makeCoordinateComparison(
   return {
     comparisonVersion: 'coordinate-compare/v1',
     comparisonDigest: overrides.comparisonDigest ?? 'comparison:123',
+    ...(overrides.scope ? { scope: overrides.scope } : {}),
     left: {
       requested: leftWorkingSetId
         ? { kind: 'working_set', workingSetId: leftWorkingSetId }
@@ -332,6 +352,7 @@ function makeCoordinateTransferPlan(
     comparisonDigest: string;
     transferDigest: string;
     changed: boolean;
+    scope: typeof XYPH_OPERATIONAL_COMPARISON_SCOPE | null;
     sourceWorkingSetId: string | null;
     targetWorkingSetId: string | null;
     ops: unknown[];
@@ -343,6 +364,7 @@ function makeCoordinateTransferPlan(
     transferVersion: 'coordinate-transfer-plan/v1',
     transferDigest: overrides.transferDigest ?? 'transfer:123',
     comparisonDigest: overrides.comparisonDigest ?? 'comparison:123',
+    ...(overrides.scope ? { scope: overrides.scope } : {}),
     changed: overrides.changed ?? true,
     source: {
       requested: sourceWorkingSetId
@@ -1179,10 +1201,18 @@ describe('ControlPlaneService', () => {
   it('compares a derived worldline against live and returns a typed comparison artifact preview', async () => {
     mocks.compareCoordinates.mockResolvedValueOnce(
       makeCoordinateComparison({
-        comparisonDigest: 'comparison:derived-vs-live',
+        comparisonDigest: 'comparison:derived-vs-live:raw',
         leftWorkingSetId: 'wl_review-auth',
         rightWorkingSetId: null,
         targetId: 'task:ONE',
+      }),
+    ).mockResolvedValueOnce(
+      makeCoordinateComparison({
+        comparisonDigest: 'comparison:derived-vs-live:operational',
+        leftWorkingSetId: 'wl_review-auth',
+        rightWorkingSetId: null,
+        targetId: 'task:ONE',
+        scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
       }),
     );
 
@@ -1202,10 +1232,16 @@ describe('ControlPlaneService', () => {
       },
     });
 
-    expect(mocks.compareCoordinates).toHaveBeenCalledWith({
+    expect(mocks.compareCoordinates).toHaveBeenNthCalledWith(1, {
       left: { kind: 'working_set', workingSetId: 'wl_review-auth' },
       right: { kind: 'live' },
       targetId: 'task:ONE',
+    });
+    expect(mocks.compareCoordinates).toHaveBeenNthCalledWith(2, {
+      left: { kind: 'working_set', workingSetId: 'wl_review-auth' },
+      right: { kind: 'live' },
+      targetId: 'task:ONE',
+      scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
     });
     expect(result).toEqual(expect.objectContaining({
       ok: true,
@@ -1214,6 +1250,7 @@ describe('ControlPlaneService', () => {
         kind: 'comparison-artifact',
         artifactId: expect.stringMatching(/^comparison-artifact:/),
         comparisonPolicyVersion: 'compat-v0',
+        comparisonScopeVersion: XYPH_OPERATIONAL_COMPARISON_SCOPE_VERSION,
         targetId: 'task:ONE',
         left: expect.objectContaining({
           worldlineId: 'worldline:review-auth',
@@ -1256,14 +1293,23 @@ describe('ControlPlaneService', () => {
         substrate: {
           kind: 'git-warp-coordinate-comparison',
           comparisonVersion: 'coordinate-compare/v1',
-          comparisonDigest: 'comparison:derived-vs-live',
+          comparisonDigest: 'comparison:derived-vs-live:operational',
           comparisonFact: expect.objectContaining({
             exportVersion: 'coordinate-comparison-fact/v1',
             factKind: 'coordinate-comparison',
-            factDigest: 'comparison:derived-vs-live',
+            factDigest: 'comparison:derived-vs-live:operational',
             canonicalFactJson: expect.any(String),
             fact: expect.objectContaining({
               comparisonVersion: 'coordinate-compare/v1',
+              scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
+            }),
+          }),
+          comparisonScopeVersion: XYPH_OPERATIONAL_COMPARISON_SCOPE_VERSION,
+          comparisonScope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
+          rawWholeGraph: expect.objectContaining({
+            comparisonDigest: 'comparison:derived-vs-live:raw',
+            comparisonFact: expect.objectContaining({
+              factDigest: 'comparison:derived-vs-live:raw',
             }),
           }),
         },
@@ -1275,10 +1321,18 @@ describe('ControlPlaneService', () => {
   it('compares two derived worldlines with explicit per-side selectors', async () => {
     mocks.compareCoordinates.mockResolvedValueOnce(
       makeCoordinateComparison({
-        comparisonDigest: 'comparison:derived-vs-derived',
+        comparisonDigest: 'comparison:derived-vs-derived:raw',
         leftWorkingSetId: 'wl_review-auth',
         rightWorkingSetId: 'wl_release-review',
         targetId: null,
+      }),
+    ).mockResolvedValueOnce(
+      makeCoordinateComparison({
+        comparisonDigest: 'comparison:derived-vs-derived:operational',
+        leftWorkingSetId: 'wl_review-auth',
+        rightWorkingSetId: 'wl_release-review',
+        targetId: null,
+        scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
       }),
     );
 
@@ -1300,14 +1354,20 @@ describe('ControlPlaneService', () => {
       },
     });
 
-    expect(mocks.compareCoordinates).toHaveBeenCalledWith({
+    expect(mocks.compareCoordinates).toHaveBeenNthCalledWith(1, {
       left: { kind: 'working_set', workingSetId: 'wl_review-auth', ceiling: 12 },
       right: { kind: 'working_set', workingSetId: 'wl_release-review', ceiling: 10 },
+    });
+    expect(mocks.compareCoordinates).toHaveBeenNthCalledWith(2, {
+      left: { kind: 'working_set', workingSetId: 'wl_review-auth', ceiling: 12 },
+      right: { kind: 'working_set', workingSetId: 'wl_release-review', ceiling: 10 },
+      scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
     });
     expect(result).toEqual(expect.objectContaining({
       ok: true,
       data: expect.objectContaining({
         kind: 'comparison-artifact',
+        comparisonScopeVersion: XYPH_OPERATIONAL_COMPARISON_SCOPE_VERSION,
         left: expect.objectContaining({
           worldlineId: 'worldline:review-auth',
           at: { tick: 12 },
@@ -1320,7 +1380,34 @@ describe('ControlPlaneService', () => {
     }));
   });
 
-  it('rejects compare_worldlines persist=true until durable comparison recording is honest', async () => {
+  it('can persist compare_worldlines as a durable live-governance artifact without perturbing operational freshness', async () => {
+    mocks.compareCoordinates.mockResolvedValueOnce(
+      makeCoordinateComparison({
+        comparisonDigest: 'comparison:compare-persisted:raw',
+        leftWorkingSetId: 'wl_review-auth',
+        rightWorkingSetId: null,
+      }),
+    ).mockResolvedValueOnce(
+      makeCoordinateComparison({
+        comparisonDigest: 'comparison:compare-persisted:operational',
+        leftWorkingSetId: 'wl_review-auth',
+        rightWorkingSetId: null,
+        scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
+      }),
+    );
+    const comparisonArtifactDigest = buildComparisonArtifactDigest(
+      'comparison:compare-persisted:operational',
+      'worldline:review-auth',
+      'worldline:live',
+    );
+    mocks.createCanonicalArtifact.mockResolvedValueOnce({
+      id: `comparison-artifact:${comparisonArtifactDigest}`,
+      patch: 'patch:comparison-artifact',
+      recordedAt: 1234,
+      contentOid: 'oid:comparison-artifact',
+      existed: false,
+    });
+
     const service = new ControlPlaneService({
       getGraph: mocks.getGraph,
       openIsolatedGraph: mocks.openIsolatedGraph,
@@ -1337,12 +1424,34 @@ describe('ControlPlaneService', () => {
       },
     });
 
-    expect(mocks.compareCoordinates).not.toHaveBeenCalled();
-    expect(mocks.createCanonicalArtifact).not.toHaveBeenCalled();
+    expect(mocks.createCanonicalArtifact).toHaveBeenCalledWith(expect.objectContaining({
+      id: `comparison-artifact:${comparisonArtifactDigest}`,
+      kind: 'comparison-artifact',
+      artifactDigest: comparisonArtifactDigest,
+      recordedBy: 'agent.prime',
+      observerProfileId: 'observer:default',
+      policyPackVersion: 'compat-v0',
+      indexedProperties: expect.objectContaining({
+        comparison_policy_version: 'compat-v0',
+        comparison_scope_version: XYPH_OPERATIONAL_COMPARISON_SCOPE_VERSION,
+        left_worldline_id: 'worldline:review-auth',
+        right_worldline_id: 'worldline:live',
+        operational_comparison_digest: 'comparison:compare-persisted:operational',
+        raw_comparison_digest: 'comparison:compare-persisted:raw',
+      }),
+    }));
     expect(result).toEqual(expect.objectContaining({
-      ok: false,
-      error: expect.objectContaining({
-        code: 'not_implemented',
+      ok: true,
+      data: expect.objectContaining({
+        kind: 'comparison-artifact',
+        artifactDigest: comparisonArtifactDigest,
+        record: expect.objectContaining({
+          persisted: true,
+          recordedInWorldlineId: 'worldline:live',
+          patch: 'patch:comparison-artifact',
+          contentOid: 'oid:comparison-artifact',
+          existed: false,
+        }),
       }),
     }));
   });
@@ -1373,16 +1482,25 @@ describe('ControlPlaneService', () => {
   it('previews collapse_worldline against live through transfer planning and dry-run mutation lowering', async () => {
     mocks.compareCoordinates.mockResolvedValueOnce(
       makeCoordinateComparison({
-        comparisonDigest: 'comparison:collapse-preview',
+        comparisonDigest: 'comparison:collapse-preview:raw',
         leftWorkingSetId: 'wl_review-auth',
         rightWorkingSetId: null,
         targetId: null,
       }),
+    ).mockResolvedValueOnce(
+      makeCoordinateComparison({
+        comparisonDigest: 'comparison:collapse-preview:operational',
+        leftWorkingSetId: 'wl_review-auth',
+        rightWorkingSetId: null,
+        targetId: null,
+        scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
+      }),
     );
     mocks.planCoordinateTransfer.mockResolvedValueOnce(
       makeCoordinateTransferPlan({
-        comparisonDigest: 'comparison:collapse-preview',
+        comparisonDigest: 'comparison:collapse-preview:operational',
         transferDigest: 'transfer:collapse-preview',
+        scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
         sourceWorkingSetId: 'wl_review-auth',
         targetWorkingSetId: null,
         ops: [
@@ -1407,7 +1525,7 @@ describe('ControlPlaneService', () => {
     }, 'agent.prime');
 
     const comparisonArtifactDigest = buildComparisonArtifactDigest(
-      'comparison:collapse-preview',
+      'comparison:collapse-preview:operational',
       'worldline:review-auth',
       'worldline:live',
     );
@@ -1421,13 +1539,19 @@ describe('ControlPlaneService', () => {
       },
     });
 
-    expect(mocks.compareCoordinates).toHaveBeenCalledWith({
+    expect(mocks.compareCoordinates).toHaveBeenNthCalledWith(1, {
       left: { kind: 'working_set', workingSetId: 'wl_review-auth' },
       right: { kind: 'live' },
+    });
+    expect(mocks.compareCoordinates).toHaveBeenNthCalledWith(2, {
+      left: { kind: 'working_set', workingSetId: 'wl_review-auth' },
+      right: { kind: 'live' },
+      scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
     });
     expect(mocks.planCoordinateTransfer).toHaveBeenCalledWith({
       source: { kind: 'working_set', workingSetId: 'wl_review-auth' },
       target: { kind: 'live' },
+      scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
     });
     expect(mocks.executeMutation).toHaveBeenCalledWith({
       rationale: 'Preview collapse of worldline:review-auth into worldline:live.',
@@ -1469,17 +1593,31 @@ describe('ControlPlaneService', () => {
           kind: 'git-warp-coordinate-transfer-plan',
           sourceWorkingSetId: 'wl_review-auth',
           transferDigest: 'transfer:collapse-preview',
-          comparisonDigest: 'comparison:collapse-preview',
+          comparisonDigest: 'comparison:collapse-preview:operational',
           comparisonFact: expect.objectContaining({
             exportVersion: 'coordinate-comparison-fact/v1',
             factKind: 'coordinate-comparison',
-            factDigest: 'comparison:collapse-preview',
+            factDigest: 'comparison:collapse-preview:operational',
+            fact: expect.objectContaining({
+              scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
+            }),
+          }),
+          comparisonScopeVersion: XYPH_OPERATIONAL_COMPARISON_SCOPE_VERSION,
+          comparisonScope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
+          rawWholeGraph: expect.objectContaining({
+            comparisonDigest: 'comparison:collapse-preview:raw',
+            comparisonFact: expect.objectContaining({
+              factDigest: 'comparison:collapse-preview:raw',
+            }),
           }),
           transferFact: expect.objectContaining({
             exportVersion: 'coordinate-transfer-plan-fact/v1',
             factKind: 'coordinate-transfer-plan',
             factDigest: 'transfer:collapse-preview',
             canonicalFactJson: expect.any(String),
+            fact: expect.objectContaining({
+              scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
+            }),
           }),
         }),
       }),
@@ -1490,10 +1628,18 @@ describe('ControlPlaneService', () => {
   it('rejects collapse_worldline when the comparison artifact digest is stale', async () => {
     mocks.compareCoordinates.mockResolvedValueOnce(
       makeCoordinateComparison({
-        comparisonDigest: 'comparison:current',
+        comparisonDigest: 'comparison:current:raw',
         leftWorkingSetId: 'wl_review-auth',
         rightWorkingSetId: null,
         targetId: null,
+      }),
+    ).mockResolvedValueOnce(
+      makeCoordinateComparison({
+        comparisonDigest: 'comparison:current:operational',
+        leftWorkingSetId: 'wl_review-auth',
+        rightWorkingSetId: null,
+        targetId: null,
+        scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
       }),
     );
 
@@ -1526,16 +1672,25 @@ describe('ControlPlaneService', () => {
   it('can persist a collapse proposal as a durable live-governance record', async () => {
     mocks.compareCoordinates.mockResolvedValueOnce(
       makeCoordinateComparison({
-        comparisonDigest: 'comparison:collapse-persisted',
+        comparisonDigest: 'comparison:collapse-persisted:raw',
         leftWorkingSetId: 'wl_review-auth',
         rightWorkingSetId: null,
         targetId: null,
       }),
+    ).mockResolvedValueOnce(
+      makeCoordinateComparison({
+        comparisonDigest: 'comparison:collapse-persisted:operational',
+        leftWorkingSetId: 'wl_review-auth',
+        rightWorkingSetId: null,
+        targetId: null,
+        scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
+      }),
     );
     mocks.planCoordinateTransfer.mockResolvedValueOnce(
       makeCoordinateTransferPlan({
-        comparisonDigest: 'comparison:collapse-persisted',
+        comparisonDigest: 'comparison:collapse-persisted:operational',
         transferDigest: 'transfer:collapse-persisted',
+        scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
         sourceWorkingSetId: 'wl_review-auth',
         targetWorkingSetId: null,
       }),
@@ -1549,7 +1704,7 @@ describe('ControlPlaneService', () => {
       executed: false,
     });
     const comparisonArtifactDigest = buildComparisonArtifactDigest(
-      'comparison:collapse-persisted',
+      'comparison:collapse-persisted:operational',
       'worldline:review-auth',
       'worldline:live',
     );
@@ -1566,6 +1721,7 @@ describe('ControlPlaneService', () => {
         at: 'tip',
       },
       attestationIds: ['attestation:1'],
+      comparisonScopeVersion: XYPH_OPERATIONAL_COMPARISON_SCOPE_VERSION,
     });
     mocks.createCanonicalArtifact.mockResolvedValueOnce({
       id: `collapse-proposal:${collapseArtifactDigest}`,

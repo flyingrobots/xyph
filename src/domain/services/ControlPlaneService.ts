@@ -5,6 +5,7 @@ import type {
   CoordinateComparisonSelectorV1,
   CoordinateComparisonV1,
   CoordinateTransferPlanV1,
+  VisibleStateScopeV1,
   VisibleStateTransferOperationV1,
 } from '@git-stunts/git-warp';
 import {
@@ -169,9 +170,27 @@ type LoweredCollapseMutationOp =
   | { op: 'attach_edge_content'; from: string; to: string; label: string; content: Uint8Array; contentOid: string; mime?: string | null; size?: number | null }
   | { op: 'clear_edge_content'; from: string; to: string; label: string };
 
+const XYPH_OPERATIONAL_COMPARISON_SCOPE_VERSION = 'xyph-operational-visible-state/v1' as const;
+const XYPH_OPERATIONAL_COMPARISON_SCOPE: VisibleStateScopeV1 = {
+  nodeIdPrefixes: {
+    exclude: [
+      'attestation-record:',
+      'attestation:',
+      'audit-record:',
+      'collapse-proposal:',
+      'comment:',
+      'comparison-artifact:',
+      'conflict-artifact:',
+      'observation-record:',
+      'proposal:',
+    ],
+  },
+};
+
 function buildComparisonArtifactDigest(fields: {
   comparisonDigest: string;
   comparisonPolicyVersion: string;
+  comparisonScopeVersion: string;
   leftWorldlineId: string;
   leftSelector: ObservationSelector;
   rightWorldlineId: string;
@@ -182,6 +201,7 @@ function buildComparisonArtifactDigest(fields: {
     kind: 'comparison-artifact',
     comparisonDigest: fields.comparisonDigest,
     comparisonPolicyVersion: fields.comparisonPolicyVersion,
+    comparisonScopeVersion: fields.comparisonScopeVersion,
     left: {
       worldlineId: fields.leftWorldlineId,
       at: normalizeSelectorValue(fields.leftSelector),
@@ -253,6 +273,20 @@ function lowerTransferOpsToMutationOps(ops: VisibleStateTransferOperationV1[]): 
         };
     }
   });
+}
+
+function comparisonHasPatchDivergence(comparison: CoordinateComparisonV1): boolean {
+  return comparison.visiblePatchDivergence.leftOnlyCount > 0
+    || comparison.visiblePatchDivergence.rightOnlyCount > 0;
+}
+
+function buildComparisonSummary(comparison: CoordinateComparisonV1): Record<string, unknown> {
+  return {
+    visibleStateChanged: comparison.visibleState.changed,
+    patchDiverged: comparisonHasPatchDivergence(comparison),
+    visiblePatchDivergence: comparison.visiblePatchDivergence,
+    visibleState: comparison.visibleState.summary,
+  };
 }
 
 function conflictDiagnosticSummary(code: string): string {
@@ -2263,12 +2297,6 @@ export class ControlPlaneService implements ControlPlanePort {
     const leftSelector = this.resolveAtSelector(request);
     const rightSelector = this.resolveAgainstAtSelector(request);
     const persist = this.resolvePersistFlag(request, 'compare_worldlines');
-    if (persist) {
-      throw controlPlaneFailure(
-        'not_implemented',
-        'compare_worldlines persist=true is not honest in the current tip-vs-tip model. Recording a comparison artifact into live truth would perturb the compared live surface itself. Persist durable collapse proposals instead until comparison recording can target a non-self-perturbing governance surface.',
-      );
-    }
     const targetId = request.args['targetId'] === undefined
       ? null
       : this.requireString(request.args['targetId'], 'compare_worldlines targetId');
@@ -2282,12 +2310,19 @@ export class ControlPlaneService implements ControlPlanePort {
     );
     await graph.syncCoverage();
 
-    let comparison: CoordinateComparisonV1;
+    const rawComparisonOptions = {
+      left: this.buildComparisonSelector(leftWorldlineId, leftSelector, 'compare_worldlines'),
+      right: this.buildComparisonSelector(rightWorldlineId, rightSelector, 'compare_worldlines'),
+      ...(targetId === null ? {} : { targetId }),
+    } satisfies Parameters<WarpGraph['compareCoordinates']>[0];
+
+    let rawComparison: CoordinateComparisonV1;
+    let operationalComparison: CoordinateComparisonV1;
     try {
-      comparison = await graph.compareCoordinates({
-        left: this.buildComparisonSelector(leftWorldlineId, leftSelector, 'compare_worldlines'),
-        right: this.buildComparisonSelector(rightWorldlineId, rightSelector, 'compare_worldlines'),
-        ...(targetId === null ? {} : { targetId }),
+      rawComparison = await graph.compareCoordinates(rawComparisonOptions);
+      operationalComparison = await graph.compareCoordinates({
+        ...rawComparisonOptions,
+        scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
       });
     } catch (err) {
       this.rethrowComparisonError(err, leftWorldlineId, rightWorldlineId);
@@ -2309,8 +2344,8 @@ export class ControlPlaneService implements ControlPlanePort {
       null,
       false,
       graph,
-      comparison.left.resolved.lamportFrontierDigest,
-      comparisonResolvedSideBacking(comparison.left.resolved),
+      rawComparison.left.resolved.lamportFrontierDigest,
+      comparisonResolvedSideBacking(rawComparison.left.resolved),
     );
     const rightObservation = await this.buildObservationCoordinate(
       {
@@ -2330,16 +2365,16 @@ export class ControlPlaneService implements ControlPlanePort {
       null,
       false,
       graph,
-      comparison.right.resolved.lamportFrontierDigest,
-      comparisonResolvedSideBacking(comparison.right.resolved),
+      rawComparison.right.resolved.lamportFrontierDigest,
+      comparisonResolvedSideBacking(rawComparison.right.resolved),
     );
 
-    const patchDiverged = comparison.visiblePatchDivergence.leftOnlyCount > 0
-      || comparison.visiblePatchDivergence.rightOnlyCount > 0;
-    const comparisonFact = exportCoordinateComparisonFact(comparison);
+    const rawComparisonFact = exportCoordinateComparisonFact(rawComparison);
+    const operationalComparisonFact = exportCoordinateComparisonFact(operationalComparison);
     const artifactDigest = buildComparisonArtifactDigest({
-      comparisonDigest: comparison.comparisonDigest,
+      comparisonDigest: operationalComparison.comparisonDigest,
       comparisonPolicyVersion: capability.comparisonPolicyVersion,
+      comparisonScopeVersion: XYPH_OPERATIONAL_COMPARISON_SCOPE_VERSION,
       leftWorldlineId,
       leftSelector,
       rightWorldlineId,
@@ -2353,47 +2388,93 @@ export class ControlPlaneService implements ControlPlanePort {
       artifactDigest,
       comparedAt,
       comparisonPolicyVersion: capability.comparisonPolicyVersion,
-      changed: comparison.visibleState.changed || patchDiverged,
+      comparisonScopeVersion: XYPH_OPERATIONAL_COMPARISON_SCOPE_VERSION,
+      changed: operationalComparison.visibleState.changed || comparisonHasPatchDivergence(operationalComparison),
       ...(targetId === null ? {} : { targetId }),
       left: {
         worldlineId: leftWorldlineId,
         at: normalizeSelectorValue(leftSelector),
         observation: leftObservation,
-        summary: comparison.left.resolved.summary,
-        substrate: comparison.left,
+        summary: rawComparison.left.resolved.summary,
+        operationalSummary: operationalComparison.left.resolved.summary,
+        substrate: {
+          raw: rawComparison.left,
+          operational: operationalComparison.left,
+        },
       },
       right: {
         worldlineId: rightWorldlineId,
         at: normalizeSelectorValue(rightSelector),
         observation: rightObservation,
-        summary: comparison.right.resolved.summary,
-        substrate: comparison.right,
+        summary: rawComparison.right.resolved.summary,
+        operationalSummary: operationalComparison.right.resolved.summary,
+        substrate: {
+          raw: rawComparison.right,
+          operational: operationalComparison.right,
+        },
       },
       summary: {
-        visibleStateChanged: comparison.visibleState.changed,
-        patchDiverged,
-        visiblePatchDivergence: comparison.visiblePatchDivergence,
-        visibleState: comparison.visibleState.summary,
+        ...buildComparisonSummary(operationalComparison),
+        rawWholeGraph: buildComparisonSummary(rawComparison),
       },
       preview: {
-        visiblePatchDivergence: comparison.visiblePatchDivergence,
+        visiblePatchDivergence: operationalComparison.visiblePatchDivergence,
         visibleState: {
-          nodes: comparison.visibleState.nodes,
-          edges: comparison.visibleState.edges,
-          nodeProperties: comparison.visibleState.nodeProperties,
-          edgeProperties: comparison.visibleState.edgeProperties,
-          ...(comparison.visibleState.target === undefined
+          nodes: operationalComparison.visibleState.nodes,
+          edges: operationalComparison.visibleState.edges,
+          nodeProperties: operationalComparison.visibleState.nodeProperties,
+          edgeProperties: operationalComparison.visibleState.edgeProperties,
+          ...(operationalComparison.visibleState.target === undefined
             ? {}
-            : { target: comparison.visibleState.target }),
+            : { target: operationalComparison.visibleState.target }),
         },
       },
       substrate: {
         kind: 'git-warp-coordinate-comparison',
-        comparisonVersion: comparison.comparisonVersion,
-        comparisonDigest: comparison.comparisonDigest,
-        comparisonFact,
+        comparisonVersion: operationalComparison.comparisonVersion,
+        comparisonDigest: operationalComparison.comparisonDigest,
+        comparisonFact: operationalComparisonFact,
+        comparisonScopeVersion: XYPH_OPERATIONAL_COMPARISON_SCOPE_VERSION,
+        comparisonScope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
+        rawWholeGraph: {
+          comparisonVersion: rawComparison.comparisonVersion,
+          comparisonDigest: rawComparison.comparisonDigest,
+          comparisonFact: rawComparisonFact,
+        },
       },
     };
+
+    if (persist) {
+      const record = await this.records.createCanonicalArtifact({
+        id: artifactId,
+        kind: 'comparison-artifact',
+        artifactDigest,
+        payload: data,
+        recordedBy: capability.principal.principalId,
+        observerProfileId: capability.observer.observerProfileId,
+        policyPackVersion: capability.policyPackVersion,
+        indexedProperties: {
+          comparison_policy_version: capability.comparisonPolicyVersion,
+          comparison_scope_version: XYPH_OPERATIONAL_COMPARISON_SCOPE_VERSION,
+          left_worldline_id: leftWorldlineId,
+          right_worldline_id: rightWorldlineId,
+          operational_comparison_digest: operationalComparison.comparisonDigest,
+          raw_comparison_digest: rawComparison.comparisonDigest,
+          ...(targetId === null ? {} : { target_id: targetId }),
+        },
+        idempotencyKey: typeof request.args['idempotencyKey'] === 'string'
+          ? request.args['idempotencyKey']
+          : undefined,
+      });
+      data['record'] = {
+        persisted: true,
+        recordedInWorldlineId: DEFAULT_WORLDLINE_ID,
+        patch: record.patch,
+        recordedAt: record.recordedAt,
+        contentOid: record.contentOid,
+        existed: record.existed,
+      };
+    }
 
     return {
       data,
@@ -2492,19 +2573,27 @@ export class ControlPlaneService implements ControlPlanePort {
     );
     await graph.syncCoverage();
 
-    let comparison: CoordinateComparisonV1;
+    const comparisonOptions = {
+      left: this.buildComparisonSelector(sourceWorldlineId, sourceSelector, 'collapse_worldline'),
+      right: this.buildComparisonSelector(targetWorldlineId, targetSelector, 'collapse_worldline'),
+    } satisfies Parameters<WarpGraph['compareCoordinates']>[0];
+
+    let rawComparison: CoordinateComparisonV1;
+    let operationalComparison: CoordinateComparisonV1;
     try {
-      comparison = await graph.compareCoordinates({
-        left: this.buildComparisonSelector(sourceWorldlineId, sourceSelector, 'collapse_worldline'),
-        right: this.buildComparisonSelector(targetWorldlineId, targetSelector, 'collapse_worldline'),
+      rawComparison = await graph.compareCoordinates(comparisonOptions);
+      operationalComparison = await graph.compareCoordinates({
+        ...comparisonOptions,
+        scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
       });
     } catch (err) {
       this.rethrowComparisonError(err, sourceWorldlineId, targetWorldlineId);
     }
 
     const currentComparisonArtifactDigest = buildComparisonArtifactDigest({
-      comparisonDigest: comparison.comparisonDigest,
+      comparisonDigest: operationalComparison.comparisonDigest,
       comparisonPolicyVersion: capability.comparisonPolicyVersion,
+      comparisonScopeVersion: XYPH_OPERATIONAL_COMPARISON_SCOPE_VERSION,
       leftWorldlineId: sourceWorldlineId,
       leftSelector: sourceSelector,
       rightWorldlineId: targetWorldlineId,
@@ -2527,8 +2616,9 @@ export class ControlPlaneService implements ControlPlanePort {
     let transferPlan: CoordinateTransferPlanV1;
     try {
       transferPlan = await graph.planCoordinateTransfer({
-        source: this.buildComparisonSelector(sourceWorldlineId, sourceSelector, 'collapse_worldline'),
-        target: this.buildComparisonSelector(targetWorldlineId, targetSelector, 'collapse_worldline'),
+        source: comparisonOptions.left,
+        target: comparisonOptions.right,
+        scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
       });
     } catch (err) {
       this.rethrowComparisonError(err, sourceWorldlineId, targetWorldlineId);
@@ -2573,8 +2663,8 @@ export class ControlPlaneService implements ControlPlanePort {
       null,
       false,
       graph,
-      transferPlan.source.resolved.lamportFrontierDigest,
-      comparisonResolvedSideBacking(transferPlan.source.resolved),
+      rawComparison.left.resolved.lamportFrontierDigest,
+      comparisonResolvedSideBacking(rawComparison.left.resolved),
     );
     const targetObservation = await this.buildObservationCoordinate(
       {
@@ -2594,13 +2684,12 @@ export class ControlPlaneService implements ControlPlanePort {
       null,
       false,
       graph,
-      transferPlan.target.resolved.lamportFrontierDigest,
-      comparisonResolvedSideBacking(transferPlan.target.resolved),
+      rawComparison.right.resolved.lamportFrontierDigest,
+      comparisonResolvedSideBacking(rawComparison.right.resolved),
     );
 
-    const patchDiverged = comparison.visiblePatchDivergence.leftOnlyCount > 0
-      || comparison.visiblePatchDivergence.rightOnlyCount > 0;
-    const comparisonFact = exportCoordinateComparisonFact(comparison);
+    const rawComparisonFact = exportCoordinateComparisonFact(rawComparison);
+    const operationalComparisonFact = exportCoordinateComparisonFact(operationalComparison);
     const transferFact = exportCoordinateTransferPlanFact(transferPlan);
     const artifactDigest = digest({
       kind: 'collapse-proposal',
@@ -2615,6 +2704,7 @@ export class ControlPlaneService implements ControlPlanePort {
         at: 'tip',
       },
       attestationIds: attestationIds ?? [],
+      comparisonScopeVersion: XYPH_OPERATIONAL_COMPARISON_SCOPE_VERSION,
     });
     const artifactId = `collapse-proposal:${artifactDigest}`;
     const data: Record<string, unknown> = {
@@ -2638,19 +2728,17 @@ export class ControlPlaneService implements ControlPlanePort {
       },
       comparison: {
         artifactDigest: currentComparisonArtifactDigest,
-        changed: comparison.visibleState.changed || patchDiverged,
-        summary: {
-          visibleStateChanged: comparison.visibleState.changed,
-          patchDiverged,
-          visiblePatchDivergence: comparison.visiblePatchDivergence,
-          visibleState: comparison.visibleState.summary,
-        },
+        comparisonScopeVersion: XYPH_OPERATIONAL_COMPARISON_SCOPE_VERSION,
+        changed: operationalComparison.visibleState.changed || comparisonHasPatchDivergence(operationalComparison),
+        summary: buildComparisonSummary(operationalComparison),
+        rawWholeGraph: buildComparisonSummary(rawComparison),
       },
       transfer: {
         changed: transferPlan.changed,
         transferVersion: transferPlan.transferVersion,
         transferDigest: transferPlan.transferDigest,
         comparisonDigest: transferPlan.comparisonDigest,
+        comparisonScopeVersion: XYPH_OPERATIONAL_COMPARISON_SCOPE_VERSION,
         summary: transferPlan.summary,
         ops: transferPlan.ops.map((op) => sanitizeTransferOperation(op)),
       },
@@ -2668,7 +2756,13 @@ export class ControlPlaneService implements ControlPlanePort {
         transferVersion: transferPlan.transferVersion,
         transferDigest: transferPlan.transferDigest,
         comparisonDigest: transferPlan.comparisonDigest,
-        comparisonFact,
+        comparisonFact: operationalComparisonFact,
+        comparisonScopeVersion: XYPH_OPERATIONAL_COMPARISON_SCOPE_VERSION,
+        comparisonScope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
+        rawWholeGraph: {
+          comparisonDigest: rawComparison.comparisonDigest,
+          comparisonFact: rawComparisonFact,
+        },
         transferFact,
       },
     };

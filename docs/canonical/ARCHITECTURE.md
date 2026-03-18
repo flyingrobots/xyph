@@ -162,15 +162,21 @@ with:
 - left/right worldline metadata in XYPH terms
 - per-side observation coordinates
 - substrate divergence facts carried explicitly instead of re-derived in XYPH
-- the published git-warp comparison-fact export carried through in the
-  substrate block for later XYPH recording or attestation
+- the published git-warp scoped comparison-fact export carried through in the
+  substrate block as the operational freshness truth
+- the published git-warp whole-graph comparison-fact export carried through
+  alongside it for audit and provenance
 
-That keeps comparison factual and read-only. Decision, attestation, and future
-collapse semantics remain XYPH concerns built on top of this substrate-backed
-preview rather than hidden inside it. `persist: true` is intentionally rejected
-for `compare_worldlines` in the current slice, because writing a durable
-comparison record into `worldline:live` would perturb the compared live tip and
-make the tip-vs-tip comparison self-invalidating.
+That keeps comparison factual while separating two jobs that were previously
+conflated:
+
+- raw substrate truth over the whole visible graph
+- XYPH operational freshness truth over a scoped visible graph that excludes
+  governance-only node families
+
+With that split in place, `compare_worldlines persist:true` can now record a
+durable `comparison-artifact:*` node on `worldline:live` without invalidating
+its own operational freshness token.
 
 `braid_worldlines` is now the thin control-plane mapping for that composition
 step. XYPH keeps the public API in worldline terms while delegating the actual
@@ -196,7 +202,8 @@ explicitly braid-aware on the published substrate boundary.
 settlement runway. XYPH:
 
 - requires a fresh XYPH `comparison-artifact` digest from `compare_worldlines`
-- recomputes the current substrate comparison to detect drift
+- recomputes the current operationally scoped substrate comparison to detect
+  drift
 - asks git-warp for a substrate-factual transfer plan from the source
   worldline’s visible state into the target coordinate
 - lowers that plan through the same mutation kernel used by `apply`

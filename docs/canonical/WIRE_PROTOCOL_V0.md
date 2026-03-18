@@ -289,8 +289,7 @@ Current behavior:
   - `at`
   - `againstAt`
   - optional `targetId`
-- rejects `persist: true` in the current slice because durable comparison
-  recording would perturb the compared live tip itself
+- accepts optional `persist: true`
 - currently supports only:
   - `worldline:live`
   - canonical derived worldlines backed by git-warp working sets
@@ -300,7 +299,10 @@ Current behavior:
   - substrate-backed visible patch divergence
   - substrate-backed visible node / edge / property deltas
   - optional target-local comparison details when `targetId` is provided
-  - substrate comparison-fact export from git-warp in `data.substrate`
+  - an operationally scoped git-warp comparison fact in `data.substrate`
+  - the raw whole-graph git-warp comparison fact in `data.substrate.rawWholeGraph`
+  - when `persist: true`, a `data.record` block describing the durable
+    `comparison-artifact:*` node recorded on `worldline:live`
 
 This slice is intentionally comparison-only. It does **not** collapse, approve,
 or otherwise execute settlement. Comparison remains separate from decision and
@@ -317,8 +319,8 @@ Current behavior:
 - currently supports only canonical derived source worldlines backed by
   git-warp working sets
 - requires `comparisonArtifactDigest` from a fresh `compare_worldlines` call
-- recomputes the current comparison at source tip vs target tip and rejects
-  stale digest input with `stale_base_observation`
+- recomputes the current operationally scoped comparison at source tip vs
+  target tip and rejects stale digest input with `stale_base_observation`
 - currently supports only `targetWorldlineId: "worldline:live"` or omission
 - rejects `at`, `againstAt`, `since`, and `targetId` selectors in this slice
 - always dry-runs through the same mutation kernel used by `apply`
@@ -328,8 +330,10 @@ Current behavior:
   - per-side observation coordinates for source and target
   - substrate-backed transfer summary and sanitized transfer ops
   - dry-run mutation side-effect preview
-  - substrate comparison-fact and transfer-fact exports from git-warp in
+  - an operationally scoped git-warp comparison fact and transfer fact in
     `data.substrate`
+  - the raw whole-graph git-warp comparison fact in
+    `data.substrate.rawWholeGraph`
   - when `persist: true`, a `data.record` block describing the durable
     `collapse-proposal:*` node recorded on `worldline:live`
 

@@ -226,9 +226,42 @@ git-warp comparison/transfer fact exports.
 - no required outbound edges in the current slice
 - incoming `attests` from `attestation:*` records are expected
 
-**Note:** durable `comparison-artifact:*` nodes are intentionally not created
-yet. Recording a comparison into `worldline:live` would perturb the compared
-live tip in the current tip-vs-tip model.
+### Comparison Artifact (`comparison-artifact:*`)
+
+`compare_worldlines persist:true` records a durable governance comparison
+artifact on `worldline:live` without changing the operational freshness digest
+that later compare/collapse flows use. The durable node is append-only and
+carries both:
+
+- the raw whole-graph git-warp comparison fact for audit
+- the XYPH operationally scoped comparison fact used for freshness and
+  settlement preview
+
+| Property | Type | Set By | Notes |
+|----------|------|--------|-------|
+| `type` | `'comparison-artifact'` | control plane | Required. |
+| `artifact_digest` | string | control plane | Stable XYPH artifact identity. |
+| `comparison_policy_version` | string | control plane | Policy/version label in force for freshness. |
+| `comparison_scope_version` | string | control plane | Current XYPH operational scope version. |
+| `left_worldline_id` | string | control plane | Left-hand worldline under comparison. |
+| `right_worldline_id` | string | control plane | Right-hand worldline under comparison. |
+| `operational_comparison_digest` | string | control plane | Published git-warp scoped comparison digest. |
+| `raw_comparison_digest` | string | control plane | Published git-warp whole-graph comparison digest. |
+| `target_id` | string | control plane | Optional entity-local comparison focus. |
+| `recorded_by` | string | control plane | Principal ID. |
+| `recorded_at` | number | control plane | Timestamp. |
+| `observer_profile_id` | string | control plane | Observer in force when recorded. |
+| `policy_pack_version` | string | control plane | Policy pack in force when recorded. |
+
+**Bodies:** stored via `attachContent()` on the node as a deterministic JSON
+copy of the returned `comparison-artifact` payload, including both the raw
+whole-graph substrate fact and the XYPH-scoped operational substrate fact.
+
+**Edges:**
+- no required outbound edges in the current slice
+- incoming `attests` from `attestation:*` records are expected
+
+---
 
 ---
 

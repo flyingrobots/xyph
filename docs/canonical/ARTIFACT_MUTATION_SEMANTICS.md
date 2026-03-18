@@ -147,6 +147,8 @@ The current sovereign-control-plane foundation implements:
 - append-only attestations
 - non-authoritative proposals
 - read-only `comparison-artifact` previews from `compare_worldlines`
+- optional durable `comparison-artifact:*` records on `worldline:live` when
+  `compare_worldlines` is called with `persist: true`
 - primitive-op `apply`
 - working-set-backed `fork_worldline` creation from `worldline:live`
 - working-set-backed `braid_worldlines` composition for canonical derived
@@ -172,8 +174,9 @@ The current sovereign-control-plane foundation implements:
 - published git-warp comparison/transfer fact exports carried through XYPH’s
   substrate blocks so later governance can record the same fact without
   re-serializing it in XYPH first
-- explicit rejection of `compare_worldlines persist:true` until durable
-  comparison recording can avoid self-perturbing tip-vs-tip comparisons
+- XYPH operational comparison scope over governance-only node families so
+  durable comparison recording does not self-perturb the freshness token used
+  by compare/collapse
 
 Current `fork_worldline` is intentionally narrow:
 
@@ -197,6 +200,6 @@ Current `braid_worldlines` is likewise intentionally thin:
   observation coordinate instead of silently reporting only the worldline ID
 - it does **not** merge, rebase, collapse, or settle anything into live truth
 
-It does **not** yet implement durable `comparison-artifact` records, live
-collapse execution, full worldline-local execution, or lease enforcement.
+It does **not** yet implement live collapse execution, full worldline-local
+execution, or lease enforcement.
 Those remain future slices governed by this contract.

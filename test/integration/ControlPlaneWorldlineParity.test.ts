@@ -572,18 +572,65 @@ describe('ControlPlaneService worldline parity', () => {
 
     const comparisonPersist = await service.execute({
       v: CONTROL_PLANE_VERSION,
-      id: 'compare-braided-persist-disallowed',
+      id: 'compare-braided-persisted',
       cmd: 'compare_worldlines',
       args: {
         worldlineId: 'worldline:braid-target',
         persist: true,
       },
     });
-    expect(comparisonPersist).toEqual(expect.objectContaining({
-      ok: false,
-      error: expect.objectContaining({
-        code: 'not_implemented',
+    expect(comparisonPersist.ok).toBe(true);
+    if (!comparisonPersist.ok) throw new Error(comparisonPersist.error.message);
+    expect(comparisonPersist.data).toEqual(expect.objectContaining({
+      kind: 'comparison-artifact',
+      artifactDigest: comparisonData['artifactDigest'],
+      record: expect.objectContaining({
+        persisted: true,
+        recordedInWorldlineId: 'worldline:live',
+        contentOid: expect.any(String),
       }),
+      substrate: expect.objectContaining({
+        comparisonScopeVersion: 'xyph-operational-visible-state/v1',
+        rawWholeGraph: expect.objectContaining({
+          comparisonFact: expect.objectContaining({
+            factKind: 'coordinate-comparison',
+          }),
+        }),
+      }),
+    }));
+
+    const comparisonDetail = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'observe-live-comparison-artifact',
+      cmd: 'observe',
+      args: {
+        projection: 'entity.detail',
+        targetId: comparisonPersist.data['artifactId'],
+      },
+    });
+    expect(comparisonDetail.ok).toBe(true);
+    if (!comparisonDetail.ok) throw new Error(comparisonDetail.error.message);
+    expect(comparisonDetail.data.detail).toEqual(expect.objectContaining({
+      id: comparisonPersist.data['artifactId'],
+      type: 'comparison-artifact',
+      props: expect.objectContaining({
+        artifact_digest: comparisonData['artifactDigest'],
+      }),
+    }));
+
+    const comparisonAfterPersist = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'compare-braided-after-persist',
+      cmd: 'compare_worldlines',
+      args: {
+        worldlineId: 'worldline:braid-target',
+      },
+    });
+    expect(comparisonAfterPersist.ok).toBe(true);
+    if (!comparisonAfterPersist.ok) throw new Error(comparisonAfterPersist.error.message);
+    expect(comparisonAfterPersist.data).toEqual(expect.objectContaining({
+      artifactDigest: comparisonData['artifactDigest'],
+      changed: comparison.data['changed'],
     }));
 
     const collapse = await service.execute({

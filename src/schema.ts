@@ -10,7 +10,7 @@ export const PREFIXES = [
   'submission', 'patchset', 'review',
   'story', 'req', 'criterion', 'evidence',
   'policy', 'config', 'suggestion',
-  'proposal', 'attestation', 'collapse-proposal',
+  'proposal', 'attestation', 'comparison-artifact', 'collapse-proposal',
 ] as const;
 
 export type Prefix = typeof PREFIXES[number];
