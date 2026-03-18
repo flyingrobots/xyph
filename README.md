@@ -251,7 +251,10 @@ observation coordinates and substrate-backed divergence facts. It is
 intentionally comparison-only and does **not** perform collapse or settlement.
 Its substrate block now also carries git-warp’s canonical exported comparison
 fact, so later XYPH governance can record or attest the same substrate truth
-without inventing its own serialization boundary first.
+without inventing its own serialization boundary first. `persist: true` is
+currently rejected for `compare_worldlines`, because recording a comparison
+artifact into `worldline:live` would perturb the very live tip the command is
+comparing against.
 
 `collapse_worldline` now provides the first settlement runway preview in XYPH
 language, still backed by published git-warp substrate facts. In the current
@@ -265,6 +268,8 @@ slice it:
   transfer facts, sanitized transfer ops, and mutation side-effect preview
 - carries git-warp’s exported comparison and transfer facts in the substrate
   block for later XYPH recording or attestation work
+- accepts optional `persist: true` to record the preview as a durable
+  `collapse-proposal:*` node on `worldline:live` without executing settlement
 - does **not** mutate live truth yet
 
 `braid_worldlines` is now implemented as a thin mapping onto git-warp’s
@@ -300,9 +305,13 @@ derived-worldline truth.
   to stay co-present without pretending merge or rebase semantics.
 - `compare_worldlines` before governance or settlement decisions; it is the
   factual preview surface, not the decision itself.
+- `compare_worldlines persist:true` is intentionally unavailable until XYPH can
+  record durable comparison artifacts without self-perturbing live tip
+  comparisons.
 - `collapse_worldline` when you want a candidate settlement runway preview that
   lowers through the same mutation kernel as `apply` without mutating live
-  truth yet.
+  truth yet. Add `persist: true` when that preview should become a durable
+  attestation target on `worldline:live`.
 - Hand off explicit `worldlineId` values between humans and agents. Do not pass
   substrate working-set IDs as the public coordination handle.
 

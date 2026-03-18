@@ -195,6 +195,43 @@ content. The current control-plane slice stores JSON containing at least
 
 ---
 
+### Collapse Proposal (`collapse-proposal:*`)
+
+`collapse_worldline persist:true` records a durable governance proposal without
+executing settlement. The node is append-only and lives on `worldline:live`
+even when the compared source worldline is derived.
+
+| Property | Type | Set By | Notes |
+|----------|------|--------|-------|
+| `type` | `'collapse-proposal'` | control plane | Required. |
+| `artifact_digest` | string | control plane | Stable XYPH artifact identity. |
+| `comparison_artifact_digest` | string | control plane | Fresh compare digest used for the preview. |
+| `transfer_digest` | string | control plane | Published git-warp transfer-plan digest. |
+| `source_worldline_id` | string | control plane | Source worldline being settled. |
+| `target_worldline_id` | string | control plane | Current slice uses `worldline:live`. |
+| `recorded_by` | string | control plane | Principal ID. |
+| `recorded_at` | number | control plane | Timestamp. |
+| `observer_profile_id` | string | control plane | Observer in force when recorded. |
+| `policy_pack_version` | string | control plane | Policy pack in force when recorded. |
+| `dry_run` | boolean | control plane | Always `true` in the current slice. |
+| `executable` | boolean | control plane | Always `false` in the current slice. |
+| `changed` | boolean | control plane | Whether the transfer plan contains substantive work. |
+| `attestation_count` | number | control plane | Optional count of supplied attestation IDs. |
+
+**Bodies:** stored via `attachContent()` on the node as a deterministic JSON
+copy of the returned `collapse-proposal` payload, including the published
+git-warp comparison/transfer fact exports.
+
+**Edges:**
+- no required outbound edges in the current slice
+- incoming `attests` from `attestation:*` records are expected
+
+**Note:** durable `comparison-artifact:*` nodes are intentionally not created
+yet. Recording a comparison into `worldline:live` would perturb the compared
+live tip in the current tip-vs-tip model.
+
+---
+
 ### Attestation (`attestation:*`)
 
 Attestations are append-only decision records. They record approval, rejection,

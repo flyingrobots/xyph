@@ -289,6 +289,8 @@ Current behavior:
   - `at`
   - `againstAt`
   - optional `targetId`
+- rejects `persist: true` in the current slice because durable comparison
+  recording would perturb the compared live tip itself
 - currently supports only:
   - `worldline:live`
   - canonical derived worldlines backed by git-warp working sets
@@ -320,6 +322,7 @@ Current behavior:
 - currently supports only `targetWorldlineId: "worldline:live"` or omission
 - rejects `at`, `againstAt`, `since`, and `targetId` selectors in this slice
 - always dry-runs through the same mutation kernel used by `apply`
+- accepts optional `persist: true`
 - returns:
   - a typed XYPH `collapse-proposal`
   - per-side observation coordinates for source and target
@@ -327,6 +330,8 @@ Current behavior:
   - dry-run mutation side-effect preview
   - substrate comparison-fact and transfer-fact exports from git-warp in
     `data.substrate`
+  - when `persist: true`, a `data.record` block describing the durable
+    `collapse-proposal:*` node recorded on `worldline:live`
 
 This slice is intentionally preview-only. It does **not** mutate live truth
 yet, and it does not introduce a special collapse engine outside the shared

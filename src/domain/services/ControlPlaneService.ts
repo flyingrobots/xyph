@@ -2262,6 +2262,13 @@ export class ControlPlaneService implements ControlPlanePort {
     const rightWorldlineId = this.resolveComparisonWorldlineId(capability, request);
     const leftSelector = this.resolveAtSelector(request);
     const rightSelector = this.resolveAgainstAtSelector(request);
+    const persist = this.resolvePersistFlag(request, 'compare_worldlines');
+    if (persist) {
+      throw controlPlaneFailure(
+        'not_implemented',
+        'compare_worldlines persist=true is not honest in the current tip-vs-tip model. Recording a comparison artifact into live truth would perturb the compared live surface itself. Persist durable collapse proposals instead until comparison recording can target a non-self-perturbing governance surface.',
+      );
+    }
     const targetId = request.args['targetId'] === undefined
       ? null
       : this.requireString(request.args['targetId'], 'compare_worldlines targetId');
@@ -2340,7 +2347,7 @@ export class ControlPlaneService implements ControlPlanePort {
       targetId,
     });
     const artifactId = `comparison-artifact:${artifactDigest}`;
-    const data = {
+    const data: Record<string, unknown> = {
       kind: 'comparison-artifact',
       artifactId,
       artifactDigest,
@@ -2386,7 +2393,7 @@ export class ControlPlaneService implements ControlPlanePort {
         comparisonDigest: comparison.comparisonDigest,
         comparisonFact,
       },
-    } satisfies Record<string, unknown>;
+    };
 
     return {
       data,
@@ -2434,6 +2441,7 @@ export class ControlPlaneService implements ControlPlanePort {
     }
 
     const rawDryRun = request.args['dryRun'];
+    const persist = this.resolvePersistFlag(request, 'collapse_worldline');
     if (rawDryRun !== undefined && typeof rawDryRun !== 'boolean') {
       throw controlPlaneFailure(
         'invalid_args',
@@ -2609,7 +2617,7 @@ export class ControlPlaneService implements ControlPlanePort {
       attestationIds: attestationIds ?? [],
     });
     const artifactId = `collapse-proposal:${artifactDigest}`;
-    const data = {
+    const data: Record<string, unknown> = {
       kind: 'collapse-proposal',
       artifactId,
       artifactDigest,
@@ -2663,7 +2671,40 @@ export class ControlPlaneService implements ControlPlanePort {
         comparisonFact,
         transferFact,
       },
-    } satisfies Record<string, unknown>;
+    };
+
+    if (persist) {
+      const record = await this.records.createCanonicalArtifact({
+        id: artifactId,
+        kind: 'collapse-proposal',
+        artifactDigest,
+        payload: data,
+        recordedBy: capability.principal.principalId,
+        observerProfileId: capability.observer.observerProfileId,
+        policyPackVersion: capability.policyPackVersion,
+        idempotencyKey: typeof request.args['idempotencyKey'] === 'string'
+          ? request.args['idempotencyKey']
+          : undefined,
+        indexedProperties: {
+          comparison_artifact_digest: currentComparisonArtifactDigest,
+          transfer_digest: transferPlan.transferDigest,
+          source_worldline_id: sourceWorldlineId,
+          target_worldline_id: targetWorldlineId,
+          dry_run: true,
+          executable: false,
+          changed: transferPlan.changed,
+          ...(attestationIds === null ? {} : { attestation_count: attestationIds.length }),
+        },
+      });
+      data['record'] = {
+        persisted: true,
+        recordedInWorldlineId: DEFAULT_WORLDLINE_ID,
+        recordedAt: record.recordedAt,
+        patch: record.patch,
+        contentOid: record.contentOid,
+        existed: record.existed,
+      };
+    }
 
     return {
       data,
@@ -2877,6 +2918,15 @@ export class ControlPlaneService implements ControlPlanePort {
       throw controlPlaneFailure('invalid_args', `${label} must be a non-empty string array`);
     }
     return value.map((entry, index) => this.requireString(entry, `${label}[${index}]`));
+  }
+
+  private resolvePersistFlag(request: ControlPlaneRequestV1, label: string): boolean {
+    const rawPersist = request.args['persist'];
+    if (rawPersist === undefined) return false;
+    if (typeof rawPersist !== 'boolean') {
+      throw controlPlaneFailure('invalid_args', `${label} persist must be a boolean when provided.`);
+    }
+    return rawPersist;
   }
 
   private mapActionCode(code: string): ControlPlaneErrorCode {

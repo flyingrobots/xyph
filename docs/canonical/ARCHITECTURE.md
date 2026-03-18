@@ -129,7 +129,10 @@ with:
 
 That keeps comparison factual and read-only. Decision, attestation, and future
 collapse semantics remain XYPH concerns built on top of this substrate-backed
-preview rather than hidden inside it.
+preview rather than hidden inside it. `persist: true` is intentionally rejected
+for `compare_worldlines` in the current slice, because writing a durable
+comparison record into `worldline:live` would perturb the compared live tip and
+make the tip-vs-tip comparison self-invalidating.
 
 `braid_worldlines` is now the thin control-plane mapping for that composition
 step. XYPH keeps the public API in worldline terms while delegating the actual
@@ -162,6 +165,8 @@ settlement runway. XYPH:
 - carries the published git-warp comparison and transfer-fact exports through
   to the substrate block instead of inventing a second XYPH-side substrate
   wrapper
+- may record the resulting preview as a durable `collapse-proposal:*` node on
+  `worldline:live` when `persist: true` is requested
 - keeps the current slice preview-only, so no live mutation happens yet
 
 That keeps settlement planning factual at the substrate boundary while

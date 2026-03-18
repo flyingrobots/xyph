@@ -556,4 +556,105 @@ describe('ControlPlaneService worldline parity', () => {
       error: expect.objectContaining({ code: 'not_found' }),
     }));
   });
+
+  it('can persist a collapse proposal on live truth for later attestation', { timeout: 30_000 }, async () => {
+    const comparison = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'compare-braided-for-persisted-collapse',
+      cmd: 'compare_worldlines',
+      args: {
+        worldlineId: 'worldline:braid-target',
+      },
+    });
+    expect(comparison.ok).toBe(true);
+    if (!comparison.ok) throw new Error(comparison.error.message);
+    const comparisonData = comparison.data as Record<string, unknown>;
+
+    const comparisonPersist = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'compare-braided-persist-disallowed',
+      cmd: 'compare_worldlines',
+      args: {
+        worldlineId: 'worldline:braid-target',
+        persist: true,
+      },
+    });
+    expect(comparisonPersist).toEqual(expect.objectContaining({
+      ok: false,
+      error: expect.objectContaining({
+        code: 'not_implemented',
+      }),
+    }));
+
+    const collapse = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'collapse-braided-persisted',
+      cmd: 'collapse_worldline',
+      args: {
+        worldlineId: 'worldline:braid-target',
+        comparisonArtifactDigest: comparisonData['artifactDigest'],
+        persist: true,
+      },
+    });
+    expect(collapse.ok).toBe(true);
+    if (!collapse.ok) throw new Error(collapse.error.message);
+    const collapseData = collapse.data as Record<string, unknown>;
+    const collapseRecord = collapseData['record'] as Record<string, unknown>;
+    expect(collapse.data).toEqual(expect.objectContaining({
+      kind: 'collapse-proposal',
+      record: expect.objectContaining({
+        persisted: true,
+        recordedInWorldlineId: 'worldline:live',
+        patch: expect.any(String),
+        contentOid: expect.any(String),
+      }),
+    }));
+
+    const collapseDetail = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'observe-live-collapse-proposal',
+      cmd: 'observe',
+      args: {
+        projection: 'entity.detail',
+        targetId: collapseData['artifactId'],
+      },
+    });
+    expect(collapseDetail.ok).toBe(true);
+    if (!collapseDetail.ok) throw new Error(collapseDetail.error.message);
+    expect(collapseDetail.data.detail).toEqual(expect.objectContaining({
+      id: collapseData['artifactId'],
+      type: 'collapse-proposal',
+      props: expect.objectContaining({
+        artifact_digest: collapseData['artifactDigest'],
+        comparison_artifact_digest: comparisonData['artifactDigest'],
+      }),
+      contentOid: collapseRecord['contentOid'],
+    }));
+    const graph = await graphPort.getGraph();
+    const rawCollapseContent = await graph.getContent(collapseData['artifactId'] as string);
+    const collapseContent = rawCollapseContent ? Buffer.from(rawCollapseContent).toString('utf8') : '{}';
+    expect(JSON.parse(collapseContent)).toEqual(expect.objectContaining({
+      kind: 'collapse-proposal',
+      artifactId: collapseData['artifactId'],
+      substrate: expect.objectContaining({
+        transferFact: expect.objectContaining({
+          factKind: 'coordinate-transfer-plan',
+        }),
+      }),
+    }));
+
+    const humanService = new ControlPlaneService(graphPort, 'human.reviewer');
+    const collapseAttestation = await humanService.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'attest-collapse-proposal',
+      cmd: 'attest',
+      args: {
+        targetId: collapseData['artifactId'],
+        decision: 'approve',
+        rationale: 'Persisted collapse proposal is now an attestation target.',
+      },
+    });
+    expect(collapseAttestation.ok).toBe(true);
+    if (!collapseAttestation.ok) throw new Error(collapseAttestation.error.message);
+  });
 });

@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   createComment: vi.fn(),
   createProposal: vi.fn(),
   createAttestation: vi.fn(),
+  createCanonicalArtifact: vi.fn(),
   createWorkingSet: vi.fn(),
   braidWorkingSet: vi.fn(),
   analyzeConflicts: vi.fn(),
@@ -558,6 +559,9 @@ vi.mock('../../src/domain/services/RecordService.js', () => ({
     }
     createAttestation(input: unknown) {
       return mocks.createAttestation(input);
+    }
+    createCanonicalArtifact(input: unknown) {
+      return mocks.createCanonicalArtifact(input);
     }
   },
 }));
@@ -1316,6 +1320,33 @@ describe('ControlPlaneService', () => {
     }));
   });
 
+  it('rejects compare_worldlines persist=true until durable comparison recording is honest', async () => {
+    const service = new ControlPlaneService({
+      getGraph: mocks.getGraph,
+      openIsolatedGraph: mocks.openIsolatedGraph,
+      reset: vi.fn(),
+    }, 'agent.prime');
+
+    const result = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'req-compare-persisted',
+      cmd: 'compare_worldlines',
+      args: {
+        worldlineId: 'worldline:review-auth',
+        persist: true,
+      },
+    });
+
+    expect(mocks.compareCoordinates).not.toHaveBeenCalled();
+    expect(mocks.createCanonicalArtifact).not.toHaveBeenCalled();
+    expect(result).toEqual(expect.objectContaining({
+      ok: false,
+      error: expect.objectContaining({
+        code: 'not_implemented',
+      }),
+    }));
+  });
+
   it('requires againstWorldlineId when compare_worldlines starts from worldline:live', async () => {
     const service = new ControlPlaneService({
       getGraph: mocks.getGraph,
@@ -1490,6 +1521,112 @@ describe('ControlPlaneService', () => {
         code: 'stale_base_observation',
       }),
     }));
+  });
+
+  it('can persist a collapse proposal as a durable live-governance record', async () => {
+    mocks.compareCoordinates.mockResolvedValueOnce(
+      makeCoordinateComparison({
+        comparisonDigest: 'comparison:collapse-persisted',
+        leftWorkingSetId: 'wl_review-auth',
+        rightWorkingSetId: null,
+        targetId: null,
+      }),
+    );
+    mocks.planCoordinateTransfer.mockResolvedValueOnce(
+      makeCoordinateTransferPlan({
+        comparisonDigest: 'comparison:collapse-persisted',
+        transferDigest: 'transfer:collapse-persisted',
+        sourceWorkingSetId: 'wl_review-auth',
+        targetWorkingSetId: null,
+      }),
+    );
+    mocks.executeMutation.mockResolvedValueOnce({
+      valid: true,
+      code: null,
+      reasons: [],
+      sideEffects: ['set task:ONE.status'],
+      patch: null,
+      executed: false,
+    });
+    const comparisonArtifactDigest = buildComparisonArtifactDigest(
+      'comparison:collapse-persisted',
+      'worldline:review-auth',
+      'worldline:live',
+    );
+    const collapseArtifactDigest = digest({
+      kind: 'collapse-proposal',
+      comparisonArtifactDigest,
+      transferDigest: 'transfer:collapse-persisted',
+      source: {
+        worldlineId: 'worldline:review-auth',
+        at: 'tip',
+      },
+      target: {
+        worldlineId: 'worldline:live',
+        at: 'tip',
+      },
+      attestationIds: ['attestation:1'],
+    });
+    mocks.createCanonicalArtifact.mockResolvedValueOnce({
+      id: `collapse-proposal:${collapseArtifactDigest}`,
+      patch: 'patch:collapse-proposal',
+      recordedAt: 2345,
+      contentOid: 'oid:collapse-proposal',
+      existed: false,
+    });
+
+    const service = new ControlPlaneService({
+      getGraph: mocks.getGraph,
+      openIsolatedGraph: mocks.openIsolatedGraph,
+      reset: vi.fn(),
+    }, 'agent.prime');
+
+    const result = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'req-collapse-persisted',
+      cmd: 'collapse_worldline',
+      args: {
+        worldlineId: 'worldline:review-auth',
+        comparisonArtifactDigest,
+        attestationIds: ['attestation:1'],
+        persist: true,
+      },
+    });
+
+    expect(mocks.createCanonicalArtifact).toHaveBeenCalledWith(expect.objectContaining({
+      id: `collapse-proposal:${collapseArtifactDigest}`,
+      kind: 'collapse-proposal',
+      artifactDigest: collapseArtifactDigest,
+      recordedBy: 'agent.prime',
+      observerProfileId: 'observer:default',
+      policyPackVersion: 'compat-v0',
+      indexedProperties: expect.objectContaining({
+        comparison_artifact_digest: comparisonArtifactDigest,
+        transfer_digest: 'transfer:collapse-persisted',
+        source_worldline_id: 'worldline:review-auth',
+        target_worldline_id: 'worldline:live',
+        dry_run: true,
+        executable: false,
+        changed: true,
+        attestation_count: 1,
+      }),
+    }));
+    expect(result).toEqual(expect.objectContaining({
+      ok: true,
+      data: expect.objectContaining({
+        kind: 'collapse-proposal',
+        artifactId: `collapse-proposal:${collapseArtifactDigest}`,
+        record: {
+          persisted: true,
+          recordedInWorldlineId: 'worldline:live',
+          recordedAt: 2345,
+          patch: 'patch:collapse-proposal',
+          contentOid: 'oid:collapse-proposal',
+          existed: false,
+        },
+      }),
+    }));
+    expect(result).not.toHaveProperty('observation');
   });
 
   it('diffs derived worldlines through working-set materialization and provenance', async () => {
