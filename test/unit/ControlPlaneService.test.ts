@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
   analyzeConflicts: vi.fn(),
   materializeWorkingSet: vi.fn(),
   patchesForWorkingSet: vi.fn(),
+  compareCoordinates: vi.fn(),
   getFrontier: vi.fn(),
   getStateSnapshot: vi.fn(),
   getGraph: vi.fn(),
@@ -45,6 +46,184 @@ function makeWorkingSetState(
     prop: new Map<string, unknown>(),
     observedFrontier: new Map(observedFrontier),
     edgeBirthEvent: new Map<string, unknown>(),
+  };
+}
+
+function makeCoordinateComparison(
+  overrides: Partial<{
+    comparisonDigest: string;
+    leftLamportFrontierDigest: string;
+    rightLamportFrontierDigest: string;
+    leftWorkingSetId: string | null;
+    rightWorkingSetId: string | null;
+    targetId: string | null;
+  }> = {},
+) {
+  const targetId = overrides.targetId ?? null;
+  const leftWorkingSetId = overrides.leftWorkingSetId ?? null;
+  const rightWorkingSetId = overrides.rightWorkingSetId ?? null;
+  return {
+    comparisonVersion: 'coordinate-compare/v1',
+    comparisonDigest: overrides.comparisonDigest ?? 'comparison:123',
+    left: {
+      requested: leftWorkingSetId
+        ? { kind: 'working_set', workingSetId: leftWorkingSetId }
+        : { kind: 'live' },
+      resolved: {
+        coordinateKind: leftWorkingSetId ? 'working_set' : 'frontier',
+        patchFrontier: { 'agent.prime': 'patch:left' },
+        patchFrontierDigest: 'patch-frontier:left',
+        lamportFrontier: { 'agent.prime': 12 },
+        lamportFrontierDigest: overrides.leftLamportFrontierDigest ?? 'lamport:left',
+        lamportCeiling: null,
+        stateHash: 'state:left',
+        patchUniverseDigest: 'universe:left',
+        summary: {
+          patchCount: 2,
+          nodeCount: 3,
+          edgeCount: 1,
+          nodePropertyCount: 4,
+          edgePropertyCount: 0,
+        },
+        ...(leftWorkingSetId === null
+          ? {}
+          : {
+            workingSet: {
+              workingSetId: leftWorkingSetId,
+              baseLamportCeiling: null,
+              overlayHeadPatchSha: null,
+              overlayPatchCount: 1,
+            },
+          }),
+      },
+    },
+    right: {
+      requested: rightWorkingSetId
+        ? { kind: 'working_set', workingSetId: rightWorkingSetId }
+        : { kind: 'live' },
+      resolved: {
+        coordinateKind: rightWorkingSetId ? 'working_set' : 'frontier',
+        patchFrontier: { 'agent.prime': 'patch:right' },
+        patchFrontierDigest: 'patch-frontier:right',
+        lamportFrontier: { 'agent.prime': 11 },
+        lamportFrontierDigest: overrides.rightLamportFrontierDigest ?? 'lamport:right',
+        lamportCeiling: null,
+        stateHash: 'state:right',
+        patchUniverseDigest: 'universe:right',
+        summary: {
+          patchCount: 1,
+          nodeCount: 2,
+          edgeCount: 1,
+          nodePropertyCount: 3,
+          edgePropertyCount: 0,
+        },
+        ...(rightWorkingSetId === null
+          ? {}
+          : {
+            workingSet: {
+              workingSetId: rightWorkingSetId,
+              baseLamportCeiling: null,
+              overlayHeadPatchSha: null,
+              overlayPatchCount: 0,
+            },
+          }),
+      },
+    },
+    visiblePatchDivergence: {
+      sharedCount: 1,
+      leftOnlyCount: 1,
+      rightOnlyCount: 0,
+      leftOnlyPatchShas: ['patch:left-only'],
+      rightOnlyPatchShas: [],
+      ...(targetId === null
+        ? {}
+        : {
+          target: {
+            targetId,
+            leftCount: 1,
+            rightCount: 0,
+            sharedCount: 0,
+            leftOnlyCount: 1,
+            rightOnlyCount: 0,
+            leftOnlyPatchShas: ['patch:left-only'],
+            rightOnlyPatchShas: [],
+          },
+        }),
+    },
+    visibleState: {
+      comparisonVersion: 'visible-state-compare/v1',
+      changed: true,
+      summary: {
+        left: {
+          nodeCount: 3,
+          edgeCount: 1,
+          nodePropertyCount: 4,
+          edgePropertyCount: 0,
+        },
+        right: {
+          nodeCount: 2,
+          edgeCount: 1,
+          nodePropertyCount: 3,
+          edgePropertyCount: 0,
+        },
+        nodes: { added: 1, removed: 0 },
+        edges: { added: 0, removed: 0 },
+        nodeProperties: { added: 1, removed: 0, changed: 1 },
+        edgeProperties: { added: 0, removed: 0, changed: 0 },
+      },
+      nodes: {
+        added: ['task:TWO'],
+        removed: [],
+      },
+      edges: {
+        added: [],
+        removed: [],
+      },
+      nodeProperties: {
+        added: [{ node: 'task:TWO', key: 'status', value: 'READY' }],
+        removed: [],
+        changed: [{ node: 'task:ONE', key: 'status', leftValue: 'READY', rightValue: 'BACKLOG' }],
+      },
+      edgeProperties: {
+        added: [],
+        removed: [],
+        changed: [],
+      },
+      ...(targetId === null
+        ? {}
+        : {
+          target: {
+            targetId,
+            changed: true,
+            left: {
+              nodeId: targetId,
+              props: { status: 'READY' },
+              outgoing: [],
+              incoming: [],
+            },
+            right: {
+              nodeId: targetId,
+              props: { status: 'BACKLOG' },
+              outgoing: [],
+              incoming: [],
+            },
+            propertyDelta: {
+              added: [],
+              removed: [],
+              changed: [{ key: 'status', leftValue: 'READY', rightValue: 'BACKLOG' }],
+            },
+            outgoingDelta: {
+              added: [],
+              removed: [],
+            },
+            incomingDelta: {
+              added: [],
+              removed: [],
+            },
+            contentChanged: false,
+          },
+        }),
+    },
   };
 }
 
@@ -184,6 +363,13 @@ describe('ControlPlaneService', () => {
       makeWorkingSetState(['task:ONE'], [['agent.prime', 12], ['wl_review-auth', 0]]),
     );
     mocks.patchesForWorkingSet.mockResolvedValue(['patch:1', 'patch:2']);
+    mocks.compareCoordinates.mockResolvedValue(
+      makeCoordinateComparison({
+        leftWorkingSetId: 'wl_review-auth',
+        rightWorkingSetId: null,
+        targetId: 'task:ONE',
+      }),
+    );
     mocks.getGraph.mockResolvedValue({
       getFrontier: mocks.getFrontier,
       getStateSnapshot: mocks.getStateSnapshot,
@@ -194,6 +380,7 @@ describe('ControlPlaneService', () => {
       analyzeConflicts: mocks.analyzeConflicts,
       materializeWorkingSet: mocks.materializeWorkingSet,
       patchesForWorkingSet: mocks.patchesForWorkingSet,
+      compareCoordinates: mocks.compareCoordinates,
     });
     mocks.openIsolatedGraph.mockResolvedValue({
       getFrontier: mocks.getFrontier,
@@ -206,6 +393,7 @@ describe('ControlPlaneService', () => {
       patchesForWorkingSet: mocks.patchesForWorkingSet,
       createWorkingSet: mocks.createWorkingSet,
       analyzeConflicts: mocks.analyzeConflicts,
+      compareCoordinates: mocks.compareCoordinates,
     });
     mocks.analyzeConflicts.mockResolvedValue({
       analysisVersion: 'conflict-analyzer/v2',
@@ -570,6 +758,152 @@ describe('ControlPlaneService', () => {
       }),
       observation: expect.objectContaining({
         worldlineId: 'worldline:review-auth',
+      }),
+    }));
+  });
+
+  it('compares a derived worldline against live and returns a typed comparison artifact preview', async () => {
+    mocks.compareCoordinates.mockResolvedValueOnce(
+      makeCoordinateComparison({
+        comparisonDigest: 'comparison:derived-vs-live',
+        leftWorkingSetId: 'wl_review-auth',
+        rightWorkingSetId: null,
+        targetId: 'task:ONE',
+      }),
+    );
+
+    const service = new ControlPlaneService({
+      getGraph: mocks.getGraph,
+      openIsolatedGraph: mocks.openIsolatedGraph,
+      reset: vi.fn(),
+    }, 'agent.prime');
+
+    const result = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'req-compare-derived-live',
+      cmd: 'compare_worldlines',
+      args: {
+        worldlineId: 'worldline:review-auth',
+        targetId: 'task:ONE',
+      },
+    });
+
+    expect(mocks.compareCoordinates).toHaveBeenCalledWith({
+      left: { kind: 'working_set', workingSetId: 'wl_review-auth' },
+      right: { kind: 'live' },
+      targetId: 'task:ONE',
+    });
+    expect(result).toEqual(expect.objectContaining({
+      ok: true,
+      cmd: 'compare_worldlines',
+      data: expect.objectContaining({
+        kind: 'comparison-artifact',
+        artifactId: expect.stringMatching(/^comparison-artifact:/),
+        comparisonPolicyVersion: 'compat-v0',
+        targetId: 'task:ONE',
+        left: expect.objectContaining({
+          worldlineId: 'worldline:review-auth',
+          at: 'tip',
+          observation: expect.objectContaining({
+            worldlineId: 'worldline:review-auth',
+            frontierDigest: 'lamport:left',
+          }),
+        }),
+        right: expect.objectContaining({
+          worldlineId: 'worldline:live',
+          at: 'tip',
+          observation: expect.objectContaining({
+            worldlineId: 'worldline:live',
+            frontierDigest: 'lamport:right',
+          }),
+        }),
+        summary: expect.objectContaining({
+          visibleStateChanged: true,
+          patchDiverged: true,
+          visiblePatchDivergence: expect.objectContaining({
+            leftOnlyCount: 1,
+            target: expect.objectContaining({
+              targetId: 'task:ONE',
+            }),
+          }),
+        }),
+        substrate: {
+          kind: 'git-warp-coordinate-comparison',
+          comparisonVersion: 'coordinate-compare/v1',
+          comparisonDigest: 'comparison:derived-vs-live',
+        },
+      }),
+    }));
+    expect(result).not.toHaveProperty('observation');
+  });
+
+  it('compares two derived worldlines with explicit per-side selectors', async () => {
+    mocks.compareCoordinates.mockResolvedValueOnce(
+      makeCoordinateComparison({
+        comparisonDigest: 'comparison:derived-vs-derived',
+        leftWorkingSetId: 'wl_review-auth',
+        rightWorkingSetId: 'wl_release-review',
+        targetId: null,
+      }),
+    );
+
+    const service = new ControlPlaneService({
+      getGraph: mocks.getGraph,
+      openIsolatedGraph: mocks.openIsolatedGraph,
+      reset: vi.fn(),
+    }, 'agent.prime');
+
+    const result = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'req-compare-derived-derived',
+      cmd: 'compare_worldlines',
+      args: {
+        worldlineId: 'worldline:review-auth',
+        againstWorldlineId: 'worldline:release-review',
+        at: { tick: 12 },
+        againstAt: { tick: 10 },
+      },
+    });
+
+    expect(mocks.compareCoordinates).toHaveBeenCalledWith({
+      left: { kind: 'working_set', workingSetId: 'wl_review-auth', ceiling: 12 },
+      right: { kind: 'working_set', workingSetId: 'wl_release-review', ceiling: 10 },
+    });
+    expect(result).toEqual(expect.objectContaining({
+      ok: true,
+      data: expect.objectContaining({
+        kind: 'comparison-artifact',
+        left: expect.objectContaining({
+          worldlineId: 'worldline:review-auth',
+          at: { tick: 12 },
+        }),
+        right: expect.objectContaining({
+          worldlineId: 'worldline:release-review',
+          at: { tick: 10 },
+        }),
+      }),
+    }));
+  });
+
+  it('requires againstWorldlineId when compare_worldlines starts from worldline:live', async () => {
+    const service = new ControlPlaneService({
+      getGraph: mocks.getGraph,
+      openIsolatedGraph: mocks.openIsolatedGraph,
+      reset: vi.fn(),
+    }, 'agent.prime');
+
+    const result = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'req-compare-live-missing-right',
+      cmd: 'compare_worldlines',
+      args: {},
+    });
+
+    expect(mocks.compareCoordinates).not.toHaveBeenCalled();
+    expect(result).toEqual(expect.objectContaining({
+      ok: false,
+      error: expect.objectContaining({
+        code: 'invalid_args',
       }),
     }));
   });

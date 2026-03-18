@@ -39,12 +39,13 @@ Human surface direction:
 2. **XYPH consumes substrate truth**
    - XYPH should not invent conflict provenance above incomplete substrate signals.
    - `xyph api observe` now exposes a substrate-backed `conflicts` projection that relays git-warp conflict facts directly for the live frontier or a derived worldline's backing working-set tip.
+   - `xyph api compare_worldlines` now exposes the published git-warp coordinate comparison surface for live-vs-derived and derived-vs-derived preview, while keeping decision and settlement semantics in XYPH.
    - Conflict meaning, governance, compare/collapse, and human workflow semantics remain XYPH concerns.
 3. **Worldline working sets after substrate facts**
    - Fork/worldline work should use logical working sets over graph observations, not Git worktrees.
    - Materialized graph states are caches, not authoritative models.
    - `fork_worldline` is now implemented as a thin mapping onto git-warp working-set creation for `worldline:live`, with optional current-frontier Lamport ceiling support via `at: { tick }`.
-   - Canonical derived worldlines now support working-set-backed `observe(graph.summary)`, `observe(worldline.summary)`, `observe(entity.detail)`, `history`, `diff`, `apply`, and `observe(conflicts)` slices.
+   - Canonical derived worldlines now support working-set-backed `observe(graph.summary)`, `observe(worldline.summary)`, `observe(entity.detail)`, `history`, `diff`, `apply`, `observe(conflicts)`, and `compare_worldlines` slices.
    - The canonical future composition verb is `braid_worldlines`: multiple worldline-derived effects kept co-present rather than silently merged or rebased.
    - Arbitrary historical frontiers, derived-from-derived forking, and broader compatibility-projection parity remain future slices.
 

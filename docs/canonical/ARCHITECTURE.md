@@ -68,12 +68,12 @@ Current foundation slice:
 - implemented now: `history`
 - implemented now: `diff`
 - implemented now: `fork_worldline`
+- implemented now: `compare_worldlines`
 - implemented now: `apply`
 - implemented now: `comment`
 - implemented now: `propose`
 - implemented now: `attest`
 - reserved, not yet implemented: `braid_worldlines`
-- reserved, not yet implemented: `compare_worldlines`
 - reserved, not yet implemented: `collapse_worldline`
 - reserved, hidden admin/debug concepts: `query`, `rewind_worldline`
 
@@ -111,6 +111,19 @@ visible patch universe vary by worldline. Compatibility projections such as
 `prescriptions` still read from the live or isolated graph services until
 git-warp exposes the right substrate query surfaces for broader working-set
 parity.
+
+`compare_worldlines` now uses that same boundary honestly. XYPH opens an
+isolated read graph and delegates to git-warp's published coordinate
+comparison surface, then returns a typed XYPH `comparison-artifact` preview
+with:
+
+- left/right worldline metadata in XYPH terms
+- per-side observation coordinates
+- substrate divergence facts carried explicitly instead of re-derived in XYPH
+
+That keeps comparison factual and read-only. Decision, attestation, and future
+collapse semantics remain XYPH concerns built on top of this substrate-backed
+preview rather than hidden inside it.
 
 The next worldline-composition term is also now fixed: XYPH will use
 **`braid_worldlines`** for the future operation that keeps multiple

@@ -1,6 +1,10 @@
 import { createHash } from 'node:crypto';
 import type WarpGraph from '@git-stunts/git-warp';
-import type { ConflictDiagnostic } from '@git-stunts/git-warp';
+import type {
+  ConflictDiagnostic,
+  CoordinateComparisonSelectorV1,
+  CoordinateComparisonV1,
+} from '@git-stunts/git-warp';
 import {
   createStateReaderV5,
   type VisibleStateProjectionV5,
@@ -177,6 +181,12 @@ function parseTickLike(value: unknown): number | null {
     : null;
 }
 
+function normalizeSelectorValue(selector: ObservationSelector): 'tip' | { tick: number } {
+  return selector.kind === 'tip'
+    ? 'tip'
+    : { tick: selector.tick };
+}
+
 function workingSetErrorCode(err: unknown): string | null {
   return typeof err === 'object'
     && err !== null
@@ -300,6 +310,8 @@ export class ControlPlaneService implements ControlPlanePort {
         return this.explain(request, capability);
       case 'fork_worldline':
         return this.forkWorldline(request, capability);
+      case 'compare_worldlines':
+        return this.compareWorldlines(request, capability);
       case 'apply':
         return this.apply(request, capability);
       case 'comment':
@@ -308,7 +320,6 @@ export class ControlPlaneService implements ControlPlanePort {
         return this.propose(request, capability);
       case 'attest':
         return this.attest(request, capability);
-      case 'compare_worldlines':
       case 'collapse_worldline':
       case 'query':
       case 'rewind_worldline':
@@ -360,7 +371,17 @@ export class ControlPlaneService implements ControlPlanePort {
   }
 
   private resolveAtSelector(request: ControlPlaneRequestV1): ObservationSelector {
-    const raw = request.args['at'];
+    return this.resolveObservationSelectorValue(request.args['at'], 'at');
+  }
+
+  private resolveAgainstAtSelector(request: ControlPlaneRequestV1): ObservationSelector {
+    return this.resolveObservationSelectorValue(request.args['againstAt'], 'againstAt');
+  }
+
+  private resolveObservationSelectorValue(
+    raw: unknown,
+    field: 'at' | 'againstAt',
+  ): ObservationSelector {
     if (raw === undefined || raw === null || raw === 'tip') {
       return { kind: 'tip' };
     }
@@ -376,7 +397,7 @@ export class ControlPlaneService implements ControlPlanePort {
     }
     throw controlPlaneFailure(
       'invalid_args',
-      'at must be "tip", a non-negative integer tick, or an object of the form { tick }',
+      `${field} must be "tip", a non-negative integer tick, or an object of the form { tick }`,
     );
   }
 
@@ -900,6 +921,107 @@ export class ControlPlaneService implements ControlPlanePort {
       );
     }
     return workingSetId;
+  }
+
+  private buildComparisonSelector(
+    worldlineId: string,
+    selector: ObservationSelector,
+    cmd: string,
+  ): CoordinateComparisonSelectorV1 {
+    if (worldlineId === DEFAULT_WORLDLINE_ID) {
+      return selector.kind === 'tick'
+        ? { kind: 'live', ceiling: selector.tick }
+        : { kind: 'live' };
+    }
+
+    const workingSetId = toSubstrateWorkingSetId(worldlineId);
+    if (!workingSetId) {
+      throw controlPlaneFailure(
+        'invalid_args',
+        `${cmd} currently supports only worldline:live or canonical derived worldline ids backed by git-warp working sets.`,
+        {
+          cmd,
+          worldlineId,
+        },
+      );
+    }
+
+    return selector.kind === 'tick'
+      ? { kind: 'working_set', workingSetId, ceiling: selector.tick }
+      : { kind: 'working_set', workingSetId };
+  }
+
+  private resolveComparisonWorldlineId(
+    capability: EffectiveCapabilityGrant,
+    request: ControlPlaneRequestV1,
+  ): string {
+    const raw = request.args['againstWorldlineId'];
+    if (raw === undefined || raw === null) {
+      if (capability.worldlineId !== DEFAULT_WORLDLINE_ID) {
+        return DEFAULT_WORLDLINE_ID;
+      }
+      throw controlPlaneFailure(
+        'invalid_args',
+        'compare_worldlines requires againstWorldlineId when the effective worldline is worldline:live.',
+      );
+    }
+    return this.requireString(raw, 'compare_worldlines againstWorldlineId');
+  }
+
+  private rethrowComparisonError(
+    err: unknown,
+    leftWorldlineId: string,
+    rightWorldlineId: string,
+  ): never {
+    const substrateCode = workingSetErrorCode(err);
+    switch (substrateCode) {
+      case 'invalid_coordinate':
+        throw controlPlaneFailure(
+          'invalid_args',
+          err instanceof Error ? err.message : String(err),
+          {
+            leftWorldlineId,
+            rightWorldlineId,
+            substrateCode,
+          },
+        );
+      case 'E_WORKING_SET_NOT_FOUND':
+        throw controlPlaneFailure(
+          'not_found',
+          err instanceof Error ? err.message : String(err),
+          {
+            leftWorldlineId,
+            rightWorldlineId,
+            substrateCode,
+          },
+        );
+      case 'E_WORKING_SET_INVALID_ARGS':
+      case 'E_WORKING_SET_ID_INVALID':
+      case 'E_WORKING_SET_COORDINATE_INVALID':
+        throw controlPlaneFailure(
+          'invalid_args',
+          err instanceof Error ? err.message : String(err),
+          {
+            leftWorldlineId,
+            rightWorldlineId,
+            substrateCode,
+          },
+        );
+      case 'E_WORKING_SET_ALREADY_EXISTS':
+      case 'E_WORKING_SET_CORRUPT':
+      case 'E_WORKING_SET_MISSING_OBJECT':
+        throw controlPlaneFailure(
+          'invariant_violation',
+          err instanceof Error ? err.message : String(err),
+          {
+            leftWorldlineId,
+            rightWorldlineId,
+            substrateCode,
+          },
+        );
+      default:
+        throw err;
+    }
   }
 
   private workingSetReadOptions(selector: ObservationSelector): { ceiling?: number | null } | undefined {
@@ -1568,6 +1690,148 @@ export class ControlPlaneService implements ControlPlanePort {
       },
       diagnostics: [],
       observation,
+    };
+  }
+
+  private async compareWorldlines(
+    request: ControlPlaneRequestV1,
+    capability: EffectiveCapabilityGrant,
+  ): Promise<{
+    data: Record<string, unknown>;
+    diagnostics: Diagnostic[];
+  }> {
+    const leftWorldlineId = capability.worldlineId;
+    const rightWorldlineId = this.resolveComparisonWorldlineId(capability, request);
+    const leftSelector = this.resolveAtSelector(request);
+    const rightSelector = this.resolveAgainstAtSelector(request);
+    const targetId = request.args['targetId'] === undefined
+      ? null
+      : this.requireString(request.args['targetId'], 'compare_worldlines targetId');
+
+    const graph = await this.openIsolatedReadGraph(
+      'compare_worldlines requires an isolated read-graph provider.',
+      {
+        leftWorldlineId,
+        rightWorldlineId,
+      },
+    );
+    await graph.syncCoverage();
+
+    let comparison: CoordinateComparisonV1;
+    try {
+      comparison = await graph.compareCoordinates({
+        left: this.buildComparisonSelector(leftWorldlineId, leftSelector, 'compare_worldlines'),
+        right: this.buildComparisonSelector(rightWorldlineId, rightSelector, 'compare_worldlines'),
+        ...(targetId === null ? {} : { targetId }),
+      });
+    } catch (err) {
+      this.rethrowComparisonError(err, leftWorldlineId, rightWorldlineId);
+    }
+
+    const comparedAt = Date.now();
+    const leftObservation = await this.buildObservationCoordinate(
+      {
+        ...request,
+        args: {
+          side: 'left',
+          worldlineId: leftWorldlineId,
+          at: normalizeSelectorValue(leftSelector),
+          ...(targetId === null ? {} : { targetId }),
+        },
+      },
+      capability,
+      comparedAt,
+      null,
+      false,
+      graph,
+      comparison.left.resolved.lamportFrontierDigest,
+    );
+    const rightObservation = await this.buildObservationCoordinate(
+      {
+        ...request,
+        args: {
+          side: 'right',
+          worldlineId: rightWorldlineId,
+          at: normalizeSelectorValue(rightSelector),
+          ...(targetId === null ? {} : { targetId }),
+        },
+      },
+      {
+        ...capability,
+        worldlineId: rightWorldlineId,
+      },
+      comparedAt,
+      null,
+      false,
+      graph,
+      comparison.right.resolved.lamportFrontierDigest,
+    );
+
+    const patchDiverged = comparison.visiblePatchDivergence.leftOnlyCount > 0
+      || comparison.visiblePatchDivergence.rightOnlyCount > 0;
+    const artifactDigest = digest({
+      kind: 'comparison-artifact',
+      comparisonDigest: comparison.comparisonDigest,
+      comparisonPolicyVersion: capability.comparisonPolicyVersion,
+      left: {
+        worldlineId: leftWorldlineId,
+        at: normalizeSelectorValue(leftSelector),
+      },
+      right: {
+        worldlineId: rightWorldlineId,
+        at: normalizeSelectorValue(rightSelector),
+      },
+      targetId,
+    });
+
+    return {
+      data: {
+        kind: 'comparison-artifact',
+        artifactId: `comparison-artifact:${artifactDigest}`,
+        artifactDigest,
+        comparedAt,
+        comparisonPolicyVersion: capability.comparisonPolicyVersion,
+        changed: comparison.visibleState.changed || patchDiverged,
+        ...(targetId === null ? {} : { targetId }),
+        left: {
+          worldlineId: leftWorldlineId,
+          at: normalizeSelectorValue(leftSelector),
+          observation: leftObservation,
+          summary: comparison.left.resolved.summary,
+          substrate: comparison.left,
+        },
+        right: {
+          worldlineId: rightWorldlineId,
+          at: normalizeSelectorValue(rightSelector),
+          observation: rightObservation,
+          summary: comparison.right.resolved.summary,
+          substrate: comparison.right,
+        },
+        summary: {
+          visibleStateChanged: comparison.visibleState.changed,
+          patchDiverged,
+          visiblePatchDivergence: comparison.visiblePatchDivergence,
+          visibleState: comparison.visibleState.summary,
+        },
+        preview: {
+          visiblePatchDivergence: comparison.visiblePatchDivergence,
+          visibleState: {
+            nodes: comparison.visibleState.nodes,
+            edges: comparison.visibleState.edges,
+            nodeProperties: comparison.visibleState.nodeProperties,
+            edgeProperties: comparison.visibleState.edgeProperties,
+            ...(comparison.visibleState.target === undefined
+              ? {}
+              : { target: comparison.visibleState.target }),
+          },
+        },
+        substrate: {
+          kind: 'git-warp-coordinate-comparison',
+          comparisonVersion: comparison.comparisonVersion,
+          comparisonDigest: comparison.comparisonDigest,
+        },
+      },
+      diagnostics: [],
     };
   }
 

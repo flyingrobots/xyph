@@ -227,10 +227,23 @@ Canonical derived worldlines are currently honest on this substrate surface:
 - `diff`
 - `apply`
 - `observe(conflicts)`
+- `compare_worldlines`
 
 Observation coordinates across these derived-worldline reads now report the
 working-set-local frontier digest instead of silently falling back to
 `worldline:live`.
+
+`compare_worldlines` now provides the first honest comparison preview backed by
+published git-warp coordinate comparison facts. It supports:
+
+- derived vs live
+- derived vs derived
+- explicit `at` / `againstAt` selectors
+- optional `targetId` focus diffs
+
+The result is a typed XYPH `comparison-artifact` preview with per-side
+observation coordinates and substrate-backed divergence facts. It is
+intentionally read-only and does **not** perform collapse or settlement.
 
 Reserved next-step terminology:
 

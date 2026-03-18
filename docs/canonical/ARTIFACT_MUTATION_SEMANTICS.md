@@ -141,6 +141,7 @@ The current sovereign-control-plane foundation implements:
 - append-only comments
 - append-only attestations
 - non-authoritative proposals
+- read-only `comparison-artifact` previews from `compare_worldlines`
 - primitive-op `apply`
 - working-set-backed `fork_worldline` creation from `worldline:live`
 - tick-aware low-level observation for `graph.summary`, `worldline.summary`,
@@ -151,6 +152,8 @@ The current sovereign-control-plane foundation implements:
   `observe(entity.detail)`, `history`, `diff`, and `apply` routed through
   git-warp working sets rather than the shared live graph
 - structured redaction for content-bearing `entity.detail` observations
+- substrate-backed worldline comparison previews that remain separate from
+  attestation, approval, or collapse execution
 
 Current `fork_worldline` is intentionally narrow:
 
@@ -163,6 +166,6 @@ Current `fork_worldline` is intentionally narrow:
 - it does **not** yet provide broader compatibility projections or nested
   derived-worldline forking
 
-It does **not** yet implement full comparison artifacts, collapse proposals as
-first-class executable workflows, full worldline-local execution, or lease
-enforcement. Those remain future slices governed by this contract.
+It does **not** yet implement durable comparison artifact records, collapse
+proposals as first-class executable workflows, full worldline-local execution,
+or lease enforcement. Those remain future slices governed by this contract.

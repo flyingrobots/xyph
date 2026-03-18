@@ -125,12 +125,12 @@ Current foundation-slice implementation status:
 - implemented now: `history`
 - implemented now: `diff`
 - implemented now: `fork_worldline`
+- implemented now: `compare_worldlines`
 - implemented now: `apply`
 - implemented now: `propose`
 - implemented now: `comment`
 - implemented now: `attest`
 - reserved, not yet implemented: `braid_worldlines`
-- reserved, not yet implemented: `compare_worldlines`
 - reserved, not yet implemented: `collapse_worldline`
 - reserved, not yet implemented: `query`
 - reserved, not yet implemented: `rewind_worldline`
@@ -159,6 +159,11 @@ Every read returns a reproducible observation coordinate:
 - `frontierDigest`
 - `graphMeta`
 - optional `comparisonPolicyVersion`
+
+`compare_worldlines` is the exception to the single-coordinate return shape.
+Because it spans two worldline/selector surfaces, it returns per-side
+observation coordinates inside the `comparison-artifact` payload instead of a
+single top-level `observation`.
 
 Every read accepts:
 
@@ -191,7 +196,7 @@ surface than `worldline:live`:
 
 - working-set-aware now: `observe(graph.summary)`,
   `observe(worldline.summary)`, `observe(entity.detail)`, `history`, `diff`,
-  `apply`, `observe(conflicts)`
+  `apply`, `observe(conflicts)`, `compare_worldlines`
 - still live-service-backed for now: compatibility projections such as
   `briefing`, `context`, `next`, `submissions`, `diagnostics`, and
   `prescriptions`
@@ -246,6 +251,36 @@ Current behavior:
 This is intentionally narrower than the long-term worldline model. Arbitrary
 historical frontiers, derived-from-derived forking, and worldline-local replay
 remain future slices.
+
+## `compare_worldlines` Current Slice
+
+`compare_worldlines` is now implemented as a read-only XYPH mapping over
+git-warp's published coordinate comparison helpers.
+
+Current behavior:
+
+- compares the effective `worldlineId` on the left against:
+  - explicit `againstWorldlineId`, or
+  - `worldline:live` by default when the left side is a canonical derived
+    worldline
+- requires `againstWorldlineId` when the left side is already `worldline:live`
+- accepts:
+  - `at`
+  - `againstAt`
+  - optional `targetId`
+- currently supports only:
+  - `worldline:live`
+  - canonical derived worldlines backed by git-warp working sets
+- returns:
+  - a typed XYPH `comparison-artifact` preview
+  - per-side observation coordinates
+  - substrate-backed visible patch divergence
+  - substrate-backed visible node / edge / property deltas
+  - optional target-local comparison details when `targetId` is provided
+
+This slice is intentionally comparison-only. It does **not** collapse, approve,
+or otherwise execute settlement. Comparison remains separate from decision and
+execution.
 
 ## Future Worldline Composition Term
 
