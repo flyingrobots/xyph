@@ -16,6 +16,7 @@ import type { ControlPlaneHooks, ControlPlanePort } from '../../ports/ControlPla
 import {
   CONTROL_PLANE_VERSION,
   DEFAULT_WORLDLINE_ID,
+  fromSubstrateWorkingSetId,
   isCanonicalDerivedWorldlineId,
   toSubstrateWorkingSetId,
   type ControlPlaneAudit,
@@ -26,6 +27,7 @@ import {
   type ControlPlaneRequestV1,
   type ControlPlaneTerminalRecordV1,
   type ObservationCoordinate,
+  type ObservationCoordinateBacking,
 } from '../models/controlPlane.js';
 import type { Diagnostic } from '../models/diagnostics.js';
 import type { EntityDetail } from '../models/dashboard.js';
@@ -124,6 +126,9 @@ type ObservationSelector =
 
 type AnalyzeConflictsOptions = NonNullable<Parameters<WarpGraph['analyzeConflicts']>[0]>;
 type ConflictAnalysisResult = Awaited<ReturnType<WarpGraph['analyzeConflicts']>>;
+type WorkingSetDescriptor = NonNullable<Awaited<ReturnType<WarpGraph['getWorkingSet']>>>;
+type ResolvedWorkingSetContext = NonNullable<ConflictAnalysisResult['resolvedCoordinate']['workingSet']>;
+type ComparisonResolvedSide = CoordinateComparisonV1['left']['resolved'];
 
 interface WorkingSetProjectionContext {
   graph: WarpGraph;
@@ -132,11 +137,13 @@ interface WorkingSetProjectionContext {
   reader: VisibleStateReaderV5;
   projection: VisibleStateProjectionV5;
   frontierDigest: string;
+  backing: ObservationCoordinateBacking;
 }
 
 interface DerivedWorldlineGraphContext {
   graphCtx: ReturnType<typeof createGraphContextFromGraph>;
   frontierDigest: string;
+  backing: ObservationCoordinateBacking;
 }
 
 interface RedactionRecord {
@@ -198,6 +205,106 @@ function workingSetErrorCode(err: unknown): string | null {
 
 function frontierDigestFromObservedFrontier(frontier: Map<string, unknown>): string {
   return digest([...frontier.entries()].sort(([a], [b]) => a.localeCompare(b)));
+}
+
+function liveObservationBacking(): ObservationCoordinateBacking {
+  return {
+    kind: 'live_frontier',
+    substrate: {
+      kind: 'git-warp-frontier',
+    },
+  };
+}
+
+function mapSupportWorldlineIds(supportWorkingSetIds: string[]): string[] {
+  return supportWorkingSetIds
+    .map(fromSubstrateWorkingSetId)
+    .filter((worldlineId): worldlineId is string => worldlineId !== null);
+}
+
+function workingSetObservationBacking(fields: {
+  workingSetId: string;
+  baseLamportCeiling: number | null;
+  overlayHeadPatchSha: string | null;
+  overlayPatchCount: number;
+  overlayWritable: boolean;
+  supportWorkingSetIds: string[];
+}): ObservationCoordinateBacking {
+  return {
+    kind: 'derived_working_set',
+    substrate: {
+      kind: 'git-warp-working-set',
+      workingSetId: fields.workingSetId,
+      baseLamportCeiling: fields.baseLamportCeiling,
+      overlayHeadPatchSha: fields.overlayHeadPatchSha,
+      overlayPatchCount: fields.overlayPatchCount,
+      overlayWritable: fields.overlayWritable,
+      braid: {
+        supportCount: fields.supportWorkingSetIds.length,
+        supportWorldlineIds: mapSupportWorldlineIds(fields.supportWorkingSetIds),
+        supportWorkingSetIds: [...fields.supportWorkingSetIds],
+      },
+    },
+  };
+}
+
+function workingSetObservationBackingFromDescriptor(descriptor: WorkingSetDescriptor): ObservationCoordinateBacking {
+  return workingSetObservationBacking({
+    workingSetId: descriptor.workingSetId,
+    baseLamportCeiling: descriptor.baseObservation.lamportCeiling,
+    overlayHeadPatchSha: descriptor.overlay.headPatchSha,
+    overlayPatchCount: descriptor.overlay.patchCount,
+    overlayWritable: descriptor.overlay.writable,
+    supportWorkingSetIds: descriptor.braid.readOverlays.map((overlay) => overlay.workingSetId),
+  });
+}
+
+function workingSetObservationBackingFromResolved(workingSet: ResolvedWorkingSetContext): ObservationCoordinateBacking {
+  return workingSetObservationBacking({
+    workingSetId: workingSet.workingSetId,
+    baseLamportCeiling: workingSet.baseLamportCeiling,
+    overlayHeadPatchSha: workingSet.overlayHeadPatchSha,
+    overlayPatchCount: workingSet.overlayPatchCount,
+    overlayWritable: workingSet.overlayWritable,
+    supportWorkingSetIds: workingSet.braid.braidedWorkingSetIds,
+  });
+}
+
+function comparisonResolvedSideBacking(resolved: ComparisonResolvedSide): ObservationCoordinateBacking {
+  return resolved.workingSet
+    ? workingSetObservationBackingFromResolved(resolved.workingSet)
+    : liveObservationBacking();
+}
+
+function singletonConflictTargetId(
+  target: ConflictAnalysisResult['conflicts'][number]['target'],
+): string | undefined {
+  if (typeof target.entityId === 'string') return target.entityId;
+  if (target.targetKind === 'edge_property' && target.from && target.to && target.label) {
+    return `${target.from}:${target.label}:${target.to}`;
+  }
+  return undefined;
+}
+
+function singletonConflictTargetLabel(
+  target: ConflictAnalysisResult['conflicts'][number]['target'],
+): string {
+  if (target.targetKind === 'node_property') {
+    return target.propertyKey
+      ? `node property ${target.entityId ?? 'unknown'}#${target.propertyKey}`
+      : `node property ${target.entityId ?? 'unknown'}`;
+  }
+  if (target.targetKind === 'edge_property') {
+    const edgeKey = target.edgeKey ?? (
+      target.from && target.to && target.label
+        ? `${target.from}:${target.label}:${target.to}`
+        : 'unknown-edge'
+    );
+    return target.propertyKey
+      ? `edge property ${edgeKey}#${target.propertyKey}`
+      : `edge property ${edgeKey}`;
+  }
+  return target.targetKind;
 }
 
 export class ControlPlaneService implements ControlPlanePort {
@@ -595,6 +702,7 @@ export class ControlPlaneService implements ControlPlanePort {
             false,
             graphCtx.graph,
             derived?.frontierDigest,
+            derived?.backing,
           ),
         };
       }
@@ -602,10 +710,16 @@ export class ControlPlaneService implements ControlPlanePort {
         const { options, requested } = this.buildConflictAnalysisRequest(request, selector, capability);
         const graph = await this.graphPort.getGraph();
         const analysis = await this.analyzeConflicts(graph, options);
-        const diagnostics = toConflictProjectionDiagnostics(analysis.diagnostics);
+        const diagnostics = [
+          ...toConflictProjectionDiagnostics(analysis.diagnostics),
+          ...this.braidSingletonDiagnostics(capability.worldlineId, analysis),
+        ];
         const frontierDigest = capability.worldlineId === DEFAULT_WORLDLINE_ID
           ? analysis.resolvedCoordinate.frontierDigest
           : (await this.materializeWorkingSetProjection(capability, selector)).frontierDigest;
+        const observationBacking = analysis.resolvedCoordinate.workingSet
+          ? workingSetObservationBackingFromResolved(analysis.resolvedCoordinate.workingSet)
+          : undefined;
         return {
           data: {
             projection,
@@ -623,6 +737,7 @@ export class ControlPlaneService implements ControlPlanePort {
             false,
             graph,
             frontierDigest,
+            observationBacking,
           ),
         };
       }
@@ -666,6 +781,7 @@ export class ControlPlaneService implements ControlPlanePort {
             true,
             graphCtx.graph,
             derived?.frontierDigest,
+            derived?.backing,
           ),
         };
       }
@@ -1120,6 +1236,60 @@ export class ControlPlaneService implements ControlPlanePort {
     }
   }
 
+  private async loadWorkingSetDescriptor(
+    graph: WarpGraph,
+    worldlineId: string,
+    workingSetId: string,
+  ): Promise<WorkingSetDescriptor> {
+    try {
+      const descriptor = await graph.getWorkingSet(workingSetId);
+      if (!descriptor) {
+        throw controlPlaneFailure(
+          'not_found',
+          `Worldline backing working set not found: ${workingSetId}`,
+          {
+            worldlineId,
+            workingSetId,
+          },
+        );
+      }
+      return descriptor;
+    } catch (err) {
+      if (typeof err === 'object' && err !== null && 'code' in err) {
+        this.rethrowWorkingSetError(err, worldlineId, workingSetId);
+      }
+      throw err;
+    }
+  }
+
+  private braidSingletonDiagnostics(
+    worldlineId: string,
+    analysis: ConflictAnalysisResult,
+  ): Diagnostic[] {
+    const workingSet = analysis.resolvedCoordinate.workingSet;
+    if (!workingSet || workingSet.braid.readOverlayCount === 0) return [];
+
+    const supportWorldlineIds = mapSupportWorldlineIds(workingSet.braid.braidedWorkingSetIds);
+    return analysis.conflicts
+      .filter((trace) => (
+        (trace.target.targetKind === 'node_property' || trace.target.targetKind === 'edge_property')
+        && trace.losers.some((loser) => loser.structurallyDistinctAlternative)
+      ))
+      .map((trace) => ({
+        code: 'braid_singleton_self_erasure',
+        severity: 'warning',
+        category: 'structural',
+        source: 'substrate',
+        summary: 'Braided singleton state may self-erase',
+        message: `Braided worldline ${worldlineId} contains competing writes to ${singletonConflictTargetLabel(trace.target)}. Under LWW only one winner remains visible, so co-present support effects can erase each other in the projection. Model the coexistence as explicit entities or edges if it must remain observable under braid.`,
+        ...(singletonConflictTargetId(trace.target) === undefined
+          ? {}
+          : { subjectId: singletonConflictTargetId(trace.target) }),
+        relatedIds: Array.from(new Set([worldlineId, ...supportWorldlineIds])),
+        blocking: false,
+      }));
+  }
+
   private async materializeWorkingSetProjection(
     capability: EffectiveCapabilityGrant,
     selector: ObservationSelector,
@@ -1141,6 +1311,7 @@ export class ControlPlaneService implements ControlPlanePort {
       },
     );
     try {
+      const descriptor = await this.loadWorkingSetDescriptor(graph, capability.worldlineId, workingSetId);
       const state = await graph.materializeWorkingSet(workingSetId, this.workingSetReadOptions(selector));
       const reader = createStateReaderV5(state);
       return {
@@ -1150,6 +1321,7 @@ export class ControlPlaneService implements ControlPlanePort {
         reader,
         projection: reader.project(),
         frontierDigest: frontierDigestFromObservedFrontier(state.observedFrontier),
+        backing: workingSetObservationBackingFromDescriptor(descriptor),
       };
     } catch (err) {
       this.rethrowWorkingSetError(err, capability.worldlineId, workingSetId);
@@ -1177,19 +1349,34 @@ export class ControlPlaneService implements ControlPlanePort {
       },
     );
 
-    let frontierDigest: string;
+    let frontierDigest: string | undefined;
+    let backing: ObservationCoordinateBacking | undefined;
     try {
+      const descriptor = await this.loadWorkingSetDescriptor(graph, capability.worldlineId, workingSetId);
       const state = await graph.materializeWorkingSet(
         workingSetId,
         this.workingSetReadOptions(selector),
       );
       frontierDigest = frontierDigestFromObservedFrontier(state.observedFrontier);
+      backing = workingSetObservationBackingFromDescriptor(descriptor);
     } catch (err) {
       this.rethrowWorkingSetError(err, capability.worldlineId, workingSetId);
     }
 
+    if (frontierDigest === undefined || backing === undefined) {
+      throw controlPlaneFailure(
+        'invariant_violation',
+        'Derived-worldline read failed to resolve backing metadata.',
+        {
+          worldlineId: capability.worldlineId,
+          selector,
+        },
+      );
+    }
+
     return {
       frontierDigest,
+      backing,
       graphCtx: createGraphContextFromGraph(graph, {
         syncCoverage: false,
         materializeGraph: async (workingGraph) => {
@@ -1249,6 +1436,7 @@ export class ControlPlaneService implements ControlPlanePort {
           false,
           materialized.graph,
           materialized.frontierDigest,
+          materialized.backing,
         ),
       };
     }
@@ -1314,6 +1502,7 @@ export class ControlPlaneService implements ControlPlanePort {
         false,
         current.graph,
         current.frontierDigest,
+        current.backing,
       );
 
       if (since.kind === 'frontier-digest') {
@@ -1364,6 +1553,7 @@ export class ControlPlaneService implements ControlPlanePort {
         false,
         current.graph,
         sinceMaterialized.frontierDigest,
+        sinceMaterialized.backing,
       );
 
       return {
@@ -1716,6 +1906,7 @@ export class ControlPlaneService implements ControlPlanePort {
       false,
       graph,
       descriptor.baseObservation.frontierDigest,
+      workingSetObservationBackingFromDescriptor(descriptor),
     );
 
     return {
@@ -1952,6 +2143,7 @@ export class ControlPlaneService implements ControlPlanePort {
         false,
         graph,
         frontierDigestOverride,
+        workingSetObservationBackingFromDescriptor(descriptor),
       ),
     };
   }
@@ -2008,6 +2200,7 @@ export class ControlPlaneService implements ControlPlanePort {
       false,
       graph,
       comparison.left.resolved.lamportFrontierDigest,
+      comparisonResolvedSideBacking(comparison.left.resolved),
     );
     const rightObservation = await this.buildObservationCoordinate(
       {
@@ -2028,6 +2221,7 @@ export class ControlPlaneService implements ControlPlanePort {
       false,
       graph,
       comparison.right.resolved.lamportFrontierDigest,
+      comparisonResolvedSideBacking(comparison.right.resolved),
     );
 
     const patchDiverged = comparison.visiblePatchDivergence.leftOnlyCount > 0
@@ -2143,10 +2337,13 @@ export class ControlPlaneService implements ControlPlanePort {
 
     const graph = await this.graphPort.getGraph();
     let frontierDigestOverride: string | undefined;
+    let backingOverride: ObservationCoordinateBacking | undefined;
     if (workingSetId) {
       try {
+        const descriptor = await this.loadWorkingSetDescriptor(graph, capability.worldlineId, workingSetId);
         const state = await graph.materializeWorkingSet(workingSetId);
         frontierDigestOverride = frontierDigestFromObservedFrontier(state.observedFrontier);
+        backingOverride = workingSetObservationBackingFromDescriptor(descriptor);
       } catch (err) {
         this.rethrowWorkingSetError(err, capability.worldlineId, workingSetId);
       }
@@ -2168,6 +2365,7 @@ export class ControlPlaneService implements ControlPlanePort {
         false,
         graph,
         frontierDigestOverride,
+        backingOverride,
       ),
     };
   }
@@ -2329,6 +2527,7 @@ export class ControlPlaneService implements ControlPlanePort {
     onlyMeta = false,
     graphOverride?: WarpGraph,
     frontierDigestOverride?: string,
+    backingOverride?: ObservationCoordinateBacking,
   ): Promise<ObservationCoordinate> {
     let frontierDigest = frontierDigestOverride;
     if (!frontierDigest) {
@@ -2360,6 +2559,7 @@ export class ControlPlaneService implements ControlPlanePort {
         onlyMeta,
       }),
       frontierDigest,
+      backing: backingOverride ?? liveObservationBacking(),
       graphMeta,
       comparisonPolicyVersion: capability.comparisonPolicyVersion,
     };

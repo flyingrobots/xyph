@@ -47,6 +47,8 @@ Human surface direction:
    - `fork_worldline` is now implemented as a thin mapping onto git-warp working-set creation for `worldline:live`, with optional current-frontier Lamport ceiling support via `at: { tick }`.
    - `braid_worldlines` is now implemented as a thin mapping onto git-warp braid descriptors for canonical derived worldlines, using `supportWorldlineIds` and optional `readOnly` while keeping the public API worldline-first.
    - Canonical derived worldlines now support working-set-backed `observe(graph.summary)`, `observe(worldline.summary)`, `observe(entity.detail)`, `history`, `diff`, `apply`, `observe(conflicts)`, and `compare_worldlines` slices.
+   - Observation coordinates for those slices now make the substrate backing explicit, including braid support-worldline IDs when the selected worldline is braided.
+   - `observe(conflicts)` now warns when braided overlays are fighting over singleton LWW properties in a way that self-erases co-presence in the application projection.
    - `braid_worldlines` is the canonical composition verb: multiple worldline-derived effects kept co-present rather than silently merged or rebased.
    - Arbitrary historical frontiers, derived-from-derived forking, and broader compatibility-projection parity remain future slices.
 

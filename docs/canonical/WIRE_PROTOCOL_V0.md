@@ -157,8 +157,24 @@ Every read returns a reproducible observation coordinate:
 - `sealedObservationMode`
 - `selectorDigest`
 - `frontierDigest`
+- `backing`
 - `graphMeta`
 - optional `comparisonPolicyVersion`
+
+`backing` makes the substrate truth explicit:
+
+- live-backed reads report `kind: "live_frontier"` with
+  `substrate.kind: "git-warp-frontier"`
+- working-set-backed derived reads report `kind: "derived_working_set"` with
+  substrate details for:
+  - `workingSetId`
+  - `baseLamportCeiling`
+  - `overlayHeadPatchSha`
+  - `overlayPatchCount`
+  - `overlayWritable`
+  - `braid.supportCount`
+  - `braid.supportWorldlineIds`
+  - `braid.supportWorkingSetIds`
 
 `compare_worldlines` is the exception to the single-coordinate return shape.
 Because it spans two worldline/selector surfaces, it returns per-side
@@ -224,6 +240,11 @@ Current behavior:
 - returns:
   - `requested` normalized analyzer inputs
   - `analysis` as the substrate conflict-analysis payload
+
+When the selected derived worldline is braided, `observe(conflicts)` may also
+return XYPH diagnostics warning that singleton LWW property modeling is causing
+self-erasing co-presence under braid. This is an application-level warning
+derived from substrate conflict facts, not a second conflict engine.
 
 This projection is intentionally **tip-scoped** in v1. XYPH now supports
 live-frontier or derived-worldline tip conflict analysis through git-warp
@@ -329,13 +350,16 @@ first honest execution slice:
 - `apply` lowers through the same mutation kernel as live writes, but commits to
   the working-set overlay patch log instead of the shared graph
 - observation metadata for these commands uses the working set's visible
-  frontier digest
+  frontier digest and explicit working-set / braid backing details
+- braided `observe(conflicts)` adds an explicit warning when competing
+  singleton property winners would self-erase co-presence under LWW
 
 This is still intentionally partial. XYPH does **not** yet expose general
 working-set-backed compatibility projections such as `briefing`, `context`,
 `next`, `submissions`, `diagnostics`, or `prescriptions`, and it does **not**
-yet expose collapse semantics in this slice. Explicit braid-wide parity and
-diagnostics across every worldline-backed command remain the next slice.
+yet expose collapse semantics in this slice. Broader compatibility-projection
+parity remains future work, but the canonical derived-worldline execution slice
+now keeps braid backing explicit across the commands listed above.
 
 ## Error Taxonomy
 

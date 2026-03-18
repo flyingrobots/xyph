@@ -323,6 +323,128 @@ describe('ControlPlaneService worldline parity', () => {
       }),
     }));
 
+    expect(braidedDetail.observation.backing).toEqual(expect.objectContaining({
+      kind: 'derived_working_set',
+      substrate: expect.objectContaining({
+        kind: 'git-warp-working-set',
+        workingSetId: 'wl_braid-target',
+        braid: expect.objectContaining({
+          supportCount: 1,
+          supportWorldlineIds: ['worldline:braid-support'],
+        }),
+      }),
+    }));
+
+    const targetApply = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'apply-braid-target',
+      cmd: 'apply',
+      args: {
+        worldlineId: 'worldline:braid-target',
+        rationale: 'Advance the braided target with a singleton status winner.',
+        ops: [
+          { op: 'set_node_property', nodeId: 'task:BRAID-001', key: 'status', value: 'IN_PROGRESS' },
+        ],
+      },
+    });
+    expect(targetApply.ok).toBe(true);
+    if (!targetApply.ok) throw new Error(targetApply.error.message);
+
+    const braidedDetailAfterApply = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'observe-braided-detail-after-apply',
+      cmd: 'observe',
+      args: {
+        projection: 'entity.detail',
+        worldlineId: 'worldline:braid-target',
+        targetId: 'task:BRAID-001',
+      },
+    });
+    expect(braidedDetailAfterApply.ok).toBe(true);
+    if (!braidedDetailAfterApply.ok) throw new Error(braidedDetailAfterApply.error.message);
+    expect(braidedDetailAfterApply.data.detail).toEqual(expect.objectContaining({
+      id: 'task:BRAID-001',
+      props: expect.objectContaining({
+        status: 'IN_PROGRESS',
+      }),
+    }));
+
+    const braidedHistory = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'history-braided-target',
+      cmd: 'history',
+      args: {
+        worldlineId: 'worldline:braid-target',
+        targetId: 'task:BRAID-001',
+      },
+    });
+    expect(braidedHistory.ok).toBe(true);
+    if (!braidedHistory.ok) throw new Error(braidedHistory.error.message);
+    expect(braidedHistory.data).toEqual(expect.objectContaining({
+      patchCount: 2,
+      patches: [expect.any(String), expect.any(String)],
+    }));
+
+    const braidedDiff = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'diff-braided-target',
+      cmd: 'diff',
+      args: {
+        worldlineId: 'worldline:braid-target',
+        targetId: 'task:BRAID-001',
+        since: { tick: 1 },
+      },
+    });
+    expect(braidedDiff.ok).toBe(true);
+    if (!braidedDiff.ok) throw new Error(braidedDiff.error.message);
+    expect(braidedDiff.data).toEqual(expect.objectContaining({
+      changed: true,
+      patchCount: 2,
+      currentPatchCount: 2,
+      sincePatchCount: 0,
+      newPatches: [expect.any(String), expect.any(String)],
+    }));
+
+    const braidedConflicts = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'conflicts-braided-target',
+      cmd: 'observe',
+      args: {
+        projection: 'conflicts',
+        worldlineId: 'worldline:braid-target',
+        entityId: 'task:BRAID-001',
+      },
+    });
+    expect(braidedConflicts.ok).toBe(true);
+    if (!braidedConflicts.ok) throw new Error(braidedConflicts.error.message);
+    expect(braidedConflicts.data.analysis).toEqual(expect.objectContaining({
+      conflicts: expect.arrayContaining([
+        expect.objectContaining({
+          target: expect.objectContaining({
+            targetKind: 'node_property',
+            entityId: 'task:BRAID-001',
+            propertyKey: 'status',
+          }),
+        }),
+      ]),
+    }));
+    expect(braidedConflicts.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: 'braid_singleton_self_erasure',
+        category: 'structural',
+        source: 'substrate',
+      }),
+    ]));
+
+    const braidedFrontierDigests = [
+      targetApply.observation.frontierDigest,
+      braidedDetailAfterApply.observation.frontierDigest,
+      braidedHistory.observation.frontierDigest,
+      braidedDiff.observation.frontierDigest,
+      braidedConflicts.observation.frontierDigest,
+    ];
+    expect(new Set(braidedFrontierDigests)).toHaveLength(1);
+
     const liveDetail = await service.execute({
       v: CONTROL_PLANE_VERSION,
       id: 'observe-live-braided-detail',

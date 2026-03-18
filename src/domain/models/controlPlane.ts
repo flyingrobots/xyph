@@ -112,6 +112,23 @@ export interface ControlPlaneAudit {
   idempotencyKey?: string | null;
 }
 
+export interface ObservationCoordinateBacking {
+  kind: 'live_frontier' | 'derived_working_set';
+  substrate: {
+    kind: 'git-warp-frontier' | 'git-warp-working-set';
+    workingSetId?: string;
+    baseLamportCeiling?: number | null;
+    overlayHeadPatchSha?: string | null;
+    overlayPatchCount?: number;
+    overlayWritable?: boolean;
+    braid?: {
+      supportCount: number;
+      supportWorldlineIds: string[];
+      supportWorkingSetIds: string[];
+    };
+  };
+}
+
 export interface ObservationCoordinate {
   worldlineId: string;
   observedAt: number;
@@ -127,6 +144,7 @@ export interface ObservationCoordinate {
   sealedObservationMode: SealedObservationMode;
   selectorDigest: string;
   frontierDigest: string;
+  backing: ObservationCoordinateBacking;
   graphMeta: GraphMeta | null;
   comparisonPolicyVersion?: string | null;
 }
@@ -218,4 +236,11 @@ export function toSubstrateWorkingSetId(worldlineId: string): string | null {
     return null;
   }
   return workingSetId;
+}
+
+export function fromSubstrateWorkingSetId(workingSetId: string): string | null {
+  if (!workingSetId.startsWith(SUBSTRATE_WORKING_SET_PREFIX)) return null;
+  const suffix = workingSetId.slice(SUBSTRATE_WORKING_SET_PREFIX.length);
+  const worldlineId = `${WORLDLINE_ID_PREFIX}${suffix}`;
+  return isCanonicalDerivedWorldlineId(worldlineId) ? worldlineId : null;
 }

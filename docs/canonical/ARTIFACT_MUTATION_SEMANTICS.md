@@ -153,6 +153,10 @@ The current sovereign-control-plane foundation implements:
 - derived-worldline `observe(graph.summary)`, `observe(worldline.summary)`,
   `observe(entity.detail)`, `history`, `diff`, and `apply` routed through
   git-warp working sets rather than the shared live graph
+- explicit observation backing metadata for those derived-worldline reads,
+  including braid support worldline IDs when applicable
+- braid-aware singleton conflict warnings when co-present overlays compete on
+  one LWW property winner
 - structured redaction for content-bearing `entity.detail` observations
 - substrate-backed worldline comparison previews that remain separate from
   attestation, approval, or collapse execution
@@ -175,6 +179,8 @@ Current `braid_worldlines` is likewise intentionally thin:
 - it requires canonical derived support worldlines
 - it may pin one or more read-only support overlays and optionally freeze the
   target overlay with `readOnly`
+- reads against the braided target now keep that braid backing explicit in the
+  observation coordinate instead of silently reporting only the worldline ID
 - it does **not** merge, rebase, collapse, or settle anything into live truth
 
 It does **not** yet implement durable comparison artifact records, collapse

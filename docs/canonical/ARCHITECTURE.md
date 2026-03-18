@@ -99,11 +99,15 @@ For canonical derived worldlines backed by git-warp working sets, XYPH routes:
 
 - `observe(graph.summary)` / `observe(worldline.summary)` /
   `observe(entity.detail)` through isolated working-set-aware read graphs, with
-  observation coordinates pinned to the working set's visible frontier
+  observation coordinates pinned to the working set's visible frontier and
+  explicit backing metadata for the selected working set / braid
 - `history` through `patchesForWorkingSet(...)`
 - `diff` through working-set-local materialization plus working-set provenance
 - `apply` through the same mutation kernel as live writes, lowered into
   `patchWorkingSet(...)`
+- `observe(conflicts)` through git-warp's working-set-aware conflict analyzer,
+  with explicit warnings when braided overlays compete on singleton LWW
+  properties in a way that can self-erase co-presence
 
 This keeps the reducer and conflict rules worldline-blind while letting the
 visible patch universe vary by worldline. Compatibility projections such as
@@ -139,8 +143,11 @@ That matters because the operation is not ordinary merge or rebase; it changes
 the visible patch universe without pretending one line replaced the other.
 Because the core materialized projections already lower through working-set
 truth, selecting a braided target worldline now exposes those co-present
-effects on that surface. The next slice is still responsible for explicit
-braid-wide parity and diagnostics across the rest of the control plane.
+effects on that surface across `observe(graph.summary)`,
+`observe(worldline.summary)`, `observe(entity.detail)`, `history`, `diff`,
+`apply`, and `observe(conflicts)`. Compatibility projections remain future
+work, but the canonical derived-worldline control-plane slice is now
+explicitly braid-aware on the published substrate boundary.
 
 Existing commands such as `briefing`, `next`, `context`, `submit`, `review`,
 and `merge` still exist, but they should be understood as compatibility

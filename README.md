@@ -231,8 +231,11 @@ Canonical derived worldlines are currently honest on this substrate surface:
 - `compare_worldlines`
 
 Observation coordinates across these derived-worldline reads now report the
-working-set-local frontier digest instead of silently falling back to
-`worldline:live`.
+working-set-local frontier digest and explicit substrate backing details:
+
+- the backing working-set ID
+- overlay head / patch count / writability
+- pinned braid support worldline IDs when the selected worldline is braided
 
 `compare_worldlines` now provides the first honest comparison preview backed by
 published git-warp coordinate comparison facts. It supports:
@@ -256,9 +259,11 @@ published braid substrate for canonical derived worldlines. It:
 - changes co-present visibility without pretending merge, rebase, or collapse
 
 Core materialized projections now follow that braid-visible substrate truth
-when the braided target worldline is selected. Broader explicit braid-aware
-parity and diagnostics across every worldline-backed command remain the next
-slice.
+when the braided target worldline is selected. That parity now extends across
+`history`, `diff`, `apply`, and `observe(conflicts)` for canonical derived
+worldlines too, and `observe(conflicts)` adds an explicit warning when braided
+overlays compete on singleton LWW properties in a way that can self-erase
+co-presence in the projection.
 
 Compatibility projections such as `observe(slice.local)`, `observe(context)`,
 `observe(briefing)`, `observe(next)`, `observe(submissions)`,

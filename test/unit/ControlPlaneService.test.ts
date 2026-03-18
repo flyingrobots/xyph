@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
   braidWorkingSet: vi.fn(),
   analyzeConflicts: vi.fn(),
   materializeWorkingSet: vi.fn(),
+  getWorkingSet: vi.fn(),
   patchesForWorkingSet: vi.fn(),
   compareCoordinates: vi.fn(),
   getFrontier: vi.fn(),
@@ -146,6 +147,11 @@ function makeCoordinateComparison(
               baseLamportCeiling: null,
               overlayHeadPatchSha: null,
               overlayPatchCount: 1,
+              overlayWritable: true,
+              braid: {
+                readOverlayCount: 0,
+                braidedWorkingSetIds: [],
+              },
             },
           }),
       },
@@ -178,6 +184,11 @@ function makeCoordinateComparison(
               baseLamportCeiling: null,
               overlayHeadPatchSha: null,
               overlayPatchCount: 0,
+              overlayWritable: true,
+              braid: {
+                readOverlayCount: 0,
+                braidedWorkingSetIds: [],
+              },
             },
           }),
       },
@@ -415,6 +426,9 @@ describe('ControlPlaneService', () => {
     mocks.materializeWorkingSet.mockResolvedValue(
       makeWorkingSetState(['task:ONE'], [['agent.prime', 12], ['wl_review-auth', 0]]),
     );
+    mocks.getWorkingSet.mockResolvedValue(
+      makeWorkingSetDescriptor(),
+    );
     mocks.patchesForWorkingSet.mockResolvedValue(['patch:1', 'patch:2']);
     mocks.compareCoordinates.mockResolvedValue(
       makeCoordinateComparison({
@@ -433,6 +447,7 @@ describe('ControlPlaneService', () => {
       braidWorkingSet: mocks.braidWorkingSet,
       analyzeConflicts: mocks.analyzeConflicts,
       materializeWorkingSet: mocks.materializeWorkingSet,
+      getWorkingSet: mocks.getWorkingSet,
       patchesForWorkingSet: mocks.patchesForWorkingSet,
       compareCoordinates: mocks.compareCoordinates,
     });
@@ -444,6 +459,7 @@ describe('ControlPlaneService', () => {
       materialize: vi.fn(async () => null),
       patchesFor: vi.fn(async () => ['patch:1']),
       materializeWorkingSet: mocks.materializeWorkingSet,
+      getWorkingSet: mocks.getWorkingSet,
       patchesForWorkingSet: mocks.patchesForWorkingSet,
       createWorkingSet: mocks.createWorkingSet,
       braidWorkingSet: mocks.braidWorkingSet,
@@ -571,6 +587,12 @@ describe('ControlPlaneService', () => {
         principalId: 'agent.prime',
         principalType: 'agent',
         observerProfileId: 'observer:default',
+        backing: expect.objectContaining({
+          kind: 'live_frontier',
+          substrate: expect.objectContaining({
+            kind: 'git-warp-frontier',
+          }),
+        }),
         graphMeta: { maxTick: 12, myTick: 12, writerCount: 1, tipSha: 'abcdef1' },
       }),
     }));
@@ -604,6 +626,17 @@ describe('ControlPlaneService', () => {
       }),
       observation: expect.objectContaining({
         worldlineId: 'worldline:review-auth',
+        backing: expect.objectContaining({
+          kind: 'derived_working_set',
+          substrate: expect.objectContaining({
+            kind: 'git-warp-working-set',
+            workingSetId: 'wl_review-auth',
+            braid: expect.objectContaining({
+              supportCount: 0,
+              supportWorldlineIds: [],
+            }),
+          }),
+        }),
       }),
     }));
   });
@@ -751,6 +784,12 @@ describe('ControlPlaneService', () => {
       }),
       observation: expect.objectContaining({
         worldlineId: 'worldline:review-auth',
+        backing: expect.objectContaining({
+          kind: 'derived_working_set',
+          substrate: expect.objectContaining({
+            workingSetId: 'wl_review-auth',
+          }),
+        }),
       }),
     }));
   });
@@ -853,6 +892,16 @@ describe('ControlPlaneService', () => {
       }),
       observation: expect.objectContaining({
         worldlineId: 'worldline:review-auth',
+        backing: expect.objectContaining({
+          kind: 'derived_working_set',
+          substrate: expect.objectContaining({
+            workingSetId: 'wl_review-auth',
+            braid: expect.objectContaining({
+              supportCount: 2,
+              supportWorldlineIds: ['worldline:hold-auth', 'worldline:audit-auth'],
+            }),
+          }),
+        }),
       }),
     }));
   });
@@ -957,6 +1006,12 @@ describe('ControlPlaneService', () => {
       }),
       observation: expect.objectContaining({
         worldlineId: 'worldline:review-auth',
+        backing: expect.objectContaining({
+          kind: 'derived_working_set',
+          substrate: expect.objectContaining({
+            workingSetId: 'wl_review-auth',
+          }),
+        }),
       }),
     }));
   });
@@ -1006,6 +1061,12 @@ describe('ControlPlaneService', () => {
           observation: expect.objectContaining({
             worldlineId: 'worldline:review-auth',
             frontierDigest: 'lamport:left',
+            backing: expect.objectContaining({
+              kind: 'derived_working_set',
+              substrate: expect.objectContaining({
+                workingSetId: 'wl_review-auth',
+              }),
+            }),
           }),
         }),
         right: expect.objectContaining({
@@ -1014,6 +1075,12 @@ describe('ControlPlaneService', () => {
           observation: expect.objectContaining({
             worldlineId: 'worldline:live',
             frontierDigest: 'lamport:right',
+            backing: expect.objectContaining({
+              kind: 'live_frontier',
+              substrate: expect.objectContaining({
+                kind: 'git-warp-frontier',
+              }),
+            }),
           }),
         }),
         summary: expect.objectContaining({
@@ -1152,6 +1219,12 @@ describe('ControlPlaneService', () => {
       }),
       observation: expect.objectContaining({
         worldlineId: 'worldline:review-auth',
+        backing: expect.objectContaining({
+          kind: 'derived_working_set',
+          substrate: expect.objectContaining({
+            workingSetId: 'wl_review-auth',
+          }),
+        }),
       }),
     }));
   });
@@ -1606,6 +1679,11 @@ describe('ControlPlaneService', () => {
           baseLamportCeiling: null,
           overlayHeadPatchSha: null,
           overlayPatchCount: 0,
+          overlayWritable: true,
+          braid: {
+            readOverlayCount: 0,
+            braidedWorkingSetIds: [],
+          },
         },
       },
       analysisSnapshotHash: 'snapshot:working-set',
@@ -1654,6 +1732,128 @@ describe('ControlPlaneService', () => {
       }),
       observation: expect.objectContaining({
         worldlineId: 'worldline:review-auth',
+        backing: expect.objectContaining({
+          kind: 'derived_working_set',
+          substrate: expect.objectContaining({
+            workingSetId: 'wl_review-auth',
+          }),
+        }),
+      }),
+    }));
+  });
+
+  it('adds an explicit braid singleton diagnostic when co-present overlays compete on one property winner', async () => {
+    mocks.getWorkingSet.mockResolvedValueOnce(
+      makeWorkingSetDescriptor({
+        braidReadOverlays: [
+          {
+            workingSetId: 'wl_hold-auth',
+            overlayId: 'wl_hold-auth',
+            kind: 'patch-log',
+            headPatchSha: 'patch:support',
+            patchCount: 1,
+          },
+        ],
+      }),
+    );
+    mocks.analyzeConflicts.mockResolvedValueOnce({
+      analysisVersion: 'conflict-analyzer/v2',
+      resolvedCoordinate: {
+        analysisVersion: 'conflict-analyzer/v2',
+        coordinateKind: 'working_set',
+        frontier: { 'agent.prime': 'abcdef123456' },
+        frontierDigest: 'frontier:working-set',
+        lamportCeiling: null,
+        scanBudgetApplied: { maxPatches: null },
+        truncationPolicy: 'reverse-causal-order',
+        workingSet: {
+          workingSetId: 'wl_review-auth',
+          baseLamportCeiling: null,
+          overlayHeadPatchSha: 'patch:target',
+          overlayPatchCount: 1,
+          overlayWritable: true,
+          braid: {
+            readOverlayCount: 1,
+            braidedWorkingSetIds: ['wl_hold-auth'],
+          },
+        },
+      },
+      analysisSnapshotHash: 'snapshot:working-set-braid',
+      conflicts: [
+        {
+          conflictId: 'conflict:singleton',
+          kind: 'supersession',
+          target: {
+            targetKind: 'node_property',
+            targetDigest: 'target:task:ONE#status',
+            entityId: 'task:ONE',
+            propertyKey: 'status',
+          },
+          winner: {
+            anchor: { patchSha: 'patch:target', writerId: 'wl_review-auth', lamport: 4, opIndex: 0 },
+            effectDigest: 'effect:winner',
+          },
+          losers: [
+            {
+              anchor: { patchSha: 'patch:support', writerId: 'wl_hold-auth', lamport: 3, opIndex: 0 },
+              effectDigest: 'effect:loser',
+              structurallyDistinctAlternative: true,
+              replayableFromAnchors: true,
+            },
+          ],
+          resolution: {
+            reducerId: 'reduceV5',
+            basis: { code: 'lww' },
+            winnerMode: 'immediate',
+          },
+          whyFingerprint: 'why:singleton',
+          evidence: {
+            level: 'standard',
+            patchRefs: ['patch:target', 'patch:support'],
+            receiptRefs: [],
+          },
+        },
+      ],
+    });
+
+    const service = new ControlPlaneService({
+      getGraph: mocks.getGraph,
+      openIsolatedGraph: mocks.openIsolatedGraph,
+      reset: vi.fn(),
+    }, 'agent.prime');
+
+    const result = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'req-conflicts-braid-singleton',
+      cmd: 'observe',
+      args: {
+        projection: 'conflicts',
+        worldlineId: 'worldline:review-auth',
+      },
+    });
+
+    expect(result).toEqual(expect.objectContaining({
+      ok: true,
+      diagnostics: expect.arrayContaining([
+        expect.objectContaining({
+          code: 'braid_singleton_self_erasure',
+          category: 'structural',
+          source: 'substrate',
+          severity: 'warning',
+          subjectId: 'task:ONE',
+          relatedIds: expect.arrayContaining(['worldline:review-auth', 'worldline:hold-auth']),
+        }),
+      ]),
+      observation: expect.objectContaining({
+        backing: expect.objectContaining({
+          kind: 'derived_working_set',
+          substrate: expect.objectContaining({
+            braid: expect.objectContaining({
+              supportCount: 1,
+              supportWorldlineIds: ['worldline:hold-auth'],
+            }),
+          }),
+        }),
       }),
     }));
   });
