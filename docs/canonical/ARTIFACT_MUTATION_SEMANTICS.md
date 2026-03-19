@@ -83,6 +83,8 @@ Allowlisted primitive ops:
 - `set_edge_property`
 - `attach_node_content`
 - `attach_edge_content`
+- `clear_node_content`
+- `clear_edge_content`
 
 The mutation kernel validates primitive graph invariants before commit and is
 the only sanctioned foundation for sovereign control-plane writes.
@@ -172,7 +174,9 @@ The current sovereign-control-plane foundation implements:
 - governed live `collapse_worldline` execution when:
   - the comparison baseline was persisted as a `comparison-artifact:*`
   - approving attestations target that durable comparison artifact
-  - the lowered transfer plan does not require committed content-clearing ops
+  - the lowered transfer plan runs through the shared mutation kernel,
+    including committed content-clearing ops when git-warp transfer planning
+    requires them
 - optional durable `collapse-proposal:*` records on `worldline:live` when
   `collapse_worldline` is called with `persist: true`, for either preview or
   executed artifacts
@@ -205,7 +209,6 @@ Current `braid_worldlines` is likewise intentionally thin:
   observation coordinate instead of silently reporting only the worldline ID
 - it does **not** merge, rebase, collapse, or settle anything into live truth
 
-It does **not** yet implement committed content-clearing collapse execution,
-full worldline-local lease enforcement, or broader compatibility-projection
-parity.
-Those remain future slices governed by this contract.
+It does **not** yet implement full worldline-local lease enforcement or broader
+compatibility-projection parity. Those remain future slices governed by this
+contract.

@@ -13,6 +13,8 @@ export function isPatchSession(obj: unknown): obj is PatchSession {
     typeof o['addNode'] === 'function' &&
     typeof o['addEdge'] === 'function' &&
     typeof o['setProperty'] === 'function' &&
+    typeof o['clearContent'] === 'function' &&
+    typeof o['clearEdgeContent'] === 'function' &&
     typeof o['commit'] === 'function'
   );
 }

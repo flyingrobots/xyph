@@ -212,8 +212,9 @@ governed settlement runway. XYPH:
 - requires approving attestations over the persisted
   `comparison-artifact:*` when the live execution path would make substantive
   changes
-- fails closed when the transfer plan includes content-clearing ops, because
-  XYPH still lacks an honest committed primitive for those operations
+- now lowers committed content-clearing transfer ops through git-warp’s
+  published clear-content patch helpers instead of treating them as a special
+  collapse-only gap
 - carries the published git-warp comparison and transfer-fact exports through
   to the substrate block instead of inventing a second XYPH-side substrate
   wrapper
@@ -260,6 +261,8 @@ small allowlisted primitive-op vocabulary over git-warp patch sessions:
 - `set_edge_property`
 - `attach_node_content`
 - `attach_edge_content`
+- `clear_node_content`
+- `clear_edge_content`
 
 `collapse_worldline` is not allowed to become a special-case mutation engine.
 The current slice now enforces that in preview mode: collapse transfer plans are
@@ -267,9 +270,10 @@ lowered through the same mutation, audit, and capability pipeline as `apply`
 and dry-run against the mutation kernel before XYPH returns a
 `collapse-proposal`.
 
-Preview-only collapse lowering also carries explicit `clear_*_content` transfer
-ops internally so XYPH can represent substrate settlement truth honestly
-without pretending live execution support already exists for that primitive.
+`collapse_worldline` uses that same allowlist for both preview and live
+execution, including explicit `clear_*_content` transfer ops lowered through
+published git-warp patch primitives rather than through a special collapse
+engine.
 
 ## Shared Graph Architecture
 

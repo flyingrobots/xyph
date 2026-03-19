@@ -17,6 +17,8 @@ function makePatchSession() {
     addEdge: vi.fn().mockReturnThis(),
     removeEdge: vi.fn().mockReturnThis(),
     setEdgeProperty: vi.fn().mockReturnThis(),
+    clearContent: vi.fn().mockReturnThis(),
+    clearEdgeContent: vi.fn().mockReturnThis(),
     attachContent: vi.fn(async () => undefined),
     attachEdgeContent: vi.fn(async () => undefined),
     commit: vi.fn(async () => 'patch:apply'),
@@ -77,7 +79,7 @@ describe('MutationKernelService', () => {
     expect(mocks.createPatchSession).not.toHaveBeenCalled();
   });
 
-  it('dry-runs preview-only collapse ops including binary attachments and content clears', async () => {
+  it('dry-runs collapse ops including binary attachments and content clears', async () => {
     const graph = makeGraph();
     const service = new MutationKernelService({
       getGraph: async () => graph,
@@ -155,24 +157,28 @@ describe('MutationKernelService', () => {
     expect(patch.addEdge).toHaveBeenCalledWith('proposal:1', 'task:ONE', 'proposes');
   });
 
-  it('rejects non-dry-run clear-content ops because collapse execution is preview-only in this slice', async () => {
+  it('commits clear-content ops through the shared patch session', async () => {
     const graph = makeGraph();
+    const patch = makePatchSession();
+    mocks.createPatchSession.mockResolvedValue(patch);
     const service = new MutationKernelService({
       getGraph: async () => graph,
       reset: vi.fn(),
     });
 
     const result = await service.execute({
-      rationale: 'Attempt to commit a preview-only clear-content transfer op.',
+      rationale: 'Commit clear-content transfer ops through the shared mutation kernel.',
       ops: [
         { op: 'clear_node_content', nodeId: 'task:ONE' },
+        { op: 'clear_edge_content', from: 'task:ONE', to: 'task:TWO', label: 'depends-on' },
       ],
     });
 
-    expect(result.valid).toBe(false);
-    expect(result.code).toBe('not_implemented');
-    expect(result.executed).toBe(false);
-    expect(result.patch).toBeNull();
+    expect(result.valid).toBe(true);
+    expect(result.executed).toBe(true);
+    expect(result.patch).toBe('patch:apply');
+    expect(patch.clearContent).toHaveBeenCalledWith('task:ONE');
+    expect(patch.clearEdgeContent).toHaveBeenCalledWith('task:ONE', 'task:TWO', 'depends-on');
   });
 
   it('validates and commits a valid op batch through a working-set overlay patch', async () => {

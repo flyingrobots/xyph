@@ -806,4 +806,113 @@ describe('ControlPlaneService worldline parity', () => {
     if (!liveSummary.ok) throw new Error(liveSummary.error.message);
     expect(liveSummary.data.counts).toEqual(expect.objectContaining({ quests: 2 }));
   });
+
+  it('executes live collapse for derived content-clearing plans after approval', { timeout: 30_000 }, async () => {
+    const graph = await graphPort.getGraph();
+    await graph.patch(async (p) => {
+      p.addNode('task:CLEAR-001')
+        .setProperty('task:CLEAR-001', 'type', 'task')
+        .setProperty('task:CLEAR-001', 'title', 'Clearable task')
+        .setProperty('task:CLEAR-001', 'status', 'READY')
+        .setProperty('task:CLEAR-001', 'hours', 1);
+      await p.attachContent('task:CLEAR-001', 'retain then clear', {
+        mime: 'text/plain',
+        size: 17,
+      });
+    });
+    await graph.materialize();
+    expect(await graph.getContent('task:CLEAR-001')).not.toBeNull();
+
+    const fork = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'fork-clear-review',
+      cmd: 'fork_worldline',
+      args: {
+        newWorldlineId: 'worldline:clear-review',
+        scope: 'Content clear review lane',
+      },
+    });
+    expect(fork.ok).toBe(true);
+    if (!fork.ok) throw new Error(fork.error.message);
+
+    const clearApply = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'apply-clear-review',
+      cmd: 'apply',
+      args: {
+        worldlineId: 'worldline:clear-review',
+        rationale: 'Clear attached content through the shared mutation kernel before settlement.',
+        ops: [
+          { op: 'clear_node_content', nodeId: 'task:CLEAR-001' },
+        ],
+      },
+    });
+    expect(clearApply.ok).toBe(true);
+    if (!clearApply.ok) throw new Error(clearApply.error.message);
+
+    const comparison = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'compare-clear-review',
+      cmd: 'compare_worldlines',
+      args: {
+        worldlineId: 'worldline:clear-review',
+        persist: true,
+      },
+    });
+    expect(comparison.ok).toBe(true);
+    if (!comparison.ok) throw new Error(comparison.error.message);
+    const comparisonData = comparison.data as Record<string, unknown>;
+
+    const humanService = new ControlPlaneService(graphPort, 'human.reviewer');
+    const attestation = await humanService.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'attest-clear-review-comparison',
+      cmd: 'attest',
+      args: {
+        targetId: comparisonData['artifactId'],
+        decision: 'approve',
+        rationale: 'The content-clearing comparison artifact is approved for settlement.',
+      },
+    });
+    expect(attestation.ok).toBe(true);
+    if (!attestation.ok) throw new Error(attestation.error.message);
+    const attestationData = attestation.data as Record<string, unknown>;
+
+    const collapse = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'collapse-clear-review-execute',
+      cmd: 'collapse_worldline',
+      args: {
+        worldlineId: 'worldline:clear-review',
+        comparisonArtifactDigest: comparisonData['artifactDigest'],
+        dryRun: false,
+        attestationIds: [attestationData['id']],
+      },
+    });
+    expect(collapse.ok).toBe(true);
+    if (!collapse.ok) throw new Error(collapse.error.message);
+    expect(collapse.data).toEqual(expect.objectContaining({
+      kind: 'collapse-proposal',
+      dryRun: false,
+      executable: true,
+      mutationExecution: expect.objectContaining({
+        dryRun: false,
+        executed: true,
+        patch: expect.any(String),
+      }),
+      transfer: expect.objectContaining({
+        ops: expect.arrayContaining([
+          { op: 'clear_node_content', nodeId: 'task:CLEAR-001' },
+        ]),
+      }),
+      comparison: expect.objectContaining({
+        artifactId: comparisonData['artifactId'],
+        artifactDigest: comparisonData['artifactDigest'],
+      }),
+    }));
+
+    await graph.materialize();
+    expect(await graph.getContent('task:CLEAR-001')).toBeNull();
+    expect(await graph.getContentMeta('task:CLEAR-001')).toBeNull();
+  });
 });

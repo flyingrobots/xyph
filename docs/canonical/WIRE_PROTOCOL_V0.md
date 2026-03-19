@@ -328,8 +328,8 @@ Current behavior:
 - when live execution would make substantive changes, requires approving
   `attestationIds` over the persisted `comparison-artifact:*` returned by
   `compare_worldlines persist:true`
-- currently rejects live execution plans that include content-clearing ops with
-  `not_implemented`
+- lowers committed content-clearing transfer ops through the published
+  git-warp clear-content patch primitives when the transfer plan requires them
 - accepts optional `persist: true`
 - returns:
   - a typed XYPH `collapse-proposal`

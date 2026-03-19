@@ -1598,7 +1598,7 @@ describe('ControlPlaneService', () => {
         kind: 'collapse-proposal',
         artifactId: expect.stringMatching(/^collapse-proposal:/),
         dryRun: true,
-        executable: false,
+        executable: true,
         comparison: expect.objectContaining({
           artifactDigest: comparisonArtifactDigest,
           changed: true,
@@ -1782,7 +1782,7 @@ describe('ControlPlaneService', () => {
         source_worldline_id: 'worldline:review-auth',
         target_worldline_id: 'worldline:live',
         dry_run: true,
-        executable: false,
+        executable: true,
         changed: true,
         attestation_count: 1,
       }),
@@ -2077,7 +2077,7 @@ describe('ControlPlaneService', () => {
     }));
   });
 
-  it('fails closed when live collapse execution would need content-clearing ops', async () => {
+  it('executes live collapse when the transfer plan includes committed content-clearing ops', async () => {
     mocks.compareCoordinates.mockResolvedValueOnce(
       makeCoordinateComparison({
         comparisonDigest: 'comparison:collapse-clear:raw',
@@ -2107,11 +2107,38 @@ describe('ControlPlaneService', () => {
         ],
       }),
     );
+    mocks.executeMutation.mockResolvedValueOnce({
+      valid: true,
+      code: null,
+      reasons: [],
+      sideEffects: ['set task:ONE.status', 'clear content from task:ONE'],
+      patch: 'patch:collapse-clear',
+      executed: true,
+    });
     const comparisonArtifactDigest = buildComparisonArtifactDigest(
       'comparison:collapse-clear:operational',
       'worldline:review-auth',
       'worldline:live',
     );
+    const comparisonArtifactId = `comparison-artifact:${comparisonArtifactDigest}`;
+    mocks.getNodeProps.mockImplementation(async (nodeId: string) => {
+      if (nodeId === 'attestation:approve-clear') {
+        return {
+          type: 'attestation',
+          decision: 'approve',
+          target_id: comparisonArtifactId,
+          attested_by: 'human.reviewer',
+          attested_at: 5678,
+        };
+      }
+      if (nodeId === comparisonArtifactId) {
+        return {
+          type: 'comparison-artifact',
+          artifact_digest: comparisonArtifactDigest,
+        };
+      }
+      return null;
+    });
 
     const service = new ControlPlaneService({
       getGraph: mocks.getGraph,
@@ -2127,14 +2154,43 @@ describe('ControlPlaneService', () => {
         worldlineId: 'worldline:review-auth',
         comparisonArtifactDigest,
         dryRun: false,
+        attestationIds: ['attestation:approve-clear'],
       },
     });
 
-    expect(mocks.executeMutation).not.toHaveBeenCalled();
+    expect(mocks.executeMutation).toHaveBeenCalledWith({
+      rationale: 'Collapse worldline:review-auth into worldline:live.',
+      ops: [
+        { op: 'set_node_property', nodeId: 'task:ONE', key: 'status', value: 'READY' },
+        { op: 'clear_node_content', nodeId: 'task:ONE' },
+      ],
+    }, {
+      dryRun: false,
+      allowEmptyPlan: true,
+    });
     expect(result).toEqual(expect.objectContaining({
-      ok: false,
-      error: expect.objectContaining({
-        code: 'not_implemented',
+      ok: true,
+      data: expect.objectContaining({
+        kind: 'collapse-proposal',
+        dryRun: false,
+        executable: true,
+        comparison: expect.objectContaining({
+          artifactId: comparisonArtifactId,
+          artifactDigest: comparisonArtifactDigest,
+        }),
+        mutationExecution: {
+          dryRun: false,
+          valid: true,
+          executed: true,
+          patch: 'patch:collapse-clear',
+          opCount: 2,
+          sideEffects: ['set task:ONE.status', 'clear content from task:ONE'],
+        },
+        executionGate: expect.objectContaining({
+          comparisonArtifactId,
+          requiredDecision: 'approve',
+          satisfied: true,
+        }),
       }),
     }));
   });

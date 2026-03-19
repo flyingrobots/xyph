@@ -48,6 +48,8 @@ interface PatchWriter {
   addEdge(from: string, to: string, label: string): unknown;
   removeEdge(from: string, to: string, label: string): unknown;
   setEdgeProperty(from: string, to: string, label: string, key: string, value: unknown): unknown;
+  clearContent(nodeId: string): unknown;
+  clearEdgeContent(from: string, to: string, label: string): unknown;
   attachContent(
     nodeId: string,
     content: ContentPayload,
@@ -218,22 +220,6 @@ export class MutationKernelService {
       };
     }
 
-    if (
-      !opts?.dryRun
-      && plan.ops.some((op) => op.op === 'clear_node_content' || op.op === 'clear_edge_content')
-    ) {
-      return {
-        valid: false,
-        code: 'not_implemented',
-        reasons: [
-          'Content-clearing transfer ops are preview-only in this slice and cannot be committed yet.',
-        ],
-        sideEffects: validation.sideEffects,
-        patch: null,
-        executed: false,
-      };
-    }
-
     if (opts?.dryRun) {
       return {
         ...validation,
@@ -303,7 +289,8 @@ export class MutationKernelService {
           });
           break;
         case 'clear_node_content':
-          throw new Error('clear_node_content execution is preview-only in this slice');
+          writer.clearContent(op.nodeId);
+          break;
         case 'add_edge':
           writer.addEdge(op.from, op.to, op.label);
           break;
@@ -320,7 +307,8 @@ export class MutationKernelService {
           });
           break;
         case 'clear_edge_content':
-          throw new Error('clear_edge_content execution is preview-only in this slice');
+          writer.clearEdgeContent(op.from, op.to, op.label);
+          break;
       }
     }
   }

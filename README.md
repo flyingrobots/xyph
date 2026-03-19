@@ -316,8 +316,9 @@ slice it:
 - uses the same mutation kernel as `apply` for both preview and execution
 - requires approving `attestationIds` over a persisted `comparison-artifact:*`
   when live execution would make substantive changes
-- currently fails closed for live execution when the transfer plan includes
-  content-clearing ops, because those committed primitives are not honest yet
+- now lowers committed content-clearing transfer ops through git-warp’s
+  published clear-content patch primitives instead of treating them as
+  preview-only
 - returns a typed `collapse-proposal` with per-side observations, substrate
   transfer facts, sanitized transfer ops, and either a mutation side-effect
   preview or a live execution result

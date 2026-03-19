@@ -247,18 +247,6 @@ function buildCollapseArtifactDigest(fields: {
   });
 }
 
-function unsupportedCommittedCollapseOps(
-  ops: VisibleStateTransferOperationV1[],
-): ('clear_node_content' | 'clear_edge_content')[] {
-  const kinds = new Set<'clear_node_content' | 'clear_edge_content'>();
-  for (const op of ops) {
-    if (op.op === 'clear_node_content' || op.op === 'clear_edge_content') {
-      kinds.add(op.op);
-    }
-  }
-  return [...kinds];
-}
-
 function sanitizeTransferOperation(op: VisibleStateTransferOperationV1): Record<string, unknown> {
   switch (op.op) {
     case 'attach_node_content':
@@ -2666,23 +2654,8 @@ export class ControlPlaneService implements ControlPlanePort {
     }
 
     const loweredOps = lowerTransferOpsToMutationOps(transferPlan.ops);
-    const unsupportedOps = unsupportedCommittedCollapseOps(transferPlan.ops);
-    const executable = unsupportedOps.length === 0;
+    const executable = true;
     const comparisonArtifactId = `comparison-artifact:${currentComparisonArtifactDigest}`;
-
-    if (executeLive && !executable) {
-      throw controlPlaneFailure(
-        'not_implemented',
-        'collapse_worldline cannot execute live when the transfer plan includes content-clearing ops. Re-run in preview mode or wait for committed content-clear support.',
-        {
-          sourceWorldlineId,
-          targetWorldlineId,
-          comparisonArtifactId,
-          transferDigest: transferPlan.transferDigest,
-          unsupportedOps,
-        },
-      );
-    }
 
     let approvedAttestations: ApprovedAttestationRecord[] | null = null;
     if (executeLive && transferPlan.changed) {
@@ -2839,11 +2812,6 @@ export class ControlPlaneService implements ControlPlanePort {
         ? {}
         : {
             attestations: approvedAttestations,
-          }),
-      ...(unsupportedOps.length === 0
-        ? {}
-        : {
-            executionBlockedBy: unsupportedOps,
           }),
       executionGate: {
         comparisonArtifactId,
