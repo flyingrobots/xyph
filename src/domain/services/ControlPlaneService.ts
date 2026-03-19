@@ -158,6 +158,14 @@ interface RedactionRecord {
   contentOid?: string;
 }
 
+interface ApprovedAttestationRecord {
+  id: string;
+  decision: string;
+  targetId: string;
+  attestedBy: string | null;
+  attestedAt: number | null;
+}
+
 type LoweredCollapseMutationOp =
   | { op: 'add_node'; nodeId: string }
   | { op: 'remove_node'; nodeId: string }
@@ -212,6 +220,43 @@ function buildComparisonArtifactDigest(fields: {
     },
     targetId: fields.targetId,
   });
+}
+
+function buildCollapseArtifactDigest(fields: {
+  comparisonArtifactDigest: string;
+  transferDigest: string;
+  sourceWorldlineId: string;
+  targetWorldlineId: string;
+  comparisonScopeVersion: string;
+  dryRun: boolean;
+}): string {
+  return digest({
+    kind: 'collapse-proposal',
+    comparisonArtifactDigest: fields.comparisonArtifactDigest,
+    transferDigest: fields.transferDigest,
+    source: {
+      worldlineId: fields.sourceWorldlineId,
+      at: 'tip',
+    },
+    target: {
+      worldlineId: fields.targetWorldlineId,
+      at: 'tip',
+    },
+    comparisonScopeVersion: fields.comparisonScopeVersion,
+    dryRun: fields.dryRun,
+  });
+}
+
+function unsupportedCommittedCollapseOps(
+  ops: VisibleStateTransferOperationV1[],
+): ('clear_node_content' | 'clear_edge_content')[] {
+  const kinds = new Set<'clear_node_content' | 'clear_edge_content'>();
+  for (const op of ops) {
+    if (op.op === 'clear_node_content' || op.op === 'clear_edge_content') {
+      kinds.add(op.op);
+    }
+  }
+  return [...kinds];
 }
 
 function sanitizeTransferOperation(op: VisibleStateTransferOperationV1): Record<string, unknown> {
@@ -2291,6 +2336,7 @@ export class ControlPlaneService implements ControlPlanePort {
   ): Promise<{
     data: Record<string, unknown>;
     diagnostics: Diagnostic[];
+    observation?: ObservationCoordinate;
   }> {
     const leftWorldlineId = capability.worldlineId;
     const rightWorldlineId = this.resolveComparisonWorldlineId(capability, request);
@@ -2529,12 +2575,7 @@ export class ControlPlaneService implements ControlPlanePort {
         'collapse_worldline dryRun must be a boolean when provided.',
       );
     }
-    if (rawDryRun === false) {
-      throw controlPlaneFailure(
-        'collapse_not_allowed',
-        'collapse_worldline is preview-only in this slice. Use dryRun=true or omit it.',
-      );
-    }
+    const executeLive = rawDryRun === false;
 
     const providedComparisonArtifactDigest = this.requireString(
       request.args['comparisonArtifactDigest'],
@@ -2546,7 +2587,7 @@ export class ControlPlaneService implements ControlPlanePort {
     if (targetWorldlineId !== DEFAULT_WORLDLINE_ID) {
       throw controlPlaneFailure(
         'collapse_not_allowed',
-        'collapse_worldline currently previews settlement into worldline:live only.',
+        'collapse_worldline currently supports settlement into worldline:live only.',
         {
           sourceWorldlineId,
           targetWorldlineId,
@@ -2560,7 +2601,7 @@ export class ControlPlaneService implements ControlPlanePort {
     const rationale = typeof request.args['rationale'] === 'string'
       && request.args['rationale'].trim().length >= 11
       ? request.args['rationale'].trim()
-      : `Preview collapse of ${sourceWorldlineId} into ${targetWorldlineId}.`;
+      : `${executeLive ? 'Collapse' : 'Preview collapse of'} ${sourceWorldlineId} into ${targetWorldlineId}.`;
     const sourceSelector = { kind: 'tip' } as const;
     const targetSelector = { kind: 'tip' } as const;
 
@@ -2603,7 +2644,7 @@ export class ControlPlaneService implements ControlPlanePort {
     if (providedComparisonArtifactDigest !== currentComparisonArtifactDigest) {
       throw controlPlaneFailure(
         'stale_base_observation',
-        'collapse_worldline comparisonArtifactDigest is stale for the current source and target tips. Re-run compare_worldlines before requesting a collapse preview.',
+        'collapse_worldline comparisonArtifactDigest is stale for the current source and target tips. Re-run compare_worldlines before requesting collapse preview or execution.',
         {
           sourceWorldlineId,
           targetWorldlineId,
@@ -2624,22 +2665,60 @@ export class ControlPlaneService implements ControlPlanePort {
       this.rethrowComparisonError(err, sourceWorldlineId, targetWorldlineId);
     }
 
-    const mutationPreview = await this.mutations.execute({
+    const loweredOps = lowerTransferOpsToMutationOps(transferPlan.ops);
+    const unsupportedOps = unsupportedCommittedCollapseOps(transferPlan.ops);
+    const executable = unsupportedOps.length === 0;
+    const comparisonArtifactId = `comparison-artifact:${currentComparisonArtifactDigest}`;
+
+    if (executeLive && !executable) {
+      throw controlPlaneFailure(
+        'not_implemented',
+        'collapse_worldline cannot execute live when the transfer plan includes content-clearing ops. Re-run in preview mode or wait for committed content-clear support.',
+        {
+          sourceWorldlineId,
+          targetWorldlineId,
+          comparisonArtifactId,
+          transferDigest: transferPlan.transferDigest,
+          unsupportedOps,
+        },
+      );
+    }
+
+    let approvedAttestations: ApprovedAttestationRecord[] | null = null;
+    if (executeLive && transferPlan.changed) {
+      if (attestationIds === null) {
+        throw controlPlaneFailure(
+          'attestation_missing',
+          'collapse_worldline live execution requires one or more approving attestations over the persisted comparison-artifact. Re-run compare_worldlines with persist:true, attest that comparison-artifact, then retry with attestationIds.',
+          {
+            sourceWorldlineId,
+            targetWorldlineId,
+            comparisonArtifactId,
+          },
+        );
+      }
+      approvedAttestations = await this.resolveApprovedCollapseAttestations(
+        comparisonArtifactId,
+        attestationIds,
+      );
+    }
+
+    const mutationResult = await this.mutations.execute({
       rationale,
-      ops: lowerTransferOpsToMutationOps(transferPlan.ops),
+      ops: loweredOps,
       ...(typeof request.args['idempotencyKey'] === 'string'
         ? { idempotencyKey: request.args['idempotencyKey'] }
         : {}),
     }, {
-      dryRun: true,
+      dryRun: !executeLive,
       allowEmptyPlan: true,
     });
-    if (!mutationPreview.valid) {
+    if (!mutationResult.valid) {
       throw controlPlaneFailure(
-        mutationPreview.code ?? 'invariant_violation',
-        mutationPreview.reasons[0] ?? 'Mutation kernel rejected the requested collapse preview',
+        mutationResult.code ?? 'invariant_violation',
+        mutationResult.reasons[0] ?? `Mutation kernel rejected the requested collapse ${executeLive ? 'execution' : 'preview'}`,
         {
-          reasons: mutationPreview.reasons,
+          reasons: mutationResult.reasons,
           sourceWorldlineId,
           targetWorldlineId,
           transferDigest: transferPlan.transferDigest,
@@ -2691,20 +2770,13 @@ export class ControlPlaneService implements ControlPlanePort {
     const rawComparisonFact = exportCoordinateComparisonFact(rawComparison);
     const operationalComparisonFact = exportCoordinateComparisonFact(operationalComparison);
     const transferFact = exportCoordinateTransferPlanFact(transferPlan);
-    const artifactDigest = digest({
-      kind: 'collapse-proposal',
+    const artifactDigest = buildCollapseArtifactDigest({
       comparisonArtifactDigest: currentComparisonArtifactDigest,
       transferDigest: transferPlan.transferDigest,
-      source: {
-        worldlineId: sourceWorldlineId,
-        at: 'tip',
-      },
-      target: {
-        worldlineId: targetWorldlineId,
-        at: 'tip',
-      },
-      attestationIds: attestationIds ?? [],
+      sourceWorldlineId,
+      targetWorldlineId,
       comparisonScopeVersion: XYPH_OPERATIONAL_COMPARISON_SCOPE_VERSION,
+      dryRun: !executeLive,
     });
     const artifactId = `collapse-proposal:${artifactDigest}`;
     const data: Record<string, unknown> = {
@@ -2712,8 +2784,8 @@ export class ControlPlaneService implements ControlPlanePort {
       artifactId,
       artifactDigest,
       preparedAt,
-      dryRun: true,
-      executable: false,
+      dryRun: !executeLive,
+      executable,
       source: {
         worldlineId: sourceWorldlineId,
         at: 'tip',
@@ -2727,6 +2799,7 @@ export class ControlPlaneService implements ControlPlanePort {
         summary: transferPlan.target.resolved.summary,
       },
       comparison: {
+        artifactId: comparisonArtifactId,
         artifactDigest: currentComparisonArtifactDigest,
         comparisonScopeVersion: XYPH_OPERATIONAL_COMPARISON_SCOPE_VERSION,
         changed: operationalComparison.visibleState.changed || comparisonHasPatchDivergence(operationalComparison),
@@ -2742,12 +2815,40 @@ export class ControlPlaneService implements ControlPlanePort {
         summary: transferPlan.summary,
         ops: transferPlan.ops.map((op) => sanitizeTransferOperation(op)),
       },
-      mutationPreview: {
-        dryRun: true,
-        valid: mutationPreview.valid,
-        executed: mutationPreview.executed,
-        opCount: transferPlan.summary.opCount,
-        sideEffects: mutationPreview.sideEffects,
+      ...(executeLive
+        ? {
+            mutationExecution: {
+              dryRun: false,
+              valid: mutationResult.valid,
+              executed: mutationResult.executed,
+              patch: mutationResult.patch,
+              opCount: transferPlan.summary.opCount,
+              sideEffects: mutationResult.sideEffects,
+            },
+          }
+        : {
+            mutationPreview: {
+              dryRun: true,
+              valid: mutationResult.valid,
+              executed: mutationResult.executed,
+              opCount: transferPlan.summary.opCount,
+              sideEffects: mutationResult.sideEffects,
+            },
+          }),
+      ...(approvedAttestations === null
+        ? {}
+        : {
+            attestations: approvedAttestations,
+          }),
+      ...(unsupportedOps.length === 0
+        ? {}
+        : {
+            executionBlockedBy: unsupportedOps,
+          }),
+      executionGate: {
+        comparisonArtifactId,
+        requiredDecision: 'approve',
+        ...(approvedAttestations === null ? {} : { satisfied: true }),
       },
       ...(attestationIds === null ? {} : { attestationIds }),
       substrate: {
@@ -2784,9 +2885,11 @@ export class ControlPlaneService implements ControlPlanePort {
           transfer_digest: transferPlan.transferDigest,
           source_worldline_id: sourceWorldlineId,
           target_worldline_id: targetWorldlineId,
-          dry_run: true,
-          executable: false,
+          dry_run: !executeLive,
+          executable,
+          executed: mutationResult.executed,
           changed: transferPlan.changed,
+          ...(mutationResult.patch === null ? {} : { execution_patch: mutationResult.patch }),
           ...(attestationIds === null ? {} : { attestation_count: attestationIds.length }),
         },
       });
@@ -2803,6 +2906,25 @@ export class ControlPlaneService implements ControlPlanePort {
     return {
       data,
       diagnostics: [],
+      ...(executeLive
+        ? {
+            observation: await this.buildObservationCoordinate(
+              {
+                ...request,
+                args: {
+                  ...request.args,
+                  worldlineId: targetWorldlineId,
+                },
+              },
+              {
+                ...capability,
+                worldlineId: targetWorldlineId,
+              },
+              Date.now(),
+              null,
+            ),
+          }
+        : {}),
     };
   }
 
@@ -2998,6 +3120,97 @@ export class ControlPlaneService implements ControlPlanePort {
       diagnostics: [],
       observation: await this.buildObservationCoordinate(request, capability, Date.now(), null),
     };
+  }
+
+  private async resolveApprovedCollapseAttestations(
+    comparisonArtifactId: string,
+    attestationIds: string[],
+  ): Promise<ApprovedAttestationRecord[]> {
+    const graph = await this.graphPort.getGraph();
+    if (!await graph.hasNode(comparisonArtifactId)) {
+      throw controlPlaneFailure(
+        'attestation_missing',
+        'collapse_worldline live execution requires the comparison-artifact to exist on worldline:live so approvals can bind to a durable target. Re-run compare_worldlines with persist:true before attesting/executing.',
+        {
+          comparisonArtifactId,
+        },
+      );
+    }
+
+    const seen = new Set<string>();
+    const approved: ApprovedAttestationRecord[] = [];
+    for (const attestationId of attestationIds) {
+      if (seen.has(attestationId)) {
+        throw controlPlaneFailure(
+          'invalid_args',
+          'collapse_worldline attestationIds must not contain duplicates.',
+          {
+            attestationId,
+          },
+        );
+      }
+      seen.add(attestationId);
+
+      const props = await graph.getNodeProps(attestationId);
+      if (!props) {
+        throw controlPlaneFailure(
+          'attestation_missing',
+          'collapse_worldline requires each attestationId to reference an existing attestation node.',
+          {
+            attestationId,
+            comparisonArtifactId,
+          },
+        );
+      }
+
+      const type = typeof props['type'] === 'string' ? props['type'] : null;
+      const decision = typeof props['decision'] === 'string' ? props['decision'] : null;
+      const normalizedDecision = decision?.trim().toLowerCase() ?? null;
+      const targetId = typeof props['target_id'] === 'string' ? props['target_id'] : null;
+      if (type !== 'attestation') {
+        throw controlPlaneFailure(
+          'attestation_missing',
+          'collapse_worldline attestationIds must reference attestation:* nodes.',
+          {
+            attestationId,
+            actualType: type,
+          },
+        );
+      }
+      if (targetId !== comparisonArtifactId) {
+        throw controlPlaneFailure(
+          'attestation_missing',
+          'collapse_worldline live execution currently requires approving attestations over the persisted comparison-artifact for the selected settlement.',
+          {
+            attestationId,
+            attestationTargetId: targetId,
+            requiredTargetId: comparisonArtifactId,
+          },
+        );
+      }
+      if (normalizedDecision !== 'approve') {
+        throw controlPlaneFailure(
+          'attestation_missing',
+          'collapse_worldline live execution currently requires approving attestations. Non-approve attestation decisions do not satisfy this gate.',
+          {
+            attestationId,
+            decision,
+            requiredDecision: 'approve',
+            comparisonArtifactId,
+          },
+        );
+      }
+
+      approved.push({
+        id: attestationId,
+        decision: decision ?? 'approve',
+        targetId: targetId ?? comparisonArtifactId,
+        attestedBy: typeof props['attested_by'] === 'string' ? props['attested_by'] : null,
+        attestedAt: typeof props['attested_at'] === 'number' ? props['attested_at'] : null,
+      });
+    }
+
+    return approved;
   }
 
   private requireString(value: unknown, label: string): string {

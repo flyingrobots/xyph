@@ -486,7 +486,7 @@ describe('ControlPlaneService worldline parity', () => {
     expect(collapse.data).toEqual(expect.objectContaining({
       kind: 'collapse-proposal',
       dryRun: true,
-      executable: false,
+      executable: true,
       source: expect.objectContaining({
         worldlineId: 'worldline:braid-target',
         observation: expect.objectContaining({
@@ -703,5 +703,107 @@ describe('ControlPlaneService worldline parity', () => {
     });
     expect(collapseAttestation.ok).toBe(true);
     if (!collapseAttestation.ok) throw new Error(collapseAttestation.error.message);
+  });
+
+  it('executes live collapse after approving the persisted comparison artifact', { timeout: 30_000 }, async () => {
+    const comparison = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'compare-review-auth-persisted',
+      cmd: 'compare_worldlines',
+      args: {
+        worldlineId: 'worldline:review-auth',
+        persist: true,
+      },
+    });
+    expect(comparison.ok).toBe(true);
+    if (!comparison.ok) throw new Error(comparison.error.message);
+
+    const comparisonData = comparison.data as Record<string, unknown>;
+    const humanService = new ControlPlaneService(graphPort, 'human.reviewer');
+    const attestation = await humanService.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'attest-review-auth-comparison',
+      cmd: 'attest',
+      args: {
+        targetId: comparisonData['artifactId'],
+        decision: 'approve',
+        rationale: 'The persisted comparison artifact is approved for live collapse execution.',
+      },
+    });
+    expect(attestation.ok).toBe(true);
+    if (!attestation.ok) throw new Error(attestation.error.message);
+
+    const attestationData = attestation.data as Record<string, unknown>;
+    const collapse = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'collapse-review-auth-execute',
+      cmd: 'collapse_worldline',
+      args: {
+        worldlineId: 'worldline:review-auth',
+        comparisonArtifactDigest: comparisonData['artifactDigest'],
+        dryRun: false,
+        persist: true,
+        attestationIds: [attestationData['id']],
+      },
+    });
+    expect(collapse.ok).toBe(true);
+    if (!collapse.ok) throw new Error(collapse.error.message);
+    expect(collapse.data).toEqual(expect.objectContaining({
+      kind: 'collapse-proposal',
+      dryRun: false,
+      executable: true,
+      mutationExecution: expect.objectContaining({
+        dryRun: false,
+        executed: true,
+        patch: expect.any(String),
+      }),
+      comparison: expect.objectContaining({
+        artifactId: comparisonData['artifactId'],
+        artifactDigest: comparisonData['artifactDigest'],
+      }),
+      executionGate: expect.objectContaining({
+        comparisonArtifactId: comparisonData['artifactId'],
+        requiredDecision: 'approve',
+        satisfied: true,
+      }),
+      record: expect.objectContaining({
+        persisted: true,
+        recordedInWorldlineId: 'worldline:live',
+      }),
+    }));
+    expect(collapse.observation).toEqual(expect.objectContaining({
+      worldlineId: 'worldline:live',
+    }));
+
+    const liveDetail = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'observe-live-detail-after-collapse',
+      cmd: 'observe',
+      args: {
+        projection: 'entity.detail',
+        targetId: 'task:WS-001',
+      },
+    });
+    expect(liveDetail.ok).toBe(true);
+    if (!liveDetail.ok) throw new Error(liveDetail.error.message);
+    expect(liveDetail.data.detail).toEqual(expect.objectContaining({
+      id: 'task:WS-001',
+      props: expect.objectContaining({
+        title: 'Worldline task',
+        status: 'READY',
+      }),
+    }));
+
+    const liveSummary = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'observe-live-summary-after-collapse',
+      cmd: 'observe',
+      args: {
+        projection: 'graph.summary',
+      },
+    });
+    expect(liveSummary.ok).toBe(true);
+    if (!liveSummary.ok) throw new Error(liveSummary.error.message);
+    expect(liveSummary.data.counts).toEqual(expect.objectContaining({ quests: 2 }));
   });
 });

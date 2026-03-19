@@ -197,9 +197,10 @@ content. The current control-plane slice stores JSON containing at least
 
 ### Collapse Proposal (`collapse-proposal:*`)
 
-`collapse_worldline persist:true` records a durable governance proposal without
-executing settlement. The node is append-only and lives on `worldline:live`
-even when the compared source worldline is derived.
+`collapse_worldline persist:true` records the current collapse artifact on
+`worldline:live` even when the compared source worldline is derived. The
+record may represent either a dry-run preview or an executed collapse attempt;
+the `dry_run`, `executable`, and `executed` properties make that explicit.
 
 | Property | Type | Set By | Notes |
 |----------|------|--------|-------|
@@ -213,8 +214,10 @@ even when the compared source worldline is derived.
 | `recorded_at` | number | control plane | Timestamp. |
 | `observer_profile_id` | string | control plane | Observer in force when recorded. |
 | `policy_pack_version` | string | control plane | Policy pack in force when recorded. |
-| `dry_run` | boolean | control plane | Always `true` in the current slice. |
-| `executable` | boolean | control plane | Always `false` in the current slice. |
+| `dry_run` | boolean | control plane | `true` for preview artifacts, `false` for live execution artifacts. |
+| `executable` | boolean | control plane | Whether the current slice can honestly commit the planned transfer ops. |
+| `executed` | boolean | control plane | Whether live mutation actually committed during this call. |
+| `execution_patch` | string | control plane | Optional live patch SHA when `executed` is true. |
 | `changed` | boolean | control plane | Whether the transfer plan contains substantive work. |
 | `attestation_count` | number | control plane | Optional count of supplied attestation IDs. |
 
@@ -225,6 +228,8 @@ git-warp comparison/transfer fact exports.
 **Edges:**
 - no required outbound edges in the current slice
 - incoming `attests` from `attestation:*` records are expected
+- current live execution gates on approving attestations over the corresponding
+  `comparison-artifact:*`, not on `collapse-proposal:*`
 
 ### Comparison Artifact (`comparison-artifact:*`)
 
@@ -260,6 +265,8 @@ whole-graph substrate fact and the XYPH-scoped operational substrate fact.
 **Edges:**
 - no required outbound edges in the current slice
 - incoming `attests` from `attestation:*` records are expected
+- current `collapse_worldline dryRun:false` uses approving attestations over
+  this durable comparison artifact as the execution gate
 
 ---
 

@@ -167,10 +167,15 @@ The current sovereign-control-plane foundation implements:
 - structured redaction for content-bearing `entity.detail` observations
 - substrate-backed worldline comparison previews that remain separate from
   attestation, approval, or collapse execution
-- preview-only `collapse-proposal` artifacts that lower substrate transfer
-  plans through the shared mutation kernel without mutating live truth
+- `collapse_worldline` previews that lower substrate transfer plans through the
+  shared mutation kernel without mutating live truth
+- governed live `collapse_worldline` execution when:
+  - the comparison baseline was persisted as a `comparison-artifact:*`
+  - approving attestations target that durable comparison artifact
+  - the lowered transfer plan does not require committed content-clearing ops
 - optional durable `collapse-proposal:*` records on `worldline:live` when
-  `collapse_worldline` is called with `persist: true`
+  `collapse_worldline` is called with `persist: true`, for either preview or
+  executed artifacts
 - published git-warp comparison/transfer fact exports carried through XYPH’s
   substrate blocks so later governance can record the same fact without
   re-serializing it in XYPH first
@@ -200,6 +205,7 @@ Current `braid_worldlines` is likewise intentionally thin:
   observation coordinate instead of silently reporting only the worldline ID
 - it does **not** merge, rebase, collapse, or settle anything into live truth
 
-It does **not** yet implement live collapse execution, full worldline-local
-execution, or lease enforcement.
+It does **not** yet implement committed content-clearing collapse execution,
+full worldline-local lease enforcement, or broader compatibility-projection
+parity.
 Those remain future slices governed by this contract.

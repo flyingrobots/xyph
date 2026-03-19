@@ -198,8 +198,8 @@ effects on that surface across `observe(graph.summary)`,
 work, but the canonical derived-worldline control-plane slice is now
 explicitly braid-aware on the published substrate boundary.
 
-`collapse_worldline` now uses that same substrate boundary for a first
-settlement runway. XYPH:
+`collapse_worldline` now uses that same substrate boundary for the first
+governed settlement runway. XYPH:
 
 - requires a fresh XYPH `comparison-artifact` digest from `compare_worldlines`
 - recomputes the current operationally scoped substrate comparison to detect
@@ -207,16 +207,27 @@ settlement runway. XYPH:
 - asks git-warp for a substrate-factual transfer plan from the source
   worldline’s visible state into the target coordinate
 - lowers that plan through the same mutation kernel used by `apply`
+- defaults to preview mode, but now accepts `dryRun: false` for live
+  execution against `worldline:live`
+- requires approving attestations over the persisted
+  `comparison-artifact:*` when the live execution path would make substantive
+  changes
+- fails closed when the transfer plan includes content-clearing ops, because
+  XYPH still lacks an honest committed primitive for those operations
 - carries the published git-warp comparison and transfer-fact exports through
   to the substrate block instead of inventing a second XYPH-side substrate
   wrapper
-- may record the resulting preview as a durable `collapse-proposal:*` node on
-  `worldline:live` when `persist: true` is requested
-- keeps the current slice preview-only, so no live mutation happens yet
+- may record the resulting preview or execution artifact as a durable
+  `collapse-proposal:*` node on `worldline:live` when `persist: true` is
+  requested
+- keeps the execution gate bound to the durable `comparison-artifact:*`, not
+  to the `collapse-proposal:*`, so governance approval attaches to the factual
+  comparison baseline rather than to whichever optional proposal record was
+  emitted
 
 That keeps settlement planning factual at the substrate boundary while
 preserving XYPH ownership of governance meaning, attestation policy, and
-eventual execution semantics.
+execution semantics.
 
 Existing commands such as `briefing`, `next`, `context`, `submit`, `review`,
 and `merge` still exist, but they should be understood as compatibility

@@ -323,23 +323,32 @@ Current behavior:
   target tip and rejects stale digest input with `stale_base_observation`
 - currently supports only `targetWorldlineId: "worldline:live"` or omission
 - rejects `at`, `againstAt`, `since`, and `targetId` selectors in this slice
-- always dry-runs through the same mutation kernel used by `apply`
+- defaults to dry-run preview, but accepts `dryRun: false` for live execution
+- uses the same mutation kernel as `apply` for both preview and execution
+- when live execution would make substantive changes, requires approving
+  `attestationIds` over the persisted `comparison-artifact:*` returned by
+  `compare_worldlines persist:true`
+- currently rejects live execution plans that include content-clearing ops with
+  `not_implemented`
 - accepts optional `persist: true`
 - returns:
   - a typed XYPH `collapse-proposal`
   - per-side observation coordinates for source and target
   - substrate-backed transfer summary and sanitized transfer ops
-  - dry-run mutation side-effect preview
+  - either a dry-run mutation side-effect preview or a live mutation result
   - an operationally scoped git-warp comparison fact and transfer fact in
     `data.substrate`
   - the raw whole-graph git-warp comparison fact in
     `data.substrate.rawWholeGraph`
   - when `persist: true`, a `data.record` block describing the durable
     `collapse-proposal:*` node recorded on `worldline:live`
+  - when `dryRun: false`, a terminal `observation` over the resulting
+    `worldline:live` tip
 
-This slice is intentionally preview-only. It does **not** mutate live truth
-yet, and it does not introduce a special collapse engine outside the shared
-mutation kernel path.
+This slice still does **not** introduce a special collapse engine outside the
+shared mutation kernel path. The current governed live path is:
+persist comparison -> approve comparison -> collapse against that approved
+comparison baseline.
 
 ## `braid_worldlines` Current Slice
 

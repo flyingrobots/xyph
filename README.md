@@ -305,21 +305,29 @@ That split lets `compare_worldlines persist:true` record a durable
 `comparison-artifact:*` node on `worldline:live` without invalidating its own
 operational freshness token.
 
-`collapse_worldline` now provides the first settlement runway preview in XYPH
+`collapse_worldline` now provides the first governed settlement runway in XYPH
 language, still backed by published git-warp substrate facts. In the current
 slice it:
 
 - requires the effective worldline to be a canonical derived worldline
 - requires a fresh `comparisonArtifactDigest` from `compare_worldlines`
-- currently previews settlement into `worldline:live` only
-- always dry-runs through the same mutation kernel used by `apply`
+- currently settles into `worldline:live` only
+- defaults to preview mode, but accepts `dryRun: false` for live execution
+- uses the same mutation kernel as `apply` for both preview and execution
+- requires approving `attestationIds` over a persisted `comparison-artifact:*`
+  when live execution would make substantive changes
+- currently fails closed for live execution when the transfer plan includes
+  content-clearing ops, because those committed primitives are not honest yet
 - returns a typed `collapse-proposal` with per-side observations, substrate
-  transfer facts, sanitized transfer ops, and mutation side-effect preview
+  transfer facts, sanitized transfer ops, and either a mutation side-effect
+  preview or a live execution result
 - carries git-warp’s exported comparison and transfer facts in the substrate
   block for later XYPH recording or attestation work
-- accepts optional `persist: true` to record the preview as a durable
-  `collapse-proposal:*` node on `worldline:live` without executing settlement
-- does **not** mutate live truth yet
+- accepts optional `persist: true` to record the current collapse artifact as a
+  durable `collapse-proposal:*` node on `worldline:live`
+- uses approving attestations over the persisted `comparison-artifact:*` as the
+  current execution gate; attesting a `collapse-proposal:*` remains valid
+  governance context but is not the execution gate in this slice
 
 `braid_worldlines` is now implemented as a thin mapping onto git-warp’s
 published braid substrate for canonical derived worldlines. It:
@@ -356,10 +364,14 @@ derived-worldline truth.
   factual preview surface, not the decision itself.
 - add `persist: true` to `compare_worldlines` when the factual preview should
   become a durable `comparison-artifact:*` governance record on live truth.
-- `collapse_worldline` when you want a candidate settlement runway preview that
-  lowers through the same mutation kernel as `apply` without mutating live
-  truth yet. Add `persist: true` when that preview should become a durable
-  attestation target on `worldline:live`.
+- `collapse_worldline` when you want either a candidate settlement runway
+  preview or a governed live collapse. The current live flow is:
+  `compare_worldlines persist:true` -> `attest` the returned
+  `comparison-artifact:*` -> `collapse_worldline dryRun:false
+  attestationIds:[...]`.
+- add `persist: true` to `collapse_worldline` when the current preview or
+  execution artifact should become a durable `collapse-proposal:*` record on
+  `worldline:live`.
 - Hand off explicit `worldlineId` values between humans and agents. Do not pass
   substrate working-set IDs as the public coordination handle.
 

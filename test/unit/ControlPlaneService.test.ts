@@ -37,6 +37,7 @@ const mocks = vi.hoisted(() => ({
   createWorkingSet: vi.fn(),
   braidWorkingSet: vi.fn(),
   analyzeConflicts: vi.fn(),
+  getNodeProps: vi.fn(),
   materializeWorkingSet: vi.fn(),
   getWorkingSet: vi.fn(),
   patchesForWorkingSet: vi.fn(),
@@ -80,6 +81,30 @@ function buildComparisonArtifactDigest(comparisonDigest: string, leftWorldlineId
       at: 'tip',
     },
     targetId: null,
+  });
+}
+
+function buildCollapseArtifactDigest(
+  comparisonArtifactDigest: string,
+  transferDigest: string,
+  sourceWorldlineId: string,
+  targetWorldlineId: string,
+  dryRun: boolean,
+): string {
+  return digest({
+    kind: 'collapse-proposal',
+    comparisonArtifactDigest,
+    transferDigest,
+    source: {
+      worldlineId: sourceWorldlineId,
+      at: 'tip',
+    },
+    target: {
+      worldlineId: targetWorldlineId,
+      at: 'tip',
+    },
+    comparisonScopeVersion: XYPH_OPERATIONAL_COMPARISON_SCOPE_VERSION,
+    dryRun,
   });
 }
 
@@ -604,6 +629,7 @@ describe('ControlPlaneService', () => {
       makeWorkingSetDescriptor(),
     );
     mocks.patchesForWorkingSet.mockResolvedValue(['patch:1', 'patch:2']);
+    mocks.getNodeProps.mockResolvedValue(null);
     mocks.compareCoordinates.mockResolvedValue(
       makeCoordinateComparison({
         leftWorkingSetId: 'wl_review-auth',
@@ -621,6 +647,7 @@ describe('ControlPlaneService', () => {
       getFrontier: mocks.getFrontier,
       getStateSnapshot: mocks.getStateSnapshot,
       hasNode: vi.fn(async () => true),
+      getNodeProps: mocks.getNodeProps,
       materialize: vi.fn(async () => null),
       patchesFor: vi.fn(async () => ['patch:1', 'patch:2']),
       createWorkingSet: mocks.createWorkingSet,
@@ -636,6 +663,7 @@ describe('ControlPlaneService', () => {
       getFrontier: mocks.getFrontier,
       getStateSnapshot: mocks.getStateSnapshot,
       hasNode: vi.fn(async () => true),
+      getNodeProps: mocks.getNodeProps,
       syncCoverage: vi.fn(async () => null),
       materialize: vi.fn(async () => null),
       patchesFor: vi.fn(async () => ['patch:1']),
@@ -1708,21 +1736,13 @@ describe('ControlPlaneService', () => {
       'worldline:review-auth',
       'worldline:live',
     );
-    const collapseArtifactDigest = digest({
-      kind: 'collapse-proposal',
+    const collapseArtifactDigest = buildCollapseArtifactDigest(
       comparisonArtifactDigest,
-      transferDigest: 'transfer:collapse-persisted',
-      source: {
-        worldlineId: 'worldline:review-auth',
-        at: 'tip',
-      },
-      target: {
-        worldlineId: 'worldline:live',
-        at: 'tip',
-      },
-      attestationIds: ['attestation:1'],
-      comparisonScopeVersion: XYPH_OPERATIONAL_COMPARISON_SCOPE_VERSION,
-    });
+      'transfer:collapse-persisted',
+      'worldline:review-auth',
+      'worldline:live',
+      true,
+    );
     mocks.createCanonicalArtifact.mockResolvedValueOnce({
       id: `collapse-proposal:${collapseArtifactDigest}`,
       patch: 'patch:collapse-proposal',
@@ -1783,6 +1803,340 @@ describe('ControlPlaneService', () => {
       }),
     }));
     expect(result).not.toHaveProperty('observation');
+  });
+
+  it('executes collapse_worldline against live after approving attestations over the persisted comparison artifact', async () => {
+    mocks.compareCoordinates.mockResolvedValueOnce(
+      makeCoordinateComparison({
+        comparisonDigest: 'comparison:collapse-execute:raw',
+        leftWorkingSetId: 'wl_review-auth',
+        rightWorkingSetId: null,
+        targetId: null,
+      }),
+    ).mockResolvedValueOnce(
+      makeCoordinateComparison({
+        comparisonDigest: 'comparison:collapse-execute:operational',
+        leftWorkingSetId: 'wl_review-auth',
+        rightWorkingSetId: null,
+        targetId: null,
+        scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
+      }),
+    );
+    mocks.planCoordinateTransfer.mockResolvedValueOnce(
+      makeCoordinateTransferPlan({
+        comparisonDigest: 'comparison:collapse-execute:operational',
+        transferDigest: 'transfer:collapse-execute',
+        scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
+        sourceWorkingSetId: 'wl_review-auth',
+        targetWorkingSetId: null,
+        ops: [
+          { op: 'set_node_property', nodeId: 'task:ONE', key: 'status', value: 'READY' },
+        ],
+      }),
+    );
+    mocks.executeMutation.mockResolvedValueOnce({
+      valid: true,
+      code: null,
+      reasons: [],
+      sideEffects: ['set task:ONE.status'],
+      patch: 'patch:collapse-execute',
+      executed: true,
+    });
+    const comparisonArtifactDigest = buildComparisonArtifactDigest(
+      'comparison:collapse-execute:operational',
+      'worldline:review-auth',
+      'worldline:live',
+    );
+    const comparisonArtifactId = `comparison-artifact:${comparisonArtifactDigest}`;
+    mocks.getNodeProps.mockImplementation(async (nodeId: string) => {
+      if (nodeId === 'attestation:approve-1') {
+        return {
+          type: 'attestation',
+          decision: 'approve',
+          target_id: comparisonArtifactId,
+          attested_by: 'human.reviewer',
+          attested_at: 4567,
+        };
+      }
+      if (nodeId === comparisonArtifactId) {
+        return {
+          type: 'comparison-artifact',
+          artifact_digest: comparisonArtifactDigest,
+        };
+      }
+      return null;
+    });
+
+    const service = new ControlPlaneService({
+      getGraph: mocks.getGraph,
+      openIsolatedGraph: mocks.openIsolatedGraph,
+      reset: vi.fn(),
+    }, 'agent.prime');
+
+    const result = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'req-collapse-execute',
+      cmd: 'collapse_worldline',
+      args: {
+        worldlineId: 'worldline:review-auth',
+        comparisonArtifactDigest,
+        dryRun: false,
+        attestationIds: ['attestation:approve-1'],
+      },
+    });
+
+    expect(mocks.executeMutation).toHaveBeenCalledWith({
+      rationale: 'Collapse worldline:review-auth into worldline:live.',
+      ops: [
+        { op: 'set_node_property', nodeId: 'task:ONE', key: 'status', value: 'READY' },
+      ],
+    }, {
+      dryRun: false,
+      allowEmptyPlan: true,
+    });
+    expect(result).toEqual(expect.objectContaining({
+      ok: true,
+      cmd: 'collapse_worldline',
+      data: expect.objectContaining({
+        kind: 'collapse-proposal',
+        dryRun: false,
+        executable: true,
+        comparison: expect.objectContaining({
+          artifactId: comparisonArtifactId,
+          artifactDigest: comparisonArtifactDigest,
+        }),
+        mutationExecution: {
+          dryRun: false,
+          valid: true,
+          executed: true,
+          patch: 'patch:collapse-execute',
+          opCount: 1,
+          sideEffects: ['set task:ONE.status'],
+        },
+        executionGate: {
+          comparisonArtifactId,
+          requiredDecision: 'approve',
+          satisfied: true,
+        },
+        attestationIds: ['attestation:approve-1'],
+        attestations: [
+          {
+            id: 'attestation:approve-1',
+            decision: 'approve',
+            targetId: comparisonArtifactId,
+            attestedBy: 'human.reviewer',
+            attestedAt: 4567,
+          },
+        ],
+      }),
+      observation: expect.objectContaining({
+        worldlineId: 'worldline:live',
+      }),
+    }));
+  });
+
+  it('requires approving attestations before executing collapse_worldline with substantive work', async () => {
+    mocks.compareCoordinates.mockResolvedValueOnce(
+      makeCoordinateComparison({
+        comparisonDigest: 'comparison:collapse-gate:raw',
+        leftWorkingSetId: 'wl_review-auth',
+        rightWorkingSetId: null,
+        targetId: null,
+      }),
+    ).mockResolvedValueOnce(
+      makeCoordinateComparison({
+        comparisonDigest: 'comparison:collapse-gate:operational',
+        leftWorkingSetId: 'wl_review-auth',
+        rightWorkingSetId: null,
+        targetId: null,
+        scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
+      }),
+    );
+    mocks.planCoordinateTransfer.mockResolvedValueOnce(
+      makeCoordinateTransferPlan({
+        comparisonDigest: 'comparison:collapse-gate:operational',
+        transferDigest: 'transfer:collapse-gate',
+        scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
+        sourceWorkingSetId: 'wl_review-auth',
+        targetWorkingSetId: null,
+        ops: [
+          { op: 'set_node_property', nodeId: 'task:ONE', key: 'status', value: 'READY' },
+        ],
+      }),
+    );
+    const comparisonArtifactDigest = buildComparisonArtifactDigest(
+      'comparison:collapse-gate:operational',
+      'worldline:review-auth',
+      'worldline:live',
+    );
+
+    const service = new ControlPlaneService({
+      getGraph: mocks.getGraph,
+      openIsolatedGraph: mocks.openIsolatedGraph,
+      reset: vi.fn(),
+    }, 'agent.prime');
+
+    const result = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'req-collapse-missing-attestation',
+      cmd: 'collapse_worldline',
+      args: {
+        worldlineId: 'worldline:review-auth',
+        comparisonArtifactDigest,
+        dryRun: false,
+      },
+    });
+
+    expect(mocks.executeMutation).not.toHaveBeenCalled();
+    expect(result).toEqual(expect.objectContaining({
+      ok: false,
+      error: expect.objectContaining({
+        code: 'attestation_missing',
+      }),
+    }));
+  });
+
+  it('rejects collapse execution when the attestation does not target the comparison artifact', async () => {
+    mocks.compareCoordinates.mockResolvedValueOnce(
+      makeCoordinateComparison({
+        comparisonDigest: 'comparison:collapse-bad-attest:raw',
+        leftWorkingSetId: 'wl_review-auth',
+        rightWorkingSetId: null,
+        targetId: null,
+      }),
+    ).mockResolvedValueOnce(
+      makeCoordinateComparison({
+        comparisonDigest: 'comparison:collapse-bad-attest:operational',
+        leftWorkingSetId: 'wl_review-auth',
+        rightWorkingSetId: null,
+        targetId: null,
+        scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
+      }),
+    );
+    mocks.planCoordinateTransfer.mockResolvedValueOnce(
+      makeCoordinateTransferPlan({
+        comparisonDigest: 'comparison:collapse-bad-attest:operational',
+        transferDigest: 'transfer:collapse-bad-attest',
+        scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
+        sourceWorkingSetId: 'wl_review-auth',
+        targetWorkingSetId: null,
+        ops: [
+          { op: 'set_node_property', nodeId: 'task:ONE', key: 'status', value: 'READY' },
+        ],
+      }),
+    );
+    const comparisonArtifactDigest = buildComparisonArtifactDigest(
+      'comparison:collapse-bad-attest:operational',
+      'worldline:review-auth',
+      'worldline:live',
+    );
+    const comparisonArtifactId = `comparison-artifact:${comparisonArtifactDigest}`;
+    mocks.getNodeProps.mockImplementation(async (nodeId: string) => {
+      if (nodeId === 'attestation:wrong-target') {
+        return {
+          type: 'attestation',
+          decision: 'approve',
+          target_id: 'comparison-artifact:other',
+          attested_by: 'human.reviewer',
+          attested_at: 4567,
+        };
+      }
+      if (nodeId === comparisonArtifactId) {
+        return {
+          type: 'comparison-artifact',
+          artifact_digest: comparisonArtifactDigest,
+        };
+      }
+      return null;
+    });
+
+    const service = new ControlPlaneService({
+      getGraph: mocks.getGraph,
+      openIsolatedGraph: mocks.openIsolatedGraph,
+      reset: vi.fn(),
+    }, 'agent.prime');
+
+    const result = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'req-collapse-bad-attestation',
+      cmd: 'collapse_worldline',
+      args: {
+        worldlineId: 'worldline:review-auth',
+        comparisonArtifactDigest,
+        dryRun: false,
+        attestationIds: ['attestation:wrong-target'],
+      },
+    });
+
+    expect(mocks.executeMutation).not.toHaveBeenCalled();
+    expect(result).toEqual(expect.objectContaining({
+      ok: false,
+      error: expect.objectContaining({
+        code: 'attestation_missing',
+      }),
+    }));
+  });
+
+  it('fails closed when live collapse execution would need content-clearing ops', async () => {
+    mocks.compareCoordinates.mockResolvedValueOnce(
+      makeCoordinateComparison({
+        comparisonDigest: 'comparison:collapse-clear:raw',
+        leftWorkingSetId: 'wl_review-auth',
+        rightWorkingSetId: null,
+        targetId: null,
+      }),
+    ).mockResolvedValueOnce(
+      makeCoordinateComparison({
+        comparisonDigest: 'comparison:collapse-clear:operational',
+        leftWorkingSetId: 'wl_review-auth',
+        rightWorkingSetId: null,
+        targetId: null,
+        scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
+      }),
+    );
+    mocks.planCoordinateTransfer.mockResolvedValueOnce(
+      makeCoordinateTransferPlan({
+        comparisonDigest: 'comparison:collapse-clear:operational',
+        transferDigest: 'transfer:collapse-clear',
+        scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
+        sourceWorkingSetId: 'wl_review-auth',
+        targetWorkingSetId: null,
+        ops: [
+          { op: 'set_node_property', nodeId: 'task:ONE', key: 'status', value: 'READY' },
+          { op: 'clear_node_content', nodeId: 'task:ONE' },
+        ],
+      }),
+    );
+    const comparisonArtifactDigest = buildComparisonArtifactDigest(
+      'comparison:collapse-clear:operational',
+      'worldline:review-auth',
+      'worldline:live',
+    );
+
+    const service = new ControlPlaneService({
+      getGraph: mocks.getGraph,
+      openIsolatedGraph: mocks.openIsolatedGraph,
+      reset: vi.fn(),
+    }, 'agent.prime');
+
+    const result = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'req-collapse-clear-execute',
+      cmd: 'collapse_worldline',
+      args: {
+        worldlineId: 'worldline:review-auth',
+        comparisonArtifactDigest,
+        dryRun: false,
+      },
+    });
+
+    expect(mocks.executeMutation).not.toHaveBeenCalled();
+    expect(result).toEqual(expect.objectContaining({
+      ok: false,
+      error: expect.objectContaining({
+        code: 'not_implemented',
+      }),
+    }));
   });
 
   it('diffs derived worldlines through working-set materialization and provenance', async () => {
