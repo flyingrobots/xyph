@@ -113,7 +113,8 @@ Current foundation slice:
 - implemented now: `comment`
 - implemented now: `propose`
 - implemented now: `attest`
-- reserved, hidden admin/debug concepts: `query`, `rewind_worldline`
+- implemented now (hidden admin): `query`
+- reserved, hidden admin/debug concept: `rewind_worldline`
 
 Current `observe` projections include a substrate-backed `conflicts` view that
 delegates directly to `git-warp`'s published `analyzeConflicts()` API. This is
@@ -243,6 +244,16 @@ proposal still describes the current live-vs-source delta.
 That keeps settlement planning factual at the substrate boundary while
 preserving XYPH ownership of governance meaning, attestation policy, and
 execution semantics.
+
+`query` now starts to expose that governance meaning directly. The first slice
+is intentionally narrow and admin-only:
+
+- `governance.worklist` summarizes actionable comparison/collapse artifacts
+- `governance.series` shows the history of one governance lane through
+  `artifact_series_key` plus `supersedes` lineage
+
+This is not a generic graph query surface yet. It is the first operator-facing
+read model built specifically around XYPH’s governance artifacts.
 
 Existing commands such as `briefing`, `next`, `context`, `submit`, `review`,
 and `merge` still exist, but they should be understood as compatibility

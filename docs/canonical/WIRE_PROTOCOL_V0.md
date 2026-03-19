@@ -132,7 +132,7 @@ Current foundation-slice implementation status:
 - implemented now: `propose`
 - implemented now: `comment`
 - implemented now: `attest`
-- reserved, not yet implemented: `query`
+- implemented now (admin-only): `query`
 - reserved, not yet implemented: `rewind_worldline`
 
 `snapshot_at` is not a distinct protocol command. It is a readability alias for
@@ -368,6 +368,33 @@ This slice still does **not** introduce a special collapse engine outside the
 shared mutation kernel path. The current governed live path is:
 persist comparison -> approve comparison -> collapse against that approved
 comparison baseline.
+
+## `query` Current Slice
+
+`query` is now implemented as an admin-only governance read surface.
+
+Current behavior:
+
+- requires explicit human admin capability
+- currently operates on the live governance surface only
+- rejects worldline selectors and historical selectors in this slice
+- supports:
+  - `view: "governance.worklist"`
+  - `view: "governance.series"` with `artifactId`
+- returns:
+  - for `governance.worklist`, queue-style summaries for:
+    - fresh comparison artifacts
+    - stale comparison artifacts
+    - pending collapse proposals
+    - approved collapse proposals
+    - stale collapse proposals
+    - executed collapse proposals
+  - for `governance.series`, chronological series history for one durable
+    `comparison-artifact:*` or `collapse-proposal:*` lane
+
+This is intentionally narrow. It is not a generic graph query language yet.
+The first slice is artifact-centric and operator-centric: make governance lanes
+visible and navigable before opening a broader query grammar.
 
 ## `braid_worldlines` Current Slice
 

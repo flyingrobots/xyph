@@ -6,6 +6,7 @@ All notable changes to XYPH will be documented in this file.
 
 ### Changed
 
+- **`query` is now the first real governance read surface** — the hidden admin command no longer falls through to `not_implemented`. It now exposes `governance.worklist` for actionable compare/collapse queues and `governance.series` for durable artifact-lane history.
 - **Persisted governance artifacts now have readable lifecycle semantics** — `observe(entity.detail)` now computes XYPH governance detail for durable `comparison-artifact:*`, `collapse-proposal:*`, and `attestation:*` nodes, including freshness, attestation summary, and execution-gate state where applicable, instead of exposing only raw graph properties.
 - **Durable compare/collapse artifacts now form explicit lineage** — repeated persisted `comparison-artifact:*` and `collapse-proposal:*` records in the same governance lane now carry a stable `artifact_series_key`, and newer artifacts link to older ones through `supersedes` so XYPH can report whether an artifact is current or already superseded.
 - **`collapse_worldline` now settles committed content-clearing plans too** — governed live collapse no longer fails closed when git-warp transfer planning emits `clear_node_content` or `clear_edge_content`. Those ops now lower through the published substrate clear-content primitives in the shared mutation kernel.

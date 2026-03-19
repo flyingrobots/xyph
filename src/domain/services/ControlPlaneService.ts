@@ -531,6 +531,7 @@ export class ControlPlaneService implements ControlPlanePort {
       case 'collapse_worldline':
         return this.collapseWorldline(request, capability);
       case 'query':
+        return this.query(request, capability);
       case 'rewind_worldline':
         throw controlPlaneFailure(
           'not_implemented',
@@ -1899,6 +1900,275 @@ export class ControlPlaneService implements ControlPlanePort {
       'invalid_args',
       'explain requires errorCode, actionKind+targetId, or targetId',
     );
+  }
+
+  private async query(
+    request: ControlPlaneRequestV1,
+    capability: EffectiveCapabilityGrant,
+  ): Promise<{
+    data: Record<string, unknown>;
+    diagnostics: Diagnostic[];
+    observation?: ObservationCoordinate;
+  }> {
+    if (
+      request.args['worldlineId'] !== undefined
+      || request.args['at'] !== undefined
+      || request.args['againstWorldlineId'] !== undefined
+      || request.args['againstAt'] !== undefined
+      || request.args['since'] !== undefined
+      || request.args['sinceFrontierDigest'] !== undefined
+    ) {
+      throw controlPlaneFailure(
+        'invalid_args',
+        'query currently operates on the live governance surface only and does not accept worldline or selector arguments.',
+      );
+    }
+
+    const view = this.requireString(request.args['view'], 'query view');
+    const graph = await this.graphPort.getGraph();
+    const limitRaw = request.args['limit'];
+    const limit = limitRaw === undefined
+      ? 10
+      : this.requireQueryLimit(limitRaw);
+
+    switch (view) {
+      case 'governance.worklist': {
+        const data = await this.queryGovernanceWorklist(graph, limit);
+        return {
+          data,
+          diagnostics: [],
+          observation: await this.buildObservationCoordinate(request, capability, Date.now(), null, false, graph),
+        };
+      }
+      case 'governance.series': {
+        const artifactId = this.requireString(request.args['artifactId'], 'query artifactId');
+        const data = await this.queryGovernanceSeries(graph, artifactId);
+        return {
+          data,
+          diagnostics: [],
+          observation: await this.buildObservationCoordinate(request, capability, Date.now(), null, true, graph),
+        };
+      }
+      default:
+        throw controlPlaneFailure(
+          'invalid_args',
+          `Unsupported query view '${view}'. Current slice supports governance.worklist and governance.series.`,
+          { view },
+        );
+    }
+  }
+
+  private requireQueryLimit(raw: unknown): number {
+    if (typeof raw !== 'number' || !Number.isInteger(raw) || raw < 1 || raw > 100) {
+      throw controlPlaneFailure(
+        'invalid_args',
+        'query limit must be an integer between 1 and 100 when provided.',
+      );
+    }
+    return raw;
+  }
+
+  private async listCanonicalArtifactNodes(
+    graph: WarpGraph,
+    kind: 'comparison-artifact' | 'collapse-proposal',
+  ): Promise<{ id: string; props: Record<string, unknown> }[]> {
+    await graph.syncCoverage();
+    await graph.materialize();
+    const result = await graph.query().match(`${kind}:*`).select(['id', 'props']).run();
+    if (!('nodes' in result)) return [];
+    return result.nodes.filter(
+      (node): node is { id: string; props: Record<string, unknown> } =>
+        typeof node.id === 'string' && node.props !== undefined,
+    );
+  }
+
+  private async queryGovernanceWorklist(
+    graph: WarpGraph,
+    limit: number,
+  ): Promise<Record<string, unknown>> {
+    const [comparisonNodes, collapseNodes] = await Promise.all([
+      this.listCanonicalArtifactNodes(graph, 'comparison-artifact'),
+      this.listCanonicalArtifactNodes(graph, 'collapse-proposal'),
+    ]);
+    const graphCtx = createGraphContextFromGraph(graph, { syncCoverage: false });
+
+    const comparisonDetails = (await Promise.all(
+      comparisonNodes.map(async ({ id }) => graphCtx.fetchEntityDetail(id)),
+    )).filter((detail): detail is NonNullable<typeof detail> => Boolean(detail));
+    const collapseDetails = (await Promise.all(
+      collapseNodes.map(async ({ id }) => graphCtx.fetchEntityDetail(id)),
+    )).filter((detail): detail is NonNullable<typeof detail> => Boolean(detail));
+
+    const comparisonItems = comparisonDetails
+      .map((detail) => this.toGovernanceWorklistItem(detail))
+      .filter((item): item is Record<string, unknown> & { freshness?: unknown } => Boolean(item));
+    const collapseItems = collapseDetails
+      .map((detail) => this.toGovernanceWorklistItem(detail))
+      .filter((item): item is Record<string, unknown> & { lifecycle?: unknown } => Boolean(item));
+
+    const freshComparisons = comparisonItems.filter((item) => item['freshness'] === 'fresh');
+    const staleComparisons = comparisonItems.filter((item) => item['freshness'] === 'stale');
+    const pendingCollapseProposals = collapseItems.filter((item) => item['lifecycle'] === 'pending_attestation');
+    const approvedCollapseProposals = collapseItems.filter((item) => item['lifecycle'] === 'approved');
+    const staleCollapseProposals = collapseItems.filter((item) => item['lifecycle'] === 'stale');
+    const executedCollapseProposals = collapseItems.filter((item) => item['lifecycle'] === 'executed');
+
+    return {
+      view: 'governance.worklist',
+      asOf: Date.now(),
+      limit,
+      summary: {
+        freshComparisons: freshComparisons.length,
+        staleComparisons: staleComparisons.length,
+        pendingCollapseProposals: pendingCollapseProposals.length,
+        approvedCollapseProposals: approvedCollapseProposals.length,
+        staleCollapseProposals: staleCollapseProposals.length,
+        executedCollapseProposals: executedCollapseProposals.length,
+      },
+      queues: {
+        freshComparisons: freshComparisons.slice(0, limit),
+        staleComparisons: staleComparisons.slice(0, limit),
+        pendingCollapseProposals: pendingCollapseProposals.slice(0, limit),
+        approvedCollapseProposals: approvedCollapseProposals.slice(0, limit),
+        staleCollapseProposals: staleCollapseProposals.slice(0, limit),
+        executedCollapseProposals: executedCollapseProposals.slice(0, limit),
+      },
+    };
+  }
+
+  private toGovernanceWorklistItem(detail: EntityDetail): Record<string, unknown> | null {
+    const recordedAt = typeof detail.props['recorded_at'] === 'number' ? detail.props['recorded_at'] : null;
+    if (detail.governanceDetail?.kind === 'comparison-artifact') {
+      return {
+        id: detail.id,
+        kind: detail.governanceDetail.kind,
+        ...(recordedAt === null ? {} : { recordedAt }),
+        ...(typeof detail.props['artifact_digest'] === 'string' ? { artifactDigest: detail.props['artifact_digest'] } : {}),
+        freshness: detail.governanceDetail.freshness,
+        latestInSeries: detail.governanceDetail.series.latestInSeries,
+        leftWorldlineId: detail.governanceDetail.comparison.leftWorldlineId ?? null,
+        rightWorldlineId: detail.governanceDetail.comparison.rightWorldlineId ?? null,
+        targetId: detail.governanceDetail.comparison.targetId ?? null,
+        attestation: detail.governanceDetail.attestation,
+        settlement: detail.governanceDetail.settlement,
+      };
+    }
+    if (detail.governanceDetail?.kind === 'collapse-proposal') {
+      return {
+        id: detail.id,
+        kind: detail.governanceDetail.kind,
+        ...(recordedAt === null ? {} : { recordedAt }),
+        ...(typeof detail.props['artifact_digest'] === 'string' ? { artifactDigest: detail.props['artifact_digest'] } : {}),
+        freshness: detail.governanceDetail.freshness,
+        lifecycle: detail.governanceDetail.lifecycle,
+        latestInSeries: detail.governanceDetail.series.latestInSeries,
+        sourceWorldlineId: typeof detail.props['source_worldline_id'] === 'string' ? detail.props['source_worldline_id'] : null,
+        targetWorldlineId: typeof detail.props['target_worldline_id'] === 'string' ? detail.props['target_worldline_id'] : null,
+        attestation: detail.governanceDetail.attestation,
+        execution: detail.governanceDetail.execution,
+        executionGate: detail.governanceDetail.executionGate,
+      };
+    }
+    return null;
+  }
+
+  private async queryGovernanceSeries(
+    graph: WarpGraph,
+    artifactId: string,
+  ): Promise<Record<string, unknown>> {
+    const graphCtx = createGraphContextFromGraph(graph, { syncCoverage: false });
+    const detail = await graphCtx.fetchEntityDetail(artifactId);
+    if (!detail) {
+      throw controlPlaneFailure('not_found', `Entity ${artifactId} not found in the graph`);
+    }
+    if (
+      detail.governanceDetail?.kind !== 'comparison-artifact'
+      && detail.governanceDetail?.kind !== 'collapse-proposal'
+    ) {
+      throw controlPlaneFailure(
+        'invalid_args',
+        'governance.series currently supports durable comparison-artifact:* and collapse-proposal:* nodes only.',
+        { artifactId, type: detail.type },
+      );
+    }
+
+    const seriesKey = detail.governanceDetail.series.seriesKey;
+    if (!seriesKey) {
+      throw controlPlaneFailure(
+        'invalid_args',
+        'governance.series requires the target artifact to carry an artifact_series_key.',
+        { artifactId },
+      );
+    }
+
+    const nodes = await this.listCanonicalArtifactNodes(graph, detail.governanceDetail.kind);
+    const entries = (await Promise.all(
+      nodes
+        .filter((node) => node.props['artifact_series_key'] === seriesKey)
+        .map(async ({ id }) => graphCtx.fetchEntityDetail(id)),
+    ))
+      .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry))
+      .sort((left, right) => {
+        const leftRecordedAt = typeof left.props['recorded_at'] === 'number' ? left.props['recorded_at'] : 0;
+        const rightRecordedAt = typeof right.props['recorded_at'] === 'number' ? right.props['recorded_at'] : 0;
+        return leftRecordedAt - rightRecordedAt || left.id.localeCompare(right.id);
+      })
+      .map((entry) => this.toGovernanceSeriesEntry(entry, artifactId));
+
+    return {
+      view: 'governance.series',
+      artifactId,
+      series: {
+        kind: detail.governanceDetail.kind,
+        seriesKey,
+        latestArtifactId: entries.findLast((entry) => entry['latestInSeries'] === true)?.['id'] ?? artifactId,
+        entries,
+      },
+    };
+  }
+
+  private toGovernanceSeriesEntry(
+    detail: EntityDetail,
+    requestedArtifactId: string,
+  ): Record<string, unknown> {
+    const recordedAt = typeof detail.props['recorded_at'] === 'number' ? detail.props['recorded_at'] : null;
+    const base: Record<string, unknown> = {
+      id: detail.id,
+      current: detail.id === requestedArtifactId,
+      latestInSeries: detail.governanceDetail?.kind === 'comparison-artifact'
+        ? detail.governanceDetail.series.latestInSeries
+        : detail.governanceDetail?.kind === 'collapse-proposal'
+          ? detail.governanceDetail.series.latestInSeries
+          : false,
+      ...(recordedAt === null ? {} : { recordedAt }),
+      ...(typeof detail.props['artifact_digest'] === 'string' ? { artifactDigest: detail.props['artifact_digest'] } : {}),
+    };
+
+    if (detail.governanceDetail?.kind === 'comparison-artifact') {
+      return {
+        ...base,
+        kind: 'comparison-artifact',
+        freshness: detail.governanceDetail.freshness,
+        supersedesId: detail.governanceDetail.series.supersedesId ?? null,
+        supersededByIds: detail.governanceDetail.series.supersededByIds,
+        attestation: detail.governanceDetail.attestation,
+        settlement: detail.governanceDetail.settlement,
+      };
+    }
+    if (detail.governanceDetail?.kind === 'collapse-proposal') {
+      return {
+        ...base,
+        kind: 'collapse-proposal',
+        freshness: detail.governanceDetail.freshness,
+        lifecycle: detail.governanceDetail.lifecycle,
+        supersedesId: detail.governanceDetail.series.supersedesId ?? null,
+        supersededByIds: detail.governanceDetail.series.supersededByIds,
+        attestation: detail.governanceDetail.attestation,
+        execution: detail.governanceDetail.execution,
+        executionGate: detail.governanceDetail.executionGate,
+      };
+    }
+    return base;
   }
 
   private async forkWorldline(

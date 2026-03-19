@@ -365,6 +365,19 @@ Compatibility projections such as `observe(slice.local)`, `observe(context)`,
 They remain live-service-backed compatibility views rather than full
 derived-worldline truth.
 
+`query` is now implemented as a hidden admin governance surface. The current
+slice is deliberately narrow and artifact-centric:
+
+- `view: "governance.worklist"` returns the live governance queues for fresh or
+  stale comparisons and pending, approved, stale, or executed collapse
+  proposals
+- `view: "governance.series"` returns the chronology of one durable
+  `comparison-artifact:*` or `collapse-proposal:*` lane using the recorded
+  `artifact_series_key` and `supersedes` edges
+
+This is not a generic graph query language yet. It is the first operator-facing
+governance read model built on top of XYPH’s persisted artifacts.
+
 #### Agent Usage
 
 - Stay on `worldline:live` for ordinary low-blast-radius work that should land

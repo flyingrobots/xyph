@@ -679,6 +679,78 @@ describe('ControlPlaneService worldline parity', () => {
         }),
       }),
     }));
+
+    const worklist = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'query-governance-worklist',
+      cmd: 'query',
+      args: {
+        view: 'governance.worklist',
+      },
+      auth: {
+        principalId: 'human.ada',
+        admin: true,
+      },
+    });
+    expect(worklist.ok).toBe(true);
+    if (!worklist.ok) throw new Error(worklist.error.message);
+    expect(worklist.data).toEqual(expect.objectContaining({
+      view: 'governance.worklist',
+      summary: expect.objectContaining({
+        freshComparisons: expect.any(Number),
+        staleComparisons: expect.any(Number),
+      }),
+      queues: expect.objectContaining({
+        freshComparisons: expect.arrayContaining([
+          expect.objectContaining({
+            id: comparisonTwoData['artifactId'],
+            freshness: 'fresh',
+          }),
+        ]),
+        staleComparisons: expect.arrayContaining([
+          expect.objectContaining({
+            id: comparisonOneData['artifactId'],
+            freshness: 'stale',
+          }),
+        ]),
+      }),
+    }));
+
+    const series = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'query-governance-series',
+      cmd: 'query',
+      args: {
+        view: 'governance.series',
+        artifactId: comparisonTwoData['artifactId'],
+      },
+      auth: {
+        principalId: 'human.ada',
+        admin: true,
+      },
+    });
+    expect(series.ok).toBe(true);
+    if (!series.ok) throw new Error(series.error.message);
+    expect(series.data).toEqual(expect.objectContaining({
+      view: 'governance.series',
+      artifactId: comparisonTwoData['artifactId'],
+      series: expect.objectContaining({
+        kind: 'comparison-artifact',
+        latestArtifactId: comparisonTwoData['artifactId'],
+        entries: [
+          expect.objectContaining({
+            id: comparisonOneData['artifactId'],
+            current: false,
+            freshness: 'stale',
+          }),
+          expect.objectContaining({
+            id: comparisonTwoData['artifactId'],
+            current: true,
+            freshness: 'fresh',
+          }),
+        ],
+      }),
+    }));
   });
 
   it('can persist a collapse proposal on live truth for later attestation', { timeout: 30_000 }, async () => {

@@ -2406,7 +2406,9 @@ describe('ControlPlaneService', () => {
       v: CONTROL_PLANE_VERSION,
       id: 'req-query-admin',
       cmd: 'query',
-      args: {},
+      args: {
+        view: 'governance.worklist',
+      },
       auth: {
         principalId: 'human.ada',
         admin: true,
@@ -2414,13 +2416,313 @@ describe('ControlPlaneService', () => {
     });
 
     expect(admin).toEqual(expect.objectContaining({
-      ok: false,
-      error: expect.objectContaining({
-        code: 'not_implemented',
+      ok: true,
+      data: expect.objectContaining({
+        view: 'governance.worklist',
+        queues: expect.objectContaining({
+          freshComparisons: [],
+        }),
       }),
       audit: expect.objectContaining({
         principalId: 'human.ada',
         capabilityMode: 'admin',
+      }),
+    }));
+  });
+
+  it('returns governance worklist queues for admin query', async () => {
+    mocks.queryRun
+      .mockResolvedValueOnce({
+        nodes: [
+          {
+            id: 'comparison-artifact:fresh',
+            props: {
+              type: 'comparison-artifact',
+              artifact_digest: 'digest:fresh',
+              recorded_at: 200,
+            },
+          },
+          {
+            id: 'comparison-artifact:stale',
+            props: {
+              type: 'comparison-artifact',
+              artifact_digest: 'digest:stale',
+              recorded_at: 100,
+            },
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        nodes: [
+          {
+            id: 'collapse-proposal:approved',
+            props: {
+              type: 'collapse-proposal',
+              artifact_digest: 'digest:approved',
+              recorded_at: 150,
+            },
+          },
+        ],
+      });
+    mocks.fetchEntityDetail
+      .mockResolvedValueOnce({
+        id: 'comparison-artifact:fresh',
+        type: 'comparison-artifact',
+        props: {
+          type: 'comparison-artifact',
+          artifact_digest: 'digest:fresh',
+          recorded_at: 200,
+        },
+        outgoing: [],
+        incoming: [],
+        governanceDetail: {
+          kind: 'comparison-artifact',
+          freshness: 'fresh',
+          attestation: { total: 0, approvals: 0, rejections: 0, other: 0, state: 'unattested' },
+          series: { latestInSeries: true, supersededByIds: [] },
+          comparison: {},
+          settlement: { proposalCount: 0, executedCount: 0 },
+        },
+      })
+      .mockResolvedValueOnce({
+        id: 'comparison-artifact:stale',
+        type: 'comparison-artifact',
+        props: {
+          type: 'comparison-artifact',
+          artifact_digest: 'digest:stale',
+          recorded_at: 100,
+        },
+        outgoing: [],
+        incoming: [],
+        governanceDetail: {
+          kind: 'comparison-artifact',
+          freshness: 'stale',
+          attestation: { total: 0, approvals: 0, rejections: 0, other: 0, state: 'unattested' },
+          series: { latestInSeries: false, supersededByIds: ['comparison-artifact:fresh'] },
+          comparison: {},
+          settlement: { proposalCount: 1, executedCount: 0 },
+        },
+      })
+      .mockResolvedValueOnce({
+        id: 'collapse-proposal:approved',
+        type: 'collapse-proposal',
+        props: {
+          type: 'collapse-proposal',
+          artifact_digest: 'digest:approved',
+          recorded_at: 150,
+          source_worldline_id: 'worldline:review-auth',
+          target_worldline_id: 'worldline:live',
+        },
+        outgoing: [],
+        incoming: [],
+        governanceDetail: {
+          kind: 'collapse-proposal',
+          freshness: 'fresh',
+          lifecycle: 'approved',
+          attestation: { total: 1, approvals: 1, rejections: 0, other: 0, state: 'approved' },
+          series: { latestInSeries: true, supersededByIds: [] },
+          execution: { dryRun: true, executable: true, executed: false, changed: true },
+          executionGate: {
+            comparisonArtifactId: 'comparison-artifact:fresh',
+            attestation: { total: 1, approvals: 1, rejections: 0, other: 0, state: 'approved' },
+          },
+        },
+      });
+
+    const service = new ControlPlaneService({
+      getGraph: mocks.getGraph,
+      openIsolatedGraph: mocks.openIsolatedGraph,
+      reset: vi.fn(),
+    }, 'agent.prime');
+
+    const result = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'req-query-worklist',
+      cmd: 'query',
+      args: {
+        view: 'governance.worklist',
+      },
+      auth: {
+        principalId: 'human.ada',
+        admin: true,
+      },
+    });
+
+    expect(result).toEqual(expect.objectContaining({
+      ok: true,
+      data: expect.objectContaining({
+        view: 'governance.worklist',
+        summary: expect.objectContaining({
+          freshComparisons: 1,
+          staleComparisons: 1,
+          approvedCollapseProposals: 1,
+        }),
+        queues: expect.objectContaining({
+          freshComparisons: [
+            expect.objectContaining({
+              id: 'comparison-artifact:fresh',
+              freshness: 'fresh',
+            }),
+          ],
+          staleComparisons: [
+            expect.objectContaining({
+              id: 'comparison-artifact:stale',
+              freshness: 'stale',
+            }),
+          ],
+          approvedCollapseProposals: [
+            expect.objectContaining({
+              id: 'collapse-proposal:approved',
+              lifecycle: 'approved',
+            }),
+          ],
+        }),
+      }),
+      observation: expect.objectContaining({
+        worldlineId: 'worldline:live',
+      }),
+    }));
+  });
+
+  it('returns governance series history for an artifact lane', async () => {
+    mocks.queryRun.mockResolvedValueOnce({
+      nodes: [
+        {
+          id: 'comparison-artifact:old',
+          props: {
+            type: 'comparison-artifact',
+            artifact_series_key: 'series:comparison',
+            recorded_at: 100,
+          },
+        },
+        {
+          id: 'comparison-artifact:new',
+          props: {
+            type: 'comparison-artifact',
+            artifact_series_key: 'series:comparison',
+            recorded_at: 200,
+          },
+        },
+      ],
+    });
+    mocks.fetchEntityDetail
+      .mockResolvedValueOnce({
+        id: 'comparison-artifact:new',
+        type: 'comparison-artifact',
+        props: {
+          type: 'comparison-artifact',
+          artifact_digest: 'digest:new',
+          artifact_series_key: 'series:comparison',
+          recorded_at: 200,
+        },
+        outgoing: [{ nodeId: 'comparison-artifact:old', label: 'supersedes' }],
+        incoming: [],
+        governanceDetail: {
+          kind: 'comparison-artifact',
+          freshness: 'fresh',
+          attestation: { total: 0, approvals: 0, rejections: 0, other: 0, state: 'unattested' },
+          series: {
+            seriesKey: 'series:comparison',
+            supersedesId: 'comparison-artifact:old',
+            supersededByIds: [],
+            latestInSeries: true,
+          },
+          comparison: {},
+          settlement: { proposalCount: 0, executedCount: 0 },
+        },
+      })
+      .mockResolvedValueOnce({
+        id: 'comparison-artifact:old',
+        type: 'comparison-artifact',
+        props: {
+          type: 'comparison-artifact',
+          artifact_digest: 'digest:old',
+          artifact_series_key: 'series:comparison',
+          recorded_at: 100,
+        },
+        outgoing: [],
+        incoming: [{ nodeId: 'comparison-artifact:new', label: 'supersedes' }],
+        governanceDetail: {
+          kind: 'comparison-artifact',
+          freshness: 'stale',
+          attestation: { total: 0, approvals: 0, rejections: 0, other: 0, state: 'unattested' },
+          series: {
+            seriesKey: 'series:comparison',
+            supersededByIds: ['comparison-artifact:new'],
+            latestInSeries: false,
+          },
+          comparison: {},
+          settlement: { proposalCount: 0, executedCount: 0 },
+        },
+      })
+      .mockResolvedValueOnce({
+        id: 'comparison-artifact:new',
+        type: 'comparison-artifact',
+        props: {
+          type: 'comparison-artifact',
+          artifact_digest: 'digest:new',
+          artifact_series_key: 'series:comparison',
+          recorded_at: 200,
+        },
+        outgoing: [{ nodeId: 'comparison-artifact:old', label: 'supersedes' }],
+        incoming: [],
+        governanceDetail: {
+          kind: 'comparison-artifact',
+          freshness: 'fresh',
+          attestation: { total: 0, approvals: 0, rejections: 0, other: 0, state: 'unattested' },
+          series: {
+            seriesKey: 'series:comparison',
+            supersedesId: 'comparison-artifact:old',
+            supersededByIds: [],
+            latestInSeries: true,
+          },
+          comparison: {},
+          settlement: { proposalCount: 0, executedCount: 0 },
+        },
+      });
+
+    const service = new ControlPlaneService({
+      getGraph: mocks.getGraph,
+      openIsolatedGraph: mocks.openIsolatedGraph,
+      reset: vi.fn(),
+    }, 'agent.prime');
+
+    const result = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'req-query-series',
+      cmd: 'query',
+      args: {
+        view: 'governance.series',
+        artifactId: 'comparison-artifact:new',
+      },
+      auth: {
+        principalId: 'human.ada',
+        admin: true,
+      },
+    });
+
+    expect(result).toEqual(expect.objectContaining({
+      ok: true,
+      data: expect.objectContaining({
+        view: 'governance.series',
+        artifactId: 'comparison-artifact:new',
+        series: expect.objectContaining({
+          kind: 'comparison-artifact',
+          seriesKey: 'series:comparison',
+          latestArtifactId: 'comparison-artifact:new',
+          entries: [
+            expect.objectContaining({
+              id: 'comparison-artifact:old',
+              current: false,
+              freshness: 'stale',
+            }),
+            expect.objectContaining({
+              id: 'comparison-artifact:new',
+              current: true,
+              freshness: 'fresh',
+            }),
+          ],
+        }),
       }),
     }));
   });
