@@ -2727,6 +2727,190 @@ describe('ControlPlaneService', () => {
     }));
   });
 
+  it('explains stale comparison artifacts through governance reason codes and next actions', async () => {
+    mocks.fetchContext.mockResolvedValue({
+      detail: {
+        id: 'comparison-artifact:stale',
+        type: 'comparison-artifact',
+        props: {
+          type: 'comparison-artifact',
+        },
+        outgoing: [],
+        incoming: [],
+        governanceDetail: {
+          kind: 'comparison-artifact',
+          freshness: 'stale',
+          attestation: { total: 0, approvals: 0, rejections: 0, other: 0, state: 'unattested' },
+          series: {
+            latestInSeries: false,
+            supersededByIds: ['comparison-artifact:fresh'],
+          },
+          comparison: {
+            leftWorldlineId: 'worldline:review-auth',
+            rightWorldlineId: 'worldline:live',
+          },
+          settlement: {
+            proposalCount: 1,
+            executedCount: 0,
+          },
+        },
+      },
+      readiness: null,
+      dependency: null,
+      recommendedActions: [],
+      recommendationRequests: [],
+      diagnostics: [],
+    });
+
+    const service = new ControlPlaneService({
+      getGraph: mocks.getGraph,
+      openIsolatedGraph: mocks.openIsolatedGraph,
+      reset: vi.fn(),
+    }, 'agent.prime');
+
+    const result = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'req-explain-stale-comparison',
+      cmd: 'explain',
+      args: {
+        targetId: 'comparison-artifact:stale',
+      },
+    });
+
+    expect(result).toEqual(expect.objectContaining({
+      ok: true,
+      data: expect.objectContaining({
+        targetId: 'comparison-artifact:stale',
+        targetType: 'comparison-artifact',
+        explanation: expect.objectContaining({
+          governanceKind: 'comparison-artifact',
+          summary: 'This comparison artifact is stale against current operational truth.',
+          state: expect.objectContaining({
+            freshness: 'stale',
+            latestInSeries: false,
+            attestationState: 'unattested',
+          }),
+          reasons: expect.arrayContaining([
+            expect.objectContaining({ code: 'comparison_stale' }),
+            expect.objectContaining({ code: 'artifact_superseded' }),
+            expect.objectContaining({ code: 'comparison_unattested' }),
+            expect.objectContaining({ code: 'settlement_planned' }),
+          ]),
+          nextActions: expect.arrayContaining([
+            expect.objectContaining({
+              command: 'query',
+              args: expect.objectContaining({
+                view: 'governance.series',
+                artifactId: 'comparison-artifact:stale',
+              }),
+            }),
+            expect.objectContaining({
+              command: 'compare_worldlines',
+              args: expect.objectContaining({
+                worldlineId: 'worldline:review-auth',
+                persist: true,
+              }),
+            }),
+          ]),
+        }),
+      }),
+    }));
+  });
+
+  it('explains collapse proposals that were attested directly but still lack comparison approval', async () => {
+    mocks.fetchContext.mockResolvedValue({
+      detail: {
+        id: 'collapse-proposal:blocked',
+        type: 'collapse-proposal',
+        props: {
+          type: 'collapse-proposal',
+          source_worldline_id: 'worldline:review-auth',
+          target_worldline_id: 'worldline:live',
+          comparison_artifact_digest: 'digest:comparison',
+        },
+        outgoing: [],
+        incoming: [],
+        governanceDetail: {
+          kind: 'collapse-proposal',
+          freshness: 'fresh',
+          lifecycle: 'pending_attestation',
+          attestation: { total: 1, approvals: 1, rejections: 0, other: 0, state: 'approved' },
+          series: {
+            latestInSeries: true,
+            supersededByIds: [],
+          },
+          execution: {
+            dryRun: true,
+            executable: true,
+            executed: false,
+            changed: true,
+          },
+          executionGate: {
+            comparisonArtifactId: 'comparison-artifact:comparison',
+            attestation: { total: 0, approvals: 0, rejections: 0, other: 0, state: 'unattested' },
+          },
+        },
+      },
+      readiness: null,
+      dependency: null,
+      recommendedActions: [],
+      recommendationRequests: [],
+      diagnostics: [],
+    });
+
+    const service = new ControlPlaneService({
+      getGraph: mocks.getGraph,
+      openIsolatedGraph: mocks.openIsolatedGraph,
+      reset: vi.fn(),
+    }, 'agent.prime');
+
+    const result = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'req-explain-blocked-collapse',
+      cmd: 'explain',
+      args: {
+        targetId: 'collapse-proposal:blocked',
+      },
+    });
+
+    expect(result).toEqual(expect.objectContaining({
+      ok: true,
+      data: expect.objectContaining({
+        targetId: 'collapse-proposal:blocked',
+        targetType: 'collapse-proposal',
+        explanation: expect.objectContaining({
+          governanceKind: 'collapse-proposal',
+          summary: 'This collapse proposal is waiting on comparison approval before it can execute.',
+          state: expect.objectContaining({
+            freshness: 'fresh',
+            lifecycle: 'pending_attestation',
+            proposalAttestationState: 'approved',
+            executionGateAttestationState: 'unattested',
+          }),
+          reasons: expect.arrayContaining([
+            expect.objectContaining({ code: 'proposal_pending_attestation' }),
+            expect.objectContaining({ code: 'comparison_gate_unattested' }),
+            expect.objectContaining({ code: 'proposal_attestation_not_execution_gate' }),
+          ]),
+          nextActions: expect.arrayContaining([
+            expect.objectContaining({
+              command: 'explain',
+              args: expect.objectContaining({
+                targetId: 'comparison-artifact:comparison',
+              }),
+            }),
+            expect.objectContaining({
+              command: 'attest',
+              args: expect.objectContaining({
+                targetId: 'comparison-artifact:comparison',
+              }),
+            }),
+          ]),
+        }),
+      }),
+    }));
+  });
+
   it('explains control-plane capability denials for probe commands', async () => {
     const service = new ControlPlaneService({
       getGraph: mocks.getGraph,

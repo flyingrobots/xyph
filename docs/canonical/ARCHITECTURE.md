@@ -255,6 +255,16 @@ is intentionally narrow and admin-only:
 This is not a generic graph query surface yet. It is the first operator-facing
 read model built specifically around XYPH’s governance artifacts.
 
+`explain` now layers operator diagnosis over that same artifact truth. Pointing
+`explain` at a durable `comparison-artifact:*`, `collapse-proposal:*`, or
+`attestation:*` returns stable reason codes and next-command suggestions rather
+than making operators reverse-engineer lifecycle state from raw props.
+
+That matters most for the execution gate distinction: XYPH now explains
+directly that attesting a `collapse-proposal:*` is governance commentary on the
+proposal, while live execution remains gated by approving attestations on the
+bound `comparison-artifact:*`.
+
 Existing commands such as `briefing`, `next`, `context`, `submit`, `review`,
 and `merge` still exist, but they should be understood as compatibility
 projections or wrappers over graph-backed domain services, not the canonical

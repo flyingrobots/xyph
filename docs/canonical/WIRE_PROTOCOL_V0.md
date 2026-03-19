@@ -476,6 +476,32 @@ Stable machine-readable error codes:
 `explain` is the companion command for turning these codes into structured
 reasoning, basis, and remediation hints.
 
+It also now supports governance-target diagnosis when called with `targetId`
+for a durable:
+
+- `comparison-artifact:*`
+- `collapse-proposal:*`
+- `attestation:*`
+
+In that mode, `data.explanation` is a structured governance explanation with:
+
+- `kind: "governance"`
+- `governanceKind`
+- `summary`
+- `state`
+- `reasons[]` with stable reason codes
+- `nextActions[]` with suggested follow-up commands
+
+This is intentionally artifact-centric, not a generic graph explanation
+language. The current slice is meant to answer concrete operator questions such
+as:
+
+- why a comparison artifact is stale or superseded
+- why a collapse proposal is still blocked
+- why approving a `collapse-proposal:*` does not satisfy the live execution
+  gate
+- which comparison artifact still needs approval before live collapse can run
+
 `redacted` may also appear inside successful read payloads as a per-field
 redaction code when sealed observation preserves structure but withholds
 restricted content.

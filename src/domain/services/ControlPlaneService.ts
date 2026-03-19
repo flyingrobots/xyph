@@ -42,7 +42,7 @@ import { AgentContextService } from './AgentContextService.js';
 import { AgentSubmissionService } from './AgentSubmissionService.js';
 import { DoctorService } from './DoctorService.js';
 import { AgentActionService } from './AgentActionService.js';
-import { explainError, explainErrorCode } from './ExplainService.js';
+import { explainError, explainErrorCode, explainGovernanceTarget } from './ExplainService.js';
 import { MutationKernelService } from './MutationKernelService.js';
 import { RecordService } from './RecordService.js';
 import type { GraphMeta } from '../models/dashboard.js';
@@ -1885,9 +1885,12 @@ export class ControlPlaneService implements ControlPlanePort {
       if (!result) {
         throw controlPlaneFailure('not_found', `Entity ${request.args['targetId']} not found in the graph`);
       }
+      const explanation = explainGovernanceTarget(result.detail);
       return {
         data: {
           targetId: request.args['targetId'],
+          targetType: result.detail.type,
+          explanation,
           diagnostics: result.diagnostics,
           recommendationRequests: result.recommendationRequests,
         },

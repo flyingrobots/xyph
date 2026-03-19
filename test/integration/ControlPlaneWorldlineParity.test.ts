@@ -751,6 +751,37 @@ describe('ControlPlaneService worldline parity', () => {
         ],
       }),
     }));
+
+    const staleExplanation = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'explain-stale-comparison-artifact',
+      cmd: 'explain',
+      args: {
+        targetId: comparisonOneData['artifactId'],
+      },
+    });
+    expect(staleExplanation.ok).toBe(true);
+    if (!staleExplanation.ok) throw new Error(staleExplanation.error.message);
+    expect(staleExplanation.data).toEqual(expect.objectContaining({
+      targetId: comparisonOneData['artifactId'],
+      targetType: 'comparison-artifact',
+      explanation: expect.objectContaining({
+        governanceKind: 'comparison-artifact',
+        reasons: expect.arrayContaining([
+          expect.objectContaining({ code: 'comparison_stale' }),
+          expect.objectContaining({ code: 'artifact_superseded' }),
+        ]),
+        nextActions: expect.arrayContaining([
+          expect.objectContaining({
+            command: 'compare_worldlines',
+            args: expect.objectContaining({
+              worldlineId: 'worldline:lifecycle-review',
+              persist: true,
+            }),
+          }),
+        ]),
+      }),
+    }));
   });
 
   it('can persist a collapse proposal on live truth for later attestation', { timeout: 30_000 }, async () => {
@@ -959,6 +990,36 @@ describe('ControlPlaneService worldline parity', () => {
             total: 0,
           }),
         }),
+      }),
+    }));
+
+    const collapseExplanation = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'explain-collapse-proposal-after-attest',
+      cmd: 'explain',
+      args: {
+        targetId: collapseData['artifactId'],
+      },
+    });
+    expect(collapseExplanation.ok).toBe(true);
+    if (!collapseExplanation.ok) throw new Error(collapseExplanation.error.message);
+    expect(collapseExplanation.data).toEqual(expect.objectContaining({
+      targetId: collapseData['artifactId'],
+      targetType: 'collapse-proposal',
+      explanation: expect.objectContaining({
+        governanceKind: 'collapse-proposal',
+        reasons: expect.arrayContaining([
+          expect.objectContaining({ code: 'comparison_gate_unattested' }),
+          expect.objectContaining({ code: 'proposal_attestation_not_execution_gate' }),
+        ]),
+        nextActions: expect.arrayContaining([
+          expect.objectContaining({
+            command: 'attest',
+            args: expect.objectContaining({
+              targetId: comparisonPersist.data['artifactId'],
+            }),
+          }),
+        ]),
       }),
     }));
   });

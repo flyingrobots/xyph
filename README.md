@@ -378,6 +378,17 @@ slice is deliberately narrow and artifact-centric:
 This is not a generic graph query language yet. It is the first operator-facing
 governance read model built on top of XYPH’s persisted artifacts.
 
+`explain` now understands persisted governance artifacts too. When you point it
+at a durable `comparison-artifact:*`, `collapse-proposal:*`, or `attestation:*`
+node, it returns stable reason codes plus suggested next commands for common
+operator questions such as:
+
+- why a comparison artifact is stale or superseded
+- why a collapse proposal is blocked, approved, stale, executed, or no-op
+- why attesting a `collapse-proposal:*` does not itself satisfy the live
+  execution gate
+- which comparison artifact still needs approval before live collapse can run
+
 #### Agent Usage
 
 - Stay on `worldline:live` for ordinary low-blast-radius work that should land
