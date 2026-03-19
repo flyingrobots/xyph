@@ -151,6 +151,9 @@ The current sovereign-control-plane foundation implements:
 - read-only `comparison-artifact` previews from `compare_worldlines`
 - optional durable `comparison-artifact:*` records on `worldline:live` when
   `compare_worldlines` is called with `persist: true`
+- computed governance lifecycle detail for durable `comparison-artifact:*`,
+  `collapse-proposal:*`, and `attestation:*` nodes through
+  `observe(entity.detail)`
 - primitive-op `apply`
 - working-set-backed `fork_worldline` creation from `worldline:live`
 - working-set-backed `braid_worldlines` composition for canonical derived
@@ -186,6 +189,8 @@ The current sovereign-control-plane foundation implements:
 - XYPH operational comparison scope over governance-only node families so
   durable comparison recording does not self-perturb the freshness token used
   by compare/collapse
+- explicit governance-series lineage for durable compare/collapse artifacts via
+  stable `artifact_series_key` values plus `supersedes` edges
 
 Current `fork_worldline` is intentionally narrow:
 

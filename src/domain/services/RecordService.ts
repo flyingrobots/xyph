@@ -46,6 +46,7 @@ interface CreateCanonicalArtifactInput {
   observerProfileId: string;
   policyPackVersion: string;
   indexedProperties?: Record<string, string | number | boolean | null>;
+  supersedesTargetId?: string | null;
   idempotencyKey?: string;
 }
 
@@ -281,6 +282,9 @@ export class RecordService {
           nodeId: input.id,
           content: stringifyDeterministicContent(input.payload),
         },
+        ...(input.supersedesTargetId
+          ? [{ op: 'add_edge', from: input.id, to: input.supersedesTargetId, label: 'supersedes' } as const]
+          : []),
       ],
     });
 

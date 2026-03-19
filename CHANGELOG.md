@@ -6,6 +6,8 @@ All notable changes to XYPH will be documented in this file.
 
 ### Changed
 
+- **Persisted governance artifacts now have readable lifecycle semantics** — `observe(entity.detail)` now computes XYPH governance detail for durable `comparison-artifact:*`, `collapse-proposal:*`, and `attestation:*` nodes, including freshness, attestation summary, and execution-gate state where applicable, instead of exposing only raw graph properties.
+- **Durable compare/collapse artifacts now form explicit lineage** — repeated persisted `comparison-artifact:*` and `collapse-proposal:*` records in the same governance lane now carry a stable `artifact_series_key`, and newer artifacts link to older ones through `supersedes` so XYPH can report whether an artifact is current or already superseded.
 - **`collapse_worldline` now settles committed content-clearing plans too** — governed live collapse no longer fails closed when git-warp transfer planning emits `clear_node_content` or `clear_edge_content`. Those ops now lower through the published substrate clear-content primitives in the shared mutation kernel.
 - **`collapse_worldline` is no longer preview-only** — the command still defaults to dry-run preview, but now accepts `dryRun: false` for governed live settlement into `worldline:live` when approving attestations bind to a persisted `comparison-artifact:*`.
 - **Collapse execution now gates on persisted comparison facts** — live collapse no longer treats `collapse-proposal:*` as the approval anchor. The current gate is one or more approving `attestation:*` nodes targeting the durable `comparison-artifact:*` returned by `compare_worldlines persist:true`, keeping governance attached to the factual comparison baseline.

@@ -304,6 +304,14 @@ Current behavior:
   - when `persist: true`, a `data.record` block describing the durable
     `comparison-artifact:*` node recorded on `worldline:live`
 
+When that durable artifact is later inspected through `observe(entity.detail)`,
+XYPH now returns computed governance detail including:
+
+- `freshness`: `fresh`, `stale`, or `unknown`
+- attestation summary over incoming `attestation:*` records
+- supersession lineage over the artifact’s governance series
+- settlement summary showing downstream `collapse-proposal:*` records
+
 This slice is intentionally comparison-only. It does **not** collapse, approve,
 or otherwise execute settlement. Comparison remains separate from decision and
 execution.
@@ -344,6 +352,17 @@ Current behavior:
     `collapse-proposal:*` node recorded on `worldline:live`
   - when `dryRun: false`, a terminal `observation` over the resulting
     `worldline:live` tip
+
+When a persisted `collapse-proposal:*` is later inspected through
+`observe(entity.detail)`, XYPH now returns computed governance detail
+including:
+
+- `freshness`: whether the proposal still matches the current source-vs-live
+  comparison baseline
+- `lifecycle`: `pending_attestation`, `approved`, `no_op`, `executed`, or
+  `stale`
+- direct attestation summary over the proposal itself
+- execution-gate attestation summary over the linked `comparison-artifact:*`
 
 This slice still does **not** introduce a special collapse engine outside the
 shared mutation kernel path. The current governed live path is:

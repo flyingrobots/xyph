@@ -5,7 +5,6 @@ import type {
   CoordinateComparisonSelectorV1,
   CoordinateComparisonV1,
   CoordinateTransferPlanV1,
-  VisibleStateScopeV1,
   VisibleStateTransferOperationV1,
 } from '@git-stunts/git-warp';
 import {
@@ -48,6 +47,16 @@ import { MutationKernelService } from './MutationKernelService.js';
 import { RecordService } from './RecordService.js';
 import type { GraphMeta } from '../models/dashboard.js';
 import { CapabilityResolverService } from './CapabilityResolverService.js';
+import {
+  buildCollapseArtifactDigest,
+  buildCollapseProposalSeriesKey,
+  buildComparisonArtifactDigest,
+  buildComparisonArtifactSeriesKey,
+  normalizeSelectorValue,
+  type ObservationSelector,
+  XYPH_OPERATIONAL_COMPARISON_SCOPE,
+  XYPH_OPERATIONAL_COMPARISON_SCOPE_VERSION,
+} from './GovernanceArtifacts.js';
 
 function stable(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(stable);
@@ -125,10 +134,6 @@ function controlPlaneFailure(
   };
 }
 
-type ObservationSelector =
-  | { kind: 'tip' }
-  | { kind: 'tick'; tick: number };
-
 type AnalyzeConflictsOptions = NonNullable<Parameters<WarpGraph['analyzeConflicts']>[0]>;
 type ConflictAnalysisResult = Awaited<ReturnType<WarpGraph['analyzeConflicts']>>;
 type WorkingSetDescriptor = NonNullable<Awaited<ReturnType<WarpGraph['getWorkingSet']>>>;
@@ -177,75 +182,6 @@ type LoweredCollapseMutationOp =
   | { op: 'clear_node_content'; nodeId: string }
   | { op: 'attach_edge_content'; from: string; to: string; label: string; content: Uint8Array; contentOid: string; mime?: string | null; size?: number | null }
   | { op: 'clear_edge_content'; from: string; to: string; label: string };
-
-const XYPH_OPERATIONAL_COMPARISON_SCOPE_VERSION = 'xyph-operational-visible-state/v1' as const;
-const XYPH_OPERATIONAL_COMPARISON_SCOPE: VisibleStateScopeV1 = {
-  nodeIdPrefixes: {
-    exclude: [
-      'attestation-record:',
-      'attestation:',
-      'audit-record:',
-      'collapse-proposal:',
-      'comment:',
-      'comparison-artifact:',
-      'conflict-artifact:',
-      'observation-record:',
-      'proposal:',
-    ],
-  },
-};
-
-function buildComparisonArtifactDigest(fields: {
-  comparisonDigest: string;
-  comparisonPolicyVersion: string;
-  comparisonScopeVersion: string;
-  leftWorldlineId: string;
-  leftSelector: ObservationSelector;
-  rightWorldlineId: string;
-  rightSelector: ObservationSelector;
-  targetId: string | null;
-}): string {
-  return digest({
-    kind: 'comparison-artifact',
-    comparisonDigest: fields.comparisonDigest,
-    comparisonPolicyVersion: fields.comparisonPolicyVersion,
-    comparisonScopeVersion: fields.comparisonScopeVersion,
-    left: {
-      worldlineId: fields.leftWorldlineId,
-      at: normalizeSelectorValue(fields.leftSelector),
-    },
-    right: {
-      worldlineId: fields.rightWorldlineId,
-      at: normalizeSelectorValue(fields.rightSelector),
-    },
-    targetId: fields.targetId,
-  });
-}
-
-function buildCollapseArtifactDigest(fields: {
-  comparisonArtifactDigest: string;
-  transferDigest: string;
-  sourceWorldlineId: string;
-  targetWorldlineId: string;
-  comparisonScopeVersion: string;
-  dryRun: boolean;
-}): string {
-  return digest({
-    kind: 'collapse-proposal',
-    comparisonArtifactDigest: fields.comparisonArtifactDigest,
-    transferDigest: fields.transferDigest,
-    source: {
-      worldlineId: fields.sourceWorldlineId,
-      at: 'tip',
-    },
-    target: {
-      worldlineId: fields.targetWorldlineId,
-      at: 'tip',
-    },
-    comparisonScopeVersion: fields.comparisonScopeVersion,
-    dryRun: fields.dryRun,
-  });
-}
 
 function sanitizeTransferOperation(op: VisibleStateTransferOperationV1): Record<string, unknown> {
   switch (op.op) {
@@ -355,12 +291,6 @@ function parseTickLike(value: unknown): number | null {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0
     ? value
     : null;
-}
-
-function normalizeSelectorValue(selector: ObservationSelector): 'tip' | { tick: number } {
-  return selector.kind === 'tip'
-    ? 'tip'
-    : { tick: selector.tick };
 }
 
 function workingSetErrorCode(err: unknown): string | null {
@@ -1237,6 +1167,34 @@ export class ControlPlaneService implements ControlPlanePort {
     return selector.kind === 'tick'
       ? { kind: 'working_set', workingSetId, ceiling: selector.tick }
       : { kind: 'working_set', workingSetId };
+  }
+
+  private async findLatestCanonicalArtifactInSeries(
+    kind: 'comparison-artifact' | 'collapse-proposal',
+    seriesKey: string,
+    nextArtifactId: string,
+  ): Promise<string | null> {
+    const graph = await this.graphPort.getGraph();
+    await graph.syncCoverage?.();
+    await graph.materialize?.();
+
+    const result = await graph.query().match(`${kind}:*`).select(['id', 'props']).run();
+    const nodes = 'nodes' in result
+      ? result.nodes.filter(
+        (node): node is { id: string; props: Record<string, unknown> } =>
+          typeof node.id === 'string' && node.props !== undefined,
+      )
+      : [];
+
+    const candidates = nodes
+      .filter((node) => node.id !== nextArtifactId && node.props['artifact_series_key'] === seriesKey)
+      .map((node) => ({
+        id: node.id,
+        recordedAt: typeof node.props['recorded_at'] === 'number' ? node.props['recorded_at'] : 0,
+      }))
+      .sort((left, right) => right.recordedAt - left.recordedAt || right.id.localeCompare(left.id));
+
+    return candidates[0]?.id ?? null;
   }
 
   private resolveComparisonWorldlineId(
@@ -2479,6 +2437,20 @@ export class ControlPlaneService implements ControlPlanePort {
     };
 
     if (persist) {
+      const artifactSeriesKey = buildComparisonArtifactSeriesKey({
+        comparisonPolicyVersion: capability.comparisonPolicyVersion,
+        comparisonScopeVersion: XYPH_OPERATIONAL_COMPARISON_SCOPE_VERSION,
+        leftWorldlineId,
+        leftSelector,
+        rightWorldlineId,
+        rightSelector,
+        targetId,
+      });
+      const supersedesTargetId = await this.findLatestCanonicalArtifactInSeries(
+        'comparison-artifact',
+        artifactSeriesKey,
+        artifactId,
+      );
       const record = await this.records.createCanonicalArtifact({
         id: artifactId,
         kind: 'comparison-artifact',
@@ -2488,6 +2460,7 @@ export class ControlPlaneService implements ControlPlanePort {
         observerProfileId: capability.observer.observerProfileId,
         policyPackVersion: capability.policyPackVersion,
         indexedProperties: {
+          artifact_series_key: artifactSeriesKey,
           comparison_policy_version: capability.comparisonPolicyVersion,
           comparison_scope_version: XYPH_OPERATIONAL_COMPARISON_SCOPE_VERSION,
           left_worldline_id: leftWorldlineId,
@@ -2496,6 +2469,7 @@ export class ControlPlaneService implements ControlPlanePort {
           raw_comparison_digest: rawComparison.comparisonDigest,
           ...(targetId === null ? {} : { target_id: targetId }),
         },
+        supersedesTargetId,
         idempotencyKey: typeof request.args['idempotencyKey'] === 'string'
           ? request.args['idempotencyKey']
           : undefined,
@@ -2837,6 +2811,17 @@ export class ControlPlaneService implements ControlPlanePort {
     };
 
     if (persist) {
+      const artifactSeriesKey = buildCollapseProposalSeriesKey({
+        sourceWorldlineId,
+        targetWorldlineId,
+        comparisonScopeVersion: XYPH_OPERATIONAL_COMPARISON_SCOPE_VERSION,
+        dryRun: !executeLive,
+      });
+      const supersedesTargetId = await this.findLatestCanonicalArtifactInSeries(
+        'collapse-proposal',
+        artifactSeriesKey,
+        artifactId,
+      );
       const record = await this.records.createCanonicalArtifact({
         id: artifactId,
         kind: 'collapse-proposal',
@@ -2849,7 +2834,9 @@ export class ControlPlaneService implements ControlPlanePort {
           ? request.args['idempotencyKey']
           : undefined,
         indexedProperties: {
+          artifact_series_key: artifactSeriesKey,
           comparison_artifact_digest: currentComparisonArtifactDigest,
+          comparison_scope_version: XYPH_OPERATIONAL_COMPARISON_SCOPE_VERSION,
           transfer_digest: transferPlan.transferDigest,
           source_worldline_id: sourceWorldlineId,
           target_worldline_id: targetWorldlineId,
@@ -2860,6 +2847,7 @@ export class ControlPlaneService implements ControlPlanePort {
           ...(mutationResult.patch === null ? {} : { execution_patch: mutationResult.patch }),
           ...(attestationIds === null ? {} : { attestation_count: attestationIds.length }),
         },
+        supersedesTargetId,
       });
       data['record'] = {
         persisted: true,

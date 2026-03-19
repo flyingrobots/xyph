@@ -276,6 +276,79 @@ export interface EntityEdgeRef {
   label: string;
 }
 
+export interface GovernanceAttestationSummary {
+  total: number;
+  approvals: number;
+  rejections: number;
+  other: number;
+  state: 'unattested' | 'approved' | 'rejected' | 'mixed' | 'other';
+  latestAttestationId?: string;
+  latestDecision?: string;
+  latestAttestedAt?: number;
+  latestAttestedBy?: string;
+}
+
+export interface GovernanceSeriesSummary {
+  seriesKey?: string;
+  supersedesId?: string;
+  supersededByIds: string[];
+  latestInSeries: boolean;
+}
+
+export interface ComparisonArtifactGovernanceDetail {
+  kind: 'comparison-artifact';
+  freshness: 'fresh' | 'stale' | 'unknown';
+  attestation: GovernanceAttestationSummary;
+  series: GovernanceSeriesSummary;
+  comparison: {
+    leftWorldlineId?: string;
+    rightWorldlineId?: string;
+    targetId?: string;
+    comparisonPolicyVersion?: string;
+    comparisonScopeVersion?: string;
+    operationalComparisonDigest?: string;
+    rawComparisonDigest?: string;
+  };
+  settlement: {
+    proposalCount: number;
+    executedCount: number;
+    latestProposalId?: string;
+    latestExecutedProposalId?: string;
+  };
+}
+
+export interface CollapseProposalGovernanceDetail {
+  kind: 'collapse-proposal';
+  freshness: 'fresh' | 'stale' | 'unknown';
+  lifecycle: 'pending_attestation' | 'approved' | 'no_op' | 'executed' | 'stale';
+  attestation: GovernanceAttestationSummary;
+  series: GovernanceSeriesSummary;
+  execution: {
+    dryRun: boolean;
+    executable: boolean;
+    executed: boolean;
+    changed: boolean;
+    executionPatch?: string;
+  };
+  executionGate: {
+    comparisonArtifactId?: string;
+    attestation: GovernanceAttestationSummary;
+  };
+}
+
+export interface AttestationGovernanceDetail {
+  kind: 'attestation';
+  decision?: string;
+  targetId?: string;
+  targetType?: string;
+  targetExists: boolean;
+}
+
+export type GovernanceDetail =
+  | ComparisonArtifactGovernanceDetail
+  | CollapseProposalGovernanceDetail
+  | AttestationGovernanceDetail;
+
 export interface EntityDetail {
   id: string;
   type: string;
@@ -285,6 +358,7 @@ export interface EntityDetail {
   outgoing: EntityEdgeRef[];
   incoming: EntityEdgeRef[];
   questDetail?: QuestDetail;
+  governanceDetail?: GovernanceDetail;
 }
 
 export interface GraphMeta {

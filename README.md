@@ -305,6 +305,13 @@ That split lets `compare_worldlines persist:true` record a durable
 `comparison-artifact:*` node on `worldline:live` without invalidating its own
 operational freshness token.
 
+Persisted governance artifacts are now legible through
+`observe(entity.detail)`. Inspecting a durable `comparison-artifact:*` or
+`collapse-proposal:*` now returns computed XYPH governance detail including
+freshness, attestation summary, supersession lineage, and settlement/execution
+state instead of leaving operators to reverse-engineer that status from raw
+properties.
+
 `collapse_worldline` now provides the first governed settlement runway in XYPH
 language, still backed by published git-warp substrate facts. In the current
 slice it:
@@ -329,6 +336,12 @@ slice it:
 - uses approving attestations over the persisted `comparison-artifact:*` as the
   current execution gate; attesting a `collapse-proposal:*` remains valid
   governance context but is not the execution gate in this slice
+
+Repeated persisted compare/collapse artifacts in the same governance lane now
+form explicit supersession lineage. XYPH records stable per-lane series keys
+and `supersedes` edges so later `observe(entity.detail)` reads can tell whether
+an artifact is current, stale, or already superseded by a newer governance
+snapshot.
 
 `braid_worldlines` is now implemented as a thin mapping onto git-warp’s
 published braid substrate for canonical derived worldlines. It:

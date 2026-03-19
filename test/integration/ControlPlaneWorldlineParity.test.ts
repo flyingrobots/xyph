@@ -557,6 +557,130 @@ describe('ControlPlaneService worldline parity', () => {
     }));
   });
 
+  it('tracks comparison artifact lineage and freshness across repeated governance snapshots', { timeout: 30_000 }, async () => {
+    const fork = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'fork-worldline-lifecycle',
+      cmd: 'fork_worldline',
+      args: {
+        newWorldlineId: 'worldline:lifecycle-review',
+        scope: 'Governance lifecycle lane',
+      },
+    });
+    expect(fork.ok).toBe(true);
+
+    const applyOne = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'apply-lifecycle-one',
+      cmd: 'apply',
+      args: {
+        worldlineId: 'worldline:lifecycle-review',
+        rationale: 'Create the first comparison artifact baseline.',
+        ops: [
+          { op: 'add_node', nodeId: 'task:LIFECYCLE-001' },
+          { op: 'set_node_property', nodeId: 'task:LIFECYCLE-001', key: 'type', value: 'task' },
+          { op: 'set_node_property', nodeId: 'task:LIFECYCLE-001', key: 'title', value: 'Lifecycle task' },
+          { op: 'set_node_property', nodeId: 'task:LIFECYCLE-001', key: 'status', value: 'READY' },
+          { op: 'set_node_property', nodeId: 'task:LIFECYCLE-001', key: 'hours', value: 2 },
+          { op: 'add_edge', from: 'task:LIFECYCLE-001', to: 'campaign:LIVE', label: 'belongs-to' },
+        ],
+      },
+    });
+    expect(applyOne.ok).toBe(true);
+
+    const comparisonOne = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'compare-lifecycle-one',
+      cmd: 'compare_worldlines',
+      args: {
+        worldlineId: 'worldline:lifecycle-review',
+        persist: true,
+      },
+    });
+    expect(comparisonOne.ok).toBe(true);
+    if (!comparisonOne.ok) throw new Error(comparisonOne.error.message);
+    const comparisonOneData = comparisonOne.data as Record<string, unknown>;
+
+    const applyTwo = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'apply-lifecycle-two',
+      cmd: 'apply',
+      args: {
+        worldlineId: 'worldline:lifecycle-review',
+        rationale: 'Advance the same review lane so the next artifact supersedes the old one.',
+        ops: [
+          { op: 'set_node_property', nodeId: 'task:LIFECYCLE-001', key: 'status', value: 'IN_PROGRESS' },
+        ],
+      },
+    });
+    expect(applyTwo.ok).toBe(true);
+
+    const comparisonTwo = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'compare-lifecycle-two',
+      cmd: 'compare_worldlines',
+      args: {
+        worldlineId: 'worldline:lifecycle-review',
+        persist: true,
+      },
+    });
+    expect(comparisonTwo.ok).toBe(true);
+    if (!comparisonTwo.ok) throw new Error(comparisonTwo.error.message);
+    const comparisonTwoData = comparisonTwo.data as Record<string, unknown>;
+    expect(comparisonTwoData['artifactId']).not.toBe(comparisonOneData['artifactId']);
+
+    const staleDetail = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'observe-lifecycle-artifact-stale',
+      cmd: 'observe',
+      args: {
+        projection: 'entity.detail',
+        targetId: comparisonOneData['artifactId'],
+      },
+    });
+    expect(staleDetail.ok).toBe(true);
+    if (!staleDetail.ok) throw new Error(staleDetail.error.message);
+    expect(staleDetail.data.detail).toEqual(expect.objectContaining({
+      id: comparisonOneData['artifactId'],
+      governanceDetail: expect.objectContaining({
+        kind: 'comparison-artifact',
+        freshness: 'stale',
+        attestation: expect.objectContaining({
+          state: 'unattested',
+          total: 0,
+        }),
+        series: expect.objectContaining({
+          latestInSeries: false,
+          supersededByIds: [comparisonTwoData['artifactId']],
+        }),
+      }),
+    }));
+
+    const freshDetail = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'observe-lifecycle-artifact-fresh',
+      cmd: 'observe',
+      args: {
+        projection: 'entity.detail',
+        targetId: comparisonTwoData['artifactId'],
+      },
+    });
+    expect(freshDetail.ok).toBe(true);
+    if (!freshDetail.ok) throw new Error(freshDetail.error.message);
+    expect(freshDetail.data.detail).toEqual(expect.objectContaining({
+      id: comparisonTwoData['artifactId'],
+      governanceDetail: expect.objectContaining({
+        kind: 'comparison-artifact',
+        freshness: 'fresh',
+        series: expect.objectContaining({
+          latestInSeries: true,
+          supersedesId: comparisonOneData['artifactId'],
+          supersededByIds: [],
+        }),
+      }),
+    }));
+  });
+
   it('can persist a collapse proposal on live truth for later attestation', { timeout: 30_000 }, async () => {
     const comparison = await service.execute({
       v: CONTROL_PLANE_VERSION,
@@ -615,6 +739,18 @@ describe('ControlPlaneService worldline parity', () => {
       type: 'comparison-artifact',
       props: expect.objectContaining({
         artifact_digest: comparisonData['artifactDigest'],
+      }),
+      governanceDetail: expect.objectContaining({
+        kind: 'comparison-artifact',
+        freshness: 'fresh',
+        attestation: expect.objectContaining({
+          state: 'unattested',
+          total: 0,
+        }),
+        settlement: expect.objectContaining({
+          proposalCount: 0,
+          executedCount: 0,
+        }),
       }),
     }));
 
@@ -676,6 +812,28 @@ describe('ControlPlaneService worldline parity', () => {
         comparison_artifact_digest: comparisonData['artifactDigest'],
       }),
       contentOid: collapseRecord['contentOid'],
+      governanceDetail: expect.objectContaining({
+        kind: 'collapse-proposal',
+        freshness: 'fresh',
+        lifecycle: 'pending_attestation',
+        attestation: expect.objectContaining({
+          state: 'unattested',
+          total: 0,
+        }),
+        execution: expect.objectContaining({
+          dryRun: true,
+          executable: true,
+          executed: false,
+          changed: true,
+        }),
+        executionGate: expect.objectContaining({
+          comparisonArtifactId: comparisonPersist.data['artifactId'],
+          attestation: expect.objectContaining({
+            state: 'unattested',
+            total: 0,
+          }),
+        }),
+      }),
     }));
     const graph = await graphPort.getGraph();
     const rawCollapseContent = await graph.getContent(collapseData['artifactId'] as string);
@@ -703,6 +861,34 @@ describe('ControlPlaneService worldline parity', () => {
     });
     expect(collapseAttestation.ok).toBe(true);
     if (!collapseAttestation.ok) throw new Error(collapseAttestation.error.message);
+
+    const collapseDetailAfterAttest = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'observe-live-collapse-proposal-after-attest',
+      cmd: 'observe',
+      args: {
+        projection: 'entity.detail',
+        targetId: collapseData['artifactId'],
+      },
+    });
+    expect(collapseDetailAfterAttest.ok).toBe(true);
+    if (!collapseDetailAfterAttest.ok) throw new Error(collapseDetailAfterAttest.error.message);
+    expect(collapseDetailAfterAttest.data.detail).toEqual(expect.objectContaining({
+      governanceDetail: expect.objectContaining({
+        kind: 'collapse-proposal',
+        attestation: expect.objectContaining({
+          state: 'approved',
+          approvals: 1,
+          total: 1,
+        }),
+        executionGate: expect.objectContaining({
+          attestation: expect.objectContaining({
+            state: 'unattested',
+            total: 0,
+          }),
+        }),
+      }),
+    }));
   });
 
   it('executes live collapse after approving the persisted comparison artifact', { timeout: 30_000 }, async () => {
@@ -773,6 +959,38 @@ describe('ControlPlaneService worldline parity', () => {
     }));
     expect(collapse.observation).toEqual(expect.objectContaining({
       worldlineId: 'worldline:live',
+    }));
+
+    const collapseData = collapse.data as Record<string, unknown>;
+    const executedDetail = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'observe-executed-collapse-proposal',
+      cmd: 'observe',
+      args: {
+        projection: 'entity.detail',
+        targetId: collapseData['artifactId'],
+      },
+    });
+    expect(executedDetail.ok).toBe(true);
+    if (!executedDetail.ok) throw new Error(executedDetail.error.message);
+    expect(executedDetail.data.detail).toEqual(expect.objectContaining({
+      governanceDetail: expect.objectContaining({
+        kind: 'collapse-proposal',
+        lifecycle: 'executed',
+        freshness: 'stale',
+        execution: expect.objectContaining({
+          dryRun: false,
+          executed: true,
+          changed: true,
+        }),
+        executionGate: expect.objectContaining({
+          comparisonArtifactId: comparisonData['artifactId'],
+          attestation: expect.objectContaining({
+            state: 'approved',
+            approvals: 1,
+          }),
+        }),
+      }),
     }));
 
     const liveDetail = await service.execute({

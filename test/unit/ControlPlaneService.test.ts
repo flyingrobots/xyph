@@ -43,6 +43,7 @@ const mocks = vi.hoisted(() => ({
   patchesForWorkingSet: vi.fn(),
   compareCoordinates: vi.fn(),
   planCoordinateTransfer: vi.fn(),
+  queryRun: vi.fn(),
   getFrontier: vi.fn(),
   getStateSnapshot: vi.fn(),
   getGraph: vi.fn(),
@@ -643,12 +644,21 @@ describe('ControlPlaneService', () => {
         targetWorkingSetId: null,
       }),
     );
+    mocks.queryRun.mockResolvedValue({ nodes: [] });
     mocks.getGraph.mockResolvedValue({
       getFrontier: mocks.getFrontier,
       getStateSnapshot: mocks.getStateSnapshot,
       hasNode: vi.fn(async () => true),
       getNodeProps: mocks.getNodeProps,
+      syncCoverage: vi.fn(async () => null),
       materialize: vi.fn(async () => null),
+      query: vi.fn(() => ({
+        match: vi.fn(() => ({
+          select: vi.fn(() => ({
+            run: mocks.queryRun,
+          })),
+        })),
+      })),
       patchesFor: vi.fn(async () => ['patch:1', 'patch:2']),
       createWorkingSet: mocks.createWorkingSet,
       braidWorkingSet: mocks.braidWorkingSet,

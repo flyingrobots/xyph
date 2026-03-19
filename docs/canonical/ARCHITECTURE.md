@@ -178,6 +178,15 @@ With that split in place, `compare_worldlines persist:true` can now record a
 durable `comparison-artifact:*` node on `worldline:live` without invalidating
 its own operational freshness token.
 
+Persisted governance artifacts now become first-class readable entities too.
+`observe(entity.detail)` over a durable `comparison-artifact:*` or
+`collapse-proposal:*` computes XYPH-owned governance detail on read:
+
+- freshness against the current operational comparison baseline
+- attestation summary
+- supersession lineage via stable series keys plus `supersedes` edges
+- settlement/execution state for downstream collapse review
+
 `braid_worldlines` is now the thin control-plane mapping for that composition
 step. XYPH keeps the public API in worldline terms while delegating the actual
 visible-patch-universe math to git-warp’s published braid substrate. Current
@@ -225,6 +234,11 @@ governed settlement runway. XYPH:
   to the `collapse-proposal:*`, so governance approval attaches to the factual
   comparison baseline rather than to whichever optional proposal record was
   emitted
+
+Because the execution actually mutates `worldline:live`, an executed
+`collapse-proposal:*` normally becomes stale immediately after settlement.
+That is intentional: execution is terminal state, not a promise that the
+proposal still describes the current live-vs-source delta.
 
 That keeps settlement planning factual at the substrate boundary while
 preserving XYPH ownership of governance meaning, attestation policy, and

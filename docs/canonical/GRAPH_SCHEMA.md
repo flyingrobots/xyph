@@ -1,5 +1,5 @@
 # GRAPH SCHEMA
-**Version:** 2.2.0
+**Version:** 2.3.0
 **Status:** AUTHORITATIVE
 
 ## 1. Node ID Grammar
@@ -206,7 +206,9 @@ the `dry_run`, `executable`, and `executed` properties make that explicit.
 |----------|------|--------|-------|
 | `type` | `'collapse-proposal'` | control plane | Required. |
 | `artifact_digest` | string | control plane | Stable XYPH artifact identity. |
+| `artifact_series_key` | string | control plane | Stable governance-lane key for supersession lineage. |
 | `comparison_artifact_digest` | string | control plane | Fresh compare digest used for the preview. |
+| `comparison_scope_version` | string | control plane | XYPH operational scope version used for freshness. |
 | `transfer_digest` | string | control plane | Published git-warp transfer-plan digest. |
 | `source_worldline_id` | string | control plane | Source worldline being settled. |
 | `target_worldline_id` | string | control plane | Current slice uses `worldline:live`. |
@@ -226,7 +228,7 @@ copy of the returned `collapse-proposal` payload, including the published
 git-warp comparison/transfer fact exports.
 
 **Edges:**
-- no required outbound edges in the current slice
+- optional `supersedes` → older `collapse-proposal:*` in the same governance lane
 - incoming `attests` from `attestation:*` records are expected
 - current live execution gates on approving attestations over the corresponding
   `comparison-artifact:*`, not on `collapse-proposal:*`
@@ -246,6 +248,7 @@ carries both:
 |----------|------|--------|-------|
 | `type` | `'comparison-artifact'` | control plane | Required. |
 | `artifact_digest` | string | control plane | Stable XYPH artifact identity. |
+| `artifact_series_key` | string | control plane | Stable governance-lane key for supersession lineage. |
 | `comparison_policy_version` | string | control plane | Policy/version label in force for freshness. |
 | `comparison_scope_version` | string | control plane | Current XYPH operational scope version. |
 | `left_worldline_id` | string | control plane | Left-hand worldline under comparison. |
@@ -263,7 +266,7 @@ copy of the returned `comparison-artifact` payload, including both the raw
 whole-graph substrate fact and the XYPH-scoped operational substrate fact.
 
 **Edges:**
-- no required outbound edges in the current slice
+- optional `supersedes` → older `comparison-artifact:*` in the same governance lane
 - incoming `attests` from `attestation:*` records are expected
 - current `collapse_worldline dryRun:false` uses approving attestations over
   this durable comparison artifact as the execution gate
