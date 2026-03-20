@@ -62,8 +62,8 @@ describe('cockpitView', () => {
     expect(plain).toContain('Now');
     expect(plain).toContain('Inspector');
     expect(plain).toContain('Quest One');
-    expect(plain).toContain('╭─');
-    expect(plain).toContain('╰─');
+    expect(plain).toContain('operator surfaces');
+    expect(plain).toContain('unplaced work');
   });
 
   it('falls back to a stacked layout on narrow terminals', () => {
@@ -75,6 +75,30 @@ describe('cockpitView', () => {
     expect(plain).toContain('XYPH AION');
     expect(plain).toContain('Inspector');
     expect(plain).toContain('Quest One');
+  });
+
+  it('wraps worklist cards and inspector prose on whitespace', () => {
+    const model = {
+      ...makeModel(makeSnapshot({
+        quests: [{
+          id: 'task:TRC-010',
+          title: 'Computed DONE status: TraceabilityService replaces manual flag with graph query',
+          status: 'READY',
+          hours: 2,
+          description: 'Compute quest and campaign completion from current criterion verdicts and expose discoverable trace outputs in the inspector.',
+        }],
+      })),
+      cols: 110,
+      rows: 26,
+    };
+    const plain = strip(cockpitView(model, style, 110, 26));
+
+    expect(plain).toContain('TraceabilityService replaces');
+    expect(plain).toContain('manual flag with graph query');
+    expect(plain).toContain('completion from current criterion');
+    expect(plain).toContain('verdicts and expose discoverable');
+    expect(plain).not.toContain('graph query…');
+    expect(plain).not.toContain('discoverable trace outputs…');
   });
 
   it('omits the inspector pane when toggled closed', () => {
