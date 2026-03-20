@@ -104,6 +104,24 @@ describe('DashboardApp', () => {
     expect(prev.table.focusRow).toBe(0);
   });
 
+  it('pages the worklist with PgDn and PgUp', () => {
+    const app = buildApp();
+    const quests = Array.from({ length: 12 }, (_, index) => ({
+      id: `task:Q${index + 1}`,
+      title: `Quest ${index + 1}`,
+      status: 'READY' as const,
+      hours: 1,
+    }));
+    const loaded = ready(app, makeSnapshot({ quests }));
+    const [plan] = app.update(key('2'), loaded);
+
+    const [pagedDown] = app.update(key('pagedown'), plan);
+    expect(pagedDown.table.focusRow).toBeGreaterThan(0);
+
+    const [pagedUp] = app.update(key('pageup'), pagedDown);
+    expect(pagedUp.table.focusRow).toBe(0);
+  });
+
   it('opens claim confirmation for a READY quest', () => {
     const app = buildApp();
     const loaded = ready(app, makeSnapshot({

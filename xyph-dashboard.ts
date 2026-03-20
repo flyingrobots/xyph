@@ -8,6 +8,8 @@
  * Keys:
  *   [ / ]           — cycle cockpit lanes (prev / next)
  *   1-5             — jump to lane (Now, Plan, Review, Settlement, Campaigns)
+ *   PgUp / PgDn     — page the worklist
+ *   Shift+PgUp/PgDn — scroll the inspector
  *   m               — toggle "My Stuff" drawer (quests, submissions, activity)
  *   r               — refresh snapshot
  *   : or /          — command palette

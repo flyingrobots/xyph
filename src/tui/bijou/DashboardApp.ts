@@ -116,8 +116,10 @@ type ViewAction =
   | { type: 'select-prev' }
   | { type: 'top' }
   | { type: 'bottom' }
-  | { type: 'page-down' }
-  | { type: 'page-up' }
+  | { type: 'page-down-list' }
+  | { type: 'page-up-list' }
+  | { type: 'page-down-inspector' }
+  | { type: 'page-up-inspector' }
   | { type: 'claim' }
   | { type: 'promote' }
   | { type: 'reject' }
@@ -171,8 +173,10 @@ function buildViewKeys(): KeyMap<ViewAction> {
       .bind('up', 'Previous row', { type: 'select-prev' })
       .bind('g', 'Jump to first', { type: 'top' })
       .bind('shift+g', 'Jump to last', { type: 'bottom' })
-      .bind('pagedown', 'Scroll inspector down', { type: 'page-down' })
-      .bind('pageup', 'Scroll inspector up', { type: 'page-up' })
+      .bind('pagedown', 'Page worklist down', { type: 'page-down-list' })
+      .bind('pageup', 'Page worklist up', { type: 'page-up-list' })
+      .bind('shift+pagedown', 'Scroll inspector down', { type: 'page-down-inspector' })
+      .bind('shift+pageup', 'Scroll inspector up', { type: 'page-up-inspector' })
       .bind('c', 'Claim selected quest', { type: 'claim' })
       .bind('p', 'Promote selected backlog quest', { type: 'promote' })
       .bind('shift+d', 'Reject selected backlog quest', { type: 'reject' })
@@ -260,7 +264,11 @@ function actionHint(model: DashboardModel): string {
   if (submission && (submission.status === 'OPEN' || submission.status === 'CHANGES_REQUESTED')) {
     return 'a approve · x request changes';
   }
-  return 'j/k move · PgUp/PgDn inspect';
+  return 'j/k move · PgUp/PgDn list · Shift+Pg inspect';
+}
+
+function pageRows(model: DashboardModel): number {
+  return Math.max(1, Math.floor(Math.max(3, model.table.height) / 3));
 }
 
 function renderStatusLine(model: DashboardModel): string {
@@ -812,9 +820,23 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
               const nextModel = rebuildForLane(updateInspectorScroll(updateFocus(model, targetRow), 0), model.lane);
               return [nextModel, []];
             }
-            case 'page-down':
+            case 'page-down-list': {
+              const rows = model.table.rows.length;
+              if (rows === 0) return [model, []];
+              const nextRow = Math.min(rows - 1, model.table.focusRow + pageRows(model));
+              const nextModel = rebuildForLane(updateInspectorScroll(updateFocus(model, nextRow), 0), model.lane);
+              return [nextModel, []];
+            }
+            case 'page-up-list': {
+              const rows = model.table.rows.length;
+              if (rows === 0) return [model, []];
+              const nextRow = Math.max(0, model.table.focusRow - pageRows(model));
+              const nextModel = rebuildForLane(updateInspectorScroll(updateFocus(model, nextRow), 0), model.lane);
+              return [nextModel, []];
+            }
+            case 'page-down-inspector':
               return [updateInspectorScroll(model, model.laneState[model.lane].inspectorScrollY + 10), []];
-            case 'page-up':
+            case 'page-up-inspector':
               return [updateInspectorScroll(model, model.laneState[model.lane].inspectorScrollY - 10), []];
             case 'claim':
             case 'promote':

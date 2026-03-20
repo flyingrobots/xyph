@@ -2,7 +2,7 @@
 
 > **Current state (2026-03-19):** XYPH now runs on BIJOU 3.1.0 and has already
 > landed the big structural shifts this document was planning for, including a
-> single cockpit model, `navigableTable()`-driven worklists, and an inspector
+> single cockpit model, contained-list-style worklists, and an inspector
 > surface that carries settlement/governance detail. Keep this file as
 > historical design context and a source of still-useful UI ideas, not as the
 > current migration plan.

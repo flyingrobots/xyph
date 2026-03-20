@@ -623,8 +623,8 @@ dashboards. The shell centers on five lanes:
 - `Campaigns` for strategic containers
 
 The left rail keeps those lanes visible, the center worklist stays scannable as
-a table, and the right inspector keeps the currently selected record legible
-without dropping to raw JSON first.
+a contained-list-style queue, and the right inspector keeps the currently
+selected record legible without dropping to raw JSON first.
 
 ```bash
 XYPH_AGENT_ID=human.yourname ./xyph-dashboard.ts
@@ -646,7 +646,8 @@ XYPH_AGENT_ID=human.yourname ./xyph-dashboard.ts
 | `D` | Contextual | Reject selected BACKLOG quest |
 | `a` | Contextual | Approve selected submission |
 | `x` | Contextual | Request changes on selected submission |
-| `PgDn` / `PgUp` | Cockpit | Scroll the inspector |
+| `PgDn` / `PgUp` | Cockpit | Page the worklist |
+| `Shift+PgDn` / `Shift+PgUp` | Cockpit | Scroll the inspector |
 | `Esc` | Modal | Cancel / close |
 
 ### XYPH CLI Reference

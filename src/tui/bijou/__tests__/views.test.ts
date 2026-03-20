@@ -106,6 +106,28 @@ describe('cockpitView', () => {
     expect(plain).toContain('approved');
     expect(plain).toContain('Executable');
   });
+
+  it('renders campaign detail without leaking object placeholders', () => {
+    const snapshot = makeSnapshot({
+      campaigns: [{
+        id: 'campaign:AGENT',
+        title: 'Agent Protocol',
+        status: 'IN_PROGRESS',
+        dependsOn: ['campaign:CLITOOL'],
+        description: 'Structured agent interface lane.',
+      }],
+      quests: [{ id: 'task:Q1', title: 'Quest One', status: 'READY', hours: 2, campaignId: 'campaign:AGENT' }],
+    });
+    const model = {
+      ...makeModel(snapshot),
+      lane: 'campaigns' as const,
+      table: buildLaneTable(snapshot, 'campaigns', 20, 0, 'agent.test'),
+    };
+
+    const plain = strip(cockpitView(model, style, 120, 30));
+    expect(plain).toContain('Agent Protocol');
+    expect(plain).not.toContain('[object Object]');
+  });
 });
 
 describe('renderMyStuffDrawer', () => {

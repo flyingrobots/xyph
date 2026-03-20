@@ -1,17 +1,79 @@
-import { badge, headerBox, separator } from '@flyingrobots/bijou';
-import { flex, navigableTable, createPagerState, pagerScrollTo, pager } from '@flyingrobots/bijou-tui';
+import { headerBox, separator } from '@flyingrobots/bijou';
+import { flex, createPagerState, pagerScrollTo, pager, visibleLength } from '@flyingrobots/bijou-tui';
 import type { GraphSnapshot, QuestNode, SubmissionNode, CampaignNode } from '../../../domain/models/dashboard.js';
 import type { StylePort } from '../../../ports/StylePort.js';
 import type { DashboardModel } from '../DashboardApp.js';
 import {
   cockpitLanes,
+  laneItems,
   laneTitle,
   selectedLaneItem,
   shortId,
   shortPrincipal,
   type CockpitItem,
 } from '../cockpit.js';
-import { formatAge, statusVariant } from '../../view-helpers.js';
+import { formatAge } from '../../view-helpers.js';
+
+const WORKLIST_ROW_HEIGHT = 3;
+
+function truncateText(text: string, width: number): string {
+  if (width <= 0) return '';
+  if (visibleLength(text) <= width) return text;
+  if (width === 1) return '…';
+  return `${text.slice(0, Math.max(0, width - 1))}…`;
+}
+
+function stateLabel(state: string): string {
+  return state.replace(/_/g, ' ').toLowerCase();
+}
+
+function statusText(style: StylePort, state: string): string {
+  return style.styledStatus(state.toUpperCase(), stateLabel(state));
+}
+
+function worklistPageSize(height: number): number {
+  return Math.max(1, Math.floor(Math.max(3, height - 3) / WORKLIST_ROW_HEIGHT));
+}
+
+function worklistStartIndex(total: number, focusRow: number, pageSize: number): number {
+  if (total <= pageSize) return 0;
+  const centered = focusRow - Math.floor(pageSize / 2);
+  return Math.max(0, Math.min(centered, total - pageSize));
+}
+
+function rowSupportText(item: CockpitItem): string {
+  return item.secondary || item.operationReason || '';
+}
+
+function renderWorklistRow(style: StylePort, item: CockpitItem, selected: boolean, width: number): string {
+  const marker = selected
+    ? style.styled(style.theme.semantic.primary, '▶')
+    : '·';
+  const label = selected
+    ? style.styled(style.theme.semantic.primary, item.label)
+    : item.label;
+  const cue = item.cue ? style.styled(style.theme.semantic.info, item.cue) : '';
+  const fullMeta = [ `${marker} ${label}`, statusText(style, item.state), cue ].filter(Boolean).join('  ');
+  const compactMeta = [ `${marker} ${label}`, statusText(style, item.state) ].join('  ');
+  const fallbackMeta = `${marker} ${selected
+    ? style.styled(style.theme.semantic.primary, truncateText(item.label, Math.max(0, width - 2)))
+    : truncateText(item.label, Math.max(0, width - 2))}`;
+  const meta = visibleLength(fullMeta) <= width
+    ? fullMeta
+    : visibleLength(compactMeta) <= width
+      ? compactMeta
+      : fallbackMeta;
+  const primary = truncateText(item.primary, Math.max(0, width - 2));
+  const support = truncateText(rowSupportText(item), Math.max(0, width - 2));
+
+  return [
+    truncateText(meta, width),
+    selected
+      ? style.styled(style.theme.semantic.primary, `  ${primary}`)
+      : `  ${primary}`,
+    support ? `  ${support}` : '',
+  ].join('\n');
+}
 
 function renderHero(model: DashboardModel, snapshot: GraphSnapshot, style: StylePort, width: number): string {
   const graphMeta = snapshot.graphMeta;
@@ -39,8 +101,8 @@ function renderHero(model: DashboardModel, snapshot: GraphSnapshot, style: Style
     style.styled(style.theme.semantic.warning, ` review ${reviewQueue}`),
     style.styled(style.theme.semantic.success, ` settle ${settlementQueue}`),
     graphMeta
-      ? style.styled(style.theme.semantic.muted, ` tick ${graphMeta.myTick}/${graphMeta.maxTick} · writers ${graphMeta.writerCount}`)
-      : style.styled(style.theme.semantic.muted, ' graph meta unavailable'),
+      ? ` tick ${graphMeta.myTick}/${graphMeta.maxTick} · writers ${graphMeta.writerCount}`
+      : ' graph meta unavailable',
   ].join('  ');
 
   return [
@@ -66,12 +128,12 @@ function renderLaneRail(model: DashboardModel, snapshot: GraphSnapshot, style: S
     const selected = lane.id === model.lane;
     const indicator = selected
       ? style.styled(style.theme.semantic.primary, '▶')
-      : style.styled(style.theme.semantic.muted, '·');
+      : '·';
     const title = selected
       ? style.styled(style.theme.semantic.primary, lane.title.toUpperCase())
       : lane.title.toUpperCase();
-    lines.push(`${indicator} ${title}  ${style.styled(style.theme.semantic.muted, String(lane.count))}`);
-    lines.push(style.styled(style.theme.semantic.muted, `  ${lane.description}`));
+    lines.push(`${indicator} ${title}  ${lane.count}`);
+    lines.push(`  ${lane.description}`);
     lines.push('');
   }
 
@@ -90,25 +152,41 @@ function renderLaneRail(model: DashboardModel, snapshot: GraphSnapshot, style: S
   return lines.slice(0, height).join('\n');
 }
 
-function renderTablePane(model: DashboardModel, style: StylePort, width: number): string {
-  const selected = selectedLaneItem(model.snapshot, model.lane, model.table.focusRow, model.agentId);
+function renderWorklistPane(model: DashboardModel, snapshot: GraphSnapshot, style: StylePort, width: number, height: number): string {
+  const items = laneItems(snapshot, model.lane, model.agentId);
+  const selected = items[model.table.focusRow];
+  const pageSize = worklistPageSize(height);
+  const start = worklistStartIndex(items.length, model.table.focusRow, pageSize);
+  const visible = items.slice(start, start + pageSize);
   const lines: string[] = [];
   lines.push(headerBox(laneTitle(model.lane), {
-    detail: selected ? selected.secondary : 'select an item to inspect',
+    detail: selected ? shortId(selected.id) : 'select an item to inspect',
     borderToken: style.theme.border.secondary,
     width,
   }));
   lines.push('');
-  lines.push(navigableTable(model.table, {
-    focusIndicator: style.styled(style.theme.semantic.primary, '▶'),
-  }));
+  if (visible.length === 0) {
+    lines.push(style.styled(style.theme.semantic.muted, 'No items in this lane.'));
+  } else {
+    for (let i = 0; i < visible.length; i += 1) {
+      const item = visible[i];
+      if (!item) continue;
+      const absoluteIndex = start + i;
+      lines.push(renderWorklistRow(style, item, absoluteIndex === model.table.focusRow, width));
+    }
+  }
+  lines.push('');
+  if (items.length > 0) {
+    const end = start + visible.length;
+    lines.push(style.styled(style.theme.semantic.muted, `${start + 1}-${end} of ${items.length}`));
+  }
   return lines.join('\n');
 }
 
 function renderQuestDetail(style: StylePort, quest: QuestNode, item: CockpitItem): string {
   const lines: string[] = [];
   lines.push(style.styled(style.theme.semantic.primary, quest.title));
-  lines.push(`${quest.id}  ${badge(quest.status, { variant: statusVariant(quest.status) })}`);
+  lines.push(`${quest.id}  ${statusText(style, quest.status)}`);
   lines.push('');
   if (item.operationReason) {
     lines.push(style.styled(style.theme.semantic.info, `Why now: ${item.operationReason}`));
@@ -123,7 +201,7 @@ function renderQuestDetail(style: StylePort, quest: QuestNode, item: CockpitItem
   if (quest.dependsOn?.length) lines.push(`Depends    ${quest.dependsOn.map(shortId).join(', ')}`);
   if (quest.description) {
     lines.push('');
-    lines.push(style.styled(style.theme.semantic.muted, quest.description));
+    lines.push(quest.description);
   }
   return lines.join('\n');
 }
@@ -137,7 +215,7 @@ function renderSubmissionDetail(style: StylePort, snapshot: GraphSnapshot, submi
 
   const lines: string[] = [];
   lines.push(style.styled(style.theme.semantic.primary, quest?.title ?? submission.questId));
-  lines.push(`${submission.id}  ${badge(submission.status, { variant: statusVariant(submission.status) })}`);
+  lines.push(`${submission.id}  ${statusText(style, submission.status)}`);
   lines.push('');
   if (item.operationReason) {
     lines.push(style.styled(style.theme.semantic.info, `Why now: ${item.operationReason}`));
@@ -153,14 +231,14 @@ function renderSubmissionDetail(style: StylePort, snapshot: GraphSnapshot, submi
     lines.push(style.styled(style.theme.semantic.primary, 'Latest reviews'));
     for (const review of reviews.slice(0, 4)) {
       lines.push(`  ${review.verdict} · ${shortPrincipal(review.reviewedBy)} · ${formatAge(review.reviewedAt)} ago`);
-      if (review.comment) lines.push(style.styled(style.theme.semantic.muted, `    ${review.comment}`));
+      if (review.comment) lines.push(`    ${review.comment}`);
     }
   }
   if (decision) {
     lines.push('');
     lines.push(style.styled(style.theme.semantic.primary, 'Decision'));
     lines.push(`  ${decision.kind} · ${shortPrincipal(decision.decidedBy)} · ${formatAge(decision.decidedAt)} ago`);
-    lines.push(style.styled(style.theme.semantic.muted, `  ${decision.rationale}`));
+    lines.push(`  ${decision.rationale}`);
   }
   return lines.join('\n');
 }
@@ -174,7 +252,7 @@ function renderCampaignDetail(style: StylePort, snapshot: GraphSnapshot, campaig
 
   const lines: string[] = [];
   lines.push(style.styled(style.theme.semantic.primary, campaign.title));
-  lines.push(`${campaign.id}  ${badge(campaign.status, { variant: statusVariant(campaign.status) })}`);
+  lines.push(`${campaign.id}  ${statusText(style, campaign.status)}`);
   lines.push('');
   lines.push(`Quests      ${quests.length}`);
   lines.push(`Done        ${done}`);
@@ -184,7 +262,7 @@ function renderCampaignDetail(style: StylePort, snapshot: GraphSnapshot, campaig
   if (campaign.dependsOn?.length) lines.push(`Depends     ${campaign.dependsOn.map(shortId).join(', ')}`);
   if (campaign.description) {
     lines.push('');
-    lines.push(style.styled(style.theme.semantic.muted, campaign.description));
+    lines.push(campaign.description);
   }
   if (quests.length > 0) {
     lines.push('');
@@ -202,7 +280,7 @@ function renderGovernanceDetail(style: StylePort, item: CockpitItem): string {
       const artifact = item.artifact;
       const lines: string[] = [];
       lines.push(style.styled(style.theme.semantic.primary, item.primary));
-      lines.push(`${artifact.id}  ${badge(item.state, { variant: statusVariant(item.state.toUpperCase()) })}`);
+      lines.push(`${artifact.id}  ${statusText(style, item.state)}`);
       lines.push('');
       if (item.operationReason) {
         lines.push(style.styled(style.theme.semantic.info, `Why now: ${item.operationReason}`));
@@ -223,7 +301,7 @@ function renderGovernanceDetail(style: StylePort, item: CockpitItem): string {
       const artifact = item.artifact;
       const lines: string[] = [];
       lines.push(style.styled(style.theme.semantic.primary, item.primary));
-      lines.push(`${artifact.id}  ${badge(item.state, { variant: statusVariant(item.state.toUpperCase()) })}`);
+      lines.push(`${artifact.id}  ${statusText(style, item.state)}`);
       lines.push('');
       if (item.operationReason) {
         lines.push(style.styled(style.theme.semantic.info, `Why now: ${item.operationReason}`));
@@ -243,7 +321,7 @@ function renderGovernanceDetail(style: StylePort, item: CockpitItem): string {
       const artifact = item.artifact;
       return [
         style.styled(style.theme.semantic.primary, item.primary),
-        `${artifact.id}  ${badge(item.state, { variant: statusVariant(item.state.toUpperCase()) })}`,
+        `${artifact.id}  ${statusText(style, item.state)}`,
         '',
         `Recorded by ${shortPrincipal(artifact.recordedBy)}`,
         `Target      ${artifact.targetId ? shortId(artifact.targetId) : '—'}`,
@@ -252,7 +330,7 @@ function renderGovernanceDetail(style: StylePort, item: CockpitItem): string {
       ].join('\n');
     }
     default:
-      return style.styled(style.theme.semantic.muted, 'No governance detail available.');
+      return 'No governance detail available.';
   }
 }
 
@@ -260,7 +338,7 @@ function renderInspector(model: DashboardModel, snapshot: GraphSnapshot, style: 
   const item = selectedLaneItem(snapshot, model.lane, model.table.focusRow, model.agentId);
   const content = (() : string => {
     if (!item) {
-      return style.styled(style.theme.semantic.muted, 'Select a row to inspect the plan, review, or settlement details behind it.');
+      return 'Select a row to inspect the plan, review, or settlement details behind it.';
     }
     switch (item.kind) {
       case 'quest':
@@ -310,14 +388,14 @@ export function cockpitView(model: DashboardModel, style: StylePort, width?: num
   let body: string;
   if (w < 110) {
     const top = renderLaneRail(model, snapshot, style, w, Math.min(14, bodyHeight));
-    const table = renderTablePane(model, style, w);
+    const worklist = renderWorklistPane(model, snapshot, style, w, Math.max(10, Math.floor(bodyHeight * 0.45)));
     const inspector = renderInspector(model, snapshot, style, w, Math.max(8, Math.floor(bodyHeight * 0.35)));
-    body = [top, '', table, '', inspector].join('\n');
+    body = [top, '', worklist, '', inspector].join('\n');
   } else {
     body = flex(
       { direction: 'row', width: w, height: bodyHeight },
       { basis: railWidth, content: (_pw: number, ph: number) => renderLaneRail(model, snapshot, style, railWidth, ph) },
-      { basis: tableWidth, content: (pw: number, _ph: number) => renderTablePane(model, style, pw) },
+      { basis: tableWidth, content: (pw: number, ph: number) => renderWorklistPane(model, snapshot, style, pw, ph) },
       { flex: 1, content: (pw: number, ph: number) => renderInspector(model, snapshot, style, pw, ph) },
     );
   }

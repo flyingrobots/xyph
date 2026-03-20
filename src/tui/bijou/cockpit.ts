@@ -90,17 +90,43 @@ export function cockpitLaneOrder(): readonly CockpitLaneId[] {
   return LANE_ORDER;
 }
 
-export function shortId(id: string | undefined): string {
-  if (!id) return '—';
-  return id.replace(
-    /^(task:|submission:|comparison-artifact:|collapse-proposal:|attestation:|campaign:|milestone:|worldline:|intent:|patchset:)/,
-    '',
-  );
+export function shortId(id: unknown): string {
+  if (typeof id === 'string') {
+    return id.replace(
+      /^(task:|submission:|comparison-artifact:|collapse-proposal:|attestation:|campaign:|milestone:|worldline:|intent:|patchset:)/,
+      '',
+    );
+  }
+  if (id && typeof id === 'object') {
+    const candidate = id as { id?: unknown; nodeId?: unknown; targetId?: unknown };
+    const nested = typeof candidate.id === 'string'
+      ? candidate.id
+      : typeof candidate.nodeId === 'string'
+        ? candidate.nodeId
+        : typeof candidate.targetId === 'string'
+          ? candidate.targetId
+          : undefined;
+    return nested ? shortId(nested) : '<?>';
+  }
+  if (id == null) return '—';
+  return String(id);
 }
 
-export function shortPrincipal(id: string | undefined): string {
-  if (!id) return '—';
-  return id.replace(/^(agent\.|human\.)/, '');
+export function shortPrincipal(id: unknown): string {
+  if (typeof id === 'string') {
+    return id.replace(/^(agent\.|human\.)/, '');
+  }
+  if (id && typeof id === 'object') {
+    const candidate = id as { id?: unknown; principal?: unknown };
+    const nested = typeof candidate.id === 'string'
+      ? candidate.id
+      : typeof candidate.principal === 'string'
+        ? candidate.principal
+        : undefined;
+    return nested ? shortPrincipal(nested) : '<?>';
+  }
+  if (id == null) return '—';
+  return String(id);
 }
 
 function shortWorldline(id: string | undefined): string {

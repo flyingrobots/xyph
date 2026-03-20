@@ -144,6 +144,7 @@ describe('DashboardApp integration', () => {
     expect(plain).toContain('Quest One');
     expect(plain).toContain('Latest reviews');
     expect(plain).toContain('Looks good');
+    expect(plain).not.toContain('[object Object]');
   });
 
   it('keeps the Now lane mixed and actionable', () => {
