@@ -602,16 +602,29 @@ npx tsx xyph-actuator.ts audit-sovereignty
 
 ## XYPH Tools
 
-### XYPH TUI Dashboard
+### XYPH TUI Cockpit
 
 <p align="center">
   <img src="docs/assets/dashboard-demo.gif" alt="XYPH TUI Dashboard Demo" width="700" />
 </p>
 
+The animated asset above still shows the previous dashboard shell. A refreshed
+cockpit demo capture is still pending.
+
 XYPH has an interactive BIJOU-powered TUI that provides a visual browser for
 your project and its XYPH artifacts. The current shell runs on BIJOU `3.1.0`
-and now includes a dedicated governance lane for persisted
-`comparison-artifact:*`, `collapse-proposal:*`, and `attestation:*` records.
+and has been rebuilt as a single AION-style cockpit instead of a stack of peer
+dashboards. The shell centers on five lanes:
+
+- `Now` for cross-surface action
+- `Plan` for the live quest surface
+- `Review` for submissions
+- `Settlement` for compare/attest/collapse artifacts
+- `Campaigns` for strategic containers
+
+The left rail keeps those lanes visible, the center worklist stays scannable as
+a table, and the right inspector keeps the currently selected record legible
+without dropping to raw JSON first.
 
 ```bash
 XYPH_AGENT_ID=human.yourname ./xyph-dashboard.ts
@@ -619,22 +632,21 @@ XYPH_AGENT_ID=human.yourname ./xyph-dashboard.ts
 
 | Key | Context | Action |
 |---|---|---|
-| `1`-`6` | Global | Jump to dashboard / roadmap / submissions / lineage / backlog / governance |
-| `[` / `]` | Global | Cycle views backward / forward |
-| `j` / `k` | List views | Select next / previous item |
-| `g` / `G` | List views | Jump to first / last item |
+| `1`-`5` | Global | Jump to Now / Plan / Review / Settlement / Campaigns |
+| `[` / `]` | Global | Cycle lanes backward / forward |
+| `j` / `k` | Cockpit | Select next / previous row |
+| `g` / `G` | Cockpit | Jump to first / last row |
 | `r` | Global | Refresh snapshot |
 | `m` | Global | Toggle the "My Stuff" drawer |
+| `:` / `/` | Global | Open the command palette |
 | `?` | Global | Toggle help |
 | `q` | Global | Quit |
-| `c` | Roadmap | Claim selected quest |
-| `PgDn` / `PgUp` | Roadmap | Scroll the DAG pane |
-| `Enter` | Submissions | Expand / collapse submission detail |
-| `a` | Submissions | Approve tip patchset |
-| `x` | Submissions | Request changes on tip patchset |
-| `p` | Backlog | Promote selected task |
-| `D` | Backlog | Reject selected task |
-| `PgDn` / `PgUp` | Governance | Scroll the governance inspector |
+| `c` | Contextual | Claim selected READY quest |
+| `p` | Contextual | Promote selected BACKLOG quest |
+| `D` | Contextual | Reject selected BACKLOG quest |
+| `a` | Contextual | Approve selected submission |
+| `x` | Contextual | Request changes on selected submission |
+| `PgDn` / `PgUp` | Cockpit | Scroll the inspector |
 | `Esc` | Modal | Cancel / close |
 
 ### XYPH CLI Reference
@@ -706,16 +718,13 @@ src/
 ├── ports/            # Interfaces (RoadmapPort, DashboardPort, SubmissionPort, WorkspacePort, ...)
 ├── infrastructure/
 │   └── adapters/     # git-warp adapters (WarpSubmissionAdapter, GitWorkspaceAdapter, ...)
-└── tui/              # bijou v3.1-powered interactive dashboard
+└── tui/              # bijou v3.1-powered AION cockpit
     ├── bijou/
-    │   ├── DashboardApp.ts   # TEA app shell (model, update, view, keymaps)
+    │   ├── DashboardApp.ts   # TEA cockpit shell (lanes, actions, overlays)
+    │   ├── cockpit.ts        # Lane/item derivation from graph snapshots
     │   └── views/
-    │       ├── roadmap-view.ts    # DAG + detail panel (bijou dagLayout)
-    │       ├── submissions-view.ts # Review workflow browser
-    │       ├── lineage-view.ts    # Genealogy of Intent tree
-    │       ├── dashboard-view.ts  # Project overview + campaign progress
-    │       ├── backlog-view.ts    # Triage inbox
-    │       ├── governance-view.ts # Compare/collapse/attestation worklist + inspector
+    │       ├── cockpit-view.ts    # Lane rail + worklist + inspector renderer
+    │       ├── my-stuff-drawer.ts # Personal activity / quest drawer
     │       └── landing-view.ts    # Startup screen with WARP stats
     ├── theme/                # Theme bridge (bijou ↔ XYPH tokens)
     ├── logos/                # ASCII art logos organized by family and size

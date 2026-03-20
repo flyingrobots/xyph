@@ -1,11 +1,11 @@
 # XYPH Interactive TUI — Full Dashboard Plan
 
 > **Current state (2026-03-19):** This document is now partly historical.
-> XYPH runs on BIJOU 3.1.0, the dashboard has 6 views
-> (`dashboard`, `roadmap`, `submissions`, `lineage`, `backlog`,
-> `governance`), and the first governance worklist/inspector lane is live.
-> Treat the remaining sections here as backlog/design context rather than an
-> exact description of the current implementation.
+> XYPH runs on BIJOU 3.1.0, and the current shell is a single AION-style
+> cockpit rather than six peer dashboards. The live shell has five lanes
+> (`Now`, `Plan`, `Review`, `Settlement`, `Campaigns`) over one worklist and
+> one inspector. Treat the remaining sections here as backlog/design context
+> rather than an exact description of the current implementation.
 
 > **Note:** The canonical contract for the agent-native CLI and action kernel
 > now lives in [`docs/canonical/AGENT_PROTOCOL.md`](docs/canonical/AGENT_PROTOCOL.md).

@@ -6,10 +6,11 @@
  *   XYPH_AGENT_ID=human.james ./xyph-dashboard.ts
  *
  * Keys:
- *   [ / ]           — cycle views (prev / next)
- *   1-5             — jump to view (dashboard, roadmap, submissions, lineage, backlog)
+ *   [ / ]           — cycle cockpit lanes (prev / next)
+ *   1-5             — jump to lane (Now, Plan, Review, Settlement, Campaigns)
  *   m               — toggle "My Stuff" drawer (quests, submissions, activity)
  *   r               — refresh snapshot
+ *   : or /          — command palette
  *   q               — quit
  *   ?               — help
  */

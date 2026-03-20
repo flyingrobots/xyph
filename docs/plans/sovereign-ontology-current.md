@@ -30,7 +30,7 @@ Human surface direction:
 - TUI first
 - Web second
 - CLI trends toward `xyph api` plus bootstrap/debug/admin surfaces
-- BIJOU 3.1.0 is now the active TUI foundation, and the first governance lane is live for persisted compare/collapse/attestation artifacts
+- BIJOU 3.1.0 is now the active TUI foundation, and the current shell is an AION-style cockpit with `Now`, `Plan`, `Review`, `Settlement`, and `Campaigns` lanes over one inspector-first operator surface
 
 ## Current Implementation Order
 
@@ -45,7 +45,7 @@ Human surface direction:
    - Persisted governance artifacts now have readable XYPH lifecycle semantics: `observe(entity.detail)` computes freshness, attestation summary, and supersession lineage for durable `comparison-artifact:*` and `collapse-proposal:*` nodes instead of exposing only raw graph properties.
    - `xyph api query` now exposes the first admin-only governance read model, with a live worklist view for actionable compare/collapse artifacts and a per-artifact series-history view over durable governance lanes.
    - `xyph api explain` now diagnoses durable governance artifacts directly, returning stable reason codes and next-command guidance for stale comparisons, blocked collapse proposals, and the distinction between attesting a proposal and approving the bound comparison gate.
-   - The TUI dashboard now projects those same durable governance artifacts into a BIJOU 3.1-powered governance lane, so compare/collapse/attestation work can be scanned in a table view and inspected without dropping to raw JSON first.
+   - The TUI now projects those same durable governance artifacts into the BIJOU 3.1-powered `Settlement` lane of the AION cockpit, so compare/collapse/attestation work can be scanned in the main worklist and inspected without dropping to raw JSON first.
    - Conflict meaning, governance, compare/collapse, and human workflow semantics remain XYPH concerns.
 3. **Worldline working sets after substrate facts**
    - Fork/worldline work should use logical working sets over graph observations, not Git worktrees.
