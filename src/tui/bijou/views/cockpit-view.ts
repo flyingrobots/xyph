@@ -139,16 +139,32 @@ function buildVerticalScrollbarRail(
   });
 }
 
-function renderPaneCard(options: {
+function renderPaneHeader(options: {
   title: string;
   detail: string;
+  width: number;
+  borderToken: TokenValue;
+}): string {
+  return headerBox(options.title, {
+    detail: options.detail,
+    borderToken: options.borderToken,
+    width: options.width,
+  });
+}
+
+function paneBodyHeight(totalHeight: number, header: string): number {
+  return Math.max(1, totalHeight - header.split('\n').length - 2);
+}
+
+function renderPaneCard(options: {
+  header: string;
   width: number;
   height: number;
   borderToken: TokenValue;
   bodyLines: string[];
   bodyRightRail?: string[];
 }): string {
-  const innerHeight = Math.max(1, options.height - 3);
+  const innerHeight = paneBodyHeight(options.height, options.header);
   const lines = options.bodyLines.slice(0, innerHeight);
   while (lines.length < innerHeight) lines.push('');
   const rail = options.bodyRightRail?.slice(0, innerHeight) ?? [];
@@ -168,12 +184,11 @@ function renderPaneCard(options: {
       return replaceVisibleCellFromRight(line, 1, glyph);
     });
   }
-  const header = headerBox(options.title, {
-    detail: options.detail,
-    borderToken: options.borderToken,
-    width: options.width,
-  });
-  return [header, bodyLines.join('\n')].join('\n');
+  return [options.header, bodyLines.join('\n')]
+    .join('\n')
+    .split('\n')
+    .slice(0, Math.max(1, options.height))
+    .join('\n');
 }
 
 function laneAccent(style: StylePort, lane: DashboardModel['lane']): TokenValue {
@@ -369,6 +384,12 @@ function renderHero(model: DashboardModel, snapshot: GraphSnapshot, style: Style
 
 function renderLaneRail(model: DashboardModel, snapshot: GraphSnapshot, style: StylePort, width: number, height: number): string {
   const innerWidth = Math.max(12, width - 4);
+  const header = renderPaneHeader({
+    title: 'Lanes',
+    detail: 'operator surfaces',
+    width,
+    borderToken: style.theme.border.muted,
+  });
   const lines: string[] = [];
   const lanes = cockpitLanes(snapshot, model.agentId);
   for (const lane of lanes) {
@@ -413,8 +434,7 @@ function renderLaneRail(model: DashboardModel, snapshot: GraphSnapshot, style: S
   }
 
   return renderPaneCard({
-    title: 'Lanes',
-    detail: 'operator surfaces',
+    header,
     width,
     height,
     borderToken: style.theme.border.muted,
@@ -426,7 +446,15 @@ function renderWorklistPane(model: DashboardModel, snapshot: GraphSnapshot, styl
   const accentToken = laneAccent(style, model.lane);
   const items = laneItems(snapshot, model.lane, model.agentId);
   const selected = items[model.table.focusRow];
-  const innerHeight = Math.max(1, height - 2);
+  const header = renderPaneHeader({
+    title: style.styled(accentToken, laneTitle(model.lane)),
+    detail: selected
+      ? style.styled(accentToken, shortId(selected.id))
+      : 'select an item to inspect',
+    width,
+    borderToken: accentToken,
+  });
+  const innerHeight = paneBodyHeight(height, header);
   const contentWidth = Math.max(12, width - 4);
   const focusRow = Math.max(0, Math.min(model.table.focusRow, Math.max(0, items.length - 1)));
   let start = Math.max(0, Math.min(model.table.scrollY, Math.max(0, items.length - 1)));
@@ -472,10 +500,7 @@ function renderWorklistPane(model: DashboardModel, snapshot: GraphSnapshot, styl
   });
 
   return renderPaneCard({
-    title: style.styled(accentToken, laneTitle(model.lane)),
-    detail: selected
-      ? style.styled(accentToken, shortId(selected.id))
-      : 'select an item to inspect',
+    header,
     width,
     height,
     borderToken: accentToken,
@@ -684,9 +709,15 @@ function renderGovernanceDetail(style: StylePort, item: CockpitItem, width: numb
 
 function renderInspector(model: DashboardModel, snapshot: GraphSnapshot, style: StylePort, width: number, height: number): string {
   const accentToken = laneAccent(style, model.lane);
-  const innerWidth = Math.max(12, width - 4);
-  const innerHeight = Math.max(4, height - 2);
   const item = selectedLaneItem(snapshot, model.lane, model.table.focusRow, model.agentId);
+  const header = renderPaneHeader({
+    title: style.styled(accentToken, 'Inspector'),
+    detail: item ? style.styled(accentToken, item.secondary) : 'selection detail',
+    width,
+    borderToken: accentToken,
+  });
+  const innerWidth = Math.max(12, width - 4);
+  const innerHeight = paneBodyHeight(height, header);
   const content = (() : string => {
     if (!item) {
       return wrapWhitespaceText('Select a row to inspect the plan, review, or settlement details behind it.', innerWidth).join('\n');
@@ -722,8 +753,7 @@ function renderInspector(model: DashboardModel, snapshot: GraphSnapshot, style: 
   });
 
   return renderPaneCard({
-    title: style.styled(accentToken, 'Inspector'),
-    detail: item ? style.styled(accentToken, item.secondary) : 'selection detail',
+    header,
     width,
     height,
     borderToken: accentToken,
@@ -741,20 +771,37 @@ export function cockpitView(model: DashboardModel, style: StylePort, width?: num
   }
 
   const hero = renderHero(model, snapshot, style, w);
-  const bodyHeight = Math.max(8, h - 3);
+  const heroHeight = hero.split('\n').length;
+  const bodyHeight = Math.max(1, h - heroHeight - 1);
   const railWidth = Math.max(24, Math.min(30, Math.floor((w - 2) * 0.22)));
   const tableWidth = Math.max(46, Math.floor((w - 2) * 0.40));
 
   let body: string;
   if (w < 110) {
-    const top = renderLaneRail(model, snapshot, style, w, Math.min(14, bodyHeight));
-    const worklist = renderWorklistPane(model, snapshot, style, w, Math.max(10, Math.floor(bodyHeight * 0.45)));
-    const inspector = model.inspectorOpen
-      ? renderInspector(model, snapshot, style, w, Math.max(8, Math.floor(bodyHeight * 0.35)))
-      : '';
-    body = model.inspectorOpen
-      ? [top, '', worklist, '', inspector].join('\n')
-      : [top, '', worklist].join('\n');
+    if (model.inspectorOpen) {
+      const availableHeight = Math.max(1, bodyHeight - PANEL_GAP * 2);
+      const desiredRailHeight = Math.min(14, Math.max(6, Math.floor(availableHeight * 0.24)));
+      const desiredInspectorHeight = Math.min(12, Math.max(6, Math.floor(availableHeight * 0.30)));
+      const railHeight = Math.min(desiredRailHeight, Math.max(1, availableHeight - desiredInspectorHeight - 1));
+      const inspectorHeight = Math.min(desiredInspectorHeight, Math.max(1, availableHeight - railHeight - 1));
+
+      body = flex(
+        { direction: 'column', width: w, height: bodyHeight, gap: PANEL_GAP },
+        { basis: railHeight, content: (_pw: number, ph: number) => renderLaneRail(model, snapshot, style, w, ph) },
+        { flex: 1, content: (_pw: number, ph: number) => renderWorklistPane(model, snapshot, style, w, ph) },
+        { basis: inspectorHeight, content: (_pw: number, ph: number) => renderInspector(model, snapshot, style, w, ph) },
+      );
+    } else {
+      const availableHeight = Math.max(1, bodyHeight - PANEL_GAP);
+      const desiredRailHeight = Math.min(14, Math.max(6, Math.floor(availableHeight * 0.26)));
+      const railHeight = Math.min(desiredRailHeight, Math.max(1, availableHeight - 1));
+
+      body = flex(
+        { direction: 'column', width: w, height: bodyHeight, gap: PANEL_GAP },
+        { basis: railHeight, content: (_pw: number, ph: number) => renderLaneRail(model, snapshot, style, w, ph) },
+        { flex: 1, content: (_pw: number, ph: number) => renderWorklistPane(model, snapshot, style, w, ph) },
+      );
+    }
   } else {
     body = model.inspectorOpen
       ? flex(

@@ -81,6 +81,34 @@ describe('cockpitView', () => {
     expect(plain).toContain('Quest One');
   });
 
+  it('honors the requested cockpit height in wide layouts', () => {
+    const model = makeModel(makeSnapshot({
+      quests: Array.from({ length: 12 }, (_, index) => ({
+        id: `task:Q${index + 1}`,
+        title: `Quest ${index + 1}`,
+        status: 'BACKLOG',
+        hours: 1,
+      })),
+    }));
+
+    const output = cockpitView(model, style, 120, 24);
+    expect(output.split('\n')).toHaveLength(24);
+  });
+
+  it('does not exceed the requested cockpit height in narrow layouts', () => {
+    const model = makeModel(makeSnapshot({
+      quests: Array.from({ length: 12 }, (_, index) => ({
+        id: `task:Q${index + 1}`,
+        title: `Quest ${index + 1}`,
+        status: 'BACKLOG',
+        hours: 1,
+      })),
+    }));
+
+    const output = cockpitView(model, style, 80, 24);
+    expect(output.split('\n').length).toBeLessThanOrEqual(24);
+  });
+
   it('wraps worklist cards and inspector prose on whitespace', () => {
     const model = {
       ...makeModel(makeSnapshot({

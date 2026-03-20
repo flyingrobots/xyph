@@ -6,6 +6,7 @@ All notable changes to XYPH will be documented in this file.
 
 ### Changed
 
+- **Cockpit pane heights now honor the terminal viewport in both wide and narrow layouts** — header boxes are now measured instead of guessed, pane body heights are derived from the actual rendered chrome, and the stacked narrow-layout branch now uses a real constrained column layout. This prevents worklist and inspector cards from drawing underneath the footer when the viewport gets tight.
 - **Footer chrome now hard-clamps to the terminal width** — the status and hint bars no longer rely on terminal soft-wrap. Oversized footer text now truncates with an ellipsis instead of visually wrapping into the cockpit area and making the pane bottoms look clipped by the footer.
 - **Scrollable cockpit panes now show explicit vertical scrollbars with interaction fade** — the worklist and inspector lanes now render a real track with arrows and thumb when navigation wakes them, then fade back out once interaction stops. The rail now overlays the pane edge instead of reserving a dead gutter column, so content keeps its maximum width when the scrollbar is hidden.
 - **The cockpit frame now takes its accent from the active lane** — `Now`, `Plan`, `Review`, `Settlement`, and `Campaigns` each now own a distinct lane color, and the hero border, pane headers, selected lane label, and focused worklist card all pick up that surface accent instead of sharing one global chrome color.
