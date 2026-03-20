@@ -349,6 +349,42 @@ export type GovernanceDetail =
   | CollapseProposalGovernanceDetail
   | AttestationGovernanceDetail;
 
+export interface ComparisonArtifactNode {
+  id: string;
+  type: 'comparison-artifact';
+  recordedAt: number;
+  recordedBy?: string;
+  leftWorldlineId?: string;
+  rightWorldlineId?: string;
+  targetId?: string;
+  governance: ComparisonArtifactGovernanceDetail;
+}
+
+export interface CollapseProposalNode {
+  id: string;
+  type: 'collapse-proposal';
+  recordedAt: number;
+  recordedBy?: string;
+  sourceWorldlineId?: string;
+  targetWorldlineId?: string;
+  comparisonArtifactId?: string;
+  governance: CollapseProposalGovernanceDetail;
+}
+
+export interface AttestationNode {
+  id: string;
+  type: 'attestation';
+  recordedAt: number;
+  recordedBy?: string;
+  targetId?: string;
+  governance: AttestationGovernanceDetail;
+}
+
+export type GovernanceArtifactNode =
+  | ComparisonArtifactNode
+  | CollapseProposalNode
+  | AttestationNode;
+
 export interface EntityDetail {
   id: string;
   type: string;
@@ -385,6 +421,7 @@ export interface GraphSnapshot {
   policies: PolicyNode[];
   // Auto-linking suggestions (M11 Phase 4)
   suggestions: SuggestionNode[];
+  governanceArtifacts: GovernanceArtifactNode[];
   asOf: number;
   graphMeta?: GraphMeta;
   /** Task IDs in topological order (prerequisites first), computed by git-warp's traversal engine. */

@@ -1,4 +1,4 @@
-import { progressBar } from '@flyingrobots/bijou';
+import { getDefaultContext, progressBar, surfaceToString } from '@flyingrobots/bijou';
 import { canvas, composite, modal } from '@flyingrobots/bijou-tui';
 import type { StylePort } from '../../../ports/StylePort.js';
 import { spiralShader, spiralFrame } from '../shaders/spiral.js';
@@ -10,11 +10,17 @@ interface FgLine { text: string; width: number }
 export function landingView(model: DashboardModel, style: StylePort): string {
   const muted = style.theme.semantic.muted;
   const border = style.theme.border.primary;
+  const ctx = getDefaultContext();
 
   // ── Spiral background ────────────────────────────────────────────────
-  // canvas() returns empty string in pipe mode — fall back to spiralFrame
-  let bg = canvas(model.cols, model.rows, spiralShader, { time: Date.now() });
-  if (!bg) {
+  let bg = surfaceToString(
+    canvas(model.cols, model.rows, spiralShader, {
+      time: Date.now() / 1000,
+      uniforms: { cols: model.cols, rows: model.rows },
+    }),
+    ctx.style,
+  );
+  if (!bg.trim()) {
     bg = spiralFrame(model.cols, model.rows, Date.now()).join('\n');
   }
   const styledBg = style.styled(muted, bg);

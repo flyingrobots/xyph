@@ -7,7 +7,7 @@
  */
 
 import { isExecutableQuestStatus } from '../../domain/entities/Quest.js';
-import type { GraphSnapshot, SubmissionNode } from '../../domain/models/dashboard.js';
+import type { GovernanceArtifactNode, GraphSnapshot, SubmissionNode } from '../../domain/models/dashboard.js';
 import { computeFrontier, type TaskSummary, type DepEdge } from '../../domain/services/DepAnalysis.js';
 import { SUBMISSION_STATUS_ORDER } from '../../domain/entities/Submission.js';
 
@@ -69,4 +69,14 @@ export function backlogQuestIds(snap: GraphSnapshot): string[] {
 /** Return ordered intent IDs for lineage view selection. */
 export function lineageIntentIds(snap: GraphSnapshot): string[] {
   return snap.intents.map(i => i.id);
+}
+
+export function sortedGovernanceArtifacts(snap: GraphSnapshot): GovernanceArtifactNode[] {
+  return [...snap.governanceArtifacts].sort((left, right) =>
+    right.recordedAt - left.recordedAt || left.id.localeCompare(right.id)
+  );
+}
+
+export function governanceArtifactIds(snap: GraphSnapshot): string[] {
+  return sortedGovernanceArtifacts(snap).map((artifact) => artifact.id);
 }

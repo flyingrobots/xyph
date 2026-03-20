@@ -608,27 +608,34 @@ npx tsx xyph-actuator.ts audit-sovereignty
   <img src="docs/assets/dashboard-demo.gif" alt="XYPH TUI Dashboard Demo" width="700" />
 </p>
 
-XYPH has an interactive TUI that provides a visual browser for your project and its XYPH artifacts.
+XYPH has an interactive BIJOU-powered TUI that provides a visual browser for
+your project and its XYPH artifacts. The current shell runs on BIJOU `3.1.0`
+and now includes a dedicated governance lane for persisted
+`comparison-artifact:*`, `collapse-proposal:*`, and `attestation:*` records.
 
 ```bash
 XYPH_AGENT_ID=human.yourname ./xyph-dashboard.ts
 ```
 
-| Key     | Context      | Action                                        |
-|---------|-------------|-----------------------------------------------|
-| `Tab`   | Global       | Cycle views (dashboard → roadmap → submissions → lineage → backlog) |
-| `j/k`   | Global       | Select next/prev item                         |
-| `r`     | Global       | Refresh snapshot                              |
-| `?`     | Global       | Help modal                                    |
-| `q`     | Global       | Quit                                          |
-| `c`     | Roadmap      | Claim selected quest                          |
-| `PgDn/Up` | Roadmap   | Scroll DAG                                    |
-| `Enter` | Submissions  | Expand/collapse submission detail             |
-| `a`     | Submissions  | Approve tip patchset                          |
-| `x`     | Submissions  | Request changes on tip patchset               |
-| `p`     | Inbox        | Promote selected task                         |
-| `d`     | Inbox        | Reject selected task                          |
-| `Esc`   | Modal        | Cancel / close                                |
+| Key | Context | Action |
+|---|---|---|
+| `1`-`6` | Global | Jump to dashboard / roadmap / submissions / lineage / backlog / governance |
+| `[` / `]` | Global | Cycle views backward / forward |
+| `j` / `k` | List views | Select next / previous item |
+| `g` / `G` | List views | Jump to first / last item |
+| `r` | Global | Refresh snapshot |
+| `m` | Global | Toggle the "My Stuff" drawer |
+| `?` | Global | Toggle help |
+| `q` | Global | Quit |
+| `c` | Roadmap | Claim selected quest |
+| `PgDn` / `PgUp` | Roadmap | Scroll the DAG pane |
+| `Enter` | Submissions | Expand / collapse submission detail |
+| `a` | Submissions | Approve tip patchset |
+| `x` | Submissions | Request changes on tip patchset |
+| `p` | Backlog | Promote selected task |
+| `D` | Backlog | Reject selected task |
+| `PgDn` / `PgUp` | Governance | Scroll the governance inspector |
+| `Esc` | Modal | Cancel / close |
 
 ### XYPH CLI Reference
 
@@ -699,7 +706,7 @@ src/
 ├── ports/            # Interfaces (RoadmapPort, DashboardPort, SubmissionPort, WorkspacePort, ...)
 ├── infrastructure/
 │   └── adapters/     # git-warp adapters (WarpSubmissionAdapter, GitWorkspaceAdapter, ...)
-└── tui/              # bijou-powered interactive dashboard
+└── tui/              # bijou v3.1-powered interactive dashboard
     ├── bijou/
     │   ├── DashboardApp.ts   # TEA app shell (model, update, view, keymaps)
     │   └── views/
@@ -708,6 +715,7 @@ src/
     │       ├── lineage-view.ts    # Genealogy of Intent tree
     │       ├── dashboard-view.ts  # Project overview + campaign progress
     │       ├── backlog-view.ts    # Triage inbox
+    │       ├── governance-view.ts # Compare/collapse/attestation worklist + inspector
     │       └── landing-view.ts    # Startup screen with WARP stats
     ├── theme/                # Theme bridge (bijou ↔ XYPH tokens)
     ├── logos/                # ASCII art logos organized by family and size

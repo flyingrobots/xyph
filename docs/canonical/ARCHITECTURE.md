@@ -77,8 +77,8 @@ opened.
 - **`src/domain/models/`** — View models and protocol models, including dashboard snapshots and versioned control-plane JSONL envelopes.
 - **`src/ports/`** — Boundary interfaces: `GraphPort`, `RoadmapPort`, `IntakePort`, `SubmissionPort`, `WorkspacePort`, `ControlPlanePort`.
 - **`src/infrastructure/adapters/`** — Concrete implementations backed by git-warp and git: `WarpGraphAdapter`, `WarpIntakeAdapter`, `WarpSubmissionAdapter`, `WarpRoadmapAdapter`, `GitWorkspaceAdapter`.
-- **`src/infrastructure/GraphContext.ts`** — Shared gateway to the WARP graph. Replaces the old dashboard adapter with `graph.query()` for typed node fetching and frontier-based cache invalidation.
-- **`src/tui/`** — TUI (bijou-tui): `DashboardApp.ts` (TEA app), view functions, theme presets, `StylePort`-based styling.
+- **`src/infrastructure/GraphContext.ts`** — Shared gateway to the WARP graph. Replaces the old dashboard adapter with `graph.query()` for typed node fetching, frontier-based cache invalidation, and typed dashboard projections including persisted governance artifacts for compare/collapse/attestation work.
+- **`src/tui/`** — TUI (bijou-tui v3.1): `DashboardApp.ts` (TEA app), view functions, theme presets, `StylePort`-based styling, and the first governance worklist/inspector lane for durable artifacts.
 - **`src/validation/`** — Cross-cutting concerns: cryptographic utilities, invariant enforcement.
 
 ## Canonical Control Plane
@@ -346,7 +346,7 @@ xyph-actuator command → adapter.method() → graph.patch(p => { ... }) → WAR
 GraphContext.fetchSnapshot()
   → syncCoverage() (discover external writes)
   → frontier key check (cache hit? return cached)
-  → materialize() → query() → build snapshot → cache
+  → materialize() → query() → build snapshot (quests + submissions + governance artifacts) → cache
 ```
 
 ### Historical Read Path (Control Plane → Isolated Graph)

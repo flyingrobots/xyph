@@ -49,6 +49,10 @@ function ready(
   return dismissed;
 }
 
+function viewText(app: App<DashboardModel, DashboardMsg>, model: DashboardModel): string {
+  return app.view(model) as string;
+}
+
 /** Drive a sequence of keys through the app, returning final model + all frames. */
 function drive(
   app: App<DashboardModel, DashboardMsg>,
@@ -60,7 +64,7 @@ function drive(
   for (const k of keys) {
     const [next] = app.update(k, m);
     m = next;
-    frames.push(app.view(m));
+    frames.push(viewText(app, m));
   }
   return { model: m, frames };
 }
@@ -82,18 +86,18 @@ describe('DashboardApp integration (full loop)', () => {
 
   // ── Navigation ────────────────────────────────────────────────────
 
-  it('number keys 1-5 jump to respective views and render each', () => {
+  it('number keys 1-6 jump to respective views and render each', () => {
     const { app } = buildApp();
     const m = ready(app, makeSnapshot());
 
     const pairs: [string, string][] = [
       ['1', 'dashboard'], ['2', 'roadmap'], ['3', 'submissions'],
-      ['4', 'lineage'], ['5', 'backlog'],
+      ['4', 'lineage'], ['5', 'backlog'], ['6', 'governance'],
     ];
     for (const [k, expected] of pairs) {
       const [next] = app.update(key(k), m);
       expect(next.activeView).toBe(expected);
-      const frame = app.view(next);
+      const frame = viewText(app, next);
       expect(frame.length).toBeGreaterThan(0);
     }
   });
@@ -125,6 +129,59 @@ describe('DashboardApp integration (full loop)', () => {
     const last = strip(frames[frames.length - 1] ?? '');
     expect(last).toContain('Bravo');
     expect(last).toContain('IN_PROGRESS');
+  });
+
+  it('governance view renders artifact detail and selection tracks the worklist', () => {
+    const { app } = buildApp();
+    const snap = makeSnapshot({
+      governanceArtifacts: [
+        {
+          id: 'comparison-artifact:cmp-2',
+          type: 'comparison-artifact',
+          recordedAt: 200,
+          leftWorldlineId: 'worldline:live',
+          rightWorldlineId: 'worldline:branch-b',
+          governance: {
+            kind: 'comparison-artifact',
+            freshness: 'fresh',
+            attestation: { total: 0, approvals: 0, rejections: 0, other: 0, state: 'unattested' },
+            series: { supersededByIds: [], latestInSeries: true },
+            comparison: { leftWorldlineId: 'worldline:live', rightWorldlineId: 'worldline:branch-b' },
+            settlement: { proposalCount: 0, executedCount: 0 },
+          },
+        },
+        {
+          id: 'collapse-proposal:settle-2',
+          type: 'collapse-proposal',
+          recordedAt: 100,
+          sourceWorldlineId: 'worldline:branch-b',
+          targetWorldlineId: 'worldline:live',
+          governance: {
+            kind: 'collapse-proposal',
+            freshness: 'fresh',
+            lifecycle: 'pending_attestation',
+            attestation: { total: 0, approvals: 0, rejections: 0, other: 0, state: 'unattested' },
+            series: { supersededByIds: [], latestInSeries: true },
+            execution: { dryRun: true, executable: true, executed: false, changed: true },
+            executionGate: {
+              attestation: { total: 0, approvals: 0, rejections: 0, other: 0, state: 'unattested' },
+            },
+          },
+        },
+      ],
+    });
+    const m = ready(app, snap);
+
+    const { model, frames } = drive(app, m, [
+      key('6'),
+      key('j'),
+    ]);
+
+    expect(model.activeView).toBe('governance');
+    expect(model.governance.table.focusRow).toBe(1);
+    const last = strip(frames[frames.length - 1] ?? '');
+    expect(last).toContain('collapse-proposal:settle-2');
+    expect(last).toContain('pending_attestation');
   });
 
   it('j on roadmap advances selection; k retreats', () => {
@@ -168,7 +225,7 @@ describe('DashboardApp integration (full loop)', () => {
     expect(confirming.confirmState?.action).toEqual({ kind: 'claim', questId: 'task:Q1' });
 
     // Confirm overlay should be visible in view output
-    const confirmFrame = strip(app.view(confirming));
+    const confirmFrame = strip(viewText(app, confirming));
     expect(confirmFrame.length).toBeGreaterThan(0);
 
     // Press y → write dispatched
@@ -356,7 +413,7 @@ describe('DashboardApp integration (full loop)', () => {
     const [withHelp] = app.update(key('?'), m);
     expect(withHelp.showHelp).toBe(true);
 
-    const helpFrame = strip(app.view(withHelp));
+    const helpFrame = strip(viewText(app, withHelp));
     expect(helpFrame.length).toBeGreaterThan(0);
 
     const [noHelp] = app.update(key('?'), withHelp);
@@ -385,7 +442,7 @@ describe('DashboardApp integration (full loop)', () => {
     const [withToast] = app.update({ type: 'write-success', message: 'Claimed task:Q1' }, m);
     expect(withToast.toast?.variant).toBe('success');
 
-    const toastFrame = strip(app.view(withToast));
+    const toastFrame = strip(viewText(app, withToast));
     expect(toastFrame).toContain('Claimed task:Q1');
 
     // Dismiss

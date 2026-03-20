@@ -29,19 +29,28 @@ import { lineageView } from './views/lineage-view.js';
 import { dashboardView } from './views/dashboard-view.js';
 import { backlogView } from './views/backlog-view.js';
 import { submissionsView } from './views/submissions-view.js';
+import { governanceView } from './views/governance-view.js';
 import { landingView } from './views/landing-view.js';
 import { confirmOverlay, inputOverlay } from './overlays.js';
 import { renderMyStuffDrawer } from './views/my-stuff-drawer.js';
 import { claimQuest, promoteQuest, rejectQuest, reviewSubmission, type WriteDeps } from './write-cmds.js';
-import { roadmapQuestIds, submissionIds, sortedSubmissions, backlogQuestIds, lineageIntentIds } from './selection-order.js';
+import {
+  roadmapQuestIds,
+  submissionIds,
+  sortedSubmissions,
+  backlogQuestIds,
+  lineageIntentIds,
+  governanceArtifactIds,
+  sortedGovernanceArtifacts,
+} from './selection-order.js';
 import type { SubmissionPort } from '../../ports/SubmissionPort.js';
 import { computeCriticalPath, type TaskSummary, type DepEdge } from '../../domain/services/DepAnalysis.js';
 
 // ── Public types ────────────────────────────────────────────────────────
 
-export type ViewName = 'dashboard' | 'roadmap' | 'submissions' | 'lineage' | 'backlog';
+export type ViewName = 'dashboard' | 'roadmap' | 'submissions' | 'lineage' | 'backlog' | 'governance';
 
-const VIEWS: ViewName[] = ['dashboard', 'roadmap', 'submissions', 'lineage', 'backlog'];
+const VIEWS: ViewName[] = ['dashboard', 'roadmap', 'submissions', 'lineage', 'backlog', 'governance'];
 
 /** Pending write action stored in confirm/input state. */
 export type PendingWrite =
@@ -69,6 +78,11 @@ export interface SubmissionsState {
 
 export interface BacklogState {
   table: NavigableTableState;
+}
+
+export interface GovernanceState {
+  table: NavigableTableState;
+  detailScrollY: number;
 }
 
 export interface LineageState {
@@ -104,6 +118,7 @@ export interface DashboardModel {
   roadmap: RoadmapState;
   submissions: SubmissionsState;
   backlog: BacklogState;
+  governance: GovernanceState;
   lineage: LineageState;
   dashboardView?: DashboardViewState;
 
@@ -188,6 +203,7 @@ function buildGlobalKeys(): KeyMap<GlobalAction> {
       .bind('3', 'Submissions', { type: 'jump-view', view: 'submissions' })
       .bind('4', 'Lineage', { type: 'jump-view', view: 'lineage' })
       .bind('5', 'Backlog', { type: 'jump-view', view: 'backlog' })
+      .bind('6', 'Governance', { type: 'jump-view', view: 'governance' })
       .bind('[', 'Prev view', { type: 'prev-view' })
       .bind(']', 'Next view', { type: 'next-view' })
       .bind('r', 'Refresh', { type: 'refresh' })
@@ -246,6 +262,21 @@ function buildBacklogKeys(): KeyMap<ViewAction> {
   return km.group('Backlog', g => g
     .bind('p', 'Promote', { type: 'promote' })
     .bind('shift+d', 'Reject', { type: 'reject' })
+    .bind('g', 'Jump to first', { type: 'top' })
+    .bind('shift+g', 'Jump to last', { type: 'bottom' })
+  );
+}
+
+function buildGovernanceKeys(): KeyMap<ViewAction> {
+  const km = navTableKeyMap<ViewAction>({
+    focusNext: { type: 'select-next' },
+    focusPrev: { type: 'select-prev' },
+    pageDown: { type: 'page-down' },
+    pageUp: { type: 'page-up' },
+    quit: { type: 'top' },
+  });
+  km.disable('Quit');
+  return km.group('Governance', g => g
     .bind('g', 'Jump to first', { type: 'top' })
     .bind('shift+g', 'Jump to last', { type: 'bottom' })
   );
@@ -326,6 +357,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
   const roadmapKeys = buildRoadmapKeys();
   const submissionsKeys = buildSubmissionsKeys();
   const backlogKeys = buildBacklogKeys();
+  const governanceKeys = buildGovernanceKeys();
   const lineageKeys = buildLineageKeys();
 
   type PaletteAction = 'next' | 'prev' | 'page-down' | 'page-up' | 'select' | 'close';
@@ -429,6 +461,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
       case 'roadmap':     return roadmapKeys;
       case 'submissions': return submissionsKeys;
       case 'backlog':     return backlogKeys;
+      case 'governance':  return governanceKeys;
       case 'lineage':     return lineageKeys;
       default:            return null;
     }
@@ -455,6 +488,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         roadmap: { table: createNavigableTableState({ columns: [], rows: [], height: 20 }), dagPane: null, fallbackScrollY: 0, detailScrollY: 0 },
         submissions: { table: createNavigableTableState({ columns: [], rows: [], height: 20 }), expandedId: null, detailScrollY: 0 },
         backlog: { table: createNavigableTableState({ columns: [], rows: [], height: 20 }) },
+        governance: { table: createNavigableTableState({ columns: [], rows: [], height: 20 }), detailScrollY: 0 },
         lineage: { selectedIndex: -1, collapsedIntents: [] },
         dashboardView: { focusPanel: 'in-progress', focusRow: 0, detailId: null, leftScrollY: 0 },
         drawerOpen: false,
@@ -583,6 +617,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
           roadmap: { table: newRoadmapTable, dagPane: newDagPane, fallbackScrollY: 0, detailScrollY: 0 },
           submissions: { ...model.submissions, table: rebuildSubmissionsTable(snap, model.submissions.table.focusRow, model.rows - 4) },
           backlog: { ...model.backlog, table: rebuildBacklogTable(snap, model.backlog.table.focusRow, model.rows - 4) },
+          governance: { ...model.governance, table: rebuildGovernanceTable(snap, model.governance.table.focusRow, model.rows - 4), detailScrollY: 0 },
           lineage: {
             ...model.lineage,
             selectedIndex: clampIndex(model.lineage.selectedIndex, lineageIntentIds(snap).length),
@@ -899,6 +934,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
           case 'submissions': content = submissionsView(model, style, w, h); break;
           case 'lineage':     content = lineageView(model, style, w, h); break;
           case 'backlog':     content = backlogView(model, style, w, h); break;
+          case 'governance':  content = governanceView(model, style, w, h); break;
           default: { const _exhaustive: never = model.activeView; void _exhaustive; content = ''; break; }
         }
 
@@ -1166,6 +1202,10 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         if (model.activeView === 'backlog') {
           return [{ ...model, backlog: { ...model.backlog, table: navTablePageDown(model.backlog.table) } }, []];
         }
+        if (model.activeView === 'governance') {
+          const step = Math.max(1, model.rows - 6);
+          return [{ ...model, governance: { ...model.governance, detailScrollY: model.governance.detailScrollY + step } }, []];
+        }
         return [model, []];
       }
       case 'page-up': {
@@ -1174,6 +1214,10 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         }
         if (model.activeView === 'backlog') {
           return [{ ...model, backlog: { ...model.backlog, table: navTablePageUp(model.backlog.table) } }, []];
+        }
+        if (model.activeView === 'governance') {
+          const step = Math.max(1, model.rows - 6);
+          return [{ ...model, governance: { ...model.governance, detailScrollY: Math.max(0, model.governance.detailScrollY - step) } }, []];
         }
         return [model, []];
       }
@@ -1237,6 +1281,12 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
           : navTableFocusPrev(model.backlog.table);
         return { ...model, backlog: { ...model.backlog, table: nextTable } };
       }
+      case 'governance': {
+        const nextTable = delta > 0
+          ? navTableFocusNext(model.governance.table)
+          : navTableFocusPrev(model.governance.table);
+        return { ...model, governance: { ...model.governance, table: nextTable, detailScrollY: 0 } };
+      }
       case 'lineage': {
         const count = lineageIntentIds(snap).length;
         const next = clampIndex(model.lineage.selectedIndex + delta, count);
@@ -1287,6 +1337,12 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         const targetRow = edge === 'top' ? 0 : ids.length - 1;
         return { ...model, backlog: { ...model.backlog, table: rebuildBacklogTable(snap, targetRow, model.rows - 4) } };
       }
+      case 'governance': {
+        const ids = governanceArtifactIds(snap);
+        if (ids.length === 0) return model;
+        const targetRow = edge === 'top' ? 0 : ids.length - 1;
+        return { ...model, governance: { ...model.governance, table: rebuildGovernanceTable(snap, targetRow, model.rows - 4), detailScrollY: 0 } };
+      }
       case 'lineage': {
         const count = lineageIntentIds(snap).length;
         if (count === 0) return model;
@@ -1328,6 +1384,8 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         return [{ ...model, activeView: 'lineage' }, []];
       case 'view-backlog':
         return [{ ...model, activeView: 'backlog' }, []];
+      case 'view-governance':
+        return [{ ...model, activeView: 'governance' }, []];
       case 'claim':
         return handleViewAction({ type: 'claim' }, model);
       case 'promote':
@@ -1407,6 +1465,7 @@ function buildPaletteItems(model: DashboardModel): CommandPaletteItem[] {
     { id: 'view-submissions', label: 'Submissions',         category: 'Views',   shortcut: '3' },
     { id: 'view-lineage',     label: 'Lineage',             category: 'Views',   shortcut: '4' },
     { id: 'view-backlog',     label: 'Backlog',             category: 'Views',   shortcut: '5' },
+    { id: 'view-governance',  label: 'Governance',          category: 'Views',   shortcut: '6' },
   ];
 
   if (model.activeView === 'roadmap' && model.roadmap.table.rows.length > 0) {
@@ -1497,6 +1556,52 @@ function rebuildSubmissionsTable(
 
   if (sorted.length === 0) return table;
   const clamped = Math.max(0, Math.min(prevFocusRow, sorted.length - 1));
+  let t = table;
+  for (let i = 0; i < clamped; i++) {
+    t = navTableFocusNext(t);
+  }
+  return t;
+}
+
+function rebuildGovernanceTable(
+  snap: GraphSnapshot,
+  prevFocusRow: number,
+  height: number,
+): NavigableTableState {
+  const artifacts = sortedGovernanceArtifacts(snap);
+  const rows = artifacts.map((artifact) => {
+    if (artifact.type === 'comparison-artifact') {
+      const lane = `${artifact.leftWorldlineId ?? 'worldline:unknown'} -> ${artifact.rightWorldlineId ?? 'worldline:unknown'}`;
+      const state = !artifact.governance.series.latestInSeries
+        ? 'superseded'
+        : artifact.governance.freshness === 'stale'
+          ? 'stale'
+          : artifact.governance.attestation.state;
+      const date = Number.isFinite(artifact.recordedAt) ? new Date(artifact.recordedAt).toISOString().slice(0, 10) : '—';
+      return ['CMP', lane.slice(0, 34), state, date];
+    }
+    if (artifact.type === 'collapse-proposal') {
+      const lane = `${artifact.sourceWorldlineId ?? 'worldline:unknown'} => ${artifact.targetWorldlineId ?? 'worldline:unknown'}`;
+      const date = Number.isFinite(artifact.recordedAt) ? new Date(artifact.recordedAt).toISOString().slice(0, 10) : '—';
+      return ['SETTLE', lane.slice(0, 34), artifact.governance.lifecycle, date];
+    }
+    const date = Number.isFinite(artifact.recordedAt) ? new Date(artifact.recordedAt).toISOString().slice(0, 10) : '—';
+    return ['ATTEST', (artifact.targetId ?? 'orphan target').slice(0, 34), artifact.governance.decision ?? 'recorded', date];
+  });
+
+  const table = createNavigableTableState({
+    columns: [
+      { header: 'Kind', width: 10 },
+      { header: 'Lane' },
+      { header: 'State', width: 18 },
+      { header: 'At', width: 12 },
+    ],
+    rows,
+    height: Math.max(height, 5),
+  });
+
+  if (artifacts.length === 0) return table;
+  const clamped = Math.max(0, Math.min(prevFocusRow, artifacts.length - 1));
   let t = table;
   for (let i = 0; i < clamped; i++) {
     t = navTableFocusNext(t);

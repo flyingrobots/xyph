@@ -150,7 +150,7 @@ describe('DashboardApp', () => {
       expect(updated.rows).toBe(40);
     });
 
-    it('number keys 1-5 jump to respective views', () => {
+    it('number keys 1-6 jump to respective views', () => {
       const app = makeApp();
       const [initial] = app.init();
       const loaded: DashboardModel = { ...initial, showLanding: false, loading: false };
@@ -169,6 +169,9 @@ describe('DashboardApp', () => {
 
       const [after5] = app.update(makeKey('5'), loaded);
       expect(after5.activeView).toBe('backlog');
+
+      const [after6] = app.update(makeKey('6'), loaded);
+      expect(after6.activeView).toBe('governance');
     });
 
     it('] cycles to next view (with wraparound)', () => {
@@ -188,7 +191,10 @@ describe('DashboardApp', () => {
       expect(after4.activeView).toBe('backlog');
 
       const [after5] = app.update(makeKey(']'), after4);
-      expect(after5.activeView).toBe('dashboard'); // wraparound
+      expect(after5.activeView).toBe('governance');
+
+      const [after6] = app.update(makeKey(']'), after5);
+      expect(after6.activeView).toBe('dashboard'); // wraparound
     });
 
     it('[ cycles to prev view (with wraparound)', () => {
@@ -197,10 +203,10 @@ describe('DashboardApp', () => {
       const loaded: DashboardModel = { ...initial, showLanding: false, loading: false, activeView: 'dashboard' };
 
       const [after1] = app.update(makeKey('['), loaded);
-      expect(after1.activeView).toBe('backlog'); // wraps to end
+      expect(after1.activeView).toBe('governance'); // wraps to end
 
       const [after2] = app.update(makeKey('['), after1);
-      expect(after2.activeView).toBe('lineage');
+      expect(after2.activeView).toBe('backlog');
     });
 
     it('Tab on dashboard is a no-op (single panel)', () => {
@@ -1153,7 +1159,7 @@ describe('DashboardApp', () => {
     it('returns a string', () => {
       const app = makeApp();
       const [model] = app.init();
-      const output = app.view(model);
+      const output = app.view(model) as string;
       expect(typeof output).toBe('string');
       expect(output.length).toBeGreaterThan(0);
     });
@@ -1161,23 +1167,23 @@ describe('DashboardApp', () => {
     it('shows landing view when showLanding is true', () => {
       const app = makeApp();
       const [model] = app.init();
-      const output = app.view(model);
+      const output = app.view(model) as string;
       expect(output).toContain('XYPH TEST LOGO');
     });
 
     it('landing view output differs between loading and loaded states', () => {
       const app = makeApp();
       const [model] = app.init();
-      const loadingOutput = app.view(model);
+      const loadingOutput = app.view(model) as string;
 
       const loaded: DashboardModel = { ...model, loading: false, snapshot: makeSnapshot() };
-      const loadedOutput = app.view(loaded);
+      const loadedOutput = app.view(loaded) as string;
 
       // Loaded state should have more content than loading state
       expect(loadedOutput.length).toBeGreaterThan(loadingOutput.length);
     });
 
-    it('shows tab bar with all 5 views when not on landing', () => {
+    it('shows tab bar with all 6 views when not on landing', () => {
       const app = makeApp();
       const [initial] = app.init();
       const model: DashboardModel = {
@@ -1186,11 +1192,12 @@ describe('DashboardApp', () => {
         loading: false,
         snapshot: makeSnapshot(),
       };
-      const output = app.view(model);
+      const output = app.view(model) as string;
       expect(output).toContain('roadmap');
       expect(output).toContain('submissions');
       expect(output).toContain('dashboard');
       expect(output).toContain('backlog');
+      expect(output).toContain('governance');
     });
 
     it('shows view-specific hints', () => {
@@ -1204,7 +1211,7 @@ describe('DashboardApp', () => {
         activeView: 'backlog',
         cols: 120, // wide enough for all helpShort entries
       };
-      const output = app.view(model);
+      const output = app.view(model) as string;
       // Hint bar renders some content for the active view
       expect(output.length).toBeGreaterThan(0);
     });
@@ -1228,7 +1235,7 @@ describe('DashboardApp', () => {
         drawerOpen: true,
         drawerWidth: 30,
       };
-      const output = app.view(model);
+      const output = app.view(model) as string;
       // Assert on drawer-unique content — this submission only appears in the drawer, not the dashboard
       expect(output).toContain('DRAWER-S1');
     });
@@ -1243,7 +1250,7 @@ describe('DashboardApp', () => {
         snapshot: makeSnapshot(),
         toast: { message: 'Claimed task:Q1', variant: 'success', expiresAt: Date.now() + 3000 },
       };
-      const output = app.view(model);
+      const output = app.view(model) as string;
       expect(output).toContain('Claimed task:Q1');
     });
   });

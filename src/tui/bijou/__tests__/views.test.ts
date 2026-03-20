@@ -10,6 +10,7 @@ import { lineageView } from '../views/lineage-view.js';
 import { dashboardView } from '../views/dashboard-view.js';
 import { backlogView } from '../views/backlog-view.js';
 import { submissionsView } from '../views/submissions-view.js';
+import { governanceView } from '../views/governance-view.js';
 import { renderMyStuffDrawer } from '../views/my-stuff-drawer.js';
 import { strip } from '../../../../test/helpers/ansi.js';
 import { makeSnapshot, quest, intent, campaign, scroll, submission, review, decision } from '../../../../test/helpers/snapshot.js';
@@ -100,6 +101,30 @@ function buildRoadmapTable(snapshot: GraphSnapshot | null, focusRow = 0): Naviga
   return table;
 }
 
+function buildGovernanceTable(snapshot: GraphSnapshot | null, focusRow = 0): NavigableTableState {
+  if (!snapshot || snapshot.governanceArtifacts.length === 0) {
+    return createNavigableTableState({ columns: [], rows: [], height: 20 });
+  }
+  const rows = snapshot.governanceArtifacts.map((artifact) => [
+    artifact.type,
+    artifact.id,
+    new Date(artifact.recordedAt).toISOString().slice(0, 10),
+  ]);
+  let table = createNavigableTableState({
+    columns: [
+      { header: 'Kind', width: 18 },
+      { header: 'ID' },
+      { header: 'At', width: 12 },
+    ],
+    rows,
+    height: 20,
+  });
+  for (let i = 0; i < focusRow && i < rows.length; i++) {
+    table = navTableFocusNext(table);
+  }
+  return table;
+}
+
 function makeModel(snapshot: GraphSnapshot | null): DashboardModel {
   return {
     activeView: 'roadmap',
@@ -116,6 +141,7 @@ function makeModel(snapshot: GraphSnapshot | null): DashboardModel {
     roadmap: { table: buildRoadmapTable(snapshot), dagPane: null, fallbackScrollY: 0, detailScrollY: 0 },
     submissions: { table: buildSubmissionsTable(snapshot), expandedId: null, detailScrollY: 0 },
     backlog: { table: buildBacklogTable(snapshot) },
+    governance: { table: buildGovernanceTable(snapshot), detailScrollY: 0 },
     lineage: { selectedIndex: -1, collapsedIntents: [] },
     pulsePhase: 0,
     mode: 'normal',
@@ -615,6 +641,85 @@ describe('bijou views', () => {
       const plain = strip(lineageView(makeModel(snap), style));
       expect(plain).not.toContain('intent:');
       expect(plain).toContain('task:ORPHAN-001');
+    });
+  });
+
+  describe('governanceView', () => {
+    it('shows empty guidance when no governance artifacts exist', () => {
+      const plain = strip(governanceView(makeModel(makeSnapshot()), style));
+      expect(plain).toContain('No comparison-artifact, collapse-proposal, or attestation records are visible yet.');
+    });
+
+    it('renders comparison, settlement, and attestation detail', () => {
+      const snap = makeSnapshot({
+        governanceArtifacts: [
+          {
+            id: 'comparison-artifact:cmp-1',
+            type: 'comparison-artifact',
+            recordedAt: Date.UTC(2026, 2, 19),
+            recordedBy: 'agent.test',
+            leftWorldlineId: 'worldline:live',
+            rightWorldlineId: 'worldline:branch-a',
+            targetId: 'task:A',
+            governance: {
+              kind: 'comparison-artifact',
+              freshness: 'fresh',
+              attestation: { total: 1, approvals: 1, rejections: 0, other: 0, state: 'approved' },
+              series: { seriesKey: 'cmp-series', supersededByIds: [], latestInSeries: true },
+              comparison: {
+                leftWorldlineId: 'worldline:live',
+                rightWorldlineId: 'worldline:branch-a',
+                targetId: 'task:A',
+                operationalComparisonDigest: 'op-digest-1234567890',
+                rawComparisonDigest: 'raw-digest-1234567890',
+              },
+              settlement: { proposalCount: 1, executedCount: 0, latestProposalId: 'collapse-proposal:settle-1' },
+            },
+          },
+          {
+            id: 'collapse-proposal:settle-1',
+            type: 'collapse-proposal',
+            recordedAt: Date.UTC(2026, 2, 18),
+            recordedBy: 'agent.test',
+            sourceWorldlineId: 'worldline:branch-a',
+            targetWorldlineId: 'worldline:live',
+            comparisonArtifactId: 'comparison-artifact:cmp-1',
+            governance: {
+              kind: 'collapse-proposal',
+              freshness: 'fresh',
+              lifecycle: 'approved',
+              attestation: { total: 1, approvals: 1, rejections: 0, other: 0, state: 'approved' },
+              series: { seriesKey: 'settle-series', supersededByIds: [], latestInSeries: true },
+              execution: { dryRun: false, executable: true, executed: false, changed: true },
+              executionGate: {
+                comparisonArtifactId: 'comparison-artifact:cmp-1',
+                attestation: { total: 1, approvals: 1, rejections: 0, other: 0, state: 'approved' },
+              },
+            },
+          },
+          {
+            id: 'attestation:att-1',
+            type: 'attestation',
+            recordedAt: Date.UTC(2026, 2, 17),
+            recordedBy: 'human.james',
+            targetId: 'comparison-artifact:cmp-1',
+            governance: {
+              kind: 'attestation',
+              decision: 'approve',
+              targetId: 'comparison-artifact:cmp-1',
+              targetType: 'comparison-artifact',
+              targetExists: true,
+            },
+          },
+        ],
+      });
+
+      const plain = strip(governanceView(makeModel(snap), style));
+      expect(plain).toContain('Governance (3)');
+      expect(plain).toContain('fresh cmp 1');
+      expect(plain).toContain('comparison-artifact:cmp-1');
+      expect(plain).toContain('live -> branch-a');
+      expect(plain).toContain('Op digest:');
     });
   });
   // ── My Stuff Drawer ──────────────────────────────────────────────────

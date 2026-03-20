@@ -38,6 +38,7 @@ export function makeSnapshot(overrides?: Partial<GraphSnapshot>): GraphSnapshot 
     evidence: [],
     policies: [],
     suggestions: [],
+    governanceArtifacts: [],
     asOf: FIXED_TS,
     sortedTaskIds: [] as string[],
     sortedCampaignIds: [] as string[],

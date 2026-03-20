@@ -51,14 +51,15 @@ function resolveThemeName(scheme: ColorScheme): string {
  * (tabs, helpView, etc.) work correctly.
  */
 export function createStylePort(): StylePort {
-  const scheme = detectColorScheme();
+  const runtime = nodeRuntime();
+  const scheme = detectColorScheme(runtime);
   const themeName = resolveThemeName(scheme);
   const theme: XyphTheme = XYPH_PRESETS[themeName] ?? (scheme === 'light'
     ? XYPH_TEAL_ORANGE_PINK_LIGHT
     : XYPH_TEAL_ORANGE_PINK_DARK);
 
   const ctx = createBijou({
-    runtime: nodeRuntime(),
+    runtime,
     io: nodeIO(),
     style: chalkStyle(),
     theme,
@@ -70,6 +71,7 @@ export function createStylePort(): StylePort {
   const resolver = createThemeResolver({
     presets: XYPH_PRESETS,
     fallback: theme,
+    runtime,
   });
   const resolved = resolver.getTheme();
 

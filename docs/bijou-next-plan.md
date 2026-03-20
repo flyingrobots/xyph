@@ -1,4 +1,10 @@
-# Bijou 0.10.0 — Next Adoption Wave
+# Bijou Adoption — Historical Next Wave
+
+> **Current state (2026-03-19):** XYPH now runs on BIJOU 3.1.0 and has already
+> landed the big structural shifts this document was planning for, including
+> `navigableTable()`-driven list state and a dedicated governance lane. Keep
+> this file as historical design context and a source of still-useful UI ideas,
+> not as the current migration plan.
 
 ## Context
 

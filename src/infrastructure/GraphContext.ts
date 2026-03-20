@@ -62,6 +62,7 @@ import type {
   SuggestionNode,
   CollapseProposalGovernanceDetail,
   AttestationGovernanceDetail,
+  GovernanceArtifactNode,
 } from '../domain/models/dashboard.js';
 import { VALID_SUGGESTION_STATUSES } from '../domain/entities/Suggestion.js';
 import type { SuggestionStatus } from '../domain/entities/Suggestion.js';
@@ -349,6 +350,7 @@ class GraphContextImpl implements GraphContext {
       patchsetNodes, reviewNodes, decisionNodes,
       storyNodes, requirementNodes, criterionNodes, evidenceNodes, policyNodes,
       suggestionNodes,
+      comparisonArtifactNodes, collapseProposalNodes, attestationNodes,
     ] = await Promise.all([
       graph.query().match('task:*').select(['id', 'props']).run().then(extractNodes),
       graph.query().match('campaign:*').select(['id', 'props']).run().then(extractNodes),
@@ -366,6 +368,9 @@ class GraphContextImpl implements GraphContext {
       graph.query().match('evidence:*').select(['id', 'props']).run().then(extractNodes),
       graph.query().match('policy:*').select(['id', 'props']).run().then(extractNodes),
       graph.query().match('suggestion:*').select(['id', 'props']).run().then(extractNodes),
+      graph.query().match('comparison-artifact:*').select(['id', 'props']).run().then(extractNodes),
+      graph.query().match('collapse-proposal:*').select(['id', 'props']).run().then(extractNodes),
+      graph.query().match('attestation:*').select(['id', 'props']).run().then(extractNodes),
     ]);
 
     await yieldEventLoop();
@@ -1006,11 +1011,18 @@ class GraphContextImpl implements GraphContext {
       if (count > 0) transitiveDownstream.set(taskId, count);
     }
 
+    const governanceArtifacts = await this.buildGovernanceArtifacts(graph, [
+      ...comparisonArtifactNodes,
+      ...collapseProposalNodes,
+      ...attestationNodes,
+    ]);
+
     log(`Snapshot ready — ${quests.length} quests, ${campaigns.length} campaigns`);
     const snap: GraphSnapshot = {
       campaigns, quests, intents, scrolls, approvals,
       submissions, reviews, decisions,
       stories, requirements, criteria, evidence, policies, suggestions,
+      governanceArtifacts,
       asOf: Date.now(), graphMeta, sortedTaskIds, sortedCampaignIds,
       transitiveDownstream,
     };
@@ -1021,7 +1033,7 @@ class GraphContextImpl implements GraphContext {
 
   private async queryNodesByPrefix(
     graph: WarpGraph,
-    prefix: 'comparison-artifact' | 'collapse-proposal',
+    prefix: 'comparison-artifact' | 'collapse-proposal' | 'attestation',
   ): Promise<QNode[]> {
     const result = await graph.query().match(`${prefix}:*`).select(['id', 'props']).run();
     return extractNodes(result);
@@ -1330,6 +1342,77 @@ class GraphContextImpl implements GraphContext {
     }
 
     return undefined;
+  }
+
+  private async buildGovernanceArtifacts(
+    graph: WarpGraph,
+    nodes: QNode[],
+  ): Promise<GovernanceArtifactNode[]> {
+    const artifacts = (await Promise.all(nodes.map(async (node) => {
+      const type = typeof node.props['type'] === 'string' ? node.props['type'] : undefined;
+      if (type !== 'comparison-artifact' && type !== 'collapse-proposal' && type !== 'attestation') {
+        return null;
+      }
+
+      const [outgoingRaw, incomingRaw, rawContent] = await Promise.all([
+        graph.neighbors(node.id, 'outgoing'),
+        graph.neighbors(node.id, 'incoming'),
+        graph.getContent(node.id),
+      ]);
+
+      const outgoing = toNeighborEntries(outgoingRaw).map((entry) => ({ nodeId: entry.nodeId, label: entry.label }));
+      const incoming = toNeighborEntries(incomingRaw).map((entry) => ({ nodeId: entry.nodeId, label: entry.label }));
+      const content = decodeNodeContent(rawContent);
+      const governance = await this.buildGovernanceDetail(graph, type, node.props, content, outgoing, incoming);
+      if (!governance) {
+        return null;
+      }
+
+      if (type === 'comparison-artifact' && governance.kind === 'comparison-artifact') {
+        return {
+          id: node.id,
+          type,
+          recordedAt: typeof node.props['recorded_at'] === 'number' ? node.props['recorded_at'] : 0,
+          ...(typeof node.props['recorded_by'] === 'string' ? { recordedBy: node.props['recorded_by'] } : {}),
+          ...(typeof node.props['left_worldline_id'] === 'string' ? { leftWorldlineId: node.props['left_worldline_id'] } : {}),
+          ...(typeof node.props['right_worldline_id'] === 'string' ? { rightWorldlineId: node.props['right_worldline_id'] } : {}),
+          ...(typeof node.props['target_id'] === 'string' ? { targetId: node.props['target_id'] } : {}),
+          governance,
+        } satisfies GovernanceArtifactNode;
+      }
+
+      if (type === 'collapse-proposal' && governance.kind === 'collapse-proposal') {
+        return {
+          id: node.id,
+          type,
+          recordedAt: typeof node.props['recorded_at'] === 'number' ? node.props['recorded_at'] : 0,
+          ...(typeof node.props['recorded_by'] === 'string' ? { recordedBy: node.props['recorded_by'] } : {}),
+          ...(typeof node.props['source_worldline_id'] === 'string' ? { sourceWorldlineId: node.props['source_worldline_id'] } : {}),
+          ...(typeof node.props['target_worldline_id'] === 'string' ? { targetWorldlineId: node.props['target_worldline_id'] } : {}),
+          ...(typeof governance.executionGate.comparisonArtifactId === 'string'
+            ? { comparisonArtifactId: governance.executionGate.comparisonArtifactId }
+            : {}),
+          governance,
+        } satisfies GovernanceArtifactNode;
+      }
+
+      if (type === 'attestation' && governance.kind === 'attestation') {
+        return {
+          id: node.id,
+          type,
+          recordedAt: typeof node.props['attested_at'] === 'number' ? node.props['attested_at'] : 0,
+          ...(typeof node.props['attested_by'] === 'string' ? { recordedBy: node.props['attested_by'] } : {}),
+          ...(typeof node.props['target_id'] === 'string' ? { targetId: node.props['target_id'] } : {}),
+          governance,
+        } satisfies GovernanceArtifactNode;
+      }
+
+      return null;
+    }))).filter((artifact): artifact is GovernanceArtifactNode => artifact !== null);
+
+    return artifacts.sort((left, right) =>
+      right.recordedAt - left.recordedAt || left.id.localeCompare(right.id)
+    );
   }
 
   async fetchEntityDetail(id: string): Promise<EntityDetail | null> {
