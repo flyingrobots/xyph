@@ -64,6 +64,7 @@ function withVerticalScrollbar(
     offset: number;
     viewportSize: number;
     totalSize: number;
+    visibility: number;
   },
 ): string[] {
   const normalized = lines
@@ -71,13 +72,17 @@ function withVerticalScrollbar(
     .map((line) => padVisible(line, options.width));
   while (normalized.length < options.height) normalized.push(' '.repeat(options.width));
 
+  const visibility = Math.max(0, Math.min(4, options.visibility));
+  const thumbGlyph = [' ', '░', '▒', '▓', '█'][visibility] ?? ' ';
+  const trackGlyph = visibility >= 2 ? '░' : ' ';
+
   const topArrow = style.styled(
-    options.offset > 0 ? style.theme.ui.scrollThumb : style.theme.border.muted,
-    '▲',
+    visibility > 0 && options.offset > 0 ? style.theme.ui.scrollThumb : style.theme.border.muted,
+    visibility > 0 ? '▲' : ' ',
   );
   const bottomArrow = style.styled(
-    options.offset + options.viewportSize < options.totalSize ? style.theme.ui.scrollThumb : style.theme.border.muted,
-    '▼',
+    visibility > 0 && options.offset + options.viewportSize < options.totalSize ? style.theme.ui.scrollThumb : style.theme.border.muted,
+    visibility > 0 ? '▼' : ' ',
   );
 
   const trackHeight = Math.max(1, options.height - 2);
@@ -95,7 +100,7 @@ function withVerticalScrollbar(
     if (index === 0) return `${line} ${topArrow}`;
     if (index === options.height - 1) return `${line} ${bottomArrow}`;
     const trackIndex = index - 1;
-    const glyph = trackIndex >= thumbOffset && trackIndex < thumbOffset + thumbSize ? '▮' : '░';
+    const glyph = trackIndex >= thumbOffset && trackIndex < thumbOffset + thumbSize ? thumbGlyph : trackGlyph;
     const token = trackIndex >= thumbOffset && trackIndex < thumbOffset + thumbSize
       ? style.theme.ui.scrollThumb
       : style.theme.ui.scrollTrack;
@@ -421,6 +426,7 @@ function renderWorklistPane(model: DashboardModel, snapshot: GraphSnapshot, styl
     offset: start,
     viewportSize: visibleItems,
     totalSize: Math.max(visibleItems, items.length),
+    visibility: model.scrollbars.worklist.level,
   });
 
   return renderPaneCard({
@@ -670,6 +676,7 @@ function renderInspector(model: DashboardModel, snapshot: GraphSnapshot, style: 
     offset: model.laneState[model.lane].inspectorScrollY,
     viewportSize: innerHeight,
     totalSize: Math.max(innerHeight, contentLineCount),
+    visibility: model.scrollbars.inspector.level,
   });
 
   return renderPaneCard({

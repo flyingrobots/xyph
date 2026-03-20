@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import type { App } from '@flyingrobots/bijou-tui';
+import { visibleLength, type App } from '@flyingrobots/bijou-tui';
 import { createPlainStylePort, ensurePlainBijouContext } from '../../../infrastructure/adapters/PlainStyleAdapter.js';
 import { createDashboardApp, type DashboardModel, type DashboardMsg } from '../DashboardApp.js';
 import type { GraphSnapshot } from '../../../domain/models/dashboard.js';
@@ -48,6 +48,8 @@ describe('DashboardApp', () => {
     expect(initial.loading).toBe(true);
     expect(initial.showLanding).toBe(true);
     expect(initial.inspectorOpen).toBe(true);
+    expect(initial.scrollbars.worklist.level).toBe(4);
+    expect(initial.scrollbars.inspector.level).toBe(0);
 
     const loaded = ready(app, makeSnapshot());
     expect(loaded.lane).toBe('now');
@@ -200,5 +202,56 @@ describe('DashboardApp', () => {
 
     const [reopened] = app.update(key('i'), closed);
     expect(reopened.inspectorOpen).toBe(true);
+    expect(reopened.scrollbars.inspector.level).toBe(4);
+  });
+
+  it('wakes the right scrollbar when navigating the worklist or inspector', () => {
+    const app = buildApp({
+      quests: Array.from({ length: 12 }, (_, index) => ({
+        id: `task:Q${index + 1}`,
+        title: `Quest ${index + 1}`,
+        status: 'BACKLOG',
+        hours: 1,
+      })),
+    });
+    const loaded = ready(app, makeSnapshot({
+      quests: Array.from({ length: 12 }, (_, index) => ({
+        id: `task:Q${index + 1}`,
+        title: `Quest ${index + 1}`,
+        status: 'BACKLOG',
+        hours: 1,
+      })),
+    }));
+
+    const [plan] = app.update(key('2'), loaded);
+    expect(plan.scrollbars.worklist.level).toBe(4);
+
+    const [inspector] = app.update(key('pagedown', { shift: true }), plan);
+    expect(inspector.scrollbars.inspector.level).toBe(4);
+  });
+
+  it('keeps footer chrome within terminal width so it cannot wrap over the cockpit', () => {
+    const app = buildApp({
+      quests: Array.from({ length: 12 }, (_, index) => ({
+        id: `task:Q${index + 1}`,
+        title: `Quest ${index + 1} with enough text to exercise the footer width clamp`,
+        status: 'BACKLOG',
+        hours: 1,
+      })),
+    });
+    const loaded = ready(app, makeSnapshot({
+      quests: Array.from({ length: 12 }, (_, index) => ({
+        id: `task:Q${index + 1}`,
+        title: `Quest ${index + 1} with enough text to exercise the footer width clamp`,
+        status: 'BACKLOG',
+        hours: 1,
+      })),
+    }));
+    const [resized] = app.update({ type: 'resize', columns: 100, rows: 32 }, loaded);
+    const output = app.view(resized) as string;
+
+    for (const line of output.split('\n')) {
+      expect(visibleLength(line)).toBeLessThanOrEqual(100);
+    }
   });
 });

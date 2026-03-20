@@ -15,7 +15,6 @@ import {
   cpSelectedItem,
   drawer,
   flex,
-  helpShort,
   helpView,
   modal,
   quit,
@@ -63,9 +62,18 @@ export interface LaneState {
   inspectorScrollY: number;
 }
 
+export interface ScrollbarVisibilityState {
+  level: number;
+  generation: number;
+}
+
 export interface DashboardModel {
   lane: CockpitLaneId;
   laneState: Record<CockpitLaneId, LaneState>;
+  scrollbars: {
+    worklist: ScrollbarVisibilityState;
+    inspector: ScrollbarVisibilityState;
+  };
   table: NavigableTableState;
   inspectorOpen: boolean;
   snapshot: GraphSnapshot | null;
@@ -102,7 +110,8 @@ export type DashboardMsg =
   | { type: 'write-error'; message: string }
   | { type: 'dismiss-toast'; expiresAt: number }
   | { type: 'remote-change' }
-  | { type: 'drawer-frame'; value: number };
+  | { type: 'drawer-frame'; value: number }
+  | { type: 'scrollbar-visibility'; pane: 'worklist' | 'inspector'; level: number; generation: number };
 
 type GlobalAction =
   | { type: 'jump-lane'; lane: CockpitLaneId }
@@ -139,6 +148,14 @@ export interface DashboardDeps {
 }
 
 const LANE_ORDER = [...cockpitLaneOrder()];
+const MAX_SCROLLBAR_VISIBILITY = 4;
+
+function emptyScrollbars(): DashboardModel['scrollbars'] {
+  return {
+    worklist: { level: MAX_SCROLLBAR_VISIBILITY, generation: 1 },
+    inspector: { level: 0, generation: 0 },
+  };
+}
 
 function emptyLaneState(): Record<CockpitLaneId, LaneState> {
   return {
@@ -189,9 +206,51 @@ function buildViewKeys(): KeyMap<ViewAction> {
 }
 
 function chromeLine(text: string, width: number, token: TokenValue, style: StylePort): string {
-  const visible = visibleLength(text);
-  const padded = visible < width ? text + ' '.repeat(width - visible) : text;
+  let display = text;
+  const visible = visibleLength(display);
+  if (visible > width) {
+    display = width <= 1
+      ? '…'
+      : `${display.slice(0, Math.max(0, width - 1))}…`;
+  }
+  const padded = visibleLength(display) < width ? display + ' '.repeat(width - visibleLength(display)) : display;
   return style.styled(token, padded);
+}
+
+function fadeScrollbar(
+  pane: 'worklist' | 'inspector',
+  generation: number,
+): Cmd<DashboardMsg> {
+  return animate<DashboardMsg>({
+    type: 'tween',
+    from: MAX_SCROLLBAR_VISIBILITY,
+    to: 0,
+    duration: 1400,
+    ease: EASINGS.easeOut,
+    onFrame: (value) => ({
+      type: 'scrollbar-visibility',
+      pane,
+      level: Math.max(0, Math.min(MAX_SCROLLBAR_VISIBILITY, Math.round(value))),
+      generation,
+    }),
+  });
+}
+
+function wakeScrollbar(
+  model: DashboardModel,
+  pane: 'worklist' | 'inspector',
+): [DashboardModel, Cmd<DashboardMsg>[]] {
+  const nextGeneration = model.scrollbars[pane].generation + 1;
+  return [{
+    ...model,
+    scrollbars: {
+      ...model.scrollbars,
+      [pane]: {
+        level: MAX_SCROLLBAR_VISIBILITY,
+        generation: nextGeneration,
+      },
+    },
+  }, [fadeScrollbar(pane, nextGeneration)]];
 }
 
 function currentSelectedItem(model: DashboardModel): CockpitItem | undefined {
@@ -283,6 +342,18 @@ function renderStatusLine(model: DashboardModel): string {
     model.loading ? '· syncing' : '',
   ].join(' ');
   const center = item ? `${item.label} · ${item.primary}` : 'No selection';
+  const right = actionHint(model);
+  return statusBar({
+    left,
+    center,
+    right,
+    width: model.cols,
+  });
+}
+
+function renderHintLine(model: DashboardModel): string {
+  const left = '1-5 lanes · [/] switch';
+  const center = 'r refresh · i inspector · m drawer · ? help';
   const right = actionHint(model);
   return statusBar({
     left,
@@ -540,6 +611,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
       const model: DashboardModel = {
         lane,
         laneState,
+        scrollbars: emptyScrollbars(),
         table: createNavigableTableState({ columns: [], rows: [], height: Math.max(8, rows - 8) }),
         inspectorOpen: true,
         snapshot: null,
@@ -568,6 +640,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
       return [model, [
         fetchSnapshot(model.requestId),
         startWatching(),
+        fadeScrollbar('worklist', model.scrollbars.worklist.generation),
         animate<DashboardMsg>({
           type: 'tween',
           from: 0,
@@ -650,6 +723,20 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
 
       if (msg.type === 'drawer-frame') {
         return [{ ...model, drawerWidth: Math.round(msg.value) }, []];
+      }
+
+      if (msg.type === 'scrollbar-visibility') {
+        if (model.scrollbars[msg.pane].generation !== msg.generation) return [model, []];
+        return [{
+          ...model,
+          scrollbars: {
+            ...model.scrollbars,
+            [msg.pane]: {
+              ...model.scrollbars[msg.pane],
+              level: msg.level,
+            },
+          },
+        }, []];
       }
 
       if (msg.type === 'key') {
@@ -769,14 +856,14 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         if (globalAction) {
           switch (globalAction.type) {
             case 'jump-lane':
-              return [switchLane(model, globalAction.lane), []];
+              return wakeScrollbar(switchLane(model, globalAction.lane), 'worklist');
             case 'next-lane': {
               const currentIndex = LANE_ORDER.indexOf(model.lane);
-              return [switchLane(model, laneForIndex((currentIndex + 1) % LANE_ORDER.length)), []];
+              return wakeScrollbar(switchLane(model, laneForIndex((currentIndex + 1) % LANE_ORDER.length)), 'worklist');
             }
             case 'prev-lane': {
               const currentIndex = LANE_ORDER.indexOf(model.lane);
-              return [switchLane(model, laneForIndex((currentIndex - 1 + LANE_ORDER.length) % LANE_ORDER.length)), []];
+              return wakeScrollbar(switchLane(model, laneForIndex((currentIndex - 1 + LANE_ORDER.length) % LANE_ORDER.length)), 'worklist');
             }
             case 'refresh': {
               const nextReqId = model.requestId + 1;
@@ -785,7 +872,9 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
             case 'toggle-help':
               return [{ ...model, showHelp: !model.showHelp }, []];
             case 'toggle-inspector':
-              return [{ ...model, inspectorOpen: !model.inspectorOpen }, []];
+              return model.inspectorOpen
+                ? [{ ...model, inspectorOpen: false }, []]
+                : wakeScrollbar({ ...model, inspectorOpen: true }, 'inspector');
             case 'toggle-drawer':
               return toggleDrawer(model);
           }
@@ -808,42 +897,42 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
               if (rows === 0) return [model, []];
               const nextRow = Math.min(rows - 1, model.table.focusRow + 1);
               const nextModel = rebuildForLane(updateInspectorScroll(updateFocus(model, nextRow), 0), model.lane);
-              return [nextModel, []];
+              return wakeScrollbar(nextModel, 'worklist');
             }
             case 'select-prev': {
               const rows = model.table.rows.length;
               if (rows === 0) return [model, []];
               const nextRow = Math.max(0, model.table.focusRow - 1);
               const nextModel = rebuildForLane(updateInspectorScroll(updateFocus(model, nextRow), 0), model.lane);
-              return [nextModel, []];
+              return wakeScrollbar(nextModel, 'worklist');
             }
             case 'top': {
               const nextModel = rebuildForLane(updateInspectorScroll(updateFocus(model, 0), 0), model.lane);
-              return [nextModel, []];
+              return wakeScrollbar(nextModel, 'worklist');
             }
             case 'bottom': {
               const targetRow = Math.max(0, model.table.rows.length - 1);
               const nextModel = rebuildForLane(updateInspectorScroll(updateFocus(model, targetRow), 0), model.lane);
-              return [nextModel, []];
+              return wakeScrollbar(nextModel, 'worklist');
             }
             case 'page-down-list': {
               const rows = model.table.rows.length;
               if (rows === 0) return [model, []];
               const nextRow = Math.min(rows - 1, model.table.focusRow + pageRows(model));
               const nextModel = rebuildForLane(updateInspectorScroll(updateFocus(model, nextRow), 0), model.lane);
-              return [nextModel, []];
+              return wakeScrollbar(nextModel, 'worklist');
             }
             case 'page-up-list': {
               const rows = model.table.rows.length;
               if (rows === 0) return [model, []];
               const nextRow = Math.max(0, model.table.focusRow - pageRows(model));
               const nextModel = rebuildForLane(updateInspectorScroll(updateFocus(model, nextRow), 0), model.lane);
-              return [nextModel, []];
+              return wakeScrollbar(nextModel, 'worklist');
             }
             case 'page-down-inspector':
-              return [updateInspectorScroll(model, model.laneState[model.lane].inspectorScrollY + 10), []];
+              return wakeScrollbar(updateInspectorScroll(model, model.laneState[model.lane].inspectorScrollY + 10), 'inspector');
             case 'page-up-inspector':
-              return [updateInspectorScroll(model, model.laneState[model.lane].inspectorScrollY - 10), []];
+              return wakeScrollbar(updateInspectorScroll(model, model.laneState[model.lane].inspectorScrollY - 10), 'inspector');
             case 'claim':
             case 'promote':
             case 'reject':
@@ -868,7 +957,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         return helpView(globalKeys, { title: 'XYPH AION' }) + '\n' + helpView(viewKeys);
       }
 
-      const hints = `  ${helpShort(globalKeys)}  ·  ${helpShort(viewKeys)}`;
+      const hints = renderHintLine(model);
       const statusLine = renderStatusLine(model);
 
       const viewRenderer = (w: number, h: number): string => {

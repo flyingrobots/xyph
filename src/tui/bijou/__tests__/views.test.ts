@@ -23,6 +23,10 @@ function makeModel(snapshot: GraphSnapshot | null): DashboardModel {
   return {
     lane: 'now',
     laneState,
+    scrollbars: {
+      worklist: { level: 4, generation: 1 },
+      inspector: { level: 4, generation: 1 },
+    },
     table: buildLaneTable(snapshot, 'now', 20, 0, 'agent.test'),
     inspectorOpen: true,
     snapshot,
@@ -184,7 +188,7 @@ describe('cockpitView', () => {
 
     const plain = strip(cockpitView(model, style, 120, 24));
     expect(plain).toContain('▲');
-    expect(plain).toContain('▮');
+    expect(plain).toContain('█');
     expect(plain).toContain('░');
   });
 });
