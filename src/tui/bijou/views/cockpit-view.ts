@@ -46,28 +46,25 @@ function rowSupportText(item: CockpitItem): string {
 }
 
 function renderWorklistRow(style: StylePort, item: CockpitItem, selected: boolean, width: number): string {
-  const topMarker = selected
-    ? style.styled(style.theme.border.primary, '╭')
-    : '·';
-  const midMarker = selected
-    ? style.styled(style.theme.border.primary, '│')
-    : ' ';
-  const bottomMarker = selected
-    ? style.styled(style.theme.border.primary, '╰')
-    : ' ';
+  const borderToken = selected
+    ? style.theme.border.primary
+    : style.theme.border.secondary;
+  const topPrefix = style.styled(borderToken, selected ? '╭─ ' : '┌─ ');
+  const middlePrefix = `${style.styled(borderToken, '│')}  `;
+  const bottomPrefix = style.styled(borderToken, selected ? '╰─ ' : '└─ ');
   const label = selected
     ? style.styled(style.theme.semantic.primary, item.label)
     : item.label;
   const cue = item.cue ? style.styled(style.theme.semantic.info, item.cue) : '';
-  const contentWidth = Math.max(0, width - 2);
+  const contentWidth = Math.max(0, width - 3);
   const fullMeta = [label, statusText(style, item.state), cue].filter(Boolean).join('  ');
   const compactMeta = [label, statusText(style, item.state)].join('  ');
   const fallbackMeta = selected
     ? style.styled(style.theme.semantic.primary, truncateText(item.label, contentWidth))
     : truncateText(item.label, contentWidth);
-  const meta = visibleLength(fullMeta) <= width
+  const meta = visibleLength(fullMeta) <= contentWidth
     ? fullMeta
-    : visibleLength(compactMeta) <= width
+    : visibleLength(compactMeta) <= contentWidth
       ? compactMeta
       : fallbackMeta;
   const primaryRaw = truncateText(item.primary, contentWidth);
@@ -77,9 +74,9 @@ function renderWorklistRow(style: StylePort, item: CockpitItem, selected: boolea
   const support = truncateText(rowSupportText(item), contentWidth);
 
   return [
-    `${topMarker} ${truncateText(meta, contentWidth)}`,
-    `${midMarker} ${primary}`,
-    support ? `${bottomMarker} ${support}` : `${bottomMarker}`,
+    `${topPrefix}${truncateText(meta, contentWidth)}`,
+    `${middlePrefix}${primary}`,
+    support ? `${bottomPrefix}${support}` : `${bottomPrefix.trimEnd()}`,
   ].join('\n');
 }
 

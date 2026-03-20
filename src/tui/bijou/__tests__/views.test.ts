@@ -62,6 +62,8 @@ describe('cockpitView', () => {
     expect(plain).toContain('Now');
     expect(plain).toContain('Inspector');
     expect(plain).toContain('Quest One');
+    expect(plain).toContain('╭─');
+    expect(plain).toContain('╰─');
   });
 
   it('falls back to a stacked layout on narrow terminals', () => {

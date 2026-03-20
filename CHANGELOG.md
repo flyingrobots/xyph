@@ -6,6 +6,7 @@ All notable changes to XYPH will be documented in this file.
 
 ### Changed
 
+- **Cockpit worklist rows now read as mini-cards across every lane** — non-selected rows no longer collapse into bare text lines. Every row now carries an explicit bordered three-line shape, while the focused row still gets the stronger primary border and gradient title treatment. This also fixes a row-width accounting bug that could let metadata overflow its actual content column on tighter panes.
 - **The cockpit inspector can now be toggled off** — `i` now hides or restores the right-hand inspector pane, letting the center worklist reclaim the width when the operator wants to scan lanes without detail chrome.
 - **Cockpit worklists now render as stable contained-list queues instead of fragile tables** — the center pane no longer relies on BIJOU’s dense `navigableTable()` rendering for long uneven rows. Each lane now uses a fixed-height queue row with stable selection, clearer hierarchy, and explicit paging, which removes the shifting/truncation artifacts that showed up most clearly in `Review` and `Campaigns`.
 - **TUI hierarchy and navigation were tightened after first-flight feedback** — low-contrast muted text is now used much more sparingly, inspector status headers no longer leak BIJOU surface objects as `[object Object]`, `PgUp` / `PgDn` now page the center worklist, and `Shift+PgUp` / `Shift+PgDn` scroll the inspector.
