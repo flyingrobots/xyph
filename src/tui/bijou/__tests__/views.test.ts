@@ -99,8 +99,8 @@ describe('cockpitView', () => {
 
     expect(plain).toContain('TraceabilityService replaces');
     expect(plain).toContain('manual flag with graph query');
-    expect(plain).toContain('completion from current');
-    expect(plain).toContain('criterion verdicts and expose');
+    expect(plain).toContain('completion from current criterion');
+    expect(plain).toContain('verdicts and expose discoverable');
     expect(plain).not.toContain('graph query…');
     expect(plain).not.toContain('discoverable trace outputs…');
   });

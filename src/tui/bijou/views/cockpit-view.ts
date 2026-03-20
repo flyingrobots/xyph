@@ -55,11 +55,44 @@ function blankColumn(width: number, height: number): string {
   return Array.from({ length: Math.max(1, height) }, () => ' '.repeat(Math.max(1, width))).join('\n');
 }
 
-function withVerticalScrollbar(
+function replaceVisibleCellFromRight(line: string, offsetFromRight: number, replacement: string): string {
+  const tokens: { text: string; visible: boolean }[] = [];
+  for (let index = 0; index < line.length;) {
+    const char = line[index];
+    if (char === '\u001B') {
+      const start = index;
+      index += 1;
+      if (line[index] === '[') {
+        index += 1;
+        while (index < line.length && !/[A-Za-z]/.test(line[index] ?? '')) index += 1;
+        if (index < line.length) index += 1;
+      }
+      tokens.push({ text: line.slice(start, index), visible: false });
+      continue;
+    }
+    const codePoint = line.codePointAt(index);
+    if (codePoint === undefined) break;
+    const text = String.fromCodePoint(codePoint);
+    tokens.push({ text, visible: true });
+    index += text.length;
+  }
+
+  let visibleFromRight = 0;
+  for (let index = tokens.length - 1; index >= 0; index -= 1) {
+    if (!tokens[index]?.visible) continue;
+    if (visibleFromRight === offsetFromRight) {
+      tokens[index] = { text: replacement, visible: true };
+      return tokens.map((token) => token.text).join('');
+    }
+    visibleFromRight += 1;
+  }
+
+  return replacement;
+}
+
+function buildVerticalScrollbarRail(
   style: StylePort,
-  lines: string[],
   options: {
-    width: number;
     height: number;
     offset: number;
     viewportSize: number;
@@ -67,12 +100,11 @@ function withVerticalScrollbar(
     visibility: number;
   },
 ): string[] {
-  const normalized = lines
-    .slice(0, options.height)
-    .map((line) => padVisible(line, options.width));
-  while (normalized.length < options.height) normalized.push(' '.repeat(options.width));
-
   const visibility = Math.max(0, Math.min(4, options.visibility));
+  const overflow = options.totalSize > options.viewportSize;
+  if (visibility === 0 || !overflow) {
+    return Array.from({ length: options.height }, () => ' ');
+  }
   const thumbGlyph = [' ', '░', '▒', '▓', '█'][visibility] ?? ' ';
   const trackGlyph = visibility >= 2 ? '░' : ' ';
 
@@ -86,7 +118,6 @@ function withVerticalScrollbar(
   );
 
   const trackHeight = Math.max(1, options.height - 2);
-  const overflow = options.totalSize > options.viewportSize;
   const thumbSize = overflow
     ? Math.max(1, Math.round((options.viewportSize / options.totalSize) * trackHeight))
     : trackHeight;
@@ -96,15 +127,15 @@ function withVerticalScrollbar(
     ? Math.round((Math.max(0, options.offset) / maxScrollOffset) * maxThumbOffset)
     : 0;
 
-  return normalized.map((line, index) => {
-    if (index === 0) return `${line} ${topArrow}`;
-    if (index === options.height - 1) return `${line} ${bottomArrow}`;
+  return Array.from({ length: options.height }, (_, index) => {
+    if (index === 0) return topArrow;
+    if (index === options.height - 1) return bottomArrow;
     const trackIndex = index - 1;
     const glyph = trackIndex >= thumbOffset && trackIndex < thumbOffset + thumbSize ? thumbGlyph : trackGlyph;
     const token = trackIndex >= thumbOffset && trackIndex < thumbOffset + thumbSize
       ? style.theme.ui.scrollThumb
       : style.theme.ui.scrollTrack;
-    return `${line} ${style.styled(token, glyph)}`;
+    return glyph === ' ' ? ' ' : style.styled(token, glyph);
   });
 }
 
@@ -115,22 +146,34 @@ function renderPaneCard(options: {
   height: number;
   borderToken: TokenValue;
   bodyLines: string[];
+  bodyRightRail?: string[];
 }): string {
   const innerHeight = Math.max(1, options.height - 3);
   const lines = options.bodyLines.slice(0, innerHeight);
   while (lines.length < innerHeight) lines.push('');
-  const body = box(lines.join('\n'), {
+  const rail = options.bodyRightRail?.slice(0, innerHeight) ?? [];
+  while (rail.length < innerHeight) rail.push(' ');
+
+  let bodyLines = box(lines.join('\n'), {
     width: options.width,
     borderToken: options.borderToken,
     padding: { left: 1, right: 1 },
     overflow: 'wrap',
-  });
+  }).split('\n');
+  if (options.bodyRightRail) {
+    bodyLines = bodyLines.map((line, index) => {
+      if (index === 0 || index === bodyLines.length - 1) return line;
+      const glyph = rail[index - 1] ?? ' ';
+      if (glyph === ' ') return line;
+      return replaceVisibleCellFromRight(line, 1, glyph);
+    });
+  }
   const header = headerBox(options.title, {
     detail: options.detail,
     borderToken: options.borderToken,
     width: options.width,
   });
-  return [header, body].join('\n');
+  return [header, bodyLines.join('\n')].join('\n');
 }
 
 function laneAccent(style: StylePort, lane: DashboardModel['lane']): TokenValue {
@@ -384,7 +427,7 @@ function renderWorklistPane(model: DashboardModel, snapshot: GraphSnapshot, styl
   const items = laneItems(snapshot, model.lane, model.agentId);
   const selected = items[model.table.focusRow];
   const innerHeight = Math.max(1, height - 2);
-  const contentWidth = Math.max(12, width - 6);
+  const contentWidth = Math.max(12, width - 4);
   const focusRow = Math.max(0, Math.min(model.table.focusRow, Math.max(0, items.length - 1)));
   let start = Math.max(0, Math.min(model.table.scrollY, Math.max(0, items.length - 1)));
   let viewport = buildWorklistViewport({
@@ -420,8 +463,7 @@ function renderWorklistPane(model: DashboardModel, snapshot: GraphSnapshot, styl
     }
   }
   const visibleItems = Math.max(1, viewport.endIndex - start);
-  const bodyLines = withVerticalScrollbar(style, lines, {
-    width: contentWidth,
+  const bodyRightRail = buildVerticalScrollbarRail(style, {
     height: innerHeight,
     offset: start,
     viewportSize: visibleItems,
@@ -437,7 +479,8 @@ function renderWorklistPane(model: DashboardModel, snapshot: GraphSnapshot, styl
     width,
     height,
     borderToken: accentToken,
-    bodyLines,
+    bodyLines: lines,
+    bodyRightRail,
   });
 }
 
@@ -641,7 +684,7 @@ function renderGovernanceDetail(style: StylePort, item: CockpitItem, width: numb
 
 function renderInspector(model: DashboardModel, snapshot: GraphSnapshot, style: StylePort, width: number, height: number): string {
   const accentToken = laneAccent(style, model.lane);
-  const innerWidth = Math.max(12, width - 6);
+  const innerWidth = Math.max(12, width - 4);
   const innerHeight = Math.max(4, height - 2);
   const item = selectedLaneItem(snapshot, model.lane, model.table.focusRow, model.agentId);
   const content = (() : string => {
@@ -670,8 +713,7 @@ function renderInspector(model: DashboardModel, snapshot: GraphSnapshot, style: 
   pagerState = pagerScrollTo(pagerState, model.laneState[model.lane].inspectorScrollY);
   const pagerLines = pager(pagerState).split('\n');
   const contentLineCount = Math.max(1, content.split('\n').length);
-  const bodyLines = withVerticalScrollbar(style, pagerLines, {
-    width: innerWidth,
+  const bodyRightRail = buildVerticalScrollbarRail(style, {
     height: innerHeight,
     offset: model.laneState[model.lane].inspectorScrollY,
     viewportSize: innerHeight,
@@ -685,7 +727,8 @@ function renderInspector(model: DashboardModel, snapshot: GraphSnapshot, style: 
     width,
     height,
     borderToken: accentToken,
-    bodyLines,
+    bodyLines: pagerLines,
+    bodyRightRail,
   });
 }
 
