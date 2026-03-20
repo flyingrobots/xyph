@@ -6,6 +6,7 @@ All notable changes to XYPH will be documented in this file.
 
 ### Changed
 
+- **The cockpit inspector can now be toggled off** — `i` now hides or restores the right-hand inspector pane, letting the center worklist reclaim the width when the operator wants to scan lanes without detail chrome.
 - **Cockpit worklists now render as stable contained-list queues instead of fragile tables** — the center pane no longer relies on BIJOU’s dense `navigableTable()` rendering for long uneven rows. Each lane now uses a fixed-height queue row with stable selection, clearer hierarchy, and explicit paging, which removes the shifting/truncation artifacts that showed up most clearly in `Review` and `Campaigns`.
 - **TUI hierarchy and navigation were tightened after first-flight feedback** — low-contrast muted text is now used much more sparingly, inspector status headers no longer leak BIJOU surface objects as `[object Object]`, `PgUp` / `PgDn` now page the center worklist, and `Shift+PgUp` / `Shift+PgDn` scroll the inspector.
 - **The TUI was redesigned from the ground up as an AION-style cockpit** — the old six-view dashboard shell has been replaced by a single operator surface with five lanes (`Now`, `Plan`, `Review`, `Settlement`, `Campaigns`), a persistent inspector, a command palette, and contextual mutation hotkeys. The TUI now reads more like one control plane than six unrelated screens.

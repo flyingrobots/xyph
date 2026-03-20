@@ -67,6 +67,7 @@ export interface DashboardModel {
   lane: CockpitLaneId;
   laneState: Record<CockpitLaneId, LaneState>;
   table: NavigableTableState;
+  inspectorOpen: boolean;
   snapshot: GraphSnapshot | null;
   loading: boolean;
   error: string | null;
@@ -109,7 +110,8 @@ type GlobalAction =
   | { type: 'prev-lane' }
   | { type: 'refresh' }
   | { type: 'toggle-help' }
-  | { type: 'toggle-drawer' };
+  | { type: 'toggle-drawer' }
+  | { type: 'toggle-inspector' };
 
 type ViewAction =
   | { type: 'select-next' }
@@ -159,6 +161,7 @@ function buildGlobalKeys(): KeyMap<GlobalAction> {
       .bind('[', 'Previous lane', { type: 'prev-lane' })
       .bind(']', 'Next lane', { type: 'next-lane' })
       .bind('r', 'Refresh snapshot', { type: 'refresh' })
+      .bind('i', 'Toggle inspector', { type: 'toggle-inspector' })
       .bind('m', 'Toggle drawer', { type: 'toggle-drawer' })
       .bind('?', 'Toggle help', { type: 'toggle-help' }),
     );
@@ -264,7 +267,7 @@ function actionHint(model: DashboardModel): string {
   if (submission && (submission.status === 'OPEN' || submission.status === 'CHANGES_REQUESTED')) {
     return 'a approve · x request changes';
   }
-  return 'j/k move · PgUp/PgDn list · Shift+Pg inspect';
+  return 'j/k move · i inspector · PgUp/PgDn list';
 }
 
 function pageRows(model: DashboardModel): number {
@@ -538,6 +541,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         lane,
         laneState,
         table: createNavigableTableState({ columns: [], rows: [], height: Math.max(8, rows - 8) }),
+        inspectorOpen: true,
         snapshot: null,
         loading: true,
         error: null,
@@ -780,6 +784,8 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
             }
             case 'toggle-help':
               return [{ ...model, showHelp: !model.showHelp }, []];
+            case 'toggle-inspector':
+              return [{ ...model, inspectorOpen: !model.inspectorOpen }, []];
             case 'toggle-drawer':
               return toggleDrawer(model);
           }

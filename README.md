@@ -637,6 +637,7 @@ XYPH_AGENT_ID=human.yourname ./xyph-dashboard.ts
 | `j` / `k` | Cockpit | Select next / previous row |
 | `g` / `G` | Cockpit | Jump to first / last row |
 | `r` | Global | Refresh snapshot |
+| `i` | Global | Toggle the inspector pane |
 | `m` | Global | Toggle the "My Stuff" drawer |
 | `:` / `/` | Global | Open the command palette |
 | `?` | Global | Toggle help |

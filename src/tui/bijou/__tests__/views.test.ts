@@ -24,6 +24,7 @@ function makeModel(snapshot: GraphSnapshot | null): DashboardModel {
     lane: 'now',
     laneState,
     table: buildLaneTable(snapshot, 'now', 20, 0, 'agent.test'),
+    inspectorOpen: true,
     snapshot,
     loading: false,
     error: null,
@@ -71,6 +72,19 @@ describe('cockpitView', () => {
 
     expect(plain).toContain('XYPH AION');
     expect(plain).toContain('Inspector');
+    expect(plain).toContain('Quest One');
+  });
+
+  it('omits the inspector pane when toggled closed', () => {
+    const model = {
+      ...makeModel(makeSnapshot({
+        quests: [{ id: 'task:Q1', title: 'Quest One', status: 'READY', hours: 2 }],
+      })),
+      inspectorOpen: false,
+    };
+    const plain = strip(cockpitView(model, style, 120, 30));
+
+    expect(plain).not.toContain('Inspector');
     expect(plain).toContain('Quest One');
   });
 

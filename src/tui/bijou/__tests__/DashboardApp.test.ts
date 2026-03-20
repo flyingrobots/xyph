@@ -47,6 +47,7 @@ describe('DashboardApp', () => {
     expect(initial.lane).toBe('now');
     expect(initial.loading).toBe(true);
     expect(initial.showLanding).toBe(true);
+    expect(initial.inspectorOpen).toBe(true);
 
     const loaded = ready(app, makeSnapshot());
     expect(loaded.lane).toBe('now');
@@ -188,5 +189,16 @@ describe('DashboardApp', () => {
     const [palette] = app.update(key(':'), loaded);
     expect(palette.mode).toBe('palette');
     expect(palette.paletteState).not.toBeNull();
+  });
+
+  it('toggles the inspector with i', () => {
+    const app = buildApp();
+    const loaded = ready(app, makeSnapshot());
+
+    const [closed] = app.update(key('i'), loaded);
+    expect(closed.inspectorOpen).toBe(false);
+
+    const [reopened] = app.update(key('i'), closed);
+    expect(reopened.inspectorOpen).toBe(true);
   });
 });

@@ -46,32 +46,40 @@ function rowSupportText(item: CockpitItem): string {
 }
 
 function renderWorklistRow(style: StylePort, item: CockpitItem, selected: boolean, width: number): string {
-  const marker = selected
-    ? style.styled(style.theme.semantic.primary, '▶')
+  const topMarker = selected
+    ? style.styled(style.theme.border.primary, '╭')
     : '·';
+  const midMarker = selected
+    ? style.styled(style.theme.border.primary, '│')
+    : ' ';
+  const bottomMarker = selected
+    ? style.styled(style.theme.border.primary, '╰')
+    : ' ';
   const label = selected
     ? style.styled(style.theme.semantic.primary, item.label)
     : item.label;
   const cue = item.cue ? style.styled(style.theme.semantic.info, item.cue) : '';
-  const fullMeta = [ `${marker} ${label}`, statusText(style, item.state), cue ].filter(Boolean).join('  ');
-  const compactMeta = [ `${marker} ${label}`, statusText(style, item.state) ].join('  ');
-  const fallbackMeta = `${marker} ${selected
-    ? style.styled(style.theme.semantic.primary, truncateText(item.label, Math.max(0, width - 2)))
-    : truncateText(item.label, Math.max(0, width - 2))}`;
+  const contentWidth = Math.max(0, width - 2);
+  const fullMeta = [label, statusText(style, item.state), cue].filter(Boolean).join('  ');
+  const compactMeta = [label, statusText(style, item.state)].join('  ');
+  const fallbackMeta = selected
+    ? style.styled(style.theme.semantic.primary, truncateText(item.label, contentWidth))
+    : truncateText(item.label, contentWidth);
   const meta = visibleLength(fullMeta) <= width
     ? fullMeta
     : visibleLength(compactMeta) <= width
       ? compactMeta
       : fallbackMeta;
-  const primary = truncateText(item.primary, Math.max(0, width - 2));
-  const support = truncateText(rowSupportText(item), Math.max(0, width - 2));
+  const primaryRaw = truncateText(item.primary, contentWidth);
+  const primary = selected
+    ? style.gradient(primaryRaw, style.theme.gradient.brand)
+    : primaryRaw;
+  const support = truncateText(rowSupportText(item), contentWidth);
 
   return [
-    truncateText(meta, width),
-    selected
-      ? style.styled(style.theme.semantic.primary, `  ${primary}`)
-      : `  ${primary}`,
-    support ? `  ${support}` : '',
+    `${topMarker} ${truncateText(meta, contentWidth)}`,
+    `${midMarker} ${primary}`,
+    support ? `${bottomMarker} ${support}` : `${bottomMarker}`,
   ].join('\n');
 }
 
@@ -389,15 +397,25 @@ export function cockpitView(model: DashboardModel, style: StylePort, width?: num
   if (w < 110) {
     const top = renderLaneRail(model, snapshot, style, w, Math.min(14, bodyHeight));
     const worklist = renderWorklistPane(model, snapshot, style, w, Math.max(10, Math.floor(bodyHeight * 0.45)));
-    const inspector = renderInspector(model, snapshot, style, w, Math.max(8, Math.floor(bodyHeight * 0.35)));
-    body = [top, '', worklist, '', inspector].join('\n');
+    const inspector = model.inspectorOpen
+      ? renderInspector(model, snapshot, style, w, Math.max(8, Math.floor(bodyHeight * 0.35)))
+      : '';
+    body = model.inspectorOpen
+      ? [top, '', worklist, '', inspector].join('\n')
+      : [top, '', worklist].join('\n');
   } else {
-    body = flex(
-      { direction: 'row', width: w, height: bodyHeight },
-      { basis: railWidth, content: (_pw: number, ph: number) => renderLaneRail(model, snapshot, style, railWidth, ph) },
-      { basis: tableWidth, content: (pw: number, ph: number) => renderWorklistPane(model, snapshot, style, pw, ph) },
-      { flex: 1, content: (pw: number, ph: number) => renderInspector(model, snapshot, style, pw, ph) },
-    );
+    body = model.inspectorOpen
+      ? flex(
+        { direction: 'row', width: w, height: bodyHeight },
+        { basis: railWidth, content: (_pw: number, ph: number) => renderLaneRail(model, snapshot, style, railWidth, ph) },
+        { basis: tableWidth, content: (pw: number, ph: number) => renderWorklistPane(model, snapshot, style, pw, ph) },
+        { flex: 1, content: (pw: number, ph: number) => renderInspector(model, snapshot, style, pw, ph) },
+      )
+      : flex(
+        { direction: 'row', width: w, height: bodyHeight },
+        { basis: railWidth, content: (_pw: number, ph: number) => renderLaneRail(model, snapshot, style, railWidth, ph) },
+        { flex: 1, content: (pw: number, ph: number) => renderWorklistPane(model, snapshot, style, pw, ph) },
+      );
   }
 
   return [hero, '', body].join('\n');

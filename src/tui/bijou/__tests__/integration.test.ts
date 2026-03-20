@@ -63,6 +63,20 @@ describe('DashboardApp integration', () => {
     expect(plain).toContain('Inspector');
   });
 
+  it('lets the worklist reclaim the right pane when the inspector is toggled off', () => {
+    const app = buildApp();
+    const model = widen(app, ready(app, makeSnapshot({
+      quests: [{ id: 'task:Q1', title: 'Quest One', status: 'READY', hours: 2 }],
+    })));
+
+    const [closed] = app.update(key('i'), model);
+    const plain = strip(viewText(app, closed));
+
+    expect(closed.inspectorOpen).toBe(false);
+    expect(plain).not.toContain('Inspector');
+    expect(plain).toContain('Quest One');
+  });
+
   it('shows settlement details in the inspector', () => {
     const app = buildApp();
     const model = widen(app, ready(app, makeSnapshot({
