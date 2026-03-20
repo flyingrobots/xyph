@@ -95,8 +95,8 @@ describe('cockpitView', () => {
 
     expect(plain).toContain('TraceabilityService replaces');
     expect(plain).toContain('manual flag with graph query');
-    expect(plain).toContain('completion from current criterion');
-    expect(plain).toContain('verdicts and expose discoverable');
+    expect(plain).toContain('completion from current');
+    expect(plain).toContain('criterion verdicts and expose');
     expect(plain).not.toContain('graph query…');
     expect(plain).not.toContain('discoverable trace outputs…');
   });
@@ -167,6 +167,25 @@ describe('cockpitView', () => {
     const plain = strip(cockpitView(model, style, 120, 30));
     expect(plain).toContain('Agent Protocol');
     expect(plain).not.toContain('[object Object]');
+  });
+
+  it('renders visible scrollbars for scrollable panes', () => {
+    const quests = Array.from({ length: 12 }, (_, index) => ({
+      id: `task:Q${index + 1}`,
+      title: `Quest ${index + 1}`,
+      status: 'BACKLOG' as const,
+      hours: 1,
+    }));
+    const model = {
+      ...makeModel(makeSnapshot({ quests })),
+      lane: 'plan' as const,
+      table: buildLaneTable(makeSnapshot({ quests }), 'plan', 20, 0, 'agent.test'),
+    };
+
+    const plain = strip(cockpitView(model, style, 120, 24));
+    expect(plain).toContain('▲');
+    expect(plain).toContain('▮');
+    expect(plain).toContain('░');
   });
 });
 

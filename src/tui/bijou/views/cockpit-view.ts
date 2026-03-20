@@ -1,4 +1,4 @@
-import { headerBox, box } from '@flyingrobots/bijou';
+import { headerBox, box, type TokenValue } from '@flyingrobots/bijou';
 import { flex, createPagerState, pagerScrollTo, pager, visibleLength } from '@flyingrobots/bijou-tui';
 import type { GraphSnapshot, QuestNode, SubmissionNode, CampaignNode } from '../../../domain/models/dashboard.js';
 import type { StylePort } from '../../../ports/StylePort.js';
@@ -55,12 +55,60 @@ function blankColumn(width: number, height: number): string {
   return Array.from({ length: Math.max(1, height) }, () => ' '.repeat(Math.max(1, width))).join('\n');
 }
 
-function renderPaneCard(style: StylePort, options: {
+function withVerticalScrollbar(
+  style: StylePort,
+  lines: string[],
+  options: {
+    width: number;
+    height: number;
+    offset: number;
+    viewportSize: number;
+    totalSize: number;
+  },
+): string[] {
+  const normalized = lines
+    .slice(0, options.height)
+    .map((line) => padVisible(line, options.width));
+  while (normalized.length < options.height) normalized.push(' '.repeat(options.width));
+
+  const topArrow = style.styled(
+    options.offset > 0 ? style.theme.ui.scrollThumb : style.theme.border.muted,
+    '▲',
+  );
+  const bottomArrow = style.styled(
+    options.offset + options.viewportSize < options.totalSize ? style.theme.ui.scrollThumb : style.theme.border.muted,
+    '▼',
+  );
+
+  const trackHeight = Math.max(1, options.height - 2);
+  const overflow = options.totalSize > options.viewportSize;
+  const thumbSize = overflow
+    ? Math.max(1, Math.round((options.viewportSize / options.totalSize) * trackHeight))
+    : trackHeight;
+  const maxThumbOffset = Math.max(0, trackHeight - thumbSize);
+  const maxScrollOffset = Math.max(1, options.totalSize - options.viewportSize);
+  const thumbOffset = overflow
+    ? Math.round((Math.max(0, options.offset) / maxScrollOffset) * maxThumbOffset)
+    : 0;
+
+  return normalized.map((line, index) => {
+    if (index === 0) return `${line} ${topArrow}`;
+    if (index === options.height - 1) return `${line} ${bottomArrow}`;
+    const trackIndex = index - 1;
+    const glyph = trackIndex >= thumbOffset && trackIndex < thumbOffset + thumbSize ? '▮' : '░';
+    const token = trackIndex >= thumbOffset && trackIndex < thumbOffset + thumbSize
+      ? style.theme.ui.scrollThumb
+      : style.theme.ui.scrollTrack;
+    return `${line} ${style.styled(token, glyph)}`;
+  });
+}
+
+function renderPaneCard(options: {
   title: string;
   detail: string;
   width: number;
   height: number;
-  borderToken: typeof style.theme.border[keyof typeof style.theme.border];
+  borderToken: TokenValue;
   bodyLines: string[];
 }): string {
   const innerHeight = Math.max(1, options.height - 3);
@@ -80,6 +128,21 @@ function renderPaneCard(style: StylePort, options: {
   return [header, body].join('\n');
 }
 
+function laneAccent(style: StylePort, lane: DashboardModel['lane']): TokenValue {
+  switch (lane) {
+    case 'now':
+      return style.theme.ui.laneNow;
+    case 'plan':
+      return style.theme.ui.lanePlan;
+    case 'review':
+      return style.theme.ui.laneReview;
+    case 'settlement':
+      return style.theme.ui.laneSettlement;
+    case 'campaigns':
+      return style.theme.ui.laneCampaigns;
+  }
+}
+
 function stateLabel(state: string): string {
   return state.replace(/_/g, ' ').toLowerCase();
 }
@@ -92,10 +155,16 @@ function rowSupportText(item: CockpitItem): string {
   return item.secondary || item.operationReason || '';
 }
 
-function metaLine(style: StylePort, item: CockpitItem, selected: boolean, width: number): string {
+function metaLine(
+  style: StylePort,
+  item: CockpitItem,
+  selected: boolean,
+  width: number,
+  accentToken: ReturnType<typeof laneAccent>,
+): string {
   const safeWidth = Math.max(12, width);
   const label = selected
-    ? style.styled(style.theme.semantic.info, item.label)
+    ? style.styled(accentToken, item.label)
     : style.styled(style.theme.semantic.muted, item.label);
   const status = statusText(style, item.state);
   const cue = item.cue ? style.styled(style.theme.semantic.warning, item.cue) : '';
@@ -111,10 +180,16 @@ function metaLine(style: StylePort, item: CockpitItem, selected: boolean, width:
   return cells.join(' ');
 }
 
-function renderWorklistCard(style: StylePort, item: CockpitItem, selected: boolean, width: number): string[] {
+function renderWorklistCard(
+  style: StylePort,
+  item: CockpitItem,
+  selected: boolean,
+  width: number,
+  accentToken: ReturnType<typeof laneAccent>,
+): string[] {
   const innerWidth = Math.max(12, width - 4);
   const bodyLines = [
-    metaLine(style, item, selected, innerWidth),
+    metaLine(style, item, selected, innerWidth, accentToken),
     ...wrapWhitespaceText(item.primary, innerWidth).map((line) =>
       selected ? style.styled(style.theme.semantic.primary, line) : line),
   ];
@@ -123,9 +198,10 @@ function renderWorklistCard(style: StylePort, item: CockpitItem, selected: boole
     bodyLines.push(...wrapWhitespaceText(support, innerWidth).map((line) =>
       style.styled(style.theme.semantic.muted, line)));
   }
-  return box(bodyLines.join('\n'), {
+  const paddedBodyLines = bodyLines.map((line) => padVisible(line, innerWidth));
+  return box(paddedBodyLines.join('\n'), {
     width,
-    borderToken: selected ? style.theme.border.primary : style.theme.border.muted,
+    borderToken: selected ? accentToken : style.theme.border.muted,
     bgToken: selected ? style.theme.surface.secondary : undefined,
     padding: { left: 1, right: 1 },
     overflow: 'wrap',
@@ -139,6 +215,7 @@ function buildWorklistViewport(options: {
   width: number;
   height: number;
   style: StylePort;
+  accentToken: ReturnType<typeof laneAccent>;
 }): { lines: string[]; visibleFocus: boolean; endIndex: number } {
   const lines: string[] = [];
   let visibleFocus = false;
@@ -146,7 +223,13 @@ function buildWorklistViewport(options: {
   for (let index = options.startIndex; index < options.items.length; index += 1) {
     const item = options.items[index];
     if (!item) continue;
-    const cardLines = renderWorklistCard(options.style, item, index === options.focusRow, options.width);
+    const cardLines = renderWorklistCard(
+      options.style,
+      item,
+      index === options.focusRow,
+      options.width,
+      options.accentToken,
+    );
     const needed = cardLines.length + (lines.length > 0 ? 1 : 0);
     if (lines.length + needed > options.height && lines.length > 0) break;
     if (lines.length > 0) lines.push('');
@@ -196,6 +279,7 @@ function pushField(
 }
 
 function renderHero(model: DashboardModel, snapshot: GraphSnapshot, style: StylePort, width: number): string {
+  const accentToken = laneAccent(style, model.lane);
   const graphMeta = snapshot.graphMeta;
   const active = snapshot.quests.filter((quest) => quest.status === 'IN_PROGRESS').length;
   const ready = snapshot.quests.filter((quest) => quest.status === 'READY').length;
@@ -211,7 +295,7 @@ function renderHero(model: DashboardModel, snapshot: GraphSnapshot, style: Style
 
   const detail = [
     `observer ${model.agentId ?? 'agent.prime'}`,
-    `surface ${laneTitle(model.lane)}`,
+    style.styled(accentToken, `surface ${laneTitle(model.lane)}`),
     'worldline live',
   ].join('  ·  ');
 
@@ -228,7 +312,7 @@ function renderHero(model: DashboardModel, snapshot: GraphSnapshot, style: Style
   return [
     headerBox('XYPH AION', {
       detail,
-      borderToken: style.theme.border.primary,
+      borderToken: accentToken,
       width,
     }),
     summary,
@@ -241,11 +325,12 @@ function renderLaneRail(model: DashboardModel, snapshot: GraphSnapshot, style: S
   const lanes = cockpitLanes(snapshot, model.agentId);
   for (const lane of lanes) {
     const selected = lane.id === model.lane;
+    const accentToken = laneAccent(style, lane.id);
     const indicator = selected
-      ? style.styled(style.theme.semantic.primary, '▶')
+      ? style.styled(accentToken, '▶')
       : '·';
     const title = selected
-      ? style.styled(style.theme.semantic.primary, lane.title.toUpperCase())
+      ? style.styled(accentToken, lane.title.toUpperCase())
       : lane.title.toUpperCase();
     lines.push(`${indicator} ${title}  ${lane.count}`);
     pushWrappedText(lines, lane.description, {
@@ -279,7 +364,7 @@ function renderLaneRail(model: DashboardModel, snapshot: GraphSnapshot, style: S
     });
   }
 
-  return renderPaneCard(style, {
+  return renderPaneCard({
     title: 'Lanes',
     detail: 'operator surfaces',
     width,
@@ -290,18 +375,21 @@ function renderLaneRail(model: DashboardModel, snapshot: GraphSnapshot, style: S
 }
 
 function renderWorklistPane(model: DashboardModel, snapshot: GraphSnapshot, style: StylePort, width: number, height: number): string {
+  const accentToken = laneAccent(style, model.lane);
   const items = laneItems(snapshot, model.lane, model.agentId);
   const selected = items[model.table.focusRow];
   const innerHeight = Math.max(1, height - 2);
+  const contentWidth = Math.max(12, width - 6);
   const focusRow = Math.max(0, Math.min(model.table.focusRow, Math.max(0, items.length - 1)));
   let start = Math.max(0, Math.min(model.table.scrollY, Math.max(0, items.length - 1)));
   let viewport = buildWorklistViewport({
     items,
     focusRow,
     startIndex: start,
-    width: Math.max(12, width - 4),
+    width: contentWidth,
     height: innerHeight,
     style,
+    accentToken,
   });
   while (!viewport.visibleFocus && start < focusRow) {
     start += 1;
@@ -309,9 +397,10 @@ function renderWorklistPane(model: DashboardModel, snapshot: GraphSnapshot, styl
       items,
       focusRow,
       startIndex: start,
-      width: Math.max(12, width - 4),
+      width: contentWidth,
       height: innerHeight,
       style,
+      accentToken,
     });
   }
 
@@ -325,14 +414,24 @@ function renderWorklistPane(model: DashboardModel, snapshot: GraphSnapshot, styl
       lines.push(style.styled(style.theme.semantic.muted, range));
     }
   }
+  const visibleItems = Math.max(1, viewport.endIndex - start);
+  const bodyLines = withVerticalScrollbar(style, lines, {
+    width: contentWidth,
+    height: innerHeight,
+    offset: start,
+    viewportSize: visibleItems,
+    totalSize: Math.max(visibleItems, items.length),
+  });
 
-  return renderPaneCard(style, {
-    title: laneTitle(model.lane),
-    detail: selected ? shortId(selected.id) : 'select an item to inspect',
+  return renderPaneCard({
+    title: style.styled(accentToken, laneTitle(model.lane)),
+    detail: selected
+      ? style.styled(accentToken, shortId(selected.id))
+      : 'select an item to inspect',
     width,
     height,
-    borderToken: style.theme.border.primary,
-    bodyLines: lines,
+    borderToken: accentToken,
+    bodyLines,
   });
 }
 
@@ -535,7 +634,8 @@ function renderGovernanceDetail(style: StylePort, item: CockpitItem, width: numb
 }
 
 function renderInspector(model: DashboardModel, snapshot: GraphSnapshot, style: StylePort, width: number, height: number): string {
-  const innerWidth = Math.max(12, width - 4);
+  const accentToken = laneAccent(style, model.lane);
+  const innerWidth = Math.max(12, width - 6);
   const innerHeight = Math.max(4, height - 2);
   const item = selectedLaneItem(snapshot, model.lane, model.table.focusRow, model.agentId);
   const content = (() : string => {
@@ -562,14 +662,23 @@ function renderInspector(model: DashboardModel, snapshot: GraphSnapshot, style: 
     height: innerHeight,
   });
   pagerState = pagerScrollTo(pagerState, model.laneState[model.lane].inspectorScrollY);
+  const pagerLines = pager(pagerState).split('\n');
+  const contentLineCount = Math.max(1, content.split('\n').length);
+  const bodyLines = withVerticalScrollbar(style, pagerLines, {
+    width: innerWidth,
+    height: innerHeight,
+    offset: model.laneState[model.lane].inspectorScrollY,
+    viewportSize: innerHeight,
+    totalSize: Math.max(innerHeight, contentLineCount),
+  });
 
-  return renderPaneCard(style, {
-    title: 'Inspector',
-    detail: item ? item.secondary : 'selection detail',
+  return renderPaneCard({
+    title: style.styled(accentToken, 'Inspector'),
+    detail: item ? style.styled(accentToken, item.secondary) : 'selection detail',
     width,
     height,
-    borderToken: style.theme.border.muted,
-    bodyLines: pager(pagerState).split('\n'),
+    borderToken: accentToken,
+    bodyLines,
   });
 }
 

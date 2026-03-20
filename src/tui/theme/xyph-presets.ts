@@ -27,7 +27,13 @@ type XyphExtStatus =
   | 'OPEN' | 'CHANGES_REQUESTED' | 'MERGED' | 'CLOSED';
 
 /** XYPH-specific UI element keys beyond bijou's BaseUiKey. */
-type XyphExtUi = 'intentHeader';
+type XyphExtUi =
+  | 'intentHeader'
+  | 'laneNow'
+  | 'lanePlan'
+  | 'laneReview'
+  | 'laneSettlement'
+  | 'laneCampaigns';
 
 /** Union of bijou base + XYPH extension status keys. */
 export type XyphStatusKey = BaseStatusKey | XyphExtStatus;
@@ -136,7 +142,14 @@ export const XYPH_CYAN_MAGENTA_DARK: XyphTheme = extendTheme<XyphExtStatus, Xyph
   CYAN_MAGENTA,
   {
     status: XYPH_STATUS_CYAN_MAGENTA_DARK,
-    ui: { intentHeader: tv('#ff00ff', ['bold']) },
+    ui: {
+      intentHeader: tv('#ff00ff', ['bold']),
+      laneNow: tv('#00ffff'),
+      lanePlan: tv('#f59e0b'),
+      laneReview: tv('#ff00ff'),
+      laneSettlement: tv('#22c55e'),
+      laneCampaigns: tv('#8b5cf6'),
+    },
   },
 );
 
@@ -144,7 +157,14 @@ export const XYPH_TEAL_ORANGE_PINK_DARK: XyphTheme = extendTheme<XyphExtStatus, 
   TEAL_ORANGE_PINK,
   {
     status: XYPH_STATUS_TEAL_ORANGE_DARK,
-    ui: { intentHeader: tv('#f20094', ['bold']) },
+    ui: {
+      intentHeader: tv('#f20094', ['bold']),
+      laneNow: tv('#3bcfd4'),
+      lanePlan: tv('#fc9305'),
+      laneReview: tv('#f20094'),
+      laneSettlement: tv('#34d399'),
+      laneCampaigns: tv('#8b5cf6'),
+    },
   },
 );
 
@@ -186,7 +206,14 @@ export const XYPH_CYAN_MAGENTA_LIGHT: XyphTheme = extendTheme<XyphExtStatus, Xyp
   CYAN_MAGENTA_LIGHT_BASE,
   {
     status: XYPH_STATUS_CYAN_MAGENTA_LIGHT,
-    ui: { intentHeader: tv('#a21caf', ['bold']) },
+    ui: {
+      intentHeader: tv('#a21caf', ['bold']),
+      laneNow: tv('#0891b2'),
+      lanePlan: tv('#b45309'),
+      laneReview: tv('#a21caf'),
+      laneSettlement: tv('#059669'),
+      laneCampaigns: tv('#6d28d9'),
+    },
   },
 );
 
@@ -226,7 +253,14 @@ export const XYPH_TEAL_ORANGE_PINK_LIGHT: XyphTheme = extendTheme<XyphExtStatus,
   TEAL_ORANGE_LIGHT_BASE,
   {
     status: XYPH_STATUS_TEAL_ORANGE_LIGHT,
-    ui: { intentHeader: tv('#be185d', ['bold']) },
+    ui: {
+      intentHeader: tv('#be185d', ['bold']),
+      laneNow: tv('#0d9488'),
+      lanePlan: tv('#c2410c'),
+      laneReview: tv('#be185d'),
+      laneSettlement: tv('#059669'),
+      laneCampaigns: tv('#6d28d9'),
+    },
   },
 );
 

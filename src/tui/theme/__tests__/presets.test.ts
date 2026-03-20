@@ -67,6 +67,14 @@ function validateTheme(theme: XyphTheme): void {
       expect(theme.ui.intentHeader.hex).toMatch(HEX_RE);
     });
 
+    it('has all lane accent UI keys', () => {
+      expect(theme.ui.laneNow).toBeDefined();
+      expect(theme.ui.lanePlan).toBeDefined();
+      expect(theme.ui.laneReview).toBeDefined();
+      expect(theme.ui.laneSettlement).toBeDefined();
+      expect(theme.ui.laneCampaigns).toBeDefined();
+    });
+
     it('has gradient stops sorted by position', () => {
       for (const [name, stops] of Object.entries(theme.gradient)) {
         for (let i = 1; i < stops.length; i++) {
