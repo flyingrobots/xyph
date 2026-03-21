@@ -354,11 +354,10 @@ function renderStatusLine(model: DashboardModel): string {
 function renderHintLine(model: DashboardModel): string {
   const left = '1-5 lanes · [/] switch';
   const center = 'r refresh · i inspector · m drawer · ? help';
-  const right = actionHint(model);
   return statusBar({
     left,
     center,
-    right,
+    right: '',
     width: model.cols,
   });
 }

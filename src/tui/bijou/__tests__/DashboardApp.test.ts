@@ -6,6 +6,7 @@ import type { GraphSnapshot } from '../../../domain/models/dashboard.js';
 import { makeSnapshot } from '../../../../test/helpers/snapshot.js';
 import { makeKey as key } from '../../../../test/helpers/keys.js';
 import { mockGraphContext, mockIntakePort, mockGraphPort, mockSubmissionPort } from '../../../../test/helpers/ports.js';
+import { strip } from '../../../../test/helpers/ansi.js';
 
 ensurePlainBijouContext();
 
@@ -253,5 +254,20 @@ describe('DashboardApp', () => {
     for (const line of output.split('\n')) {
       expect(visibleLength(line)).toBeLessThanOrEqual(100);
     }
+  });
+
+  it('does not repeat the contextual shortcut hint on both footer lines', () => {
+    const app = buildApp({
+      quests: [{ id: 'task:Q1', title: 'Quest One', status: 'IN_PROGRESS', hours: 1 }],
+    });
+    const loaded = ready(app, makeSnapshot({
+      quests: [{ id: 'task:Q1', title: 'Quest One', status: 'IN_PROGRESS', hours: 1 }],
+    }));
+    const output = strip(app.view(loaded) as string);
+    const footer = output.split('\n').slice(-2);
+
+    expect(footer[0]).toContain('PgUp/PgDn list');
+    expect(footer[1]).not.toContain('PgUp/PgDn list');
+    expect(footer[1]).toContain('r refresh');
   });
 });
