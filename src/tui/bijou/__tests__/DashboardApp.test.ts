@@ -3,8 +3,9 @@ import { visibleLength, type App } from '@flyingrobots/bijou-tui';
 import { createPlainStylePort, ensurePlainBijouContext } from '../../../infrastructure/adapters/PlainStyleAdapter.js';
 import { createDashboardApp, type DashboardModel, type DashboardMsg } from '../DashboardApp.js';
 import type { GraphSnapshot } from '../../../domain/models/dashboard.js';
+import { describeCockpitInteractionMap } from '../views/cockpit-view.js';
 import { makeSnapshot } from '../../../../test/helpers/snapshot.js';
-import { makeKey as key } from '../../../../test/helpers/keys.js';
+import { makeKey as key, makeMouse as mouse, makeResize as resize } from '../../../../test/helpers/keys.js';
 import { mockGraphContext, mockIntakePort, mockGraphPort, mockSubmissionPort } from '../../../../test/helpers/ports.js';
 import { strip } from '../../../../test/helpers/ansi.js';
 
@@ -29,6 +30,11 @@ function ready(app: App<DashboardModel, DashboardMsg>, snapshot: GraphSnapshot):
     initial,
   );
   return loaded;
+}
+
+function widen(app: App<DashboardModel, DashboardMsg>, model: DashboardModel, cols = 140, rows = 40): DashboardModel {
+  const [resized] = app.update(resize(cols, rows), model);
+  return resized;
 }
 
 describe('DashboardApp', () => {
@@ -76,6 +82,23 @@ describe('DashboardApp', () => {
     }
   });
 
+  it('switches lanes by clicking the lane rail', () => {
+    const app = buildApp();
+    const loaded = widen(app, ready(app, makeSnapshot()));
+    const map = describeCockpitInteractionMap(loaded, createPlainStylePort(), loaded.cols, loaded.rows - 2);
+    expect(map).not.toBeNull();
+    const review = map?.laneRegions.find((region) => region.lane === 'review');
+    expect(review).toBeDefined();
+    if (!review) throw new Error('Expected review lane region');
+
+    const [next] = app.update(
+      mouse('press', review.rect.y + 1, review.rect.x + 2),
+      loaded,
+    );
+
+    expect(next.lane).toBe('review');
+  });
+
   it('cycles lanes with [ and ]', () => {
     const app = buildApp();
     const loaded = ready(app, makeSnapshot());
@@ -106,6 +129,49 @@ describe('DashboardApp', () => {
 
     const [prev] = app.update(key('k'), next);
     expect(prev.table.focusRow).toBe(0);
+  });
+
+  it('selects worklist rows by click and scrolls panes with the mouse wheel', () => {
+    const app = buildApp();
+    const loaded = widen(app, ready(app, makeSnapshot({
+      quests: Array.from({ length: 14 }, (_, index) => ({
+        id: `task:Q${index + 1}`,
+        title: `Quest ${index + 1}`,
+        status: 'BACKLOG',
+        hours: 1,
+        description: Array.from({ length: 12 }, () => 'Long inspector prose for mouse wheel coverage.').join(' '),
+      })),
+    })));
+
+    const [plan] = app.update(key('2'), loaded);
+    const map = describeCockpitInteractionMap(plan, createPlainStylePort(), plan.cols, plan.rows - 2);
+    expect(map?.worklistRows.length).toBeGreaterThan(1);
+
+    const secondRow = map?.worklistRows[1];
+    expect(secondRow).toBeDefined();
+    if (!secondRow) throw new Error('Expected second worklist row');
+    const [clicked] = app.update(
+      mouse('press', secondRow.rect.y + 1, secondRow.rect.x + 2),
+      plan,
+    );
+    expect(clicked.table.focusRow).toBe(1);
+
+    const clickedMap = describeCockpitInteractionMap(clicked, createPlainStylePort(), clicked.cols, clicked.rows - 2);
+    if (!clickedMap) throw new Error('Expected interaction map for clicked state');
+    const [scrolledList] = app.update(
+      mouse('scroll-down', clickedMap.worklistRect.y + 2, clickedMap.worklistRect.x + 2),
+      clicked,
+    );
+    expect(scrolledList.table.focusRow).toBe(2);
+
+    const inspectorRect = clickedMap?.inspectorRect;
+    expect(inspectorRect).toBeDefined();
+    if (!inspectorRect) throw new Error('Expected inspector rect');
+    const [scrolledInspector] = app.update(
+      mouse('scroll-down', inspectorRect.y + 2, inspectorRect.x + 2),
+      clicked,
+    );
+    expect(scrolledInspector.laneState.plan.inspectorScrollY).toBeGreaterThan(0);
   });
 
   it('pages the worklist with PgDn and PgUp', () => {
@@ -218,6 +284,40 @@ describe('DashboardApp', () => {
 
     const [closed] = app.update(key('t'), tree);
     expect(closed.mode).toBe('normal');
+  });
+
+  it('dismisses the quest tree modal on outside click and scrolls the drawer with the mouse wheel', () => {
+    const app = buildApp();
+    const loaded = widen(app, ready(app, makeSnapshot({
+      quests: Array.from({ length: 18 }, (_, index) => ({
+        id: `task:Q${index + 1}`,
+        title: `Quest ${index + 1} with enough drawer content to scroll cleanly`,
+        status: index === 0 ? 'READY' : 'BACKLOG',
+        hours: 1,
+        assignedTo: 'agent.test',
+      })),
+    })), 140, 24);
+
+    const [tree] = app.update(key('t'), loaded);
+    expect(tree.mode).toBe('quest-tree');
+
+    const [closed] = app.update(mouse('press', 0, 0), tree);
+    expect(closed.mode).toBe('normal');
+
+    const [drawer] = app.update(key('m'), loaded);
+    expect(drawer.drawerOpen).toBe(true);
+    const [drawerOpened] = app.update({ type: 'drawer-frame', value: 56 }, drawer);
+    expect(drawerOpened.drawerWidth).toBe(56);
+
+    const drawerX = drawerOpened.cols - Math.max(2, Math.floor(drawerOpened.drawerWidth / 2));
+    const [scrolledDrawer] = app.update(
+      mouse('scroll-down', 3, drawerX),
+      drawerOpened,
+    );
+    expect(scrolledDrawer.drawerScrollY).toBeGreaterThan(0);
+
+    const [closedDrawer] = app.update(mouse('press', 3, 3), scrolledDrawer);
+    expect(closedDrawer.drawerOpen).toBe(false);
   });
 
   it('toggles the Now lane between action queue and recent activity with v', () => {

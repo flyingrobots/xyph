@@ -17,6 +17,52 @@ import { formatAge, wrapWhitespaceText } from '../../view-helpers.js';
 const PANEL_GAP = 1;
 const FIELD_LABEL_WIDTH = 10;
 
+export interface CockpitRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface CockpitInteractiveRegion {
+  rect: CockpitRect;
+}
+
+export interface LaneInteractiveRegion extends CockpitInteractiveRegion {
+  lane: DashboardModel['lane'];
+}
+
+export interface WorklistInteractiveRegion extends CockpitInteractiveRegion {
+  rowIndex: number;
+}
+
+export interface CockpitInteractionMap {
+  railRect: CockpitRect;
+  worklistRect: CockpitRect;
+  inspectorRect?: CockpitRect;
+  laneRegions: LaneInteractiveRegion[];
+  worklistRows: WorklistInteractiveRegion[];
+}
+
+interface CockpitPaneLayout {
+  hero: string;
+  heroHeight: number;
+  bodyHeight: number;
+  bodyY: number;
+  railRect: CockpitRect;
+  worklistRect: CockpitRect;
+  inspectorRect?: CockpitRect;
+}
+
+interface LineSpan {
+  lineStart: number;
+  lineEnd: number;
+}
+
+interface WorklistRowSpan extends LineSpan {
+  rowIndex: number;
+}
+
 function padVisible(text: string, width: number): string {
   return text + ' '.repeat(Math.max(0, width - visibleLength(text)));
 }
@@ -249,8 +295,9 @@ function buildWorklistViewport(options: {
   height: number;
   style: StylePort;
   accentToken: ReturnType<typeof laneAccent>;
-}): { lines: string[]; visibleFocus: boolean; endIndex: number } {
+}): { lines: string[]; visibleFocus: boolean; endIndex: number; rowSpans: WorklistRowSpan[] } {
   const lines: string[] = [];
+  const rowSpans: WorklistRowSpan[] = [];
   let visibleFocus = false;
   let endIndex = options.startIndex;
   for (let index = options.startIndex; index < options.items.length; index += 1) {
@@ -266,13 +313,179 @@ function buildWorklistViewport(options: {
     const needed = cardLines.length + (lines.length > 0 ? 1 : 0);
     if (lines.length + needed > options.height && lines.length > 0) break;
     if (lines.length > 0) lines.push('');
+    const lineStart = lines.length;
     const remaining = Math.max(1, options.height - lines.length);
     lines.push(...cardLines.slice(0, remaining));
+    rowSpans.push({ rowIndex: index, lineStart, lineEnd: Math.max(lineStart, lines.length - 1) });
     endIndex = index + 1;
     if (index === options.focusRow) visibleFocus = true;
     if (lines.length >= options.height) break;
   }
-  return { lines, visibleFocus, endIndex };
+  return { lines, visibleFocus, endIndex, rowSpans };
+}
+
+function paneBodyContentTop(rect: CockpitRect, header: string): number {
+  return rect.y + header.split('\n').length + 1;
+}
+
+function computeCockpitPaneLayout(
+  model: DashboardModel,
+  snapshot: GraphSnapshot,
+  style: StylePort,
+  width: number,
+  height: number,
+): CockpitPaneLayout {
+  const hero = renderHero(model, snapshot, style, width);
+  const heroHeight = hero.split('\n').length;
+  const bodyY = heroHeight + 1;
+  const bodyHeight = Math.max(1, height - heroHeight - 1);
+  const railWidth = Math.max(24, Math.min(30, Math.floor((width - 2) * 0.22)));
+  const tableWidth = Math.max(46, Math.floor((width - 2) * 0.40));
+
+  if (width < 110) {
+    if (model.inspectorOpen) {
+      const availableHeight = Math.max(1, bodyHeight - PANEL_GAP * 2);
+      const desiredRailHeight = Math.min(14, Math.max(6, Math.floor(availableHeight * 0.24)));
+      const desiredInspectorHeight = Math.min(12, Math.max(6, Math.floor(availableHeight * 0.30)));
+      const railHeight = Math.min(desiredRailHeight, Math.max(1, availableHeight - desiredInspectorHeight - 1));
+      const inspectorHeight = Math.min(desiredInspectorHeight, Math.max(1, availableHeight - railHeight - 1));
+      const worklistHeight = Math.max(1, bodyHeight - railHeight - inspectorHeight - PANEL_GAP * 2);
+      return {
+        hero,
+        heroHeight,
+        bodyHeight,
+        bodyY,
+        railRect: { x: 0, y: bodyY, width, height: railHeight },
+        worklistRect: { x: 0, y: bodyY + railHeight + PANEL_GAP, width, height: worklistHeight },
+        inspectorRect: { x: 0, y: bodyY + railHeight + PANEL_GAP + worklistHeight + PANEL_GAP, width, height: inspectorHeight },
+      };
+    }
+
+    const availableHeight = Math.max(1, bodyHeight - PANEL_GAP);
+    const desiredRailHeight = Math.min(14, Math.max(6, Math.floor(availableHeight * 0.26)));
+    const railHeight = Math.min(desiredRailHeight, Math.max(1, availableHeight - 1));
+    const worklistHeight = Math.max(1, bodyHeight - railHeight - PANEL_GAP);
+    return {
+      hero,
+      heroHeight,
+      bodyHeight,
+      bodyY,
+      railRect: { x: 0, y: bodyY, width, height: railHeight },
+      worklistRect: { x: 0, y: bodyY + railHeight + PANEL_GAP, width, height: worklistHeight },
+    };
+  }
+
+  const railRect: CockpitRect = { x: 0, y: bodyY, width: railWidth, height: bodyHeight };
+  if (model.inspectorOpen) {
+    const inspectorWidth = Math.max(1, width - railWidth - tableWidth - PANEL_GAP * 2);
+    return {
+      hero,
+      heroHeight,
+      bodyHeight,
+      bodyY,
+      railRect,
+      worklistRect: { x: railWidth + PANEL_GAP, y: bodyY, width: tableWidth, height: bodyHeight },
+      inspectorRect: { x: railWidth + PANEL_GAP + tableWidth + PANEL_GAP, y: bodyY, width: inspectorWidth, height: bodyHeight },
+    };
+  }
+
+  return {
+    hero,
+    heroHeight,
+    bodyHeight,
+    bodyY,
+    railRect,
+    worklistRect: { x: railWidth + PANEL_GAP, y: bodyY, width: Math.max(1, width - railWidth - PANEL_GAP), height: bodyHeight },
+  };
+}
+
+export function describeCockpitInteractionMap(
+  model: DashboardModel,
+  style: StylePort,
+  width?: number,
+  height?: number,
+): CockpitInteractionMap | null {
+  const snapshot = model.snapshot;
+  const w = width ?? model.cols;
+  const h = height ?? Math.max(8, model.rows - 2);
+  if (!snapshot) return null;
+
+  const layout = computeCockpitPaneLayout(model, snapshot, style, w, h);
+
+  const railHeader = renderPaneHeader({
+    title: 'Lanes',
+    detail: 'operator surfaces',
+    width: layout.railRect.width,
+    borderToken: style.theme.border.muted,
+  });
+  const { regions } = buildLaneRailContent(model, snapshot, style, Math.max(12, layout.railRect.width - 4));
+  const laneBodyTop = paneBodyContentTop(layout.railRect, railHeader);
+  const laneRegions: LaneInteractiveRegion[] = regions.map((region) => ({
+    lane: region.lane,
+    rect: {
+      x: layout.railRect.x,
+      y: laneBodyTop + region.lineStart,
+      width: layout.railRect.width,
+      height: Math.max(1, region.lineEnd - region.lineStart + 1),
+    },
+  }));
+
+  const accentToken = laneAccent(style, model.lane);
+  const worklistItems = laneItems(snapshot, model.lane, model.agentId, model.nowView);
+  const selected = worklistItems[model.table.focusRow];
+  const worklistHeader = renderPaneHeader({
+    title: style.styled(accentToken, laneTitle(model.lane)),
+    detail: model.lane === 'now'
+      ? style.styled(accentToken, model.nowView === 'activity' ? 'Recent Activity' : 'Action Queue')
+      : selected
+        ? style.styled(accentToken, shortId(selected.id))
+        : 'select an item to inspect',
+    width: layout.worklistRect.width,
+    borderToken: accentToken,
+  });
+  const worklistInnerHeight = paneBodyHeight(layout.worklistRect.height, worklistHeader);
+  const worklistContentWidth = Math.max(12, layout.worklistRect.width - 4);
+  const focusRow = Math.max(0, Math.min(model.table.focusRow, Math.max(0, worklistItems.length - 1)));
+  let start = Math.max(0, Math.min(model.table.scrollY, Math.max(0, worklistItems.length - 1)));
+  let viewport = buildWorklistViewport({
+    items: worklistItems,
+    focusRow,
+    startIndex: start,
+    width: worklistContentWidth,
+    height: worklistInnerHeight,
+    style,
+    accentToken,
+  });
+  while (!viewport.visibleFocus && start < focusRow) {
+    start += 1;
+    viewport = buildWorklistViewport({
+      items: worklistItems,
+      focusRow,
+      startIndex: start,
+      width: worklistContentWidth,
+      height: worklistInnerHeight,
+      style,
+      accentToken,
+    });
+  }
+  const worklistBodyTop = paneBodyContentTop(layout.worklistRect, worklistHeader);
+  const worklistRows: WorklistInteractiveRegion[] = viewport.rowSpans.map((span) => ({
+    rowIndex: span.rowIndex,
+    rect: {
+      x: layout.worklistRect.x,
+      y: worklistBodyTop + span.lineStart,
+      width: layout.worklistRect.width,
+      height: Math.max(1, span.lineEnd - span.lineStart + 1),
+    },
+  }));
+
+  return {
+    railRect: layout.railRect,
+    worklistRect: layout.worklistRect,
+    inspectorRect: layout.inspectorRect,
+    laneRegions,
+    worklistRows,
+  };
 }
 
 function pushWrappedText(
@@ -419,15 +632,14 @@ function renderHero(model: DashboardModel, snapshot: GraphSnapshot, style: Style
   });
 }
 
-function renderLaneRail(model: DashboardModel, snapshot: GraphSnapshot, style: StylePort, width: number, height: number): string {
-  const innerWidth = Math.max(12, width - 4);
-  const header = renderPaneHeader({
-    title: 'Lanes',
-    detail: 'operator surfaces',
-    width,
-    borderToken: style.theme.border.muted,
-  });
+function buildLaneRailContent(
+  model: DashboardModel,
+  snapshot: GraphSnapshot,
+  style: StylePort,
+  innerWidth: number,
+): { lines: string[]; regions: ({ lane: DashboardModel['lane'] } & LineSpan)[] } {
   const lines: string[] = [];
+  const regions: ({ lane: DashboardModel['lane'] } & LineSpan)[] = [];
   const lanes = cockpitLanes(snapshot, model.agentId, model.nowView);
   for (const lane of lanes) {
     const selected = lane.id === model.lane;
@@ -438,6 +650,7 @@ function renderLaneRail(model: DashboardModel, snapshot: GraphSnapshot, style: S
     const title = selected
       ? style.styled(accentToken, lane.title.toUpperCase())
       : lane.title.toUpperCase();
+    const lineStart = lines.length;
     lines.push(`${indicator} ${title}  ${lane.count}`);
     pushWrappedText(lines, lane.description, {
       width: innerWidth,
@@ -445,7 +658,20 @@ function renderLaneRail(model: DashboardModel, snapshot: GraphSnapshot, style: S
       decorate: (line) => style.styled(style.theme.semantic.muted, line),
     });
     lines.push('');
+    regions.push({ lane: lane.id, lineStart, lineEnd: Math.max(lineStart, lines.length - 1) });
   }
+  return { lines, regions };
+}
+
+function renderLaneRail(model: DashboardModel, snapshot: GraphSnapshot, style: StylePort, width: number, height: number): string {
+  const innerWidth = Math.max(12, width - 4);
+  const header = renderPaneHeader({
+    title: 'Lanes',
+    detail: 'operator surfaces',
+    width,
+    borderToken: style.theme.border.muted,
+  });
+  const { lines } = buildLaneRailContent(model, snapshot, style, innerWidth);
 
   lines.push(style.styled(style.theme.semantic.muted, 'Surface'));
   pushField(lines, 'Graph', 'xyph', {
@@ -851,55 +1077,41 @@ export function cockpitView(model: DashboardModel, style: StylePort, width?: num
     return style.styled(style.theme.semantic.muted, 'No snapshot loaded.');
   }
 
-  const hero = renderHero(model, snapshot, style, w);
-  const heroHeight = hero.split('\n').length;
-  const bodyHeight = Math.max(1, h - heroHeight - 1);
-  const railWidth = Math.max(24, Math.min(30, Math.floor((w - 2) * 0.22)));
-  const tableWidth = Math.max(46, Math.floor((w - 2) * 0.40));
+  const layout = computeCockpitPaneLayout(model, snapshot, style, w, h);
 
   let body: string;
   if (w < 110) {
     if (model.inspectorOpen) {
-      const availableHeight = Math.max(1, bodyHeight - PANEL_GAP * 2);
-      const desiredRailHeight = Math.min(14, Math.max(6, Math.floor(availableHeight * 0.24)));
-      const desiredInspectorHeight = Math.min(12, Math.max(6, Math.floor(availableHeight * 0.30)));
-      const railHeight = Math.min(desiredRailHeight, Math.max(1, availableHeight - desiredInspectorHeight - 1));
-      const inspectorHeight = Math.min(desiredInspectorHeight, Math.max(1, availableHeight - railHeight - 1));
-
       body = flex(
-        { direction: 'column', width: w, height: bodyHeight, gap: PANEL_GAP },
-        { basis: railHeight, content: (_pw: number, ph: number) => renderLaneRail(model, snapshot, style, w, ph) },
+        { direction: 'column', width: w, height: layout.bodyHeight, gap: PANEL_GAP },
+        { basis: layout.railRect.height, content: (_pw: number, ph: number) => renderLaneRail(model, snapshot, style, w, ph) },
         { flex: 1, content: (_pw: number, ph: number) => renderWorklistPane(model, snapshot, style, w, ph) },
-        { basis: inspectorHeight, content: (_pw: number, ph: number) => renderInspector(model, snapshot, style, w, ph) },
+        { basis: layout.inspectorRect?.height ?? 1, content: (_pw: number, ph: number) => renderInspector(model, snapshot, style, w, ph) },
       );
     } else {
-      const availableHeight = Math.max(1, bodyHeight - PANEL_GAP);
-      const desiredRailHeight = Math.min(14, Math.max(6, Math.floor(availableHeight * 0.26)));
-      const railHeight = Math.min(desiredRailHeight, Math.max(1, availableHeight - 1));
-
       body = flex(
-        { direction: 'column', width: w, height: bodyHeight, gap: PANEL_GAP },
-        { basis: railHeight, content: (_pw: number, ph: number) => renderLaneRail(model, snapshot, style, w, ph) },
+        { direction: 'column', width: w, height: layout.bodyHeight, gap: PANEL_GAP },
+        { basis: layout.railRect.height, content: (_pw: number, ph: number) => renderLaneRail(model, snapshot, style, w, ph) },
         { flex: 1, content: (_pw: number, ph: number) => renderWorklistPane(model, snapshot, style, w, ph) },
       );
     }
   } else {
     body = model.inspectorOpen
       ? flex(
-        { direction: 'row', width: w, height: bodyHeight },
-        { basis: railWidth, content: (_pw: number, ph: number) => renderLaneRail(model, snapshot, style, railWidth, ph) },
+        { direction: 'row', width: w, height: layout.bodyHeight },
+        { basis: layout.railRect.width, content: (_pw: number, ph: number) => renderLaneRail(model, snapshot, style, layout.railRect.width, ph) },
         { basis: PANEL_GAP, content: (_pw: number, ph: number) => blankColumn(PANEL_GAP, ph) },
-        { basis: tableWidth, content: (pw: number, ph: number) => renderWorklistPane(model, snapshot, style, pw, ph) },
+        { basis: layout.worklistRect.width, content: (pw: number, ph: number) => renderWorklistPane(model, snapshot, style, pw, ph) },
         { basis: PANEL_GAP, content: (_pw: number, ph: number) => blankColumn(PANEL_GAP, ph) },
         { flex: 1, content: (pw: number, ph: number) => renderInspector(model, snapshot, style, pw, ph) },
       )
       : flex(
-        { direction: 'row', width: w, height: bodyHeight },
-        { basis: railWidth, content: (_pw: number, ph: number) => renderLaneRail(model, snapshot, style, railWidth, ph) },
+        { direction: 'row', width: w, height: layout.bodyHeight },
+        { basis: layout.railRect.width, content: (_pw: number, ph: number) => renderLaneRail(model, snapshot, style, layout.railRect.width, ph) },
         { basis: PANEL_GAP, content: (_pw: number, ph: number) => blankColumn(PANEL_GAP, ph) },
         { flex: 1, content: (pw: number, ph: number) => renderWorklistPane(model, snapshot, style, pw, ph) },
       );
   }
 
-  return [hero, '', body].join('\n');
+  return [layout.hero, '', body].join('\n');
 }

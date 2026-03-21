@@ -14,6 +14,7 @@
  *   PgUp / PgDn     — page the worklist
  *   Shift+PgUp/PgDn — scroll the inspector
  *   m               — toggle "My Stuff" drawer (quests, submissions, activity)
+ *   Mouse           — click lanes/rows, wheel-scroll panes, dismiss the quest tree
  *   r               — refresh snapshot
  *   : or /          — command palette
  *   q               — quit
@@ -84,4 +85,4 @@ const app = createDashboardApp({
   logoText: splash.text,
 });
 
-await run(app, { altScreen: true, hideCursor: true });
+await run(app, { altScreen: true, hideCursor: true, mouse: true });

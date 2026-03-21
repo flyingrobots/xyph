@@ -16,14 +16,13 @@ interface ActivityEvent {
  * This is a global drawer available from any screen via the 'm' keybinding.
  * Content is agent-scoped when agentId is set, project-wide otherwise.
  */
-export function renderMyStuffDrawer(
+export function buildMyStuffDrawerLines(
   snap: GraphSnapshot,
   style: StylePort,
   agentId: string | undefined,
   pw: number,
-  ph: number,
-): string {
-  if (pw < 10) return '';
+): string[] {
+  if (pw < 10) return [];
   const lines: string[] = [];
   const questById = new Map(snap.quests.map(q => [q.id, q]));
   const contentWidth = Math.max(12, pw - 4);
@@ -173,9 +172,22 @@ export function renderMyStuffDrawer(
     }
   }
 
-  // Trim to available height
-  const allLines = lines.join('\n').split('\n');
-  return allLines.slice(0, ph).join('\n');
+  return lines.join('\n').split('\n');
+}
+
+export function renderMyStuffDrawer(
+  snap: GraphSnapshot,
+  style: StylePort,
+  agentId: string | undefined,
+  pw: number,
+  ph: number,
+  scrollY = 0,
+): string {
+  if (pw < 10 || ph < 1) return '';
+  const allLines = buildMyStuffDrawerLines(snap, style, agentId, pw);
+  const maxScroll = Math.max(0, allLines.length - ph);
+  const clampedScroll = Math.max(0, Math.min(scrollY, maxScroll));
+  return allLines.slice(clampedScroll, clampedScroll + ph).join('\n');
 }
 
 function pushWrappedBlock(

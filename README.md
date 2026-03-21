@@ -624,7 +624,9 @@ dashboards. The shell centers on five lanes:
 
 The left rail keeps those lanes visible, the center worklist stays scannable as
 a contained-list-style queue, and the right inspector keeps the currently
-selected record legible without dropping to raw JSON first.
+selected record legible without dropping to raw JSON first. The cockpit is
+fully keyboard-driven, but it now also supports mouse clicks for lane/row
+selection and wheel scrolling in the main panes.
 
 ```bash
 XYPH_AGENT_ID=human.yourname ./xyph-dashboard.ts
@@ -641,6 +643,8 @@ XYPH_AGENT_ID=human.yourname ./xyph-dashboard.ts
 | `r` | Global | Refresh snapshot |
 | `i` | Global | Toggle the inspector pane |
 | `m` | Global | Toggle the "My Stuff" drawer |
+| Mouse click | Cockpit | Click lane rail entries and worklist rows |
+| Mouse wheel | Cockpit | Scroll the worklist, inspector, quest tree, and drawer |
 | `:` / `/` | Global | Open the command palette |
 | `?` | Global | Toggle help |
 | `q` | Global | Quit |

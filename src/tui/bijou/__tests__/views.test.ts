@@ -46,6 +46,7 @@ function makeModel(snapshot: GraphSnapshot | null): DashboardModel {
     inputState: null,
     paletteState: null,
     questTreeScrollY: 0,
+    drawerScrollY: 0,
     toast: null,
     writePending: false,
     drawerOpen: false,

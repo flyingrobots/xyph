@@ -1,4 +1,4 @@
-import type { App, Cmd, KeyMsg, ResizeMsg } from '@flyingrobots/bijou-tui';
+import type { App, Cmd, KeyMsg, MouseMsg, ResizeMsg } from '@flyingrobots/bijou-tui';
 import {
   animate,
   commandPalette,
@@ -34,11 +34,11 @@ import type { GraphSnapshot, QuestNode, SubmissionNode } from '../../domain/mode
 import type { IntakePort } from '../../ports/IntakePort.js';
 import type { GraphPort } from '../../ports/GraphPort.js';
 import type { SubmissionPort } from '../../ports/SubmissionPort.js';
-import { cockpitView } from './views/cockpit-view.js';
+import { cockpitView, describeCockpitInteractionMap, type CockpitRect } from './views/cockpit-view.js';
 import { landingView } from './views/landing-view.js';
 import { confirmOverlay, inputOverlay } from './overlays.js';
-import { renderMyStuffDrawer } from './views/my-stuff-drawer.js';
-import { questTreeOverlay } from './views/quest-tree-modal.js';
+import { buildMyStuffDrawerLines, renderMyStuffDrawer } from './views/my-stuff-drawer.js';
+import { questTreeOverlay, questTreeOverlayBounds } from './views/quest-tree-modal.js';
 import { claimQuest, promoteQuest, rejectQuest, reviewSubmission, type WriteDeps } from './write-cmds.js';
 import {
   buildLaneTable,
@@ -95,6 +95,7 @@ export interface DashboardModel {
   inputState: { label: string; value: string; action: PendingWrite } | null;
   paletteState: CommandPaletteState | null;
   questTreeScrollY: number;
+  drawerScrollY: number;
   toast: { message: string; variant: 'success' | 'error'; expiresAt: number } | null;
   writePending: boolean;
   drawerOpen: boolean;
@@ -106,6 +107,7 @@ export interface DashboardModel {
 
 export type DashboardMsg =
   | KeyMsg
+  | MouseMsg
   | ResizeMsg
   | { type: 'snapshot-loaded'; snapshot: GraphSnapshot; requestId: number }
   | { type: 'snapshot-error'; error: string; requestId: number }
@@ -259,6 +261,28 @@ function wakeScrollbar(
       },
     },
   }, [fadeScrollbar(pane, nextGeneration)]];
+}
+
+function pointInRect(rect: CockpitRect, col: number, row: number): boolean {
+  return col >= rect.x
+    && col < rect.x + rect.width
+    && row >= rect.y
+    && row < rect.y + rect.height;
+}
+
+function selectRow(model: DashboardModel, rowIndex: number): DashboardModel {
+  return rebuildForLane(updateInspectorScroll(updateFocus(model, rowIndex), 0), model.lane);
+}
+
+function scrollWorklistBy(model: DashboardModel, delta: number): [DashboardModel, Cmd<DashboardMsg>[]] {
+  const rows = model.table.rows.length;
+  if (rows === 0) return [model, []];
+  const nextRow = Math.max(0, Math.min(rows - 1, model.table.focusRow + delta));
+  return wakeScrollbar(selectRow(model, nextRow), 'worklist');
+}
+
+function scrollInspectorBy(model: DashboardModel, delta: number): [DashboardModel, Cmd<DashboardMsg>[]] {
+  return wakeScrollbar(updateInspectorScroll(model, model.laneState[model.lane].inspectorScrollY + delta), 'inspector');
 }
 
 function currentSelectedItem(model: DashboardModel): CockpitItem | undefined {
@@ -444,6 +468,37 @@ function buildPaletteItems(model: DashboardModel): CommandPaletteItem[] {
 
 function laneForIndex(index: number): CockpitLaneId {
   return LANE_ORDER[Math.max(0, Math.min(index, LANE_ORDER.length - 1))] ?? 'now';
+}
+
+function drawerRect(model: DashboardModel): CockpitRect | null {
+  if (model.drawerWidth <= 4) return null;
+  return {
+    x: Math.max(0, model.cols - model.drawerWidth),
+    y: 0,
+    width: model.drawerWidth,
+    height: Math.max(1, model.rows - 2),
+  };
+}
+
+function drawerMaxScroll(model: DashboardModel, deps: DashboardDeps): number {
+  if (!model.snapshot) return 0;
+  const rect = drawerRect(model);
+  if (!rect) return 0;
+  const bodyHeight = Math.max(1, rect.height - 2);
+  const bodyWidth = Math.max(1, rect.width - 2);
+  const totalLines = buildMyStuffDrawerLines(
+    model.snapshot,
+    deps.style,
+    model.agentId,
+    bodyWidth,
+  ).length;
+  return Math.max(0, totalLines - bodyHeight);
+}
+
+function clampDrawerScroll(model: DashboardModel, deps: DashboardDeps): DashboardModel {
+  const maxScroll = drawerMaxScroll(model, deps);
+  if (model.drawerScrollY === maxScroll || (model.drawerScrollY >= 0 && model.drawerScrollY <= maxScroll)) return model;
+  return { ...model, drawerScrollY: Math.max(0, Math.min(model.drawerScrollY, maxScroll)) };
 }
 
 export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, DashboardMsg> {
@@ -689,6 +744,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         inputState: null,
         paletteState: null,
         questTreeScrollY: 0,
+        drawerScrollY: 0,
         toast: null,
         writePending: false,
         drawerOpen: false,
@@ -719,7 +775,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
           cols: msg.columns,
           rows: msg.rows,
         };
-        return [rebuildForLane(resized, resized.lane), []];
+        return [clampDrawerScroll(rebuildForLane(resized, resized.lane), deps), []];
       }
 
       if (msg.type === 'snapshot-loaded') {
@@ -736,7 +792,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
           watching: true,
           requestId: pendingRefresh ? model.requestId + 1 : model.requestId,
         }, model.lane, msg.snapshot);
-        return [updated, pendingRefresh ? [fetchSnapshot(updated.requestId)] : []];
+        return [clampDrawerScroll(updated, deps), pendingRefresh ? [fetchSnapshot(updated.requestId)] : []];
       }
 
       if (msg.type === 'snapshot-error') {
@@ -797,6 +853,82 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
             },
           },
         }, []];
+      }
+
+      if (msg.type === 'mouse') {
+        if (model.showLanding || model.showHelp) return [model, []];
+
+        if (model.mode === 'quest-tree' && model.snapshot) {
+          const quest = selectedQuest(model);
+          if (!quest) return [model, []];
+          const bounds = questTreeOverlayBounds(
+            model.snapshot,
+            quest,
+            model.questTreeScrollY,
+            model.cols,
+            model.rows,
+            deps.style,
+          );
+          const rect: CockpitRect = { x: bounds.col, y: bounds.row, width: bounds.width, height: bounds.height };
+          if (msg.action === 'scroll-down' && pointInRect(rect, msg.col, msg.row)) {
+            return [{ ...model, questTreeScrollY: model.questTreeScrollY + 3 }, []];
+          }
+          if (msg.action === 'scroll-up' && pointInRect(rect, msg.col, msg.row)) {
+            return [{ ...model, questTreeScrollY: Math.max(0, model.questTreeScrollY - 3) }, []];
+          }
+          if (msg.action === 'press' && msg.button === 'left' && !pointInRect(rect, msg.col, msg.row)) {
+            return [{ ...model, mode: 'normal', questTreeScrollY: 0 }, []];
+          }
+          return [model, []];
+        }
+
+        if (model.mode !== 'normal') return [model, []];
+
+        const currentDrawerRect = drawerRect(model);
+        if (currentDrawerRect) {
+          if (pointInRect(currentDrawerRect, msg.col, msg.row)) {
+            if (msg.action === 'scroll-down') {
+              const maxScroll = drawerMaxScroll(model, deps);
+              return [{ ...model, drawerScrollY: Math.min(maxScroll, model.drawerScrollY + 3) }, []];
+            }
+            if (msg.action === 'scroll-up') {
+              return [{ ...model, drawerScrollY: Math.max(0, model.drawerScrollY - 3) }, []];
+            }
+            return [model, []];
+          }
+          if (msg.action === 'press' && msg.button === 'left') {
+            return toggleDrawer(model);
+          }
+        }
+
+        const contentHeight = Math.max(1, model.rows - 2);
+        if (msg.row >= contentHeight) return [model, []];
+        const interactionMap = describeCockpitInteractionMap(model, deps.style, model.cols, contentHeight);
+        if (!interactionMap) return [model, []];
+
+        if (msg.action === 'press' && msg.button === 'left') {
+          const laneRegion = interactionMap.laneRegions.find((region) => pointInRect(region.rect, msg.col, msg.row));
+          if (laneRegion) {
+            return wakeScrollbar(switchLane(model, laneRegion.lane), 'worklist');
+          }
+
+          const rowRegion = interactionMap.worklistRows.find((region) => pointInRect(region.rect, msg.col, msg.row));
+          if (rowRegion) {
+            return wakeScrollbar(selectRow(model, rowRegion.rowIndex), 'worklist');
+          }
+        }
+
+        if (msg.action === 'scroll-down' || msg.action === 'scroll-up') {
+          const delta = msg.action === 'scroll-down' ? 1 : -1;
+          if (interactionMap.inspectorRect && model.inspectorOpen && pointInRect(interactionMap.inspectorRect, msg.col, msg.row)) {
+            return scrollInspectorBy(model, delta * 3);
+          }
+          if (pointInRect(interactionMap.worklistRect, msg.col, msg.row)) {
+            return scrollWorklistBy(model, delta);
+          }
+        }
+
+        return [model, []];
       }
 
       if (msg.type === 'key') {
@@ -1076,6 +1208,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
           model.agentId,
           model.drawerWidth - 2,
           drawerHeight - 2,
+          model.drawerScrollY,
         );
         const drawerOverlay = drawer({
           content: drawerContent,

@@ -1,4 +1,4 @@
-import { composite, createPagerState, modal, pager, pagerScrollTo } from '@flyingrobots/bijou-tui';
+import { composite, createPagerState, modal, pager, pagerScrollTo, visibleLength } from '@flyingrobots/bijou-tui';
 import type { GraphSnapshot, QuestNode } from '../../../domain/models/dashboard.js';
 import type { StylePort } from '../../../ports/StylePort.js';
 import { shortId, shortPrincipal } from '../cockpit.js';
@@ -232,15 +232,14 @@ function buildQuestTreeBody(
   return lines.join('\n');
 }
 
-export function questTreeOverlay(
-  content: string,
+export function questTreeOverlayBounds(
   snapshot: GraphSnapshot,
   quest: QuestNode,
   scrollY: number,
   cols: number,
   rows: number,
   style: StylePort,
-): string {
+): { row: number; col: number; width: number; height: number; content: string } {
   const bodyWidth = Math.max(40, Math.min(cols - 16, 92));
   const bodyHeight = Math.max(10, Math.min(rows - 10, 28));
   const body = buildQuestTreeBody(snapshot, quest, style, bodyWidth);
@@ -270,5 +269,23 @@ export function questTreeOverlay(
     borderToken: style.theme.border.primary,
   });
 
-  return composite(content, [overlay], { dim: true });
+  const overlayLines = overlay.content.split('\n');
+  return {
+    ...overlay,
+    width: visibleLength(overlayLines[0] ?? ''),
+    height: overlayLines.length,
+  };
+}
+
+export function questTreeOverlay(
+  content: string,
+  snapshot: GraphSnapshot,
+  quest: QuestNode,
+  scrollY: number,
+  cols: number,
+  rows: number,
+  style: StylePort,
+): string {
+  const overlay = questTreeOverlayBounds(snapshot, quest, scrollY, cols, rows, style);
+  return composite(content, [{ content: overlay.content, row: overlay.row, col: overlay.col }], { dim: true });
 }
