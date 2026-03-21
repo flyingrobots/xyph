@@ -637,6 +637,7 @@ XYPH_AGENT_ID=human.yourname ./xyph-dashboard.ts
 | `j` / `k` | Cockpit | Select next / previous row |
 | `g` / `G` | Cockpit | Jump to first / last row |
 | `v` | Now lane | Toggle between the action queue and recent activity |
+| `t` | Quest selection | Open the quest tree / lineage modal |
 | `r` | Global | Refresh snapshot |
 | `i` | Global | Toggle the inspector pane |
 | `m` | Global | Toggle the "My Stuff" drawer |

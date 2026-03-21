@@ -186,4 +186,94 @@ describe('DashboardApp integration', () => {
     expect(plain).toContain('TRIAGE');
     expect(plain).toContain('QUEST');
   });
+
+  it('opens a quest tree modal with lineage and dependency structure', () => {
+    const app = buildApp();
+    const model = widen(app, ready(app, makeSnapshot({
+      intents: [{
+        id: 'intent:TRACE',
+        title: 'Trace everything',
+        requestedBy: 'human.james',
+        createdAt: 50,
+      }],
+      campaigns: [{
+        id: 'campaign:TRACE',
+        title: 'Traceability',
+        status: 'IN_PROGRESS',
+      }],
+      quests: [
+        {
+          id: 'task:ROOT',
+          title: 'Root quest',
+          status: 'READY',
+          hours: 2,
+          intentId: 'intent:TRACE',
+          campaignId: 'campaign:TRACE',
+          dependsOn: ['task:UP'],
+          submissionId: 'submission:S1',
+          scrollId: 'scroll:SC1',
+        },
+        {
+          id: 'task:UP',
+          title: 'Upstream dependency',
+          status: 'DONE',
+          hours: 1,
+        },
+        {
+          id: 'task:DOWN',
+          title: 'Downstream dependent',
+          status: 'BACKLOG',
+          hours: 1,
+          dependsOn: ['task:ROOT'],
+        },
+      ],
+      submissions: [{
+        id: 'submission:S1',
+        questId: 'task:ROOT',
+        status: 'OPEN',
+        tipPatchsetId: 'patchset:P1',
+        headsCount: 1,
+        approvalCount: 0,
+        submittedBy: 'agent.hal',
+        submittedAt: 100,
+      }],
+      reviews: [{
+        id: 'review:R1',
+        patchsetId: 'patchset:P1',
+        verdict: 'approve',
+        comment: 'Looks good',
+        reviewedBy: 'human.ada',
+        reviewedAt: 120,
+      }],
+      decisions: [{
+        id: 'decision:D1',
+        submissionId: 'submission:S1',
+        kind: 'merge',
+        decidedBy: 'human.ada',
+        rationale: 'Ship it',
+        decidedAt: 140,
+      }],
+      scrolls: [{
+        id: 'scroll:SC1',
+        questId: 'task:ROOT',
+        artifactHash: 'abc123',
+        sealedBy: 'agent.hal',
+        sealedAt: 150,
+        hasSeal: true,
+      }],
+      sortedTaskIds: ['task:UP', 'task:ROOT', 'task:DOWN'],
+    })));
+
+    const tree = drive(app, model, [key('2'), key('t')]);
+    const plain = strip(viewText(app, tree));
+
+    expect(tree.mode).toBe('quest-tree');
+    expect(plain).toContain('Lineage');
+    expect(plain).toContain('Upstream Dependencies');
+    expect(plain).toContain('Downstream Dependents');
+    expect(plain).toContain('TRACE  Trace everything');
+    expect(plain).toContain('TRACE  Traceability');
+    expect(plain).toContain('UP  Upstream dependency');
+    expect(plain).toContain('DOWN  Downstream dependent');
+  });
 });

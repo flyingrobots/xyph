@@ -206,6 +206,20 @@ describe('DashboardApp', () => {
     expect(reopened.scrollbars.inspector.level).toBe(4);
   });
 
+  it('opens and closes the quest tree modal with t', () => {
+    const app = buildApp();
+    const loaded = ready(app, makeSnapshot({
+      quests: [{ id: 'task:Q1', title: 'Quest One', status: 'READY', hours: 1 }],
+    }));
+
+    const [tree] = app.update(key('t'), loaded);
+    expect(tree.mode).toBe('quest-tree');
+    expect(strip(app.view(tree) as string)).toContain('Lineage');
+
+    const [closed] = app.update(key('t'), tree);
+    expect(closed.mode).toBe('normal');
+  });
+
   it('toggles the Now lane between action queue and recent activity with v', () => {
     const app = buildApp();
     const loaded = ready(app, makeSnapshot({

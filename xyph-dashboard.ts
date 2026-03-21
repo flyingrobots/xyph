@@ -9,6 +9,7 @@
  *   [ / ]           — cycle cockpit lanes (prev / next)
  *   1-5             — jump to lane (Now, Plan, Review, Settlement, Campaigns)
  *   v               — toggle Now lane between action queue and recent activity
+ *   t               — open the selected quest tree / lineage modal
  *   i               — toggle inspector pane
  *   PgUp / PgDn     — page the worklist
  *   Shift+PgUp/PgDn — scroll the inspector

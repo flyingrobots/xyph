@@ -6,6 +6,7 @@ All notable changes to XYPH will be documented in this file.
 
 ### Changed
 
+- **Selected quests now open a graph-native tree modal** — press `t` on a selected quest to open a lineage / dependency modal that shows sovereign intent lineage, campaign placement, submission/scroll settlement artifacts, upstream dependencies, and downstream dependents without leaving the cockpit.
 - **The `Now` lane now has a real recent-activity mode** — press `v` on the `Now` lane to switch between the forward-looking action queue and a chronological “what changed, who did it” stream built from quest, review, decision, and governance-artifact facts. The lane rail count, worklist chrome, inspector detail, command palette, and footer hints now all reflect the active mode instead of hiding recent activity in the drawer.
 - **Cockpit pane heights now honor the terminal viewport in both wide and narrow layouts** — header boxes are now measured instead of guessed, pane body heights are derived from the actual rendered chrome, and the stacked narrow-layout branch now uses a real constrained column layout. This prevents worklist and inspector cards from drawing underneath the footer when the viewport gets tight.
 - **The cockpit hero now anchors observer identity on the right** — the top bar no longer treats surface, observer, and worldline as one mushy inline detail string. XYPH now renders product + active surface on the left and observer/worldline identity on the right so the operator always knows who is seeing what reality.

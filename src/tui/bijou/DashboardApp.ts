@@ -38,6 +38,7 @@ import { cockpitView } from './views/cockpit-view.js';
 import { landingView } from './views/landing-view.js';
 import { confirmOverlay, inputOverlay } from './overlays.js';
 import { renderMyStuffDrawer } from './views/my-stuff-drawer.js';
+import { questTreeOverlay } from './views/quest-tree-modal.js';
 import { claimQuest, promoteQuest, rejectQuest, reviewSubmission, type WriteDeps } from './write-cmds.js';
 import {
   buildLaneTable,
@@ -89,10 +90,11 @@ export interface DashboardModel {
   requestId: number;
   loadingProgress: number;
   pulsePhase: number;
-  mode: 'normal' | 'confirm' | 'input' | 'palette';
+  mode: 'normal' | 'confirm' | 'input' | 'palette' | 'quest-tree';
   confirmState: { prompt: string; action: ConfirmAction; hint?: string } | null;
   inputState: { label: string; value: string; action: PendingWrite } | null;
   paletteState: CommandPaletteState | null;
+  questTreeScrollY: number;
   toast: { message: string; variant: 'success' | 'error'; expiresAt: number } | null;
   writePending: boolean;
   drawerOpen: boolean;
@@ -134,6 +136,7 @@ type ViewAction =
   | { type: 'page-up-list' }
   | { type: 'page-down-inspector' }
   | { type: 'page-up-inspector' }
+  | { type: 'toggle-quest-tree' }
   | { type: 'claim' }
   | { type: 'promote' }
   | { type: 'reject' }
@@ -201,6 +204,7 @@ function buildViewKeys(): KeyMap<ViewAction> {
       .bind('pageup', 'Page worklist up', { type: 'page-up-list' })
       .bind('shift+pagedown', 'Scroll inspector down', { type: 'page-down-inspector' })
       .bind('shift+pageup', 'Scroll inspector up', { type: 'page-up-inspector' })
+      .bind('t', 'Open quest tree', { type: 'toggle-quest-tree' })
       .bind('c', 'Claim selected quest', { type: 'claim' })
       .bind('p', 'Promote selected backlog quest', { type: 'promote' })
       .bind('shift+d', 'Reject selected backlog quest', { type: 'reject' })
@@ -340,11 +344,11 @@ function actionHint(model: DashboardModel): string {
   const quest = selectedQuest(model);
   if (quest) {
     if (quest.status === 'READY') {
-      hint = 'c claim';
+      hint = 'c claim · t tree';
     } else if (quest.status === 'BACKLOG') {
-      hint = 'p promote · D reject';
+      hint = 'p promote · D reject · t tree';
     } else {
-      hint = 'j/k move · i inspector · PgUp/PgDn list';
+      hint = 't tree · j/k move · i inspector · PgUp/PgDn list';
     }
   } else {
     const submission = selectedSubmission(model);
@@ -418,6 +422,9 @@ function buildPaletteItems(model: DashboardModel): CommandPaletteItem[] {
   ];
 
   const quest = selectedQuest(model);
+  if (quest) {
+    items.push({ id: 'quest-tree', label: 'Open selected quest tree', category: 'Inspect', shortcut: 't' });
+  }
   if (quest?.status === 'READY') {
     items.push({ id: 'claim', label: 'Claim selected quest', category: 'Action', shortcut: 'c' });
   }
@@ -614,6 +621,10 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         return model.lane === 'now' ? wakeScrollbar(toggleNowView(model), 'worklist') : [model, []];
       case 'toggle-drawer':
         return toggleDrawer(model);
+      case 'quest-tree':
+        return selectedQuest(model)
+          ? [{ ...model, mode: 'quest-tree', questTreeScrollY: 0 }, []]
+          : [model, []];
       case 'claim':
         return promptForAction(model, { type: 'claim' });
       case 'promote':
@@ -677,6 +688,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         confirmState: null,
         inputState: null,
         paletteState: null,
+        questTreeScrollY: 0,
         toast: null,
         writePending: false,
         drawerOpen: false,
@@ -859,6 +871,25 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
           return [model, []];
         }
 
+        if (model.mode === 'quest-tree') {
+          if (msg.key === 'escape' || msg.key === 't') {
+            return [{ ...model, mode: 'normal', questTreeScrollY: 0 }, []];
+          }
+          if (msg.key === 'pagedown') {
+            return [{ ...model, questTreeScrollY: model.questTreeScrollY + Math.max(6, model.rows - 12) }, []];
+          }
+          if (msg.key === 'pageup') {
+            return [{ ...model, questTreeScrollY: Math.max(0, model.questTreeScrollY - Math.max(6, model.rows - 12)) }, []];
+          }
+          if (msg.key === 'j' || msg.key === 'down') {
+            return [{ ...model, questTreeScrollY: model.questTreeScrollY + 1 }, []];
+          }
+          if (msg.key === 'k' || msg.key === 'up') {
+            return [{ ...model, questTreeScrollY: Math.max(0, model.questTreeScrollY - 1) }, []];
+          }
+          return [model, []];
+        }
+
         if (model.mode === 'palette' && model.paletteState) {
           const paletteAction = paletteKeys.handle(msg);
           if (paletteAction) {
@@ -985,6 +1016,10 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
               return wakeScrollbar(updateInspectorScroll(model, model.laneState[model.lane].inspectorScrollY + 10), 'inspector');
             case 'page-up-inspector':
               return wakeScrollbar(updateInspectorScroll(model, model.laneState[model.lane].inspectorScrollY - 10), 'inspector');
+            case 'toggle-quest-tree':
+              return selectedQuest(model)
+                ? [{ ...model, mode: 'quest-tree', questTreeScrollY: 0 }, []]
+                : [model, []];
             case 'claim':
             case 'promote':
             case 'reject':
@@ -1067,6 +1102,13 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
           borderToken: style.theme.border.primary,
         });
         output = composite(output, [overlay]);
+      }
+
+      if (model.mode === 'quest-tree' && model.snapshot) {
+        const quest = selectedQuest(model);
+        if (quest) {
+          output = questTreeOverlay(output, model.snapshot, quest, model.questTreeScrollY, model.cols, model.rows, style);
+        }
       }
 
       if (model.toast) {
