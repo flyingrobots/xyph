@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createFileObserverWatermarkStore,
   createMemoryObserverWatermarkStore,
-  emptyObserverWatermarks,
+  emptyObserverFreshnessState,
   observerWatermarkScopeKey,
   type ObserverWatermarkScope,
 } from '../observer-watermarks.js';
@@ -19,16 +19,22 @@ const TEST_SCOPE: ObserverWatermarkScope = {
 describe('observer-watermarks', () => {
   it('round-trips scoped watermarks in memory', () => {
     const store = createMemoryObserverWatermarkStore();
-    expect(store.load(TEST_SCOPE)).toEqual(emptyObserverWatermarks());
+    expect(store.load(TEST_SCOPE)).toEqual(emptyObserverFreshnessState());
 
-    store.save(TEST_SCOPE, { now: 10, plan: 20, review: 30, settlement: 40, campaigns: 50 });
+    store.save(TEST_SCOPE, {
+      watermarks: { now: 10, plan: 20, review: 30, settlement: 40, campaigns: 50 },
+      seenItems: { 'plan:quest:task:Q1': 99 },
+    });
 
     expect(store.load(TEST_SCOPE)).toEqual({
-      now: 10,
-      plan: 20,
-      review: 30,
-      settlement: 40,
-      campaigns: 50,
+      watermarks: {
+        now: 10,
+        plan: 20,
+        review: 30,
+        settlement: 40,
+        campaigns: 50,
+      },
+      seenItems: { 'plan:quest:task:Q1': 99 },
     });
   });
 
@@ -38,13 +44,16 @@ describe('observer-watermarks', () => {
     writeFileSync(filePath, '{"version":1,"scopes":{"bad":"data"}}\n', 'utf8');
     const store = createFileObserverWatermarkStore(filePath);
 
-    expect(store.load(TEST_SCOPE)).toEqual(emptyObserverWatermarks());
+    expect(store.load(TEST_SCOPE)).toEqual(emptyObserverFreshnessState());
 
-    store.save(TEST_SCOPE, { now: 7, plan: 0, review: 0, settlement: 0, campaigns: 0 });
+    store.save(TEST_SCOPE, {
+      watermarks: { now: 7, plan: 0, review: 0, settlement: 0, campaigns: 0 },
+      seenItems: {},
+    });
 
     const persisted = JSON.parse(readFileSync(filePath, 'utf8')) as {
-      scopes: Record<string, { now?: number }>;
+      scopes: Record<string, { watermarks?: { now?: number } }>;
     };
-    expect(persisted.scopes[observerWatermarkScopeKey(TEST_SCOPE)]?.now).toBe(7);
+    expect(persisted.scopes[observerWatermarkScopeKey(TEST_SCOPE)]?.watermarks?.now).toBe(7);
   });
 });

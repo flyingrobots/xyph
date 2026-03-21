@@ -144,10 +144,27 @@ describe('DashboardApp', () => {
 
     expect(next.lane).toBe('plan');
     expect(next.observerWatermarks.now).toBe(100);
-    expect(store.load(TEST_SCOPE).now).toBe(100);
+    expect(store.load(TEST_SCOPE).watermarks.now).toBe(100);
   });
 
-  it('marks the selected row seen without clearing newer items above it', () => {
+  it('marks the highlighted row seen when entering a lane without clearing newer items below it', () => {
+    const app = buildApp(undefined, { plan: 0 });
+    const loaded = ready(app, makeSnapshot({
+      quests: [
+        { id: 'task:Q1', title: 'Newest Quest', status: 'READY', hours: 1, readyAt: 200 },
+        { id: 'task:Q2', title: 'Older Quest', status: 'READY', hours: 1, readyAt: 100 },
+      ],
+    }));
+
+    const [plan] = app.update(key('2'), loaded);
+
+    expect(plan.observerSeenItems['plan:quest:task:Q1']).toBe(200);
+    expect(plan.observerSeenItems['plan:quest:task:Q2']).toBeUndefined();
+    const plain = strip(app.view(plan) as string);
+    expect(plain).not.toContain('● QUEST');
+  });
+
+  it('marks the next highlighted row seen as selection moves', () => {
     const app = buildApp(undefined, { plan: 0 });
     const loaded = ready(app, makeSnapshot({
       quests: [
@@ -158,12 +175,11 @@ describe('DashboardApp', () => {
 
     const [plan] = app.update(key('2'), loaded);
     const [second] = app.update(key('j'), plan);
-    const [seen] = app.update(key('s'), second);
 
-    expect(seen.observerWatermarks.plan).toBe(100);
-    const plain = strip(app.view(seen) as string);
-    expect(plain).toContain('S lane seen');
-    expect(plain).not.toContain('s seen');
+    expect(second.observerSeenItems['plan:quest:task:Q1']).toBe(200);
+    expect(second.observerSeenItems['plan:quest:task:Q2']).toBe(100);
+    const plain = strip(app.view(second) as string);
+    expect(plain).not.toContain('● 1');
   });
 
   it('marks the whole lane seen with shift+s', () => {
@@ -476,8 +492,25 @@ describe('DashboardApp', () => {
     const output = strip(app.view(loaded) as string);
     const footer = output.split('\n').slice(-2);
 
-    expect(footer[0]).toContain('PgUp/PgDn list');
-    expect(footer[1]).not.toContain('PgUp/PgDn list');
-    expect(footer[1]).toContain('r refresh');
+    expect(footer[0]).not.toContain('PgUp/PgDn list');
+    expect(footer[1]).toContain('PgUp/PgDn list');
+    expect(footer[1]).not.toContain('QUEST ·');
+  });
+
+  it('opens help as a modal with contextual controls instead of replacing the cockpit', () => {
+    const app = buildApp({
+      quests: [{ id: 'task:Q1', title: 'Quest One', status: 'READY', hours: 1 }],
+    });
+    const loaded = ready(app, makeSnapshot({
+      quests: [{ id: 'task:Q1', title: 'Quest One', status: 'READY', hours: 1 }],
+    }));
+
+    const [help] = app.update(key('?'), loaded);
+    const plain = strip(app.view(help) as string);
+
+    expect(plain).toContain('Cockpit Controls');
+    expect(plain).toContain('Current context');
+    expect(plain).toContain('claim');
+    expect(plain).toContain('Quest One');
   });
 });

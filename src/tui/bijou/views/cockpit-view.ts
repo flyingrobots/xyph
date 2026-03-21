@@ -299,6 +299,7 @@ function buildWorklistViewport(options: {
   startIndex: number;
   lane: DashboardModel['lane'];
   watermarks: DashboardModel['observerWatermarks'];
+  seenItems: DashboardModel['observerSeenItems'];
   width: number;
   height: number;
   style: StylePort;
@@ -317,7 +318,7 @@ function buildWorklistViewport(options: {
       index === options.focusRow,
       options.width,
       options.accentToken,
-      itemIsFresh(item, options.lane, options.watermarks),
+      index === options.focusRow ? false : itemIsFresh(item, options.lane, options.watermarks, options.seenItems),
     );
     const needed = cardLines.length + (lines.length > 0 ? 1 : 0);
     if (lines.length + needed > options.height && lines.length > 0) break;
@@ -462,6 +463,7 @@ export function describeCockpitInteractionMap(
     startIndex: start,
     lane: model.lane,
     watermarks: model.observerWatermarks,
+    seenItems: model.observerSeenItems,
     width: worklistContentWidth,
     height: worklistInnerHeight,
     style,
@@ -475,6 +477,7 @@ export function describeCockpitInteractionMap(
       startIndex: start,
       lane: model.lane,
       watermarks: model.observerWatermarks,
+      seenItems: model.observerSeenItems,
       width: worklistContentWidth,
       height: worklistInnerHeight,
       style,
@@ -653,7 +656,7 @@ function buildLaneRailContent(
 ): { lines: string[]; regions: ({ lane: DashboardModel['lane'] } & LineSpan)[] } {
   const lines: string[] = [];
   const regions: ({ lane: DashboardModel['lane'] } & LineSpan)[] = [];
-  const lanes = cockpitLanesWithFreshness(snapshot, model.observerWatermarks, model.agentId, model.nowView);
+  const lanes = cockpitLanesWithFreshness(snapshot, model.observerWatermarks, model.observerSeenItems, model.agentId, model.nowView);
   for (const lane of lanes) {
     const selected = lane.id === model.lane;
     const accentToken = laneAccent(style, lane.id);
@@ -745,6 +748,7 @@ function renderWorklistPane(model: DashboardModel, snapshot: GraphSnapshot, styl
     startIndex: start,
     lane: model.lane,
     watermarks: model.observerWatermarks,
+    seenItems: model.observerSeenItems,
     width: contentWidth,
     height: innerHeight,
     style,
@@ -758,6 +762,7 @@ function renderWorklistPane(model: DashboardModel, snapshot: GraphSnapshot, styl
       startIndex: start,
       lane: model.lane,
       watermarks: model.observerWatermarks,
+      seenItems: model.observerSeenItems,
       width: contentWidth,
       height: innerHeight,
       style,

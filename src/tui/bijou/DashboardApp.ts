@@ -15,7 +15,6 @@ import {
   cpSelectedItem,
   drawer,
   flex,
-  helpView,
   modal,
   quit,
   statusBar,
@@ -43,7 +42,7 @@ import { claimQuest, promoteQuest, rejectQuest, reviewSubmission, type WriteDeps
 import {
   buildLaneTable,
   cockpitLaneOrder,
-  itemIsFresh,
+  freshnessItemKey,
   laneFreshCount,
   laneLatestTimestamp,
   laneTitle,
@@ -53,10 +52,13 @@ import {
   type CockpitLaneId,
 } from './cockpit.js';
 import {
+  type ObserverSeenItems,
+  type ObserverFreshnessState,
   type ObserverWatermarkScope,
   type ObserverWatermarkStore,
   type ObserverWatermarks,
 } from './observer-watermarks.js';
+import { wrapWhitespaceText } from '../view-helpers.js';
 
 export type PendingWrite =
   | { kind: 'claim'; questId: string }
@@ -92,6 +94,7 @@ export interface DashboardModel {
   error: string | null;
   showLanding: boolean;
   showHelp: boolean;
+  helpScrollY: number;
   cols: number;
   rows: number;
   logoText: string;
@@ -112,6 +115,7 @@ export interface DashboardModel {
   refreshPending: boolean;
   agentId?: string;
   observerWatermarks: ObserverWatermarks;
+  observerSeenItems: ObserverSeenItems;
 }
 
 export type DashboardMsg =
@@ -153,7 +157,6 @@ type ViewAction =
   | { type: 'reject' }
   | { type: 'approve' }
   | { type: 'request-changes' }
-  | { type: 'mark-item-seen' }
   | { type: 'mark-lane-seen' };
 
 export interface DashboardDeps {
@@ -225,7 +228,6 @@ function buildViewKeys(): KeyMap<ViewAction> {
       .bind('shift+d', 'Reject selected backlog quest', { type: 'reject' })
       .bind('a', 'Approve selected submission', { type: 'approve' })
       .bind('x', 'Request changes on selected submission', { type: 'request-changes' })
-      .bind('s', 'Mark selected item seen', { type: 'mark-item-seen' })
       .bind('shift+s', 'Mark current lane seen', { type: 'mark-lane-seen' }),
     );
 }
@@ -240,6 +242,10 @@ function chromeLine(text: string, width: number, token: TokenValue, style: Style
   }
   const padded = visibleLength(display) < width ? display + ' '.repeat(width - visibleLength(display)) : display;
   return style.styled(token, padded);
+}
+
+function padVisible(text: string, width: number): string {
+  return text + ' '.repeat(Math.max(0, width - visibleLength(text)));
 }
 
 function fadeScrollbar(
@@ -289,11 +295,11 @@ function selectRow(model: DashboardModel, rowIndex: number): DashboardModel {
   return rebuildForLane(updateInspectorScroll(updateFocus(model, rowIndex), 0), model.lane);
 }
 
-function scrollWorklistBy(model: DashboardModel, delta: number): [DashboardModel, Cmd<DashboardMsg>[]] {
+function scrollWorklistBy(model: DashboardModel, delta: number, deps: DashboardDeps): [DashboardModel, Cmd<DashboardMsg>[]] {
   const rows = model.table.rows.length;
   if (rows === 0) return [model, []];
   const nextRow = Math.max(0, Math.min(rows - 1, model.table.focusRow + delta));
-  return wakeScrollbar(selectRow(model, nextRow), 'worklist');
+  return wakeScrollbar(visitSelectedItem(selectRow(model, nextRow), deps), 'worklist');
 }
 
 function scrollInspectorBy(model: DashboardModel, delta: number): [DashboardModel, Cmd<DashboardMsg>[]] {
@@ -363,6 +369,21 @@ function switchLane(model: DashboardModel, lane: CockpitLaneId): DashboardModel 
   return updateInspectorScroll(withLane, rememberedScroll);
 }
 
+function persistFreshnessState(
+  model: DashboardModel,
+  deps: DashboardDeps,
+  watermarks: ObserverWatermarks,
+  seenItems: ObserverSeenItems,
+): DashboardModel {
+  const freshnessState: ObserverFreshnessState = { watermarks, seenItems };
+  deps.observerWatermarkStore.save(deps.observerWatermarkScope, freshnessState);
+  return {
+    ...model,
+    observerWatermarks: watermarks,
+    observerSeenItems: seenItems,
+  };
+}
+
 function persistLaneWatermark(model: DashboardModel, deps: DashboardDeps, lane: CockpitLaneId, value: number): DashboardModel {
   if (value <= 0) return model;
   const current = model.observerWatermarks[lane];
@@ -371,11 +392,19 @@ function persistLaneWatermark(model: DashboardModel, deps: DashboardDeps, lane: 
     ...model.observerWatermarks,
     [lane]: value,
   };
-  deps.observerWatermarkStore.save(deps.observerWatermarkScope, observerWatermarks);
-  return {
-    ...model,
-    observerWatermarks,
-  };
+  return persistFreshnessState(model, deps, observerWatermarks, model.observerSeenItems);
+}
+
+function persistSeenItem(model: DashboardModel, deps: DashboardDeps, lane: CockpitLaneId, item: CockpitItem | undefined): DashboardModel {
+  const timestamp = item?.timestamp ?? 0;
+  if (!item || timestamp <= 0) return model;
+  const key = freshnessItemKey(item, lane);
+  const current = model.observerSeenItems[key] ?? 0;
+  if (timestamp <= current) return model;
+  return persistFreshnessState(model, deps, model.observerWatermarks, {
+    ...model.observerSeenItems,
+    [key]: timestamp,
+  });
 }
 
 function markLaneSeen(model: DashboardModel, deps: DashboardDeps, lane = model.lane): DashboardModel {
@@ -387,18 +416,17 @@ function markLaneSeen(model: DashboardModel, deps: DashboardDeps, lane = model.l
   );
 }
 
-function markSelectedItemSeen(model: DashboardModel, deps: DashboardDeps): DashboardModel {
-  const item = currentSelectedItem(model);
-  return persistLaneWatermark(model, deps, model.lane, item?.timestamp ?? 0);
+function visitSelectedItem(model: DashboardModel, deps: DashboardDeps): DashboardModel {
+  return persistSeenItem(model, deps, model.lane, currentSelectedItem(model));
 }
 
 function switchLaneWithWatermark(model: DashboardModel, lane: CockpitLaneId, deps: DashboardDeps): DashboardModel {
-  return switchLane(markLaneSeen(model, deps), lane);
+  return visitSelectedItem(switchLane(markLaneSeen(model, deps), lane), deps);
 }
 
-function toggleNowView(model: DashboardModel): DashboardModel {
+function toggleNowView(model: DashboardModel, deps: DashboardDeps): DashboardModel {
   const nextView: NowViewMode = model.nowView === 'queue' ? 'activity' : 'queue';
-  return rebuildForLane({
+  return visitSelectedItem(rebuildForLane({
     ...model,
     nowView: nextView,
     laneState: {
@@ -408,41 +436,64 @@ function toggleNowView(model: DashboardModel): DashboardModel {
         inspectorScrollY: 0,
       },
     },
-  }, 'now');
+  }, 'now'), deps);
 }
 
-function actionHint(model: DashboardModel): string {
-  let hint: string;
+interface ControlHint {
+  key: string;
+  label: string;
+}
+
+function formatControlHints(entries: ControlHint[]): string {
+  return entries.map((entry) => `${entry.key} ${entry.label}`).join(' · ');
+}
+
+function contextControls(model: DashboardModel): ControlHint[] {
+  const hints: ControlHint[] = [];
   const quest = selectedQuest(model);
-  const item = currentSelectedItem(model);
-  const itemFresh = item ? itemIsFresh(item, model.lane, model.observerWatermarks) : false;
-  const laneFresh = laneFreshCount(model.snapshot, model.lane, model.observerWatermarks, model.agentId, model.nowView) > 0;
   if (quest) {
     if (quest.status === 'READY') {
-      hint = 'c claim · t tree';
+      hints.push({ key: 'c', label: 'claim' });
     } else if (quest.status === 'BACKLOG') {
-      hint = 'p promote · D reject · t tree';
-    } else {
-      hint = 't tree · j/k move · i inspector · PgUp/PgDn list';
+      hints.push({ key: 'p', label: 'promote' });
+      hints.push({ key: 'D', label: 'reject' });
     }
+    hints.push({ key: 't', label: 'tree' });
   } else {
     const submission = selectedSubmission(model);
     if (submission && (submission.status === 'OPEN' || submission.status === 'CHANGES_REQUESTED')) {
-      hint = 'a approve · x request changes';
-    } else {
-      hint = 'j/k move · i inspector · PgUp/PgDn list';
+      hints.push({ key: 'a', label: 'approve' });
+      hints.push({ key: 'x', label: 'changes' });
     }
   }
+  hints.push({ key: 'j/k', label: 'move' });
+  hints.push({ key: 'PgUp/PgDn', label: 'list' });
+  if (model.inspectorOpen) {
+    hints.push({ key: 'Shift+Pg', label: 'inspect' });
+  }
   if (model.lane === 'now') {
-    hint = `${hint} · v ${model.nowView === 'queue' ? 'recent' : 'queue'}`;
+    hints.push({ key: 'v', label: model.nowView === 'queue' ? 'recent' : 'queue' });
   }
-  if (itemFresh) {
-    hint = `${hint} · s seen`;
+  if (laneFreshCount(model.snapshot, model.lane, model.observerWatermarks, model.observerSeenItems, model.agentId, model.nowView) > 0) {
+    hints.push({ key: 'Shift+S', label: 'lane seen' });
   }
-  if (laneFresh) {
-    hint = `${hint} · S lane seen`;
-  }
-  return hint;
+  return hints;
+}
+
+function globalControls(): { left: ControlHint[]; center: ControlHint[] } {
+  return {
+    left: [
+      { key: '1-5', label: 'lanes' },
+      { key: '[/]', label: 'switch' },
+    ],
+    center: [
+      { key: 'r', label: 'refresh' },
+      { key: 'i', label: 'inspector' },
+      { key: 'm', label: 'drawer' },
+      { key: ':', label: 'palette' },
+      { key: '?', label: 'help' },
+    ],
+  };
 }
 
 function pageRows(model: DashboardModel): number {
@@ -461,26 +512,97 @@ function renderStatusLine(model: DashboardModel): string {
     model.loading ? '· syncing' : '',
   ].join(' ');
   const center = item ? `${item.label} · ${item.primary}` : 'No selection';
-  const right = actionHint(model);
-  return statusBar({
-    left,
-    center,
-    right,
-    width: model.cols,
-  });
-}
-
-function renderHintLine(model: DashboardModel): string {
-  const left = '1-5 lanes · [/] switch';
-  const center = model.lane === 'now'
-    ? `r refresh · v ${model.nowView === 'queue' ? 'recent' : 'queue'} · i inspector · m drawer · ? help`
-    : 'r refresh · i inspector · m drawer · ? help';
   return statusBar({
     left,
     center,
     right: '',
     width: model.cols,
   });
+}
+
+function renderControlsLine(model: DashboardModel): string {
+  const controls = globalControls();
+  return statusBar({
+    left: formatControlHints(controls.left),
+    center: formatControlHints(controls.center),
+    right: formatControlHints(contextControls(model)),
+    width: model.cols,
+  });
+}
+
+function helpSections(model: DashboardModel): { title: string; entries: ControlHint[] }[] {
+  const controls = globalControls();
+  return [
+    { title: 'Current context', entries: contextControls(model) },
+    { title: 'Global', entries: [...controls.left, ...controls.center, { key: 'q', label: 'quit' }] },
+    {
+      title: 'Mouse',
+      entries: [
+        { key: 'click lane', label: 'switch surface lane' },
+        { key: 'click row', label: 'select worklist item' },
+        { key: 'wheel', label: 'scroll worklist, inspector, drawer, or quest tree' },
+      ],
+    },
+  ].filter((section) => section.entries.length > 0);
+}
+
+function helpModalWidth(model: DashboardModel): number {
+  return Math.min(84, Math.max(52, model.cols - 10));
+}
+
+function helpModalBodyHeight(model: DashboardModel): number {
+  return Math.min(20, Math.max(10, model.rows - 10));
+}
+
+function buildHelpLines(model: DashboardModel, style: StylePort, width: number): string[] {
+  const lines: string[] = [];
+  const keyWidth = Math.max(10, Math.min(18, Math.floor(width * 0.24)));
+  lines.push(style.styled(style.theme.semantic.primary, 'Cockpit Controls'));
+  lines.push(style.styled(style.theme.semantic.muted, 'The help modal now mirrors the actual footer and current selection.'));
+  lines.push('');
+
+  for (const section of helpSections(model)) {
+    lines.push(style.styled(style.theme.semantic.primary, section.title));
+    for (const entry of section.entries) {
+      const wrapped = wrapWhitespaceText(entry.label, Math.max(8, width - keyWidth - 2));
+      const keyText = style.styled(style.theme.semantic.primary, padVisible(entry.key, keyWidth));
+      lines.push(`${keyText}  ${wrapped[0] ?? ''}`);
+      for (const line of wrapped.slice(1)) {
+        lines.push(`${' '.repeat(keyWidth)}  ${line}`);
+      }
+    }
+    lines.push('');
+  }
+
+  while (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
+  return lines;
+}
+
+function helpMaxScroll(model: DashboardModel, style: StylePort): number {
+  const width = Math.max(20, helpModalWidth(model) - 4);
+  const contentLines = buildHelpLines(model, style, width);
+  return Math.max(0, contentLines.length - Math.max(1, helpModalBodyHeight(model) - 1));
+}
+
+function clampHelpScroll(model: DashboardModel, style: StylePort): DashboardModel {
+  const maxScroll = helpMaxScroll(model, style);
+  if (model.helpScrollY >= 0 && model.helpScrollY <= maxScroll) return model;
+  return { ...model, helpScrollY: Math.max(0, Math.min(model.helpScrollY, maxScroll)) };
+}
+
+function renderHelpModalBody(model: DashboardModel, style: StylePort): string {
+  const contentWidth = Math.max(20, helpModalWidth(model) - 4);
+  const bodyHeight = helpModalBodyHeight(model);
+  const contentLines = buildHelpLines(model, style, contentWidth);
+  const scrollY = Math.max(0, Math.min(model.helpScrollY, Math.max(0, contentLines.length - Math.max(1, bodyHeight - 1))));
+  const viewportHeight = Math.max(1, bodyHeight - 1);
+  const visible = contentLines.slice(scrollY, scrollY + viewportHeight);
+  while (visible.length < viewportHeight) visible.push('');
+  const footer = style.styled(
+    style.theme.semantic.muted,
+    `Scroll ${Math.min(scrollY + 1, Math.max(1, contentLines.length))}/${Math.max(1, contentLines.length)} · ? / esc close`,
+  );
+  return [...visible, footer].join('\n');
 }
 
 function buildPaletteItems(model: DashboardModel): CommandPaletteItem[] {
@@ -506,11 +628,7 @@ function buildPaletteItems(model: DashboardModel): CommandPaletteItem[] {
   if (quest) {
     items.push({ id: 'quest-tree', label: 'Open selected quest tree', category: 'Inspect', shortcut: 't' });
   }
-  const selected = currentSelectedItem(model);
-  if (selected && itemIsFresh(selected, model.lane, model.observerWatermarks)) {
-    items.push({ id: 'mark-item-seen', label: 'Mark selected item seen', category: 'Freshness', shortcut: 's' });
-  }
-  if (laneFreshCount(model.snapshot, model.lane, model.observerWatermarks, model.agentId, model.nowView) > 0) {
+  if (laneFreshCount(model.snapshot, model.lane, model.observerWatermarks, model.observerSeenItems, model.agentId, model.nowView) > 0) {
     items.push({ id: 'mark-lane-seen', label: `Mark ${laneTitle(model.lane)} lane seen`, category: 'Freshness', shortcut: 'S' });
   }
   if (quest?.status === 'READY') {
@@ -737,15 +855,13 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         return [{ ...model, loading: true, error: null, requestId: nextReqId }, [fetchSnapshot(nextReqId)]];
       }
       case 'toggle-now-view':
-        return model.lane === 'now' ? wakeScrollbar(toggleNowView(model), 'worklist') : [model, []];
+        return model.lane === 'now' ? wakeScrollbar(toggleNowView(model, deps), 'worklist') : [model, []];
       case 'toggle-drawer':
         return toggleDrawer(model);
       case 'quest-tree':
         return selectedQuest(model)
           ? [{ ...model, mode: 'quest-tree', questTreeScrollY: 0 }, []]
           : [model, []];
-      case 'mark-item-seen':
-        return [markSelectedItemSeen(model, deps), []];
       case 'mark-lane-seen':
         return [markLaneSeen(model, deps), []];
       case 'claim':
@@ -789,6 +905,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
       const rows = process.stdout.rows ?? 24;
       const laneState = emptyLaneState();
       const lane = 'now' as const;
+      const freshnessState = deps.observerWatermarkStore.load(deps.observerWatermarkScope);
       const model: DashboardModel = {
         lane,
         nowView: 'queue',
@@ -801,6 +918,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         error: null,
         showLanding: true,
         showHelp: false,
+        helpScrollY: 0,
         cols,
         rows,
         logoText: deps.logoText,
@@ -820,7 +938,8 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         watching: false,
         refreshPending: false,
         agentId: deps.agentId,
-        observerWatermarks: deps.observerWatermarkStore.load(deps.observerWatermarkScope),
+        observerWatermarks: freshnessState.watermarks,
+        observerSeenItems: freshnessState.seenItems,
       };
       return [model, [
         fetchSnapshot(model.requestId),
@@ -844,13 +963,13 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
           cols: msg.columns,
           rows: msg.rows,
         };
-        return [clampDrawerScroll(rebuildForLane(resized, resized.lane), deps), []];
+        return [clampHelpScroll(clampDrawerScroll(rebuildForLane(resized, resized.lane), deps), deps.style), []];
       }
 
       if (msg.type === 'snapshot-loaded') {
         if (msg.requestId !== model.requestId) return [model, []];
         const pendingRefresh = model.refreshPending;
-        const updated = rebuildForLane({
+        const updated = visitSelectedItem(rebuildForLane({
           ...model,
           snapshot: msg.snapshot,
           loading: pendingRefresh,
@@ -860,7 +979,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
           refreshPending: false,
           watching: true,
           requestId: pendingRefresh ? model.requestId + 1 : model.requestId,
-        }, model.lane, msg.snapshot);
+        }, model.lane, msg.snapshot), deps);
         return [clampDrawerScroll(updated, deps), pendingRefresh ? [fetchSnapshot(updated.requestId)] : []];
       }
 
@@ -925,7 +1044,19 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
       }
 
       if (msg.type === 'mouse') {
-        if (model.showLanding || model.showHelp) return [model, []];
+        if (model.showLanding) return [model, []];
+        if (model.showHelp) {
+          if (msg.action === 'scroll-down') {
+            return [clampHelpScroll({ ...model, helpScrollY: model.helpScrollY + 3 }, deps.style), []];
+          }
+          if (msg.action === 'scroll-up') {
+            return [clampHelpScroll({ ...model, helpScrollY: Math.max(0, model.helpScrollY - 3) }, deps.style), []];
+          }
+          if (msg.action === 'press' && msg.button === 'left') {
+            return [{ ...model, showHelp: false, helpScrollY: 0 }, []];
+          }
+          return [model, []];
+        }
 
         if (model.mode === 'quest-tree' && model.snapshot) {
           const quest = selectedQuest(model);
@@ -983,7 +1114,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
 
           const rowRegion = interactionMap.worklistRows.find((region) => pointInRect(region.rect, msg.col, msg.row));
           if (rowRegion) {
-            return wakeScrollbar(selectRow(model, rowRegion.rowIndex), 'worklist');
+            return wakeScrollbar(visitSelectedItem(selectRow(model, rowRegion.rowIndex), deps), 'worklist');
           }
         }
 
@@ -993,7 +1124,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
             return scrollInspectorBy(model, delta * 3);
           }
           if (pointInRect(interactionMap.worklistRect, msg.col, msg.row)) {
-            return scrollWorklistBy(model, delta);
+            return scrollWorklistBy(model, delta, deps);
           }
         }
 
@@ -1005,7 +1136,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
           return [markLaneSeen(model, deps), [stopWatching(), quit()]];
         }
 
-        if (msg.key === 'q' && !msg.ctrl && !msg.alt && model.mode === 'normal') {
+        if (msg.key === 'q' && !msg.ctrl && !msg.alt && model.mode === 'normal' && !model.showHelp) {
           const quitHint =
             deps.style.styled(deps.style.theme.semantic.info, 'q') + ' / ' +
             deps.style.styled(deps.style.theme.semantic.info, 'y') + '  confirm · ' +
@@ -1127,7 +1258,19 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
 
         if (model.showHelp) {
           if (msg.key === '?' || msg.key === 'escape') {
-            return [{ ...model, showHelp: false }, []];
+            return [{ ...model, showHelp: false, helpScrollY: 0 }, []];
+          }
+          if (msg.key === 'pagedown') {
+            return [clampHelpScroll({ ...model, helpScrollY: model.helpScrollY + Math.max(6, model.rows - 14) }, deps.style), []];
+          }
+          if (msg.key === 'pageup') {
+            return [clampHelpScroll({ ...model, helpScrollY: Math.max(0, model.helpScrollY - Math.max(6, model.rows - 14)) }, deps.style), []];
+          }
+          if (msg.key === 'j' || msg.key === 'down') {
+            return [clampHelpScroll({ ...model, helpScrollY: model.helpScrollY + 1 }, deps.style), []];
+          }
+          if (msg.key === 'k' || msg.key === 'up') {
+            return [clampHelpScroll({ ...model, helpScrollY: Math.max(0, model.helpScrollY - 1) }, deps.style), []];
           }
           return [model, []];
         }
@@ -1151,10 +1294,10 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
             }
             case 'toggle-now-view':
               return model.lane === 'now'
-                ? wakeScrollbar(toggleNowView(model), 'worklist')
+                ? wakeScrollbar(toggleNowView(model, deps), 'worklist')
                 : [model, []];
             case 'toggle-help':
-              return [{ ...model, showHelp: !model.showHelp }, []];
+              return [{ ...model, showHelp: !model.showHelp, helpScrollY: 0 }, []];
             case 'toggle-inspector':
               return model.inspectorOpen
                 ? [{ ...model, inspectorOpen: false }, []]
@@ -1180,37 +1323,55 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
               const rows = model.table.rows.length;
               if (rows === 0) return [model, []];
               const nextRow = Math.min(rows - 1, model.table.focusRow + 1);
-              const nextModel = rebuildForLane(updateInspectorScroll(updateFocus(model, nextRow), 0), model.lane);
+              const nextModel = visitSelectedItem(
+                rebuildForLane(updateInspectorScroll(updateFocus(model, nextRow), 0), model.lane),
+                deps,
+              );
               return wakeScrollbar(nextModel, 'worklist');
             }
             case 'select-prev': {
               const rows = model.table.rows.length;
               if (rows === 0) return [model, []];
               const nextRow = Math.max(0, model.table.focusRow - 1);
-              const nextModel = rebuildForLane(updateInspectorScroll(updateFocus(model, nextRow), 0), model.lane);
+              const nextModel = visitSelectedItem(
+                rebuildForLane(updateInspectorScroll(updateFocus(model, nextRow), 0), model.lane),
+                deps,
+              );
               return wakeScrollbar(nextModel, 'worklist');
             }
             case 'top': {
-              const nextModel = rebuildForLane(updateInspectorScroll(updateFocus(model, 0), 0), model.lane);
+              const nextModel = visitSelectedItem(
+                rebuildForLane(updateInspectorScroll(updateFocus(model, 0), 0), model.lane),
+                deps,
+              );
               return wakeScrollbar(nextModel, 'worklist');
             }
             case 'bottom': {
               const targetRow = Math.max(0, model.table.rows.length - 1);
-              const nextModel = rebuildForLane(updateInspectorScroll(updateFocus(model, targetRow), 0), model.lane);
+              const nextModel = visitSelectedItem(
+                rebuildForLane(updateInspectorScroll(updateFocus(model, targetRow), 0), model.lane),
+                deps,
+              );
               return wakeScrollbar(nextModel, 'worklist');
             }
             case 'page-down-list': {
               const rows = model.table.rows.length;
               if (rows === 0) return [model, []];
               const nextRow = Math.min(rows - 1, model.table.focusRow + pageRows(model));
-              const nextModel = rebuildForLane(updateInspectorScroll(updateFocus(model, nextRow), 0), model.lane);
+              const nextModel = visitSelectedItem(
+                rebuildForLane(updateInspectorScroll(updateFocus(model, nextRow), 0), model.lane),
+                deps,
+              );
               return wakeScrollbar(nextModel, 'worklist');
             }
             case 'page-up-list': {
               const rows = model.table.rows.length;
               if (rows === 0) return [model, []];
               const nextRow = Math.max(0, model.table.focusRow - pageRows(model));
-              const nextModel = rebuildForLane(updateInspectorScroll(updateFocus(model, nextRow), 0), model.lane);
+              const nextModel = visitSelectedItem(
+                rebuildForLane(updateInspectorScroll(updateFocus(model, nextRow), 0), model.lane),
+                deps,
+              );
               return wakeScrollbar(nextModel, 'worklist');
             }
             case 'page-down-inspector':
@@ -1221,8 +1382,6 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
               return selectedQuest(model)
                 ? [{ ...model, mode: 'quest-tree', questTreeScrollY: 0 }, []]
                 : [model, []];
-            case 'mark-item-seen':
-              return [markSelectedItemSeen(model, deps), []];
             case 'mark-lane-seen':
               return [markLaneSeen(model, deps), []];
             case 'claim':
@@ -1245,11 +1404,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         return landingView(model, style);
       }
 
-      if (model.showHelp) {
-        return helpView(globalKeys, { title: 'XYPH AION' }) + '\n' + helpView(viewKeys);
-      }
-
-      const hints = renderHintLine(model);
+      const controls = renderControlsLine(model);
       const statusLine = renderStatusLine(model);
 
       const viewRenderer = (w: number, h: number): string => {
@@ -1264,13 +1419,13 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
       };
 
       const statusBg = chromeLine(statusLine, model.cols, style.theme.surface.secondary, style);
-      const hintBg = chromeLine(hints, model.cols, style.theme.surface.muted, style);
+      const controlsBg = chromeLine(controls, model.cols, style.theme.surface.muted, style);
 
       let output = flex(
         { direction: 'column', width: model.cols, height: model.rows },
         { flex: 1, content: viewRenderer },
         { basis: 1, content: statusBg },
-        { basis: 1, content: hintBg },
+        { basis: 1, content: controlsBg },
       );
 
       if (model.drawerWidth > 4 && model.snapshot) {
@@ -1315,6 +1470,16 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         if (quest) {
           output = questTreeOverlay(output, model.snapshot, quest, model.questTreeScrollY, model.cols, model.rows, style);
         }
+      }
+
+      if (model.showHelp) {
+        const overlay = modal({
+          body: renderHelpModalBody(model, style),
+          screenWidth: model.cols,
+          screenHeight: model.rows,
+          borderToken: style.theme.border.primary,
+        });
+        output = composite(output, [overlay], { dim: true });
       }
 
       if (model.toast) {

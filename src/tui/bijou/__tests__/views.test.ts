@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { createPlainStylePort, ensurePlainBijouContext } from '../../../infrastructure/adapters/PlainStyleAdapter.js';
 import type { DashboardModel } from '../DashboardApp.js';
 import type { GraphSnapshot } from '../../../domain/models/dashboard.js';
-import { emptyObserverWatermarks } from '../observer-watermarks.js';
+import { emptyObserverSeenItems, emptyObserverWatermarks } from '../observer-watermarks.js';
 import { cockpitView } from '../views/cockpit-view.js';
 import { renderMyStuffDrawer } from '../views/my-stuff-drawer.js';
 import { buildLaneTable } from '../cockpit.js';
@@ -36,6 +36,7 @@ function makeModel(snapshot: GraphSnapshot | null): DashboardModel {
     error: null,
     showLanding: false,
     showHelp: false,
+    helpScrollY: 0,
     cols: 120,
     rows: 40,
     logoText: 'XYPH',
@@ -56,6 +57,7 @@ function makeModel(snapshot: GraphSnapshot | null): DashboardModel {
     refreshPending: false,
     agentId: 'agent.test',
     observerWatermarks: emptyObserverWatermarks(),
+    observerSeenItems: emptyObserverSeenItems(),
   };
 }
 
@@ -175,7 +177,7 @@ describe('cockpitView', () => {
     expect(plain).toContain('hal');
   });
 
-  it('renders lane and row freshness markers from observer watermarks', () => {
+  it('renders lane freshness markers and hides the selected-row badge', () => {
     const snapshot = makeSnapshot({
       quests: [{
         id: 'task:Q1',
@@ -199,7 +201,7 @@ describe('cockpitView', () => {
 
     const plain = strip(cockpitView(model, style, 120, 30));
     expect(plain).toContain('● 1');
-    expect(plain).toContain('● QUEST');
+    expect(plain).not.toContain('● QUEST');
   });
 
   it('renders settlement detail for a selected governance artifact', () => {

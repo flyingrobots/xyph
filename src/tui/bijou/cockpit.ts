@@ -1,6 +1,6 @@
 import { createNavigableTableState, navTableFocusNext, type NavigableTableState } from '@flyingrobots/bijou-tui';
 import { SUBMISSION_STATUS_ORDER } from '../../domain/entities/Submission.js';
-import type { ObserverWatermarkLane, ObserverWatermarks } from './observer-watermarks.js';
+import type { ObserverSeenItems, ObserverWatermarkLane, ObserverWatermarks } from './observer-watermarks.js';
 import type {
   CampaignNode,
   ComparisonArtifactNode,
@@ -676,20 +676,36 @@ function watermarkForLane(watermarks: ObserverWatermarks, lane: CockpitLaneId): 
   return watermarks[lane as ObserverWatermarkLane] ?? 0;
 }
 
-export function itemIsFresh(item: CockpitItem, lane: CockpitLaneId, watermarks: ObserverWatermarks): boolean {
-  return (item.timestamp ?? 0) > watermarkForLane(watermarks, lane);
+export function freshnessItemKey(item: CockpitItem, lane: CockpitLaneId): string {
+  return `${lane}:${item.kind}:${item.id}`;
+}
+
+function seenTimestampForItem(item: CockpitItem, lane: CockpitLaneId, seenItems: ObserverSeenItems): number {
+  return seenItems[freshnessItemKey(item, lane)] ?? 0;
+}
+
+export function itemIsFresh(
+  item: CockpitItem,
+  lane: CockpitLaneId,
+  watermarks: ObserverWatermarks,
+  seenItems: ObserverSeenItems = {},
+): boolean {
+  const timestamp = item.timestamp ?? 0;
+  return timestamp > watermarkForLane(watermarks, lane)
+    && timestamp > seenTimestampForItem(item, lane, seenItems);
 }
 
 export function laneFreshCount(
   snapshot: GraphSnapshot | null,
   lane: CockpitLaneId,
   watermarks: ObserverWatermarks,
+  seenItems: ObserverSeenItems = {},
   agentId?: string,
   nowView: NowViewMode = 'queue',
 ): number {
   if (!snapshot) return 0;
   return laneItems(snapshot, lane, agentId, nowView)
-    .filter((item) => itemIsFresh(item, lane, watermarks))
+    .filter((item) => itemIsFresh(item, lane, watermarks, seenItems))
     .length;
 }
 
@@ -707,11 +723,12 @@ export function laneLatestTimestamp(
 export function cockpitLanesWithFreshness(
   snapshot: GraphSnapshot | null,
   watermarks: ObserverWatermarks,
+  seenItems: ObserverSeenItems = {},
   agentId?: string,
   nowView: NowViewMode = 'queue',
 ): CockpitLane[] {
   return cockpitLanes(snapshot, agentId, nowView).map((lane) => ({
     ...lane,
-    freshCount: laneFreshCount(snapshot, lane.id, watermarks, agentId, nowView),
+    freshCount: laneFreshCount(snapshot, lane.id, watermarks, seenItems, agentId, nowView),
   }));
 }

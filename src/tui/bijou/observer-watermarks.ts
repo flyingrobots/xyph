@@ -12,6 +12,13 @@ export interface ObserverWatermarks {
   campaigns: number;
 }
 
+export type ObserverSeenItems = Record<string, number>;
+
+export interface ObserverFreshnessState {
+  watermarks: ObserverWatermarks;
+  seenItems: ObserverSeenItems;
+}
+
 export interface ObserverWatermarkScope {
   agentId: string;
   repoPath: string;
@@ -19,13 +26,18 @@ export interface ObserverWatermarkScope {
 }
 
 export interface ObserverWatermarkStore {
-  load(scope: ObserverWatermarkScope): ObserverWatermarks;
-  save(scope: ObserverWatermarkScope, watermarks: ObserverWatermarks): void;
+  load(scope: ObserverWatermarkScope): ObserverFreshnessState;
+  save(scope: ObserverWatermarkScope, state: ObserverFreshnessState): void;
+}
+
+interface PersistedScopeStateV2 {
+  watermarks?: Partial<ObserverWatermarks>;
+  seenItems?: Record<string, unknown>;
 }
 
 interface PersistedObserverWatermarkState {
-  version: 1;
-  scopes: Record<string, Partial<ObserverWatermarks> | undefined>;
+  version: 1 | 2;
+  scopes: Record<string, Partial<ObserverWatermarks> | PersistedScopeStateV2 | undefined>;
 }
 
 const LANE_KEYS: ObserverWatermarkLane[] = ['now', 'plan', 'review', 'settlement', 'campaigns'];
@@ -37,6 +49,17 @@ export function emptyObserverWatermarks(): ObserverWatermarks {
     review: 0,
     settlement: 0,
     campaigns: 0,
+  };
+}
+
+export function emptyObserverSeenItems(): ObserverSeenItems {
+  return {};
+}
+
+export function emptyObserverFreshnessState(): ObserverFreshnessState {
+  return {
+    watermarks: emptyObserverWatermarks(),
+    seenItems: emptyObserverSeenItems(),
   };
 }
 
@@ -60,33 +83,68 @@ function normalizeWatermarks(value: Partial<ObserverWatermarks> | undefined): Ob
   return base;
 }
 
+function normalizeSeenItems(value: Record<string, unknown> | undefined): ObserverSeenItems {
+  const base: ObserverSeenItems = {};
+  if (!value) return base;
+  for (const [key, candidate] of Object.entries(value)) {
+    if (typeof candidate === 'number' && Number.isFinite(candidate) && candidate >= 0) {
+      base[key] = candidate;
+    }
+  }
+  return base;
+}
+
+function normalizeFreshnessState(
+  value: Partial<ObserverWatermarks> | PersistedScopeStateV2 | undefined,
+): ObserverFreshnessState {
+  if (!value) return emptyObserverFreshnessState();
+  if ('watermarks' in value || 'seenItems' in value) {
+    const scopedValue = value as PersistedScopeStateV2;
+    return {
+      watermarks: normalizeWatermarks(scopedValue.watermarks),
+      seenItems: normalizeSeenItems(scopedValue.seenItems),
+    };
+  }
+  return {
+    watermarks: normalizeWatermarks(value as Partial<ObserverWatermarks>),
+    seenItems: emptyObserverSeenItems(),
+  };
+}
+
 function readPersistedState(filePath: string): PersistedObserverWatermarkState {
-  if (!existsSync(filePath)) return { version: 1, scopes: {} };
+  if (!existsSync(filePath)) return { version: 2, scopes: {} };
   try {
     const raw = readFileSync(filePath, 'utf8').trim();
-    if (raw === '') return { version: 1, scopes: {} };
+    if (raw === '') return { version: 2, scopes: {} };
     const parsed: unknown = JSON.parse(raw);
-    if (typeof parsed !== 'object' || parsed === null) return { version: 1, scopes: {} };
+    if (typeof parsed !== 'object' || parsed === null) return { version: 2, scopes: {} };
     const candidate = parsed as { version?: unknown; scopes?: unknown };
-    if (candidate.version !== 1 || typeof candidate.scopes !== 'object' || candidate.scopes === null || Array.isArray(candidate.scopes)) {
-      return { version: 1, scopes: {} };
+    if ((candidate.version !== 1 && candidate.version !== 2)
+      || typeof candidate.scopes !== 'object'
+      || candidate.scopes === null
+      || Array.isArray(candidate.scopes)) {
+      return { version: 2, scopes: {} };
     }
-    return { version: 1, scopes: candidate.scopes as PersistedObserverWatermarkState['scopes'] };
+    return {
+      version: candidate.version,
+      scopes: candidate.scopes as PersistedObserverWatermarkState['scopes'],
+    };
   } catch {
-    return { version: 1, scopes: {} };
+    return { version: 2, scopes: {} };
   }
 }
 
 export function createFileObserverWatermarkStore(filePath = observerWatermarkStatePath()): ObserverWatermarkStore {
   return {
-    load(scope): ObserverWatermarks {
+    load(scope): ObserverFreshnessState {
       const state = readPersistedState(filePath);
-      return normalizeWatermarks(state.scopes[scopeKey(scope)]);
+      return normalizeFreshnessState(state.scopes[scopeKey(scope)]);
     },
 
-    save(scope, watermarks): void {
+    save(scope, freshnessState): void {
       const state = readPersistedState(filePath);
-      state.scopes[scopeKey(scope)] = normalizeWatermarks(watermarks);
+      state.version = 2;
+      state.scopes[scopeKey(scope)] = normalizeFreshnessState(freshnessState);
       mkdirSync(dirname(filePath), { recursive: true });
       writeFileSync(filePath, JSON.stringify(state, null, 2) + '\n', 'utf8');
     },
@@ -94,18 +152,18 @@ export function createFileObserverWatermarkStore(filePath = observerWatermarkSta
 }
 
 export function createMemoryObserverWatermarkStore(
-  seed?: Record<string, Partial<ObserverWatermarks> | undefined>,
+  seed?: Record<string, Partial<ObserverWatermarks> | Partial<ObserverFreshnessState> | undefined>,
 ): ObserverWatermarkStore {
-  const scopes = new Map<string, ObserverWatermarks>();
+  const scopes = new Map<string, ObserverFreshnessState>();
   for (const [key, value] of Object.entries(seed ?? {})) {
-    scopes.set(key, normalizeWatermarks(value));
+    scopes.set(key, normalizeFreshnessState(value));
   }
   return {
-    load(scope): ObserverWatermarks {
-      return normalizeWatermarks(scopes.get(scopeKey(scope)));
+    load(scope): ObserverFreshnessState {
+      return normalizeFreshnessState(scopes.get(scopeKey(scope)));
     },
-    save(scope, watermarks): void {
-      scopes.set(scopeKey(scope), normalizeWatermarks(watermarks));
+    save(scope, freshnessState): void {
+      scopes.set(scopeKey(scope), normalizeFreshnessState(freshnessState));
     },
   };
 }
