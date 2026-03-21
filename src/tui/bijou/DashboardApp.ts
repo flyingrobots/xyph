@@ -586,7 +586,9 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
 
   function toggleDrawer(model: DashboardModel): [DashboardModel, Cmd<DashboardMsg>[]] {
     const opening = !model.drawerOpen;
-    const targetWidth = opening ? Math.min(40, Math.floor(model.cols * 0.34)) : 0;
+    const targetWidth = opening
+      ? Math.min(Math.max(48, Math.floor(model.cols * 0.44)), Math.max(24, model.cols - 6))
+      : 0;
     const fromWidth = model.drawerWidth;
     return [
       { ...model, drawerOpen: opening },

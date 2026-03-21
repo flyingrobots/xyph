@@ -1,12 +1,14 @@
-import {
-  separator, badge, timeline,
-  type TimelineEvent, type BaseStatusKey,
-} from '@flyingrobots/bijou';
+import { separator, type BaseStatusKey } from '@flyingrobots/bijou';
 import type { StylePort } from '../../../ports/StylePort.js';
-import { statusVariant, formatAge } from '../../view-helpers.js';
+import { formatAge, wrapWhitespaceText } from '../../view-helpers.js';
 import type { GraphSnapshot } from '../../../domain/models/dashboard.js';
 
-interface ActivityEvent { ts: number; text: string }
+interface ActivityEvent {
+  ts: number;
+  actor?: string;
+  summary: string;
+  kind: BaseStatusKey;
+}
 
 /**
  * Render "My Stuff" drawer content — agent's quests, submissions, and activity feed.
@@ -24,6 +26,7 @@ export function renderMyStuffDrawer(
   if (pw < 10) return '';
   const lines: string[] = [];
   const questById = new Map(snap.quests.map(q => [q.id, q]));
+  const contentWidth = Math.max(12, pw - 4);
 
   // ── My Quests ─────────────────────────────────────────────────────
   const myIssues = agentId
@@ -36,8 +39,13 @@ export function renderMyStuffDrawer(
     lines.push(style.styled(style.theme.semantic.muted, '  (none)'));
   } else {
     for (const q of myIssues.slice(0, 6)) {
-      const statusStr = style.styledStatus(q.status);
-      lines.push(`   ${style.styled(style.theme.semantic.muted, q.id.replace(/^task:/, ''))} ${q.title.slice(0, Math.max(0, pw - 22))} ${statusStr}`);
+      pushWrappedBlock(lines, {
+        title: q.title,
+        meta: `${q.id.replace(/^task:/, '')}  ${q.assignedTo ? `· ${q.assignedTo}` : ''}`.replace(/\s+·\s+$/, ''),
+        status: q.status,
+        width: contentWidth,
+        style,
+      });
     }
     if (myIssues.length > 6) {
       lines.push(style.styled(style.theme.semantic.muted, `  +${myIssues.length - 6} more`));
@@ -61,8 +69,13 @@ export function renderMyStuffDrawer(
   } else {
     for (const s of mySubmissions.slice(0, 4)) {
       const q = questById.get(s.questId);
-      const title = q ? q.title.slice(0, Math.max(0, pw - 20)) : s.questId;
-      lines.push(`  ${style.styled(style.theme.semantic.muted, s.id.replace(/^submission:/, ''))} ${title}  ${badge(s.status, { variant: statusVariant(s.status) })}`);
+      pushWrappedBlock(lines, {
+        title: q?.title ?? s.questId,
+        meta: `${s.id.replace(/^submission:/, '')}  ·  ${formatAge(s.submittedAt)} ago`,
+        status: s.status,
+        width: contentWidth,
+        style,
+      });
     }
     if (mySubmissions.length > 4) {
       lines.push(style.styled(style.theme.semantic.muted, `  +${mySubmissions.length - 4} more`));
@@ -89,24 +102,65 @@ export function renderMyStuffDrawer(
   for (const s of snap.submissions) {
     const q = questById.get(s.questId);
     const title = q ? q.title : s.questId;
-    const shortId = s.id.replace(/^submission:/, '').slice(0, 7);
-    activity.push({ ts: s.submittedAt, text: `${s.submittedBy} submitted ${title} ${shortId}` });
+    activity.push({
+      ts: s.submittedAt,
+      actor: s.submittedBy,
+      summary: `submitted ${title}`,
+      kind: 'info',
+    });
   }
   for (const r of snap.reviews) {
     const verb = r.verdict === 'approve' ? 'approved' : 'reviewed';
     const qId = patchsetToQuestId.get(r.patchsetId);
     const q = qId ? questById.get(qId) : undefined;
     const title = q ? q.title : r.patchsetId;
-    const shortId = r.patchsetId.replace(/^patchset:/, '').slice(0, 7);
-    activity.push({ ts: r.reviewedAt, text: `${r.reviewedBy} ${verb} ${title} ${shortId}` });
+    activity.push({
+      ts: r.reviewedAt,
+      actor: r.reviewedBy,
+      summary: `${verb} ${title}`,
+      kind: r.verdict === 'approve' ? 'success' : 'warning',
+    });
   }
   for (const d of snap.decisions) {
     const sub = submissionById.get(d.submissionId);
     const qId = sub ? sub.questId : undefined;
     const q = qId ? questById.get(qId) : undefined;
     const title = q ? q.title : d.submissionId;
-    const shortId = d.submissionId.replace(/^submission:/, '').slice(0, 7);
-    activity.push({ ts: d.decidedAt, text: `${d.decidedBy} ${d.kind}d ${title} ${shortId}` });
+    activity.push({
+      ts: d.decidedAt,
+      actor: d.decidedBy,
+      summary: `${d.kind}d ${title}`,
+      kind: d.kind === 'merge' ? 'success' : d.kind === 'close' ? 'error' : 'warning',
+    });
+  }
+  for (const artifact of snap.governanceArtifacts) {
+    const actor = artifact.recordedBy;
+    switch (artifact.type) {
+      case 'comparison-artifact':
+        activity.push({
+          ts: artifact.recordedAt,
+          actor,
+          summary: `recorded comparison ${artifact.targetId ?? artifact.id}`,
+          kind: 'info',
+        });
+        break;
+      case 'collapse-proposal':
+        activity.push({
+          ts: artifact.recordedAt,
+          actor,
+          summary: `recorded collapse proposal ${artifact.targetWorldlineId ?? artifact.id}`,
+          kind: artifact.governance.execution.executed ? 'success' : 'warning',
+        });
+        break;
+      case 'attestation':
+        activity.push({
+          ts: artifact.recordedAt,
+          actor,
+          summary: `${artifact.governance.decision ?? 'attested'} ${artifact.targetId ?? artifact.id}`,
+          kind: artifact.governance.decision === 'reject' ? 'error' : 'success',
+        });
+        break;
+    }
   }
   activity.sort((a, b) => b.ts - a.ts);
   const recentActivity = activity.slice(0, 6);
@@ -114,11 +168,9 @@ export function renderMyStuffDrawer(
   if (recentActivity.length > 0) {
     lines.push('');
     lines.push(separator({ label: 'Recent Activity', borderToken: style.theme.border.secondary, width: pw }));
-    const tlEvents: TimelineEvent[] = recentActivity.map(ev => ({
-      label: `${formatAge(ev.ts)}  ${ev.text.slice(0, Math.max(0, pw - 10))}`,
-      status: activityEventStatus(ev.text),
-    }));
-    lines.push(timeline(tlEvents, { lineToken: style.theme.semantic.muted }));
+    for (const event of recentActivity) {
+      pushActivityBlock(lines, event, contentWidth, style);
+    }
   }
 
   // Trim to available height
@@ -126,9 +178,48 @@ export function renderMyStuffDrawer(
   return allLines.slice(0, ph).join('\n');
 }
 
-function activityEventStatus(text: string): BaseStatusKey {
-  if (text.includes('approved') || text.includes('merged')) return 'success';
-  if (text.includes('closed')) return 'error';
-  if (text.includes('reviewed')) return 'warning';
-  return 'info';
+function pushWrappedBlock(
+  lines: string[],
+  options: {
+    title: string;
+    meta: string;
+    status: string;
+    width: number;
+    style: StylePort;
+  },
+): void {
+  lines.push(`  ${options.style.styledStatus(options.status)}`);
+  pushWrapped(lines, options.title, options.width, '    ', (line) => options.style.styled(options.style.theme.semantic.primary, line));
+  pushWrapped(lines, options.meta, options.width, '    ', (line) => options.style.styled(options.style.theme.semantic.muted, line));
+  lines.push('');
+}
+
+function pushActivityBlock(
+  lines: string[],
+  event: ActivityEvent,
+  width: number,
+  style: StylePort,
+): void {
+  const accent = style.styled(style.theme.semantic.info, formatAge(event.ts));
+  const actor = event.actor
+    ? style.styled(style.theme.semantic.primary, event.actor)
+    : style.styled(style.theme.semantic.muted, 'system');
+  const marker = style.styledStatus(event.kind.toUpperCase(), event.kind);
+  lines.push(`  ${marker}  ${accent}  ${actor}`);
+  pushWrapped(lines, event.summary, width, '    ');
+  lines.push('');
+}
+
+function pushWrapped(
+  lines: string[],
+  text: string,
+  width: number,
+  prefix = '',
+  decorate?: (line: string) => string,
+): void {
+  const wrapped = wrapWhitespaceText(text, Math.max(1, width - prefix.length));
+  for (const line of wrapped) {
+    const rendered = decorate ? decorate(line) : line;
+    lines.push(`${prefix}${rendered}`);
+  }
 }

@@ -242,4 +242,38 @@ describe('renderMyStuffDrawer', () => {
     expect(plain).toContain('Quest One');
     expect(plain).toContain('My Submissions');
   });
+
+  it('wraps long item text and includes governance activity without truncation', () => {
+    const snap = makeSnapshot({
+      quests: [{
+        id: 'task:Q1',
+        title: 'A very long quest title that should wrap cleanly across multiple lines in the drawer',
+        status: 'BACKLOG',
+        hours: 2,
+        assignedTo: 'agent.test',
+      }],
+      governanceArtifacts: [{
+        id: 'comparison-artifact:cmp-1',
+        type: 'comparison-artifact',
+        recordedAt: 120,
+        recordedBy: 'human.james',
+        targetId: 'task:Q1',
+        governance: {
+          kind: 'comparison-artifact',
+          freshness: 'fresh',
+          attestation: { total: 0, approvals: 0, rejections: 0, other: 0, state: 'unattested' },
+          series: { supersededByIds: [], latestInSeries: true },
+          comparison: {},
+          settlement: { proposalCount: 0, executedCount: 0 },
+        },
+      }],
+    });
+
+    const plain = strip(renderMyStuffDrawer(snap, style, 'agent.test', 44, 24));
+    expect(plain).toContain('A very long quest title');
+    expect(plain).toContain('should');
+    expect(plain).toContain('wrap cleanly across multiple lines');
+    expect(plain).toContain('Recent Activity');
+    expect(plain).toContain('recorded comparison task:Q1');
+  });
 });

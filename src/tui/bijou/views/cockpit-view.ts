@@ -12,40 +12,10 @@ import {
   shortPrincipal,
   type CockpitItem,
 } from '../cockpit.js';
-import { formatAge } from '../../view-helpers.js';
+import { formatAge, wrapWhitespaceText } from '../../view-helpers.js';
 
 const PANEL_GAP = 1;
 const FIELD_LABEL_WIDTH = 10;
-
-function wrapWhitespaceParagraph(text: string, width: number): string[] {
-  const safeWidth = Math.max(1, width);
-  const lines: string[] = [];
-  let remaining = text.trimEnd();
-  if (remaining.length === 0) return [''];
-  while (remaining.length > safeWidth) {
-    let wrapIndex = safeWidth;
-    if (!/\s/.test(remaining[wrapIndex] ?? '')) {
-      for (let cursor = wrapIndex; cursor >= 0; cursor -= 1) {
-        if (/\s/.test(remaining[cursor] ?? '')) {
-          wrapIndex = cursor;
-          break;
-        }
-      }
-    }
-    if (wrapIndex <= 0) wrapIndex = safeWidth;
-    const line = remaining.slice(0, wrapIndex).trimEnd();
-    lines.push(line.length > 0 ? line : remaining.slice(0, safeWidth));
-    remaining = remaining.slice(wrapIndex).trimStart();
-  }
-  if (remaining.length > 0) lines.push(remaining);
-  return lines;
-}
-
-function wrapWhitespaceText(text: string, width: number): string[] {
-  return text
-    .split('\n')
-    .flatMap((line) => wrapWhitespaceParagraph(line, width));
-}
 
 function padVisible(text: string, width: number): string {
   return text + ' '.repeat(Math.max(0, width - visibleLength(text)));
@@ -341,6 +311,32 @@ function pushField(
   }
 }
 
+interface AlignedVariant {
+  plain: string;
+  rendered: string;
+}
+
+function fitAlignedLine(
+  leftVariants: AlignedVariant[],
+  rightVariants: AlignedVariant[],
+  width: number,
+): string {
+  const safeWidth = Math.max(1, width);
+  for (const left of leftVariants) {
+    for (const right of rightVariants) {
+      const total = visibleLength(left.plain) + visibleLength(right.plain);
+      if (total + 2 <= safeWidth) {
+        return `${left.rendered}${' '.repeat(safeWidth - total)}${right.rendered}`;
+      }
+    }
+  }
+  const fallback = leftVariants[0]?.plain ?? '';
+  if (visibleLength(fallback) <= safeWidth) {
+    return leftVariants[0]?.rendered ?? '';
+  }
+  return `${fallback.slice(0, Math.max(0, safeWidth - 1))}…`;
+}
+
 function renderHero(model: DashboardModel, snapshot: GraphSnapshot, style: StylePort, width: number): string {
   const accentToken = laneAccent(style, model.lane);
   const graphMeta = snapshot.graphMeta;
@@ -356,11 +352,54 @@ function renderHero(model: DashboardModel, snapshot: GraphSnapshot, style: Style
       && (artifact.governance.lifecycle === 'approved' || artifact.governance.lifecycle === 'pending_attestation'),
   ).length;
 
-  const detail = [
-    `observer ${model.agentId ?? 'agent.prime'}`,
-    style.styled(accentToken, `surface ${laneTitle(model.lane)}`),
-    'worldline live',
-  ].join('  ·  ');
+  const innerWidth = Math.max(12, width - 4);
+  const leftVariants: AlignedVariant[] = [
+    {
+      plain: `XYPH AION  ·  surface ${laneTitle(model.lane)}`,
+      rendered: [
+        style.styled(style.theme.semantic.primary, 'XYPH AION'),
+        style.styled(style.theme.semantic.muted, '·'),
+        style.styled(accentToken, `surface ${laneTitle(model.lane)}`),
+      ].join('  '),
+    },
+    {
+      plain: `XYPH AION  ·  ${laneTitle(model.lane)}`,
+      rendered: [
+        style.styled(style.theme.semantic.primary, 'XYPH AION'),
+        style.styled(style.theme.semantic.muted, '·'),
+        style.styled(accentToken, laneTitle(model.lane)),
+      ].join('  '),
+    },
+    {
+      plain: 'XYPH AION',
+      rendered: style.styled(style.theme.semantic.primary, 'XYPH AION'),
+    },
+  ];
+  const rightVariants: AlignedVariant[] = [
+    {
+      plain: `observer ${model.agentId ?? 'agent.prime'}  ·  worldline live`,
+      rendered: [
+        style.styled(style.theme.semantic.muted, 'observer'),
+        style.styled(style.theme.semantic.primary, model.agentId ?? 'agent.prime'),
+        style.styled(style.theme.semantic.muted, '·'),
+        style.styled(style.theme.semantic.muted, 'worldline'),
+        style.styled(accentToken, 'live'),
+      ].join(' '),
+    },
+    {
+      plain: `${model.agentId ?? 'agent.prime'}  ·  live`,
+      rendered: [
+        style.styled(style.theme.semantic.primary, model.agentId ?? 'agent.prime'),
+        style.styled(style.theme.semantic.muted, '·'),
+        style.styled(accentToken, 'live'),
+      ].join(' '),
+    },
+    {
+      plain: model.agentId ?? 'agent.prime',
+      rendered: style.styled(style.theme.semantic.primary, model.agentId ?? 'agent.prime'),
+    },
+  ];
+  const heroLine = fitAlignedLine(leftVariants, rightVariants, innerWidth);
 
   const summary = [
     style.styled(style.theme.semantic.info, ` active ${active}`),
@@ -372,14 +411,12 @@ function renderHero(model: DashboardModel, snapshot: GraphSnapshot, style: Style
       : ' graph meta unavailable',
   ].join('  ');
 
-  return [
-    headerBox('XYPH AION', {
-      detail,
-      borderToken: accentToken,
-      width,
-    }),
-    summary,
-  ].join('\n');
+  return box([heroLine, summary].join('\n'), {
+    width,
+    borderToken: accentToken,
+    padding: { left: 1, right: 1 },
+    overflow: 'wrap',
+  });
 }
 
 function renderLaneRail(model: DashboardModel, snapshot: GraphSnapshot, style: StylePort, width: number, height: number): string {
