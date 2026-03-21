@@ -43,6 +43,8 @@ import { claimQuest, promoteQuest, rejectQuest, reviewSubmission, type WriteDeps
 import {
   buildLaneTable,
   cockpitLaneOrder,
+  itemIsFresh,
+  laneFreshCount,
   laneLatestTimestamp,
   laneTitle,
   selectedLaneItem,
@@ -150,7 +152,9 @@ type ViewAction =
   | { type: 'promote' }
   | { type: 'reject' }
   | { type: 'approve' }
-  | { type: 'request-changes' };
+  | { type: 'request-changes' }
+  | { type: 'mark-item-seen' }
+  | { type: 'mark-lane-seen' };
 
 export interface DashboardDeps {
   ctx: GraphContext;
@@ -220,7 +224,9 @@ function buildViewKeys(): KeyMap<ViewAction> {
       .bind('p', 'Promote selected backlog quest', { type: 'promote' })
       .bind('shift+d', 'Reject selected backlog quest', { type: 'reject' })
       .bind('a', 'Approve selected submission', { type: 'approve' })
-      .bind('x', 'Request changes on selected submission', { type: 'request-changes' }),
+      .bind('x', 'Request changes on selected submission', { type: 'request-changes' })
+      .bind('s', 'Mark selected item seen', { type: 'mark-item-seen' })
+      .bind('shift+s', 'Mark current lane seen', { type: 'mark-lane-seen' }),
     );
 }
 
@@ -357,20 +363,33 @@ function switchLane(model: DashboardModel, lane: CockpitLaneId): DashboardModel 
   return updateInspectorScroll(withLane, rememberedScroll);
 }
 
-function markLaneSeen(model: DashboardModel, deps: DashboardDeps, lane = model.lane): DashboardModel {
-  const latest = laneLatestTimestamp(model.snapshot, lane, model.agentId, model.nowView);
-  if (latest <= 0) return model;
+function persistLaneWatermark(model: DashboardModel, deps: DashboardDeps, lane: CockpitLaneId, value: number): DashboardModel {
+  if (value <= 0) return model;
   const current = model.observerWatermarks[lane];
-  if (latest <= current) return model;
+  if (value <= current) return model;
   const observerWatermarks = {
     ...model.observerWatermarks,
-    [lane]: latest,
+    [lane]: value,
   };
   deps.observerWatermarkStore.save(deps.observerWatermarkScope, observerWatermarks);
   return {
     ...model,
     observerWatermarks,
   };
+}
+
+function markLaneSeen(model: DashboardModel, deps: DashboardDeps, lane = model.lane): DashboardModel {
+  return persistLaneWatermark(
+    model,
+    deps,
+    lane,
+    laneLatestTimestamp(model.snapshot, lane, model.agentId, model.nowView),
+  );
+}
+
+function markSelectedItemSeen(model: DashboardModel, deps: DashboardDeps): DashboardModel {
+  const item = currentSelectedItem(model);
+  return persistLaneWatermark(model, deps, model.lane, item?.timestamp ?? 0);
 }
 
 function switchLaneWithWatermark(model: DashboardModel, lane: CockpitLaneId, deps: DashboardDeps): DashboardModel {
@@ -395,6 +414,9 @@ function toggleNowView(model: DashboardModel): DashboardModel {
 function actionHint(model: DashboardModel): string {
   let hint: string;
   const quest = selectedQuest(model);
+  const item = currentSelectedItem(model);
+  const itemFresh = item ? itemIsFresh(item, model.lane, model.observerWatermarks) : false;
+  const laneFresh = laneFreshCount(model.snapshot, model.lane, model.observerWatermarks, model.agentId, model.nowView) > 0;
   if (quest) {
     if (quest.status === 'READY') {
       hint = 'c claim · t tree';
@@ -412,7 +434,13 @@ function actionHint(model: DashboardModel): string {
     }
   }
   if (model.lane === 'now') {
-    return `${hint} · v ${model.nowView === 'queue' ? 'recent' : 'queue'}`;
+    hint = `${hint} · v ${model.nowView === 'queue' ? 'recent' : 'queue'}`;
+  }
+  if (itemFresh) {
+    hint = `${hint} · s seen`;
+  }
+  if (laneFresh) {
+    hint = `${hint} · S lane seen`;
   }
   return hint;
 }
@@ -477,6 +505,13 @@ function buildPaletteItems(model: DashboardModel): CommandPaletteItem[] {
   const quest = selectedQuest(model);
   if (quest) {
     items.push({ id: 'quest-tree', label: 'Open selected quest tree', category: 'Inspect', shortcut: 't' });
+  }
+  const selected = currentSelectedItem(model);
+  if (selected && itemIsFresh(selected, model.lane, model.observerWatermarks)) {
+    items.push({ id: 'mark-item-seen', label: 'Mark selected item seen', category: 'Freshness', shortcut: 's' });
+  }
+  if (laneFreshCount(model.snapshot, model.lane, model.observerWatermarks, model.agentId, model.nowView) > 0) {
+    items.push({ id: 'mark-lane-seen', label: `Mark ${laneTitle(model.lane)} lane seen`, category: 'Freshness', shortcut: 'S' });
   }
   if (quest?.status === 'READY') {
     items.push({ id: 'claim', label: 'Claim selected quest', category: 'Action', shortcut: 'c' });
@@ -709,6 +744,10 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         return selectedQuest(model)
           ? [{ ...model, mode: 'quest-tree', questTreeScrollY: 0 }, []]
           : [model, []];
+      case 'mark-item-seen':
+        return [markSelectedItemSeen(model, deps), []];
+      case 'mark-lane-seen':
+        return [markLaneSeen(model, deps), []];
       case 'claim':
         return promptForAction(model, { type: 'claim' });
       case 'promote':
@@ -1182,6 +1221,10 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
               return selectedQuest(model)
                 ? [{ ...model, mode: 'quest-tree', questTreeScrollY: 0 }, []]
                 : [model, []];
+            case 'mark-item-seen':
+              return [markSelectedItemSeen(model, deps), []];
+            case 'mark-lane-seen':
+              return [markLaneSeen(model, deps), []];
             case 'claim':
             case 'promote':
             case 'reject':

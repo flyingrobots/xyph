@@ -14,6 +14,7 @@
  *   PgUp / PgDn     — page the worklist
  *   Shift+PgUp/PgDn — scroll the inspector
  *   m               — toggle "My Stuff" drawer (quests, submissions, activity)
+ *   s / Shift+S     — mark the selected item or entire lane seen
  *   Mouse           — click lanes/rows, wheel-scroll panes, dismiss the quest tree
  *   Freshness       — lane dots and row markers show what is new since you last left that lane
  *   r               — refresh snapshot

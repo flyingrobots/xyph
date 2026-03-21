@@ -6,6 +6,7 @@ All notable changes to XYPH will be documented in this file.
 
 ### Changed
 
+- **Freshness badges are now operator-controllable, not only passive** — the cockpit still marks a lane seen when you leave it, but operators can now press `s` to mark the selected fresh row seen or `Shift+S` to clear the whole current lane without changing surfaces. The command palette and contextual footer hints now surface those actions whenever fresh work is present.
 - **Cockpit lanes now remember what is new to each observer** — the dashboard now persists per-lane “last seen” watermarks in `~/.xyph/dashboard-state.json`, shows lane-level freshness badges in the rail, and marks newly-seen worklist rows so operators can tell what changed since they last left a lane instead of treating all recent state as equally fresh.
 - **The cockpit now speaks mouse as well as keyboard** — the dashboard runtime now enables BIJOU mouse events, lane rail entries are clickable, worklist rows are selectable by click, wheel scrolling now works in the worklist, inspector, quest-tree modal, and `My Stuff` drawer, clicking outside the quest-tree modal dismisses it, and clicking outside the open drawer closes it.
 - **Selected quests now open a graph-native tree modal** — press `t` on a selected quest to open a lineage / dependency modal that shows sovereign intent lineage, campaign placement, submission/scroll settlement artifacts, upstream dependencies, and downstream dependents without leaving the cockpit.

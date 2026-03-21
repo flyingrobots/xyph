@@ -645,6 +645,8 @@ XYPH_AGENT_ID=human.yourname ./xyph-dashboard.ts
 | `r` | Global | Refresh snapshot |
 | `i` | Global | Toggle the inspector pane |
 | `m` | Global | Toggle the "My Stuff" drawer |
+| `s` | Fresh row | Mark the selected item seen |
+| `Shift+S` | Fresh lane | Mark the current lane seen |
 | Mouse click | Cockpit | Click lane rail entries and worklist rows |
 | Mouse wheel | Cockpit | Scroll the worklist, inspector, quest tree, and drawer |
 | `:` / `/` | Global | Open the command palette |

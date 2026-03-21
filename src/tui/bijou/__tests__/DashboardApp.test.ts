@@ -147,6 +147,42 @@ describe('DashboardApp', () => {
     expect(store.load(TEST_SCOPE).now).toBe(100);
   });
 
+  it('marks the selected row seen without clearing newer items above it', () => {
+    const app = buildApp(undefined, { plan: 0 });
+    const loaded = ready(app, makeSnapshot({
+      quests: [
+        { id: 'task:Q1', title: 'Newest Quest', status: 'READY', hours: 1, readyAt: 200 },
+        { id: 'task:Q2', title: 'Older Quest', status: 'READY', hours: 1, readyAt: 100 },
+      ],
+    }));
+
+    const [plan] = app.update(key('2'), loaded);
+    const [second] = app.update(key('j'), plan);
+    const [seen] = app.update(key('s'), second);
+
+    expect(seen.observerWatermarks.plan).toBe(100);
+    const plain = strip(app.view(seen) as string);
+    expect(plain).toContain('S lane seen');
+    expect(plain).not.toContain('s seen');
+  });
+
+  it('marks the whole lane seen with shift+s', () => {
+    const app = buildApp(undefined, { plan: 0 });
+    const loaded = ready(app, makeSnapshot({
+      quests: [
+        { id: 'task:Q1', title: 'Newest Quest', status: 'READY', hours: 1, readyAt: 200 },
+        { id: 'task:Q2', title: 'Older Quest', status: 'READY', hours: 1, readyAt: 100 },
+      ],
+    }));
+
+    const [plan] = app.update(key('2'), loaded);
+    const [seen] = app.update(key('s', { shift: true }), plan);
+
+    expect(seen.observerWatermarks.plan).toBe(200);
+    const plain = strip(app.view(seen) as string);
+    expect(plain).not.toContain('● 2');
+  });
+
   it('moves selection inside the Plan lane with j and k', () => {
     const app = buildApp();
     const loaded = ready(app, makeSnapshot({
