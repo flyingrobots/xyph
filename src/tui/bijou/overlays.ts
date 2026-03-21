@@ -1,12 +1,21 @@
 import { composite, modal } from '@flyingrobots/bijou-tui';
 import type { StylePort } from '../../ports/StylePort.js';
 
+const ANSI_RESET = '\u001b[0m';
+
+function terminateHintStyles(style: StylePort, text: string): string {
+  return style.noColor ? text : `${text}${ANSI_RESET}`;
+}
+
 /**
  * Render a confirm dialog as a centered modal overlaid on the given content.
  */
 export function confirmOverlay(content: string, prompt: string, cols: number, rows: number, style: StylePort, customHint?: string): string {
-  const hint = customHint
-    ?? 'y / n'.replace('y', style.styled(style.theme.semantic.info, 'y')).replace('n', style.styled(style.theme.semantic.error, 'n'));
+  const hint = terminateHintStyles(
+    style,
+    customHint
+      ?? 'y / n'.replace('y', style.styled(style.theme.semantic.info, 'y')).replace('n', style.styled(style.theme.semantic.error, 'n')),
+  );
 
   const overlay = modal({
     body: prompt,

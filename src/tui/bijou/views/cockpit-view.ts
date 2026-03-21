@@ -808,13 +808,15 @@ function renderInspector(model: DashboardModel, snapshot: GraphSnapshot, style: 
     height: innerHeight,
   });
   pagerState = pagerScrollTo(pagerState, model.laneState[model.lane].inspectorScrollY);
-  const pagerLines = pager(pagerState).split('\n');
-  const contentLineCount = Math.max(1, content.split('\n').length);
+  const pagerLines = pager(pagerState, { showScrollbar: false }).split('\n');
+  const currentLine = pagerState.scroll.y + 1;
+  const totalLines = Math.max(1, pagerState.scroll.totalLines);
+  pagerLines[pagerLines.length - 1] = style.styled(style.theme.semantic.muted, `  Scroll ${currentLine}/${totalLines}`);
   const bodyRightRail = buildVerticalScrollbarRail(style, {
     height: innerHeight,
-    offset: model.laneState[model.lane].inspectorScrollY,
-    viewportSize: innerHeight,
-    totalSize: Math.max(innerHeight, contentLineCount),
+    offset: pagerState.scroll.y,
+    viewportSize: Math.max(1, innerHeight - 1),
+    totalSize: totalLines,
     visibility: model.scrollbars.inspector.level,
   });
 

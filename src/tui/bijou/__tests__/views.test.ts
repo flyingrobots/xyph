@@ -69,6 +69,7 @@ describe('cockpitView', () => {
     expect(plain).toContain('Inspector');
     expect(plain).toContain('Quest One');
     expect(plain).toContain('operator surfaces');
+    expect(plain).toContain('Scroll 1/');
     expect(plain).toContain('unplaced work');
   });
 
