@@ -1,5 +1,5 @@
 import { headerBox, box, type TokenValue } from '@flyingrobots/bijou';
-import { flex, createPagerState, pagerScrollTo, pager, visibleLength } from '@flyingrobots/bijou-tui';
+import { flex, createPagerState, pagerScrollTo, pager, viewport, visibleLength } from '@flyingrobots/bijou-tui';
 import type { GraphSnapshot, QuestNode, SubmissionNode, CampaignNode } from '../../../domain/models/dashboard.js';
 import type { StylePort } from '../../../ports/StylePort.js';
 import type { DashboardModel } from '../DashboardApp.js';
@@ -808,17 +808,30 @@ function renderInspector(model: DashboardModel, snapshot: GraphSnapshot, style: 
     height: innerHeight,
   });
   pagerState = pagerScrollTo(pagerState, model.laneState[model.lane].inspectorScrollY);
-  const pagerLines = pager(pagerState, { showScrollbar: false }).split('\n');
-  const currentLine = pagerState.scroll.y + 1;
   const totalLines = Math.max(1, pagerState.scroll.totalLines);
-  pagerLines[pagerLines.length - 1] = style.styled(style.theme.semantic.muted, `  Scroll ${currentLine}/${totalLines}`);
-  const bodyRightRail = buildVerticalScrollbarRail(style, {
-    height: innerHeight,
-    offset: pagerState.scroll.y,
-    viewportSize: Math.max(1, innerHeight - 1),
-    totalSize: totalLines,
-    visibility: model.scrollbars.inspector.level,
-  });
+  const overflowing = totalLines > Math.max(1, innerHeight - 1);
+  const pagerLines = overflowing
+    ? pager(pagerState, { showScrollbar: false }).split('\n')
+    : viewport({
+        width: innerWidth,
+        height: innerHeight,
+        content,
+        scrollY: 0,
+        showScrollbar: false,
+      }).split('\n');
+  if (overflowing) {
+    const currentLine = pagerState.scroll.y + 1;
+    pagerLines[pagerLines.length - 1] = style.styled(style.theme.semantic.muted, `  Scroll ${currentLine}/${totalLines}`);
+  }
+  const bodyRightRail = overflowing
+    ? buildVerticalScrollbarRail(style, {
+        height: innerHeight,
+        offset: pagerState.scroll.y,
+        viewportSize: Math.max(1, innerHeight - 1),
+        totalSize: totalLines,
+        visibility: model.scrollbars.inspector.level,
+      })
+    : undefined;
 
   return renderPaneCard({
     header,

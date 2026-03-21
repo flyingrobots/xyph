@@ -69,7 +69,7 @@ describe('cockpitView', () => {
     expect(plain).toContain('Inspector');
     expect(plain).toContain('Quest One');
     expect(plain).toContain('operator surfaces');
-    expect(plain).toContain('Scroll 1/');
+    expect(plain).not.toContain('Scroll 1/');
     expect(plain).toContain('unplaced work');
   });
 
@@ -244,6 +244,25 @@ describe('cockpitView', () => {
     expect(plain).toContain('▲');
     expect(plain).toContain('█');
     expect(plain).toContain('░');
+  });
+
+  it('shows inspector scroll status only when inspector content overflows', () => {
+    const model = {
+      ...makeModel(makeSnapshot({
+        quests: [{
+          id: 'task:Q1',
+          title: 'Quest One',
+          status: 'READY',
+          hours: 2,
+          description: Array.from({ length: 20 }, (_, index) => `Line ${index + 1} of long inspector prose.`).join(' '),
+        }],
+      })),
+      cols: 90,
+      rows: 18,
+    };
+
+    const plain = strip(cockpitView(model, style, 90, 18));
+    expect(plain).toContain('Scroll 1/');
   });
 });
 
