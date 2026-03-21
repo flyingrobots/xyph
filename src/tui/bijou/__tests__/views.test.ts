@@ -22,6 +22,7 @@ function makeModel(snapshot: GraphSnapshot | null): DashboardModel {
   };
   return {
     lane: 'now',
+    nowView: 'queue',
     laneState,
     scrollbars: {
       worklist: { level: 4, generation: 1 },
@@ -144,6 +145,29 @@ describe('cockpitView', () => {
 
     expect(plain).not.toContain('Inspector');
     expect(plain).toContain('Quest One');
+  });
+
+  it('renders recent activity mode in the Now lane', () => {
+    const snapshot = makeSnapshot({
+      quests: [{
+        id: 'task:Q1',
+        title: 'Quest One',
+        status: 'READY',
+        hours: 2,
+        readyAt: 200,
+        readyBy: 'agent.hal',
+      }],
+    });
+    const model = {
+      ...makeModel(snapshot),
+      nowView: 'activity' as const,
+      table: buildLaneTable(snapshot, 'now', 20, 0, 'agent.test', 'activity'),
+    };
+
+    const plain = strip(cockpitView(model, style, 120, 30));
+    expect(plain).toContain('Recent Activity');
+    expect(plain).toContain('Quest One');
+    expect(plain).toContain('hal');
   });
 
   it('renders settlement detail for a selected governance artifact', () => {

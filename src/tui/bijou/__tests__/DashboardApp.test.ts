@@ -206,6 +206,29 @@ describe('DashboardApp', () => {
     expect(reopened.scrollbars.inspector.level).toBe(4);
   });
 
+  it('toggles the Now lane between action queue and recent activity with v', () => {
+    const app = buildApp();
+    const loaded = ready(app, makeSnapshot({
+      quests: [{
+        id: 'task:Q1',
+        title: 'Quest One',
+        status: 'READY',
+        hours: 1,
+        readyAt: 100,
+        readyBy: 'agent.hal',
+      }],
+    }));
+
+    expect(loaded.nowView).toBe('queue');
+
+    const [activity] = app.update(key('v'), loaded);
+    expect(activity.nowView).toBe('activity');
+    expect(strip(app.view(activity) as string)).toContain('Recent Activity');
+
+    const [queue] = app.update(key('v'), activity);
+    expect(queue.nowView).toBe('queue');
+  });
+
   it('wakes the right scrollbar when navigating the worklist or inspector', () => {
     const app = buildApp({
       quests: Array.from({ length: 12 }, (_, index) => ({

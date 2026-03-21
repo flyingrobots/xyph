@@ -428,7 +428,7 @@ function renderLaneRail(model: DashboardModel, snapshot: GraphSnapshot, style: S
     borderToken: style.theme.border.muted,
   });
   const lines: string[] = [];
-  const lanes = cockpitLanes(snapshot, model.agentId);
+  const lanes = cockpitLanes(snapshot, model.agentId, model.nowView);
   for (const lane of lanes) {
     const selected = lane.id === model.lane;
     const accentToken = laneAccent(style, lane.id);
@@ -481,13 +481,15 @@ function renderLaneRail(model: DashboardModel, snapshot: GraphSnapshot, style: S
 
 function renderWorklistPane(model: DashboardModel, snapshot: GraphSnapshot, style: StylePort, width: number, height: number): string {
   const accentToken = laneAccent(style, model.lane);
-  const items = laneItems(snapshot, model.lane, model.agentId);
+  const items = laneItems(snapshot, model.lane, model.agentId, model.nowView);
   const selected = items[model.table.focusRow];
   const header = renderPaneHeader({
     title: style.styled(accentToken, laneTitle(model.lane)),
-    detail: selected
-      ? style.styled(accentToken, shortId(selected.id))
-      : 'select an item to inspect',
+    detail: model.lane === 'now'
+      ? style.styled(accentToken, model.nowView === 'activity' ? 'Recent Activity' : 'Action Queue')
+      : selected
+        ? style.styled(accentToken, shortId(selected.id))
+        : 'select an item to inspect',
     width,
     borderToken: accentToken,
   });
@@ -669,6 +671,31 @@ function renderCampaignDetail(style: StylePort, snapshot: GraphSnapshot, campaig
   return lines.join('\n');
 }
 
+function renderActivityDetail(style: StylePort, item: CockpitItem, width: number): string {
+  if (item.kind !== 'activity') return 'No activity detail available.';
+  const event = item.event;
+  const lines: string[] = [];
+  pushWrappedText(lines, event.summary, {
+    width,
+    decorate: (line) => style.styled(style.theme.semantic.primary, line),
+  });
+  lines.push(`${shortId(event.id)}  ${statusText(style, event.state)}`);
+  lines.push('');
+  pushField(lines, 'Kind', item.label, { width });
+  pushField(lines, 'Actor', event.actor ? shortPrincipal(event.actor) : 'system', { width });
+  pushField(lines, 'When', `${formatAge(event.at)} ago`, { width });
+  pushField(lines, 'Target', event.targetId ? shortId(event.targetId) : '—', { width });
+  if (event.relatedId) pushField(lines, 'Related', shortId(event.relatedId), { width });
+  if (item.secondary) {
+    lines.push('');
+    pushWrappedText(lines, item.secondary, {
+      width,
+      decorate: (line) => style.styled(style.theme.semantic.muted, line),
+    });
+  }
+  return lines.join('\n');
+}
+
 function renderGovernanceDetail(style: StylePort, item: CockpitItem, width: number): string {
   switch (item.kind) {
     case 'comparison-artifact': {
@@ -746,7 +773,7 @@ function renderGovernanceDetail(style: StylePort, item: CockpitItem, width: numb
 
 function renderInspector(model: DashboardModel, snapshot: GraphSnapshot, style: StylePort, width: number, height: number): string {
   const accentToken = laneAccent(style, model.lane);
-  const item = selectedLaneItem(snapshot, model.lane, model.table.focusRow, model.agentId);
+  const item = selectedLaneItem(snapshot, model.lane, model.table.focusRow, model.agentId, model.nowView);
   const header = renderPaneHeader({
     title: style.styled(accentToken, 'Inspector'),
     detail: item ? style.styled(accentToken, item.secondary) : 'selection detail',
@@ -766,6 +793,8 @@ function renderInspector(model: DashboardModel, snapshot: GraphSnapshot, style: 
         return renderSubmissionDetail(style, snapshot, item.submission, item, innerWidth);
       case 'campaign':
         return renderCampaignDetail(style, snapshot, item.campaign, innerWidth);
+      case 'activity':
+        return renderActivityDetail(style, item, innerWidth);
       case 'comparison-artifact':
       case 'collapse-proposal':
       case 'attestation':

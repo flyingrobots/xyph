@@ -44,6 +44,7 @@ import {
   cockpitLaneOrder,
   laneTitle,
   selectedLaneItem,
+  type NowViewMode,
   type CockpitItem,
   type CockpitLaneId,
 } from './cockpit.js';
@@ -69,6 +70,7 @@ export interface ScrollbarVisibilityState {
 
 export interface DashboardModel {
   lane: CockpitLaneId;
+  nowView: NowViewMode;
   laneState: Record<CockpitLaneId, LaneState>;
   scrollbars: {
     worklist: ScrollbarVisibilityState;
@@ -118,6 +120,7 @@ type GlobalAction =
   | { type: 'next-lane' }
   | { type: 'prev-lane' }
   | { type: 'refresh' }
+  | { type: 'toggle-now-view' }
   | { type: 'toggle-help' }
   | { type: 'toggle-drawer' }
   | { type: 'toggle-inspector' };
@@ -178,6 +181,7 @@ function buildGlobalKeys(): KeyMap<GlobalAction> {
       .bind('[', 'Previous lane', { type: 'prev-lane' })
       .bind(']', 'Next lane', { type: 'next-lane' })
       .bind('r', 'Refresh snapshot', { type: 'refresh' })
+      .bind('v', 'Toggle Now view', { type: 'toggle-now-view' })
       .bind('i', 'Toggle inspector', { type: 'toggle-inspector' })
       .bind('m', 'Toggle drawer', { type: 'toggle-drawer' })
       .bind('?', 'Toggle help', { type: 'toggle-help' }),
@@ -254,7 +258,7 @@ function wakeScrollbar(
 }
 
 function currentSelectedItem(model: DashboardModel): CockpitItem | undefined {
-  return selectedLaneItem(model.snapshot, model.lane, model.table.focusRow, model.agentId);
+  return selectedLaneItem(model.snapshot, model.lane, model.table.focusRow, model.agentId, model.nowView);
 }
 
 function selectedQuest(model: DashboardModel): QuestNode | undefined {
@@ -269,7 +273,7 @@ function selectedSubmission(model: DashboardModel): SubmissionNode | undefined {
 
 function rebuildForLane(model: DashboardModel, lane: CockpitLaneId, snapshot = model.snapshot): DashboardModel {
   const memory = model.laneState[lane];
-  const table = buildLaneTable(snapshot, lane, Math.max(8, model.rows - 8), memory.focusRow, model.agentId);
+  const table = buildLaneTable(snapshot, lane, Math.max(8, model.rows - 8), memory.focusRow, model.agentId, model.nowView);
   return {
     ...model,
     lane,
@@ -316,17 +320,44 @@ function switchLane(model: DashboardModel, lane: CockpitLaneId): DashboardModel 
   return updateInspectorScroll(withLane, rememberedScroll);
 }
 
+function toggleNowView(model: DashboardModel): DashboardModel {
+  const nextView: NowViewMode = model.nowView === 'queue' ? 'activity' : 'queue';
+  return rebuildForLane({
+    ...model,
+    nowView: nextView,
+    laneState: {
+      ...model.laneState,
+      now: {
+        ...model.laneState.now,
+        inspectorScrollY: 0,
+      },
+    },
+  }, 'now');
+}
+
 function actionHint(model: DashboardModel): string {
+  let hint: string;
   const quest = selectedQuest(model);
   if (quest) {
-    if (quest.status === 'READY') return 'c claim';
-    if (quest.status === 'BACKLOG') return 'p promote · D reject';
+    if (quest.status === 'READY') {
+      hint = 'c claim';
+    } else if (quest.status === 'BACKLOG') {
+      hint = 'p promote · D reject';
+    } else {
+      hint = 'j/k move · i inspector · PgUp/PgDn list';
+    }
+  } else {
+    const submission = selectedSubmission(model);
+    if (submission && (submission.status === 'OPEN' || submission.status === 'CHANGES_REQUESTED')) {
+      hint = 'a approve · x request changes';
+    } else {
+      hint = 'j/k move · i inspector · PgUp/PgDn list';
+    }
   }
-  const submission = selectedSubmission(model);
-  if (submission && (submission.status === 'OPEN' || submission.status === 'CHANGES_REQUESTED')) {
-    return 'a approve · x request changes';
+  if (model.lane === 'now') {
+    return `${hint} · v ${model.nowView === 'queue' ? 'recent' : 'queue'}`;
   }
-  return 'j/k move · i inspector · PgUp/PgDn list';
+  return hint;
 }
 
 function pageRows(model: DashboardModel): number {
@@ -336,8 +367,11 @@ function pageRows(model: DashboardModel): number {
 function renderStatusLine(model: DashboardModel): string {
   const item = currentSelectedItem(model);
   const meta = model.snapshot?.graphMeta;
+  const laneLabel = model.lane === 'now' && model.nowView === 'activity'
+    ? `${laneTitle(model.lane)} Recent`
+    : laneTitle(model.lane);
   const left = [
-    ` ${laneTitle(model.lane)}`,
+    ` ${laneLabel}`,
     meta ? `· ${meta.tipSha}` : '',
     model.loading ? '· syncing' : '',
   ].join(' ');
@@ -353,7 +387,9 @@ function renderStatusLine(model: DashboardModel): string {
 
 function renderHintLine(model: DashboardModel): string {
   const left = '1-5 lanes · [/] switch';
-  const center = 'r refresh · i inspector · m drawer · ? help';
+  const center = model.lane === 'now'
+    ? `r refresh · v ${model.nowView === 'queue' ? 'recent' : 'queue'} · i inspector · m drawer · ? help`
+    : 'r refresh · i inspector · m drawer · ? help';
   return statusBar({
     left,
     center,
@@ -370,6 +406,14 @@ function buildPaletteItems(model: DashboardModel): CommandPaletteItem[] {
     { id: 'lane:settlement', label: 'Open Settlement lane', category: 'Navigate', shortcut: '4' },
     { id: 'lane:campaigns', label: 'Open Campaigns lane', category: 'Navigate', shortcut: '5' },
     { id: 'refresh', label: 'Refresh snapshot', category: 'Global', shortcut: 'r' },
+    ...(model.lane === 'now'
+      ? [{
+          id: 'toggle-now-view',
+          label: model.nowView === 'queue' ? 'Show recent activity in Now lane' : 'Show action queue in Now lane',
+          category: 'Global',
+          shortcut: 'v',
+        } satisfies CommandPaletteItem]
+      : []),
     { id: 'toggle-drawer', label: 'Toggle My Stuff drawer', category: 'Global', shortcut: 'm' },
   ];
 
@@ -566,6 +610,8 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         const nextReqId = model.requestId + 1;
         return [{ ...model, loading: true, error: null, requestId: nextReqId }, [fetchSnapshot(nextReqId)]];
       }
+      case 'toggle-now-view':
+        return model.lane === 'now' ? wakeScrollbar(toggleNowView(model), 'worklist') : [model, []];
       case 'toggle-drawer':
         return toggleDrawer(model);
       case 'claim':
@@ -611,6 +657,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
       const lane = 'now' as const;
       const model: DashboardModel = {
         lane,
+        nowView: 'queue',
         laneState,
         scrollbars: emptyScrollbars(),
         table: createNavigableTableState({ columns: [], rows: [], height: Math.max(8, rows - 8) }),
@@ -870,6 +917,10 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
               const nextReqId = model.requestId + 1;
               return [{ ...model, loading: true, error: null, requestId: nextReqId }, [fetchSnapshot(nextReqId)]];
             }
+            case 'toggle-now-view':
+              return model.lane === 'now'
+                ? wakeScrollbar(toggleNowView(model), 'worklist')
+                : [model, []];
             case 'toggle-help':
               return [{ ...model, showHelp: !model.showHelp }, []];
             case 'toggle-inspector':

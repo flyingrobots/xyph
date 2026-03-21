@@ -9,9 +9,12 @@ import type {
   SubmissionNode,
   CollapseProposalNode,
   AttestationNode,
+  ReviewNode,
+  DecisionNode,
 } from '../../domain/models/dashboard.js';
 
 export type CockpitLaneId = 'now' | 'plan' | 'review' | 'settlement' | 'campaigns';
+export type NowViewMode = 'queue' | 'activity';
 
 export interface CockpitLane {
   id: CockpitLaneId;
@@ -22,7 +25,7 @@ export interface CockpitLane {
 
 interface CockpitBaseItem {
   id: string;
-  kind: 'quest' | 'submission' | 'comparison-artifact' | 'collapse-proposal' | 'attestation' | 'campaign';
+  kind: 'quest' | 'submission' | 'comparison-artifact' | 'collapse-proposal' | 'attestation' | 'campaign' | 'activity';
   label: string;
   primary: string;
   secondary: string;
@@ -66,13 +69,30 @@ export interface CampaignCockpitItem extends CockpitBaseItem {
   };
 }
 
+export interface ActivityEvent {
+  id: string;
+  label: string;
+  state: string;
+  summary: string;
+  actor?: string;
+  at: number;
+  targetId?: string;
+  relatedId?: string;
+}
+
+export interface ActivityCockpitItem extends CockpitBaseItem {
+  kind: 'activity';
+  event: ActivityEvent;
+}
+
 export type CockpitItem =
   | QuestCockpitItem
   | SubmissionCockpitItem
   | ComparisonCockpitItem
   | CollapseCockpitItem
   | AttestationCockpitItem
-  | CampaignCockpitItem;
+  | CampaignCockpitItem
+  | ActivityCockpitItem;
 
 const LANE_ORDER: CockpitLaneId[] = ['now', 'plan', 'review', 'settlement', 'campaigns'];
 
@@ -259,6 +279,23 @@ function buildCampaignItem(campaign: CampaignNode, snapshot: GraphSnapshot): Cam
   };
 }
 
+function buildActivityItem(event: ActivityEvent): ActivityCockpitItem {
+  const refs = [event.targetId ? shortId(event.targetId) : null, event.relatedId ? shortId(event.relatedId) : null]
+    .filter(Boolean)
+    .join(' · ');
+  return {
+    id: event.id,
+    kind: 'activity',
+    label: event.label,
+    primary: event.summary,
+    secondary: refs || 'recent activity',
+    state: event.state,
+    cue: event.actor ? shortPrincipal(event.actor) : 'system',
+    timestamp: event.at,
+    event,
+  };
+}
+
 function compareQuestItems(a: QuestCockpitItem, b: QuestCockpitItem): number {
   const byStatus = (QUEST_STATUS_ORDER[a.quest.status] ?? 99) - (QUEST_STATUS_ORDER[b.quest.status] ?? 99);
   if (byStatus !== 0) return byStatus;
@@ -283,6 +320,183 @@ function compareCampaignItems(a: CampaignCockpitItem, b: CampaignCockpitItem): n
   const byStatus = (QUEST_STATUS_ORDER[a.campaign.status] ?? 99) - (QUEST_STATUS_ORDER[b.campaign.status] ?? 99);
   if (byStatus !== 0) return byStatus;
   return a.id.localeCompare(b.id);
+}
+
+function buildQuestActivityEvents(quest: QuestNode): ActivityEvent[] {
+  const summary = `${shortId(quest.id)}  ${quest.title}`;
+  const events: ActivityEvent[] = [];
+  if (typeof quest.suggestedAt === 'number') {
+    events.push({
+      id: `${quest.id}:suggested:${quest.suggestedAt}`,
+      label: 'QUEST',
+      state: 'suggested',
+      summary,
+      actor: quest.suggestedBy,
+      at: quest.suggestedAt,
+      targetId: quest.id,
+      relatedId: quest.intentId,
+    });
+  }
+  if (typeof quest.readyAt === 'number') {
+    events.push({
+      id: `${quest.id}:ready:${quest.readyAt}`,
+      label: 'QUEST',
+      state: 'ready',
+      summary,
+      actor: quest.readyBy,
+      at: quest.readyAt,
+      targetId: quest.id,
+      relatedId: quest.intentId,
+    });
+  }
+  if (typeof quest.completedAt === 'number') {
+    events.push({
+      id: `${quest.id}:done:${quest.completedAt}`,
+      label: 'QUEST',
+      state: 'done',
+      summary,
+      actor: quest.assignedTo,
+      at: quest.completedAt,
+      targetId: quest.id,
+      relatedId: quest.submissionId,
+    });
+  }
+  if (typeof quest.rejectedAt === 'number') {
+    events.push({
+      id: `${quest.id}:rejected:${quest.rejectedAt}`,
+      label: 'QUEST',
+      state: 'rejected',
+      summary,
+      actor: quest.rejectedBy,
+      at: quest.rejectedAt,
+      targetId: quest.id,
+      relatedId: quest.intentId,
+    });
+  }
+  if (typeof quest.reopenedAt === 'number') {
+    events.push({
+      id: `${quest.id}:reopened:${quest.reopenedAt}`,
+      label: 'QUEST',
+      state: 'reopened',
+      summary,
+      actor: quest.reopenedBy,
+      at: quest.reopenedAt,
+      targetId: quest.id,
+      relatedId: quest.intentId,
+    });
+  }
+  return events;
+}
+
+function buildSubmissionActivityEvent(submission: SubmissionNode, snapshot: GraphSnapshot): ActivityEvent {
+  const questTitle = snapshot.quests.find((quest) => quest.id === submission.questId)?.title ?? submission.questId;
+  return {
+    id: `${submission.id}:submitted:${submission.submittedAt}`,
+    label: 'REVIEW',
+    state: 'submitted',
+    summary: `${shortId(submission.id)}  ${questTitle}`,
+    actor: submission.submittedBy,
+    at: submission.submittedAt,
+    targetId: submission.questId,
+    relatedId: submission.id,
+  };
+}
+
+function buildReviewActivityEvent(review: ReviewNode, snapshot: GraphSnapshot): ActivityEvent {
+  const submission = snapshot.submissions.find((candidate) => candidate.tipPatchsetId === review.patchsetId);
+  const quest = submission
+    ? snapshot.quests.find((candidate) => candidate.id === submission.questId)
+    : undefined;
+  return {
+    id: `${review.id}:${review.reviewedAt}`,
+    label: 'REVIEW',
+    state: review.verdict === 'request-changes' ? 'changes_requested' : review.verdict,
+    summary: quest ? `${shortId(quest.id)}  ${quest.title}` : shortId(review.patchsetId),
+    actor: review.reviewedBy,
+    at: review.reviewedAt,
+    targetId: submission?.questId,
+    relatedId: review.patchsetId,
+  };
+}
+
+function buildDecisionActivityEvent(decision: DecisionNode, snapshot: GraphSnapshot): ActivityEvent {
+  const submission = snapshot.submissions.find((candidate) => candidate.id === decision.submissionId);
+  const quest = submission
+    ? snapshot.quests.find((candidate) => candidate.id === submission.questId)
+    : undefined;
+  const state = decision.kind === 'merge'
+    ? 'merged'
+    : decision.kind === 'close'
+      ? 'closed'
+      : 'decided';
+  return {
+    id: `${decision.id}:${decision.decidedAt}`,
+    label: 'DECISION',
+    state,
+    summary: quest ? `${shortId(quest.id)}  ${quest.title}` : shortId(decision.submissionId),
+    actor: decision.decidedBy,
+    at: decision.decidedAt,
+    targetId: submission?.questId,
+    relatedId: decision.submissionId,
+  };
+}
+
+function buildGovernanceActivityEvent(artifact: GovernanceArtifactNode): ActivityEvent {
+  switch (artifact.type) {
+    case 'comparison-artifact':
+      return {
+        id: `${artifact.id}:${artifact.recordedAt}`,
+        label: 'COMPARE',
+        state: 'recorded',
+        summary: `${shortWorldline(artifact.leftWorldlineId)} -> ${shortWorldline(artifact.rightWorldlineId)}`,
+        actor: artifact.recordedBy,
+        at: artifact.recordedAt,
+        targetId: artifact.targetId,
+        relatedId: artifact.id,
+      };
+    case 'collapse-proposal':
+      return {
+        id: `${artifact.id}:${artifact.recordedAt}`,
+        label: 'SETTLE',
+        state: artifact.governance.execution.executed ? 'executed' : 'proposed',
+        summary: `${shortWorldline(artifact.sourceWorldlineId)} => ${shortWorldline(artifact.targetWorldlineId)}`,
+        actor: artifact.recordedBy,
+        at: artifact.recordedAt,
+        targetId: artifact.targetWorldlineId,
+        relatedId: artifact.comparisonArtifactId,
+      };
+    case 'attestation':
+      return {
+        id: `${artifact.id}:${artifact.recordedAt}`,
+        label: 'ATTEST',
+        state: artifact.governance.decision ?? 'attested',
+        summary: artifact.targetId ? shortId(artifact.targetId) : shortId(artifact.id),
+        actor: artifact.recordedBy,
+        at: artifact.recordedAt,
+        targetId: artifact.targetId,
+        relatedId: artifact.id,
+      };
+  }
+}
+
+function buildActivityItems(snapshot: GraphSnapshot): CockpitItem[] {
+  const items: ActivityCockpitItem[] = [];
+  for (const quest of snapshot.quests) {
+    items.push(...buildQuestActivityEvents(quest).map(buildActivityItem));
+  }
+  for (const submission of snapshot.submissions) {
+    items.push(buildActivityItem(buildSubmissionActivityEvent(submission, snapshot)));
+  }
+  for (const review of snapshot.reviews) {
+    items.push(buildActivityItem(buildReviewActivityEvent(review, snapshot)));
+  }
+  for (const decision of snapshot.decisions) {
+    items.push(buildActivityItem(buildDecisionActivityEvent(decision, snapshot)));
+  }
+  for (const artifact of snapshot.governanceArtifacts) {
+    items.push(buildActivityItem(buildGovernanceActivityEvent(artifact)));
+  }
+  return items.sort(compareGovernanceItems);
 }
 
 function buildOperationItems(snapshot: GraphSnapshot, agentId?: string): CockpitItem[] {
@@ -356,13 +570,15 @@ function operationPriority(item: CockpitItem, agentId?: string): number {
       return 9;
     case 'campaign':
       return 10;
+    case 'activity':
+      return 11;
   }
 }
 
-export function cockpitLanes(snapshot: GraphSnapshot | null, agentId?: string): CockpitLane[] {
+export function cockpitLanes(snapshot: GraphSnapshot | null, agentId?: string, nowView: NowViewMode = 'queue'): CockpitLane[] {
   if (!snapshot) {
     return [
-      { id: 'now', title: 'Now', description: 'Cross-surface action queue', count: 0 },
+      { id: 'now', title: 'Now', description: nowView === 'activity' ? 'Recent changes and actors' : 'Cross-surface action queue', count: 0 },
       { id: 'plan', title: 'Plan', description: 'Live quest surface', count: 0 },
       { id: 'review', title: 'Review', description: 'Submission lanes', count: 0 },
       { id: 'settlement', title: 'Settlement', description: 'Compare, attest, collapse', count: 0 },
@@ -370,7 +586,12 @@ export function cockpitLanes(snapshot: GraphSnapshot | null, agentId?: string): 
     ];
   }
   return [
-    { id: 'now', title: 'Now', description: 'Cross-surface action queue', count: buildOperationItems(snapshot, agentId).length },
+    {
+      id: 'now',
+      title: 'Now',
+      description: nowView === 'activity' ? 'Recent changes and actors' : 'Cross-surface action queue',
+      count: nowView === 'activity' ? buildActivityItems(snapshot).length : buildOperationItems(snapshot, agentId).length,
+    },
     { id: 'plan', title: 'Plan', description: 'Live quest surface', count: snapshot.quests.filter((quest) => quest.status !== 'GRAVEYARD').length },
     { id: 'review', title: 'Review', description: 'Submission lanes', count: snapshot.submissions.length },
     { id: 'settlement', title: 'Settlement', description: 'Compare, attest, collapse', count: snapshot.governanceArtifacts.length },
@@ -378,10 +599,12 @@ export function cockpitLanes(snapshot: GraphSnapshot | null, agentId?: string): 
   ];
 }
 
-export function laneItems(snapshot: GraphSnapshot, lane: CockpitLaneId, agentId?: string): CockpitItem[] {
+export function laneItems(snapshot: GraphSnapshot, lane: CockpitLaneId, agentId?: string, nowView: NowViewMode = 'queue'): CockpitItem[] {
   switch (lane) {
     case 'now':
-      return buildOperationItems(snapshot, agentId);
+      return nowView === 'activity'
+        ? buildActivityItems(snapshot)
+        : buildOperationItems(snapshot, agentId);
     case 'plan':
       return snapshot.quests
         .filter((quest) => quest.status !== 'GRAVEYARD')
@@ -408,8 +631,9 @@ export function buildLaneTable(
   height: number,
   focusRow = 0,
   agentId?: string,
+  nowView: NowViewMode = 'queue',
 ): NavigableTableState {
-  const items = snapshot ? laneItems(snapshot, lane, agentId) : [];
+  const items = snapshot ? laneItems(snapshot, lane, agentId, nowView) : [];
   let table = createNavigableTableState({
     columns: [
       { header: 'Kind', width: 11 },
@@ -433,9 +657,10 @@ export function selectedLaneItem(
   lane: CockpitLaneId,
   focusRow: number,
   agentId?: string,
+  nowView: NowViewMode = 'queue',
 ): CockpitItem | undefined {
   if (!snapshot) return undefined;
-  return laneItems(snapshot, lane, agentId)[focusRow];
+  return laneItems(snapshot, lane, agentId, nowView)[focusRow];
 }
 
 export function laneTitle(lane: CockpitLaneId): string {

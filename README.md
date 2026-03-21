@@ -636,6 +636,7 @@ XYPH_AGENT_ID=human.yourname ./xyph-dashboard.ts
 | `[` / `]` | Global | Cycle lanes backward / forward |
 | `j` / `k` | Cockpit | Select next / previous row |
 | `g` / `G` | Cockpit | Jump to first / last row |
+| `v` | Now lane | Toggle between the action queue and recent activity |
 | `r` | Global | Refresh snapshot |
 | `i` | Global | Toggle the inspector pane |
 | `m` | Global | Toggle the "My Stuff" drawer |
