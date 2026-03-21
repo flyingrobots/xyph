@@ -43,12 +43,18 @@ import { claimQuest, promoteQuest, rejectQuest, reviewSubmission, type WriteDeps
 import {
   buildLaneTable,
   cockpitLaneOrder,
+  laneLatestTimestamp,
   laneTitle,
   selectedLaneItem,
   type NowViewMode,
   type CockpitItem,
   type CockpitLaneId,
 } from './cockpit.js';
+import {
+  type ObserverWatermarkScope,
+  type ObserverWatermarkStore,
+  type ObserverWatermarks,
+} from './observer-watermarks.js';
 
 export type PendingWrite =
   | { kind: 'claim'; questId: string }
@@ -103,6 +109,7 @@ export interface DashboardModel {
   watching: boolean;
   refreshPending: boolean;
   agentId?: string;
+  observerWatermarks: ObserverWatermarks;
 }
 
 export type DashboardMsg =
@@ -153,6 +160,8 @@ export interface DashboardDeps {
   style: StylePort;
   agentId: string;
   logoText: string;
+  observerWatermarkStore: ObserverWatermarkStore;
+  observerWatermarkScope: ObserverWatermarkScope;
 }
 
 const LANE_ORDER = [...cockpitLaneOrder()];
@@ -346,6 +355,26 @@ function switchLane(model: DashboardModel, lane: CockpitLaneId): DashboardModel 
   const withLane = rebuildForLane(model, lane);
   const rememberedScroll = withLane.laneState[lane].inspectorScrollY;
   return updateInspectorScroll(withLane, rememberedScroll);
+}
+
+function markLaneSeen(model: DashboardModel, deps: DashboardDeps, lane = model.lane): DashboardModel {
+  const latest = laneLatestTimestamp(model.snapshot, lane, model.agentId, model.nowView);
+  if (latest <= 0) return model;
+  const current = model.observerWatermarks[lane];
+  if (latest <= current) return model;
+  const observerWatermarks = {
+    ...model.observerWatermarks,
+    [lane]: latest,
+  };
+  deps.observerWatermarkStore.save(deps.observerWatermarkScope, observerWatermarks);
+  return {
+    ...model,
+    observerWatermarks,
+  };
+}
+
+function switchLaneWithWatermark(model: DashboardModel, lane: CockpitLaneId, deps: DashboardDeps): DashboardModel {
+  return switchLane(markLaneSeen(model, deps), lane);
 }
 
 function toggleNowView(model: DashboardModel): DashboardModel {
@@ -659,15 +688,15 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
   function dispatchPaletteAction(actionId: string, model: DashboardModel): [DashboardModel, Cmd<DashboardMsg>[]] {
     switch (actionId) {
       case 'lane:now':
-        return [switchLane(model, 'now'), []];
+        return [switchLaneWithWatermark(model, 'now', deps), []];
       case 'lane:plan':
-        return [switchLane(model, 'plan'), []];
+        return [switchLaneWithWatermark(model, 'plan', deps), []];
       case 'lane:review':
-        return [switchLane(model, 'review'), []];
+        return [switchLaneWithWatermark(model, 'review', deps), []];
       case 'lane:settlement':
-        return [switchLane(model, 'settlement'), []];
+        return [switchLaneWithWatermark(model, 'settlement', deps), []];
       case 'lane:campaigns':
-        return [switchLane(model, 'campaigns'), []];
+        return [switchLaneWithWatermark(model, 'campaigns', deps), []];
       case 'refresh': {
         const nextReqId = model.requestId + 1;
         return [{ ...model, loading: true, error: null, requestId: nextReqId }, [fetchSnapshot(nextReqId)]];
@@ -752,6 +781,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         watching: false,
         refreshPending: false,
         agentId: deps.agentId,
+        observerWatermarks: deps.observerWatermarkStore.load(deps.observerWatermarkScope),
       };
       return [model, [
         fetchSnapshot(model.requestId),
@@ -909,7 +939,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         if (msg.action === 'press' && msg.button === 'left') {
           const laneRegion = interactionMap.laneRegions.find((region) => pointInRect(region.rect, msg.col, msg.row));
           if (laneRegion) {
-            return wakeScrollbar(switchLane(model, laneRegion.lane), 'worklist');
+            return wakeScrollbar(switchLaneWithWatermark(model, laneRegion.lane, deps), 'worklist');
           }
 
           const rowRegion = interactionMap.worklistRows.find((region) => pointInRect(region.rect, msg.col, msg.row));
@@ -933,7 +963,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
 
       if (msg.type === 'key') {
         if (msg.key === 'c' && msg.ctrl) {
-          return [model, [stopWatching(), quit()]];
+          return [markLaneSeen(model, deps), [stopWatching(), quit()]];
         }
 
         if (msg.key === 'q' && !msg.ctrl && !msg.alt && model.mode === 'normal') {
@@ -959,7 +989,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
           if (msg.key === 'y' || (msg.key === 'q' && isQuitConfirm)) {
             const { action } = model.confirmState;
             if (action.kind === 'quit') {
-              return [{ ...model, mode: 'normal', confirmState: null }, [stopWatching(), quit()]];
+              return [{ ...markLaneSeen(model, deps), mode: 'normal', confirmState: null }, [stopWatching(), quit()]];
             }
             return [{
               ...model,
@@ -1067,14 +1097,14 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         if (globalAction) {
           switch (globalAction.type) {
             case 'jump-lane':
-              return wakeScrollbar(switchLane(model, globalAction.lane), 'worklist');
+              return wakeScrollbar(switchLaneWithWatermark(model, globalAction.lane, deps), 'worklist');
             case 'next-lane': {
               const currentIndex = LANE_ORDER.indexOf(model.lane);
-              return wakeScrollbar(switchLane(model, laneForIndex((currentIndex + 1) % LANE_ORDER.length)), 'worklist');
+              return wakeScrollbar(switchLaneWithWatermark(model, laneForIndex((currentIndex + 1) % LANE_ORDER.length), deps), 'worklist');
             }
             case 'prev-lane': {
               const currentIndex = LANE_ORDER.indexOf(model.lane);
-              return wakeScrollbar(switchLane(model, laneForIndex((currentIndex - 1 + LANE_ORDER.length) % LANE_ORDER.length)), 'worklist');
+              return wakeScrollbar(switchLaneWithWatermark(model, laneForIndex((currentIndex - 1 + LANE_ORDER.length) % LANE_ORDER.length), deps), 'worklist');
             }
             case 'refresh': {
               const nextReqId = model.requestId + 1;

@@ -1,5 +1,6 @@
 import { createNavigableTableState, navTableFocusNext, type NavigableTableState } from '@flyingrobots/bijou-tui';
 import { SUBMISSION_STATUS_ORDER } from '../../domain/entities/Submission.js';
+import type { ObserverWatermarkLane, ObserverWatermarks } from './observer-watermarks.js';
 import type {
   CampaignNode,
   ComparisonArtifactNode,
@@ -21,6 +22,7 @@ export interface CockpitLane {
   title: string;
   description: string;
   count: number;
+  freshCount: number;
 }
 
 interface CockpitBaseItem {
@@ -266,6 +268,7 @@ function buildCampaignItem(campaign: CampaignNode, snapshot: GraphSnapshot): Cam
   const related = snapshot.quests.filter((quest) => quest.campaignId === campaign.id);
   const done = related.filter((quest) => quest.status === 'DONE').length;
   const total = related.length;
+  const timestamp = related.reduce<number>((latest, quest) => Math.max(latest, questTimestamp(quest) ?? 0), 0) || undefined;
   return {
     id: campaign.id,
     kind: 'campaign',
@@ -274,6 +277,7 @@ function buildCampaignItem(campaign: CampaignNode, snapshot: GraphSnapshot): Cam
     secondary: (campaign.dependsOn ?? []).map(shortId).join(', ') || 'no upstream deps',
     state: campaign.status,
     cue: total > 0 ? `${done}/${total} done` : '0/0 done',
+    timestamp,
     campaign,
     progress: { done, total },
   };
@@ -578,11 +582,11 @@ function operationPriority(item: CockpitItem, agentId?: string): number {
 export function cockpitLanes(snapshot: GraphSnapshot | null, agentId?: string, nowView: NowViewMode = 'queue'): CockpitLane[] {
   if (!snapshot) {
     return [
-      { id: 'now', title: 'Now', description: nowView === 'activity' ? 'Recent changes and actors' : 'Cross-surface action queue', count: 0 },
-      { id: 'plan', title: 'Plan', description: 'Live quest surface', count: 0 },
-      { id: 'review', title: 'Review', description: 'Submission lanes', count: 0 },
-      { id: 'settlement', title: 'Settlement', description: 'Compare, attest, collapse', count: 0 },
-      { id: 'campaigns', title: 'Campaigns', description: 'Strategic containers', count: 0 },
+      { id: 'now', title: 'Now', description: nowView === 'activity' ? 'Recent changes and actors' : 'Cross-surface action queue', count: 0, freshCount: 0 },
+      { id: 'plan', title: 'Plan', description: 'Live quest surface', count: 0, freshCount: 0 },
+      { id: 'review', title: 'Review', description: 'Submission lanes', count: 0, freshCount: 0 },
+      { id: 'settlement', title: 'Settlement', description: 'Compare, attest, collapse', count: 0, freshCount: 0 },
+      { id: 'campaigns', title: 'Campaigns', description: 'Strategic containers', count: 0, freshCount: 0 },
     ];
   }
   return [
@@ -591,11 +595,12 @@ export function cockpitLanes(snapshot: GraphSnapshot | null, agentId?: string, n
       title: 'Now',
       description: nowView === 'activity' ? 'Recent changes and actors' : 'Cross-surface action queue',
       count: nowView === 'activity' ? buildActivityItems(snapshot).length : buildOperationItems(snapshot, agentId).length,
+      freshCount: 0,
     },
-    { id: 'plan', title: 'Plan', description: 'Live quest surface', count: snapshot.quests.filter((quest) => quest.status !== 'GRAVEYARD').length },
-    { id: 'review', title: 'Review', description: 'Submission lanes', count: snapshot.submissions.length },
-    { id: 'settlement', title: 'Settlement', description: 'Compare, attest, collapse', count: snapshot.governanceArtifacts.length },
-    { id: 'campaigns', title: 'Campaigns', description: 'Strategic containers', count: snapshot.campaigns.length },
+    { id: 'plan', title: 'Plan', description: 'Live quest surface', count: snapshot.quests.filter((quest) => quest.status !== 'GRAVEYARD').length, freshCount: 0 },
+    { id: 'review', title: 'Review', description: 'Submission lanes', count: snapshot.submissions.length, freshCount: 0 },
+    { id: 'settlement', title: 'Settlement', description: 'Compare, attest, collapse', count: snapshot.governanceArtifacts.length, freshCount: 0 },
+    { id: 'campaigns', title: 'Campaigns', description: 'Strategic containers', count: snapshot.campaigns.length, freshCount: 0 },
   ];
 }
 
@@ -665,4 +670,48 @@ export function selectedLaneItem(
 
 export function laneTitle(lane: CockpitLaneId): string {
   return cockpitLanes(null).find((entry) => entry.id === lane)?.title ?? lane;
+}
+
+function watermarkForLane(watermarks: ObserverWatermarks, lane: CockpitLaneId): number {
+  return watermarks[lane as ObserverWatermarkLane] ?? 0;
+}
+
+export function itemIsFresh(item: CockpitItem, lane: CockpitLaneId, watermarks: ObserverWatermarks): boolean {
+  return (item.timestamp ?? 0) > watermarkForLane(watermarks, lane);
+}
+
+export function laneFreshCount(
+  snapshot: GraphSnapshot | null,
+  lane: CockpitLaneId,
+  watermarks: ObserverWatermarks,
+  agentId?: string,
+  nowView: NowViewMode = 'queue',
+): number {
+  if (!snapshot) return 0;
+  return laneItems(snapshot, lane, agentId, nowView)
+    .filter((item) => itemIsFresh(item, lane, watermarks))
+    .length;
+}
+
+export function laneLatestTimestamp(
+  snapshot: GraphSnapshot | null,
+  lane: CockpitLaneId,
+  agentId?: string,
+  nowView: NowViewMode = 'queue',
+): number {
+  if (!snapshot) return 0;
+  return laneItems(snapshot, lane, agentId, nowView)
+    .reduce((latest, item) => Math.max(latest, item.timestamp ?? 0), 0);
+}
+
+export function cockpitLanesWithFreshness(
+  snapshot: GraphSnapshot | null,
+  watermarks: ObserverWatermarks,
+  agentId?: string,
+  nowView: NowViewMode = 'queue',
+): CockpitLane[] {
+  return cockpitLanes(snapshot, agentId, nowView).map((lane) => ({
+    ...lane,
+    freshCount: laneFreshCount(snapshot, lane.id, watermarks, agentId, nowView),
+  }));
 }

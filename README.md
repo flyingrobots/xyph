@@ -626,7 +626,9 @@ The left rail keeps those lanes visible, the center worklist stays scannable as
 a contained-list-style queue, and the right inspector keeps the currently
 selected record legible without dropping to raw JSON first. The cockpit is
 fully keyboard-driven, but it now also supports mouse clicks for lane/row
-selection and wheel scrolling in the main panes.
+selection and wheel scrolling in the main panes. Lane badges and row markers
+now also call out what is new since you last left that lane, using observer-
+local watermarks persisted in `~/.xyph/dashboard-state.json`.
 
 ```bash
 XYPH_AGENT_ID=human.yourname ./xyph-dashboard.ts

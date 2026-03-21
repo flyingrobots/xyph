@@ -3,6 +3,7 @@ import type { App, KeyMsg } from '@flyingrobots/bijou-tui';
 import { createPlainStylePort, ensurePlainBijouContext } from '../../../infrastructure/adapters/PlainStyleAdapter.js';
 import { createDashboardApp, type DashboardModel, type DashboardMsg } from '../DashboardApp.js';
 import type { GraphSnapshot } from '../../../domain/models/dashboard.js';
+import { createMemoryObserverWatermarkStore } from '../observer-watermarks.js';
 import { strip } from '../../../../test/helpers/ansi.js';
 import { makeSnapshot } from '../../../../test/helpers/snapshot.js';
 import { makeKey as key, makeResize as resize } from '../../../../test/helpers/keys.js';
@@ -19,6 +20,8 @@ function buildApp(snapshotOverrides?: Partial<GraphSnapshot>): App<DashboardMode
     style: createPlainStylePort(),
     agentId: 'agent.test',
     logoText: 'XYPH',
+    observerWatermarkStore: createMemoryObserverWatermarkStore(),
+    observerWatermarkScope: { agentId: 'agent.test', repoPath: '/tmp/xyph-test', graphName: 'xyph' },
   });
 }
 

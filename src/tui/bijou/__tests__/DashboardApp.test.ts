@@ -3,6 +3,7 @@ import { visibleLength, type App } from '@flyingrobots/bijou-tui';
 import { createPlainStylePort, ensurePlainBijouContext } from '../../../infrastructure/adapters/PlainStyleAdapter.js';
 import { createDashboardApp, type DashboardModel, type DashboardMsg } from '../DashboardApp.js';
 import type { GraphSnapshot } from '../../../domain/models/dashboard.js';
+import { createMemoryObserverWatermarkStore, observerWatermarkScopeKey, type ObserverWatermarks } from '../observer-watermarks.js';
 import { describeCockpitInteractionMap } from '../views/cockpit-view.js';
 import { makeSnapshot } from '../../../../test/helpers/snapshot.js';
 import { makeKey as key, makeMouse as mouse, makeResize as resize } from '../../../../test/helpers/keys.js';
@@ -11,7 +12,13 @@ import { strip } from '../../../../test/helpers/ansi.js';
 
 ensurePlainBijouContext();
 
-function buildApp(snapshotOverrides?: Partial<GraphSnapshot>): App<DashboardModel, DashboardMsg> {
+const TEST_SCOPE = {
+  agentId: 'agent.test',
+  repoPath: '/tmp/xyph-test',
+  graphName: 'xyph',
+} as const;
+
+function buildApp(snapshotOverrides?: Partial<GraphSnapshot>, watermarks?: Partial<ObserverWatermarks>): App<DashboardModel, DashboardMsg> {
   return createDashboardApp({
     ctx: mockGraphContext(snapshotOverrides),
     intake: mockIntakePort(),
@@ -20,6 +27,10 @@ function buildApp(snapshotOverrides?: Partial<GraphSnapshot>): App<DashboardMode
     style: createPlainStylePort(),
     agentId: 'agent.test',
     logoText: 'XYPH',
+    observerWatermarkStore: createMemoryObserverWatermarkStore(
+      watermarks ? { [observerWatermarkScopeKey(TEST_SCOPE)]: watermarks } : undefined,
+    ),
+    observerWatermarkScope: TEST_SCOPE,
   });
 }
 
@@ -108,6 +119,32 @@ describe('DashboardApp', () => {
 
     const [backward] = app.update(key('['), loaded);
     expect(backward.lane).toBe('campaigns');
+  });
+
+  it('marks the current lane as seen when switching away from it', () => {
+    const store = createMemoryObserverWatermarkStore();
+    const app = createDashboardApp({
+      ctx: mockGraphContext(),
+      intake: mockIntakePort(),
+      graphPort: mockGraphPort(),
+      submissionPort: mockSubmissionPort(),
+      style: createPlainStylePort(),
+      agentId: 'agent.test',
+      logoText: 'XYPH',
+      observerWatermarkStore: store,
+      observerWatermarkScope: TEST_SCOPE,
+    });
+    const loaded = ready(app, makeSnapshot({
+      quests: [{ id: 'task:Q1', title: 'Quest One', status: 'READY', hours: 1, readyAt: 100 }],
+    }));
+
+    expect(loaded.observerWatermarks.now).toBe(0);
+
+    const [next] = app.update(key('2'), loaded);
+
+    expect(next.lane).toBe('plan');
+    expect(next.observerWatermarks.now).toBe(100);
+    expect(store.load(TEST_SCOPE).now).toBe(100);
   });
 
   it('moves selection inside the Plan lane with j and k', () => {

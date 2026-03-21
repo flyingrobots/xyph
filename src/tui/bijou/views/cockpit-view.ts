@@ -4,7 +4,8 @@ import type { GraphSnapshot, QuestNode, SubmissionNode, CampaignNode } from '../
 import type { StylePort } from '../../../ports/StylePort.js';
 import type { DashboardModel } from '../DashboardApp.js';
 import {
-  cockpitLanes,
+  cockpitLanesWithFreshness,
+  itemIsFresh,
   laneItems,
   laneTitle,
   selectedLaneItem,
@@ -240,11 +241,15 @@ function metaLine(
   selected: boolean,
   width: number,
   accentToken: ReturnType<typeof laneAccent>,
+  fresh: boolean,
 ): string {
   const safeWidth = Math.max(12, width);
+  const labelText = fresh ? `● ${item.label}` : item.label;
   const label = selected
-    ? style.styled(accentToken, item.label)
-    : style.styled(style.theme.semantic.muted, item.label);
+    ? `${fresh ? style.styled(style.theme.semantic.error, '●') + ' ' : ''}${style.styled(accentToken, item.label)}`
+    : fresh
+      ? `${style.styled(style.theme.semantic.error, '●')} ${style.styled(style.theme.semantic.muted, item.label)}`
+      : style.styled(style.theme.semantic.muted, item.label);
   const status = statusText(style, item.state);
   const cue = item.cue ? style.styled(style.theme.semantic.warning, item.cue) : '';
   const cueWidth = cue ? Math.min(Math.max(visibleLength(cue), 2), 10) : 0;
@@ -254,7 +259,7 @@ function metaLine(
   if (labelWidth < 6) {
     return [label, status, cue].filter(Boolean).join(' ');
   }
-  const cells = [padVisible(label, labelWidth), padVisible(status, statusWidth)];
+  const cells = [padVisible(label, Math.max(labelWidth, visibleLength(labelText))), padVisible(status, statusWidth)];
   if (cue) cells.push(padVisible(cue, cueWidth));
   return cells.join(' ');
 }
@@ -265,10 +270,11 @@ function renderWorklistCard(
   selected: boolean,
   width: number,
   accentToken: ReturnType<typeof laneAccent>,
+  fresh: boolean,
 ): string[] {
   const innerWidth = Math.max(12, width - 4);
   const bodyLines = [
-    metaLine(style, item, selected, innerWidth, accentToken),
+    metaLine(style, item, selected, innerWidth, accentToken, fresh),
     ...wrapWhitespaceText(item.primary, innerWidth).map((line) =>
       selected ? style.styled(style.theme.semantic.primary, line) : line),
   ];
@@ -291,6 +297,8 @@ function buildWorklistViewport(options: {
   items: CockpitItem[];
   focusRow: number;
   startIndex: number;
+  lane: DashboardModel['lane'];
+  watermarks: DashboardModel['observerWatermarks'];
   width: number;
   height: number;
   style: StylePort;
@@ -309,6 +317,7 @@ function buildWorklistViewport(options: {
       index === options.focusRow,
       options.width,
       options.accentToken,
+      itemIsFresh(item, options.lane, options.watermarks),
     );
     const needed = cardLines.length + (lines.length > 0 ? 1 : 0);
     if (lines.length + needed > options.height && lines.length > 0) break;
@@ -451,6 +460,8 @@ export function describeCockpitInteractionMap(
     items: worklistItems,
     focusRow,
     startIndex: start,
+    lane: model.lane,
+    watermarks: model.observerWatermarks,
     width: worklistContentWidth,
     height: worklistInnerHeight,
     style,
@@ -462,6 +473,8 @@ export function describeCockpitInteractionMap(
       items: worklistItems,
       focusRow,
       startIndex: start,
+      lane: model.lane,
+      watermarks: model.observerWatermarks,
       width: worklistContentWidth,
       height: worklistInnerHeight,
       style,
@@ -640,7 +653,7 @@ function buildLaneRailContent(
 ): { lines: string[]; regions: ({ lane: DashboardModel['lane'] } & LineSpan)[] } {
   const lines: string[] = [];
   const regions: ({ lane: DashboardModel['lane'] } & LineSpan)[] = [];
-  const lanes = cockpitLanes(snapshot, model.agentId, model.nowView);
+  const lanes = cockpitLanesWithFreshness(snapshot, model.observerWatermarks, model.agentId, model.nowView);
   for (const lane of lanes) {
     const selected = lane.id === model.lane;
     const accentToken = laneAccent(style, lane.id);
@@ -650,8 +663,11 @@ function buildLaneRailContent(
     const title = selected
       ? style.styled(accentToken, lane.title.toUpperCase())
       : lane.title.toUpperCase();
+    const badge = lane.freshCount > 0
+      ? style.styled(style.theme.semantic.error, `● ${lane.freshCount}`)
+      : '';
     const lineStart = lines.length;
-    lines.push(`${indicator} ${title}  ${lane.count}`);
+    lines.push([`${indicator} ${title}  ${lane.count}`, badge].filter(Boolean).join('  '));
     pushWrappedText(lines, lane.description, {
       width: innerWidth,
       prefix: '  ',
@@ -727,6 +743,8 @@ function renderWorklistPane(model: DashboardModel, snapshot: GraphSnapshot, styl
     items,
     focusRow,
     startIndex: start,
+    lane: model.lane,
+    watermarks: model.observerWatermarks,
     width: contentWidth,
     height: innerHeight,
     style,
@@ -738,6 +756,8 @@ function renderWorklistPane(model: DashboardModel, snapshot: GraphSnapshot, styl
       items,
       focusRow,
       startIndex: start,
+      lane: model.lane,
+      watermarks: model.observerWatermarks,
       width: contentWidth,
       height: innerHeight,
       style,

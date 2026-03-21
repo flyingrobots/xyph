@@ -15,6 +15,7 @@
  *   Shift+PgUp/PgDn — scroll the inspector
  *   m               — toggle "My Stuff" drawer (quests, submissions, activity)
  *   Mouse           — click lanes/rows, wheel-scroll panes, dismiss the quest tree
+ *   Freshness       — lane dots and row markers show what is new since you last left that lane
  *   r               — refresh snapshot
  *   : or /          — command palette
  *   q               — quit
@@ -41,6 +42,7 @@ import { WarpGraphAdapter } from './src/infrastructure/adapters/WarpGraphAdapter
 import { WarpIntakeAdapter } from './src/infrastructure/adapters/WarpIntakeAdapter.js';
 import { WarpSubmissionAdapter } from './src/infrastructure/adapters/WarpSubmissionAdapter.js';
 import { createDashboardApp } from './src/tui/bijou/DashboardApp.js';
+import { createFileObserverWatermarkStore } from './src/tui/bijou/observer-watermarks.js';
 import { loadRandomLogo, selectLogoSize } from './src/tui/logo-loader.js';
 import { TuiLogger } from './src/tui/TuiLogger.js';
 import { parseAsOverrideFromArgv, resolveIdentity } from './src/cli/identity.js';
@@ -74,6 +76,7 @@ const graphPort = new WarpGraphAdapter(runtime.repoPath, runtime.graphName, agen
 const ctx = createGraphContext(graphPort);
 const intake = new WarpIntakeAdapter(graphPort, agentId);
 const submissionPort = new WarpSubmissionAdapter(graphPort, agentId);
+const observerWatermarkStore = createFileObserverWatermarkStore();
 
 const app = createDashboardApp({
   ctx,
@@ -83,6 +86,12 @@ const app = createDashboardApp({
   style,
   agentId,
   logoText: splash.text,
+  observerWatermarkStore,
+  observerWatermarkScope: {
+    agentId,
+    repoPath: runtime.repoPath,
+    graphName: runtime.graphName,
+  },
 });
 
 await run(app, { altScreen: true, hideCursor: true, mouse: true });

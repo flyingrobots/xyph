@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { createPlainStylePort, ensurePlainBijouContext } from '../../../infrastructure/adapters/PlainStyleAdapter.js';
 import type { DashboardModel } from '../DashboardApp.js';
 import type { GraphSnapshot } from '../../../domain/models/dashboard.js';
+import { emptyObserverWatermarks } from '../observer-watermarks.js';
 import { cockpitView } from '../views/cockpit-view.js';
 import { renderMyStuffDrawer } from '../views/my-stuff-drawer.js';
 import { buildLaneTable } from '../cockpit.js';
@@ -54,6 +55,7 @@ function makeModel(snapshot: GraphSnapshot | null): DashboardModel {
     watching: false,
     refreshPending: false,
     agentId: 'agent.test',
+    observerWatermarks: emptyObserverWatermarks(),
   };
 }
 
@@ -171,6 +173,33 @@ describe('cockpitView', () => {
     expect(plain).toContain('Recent Activity');
     expect(plain).toContain('Quest One');
     expect(plain).toContain('hal');
+  });
+
+  it('renders lane and row freshness markers from observer watermarks', () => {
+    const snapshot = makeSnapshot({
+      quests: [{
+        id: 'task:Q1',
+        title: 'Quest One',
+        status: 'READY',
+        hours: 2,
+        readyAt: 200,
+        readyBy: 'agent.hal',
+      }],
+    });
+    const model = {
+      ...makeModel(snapshot),
+      observerWatermarks: {
+        now: 0,
+        plan: 0,
+        review: 0,
+        settlement: 0,
+        campaigns: 0,
+      },
+    };
+
+    const plain = strip(cockpitView(model, style, 120, 30));
+    expect(plain).toContain('● 1');
+    expect(plain).toContain('● QUEST');
   });
 
   it('renders settlement detail for a selected governance artifact', () => {
