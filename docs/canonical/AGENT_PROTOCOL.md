@@ -13,6 +13,11 @@ plane. This document describes the higher-level agent workflow surface layered
 over that control plane while XYPH transitions away from workflow-first CLI
 thinking.
 
+The product-design source of truth for how the human and agent surfaces should
+fit together now lives in [`../XYPH_PRODUCT_DESIGN.md`](../XYPH_PRODUCT_DESIGN.md).
+This protocol document defines command and contract truth; the design document
+defines sponsor actors, hills, queue models, and workflow intent.
+
 The goal is not "friendlier scripting." The goal is that an agent can:
 
 1. enter the repo cold,

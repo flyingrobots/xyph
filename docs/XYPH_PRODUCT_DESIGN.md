@@ -1,12 +1,16 @@
 # XYPH Product Design
 
-**Status:** Current source of truth for XYPH's human-facing product design.  
-**Scope:** XYPH landing page, drill-in pages, attention model, page taxonomy,
-navigation, and design-review practice.  
+**Status:** Current source of truth for XYPH's product design across both the
+human-facing app and the agent-native interaction layer.  
+**Scope:** XYPH landing page, drill-in pages, agent-native CLI/interaction
+modes, attention model, page taxonomy, suggestion queues, navigation, and
+design-review practice.  
 **Relationship to architecture:** `docs/canonical/ARCHITECTURE.md` remains the
 technical architecture source of truth. This document is the product and
-experience source of truth for the human surface built on top of that
-architecture.
+experience source of truth for the human and agent surfaces built on top of
+that architecture. `docs/canonical/AGENT_PROTOCOL.md` remains the protocol and
+command-contract source of truth; this document defines the product goals,
+roles, flows, and interaction model that should shape that protocol.
 
 ## Why This Exists
 
@@ -21,9 +25,12 @@ What it does **not** yet have is one explicit design model for:
 - what "done" looks like for XYPH product slices
 
 This document is the answer. It applies **IBM Design Thinking** to XYPH's
-human surface, using the parts that fit this product best:
+human and agent surfaces, using the parts that fit this product best:
 
 - **Sponsor Users** to keep the app anchored in real operator needs
+- **Sponsor Agents** as the agent-native analogue to sponsor users, so the
+  agent CLI and machine-facing interaction layer are designed around real agent
+  jobs rather than as a pile of commands
 - **Hills** to define outcome-based success for major design slices
 - **Playbacks** to keep the design legible and continuously reviewable
 - the **Observe / Reflect / Make** loop to keep design grounded in real graph
@@ -45,7 +52,7 @@ XYPH is the app.
 implements and that can inform future XYPH surfaces. It is not the product
 name of this application.
 
-It exists so a human can:
+XYPH exists so a human or agent can:
 
 - understand what changed, who did it, and why it matters
 - see the live plan and its speculative alternatives honestly
@@ -53,6 +60,8 @@ It exists so a human can:
 - inspect AI-driven suggestions without confusing them for human or settled truth
 - take lawful action with full context
 - recover dead or rejected work without losing causal history
+- leave durable graph-native state behind for the next collaborator, whether
+  that collaborator is human or agent
 
 XYPH is **not**:
 
@@ -60,14 +69,19 @@ XYPH is **not**:
 - a second workflow engine separate from the graph
 - a decorative history browser
 - a branch browser with better branding
+- a suggestion box that bypasses governance
+- a chat wrapper that replaces the graph with prose memory
 
 The graph is still the plan. XYPH is the place where a human can perceive,
 judge, and act on that plan.
 
-## Sponsor Users
+## Sponsor Actors
 
 IBM Design Thinking starts by designing for real users with specific outcomes.
-For XYPH, the sponsor-user set is:
+For XYPH, that extends naturally into **sponsor actors**: representative humans
+and representative agents whose real jobs the product must support.
+
+## Human Sponsor Users
 
 ### 1. The Operator-Supervisor
 
@@ -114,6 +128,52 @@ Primary success condition:
 - can act directly from the right page with the right context, without needing
   to memorize hidden CLI rituals, and can distinguish AI suggestions from
   human-authored truth at a glance
+
+## Agent Sponsor Actors
+
+For the agent-native layer, apply the same IBM discipline but replace "user"
+with "agent": design for representative agent jobs, not for an imaginary
+generic machine consumer.
+
+### 1. The Cold-Start Worker Agent
+
+The agent that enters a repo cold and needs to become useful quickly.
+
+Primary success condition:
+
+- can orient from XYPH alone, identify true work, understand what is allowed,
+  and start acting without spelunking raw files, running redundant shell
+  commands, or reverse-engineering graph state
+
+### 2. The Queue-Consuming Agent
+
+The agent that consumes explicit jobs, recommendations, or suggestions from a
+queue instead of improvising its own work selection every time.
+
+Primary success condition:
+
+- can pull the next best suggestion or task, understand why it was offered, and
+  decide whether to claim, defer, or reject it with machine-readable reasons
+
+### 3. The Reviewing Agent
+
+The agent that reviews submissions, comments on work, or assists with
+settlement-related judgment without exceeding its authority.
+
+Primary success condition:
+
+- can tell what it is allowed to review, what evidence is missing, and when a
+  human is still required
+
+### 4. The Recommending Agent
+
+The agent that proposes structure instead of mutating it directly.
+
+Primary success condition:
+
+- can emit high-quality, explainable suggestions for quests, dependencies,
+  promotions, and follow-up work without those suggestions being mistaken for
+  settled graph truth
 
 ## Hills
 
@@ -165,6 +225,28 @@ When XYPH shows AI-generated suggestions, the operator should be able to tell:
 
 without mistaking the suggestion for settled graph truth or a human decision.
 
+### Hill 6: Let Agents Start Productive Without Shell Archaeology
+
+When an agent starts work in a repo, it can:
+
+- understand what is true
+- understand what it is allowed to do
+- retrieve the next best task or suggestion
+- see blocking reasons in machine-readable form
+
+without reconstructing the project from scattered CLI output and raw graph
+queries.
+
+### Hill 7: Make Agent Suggestions Consumable, Not Merely Emitted
+
+When an agent proposes work, the suggestion should become a first-class queued
+artifact that can be:
+
+- reviewed by a human
+- picked up by another agent
+- accepted into the normal lifecycle
+- rejected or marked stale with recorded rationale
+
 ## Product Principles
 
 ### 1. Landing For Triage, Pages For Judgment
@@ -209,6 +291,12 @@ attention into one dot.
 Review, comparison, attestation, and collapse are not implementation detail.
 They are central parts of the operator workflow and deserve purpose-built
 surfaces.
+
+### 4a. Agent Workflow Is A First-Class Product Surface
+
+The agent-native CLI and interaction model are part of the product, not a
+compatibility appendix. They should be designed with the same rigor as the
+human cockpit.
 
 ### 5. Graveyard Is Part Of The Product, Not An Embarrassment
 
@@ -268,6 +356,29 @@ AI-generated or AI-assisted content must never masquerade as ordinary product
 copy or settled graph truth. XYPH should use a dedicated `[AI]` component
 wherever AI presence needs to be recognized and explained.
 
+### 12. Every Idea Enters The Same Lifecycle
+
+Quest creation should not bypass governance just because it is initiated from a
+nice page, by a human, or by an agent. Every new work idea enters through the
+same lifecycle:
+
+`suggested -> BACKLOG -> PLANNED -> READY -> IN_PROGRESS -> ...`
+
+Whether the source is human or agent, creation should be modeled as suggestion
+or intake into backlog, not as a secret privileged fast path.
+
+### 13. "Ask The AI" Must Be An Explicit Job
+
+If XYPH lets a user "ask the AI" for help, that request must become an explicit
+job or suggestion artifact in the queue. It should be inspectable, targetable,
+and explainable, not a hidden side channel.
+
+### 14. Same Graph, Different Lenses
+
+Humans and agents should consume the same graph truth through different lenses.
+The human landing cockpit and the agent-native CLI should disagree in format,
+not in reality.
+
 ## App Architecture
 
 ## Landing Page
@@ -292,6 +403,12 @@ The landing page layout consists of:
 - **Inspector**: selected-item preview
 - **Drawer / modals**: auxiliary surfaces, not the default home for core flows
 
+Potential landing-page expansions that still fit the model:
+
+- a `Suggestions` lane
+- a `Now / Suggestions` mode
+- a `Now / Live` mode for event-stream awareness
+
 Landing-page responsibilities:
 
 - orient the operator
@@ -307,6 +424,35 @@ Landing-page non-responsibilities:
 - carrying every detail for every item forever
 - making the inspector the permanent home for deep work
 - pretending every lane is a wizard step
+
+## Agent-Native Surface
+
+The agent-native surface is not a TUI. It is the product experience embodied in
+the agent-facing CLI and machine-oriented interaction layer.
+
+Current homes:
+
+- `xyph briefing`
+- `xyph next`
+- `xyph context`
+- `xyph submissions`
+- `xyph act`
+- `xyph handoff`
+- future suggestion/job queue reads and writes
+
+Agent-surface responsibilities:
+
+- orient a cold-start agent
+- expose available work and suggestion jobs
+- expose allowed actions and blocking reasons
+- keep output structured and context-window efficient
+- preserve auditability and graph-native handoff
+
+Agent-surface non-responsibilities:
+
+- inventing a second hidden workflow model
+- bypassing governance or capability checks
+- silently executing AI-suggested work without visible queueing or approval
 
 ## Drill-In Pages
 
@@ -374,6 +520,16 @@ Purpose:
 - accept, reject, comment on, or queue the suggestion for agent pickup when
   lawful
 
+### Ask-AI Job Page
+
+Purpose:
+
+- inspect an explicit "ask the AI" job
+- show what was requested
+- show which agent or queue it targets
+- show status, response, and next suggested actions
+- make the request auditable instead of ephemeral
+
 ## Navigation Model
 
 Navigation rules:
@@ -409,6 +565,41 @@ Must answer:
 - what is already in motion?
 - what should I look at next?
 - which suggestion jobs are waiting for judgment or pickup?
+
+### Suggestions
+
+Purpose:
+
+- advisory suggestions and explicit ask-AI jobs
+- machine-targeted and human-targeted recommendation queues
+
+Must answer:
+
+- what suggestions exist?
+- which are for humans vs agents?
+- which are fresh, hot, blocked, stale, or already consumed?
+- which can be accepted, queued, rejected, or commented on now?
+
+### Live
+
+`Live` is not necessarily a top-level lane, but XYPH should support a live mode
+somewhere in the product.
+
+Purpose:
+
+- subscribe to graph mutations as they happen
+- surface a live operational feed during active collaboration
+
+Must answer:
+
+- what just mutated?
+- who wrote it?
+- which lane or entity did it affect?
+
+Design rule:
+
+- live mode must remain clearly separate from settled history and from AI
+  suggestion artifacts
 
 ### Plan
 
@@ -485,6 +676,8 @@ Must answer:
 | Campaign page | supervise strategic flow | inspect children, track activity, navigate to work |
 | Graveyard page | recover or understand dead work | inspect rationale, lineage, reopen when lawful |
 | Suggestion page | inspect and govern one AI suggestion | explain, accept, reject, comment, route to agent pickup |
+| Agent-native CLI | orient and act efficiently | briefing, next, context, consume queue, act, handoff |
+| Ask-AI job page | inspect one explicit AI request | explain, reroute, cancel, comment, consume result |
 
 ## AI Suggestions
 
@@ -516,6 +709,17 @@ If a suggestion is agent-targeted, it should be visible in the XYPH human
 surface and also lower to a machine-consumable queue/job surface so agents can
 pick it up through the canonical control plane.
 
+### Queueing
+
+Suggestions are not just annotations. They should be able to live in a queue
+that either humans or agents can consume.
+
+Examples:
+
+- a human-facing suggestion queue in the landing surface
+- an agent-facing recommendation queue in `briefing` / `next`
+- explicit ask-AI jobs that wait for agent pickup
+
 ### States
 
 Suggestions should move through a visible lifecycle such as:
@@ -529,6 +733,33 @@ Suggestions should move through a visible lifecycle such as:
 
 The exact storage model can evolve, but the human surface must make the state
 obvious.
+
+### Quest Creation
+
+Humans and agents should both be able to propose new quests, but creation must
+flow through the same intake model. The product should present "create quest"
+as:
+
+- a suggestion or intake action
+- a backlog addition
+- optionally an ask-AI-assisted drafting flow
+
+It should not be presented as a privileged bypass around backlog/governance.
+
+### Ask-The-AI Jobs
+
+XYPH should support explicit "ask the AI" jobs that become queue artifacts.
+
+Typical uses:
+
+- recommend dependencies
+- recommend quests
+- recommend a backlog promotion
+- explain a blocked review or settlement artifact
+- suggest a graveyard reopen
+
+The important product rule is that "ask the AI" creates a visible job and
+result trail. It is not a hidden side conversation.
 
 ### Human Expectations
 
@@ -596,6 +827,7 @@ Activating `[AI]` should open an explainability popover or modal that explains:
 - artifacts/resources/provenance when available
 - additional actions such as accept, reject, or revert when the surrounding
   workflow allows them
+- for queue items, whether the item is human-targeted, agent-targeted, or both
 
 ### Visibility Levels
 
@@ -666,6 +898,14 @@ AI suggestions can participate in this model, but the `[AI]` marker is separate
 from attention. A suggestion can be `[AI]` and also be fresh, hot, blocked, or
 historical.
 
+Agent-targeted suggestion jobs can also be:
+
+- **claimable**: any eligible agent may pick this up
+- **reserved**: targeted to one agent or one queue
+- **awaiting-human**: agent work is paused pending human judgment
+
+Those states should not be collapsed into ordinary freshness.
+
 ## Stepper Use
 
 BIJOU stepper is appropriate for **bounded governance flows**, not for global
@@ -724,6 +964,14 @@ evaluated against these questions:
 3. Can they move from landing to page to lawful action without confusion?
 4. Is the page better than cramming more into the inspector?
 5. Did the slice reduce ambiguity, or only add chrome?
+6. Can both a human and an agent explain what the next lawful action is?
+
+For agent-native slices, use the same playback discipline with sponsor agents:
+
+1. Could a cold-start agent orient faster than before?
+2. Could it distinguish truth, suggestion, and authority?
+3. Could it consume a queue without shell archaeology?
+4. Could it explain why it acted, or why it refused to act?
 
 ## Observe / Reflect / Make Loop
 
@@ -764,11 +1012,15 @@ The next design-led product slices should follow this order:
 
 1. finish the landing-page vs drill-in-page split
 2. add dedicated page types for review, settlement, and suggestion artifacts
-3. add AI suggestion queues for human and agent pickup
-4. add the `[AI]` transparency component and explainability flow
-5. tighten contextual action models on those pages
-6. deepen the recent-activity and attention-routing model
-7. refine the semantic token layer for XYPH on top of BIJOU
+3. define the agent-native sponsor-actor model in the same product language as
+   the human surface
+4. add AI suggestion queues for human and agent pickup
+5. add the `[AI]` transparency component and explainability flow
+6. add explicit ask-AI jobs and suggestion-backed quest creation
+7. add live graph-feed mode driven by graph mutation subscription
+8. tighten contextual action models on those pages and CLI flows
+9. deepen the recent-activity and attention-routing model
+10. refine the semantic token layer for XYPH on top of BIJOU
 
 This keeps XYPH from becoming a forever-dashboard and moves it toward a real
 operator application with destinations, context, and governed action.
