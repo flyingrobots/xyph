@@ -630,13 +630,15 @@ selected record legible without dropping to raw JSON first. Press `Enter` on a
 selected quest-facing record to drill into a dedicated item page with a
 breadcrumb under the hero (`Landing / Plan / Q1`, `Landing / Graveyard / G1`,
 and so on), then use `Esc` or `Backspace` to return to the landing surface.
-The cockpit is fully keyboard-driven, but it now also supports mouse clicks for
-lane/row selection and wheel scrolling in the main panes. `Plan`,
-`Campaigns`, `Graveyard`, and the `Now` activity stream use observer-local
-freshness markers from
-`~/.xyph/dashboard-state.json`, while `Review` and `Settlement` now keep a
-persistent action-needed badge until the underlying submission or governance
-artifact is actually resolved.
+Quest pages now expose their own action strip, so drill-in is no longer just a
+read surface: you can comment directly from the page, reopen graveyarded
+quests, and keep claim/promote/reject/review actions visible in the place where
+full context actually lives. The cockpit is fully keyboard-driven, but it now
+also supports mouse clicks for lane/row selection and wheel scrolling in the
+main panes. `Plan`, `Campaigns`, `Graveyard`, and the `Now` activity stream use
+observer-local freshness markers from `~/.xyph/dashboard-state.json`, while
+`Review` and `Settlement` now keep a persistent action-needed badge until the
+underlying submission or governance artifact is actually resolved.
 
 ```bash
 XYPH_AGENT_ID=human.yourname ./xyph-dashboard.ts
@@ -650,6 +652,7 @@ XYPH_AGENT_ID=human.yourname ./xyph-dashboard.ts
 | `g` / `G` | Cockpit | Jump to first / last row |
 | `Enter` | Landing page | Open the selected item page |
 | `Esc` / `Backspace` | Item page | Return to the landing page |
+| `;` | Quest page | Comment on the open quest |
 | `v` | Now lane | Toggle between the action queue and recent activity |
 | `t` | Quest selection | Open the quest tree / lineage modal |
 | `r` | Global | Refresh snapshot |
@@ -664,6 +667,7 @@ XYPH_AGENT_ID=human.yourname ./xyph-dashboard.ts
 | `c` | Contextual | Claim selected READY quest |
 | `p` | Contextual | Promote selected BACKLOG quest |
 | `D` | Contextual | Reject selected BACKLOG quest |
+| `o` | Contextual | Reopen selected GRAVEYARD quest |
 | `a` | Contextual | Approve selected submission |
 | `x` | Contextual | Request changes on selected submission |
 | `PgDn` / `PgUp` | Landing / page | Page the worklist or the open item page |

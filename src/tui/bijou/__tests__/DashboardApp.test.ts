@@ -454,7 +454,45 @@ describe('DashboardApp', () => {
     const pagePlain = strip(app.view(page) as string);
     expect(pagePlain).toContain('Landing / Graveyard / G1');
     expect(pagePlain).toContain('Quest retired to Graveyard.');
-    expect(pagePlain).toContain('Superseded by the sovereign rewrite.');
+    expect(pagePlain).toContain('Actions');
+    expect(pagePlain).toContain('o');
+    expect(pagePlain).toContain('Reopen quest from Graveyard');
+    expect(pagePlain).toContain(';');
+    expect(pagePlain).toContain('Comment on this quest');
+  });
+
+  it('opens a page-local comment input from a quest page', () => {
+    const app = buildApp();
+    const loaded = ready(app, makeSnapshot({
+      quests: [{ id: 'task:Q1', title: 'Quest One', status: 'READY', hours: 1 }],
+    }));
+
+    const [plan] = app.update(key('2'), loaded);
+    const [page] = app.update(key('enter'), plan);
+    const [comment] = app.update(key(';'), page);
+
+    expect(comment.mode).toBe('input');
+    expect(comment.inputState?.action).toEqual({ kind: 'comment', targetId: 'task:Q1' });
+    expect(comment.inputState?.label).toContain('Comment on task:Q1:');
+  });
+
+  it('opens a page-local reopen confirmation for a graveyard quest page', () => {
+    const app = buildApp();
+    const loaded = ready(app, makeSnapshot({
+      quests: [{
+        id: 'task:G1',
+        title: 'Rejected Quest',
+        status: 'GRAVEYARD',
+        hours: 1,
+      }],
+    }));
+
+    const [graveyard] = app.update(key('6'), loaded);
+    const [page] = app.update(key('enter'), graveyard);
+    const [confirm] = app.update(key('o'), page);
+
+    expect(confirm.mode).toBe('confirm');
+    expect(confirm.confirmState?.action).toEqual({ kind: 'reopen', questId: 'task:G1' });
   });
 
   it('dismisses the quest tree modal on outside click and scrolls the drawer with the mouse wheel', () => {

@@ -1,5 +1,6 @@
 import { stepper } from '@flyingrobots/bijou';
 import { createPagerState, pager, pagerScrollTo, viewport } from '@flyingrobots/bijou-tui';
+import type { TokenValue } from '@flyingrobots/bijou';
 import type { EntityDetail, GraphSnapshot, QuestDetail, QuestNode } from '../../../domain/models/dashboard.js';
 import type { StylePort } from '../../../ports/StylePort.js';
 import type { DashboardModel, QuestPageRoute } from '../DashboardApp.js';
@@ -17,6 +18,13 @@ import {
 import { formatAge, wrapWhitespaceText } from '../../view-helpers.js';
 
 const FIELD_LABEL_WIDTH = 12;
+const ACTION_KEY_WIDTH = 8;
+
+interface QuestPageAction {
+  key: string;
+  label: string;
+  token: TokenValue;
+}
 
 function pushWrappedText(
   lines: string[],
@@ -61,6 +69,25 @@ function pushSectionTitle(lines: string[], style: StylePort, title: string): voi
   lines.push(style.styled(style.theme.ui.sectionHeader, title));
 }
 
+function pushAction(
+  lines: string[],
+  style: StylePort,
+  action: QuestPageAction,
+  width: number,
+): void {
+  const labelWidth = Math.max(8, width - ACTION_KEY_WIDTH - 1);
+  const wrapped = wrapWhitespaceText(action.label, labelWidth);
+  const keyText = style.styled(action.token, padVisible(action.key, ACTION_KEY_WIDTH));
+  if (wrapped.length === 0) {
+    lines.push(`${keyText} `);
+    return;
+  }
+  lines.push(`${keyText} ${wrapped[0] ?? ''}`);
+  for (const line of wrapped.slice(1)) {
+    lines.push(`${' '.repeat(ACTION_KEY_WIDTH)} ${line}`);
+  }
+}
+
 function pushReasonBlock(lines: string[], style: StylePort, item: CockpitItem | undefined, width: number): void {
   if (!item) return;
   if (item.attentionReason) {
@@ -74,6 +101,30 @@ function pushReasonBlock(lines: string[], style: StylePort, item: CockpitItem | 
       style.styled(style.theme.semantic.info, line));
     lines.push('');
   }
+}
+
+function pageActions(style: StylePort, quest: QuestNode, detail: QuestDetail | undefined): QuestPageAction[] {
+  const actions: QuestPageAction[] = [
+    { key: 'Esc', label: 'Return to the landing cockpit', token: style.theme.semantic.muted },
+    { key: ';', label: 'Comment on this quest', token: style.theme.semantic.info },
+    { key: 't', label: 'Open quest tree / lineage', token: style.theme.semantic.info },
+  ];
+
+  if (quest.status === 'READY') {
+    actions.push({ key: 'c', label: 'Claim quest', token: style.theme.semantic.primary });
+  } else if (quest.status === 'BACKLOG') {
+    actions.push({ key: 'p', label: 'Promote quest toward live execution', token: style.theme.semantic.primary });
+    actions.push({ key: 'D', label: 'Reject quest to Graveyard', token: style.theme.semantic.error });
+  } else if (quest.status === 'GRAVEYARD') {
+    actions.push({ key: 'o', label: 'Reopen quest from Graveyard', token: style.theme.semantic.warning });
+  }
+
+  if (detail?.submission && (detail.submission.status === 'OPEN' || detail.submission.status === 'CHANGES_REQUESTED')) {
+    actions.push({ key: 'a', label: 'Approve attached submission', token: style.theme.semantic.primary });
+    actions.push({ key: 'x', label: 'Request changes on attached submission', token: style.theme.semantic.warning });
+  }
+
+  return actions;
 }
 
 function lifecycleStepIndex(quest: QuestNode, detail?: QuestDetail): number {
@@ -156,6 +207,12 @@ function buildQuestPageContent(
     lines.push(style.styled(style.theme.semantic.error, `Could not load full quest detail: ${error}`));
     lines.push('');
   }
+
+  pushSectionTitle(lines, style, 'Actions');
+  for (const action of pageActions(style, quest, questDetail)) {
+    pushAction(lines, style, action, width);
+  }
+  lines.push('');
 
   pushSectionTitle(lines, style, 'Lifecycle');
   lines.push(...lifecycleBlock(style, quest, questDetail));

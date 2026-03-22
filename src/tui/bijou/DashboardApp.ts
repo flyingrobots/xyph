@@ -39,7 +39,15 @@ import { confirmOverlay, inputOverlay } from './overlays.js';
 import { buildMyStuffDrawerLines, renderMyStuffDrawer } from './views/my-stuff-drawer.js';
 import { questTreeOverlay, questTreeOverlayBounds } from './views/quest-tree-modal.js';
 import { questPageView } from './views/quest-page-view.js';
-import { claimQuest, promoteQuest, rejectQuest, reviewSubmission, type WriteDeps } from './write-cmds.js';
+import {
+  claimQuest,
+  commentOnEntity,
+  promoteQuest,
+  rejectQuest,
+  reopenQuest,
+  reviewSubmission,
+  type WriteDeps,
+} from './write-cmds.js';
 import {
   buildLaneTable,
   cockpitLaneOrder,
@@ -66,6 +74,8 @@ export type PendingWrite =
   | { kind: 'claim'; questId: string }
   | { kind: 'promote'; questId: string }
   | { kind: 'reject'; questId: string }
+  | { kind: 'reopen'; questId: string }
+  | { kind: 'comment'; targetId: string }
   | { kind: 'approve'; patchsetId: string }
   | { kind: 'request-changes'; patchsetId: string };
 
@@ -176,9 +186,11 @@ type ViewAction =
   | { type: 'page-down-inspector' }
   | { type: 'page-up-inspector' }
   | { type: 'toggle-quest-tree' }
+  | { type: 'comment' }
   | { type: 'claim' }
   | { type: 'promote' }
   | { type: 'reject' }
+  | { type: 'reopen' }
   | { type: 'approve' }
   | { type: 'request-changes' }
   | { type: 'mark-lane-seen' };
@@ -260,9 +272,11 @@ function buildViewKeys(): KeyMap<ViewAction> {
       .bind('shift+pagedown', 'Scroll inspector down', { type: 'page-down-inspector' })
       .bind('shift+pageup', 'Scroll inspector up', { type: 'page-up-inspector' })
       .bind('t', 'Open quest tree', { type: 'toggle-quest-tree' })
+      .bind(';', 'Comment on selected quest', { type: 'comment' })
       .bind('c', 'Claim selected quest', { type: 'claim' })
       .bind('p', 'Promote selected backlog quest', { type: 'promote' })
       .bind('shift+d', 'Reject selected backlog quest', { type: 'reject' })
+      .bind('o', 'Reopen selected graveyard quest', { type: 'reopen' })
       .bind('a', 'Approve selected submission', { type: 'approve' })
       .bind('x', 'Request changes on selected submission', { type: 'request-changes' })
       .bind('shift+s', 'Mark current lane seen', { type: 'mark-lane-seen' }),
@@ -606,12 +620,20 @@ function contextControls(model: DashboardModel): ControlHint[] {
     ];
     const quest = selectedQuest(model);
     if (quest) {
+      hints.push({ key: ';', label: 'comment' });
       hints.push({ key: 't', label: 'tree' });
       if (quest.status === 'READY') {
         hints.push({ key: 'c', label: 'claim' });
       } else if (quest.status === 'BACKLOG') {
         hints.push({ key: 'p', label: 'promote' });
         hints.push({ key: 'D', label: 'reject' });
+      } else if (quest.status === 'GRAVEYARD') {
+        hints.push({ key: 'o', label: 'reopen' });
+      }
+      const submission = selectedSubmission(model);
+      if (submission && (submission.status === 'OPEN' || submission.status === 'CHANGES_REQUESTED')) {
+        hints.push({ key: 'a', label: 'approve' });
+        hints.push({ key: 'x', label: 'changes' });
       }
     }
     return hints;
@@ -628,6 +650,8 @@ function contextControls(model: DashboardModel): ControlHint[] {
     } else if (quest.status === 'BACKLOG') {
       hints.push({ key: 'p', label: 'promote' });
       hints.push({ key: 'D', label: 'reject' });
+    } else if (quest.status === 'GRAVEYARD') {
+      hints.push({ key: 'o', label: 'reopen' });
     }
     hints.push({ key: 't', label: 'tree' });
   } else {
@@ -813,6 +837,9 @@ function buildPaletteItems(model: DashboardModel): CommandPaletteItem[] {
   const quest = selectedQuest(model);
   if (quest) {
     items.push({ id: 'quest-tree', label: 'Open selected quest tree', category: 'Inspect', shortcut: 't' });
+    if (!isLandingPage(model)) {
+      items.push({ id: 'comment', label: 'Comment on this quest', category: 'Action', shortcut: ';' });
+    }
   }
   if (isLandingPage(model)
     && laneFreshCount(model.snapshot, model.lane, model.observerWatermarks, model.observerSeenItems, model.agentId, model.nowView) > 0) {
@@ -824,6 +851,9 @@ function buildPaletteItems(model: DashboardModel): CommandPaletteItem[] {
   if (quest?.status === 'BACKLOG') {
     items.push({ id: 'promote', label: 'Promote selected backlog quest', category: 'Action', shortcut: 'p' });
     items.push({ id: 'reject', label: 'Reject selected backlog quest', category: 'Action', shortcut: 'D' });
+  }
+  if (quest?.status === 'GRAVEYARD') {
+    items.push({ id: 'reopen', label: 'Reopen selected graveyard quest', category: 'Action', shortcut: 'o' });
   }
 
   const submission = selectedSubmission(model);
@@ -956,6 +986,10 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         return promoteQuest(writeDeps, action.questId, inputValue ?? '');
       case 'reject':
         return rejectQuest(writeDeps, action.questId, inputValue ?? '');
+      case 'reopen':
+        return reopenQuest(writeDeps, action.questId);
+      case 'comment':
+        return commentOnEntity(writeDeps, action.targetId, inputValue ?? '');
       case 'approve':
         return reviewSubmission(writeDeps, action.patchsetId, 'approve', inputValue ?? '');
       case 'request-changes':
@@ -992,6 +1026,29 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
           ...model,
           mode: 'input',
           inputState: { label: `Rejection rationale for ${quest.id}:`, value: '', action: { kind: 'reject', questId: quest.id } },
+        }, []];
+      }
+      case 'reopen': {
+        const quest = selectedQuest(model);
+        if (!quest || quest.status !== 'GRAVEYARD') return [model, []];
+        return [{
+          ...model,
+          mode: 'confirm',
+          confirmState: { prompt: `Reopen ${quest.id}?`, action: { kind: 'reopen', questId: quest.id } },
+        }, []];
+      }
+      case 'comment': {
+        if (isLandingPage(model)) return [model, []];
+        const quest = selectedQuest(model);
+        if (!quest) return [model, []];
+        return [{
+          ...model,
+          mode: 'input',
+          inputState: {
+            label: `Comment on ${quest.id}:`,
+            value: '',
+            action: { kind: 'comment', targetId: quest.id },
+          },
         }, []];
       }
       case 'approve': {
@@ -1059,10 +1116,14 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         return [markLaneSeen(model, deps), []];
       case 'claim':
         return promptForAction(model, { type: 'claim' });
+      case 'comment':
+        return promptForAction(model, { type: 'comment' });
       case 'promote':
         return promptForAction(model, { type: 'promote' });
       case 'reject':
         return promptForAction(model, { type: 'reject' });
+      case 'reopen':
+        return promptForAction(model, { type: 'reopen' });
       case 'approve':
         return promptForAction(model, { type: 'approve' });
       case 'request-changes':
@@ -1659,9 +1720,12 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
                 : [model, []];
             case 'mark-lane-seen':
               return isLandingPage(model) ? [markLaneSeen(model, deps), []] : [model, []];
+            case 'comment':
+              return !isLandingPage(model) ? promptForAction(model, viewAction) : [model, []];
             case 'claim':
             case 'promote':
             case 'reject':
+            case 'reopen':
             case 'approve':
             case 'request-changes':
               return promptForAction(model, viewAction);

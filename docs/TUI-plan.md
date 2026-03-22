@@ -5,9 +5,11 @@
 > landing cockpit rather than six peer dashboards. The live shell now has six
 > lanes (`Now`, `Plan`, `Review`, `Settlement`, `Campaigns`, `Graveyard`) over
 > one worklist and one inspector, plus breadcrumbed drill-in item pages opened
-> from the landing surface. Treat the remaining sections here as
-> backlog/design context rather than an exact description of the current
-> implementation.
+> from the landing surface. Quest pages now expose page-local actions such as
+> comment, reopen, claim, promote, reject, and submission review affordances
+> when the underlying graph state makes them legal. Treat the remaining
+> sections here as backlog/design context rather than an exact description of
+> the current implementation.
 
 > **Note:** The canonical contract for the agent-native CLI and action kernel
 > now lives in [`docs/canonical/AGENT_PROTOCOL.md`](docs/canonical/AGENT_PROTOCOL.md).
