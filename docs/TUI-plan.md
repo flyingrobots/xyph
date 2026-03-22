@@ -10,6 +10,11 @@
 > when the underlying graph state makes them legal. Treat the remaining
 > sections here as backlog/design context rather than an exact description of
 > the current implementation.
+>
+> The canonical product-design source of truth for AION now lives in
+> [`docs/AION_PRODUCT_DESIGN.md`](docs/AION_PRODUCT_DESIGN.md). Use this file
+> as historical context, implementation backlog, and still-useful UI ideas,
+> not as the primary statement of what the app is.
 
 > **Note:** The canonical contract for the agent-native CLI and action kernel
 > now lives in [`docs/canonical/AGENT_PROTOCOL.md`](docs/canonical/AGENT_PROTOCOL.md).

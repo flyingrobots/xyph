@@ -90,6 +90,9 @@ Focus:
 - prioritize quest detail, triage, submissions, graveyard, alerts,
   traceability coverage, and graph/trust health
 - keep the TUI as an operator console, not a separate workflow model
+- drive the human surface through the sponsor-user / hills / playback framing in
+  [`docs/AION_PRODUCT_DESIGN.md`](docs/AION_PRODUCT_DESIGN.md) rather than
+  through ad hoc pane accretion
 
 Defer out of this checkpoint:
 

@@ -624,6 +624,11 @@ lanes:
 - `Campaigns` for strategic containers
 - `Graveyard` for rejected and retired work
 
+The current product and experience source of truth for this human surface now
+lives in [`docs/AION_PRODUCT_DESIGN.md`](docs/AION_PRODUCT_DESIGN.md). The
+README section below is the quick operator overview, not the full design
+contract.
+
 The left rail keeps those lanes visible, the center worklist stays scannable as
 a contained-list-style queue, and the right inspector keeps the currently
 selected record legible without dropping to raw JSON first. Press `Enter` on a
