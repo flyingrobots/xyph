@@ -235,6 +235,65 @@ describe('cockpitView', () => {
     const plain = strip(cockpitView(model, style, 120, 30));
     expect(plain).toContain('approved');
     expect(plain).toContain('Executable');
+    expect(plain).toContain('Why hot:');
+    expect(plain).toContain('approved and ready');
+    expect(plain).toContain('governed settlement');
+  });
+
+  it('renders persistent attention badges for review and settlement lanes', () => {
+    const snapshot = makeSnapshot({
+      quests: [{ id: 'task:Q1', title: 'Quest One', status: 'IN_PROGRESS', hours: 1 }],
+      submissions: [{
+        id: 'submission:S1',
+        questId: 'task:Q1',
+        status: 'OPEN',
+        tipPatchsetId: 'patchset:P1',
+        headsCount: 1,
+        approvalCount: 0,
+        submittedBy: 'agent.prime',
+        submittedAt: 100,
+      }],
+      governanceArtifacts: [{
+        id: 'collapse-proposal:settle-1',
+        type: 'collapse-proposal',
+        recordedAt: 200,
+        sourceWorldlineId: 'worldline:alt',
+        targetWorldlineId: 'worldline:live',
+        comparisonArtifactId: 'comparison-artifact:cmp-1',
+        governance: {
+          kind: 'collapse-proposal',
+          freshness: 'fresh',
+          lifecycle: 'pending_attestation',
+          attestation: { total: 0, approvals: 0, rejections: 0, other: 0, state: 'unattested' },
+          series: { supersededByIds: [], latestInSeries: true },
+          execution: { dryRun: true, executable: true, executed: false, changed: true },
+          executionGate: {
+            attestation: { total: 0, approvals: 0, rejections: 0, other: 0, state: 'unattested' },
+          },
+        },
+      }],
+    });
+
+    const reviewModel = {
+      ...makeModel(snapshot),
+      lane: 'review' as const,
+      table: buildLaneTable(snapshot, 'review', 20, 0, 'agent.test'),
+    };
+    const reviewPlain = strip(cockpitView(reviewModel, style, 120, 30));
+    expect(reviewPlain).toMatch(/!\s+1/);
+    expect(reviewPlain).toContain('Why hot:');
+    expect(reviewPlain).toContain('awaiting reviewer');
+    expect(reviewPlain).toContain('judgment');
+
+    const settlementModel = {
+      ...makeModel(snapshot),
+      lane: 'settlement' as const,
+      table: buildLaneTable(snapshot, 'settlement', 20, 0, 'agent.test'),
+    };
+    const settlementPlain = strip(cockpitView(settlementModel, style, 120, 30));
+    expect(settlementPlain).toMatch(/!\s+1/);
+    expect(settlementPlain).toContain('waiting for approving');
+    expect(settlementPlain).toContain('comparison baseline');
   });
 
   it('renders campaign detail without leaking object placeholders', () => {

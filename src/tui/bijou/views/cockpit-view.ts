@@ -5,6 +5,7 @@ import type { StylePort } from '../../../ports/StylePort.js';
 import type { DashboardModel } from '../DashboardApp.js';
 import {
   cockpitLanesWithFreshness,
+  itemNeedsAttention,
   itemIsFresh,
   laneItems,
   laneTitle,
@@ -231,8 +232,34 @@ function statusText(style: StylePort, state: string): string {
   return style.styledStatus(state.toUpperCase(), stateLabel(state));
 }
 
+function attentionToken(style: StylePort, state: CockpitItem['attentionState']): TokenValue {
+  switch (state) {
+    case 'blocked':
+      return style.theme.semantic.error;
+    case 'ready':
+      return style.theme.semantic.success;
+    case 'review':
+      return style.theme.semantic.warning;
+    case 'none':
+      return style.theme.semantic.muted;
+  }
+}
+
+function attentionLabel(style: StylePort, item: CockpitItem): string {
+  return style.styled(attentionToken(style, item.attentionState), '!');
+}
+
+function attentionBadge(style: StylePort, count: number, tone: 'none' | 'review' | 'ready' | 'blocked'): string {
+  const token = tone === 'blocked'
+    ? style.theme.semantic.error
+    : tone === 'ready'
+      ? style.theme.semantic.success
+      : style.theme.semantic.warning;
+  return style.styled(token, `! ${count}`);
+}
+
 function rowSupportText(item: CockpitItem): string {
-  return item.secondary || item.operationReason || '';
+  return item.attentionReason || item.secondary || item.operationReason || '';
 }
 
 function metaLine(
@@ -244,12 +271,15 @@ function metaLine(
   fresh: boolean,
 ): string {
   const safeWidth = Math.max(12, width);
-  const labelText = fresh ? `● ${item.label}` : item.label;
+  const hot = itemNeedsAttention(item);
+  const labelText = hot ? `! ${item.label}` : fresh ? `● ${item.label}` : item.label;
   const label = selected
-    ? `${fresh ? style.styled(style.theme.semantic.error, '●') + ' ' : ''}${style.styled(accentToken, item.label)}`
-    : fresh
-      ? `${style.styled(style.theme.semantic.error, '●')} ${style.styled(style.theme.semantic.muted, item.label)}`
-      : style.styled(style.theme.semantic.muted, item.label);
+    ? `${hot ? attentionLabel(style, item) + ' ' : fresh ? style.styled(style.theme.semantic.error, '●') + ' ' : ''}${style.styled(accentToken, item.label)}`
+    : hot
+      ? `${attentionLabel(style, item)} ${style.styled(attentionToken(style, item.attentionState), item.label)}`
+      : fresh
+        ? `${style.styled(style.theme.semantic.error, '●')} ${style.styled(style.theme.semantic.muted, item.label)}`
+        : style.styled(style.theme.semantic.muted, item.label);
   const status = statusText(style, item.state);
   const cue = item.cue ? style.styled(style.theme.semantic.warning, item.cue) : '';
   const cueWidth = cue ? Math.min(Math.max(visibleLength(cue), 2), 10) : 0;
@@ -540,6 +570,24 @@ function pushField(
   }
 }
 
+function pushReasonBlock(lines: string[], style: StylePort, item: CockpitItem, width: number): void {
+  if (item.attentionReason) {
+    pushWrappedText(lines, `Why hot: ${item.attentionReason}`, {
+      width,
+      decorate: (line) => style.styled(attentionToken(style, item.attentionState), line),
+    });
+    lines.push('');
+    return;
+  }
+  if (item.operationReason) {
+    pushWrappedText(lines, `Why now: ${item.operationReason}`, {
+      width,
+      decorate: (line) => style.styled(style.theme.semantic.info, line),
+    });
+    lines.push('');
+  }
+}
+
 interface AlignedVariant {
   plain: string;
   rendered: string;
@@ -666,9 +714,11 @@ function buildLaneRailContent(
     const title = selected
       ? style.styled(accentToken, lane.title.toUpperCase())
       : lane.title.toUpperCase();
-    const badge = lane.freshCount > 0
-      ? style.styled(style.theme.semantic.error, `● ${lane.freshCount}`)
-      : '';
+    const badge = lane.attentionCount > 0
+      ? attentionBadge(style, lane.attentionCount, lane.attentionTone)
+      : lane.freshCount > 0
+        ? style.styled(style.theme.semantic.error, `● ${lane.freshCount}`)
+        : '';
     const lineStart = lines.length;
     lines.push([`${indicator} ${title}  ${lane.count}`, badge].filter(Boolean).join('  '));
     pushWrappedText(lines, lane.description, {
@@ -807,13 +857,7 @@ function renderQuestDetail(style: StylePort, quest: QuestNode, item: CockpitItem
   });
   lines.push(`${quest.id}  ${statusText(style, quest.status)}`);
   lines.push('');
-  if (item.operationReason) {
-    pushWrappedText(lines, `Why now: ${item.operationReason}`, {
-      width,
-      decorate: (line) => style.styled(style.theme.semantic.info, line),
-    });
-    lines.push('');
-  }
+  pushReasonBlock(lines, style, item, width);
   pushField(lines, 'Hours', String(quest.hours), { width });
   pushField(lines, 'Assigned', quest.assignedTo ? shortPrincipal(quest.assignedTo) : 'unassigned', { width });
   pushField(lines, 'Campaign', quest.campaignId ? shortId(quest.campaignId) : '—', { width });
@@ -842,13 +886,7 @@ function renderSubmissionDetail(style: StylePort, snapshot: GraphSnapshot, submi
   });
   lines.push(`${submission.id}  ${statusText(style, submission.status)}`);
   lines.push('');
-  if (item.operationReason) {
-    pushWrappedText(lines, `Why now: ${item.operationReason}`, {
-      width,
-      decorate: (line) => style.styled(style.theme.semantic.info, line),
-    });
-    lines.push('');
-  }
+  pushReasonBlock(lines, style, item, width);
   pushField(lines, 'Quest', shortId(submission.questId), { width });
   pushField(lines, 'Submitted', `${shortPrincipal(submission.submittedBy)} · ${formatAge(submission.submittedAt)} ago`, { width });
   pushField(lines, 'Approvals', String(submission.approvalCount), { width });
@@ -932,6 +970,7 @@ function renderActivityDetail(style: StylePort, item: CockpitItem, width: number
   });
   lines.push(`${shortId(event.id)}  ${statusText(style, event.state)}`);
   lines.push('');
+  pushReasonBlock(lines, style, item, width);
   pushField(lines, 'Kind', item.label, { width });
   pushField(lines, 'Actor', event.actor ? shortPrincipal(event.actor) : 'system', { width });
   pushField(lines, 'When', `${formatAge(event.at)} ago`, { width });
@@ -958,13 +997,7 @@ function renderGovernanceDetail(style: StylePort, item: CockpitItem, width: numb
       });
       lines.push(`${artifact.id}  ${statusText(style, item.state)}`);
       lines.push('');
-      if (item.operationReason) {
-        pushWrappedText(lines, `Why now: ${item.operationReason}`, {
-          width,
-          decorate: (line) => style.styled(style.theme.semantic.info, line),
-        });
-        lines.push('');
-      }
+      pushReasonBlock(lines, style, item, width);
       pushField(lines, 'Attest', item.cue, { width });
       pushField(lines, 'Latest', artifact.governance.series.latestInSeries ? 'yes' : 'no', { width });
       pushField(lines, 'Target', artifact.targetId ?? '—', { width });
@@ -985,13 +1018,7 @@ function renderGovernanceDetail(style: StylePort, item: CockpitItem, width: numb
       });
       lines.push(`${artifact.id}  ${statusText(style, item.state)}`);
       lines.push('');
-      if (item.operationReason) {
-        pushWrappedText(lines, `Why now: ${item.operationReason}`, {
-          width,
-          decorate: (line) => style.styled(style.theme.semantic.info, line),
-        });
-        lines.push('');
-      }
+      pushReasonBlock(lines, style, item, width);
       pushField(lines, 'Compare', artifact.comparisonArtifactId ? shortId(artifact.comparisonArtifactId) : '—', { width });
       pushField(lines, 'Freshness', artifact.governance.freshness, { width });
       pushField(lines, 'Attest', artifact.governance.attestation.state, { width });
@@ -1011,6 +1038,7 @@ function renderGovernanceDetail(style: StylePort, item: CockpitItem, width: numb
       });
       lines.push(`${artifact.id}  ${statusText(style, item.state)}`);
       lines.push('');
+      pushReasonBlock(lines, style, item, width);
       pushField(lines, 'Recorded by', shortPrincipal(artifact.recordedBy), { width });
       pushField(lines, 'Target', artifact.targetId ? shortId(artifact.targetId) : '—', { width });
       pushField(lines, 'Target kind', artifact.governance.targetType ?? '—', { width });

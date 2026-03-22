@@ -199,6 +199,29 @@ describe('DashboardApp', () => {
     expect(plain).not.toContain('● 2');
   });
 
+  it('does not clear persistent review attention when a lane is marked seen', () => {
+    const app = buildApp();
+    const loaded = ready(app, makeSnapshot({
+      quests: [{ id: 'task:Q1', title: 'Quest One', status: 'IN_PROGRESS', hours: 1 }],
+      submissions: [{
+        id: 'submission:S1',
+        questId: 'task:Q1',
+        status: 'OPEN',
+        tipPatchsetId: 'patchset:P1',
+        headsCount: 1,
+        approvalCount: 0,
+        submittedBy: 'agent.prime',
+        submittedAt: 100,
+      }],
+    }));
+
+    const [review] = app.update(key('3'), loaded);
+    const [seen] = app.update(key('s', { shift: true }), review);
+
+    const plain = strip(app.view(seen) as string);
+    expect(plain).toContain('! REVIEW');
+  });
+
   it('moves selection inside the Plan lane with j and k', () => {
     const app = buildApp();
     const loaded = ready(app, makeSnapshot({

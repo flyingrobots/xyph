@@ -23,7 +23,11 @@ export interface CockpitLane {
   description: string;
   count: number;
   freshCount: number;
+  attentionCount: number;
+  attentionTone: 'none' | 'review' | 'ready' | 'blocked';
 }
+
+export type CockpitAttentionState = 'none' | 'review' | 'ready' | 'blocked';
 
 interface CockpitBaseItem {
   id: string;
@@ -35,6 +39,8 @@ interface CockpitBaseItem {
   cue: string;
   timestamp?: number;
   operationReason?: string;
+  attentionState: CockpitAttentionState;
+  attentionReason?: string;
 }
 
 export interface QuestCockpitItem extends CockpitBaseItem {
@@ -85,6 +91,11 @@ export interface ActivityEvent {
 export interface ActivityCockpitItem extends CockpitBaseItem {
   kind: 'activity';
   event: ActivityEvent;
+}
+
+interface AttentionDetail {
+  state: CockpitAttentionState;
+  reason?: string;
 }
 
 export type CockpitItem =
@@ -191,6 +202,75 @@ function attestationCue(artifact: AttestationNode): string {
   return artifact.governance.targetType ?? 'artifact';
 }
 
+function comparisonAttention(artifact: ComparisonArtifactNode): AttentionDetail {
+  if (!artifact.governance.series.latestInSeries) {
+    return { state: 'none' };
+  }
+  if (artifact.governance.freshness !== 'fresh') {
+    return {
+      state: 'blocked',
+      reason: 'comparison baseline no longer matches current operational truth',
+    };
+  }
+  if (artifact.governance.settlement.proposalCount > 0) {
+    return { state: 'none' };
+  }
+  if (artifact.governance.attestation.state === 'rejected' || artifact.governance.attestation.state === 'mixed') {
+    return {
+      state: 'blocked',
+      reason: 'comparison lane carries conflicting or rejected governance judgment',
+    };
+  }
+  return {
+    state: 'review',
+    reason: 'fresh comparison is waiting for a settlement decision',
+  };
+}
+
+function collapseAttention(artifact: CollapseProposalNode): AttentionDetail {
+  if (!artifact.governance.series.latestInSeries || artifact.governance.execution.executed) {
+    return { state: 'none' };
+  }
+  if (artifact.governance.freshness !== 'fresh') {
+    return {
+      state: 'blocked',
+      reason: 'proposal drifted against live truth and must be recomputed before settlement',
+    };
+  }
+  if (!artifact.governance.execution.changed || artifact.governance.lifecycle === 'no_op') {
+    return { state: 'none' };
+  }
+  if (!artifact.governance.execution.executable) {
+    return {
+      state: 'blocked',
+      reason: 'proposal is not executable on the current live target',
+    };
+  }
+  if (artifact.governance.lifecycle === 'approved') {
+    return {
+      state: 'ready',
+      reason: 'proposal is approved and ready for governed settlement',
+    };
+  }
+  if (artifact.governance.lifecycle === 'pending_attestation') {
+    return {
+      state: 'review',
+      reason: 'proposal is waiting for approving attestations on its comparison baseline',
+    };
+  }
+  return { state: 'none' };
+}
+
+function attestationAttention(artifact: AttestationNode): AttentionDetail {
+  if (!artifact.governance.targetExists) {
+    return {
+      state: 'blocked',
+      reason: 'attestation points at a target that no longer exists',
+    };
+  }
+  return { state: 'none' };
+}
+
 function buildQuestItem(quest: QuestNode): QuestCockpitItem {
   const context = [quest.campaignId ? shortId(quest.campaignId) : null, quest.intentId ? shortId(quest.intentId) : null]
     .filter(Boolean)
@@ -204,12 +284,30 @@ function buildQuestItem(quest: QuestNode): QuestCockpitItem {
     state: quest.status,
     cue: questCue(quest),
     timestamp: questTimestamp(quest),
+    attentionState: 'none',
     quest,
   };
 }
 
+function submissionAttention(submission: SubmissionNode): AttentionDetail {
+  if (submission.status === 'OPEN') {
+    return {
+      state: 'review',
+      reason: 'submission is awaiting reviewer judgment',
+    };
+  }
+  if (submission.status === 'CHANGES_REQUESTED') {
+    return {
+      state: 'review',
+      reason: 'changes were requested and the review loop is still open',
+    };
+  }
+  return { state: 'none' };
+}
+
 function buildSubmissionItem(submission: SubmissionNode, snapshot: GraphSnapshot): SubmissionCockpitItem {
   const questTitle = snapshot.quests.find((quest) => quest.id === submission.questId)?.title ?? submission.questId;
+  const attention = submissionAttention(submission);
   return {
     id: submission.id,
     kind: 'submission',
@@ -219,13 +317,16 @@ function buildSubmissionItem(submission: SubmissionNode, snapshot: GraphSnapshot
     state: submission.status,
     cue: submission.approvalCount > 0 ? `+${submission.approvalCount}` : shortPrincipal(submission.submittedBy),
     timestamp: submission.submittedAt,
+    attentionState: attention.state,
+    ...(attention.reason ? { attentionReason: attention.reason } : {}),
     submission,
   };
 }
 
 function buildGovernanceItem(artifact: GovernanceArtifactNode): CockpitItem {
   switch (artifact.type) {
-    case 'comparison-artifact':
+    case 'comparison-artifact': {
+      const attention = comparisonAttention(artifact);
       return {
         id: artifact.id,
         kind: 'comparison-artifact',
@@ -235,9 +336,13 @@ function buildGovernanceItem(artifact: GovernanceArtifactNode): CockpitItem {
         state: comparisonState(artifact),
         cue: comparisonCue(artifact),
         timestamp: artifact.recordedAt,
+        attentionState: attention.state,
+        ...(attention.reason ? { attentionReason: attention.reason } : {}),
         artifact,
       };
-    case 'collapse-proposal':
+    }
+    case 'collapse-proposal': {
+      const attention = collapseAttention(artifact);
       return {
         id: artifact.id,
         kind: 'collapse-proposal',
@@ -247,9 +352,13 @@ function buildGovernanceItem(artifact: GovernanceArtifactNode): CockpitItem {
         state: artifact.governance.lifecycle,
         cue: collapseCue(artifact),
         timestamp: artifact.recordedAt,
+        attentionState: attention.state,
+        ...(attention.reason ? { attentionReason: attention.reason } : {}),
         artifact,
       };
-    case 'attestation':
+    }
+    case 'attestation': {
+      const attention = attestationAttention(artifact);
       return {
         id: artifact.id,
         kind: 'attestation',
@@ -259,8 +368,11 @@ function buildGovernanceItem(artifact: GovernanceArtifactNode): CockpitItem {
         state: artifact.governance.decision ?? 'recorded',
         cue: attestationCue(artifact),
         timestamp: artifact.recordedAt,
+        attentionState: attention.state,
+        ...(attention.reason ? { attentionReason: attention.reason } : {}),
         artifact,
       };
+    }
   }
 }
 
@@ -278,12 +390,13 @@ function buildCampaignItem(campaign: CampaignNode, snapshot: GraphSnapshot): Cam
     state: campaign.status,
     cue: total > 0 ? `${done}/${total} done` : '0/0 done',
     timestamp,
+    attentionState: 'none',
     campaign,
     progress: { done, total },
   };
 }
 
-function buildActivityItem(event: ActivityEvent): ActivityCockpitItem {
+function buildActivityItem(event: ActivityEvent, source?: Pick<CockpitBaseItem, 'attentionState' | 'attentionReason'>): ActivityCockpitItem {
   const refs = [event.targetId ? shortId(event.targetId) : null, event.relatedId ? shortId(event.relatedId) : null]
     .filter(Boolean)
     .join(' · ');
@@ -296,6 +409,8 @@ function buildActivityItem(event: ActivityEvent): ActivityCockpitItem {
     state: event.state,
     cue: event.actor ? shortPrincipal(event.actor) : 'system',
     timestamp: event.at,
+    attentionState: source?.attentionState ?? 'none',
+    ...(source?.attentionReason ? { attentionReason: source.attentionReason } : {}),
     event,
   };
 }
@@ -486,10 +601,11 @@ function buildGovernanceActivityEvent(artifact: GovernanceArtifactNode): Activit
 function buildActivityItems(snapshot: GraphSnapshot): CockpitItem[] {
   const items: ActivityCockpitItem[] = [];
   for (const quest of snapshot.quests) {
-    items.push(...buildQuestActivityEvents(quest).map(buildActivityItem));
+    items.push(...buildQuestActivityEvents(quest).map((event) => buildActivityItem(event)));
   }
   for (const submission of snapshot.submissions) {
-    items.push(buildActivityItem(buildSubmissionActivityEvent(submission, snapshot)));
+    const source = buildSubmissionItem(submission, snapshot);
+    items.push(buildActivityItem(buildSubmissionActivityEvent(submission, snapshot), source));
   }
   for (const review of snapshot.reviews) {
     items.push(buildActivityItem(buildReviewActivityEvent(review, snapshot)));
@@ -498,7 +614,8 @@ function buildActivityItems(snapshot: GraphSnapshot): CockpitItem[] {
     items.push(buildActivityItem(buildDecisionActivityEvent(decision, snapshot)));
   }
   for (const artifact of snapshot.governanceArtifacts) {
-    items.push(buildActivityItem(buildGovernanceActivityEvent(artifact)));
+    const source = buildGovernanceItem(artifact);
+    items.push(buildActivityItem(buildGovernanceActivityEvent(artifact), source));
   }
   return items.sort(compareGovernanceItems);
 }
@@ -579,14 +696,46 @@ function operationPriority(item: CockpitItem, agentId?: string): number {
   }
 }
 
+function itemAttentionWeight(item: CockpitItem): number {
+  return item.attentionState === 'none' ? 0 : 1;
+}
+
+function laneAttentionTone(items: CockpitItem[]): CockpitLane['attentionTone'] {
+  if (items.some((item) => item.attentionState === 'blocked')) return 'blocked';
+  if (items.some((item) => item.attentionState === 'ready')) return 'ready';
+  if (items.some((item) => item.attentionState === 'review')) return 'review';
+  return 'none';
+}
+
+export function laneAttentionCount(
+  snapshot: GraphSnapshot | null,
+  lane: CockpitLaneId,
+  agentId?: string,
+  nowView: NowViewMode = 'queue',
+): number {
+  if (!snapshot || (lane !== 'review' && lane !== 'settlement')) return 0;
+  return laneItems(snapshot, lane, agentId, nowView)
+    .reduce((count, item) => count + itemAttentionWeight(item), 0);
+}
+
+function laneAttentionToneForLane(
+  snapshot: GraphSnapshot | null,
+  lane: CockpitLaneId,
+  agentId?: string,
+  nowView: NowViewMode = 'queue',
+): CockpitLane['attentionTone'] {
+  if (!snapshot || (lane !== 'review' && lane !== 'settlement')) return 'none';
+  return laneAttentionTone(laneItems(snapshot, lane, agentId, nowView));
+}
+
 export function cockpitLanes(snapshot: GraphSnapshot | null, agentId?: string, nowView: NowViewMode = 'queue'): CockpitLane[] {
   if (!snapshot) {
     return [
-      { id: 'now', title: 'Now', description: nowView === 'activity' ? 'Recent changes and actors' : 'Cross-surface action queue', count: 0, freshCount: 0 },
-      { id: 'plan', title: 'Plan', description: 'Live quest surface', count: 0, freshCount: 0 },
-      { id: 'review', title: 'Review', description: 'Submission lanes', count: 0, freshCount: 0 },
-      { id: 'settlement', title: 'Settlement', description: 'Compare, attest, collapse', count: 0, freshCount: 0 },
-      { id: 'campaigns', title: 'Campaigns', description: 'Strategic containers', count: 0, freshCount: 0 },
+      { id: 'now', title: 'Now', description: nowView === 'activity' ? 'Recent changes and actors' : 'Cross-surface action queue', count: 0, freshCount: 0, attentionCount: 0, attentionTone: 'none' },
+      { id: 'plan', title: 'Plan', description: 'Live quest surface', count: 0, freshCount: 0, attentionCount: 0, attentionTone: 'none' },
+      { id: 'review', title: 'Review', description: 'Submission lanes', count: 0, freshCount: 0, attentionCount: 0, attentionTone: 'none' },
+      { id: 'settlement', title: 'Settlement', description: 'Compare, attest, collapse', count: 0, freshCount: 0, attentionCount: 0, attentionTone: 'none' },
+      { id: 'campaigns', title: 'Campaigns', description: 'Strategic containers', count: 0, freshCount: 0, attentionCount: 0, attentionTone: 'none' },
     ];
   }
   return [
@@ -596,11 +745,29 @@ export function cockpitLanes(snapshot: GraphSnapshot | null, agentId?: string, n
       description: nowView === 'activity' ? 'Recent changes and actors' : 'Cross-surface action queue',
       count: nowView === 'activity' ? buildActivityItems(snapshot).length : buildOperationItems(snapshot, agentId).length,
       freshCount: 0,
+      attentionCount: 0,
+      attentionTone: 'none',
     },
-    { id: 'plan', title: 'Plan', description: 'Live quest surface', count: snapshot.quests.filter((quest) => quest.status !== 'GRAVEYARD').length, freshCount: 0 },
-    { id: 'review', title: 'Review', description: 'Submission lanes', count: snapshot.submissions.length, freshCount: 0 },
-    { id: 'settlement', title: 'Settlement', description: 'Compare, attest, collapse', count: snapshot.governanceArtifacts.length, freshCount: 0 },
-    { id: 'campaigns', title: 'Campaigns', description: 'Strategic containers', count: snapshot.campaigns.length, freshCount: 0 },
+    { id: 'plan', title: 'Plan', description: 'Live quest surface', count: snapshot.quests.filter((quest) => quest.status !== 'GRAVEYARD').length, freshCount: 0, attentionCount: 0, attentionTone: 'none' },
+    {
+      id: 'review',
+      title: 'Review',
+      description: 'Submission lanes',
+      count: snapshot.submissions.length,
+      freshCount: 0,
+      attentionCount: laneAttentionCount(snapshot, 'review', agentId, nowView),
+      attentionTone: laneAttentionToneForLane(snapshot, 'review', agentId, nowView),
+    },
+    {
+      id: 'settlement',
+      title: 'Settlement',
+      description: 'Compare, attest, collapse',
+      count: snapshot.governanceArtifacts.length,
+      freshCount: 0,
+      attentionCount: laneAttentionCount(snapshot, 'settlement', agentId, nowView),
+      attentionTone: laneAttentionToneForLane(snapshot, 'settlement', agentId, nowView),
+    },
+    { id: 'campaigns', title: 'Campaigns', description: 'Strategic containers', count: snapshot.campaigns.length, freshCount: 0, attentionCount: 0, attentionTone: 'none' },
   ];
 }
 
@@ -693,6 +860,10 @@ export function itemIsFresh(
   const timestamp = item.timestamp ?? 0;
   return timestamp > watermarkForLane(watermarks, lane)
     && timestamp > seenTimestampForItem(item, lane, seenItems);
+}
+
+export function itemNeedsAttention(item: CockpitItem): boolean {
+  return item.attentionState !== 'none';
 }
 
 export function laneFreshCount(

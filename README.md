@@ -626,9 +626,11 @@ The left rail keeps those lanes visible, the center worklist stays scannable as
 a contained-list-style queue, and the right inspector keeps the currently
 selected record legible without dropping to raw JSON first. The cockpit is
 fully keyboard-driven, but it now also supports mouse clicks for lane/row
-selection and wheel scrolling in the main panes. Lane badges and row markers
-now also call out what is new since you last left that lane, using observer-
-local watermarks persisted in `~/.xyph/dashboard-state.json`.
+selection and wheel scrolling in the main panes. `Plan`, `Campaigns`, and the
+`Now` activity stream use observer-local freshness markers from
+`~/.xyph/dashboard-state.json`, while `Review` and `Settlement` now keep a
+persistent action-needed badge until the underlying submission or governance
+artifact is actually resolved.
 
 ```bash
 XYPH_AGENT_ID=human.yourname ./xyph-dashboard.ts

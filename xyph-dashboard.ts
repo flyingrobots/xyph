@@ -16,7 +16,7 @@
  *   m               — toggle "My Stuff" drawer (quests, submissions, activity)
  *   Shift+S         — mark the current lane seen
  *   Mouse           — click lanes/rows, wheel-scroll panes, dismiss the quest tree
- *   Freshness       — lane dots show what is new since you last left that lane; row dots clear on visit
+ *   Signals         — freshness dots clear on visit; Review/Settlement keep persistent attention badges until resolved
  *   r               — refresh snapshot
  *   : or /          — command palette
  *   q               — quit

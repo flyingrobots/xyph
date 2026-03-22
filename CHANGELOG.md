@@ -6,6 +6,7 @@ All notable changes to XYPH will be documented in this file.
 
 ### Changed
 
+- **`Review` and `Settlement` badges now mean attention, not just recency** — those two lanes no longer clear their hottest signal simply because you visited them once. XYPH now keeps persistent action-needed badges for open review work, stale/blocking governance artifacts, pending attestations, and ready-to-settle proposals, while the inspector explains the selected item with an explicit `Why hot` reason.
 - **Freshness is now visit-aware instead of click-to-clear busywork** — row-level freshness markers now disappear as soon as you actually highlight a row, while `Shift+S` remains the explicit “mark the whole lane seen” control. XYPH now persists per-item seen state alongside lane watermarks so visiting one row no longer lies about the rest of the lane.
 - **Help is now a contextual modal and the footer has one control row** — the top footer line is back to status/selection only, the bottom footer line is now the sole keyboard-control line, and `?` opens a scrollable in-app help modal built from the same context/global controls instead of replacing the cockpit with a disconnected BIJOU help screen.
 - **Cockpit lanes now remember what is new to each observer** — the dashboard now persists per-lane “last seen” watermarks in `~/.xyph/dashboard-state.json`, shows lane-level freshness badges in the rail, and marks newly-seen worklist rows so operators can tell what changed since they last left a lane instead of treating all recent state as equally fresh.
