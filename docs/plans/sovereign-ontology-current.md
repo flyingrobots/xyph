@@ -30,8 +30,8 @@ Human surface direction:
 - TUI first
 - Web second
 - CLI trends toward `xyph api` plus bootstrap/debug/admin surfaces
-- BIJOU 3.1.0 is now the active TUI foundation, and the current shell is an AION-style landing cockpit with `Now`, `Plan`, `Review`, `Settlement`, `Campaigns`, and `Graveyard` lanes over one inspector-first operator surface plus drill-in item pages
-- the current product-design source of truth for that human surface now lives in [`docs/AION_PRODUCT_DESIGN.md`](../AION_PRODUCT_DESIGN.md), using IBM Design Thinking concepts such as sponsor users, hills, and playbacks to shape pages, capabilities, and attention flow
+- BIJOU 3.1.0 is now the active TUI foundation, and the current shell is a XYPH landing cockpit with `Now`, `Plan`, `Review`, `Settlement`, `Campaigns`, and `Graveyard` lanes over one inspector-first operator surface plus drill-in item pages
+- the current product-design source of truth for that human surface now lives in [`docs/XYPH_PRODUCT_DESIGN.md`](../XYPH_PRODUCT_DESIGN.md), using IBM Design Thinking concepts such as sponsor users, hills, and playbacks to shape pages, capabilities, and attention flow
 
 ## Current Implementation Order
 
@@ -46,7 +46,7 @@ Human surface direction:
    - Persisted governance artifacts now have readable XYPH lifecycle semantics: `observe(entity.detail)` computes freshness, attestation summary, and supersession lineage for durable `comparison-artifact:*` and `collapse-proposal:*` nodes instead of exposing only raw graph properties.
    - `xyph api query` now exposes the first admin-only governance read model, with a live worklist view for actionable compare/collapse artifacts and a per-artifact series-history view over durable governance lanes.
    - `xyph api explain` now diagnoses durable governance artifacts directly, returning stable reason codes and next-command guidance for stale comparisons, blocked collapse proposals, and the distinction between attesting a proposal and approving the bound comparison gate.
-   - The TUI now projects those same durable governance artifacts into the BIJOU 3.1-powered `Settlement` lane of the AION cockpit, so compare/collapse/attestation work can be scanned in the main worklist and inspected without dropping to raw JSON first.
+   - The TUI now projects those same durable governance artifacts into the BIJOU 3.1-powered `Settlement` lane of the XYPH cockpit, so compare/collapse/attestation work can be scanned in the main worklist and inspected without dropping to raw JSON first.
    - Conflict meaning, governance, compare/collapse, and human workflow semantics remain XYPH concerns.
 3. **Worldline working sets after substrate facts**
    - Fork/worldline work should use logical working sets over graph observations, not Git worktrees.

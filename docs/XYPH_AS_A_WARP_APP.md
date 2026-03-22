@@ -229,7 +229,8 @@ A real one that can answer:
 - what conflicting alternatives existed?
 - what would the plan look like if we continued from there?
 
-That is why XYPH’s future “AION” / Time Travel surface is plausible.
+That is why XYPH can grow a future time-travel surface powered by the AION
+computational model.
 
 It is also why XYPH can grow beyond simple forks into **braids**: co-present
 worldline effects that stay visible together without pretending history was

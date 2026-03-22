@@ -59,7 +59,7 @@ describe('DashboardApp integration', () => {
     const model = widen(app, ready(app, makeSnapshot()));
     const plain = strip(viewText(app, model));
 
-    expect(plain).toContain('XYPH AION');
+    expect(plain).toContain('XYPH');
     expect(plain).toContain('Lanes');
     expect(plain).toContain('NOW');
     expect(plain).toContain('PLAN');

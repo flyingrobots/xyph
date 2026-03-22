@@ -613,7 +613,7 @@ cockpit demo capture is still pending.
 
 XYPH has an interactive BIJOU-powered TUI that provides a visual browser for
 your project and its XYPH artifacts. The current shell runs on BIJOU `3.1.0`
-and now treats the cockpit as an AION landing page instead of forcing every
+and now treats the cockpit as the XYPH landing page instead of forcing every
 surface into one eternal inspector layout. The landing shell centers on six
 lanes:
 
@@ -625,7 +625,7 @@ lanes:
 - `Graveyard` for rejected and retired work
 
 The current product and experience source of truth for this human surface now
-lives in [`docs/AION_PRODUCT_DESIGN.md`](docs/AION_PRODUCT_DESIGN.md). The
+lives in [`docs/XYPH_PRODUCT_DESIGN.md`](docs/XYPH_PRODUCT_DESIGN.md). The
 README section below is the quick operator overview, not the full design
 contract.
 
@@ -748,7 +748,7 @@ src/
 ├── ports/            # Interfaces (RoadmapPort, DashboardPort, SubmissionPort, WorkspacePort, ...)
 ├── infrastructure/
 │   └── adapters/     # git-warp adapters (WarpSubmissionAdapter, GitWorkspaceAdapter, ...)
-└── tui/              # bijou v3.1-powered AION cockpit
+└── tui/              # bijou v3.1-powered XYPH cockpit
     ├── bijou/
     │   ├── DashboardApp.ts   # TEA cockpit shell (lanes, actions, overlays)
     │   ├── cockpit.ts        # Lane/item derivation from graph snapshots

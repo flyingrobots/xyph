@@ -1,7 +1,7 @@
 # XYPH Interactive TUI — Full Dashboard Plan
 
 > **Current state (2026-03-19):** This document is now partly historical.
-> XYPH runs on BIJOU 3.1.0, and the current shell is a single AION-style
+> XYPH runs on BIJOU 3.1.0, and the current shell is a single XYPH
 > landing cockpit rather than six peer dashboards. The live shell now has six
 > lanes (`Now`, `Plan`, `Review`, `Settlement`, `Campaigns`, `Graveyard`) over
 > one worklist and one inspector, plus breadcrumbed drill-in item pages opened
@@ -11,8 +11,8 @@
 > sections here as backlog/design context rather than an exact description of
 > the current implementation.
 >
-> The canonical product-design source of truth for AION now lives in
-> [`docs/AION_PRODUCT_DESIGN.md`](docs/AION_PRODUCT_DESIGN.md). Use this file
+> The canonical product-design source of truth for the app now lives in
+> [`docs/XYPH_PRODUCT_DESIGN.md`](docs/XYPH_PRODUCT_DESIGN.md). Use this file
 > as historical context, implementation backlog, and still-useful UI ideas,
 > not as the primary statement of what the app is.
 

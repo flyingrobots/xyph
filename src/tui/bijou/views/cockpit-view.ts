@@ -653,24 +653,24 @@ function renderHero(
   const innerWidth = Math.max(12, width - 4);
   const leftVariants: AlignedVariant[] = [
     {
-      plain: `XYPH AION  ·  surface ${laneTitle(options.lane)}`,
+      plain: `XYPH  ·  surface ${laneTitle(options.lane)}`,
       rendered: [
-        style.styled(style.theme.semantic.primary, 'XYPH AION'),
+        style.styled(style.theme.semantic.primary, 'XYPH'),
         style.styled(style.theme.semantic.muted, '·'),
         style.styled(accentToken, `surface ${laneTitle(options.lane)}`),
       ].join('  '),
     },
     {
-      plain: `XYPH AION  ·  ${laneTitle(options.lane)}`,
+      plain: `XYPH  ·  ${laneTitle(options.lane)}`,
       rendered: [
-        style.styled(style.theme.semantic.primary, 'XYPH AION'),
+        style.styled(style.theme.semantic.primary, 'XYPH'),
         style.styled(style.theme.semantic.muted, '·'),
         style.styled(accentToken, laneTitle(options.lane)),
       ].join('  '),
     },
     {
-      plain: 'XYPH AION',
-      rendered: style.styled(style.theme.semantic.primary, 'XYPH AION'),
+      plain: 'XYPH',
+      rendered: style.styled(style.theme.semantic.primary, 'XYPH'),
     },
   ];
   const rightVariants: AlignedVariant[] = [

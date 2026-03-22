@@ -76,7 +76,7 @@ describe('cockpitView', () => {
     }));
     const plain = strip(cockpitView(model, style, 120, 30));
 
-    expect(plain).toContain('XYPH AION');
+    expect(plain).toContain('XYPH');
     expect(plain).toContain('Lanes');
     expect(plain).toContain('Now');
     expect(plain).toContain('Inspector');
@@ -92,7 +92,7 @@ describe('cockpitView', () => {
     }));
     const plain = strip(cockpitView(model, style, 80, 24));
 
-    expect(plain).toContain('XYPH AION');
+    expect(plain).toContain('XYPH');
     expect(plain).toContain('Inspector');
     expect(plain).toContain('Quest One');
   });

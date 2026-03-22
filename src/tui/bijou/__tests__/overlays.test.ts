@@ -22,7 +22,7 @@ describe('confirmOverlay', () => {
       style.styled(style.theme.semantic.error, 'esc') + '  cancel';
 
     const background = Array.from({ length: 14 }, () => ' '.repeat(80)).join('\n');
-    const rendered = confirmOverlay(background, 'Quit XYPH AION?', 80, 14, style, customHint);
+    const rendered = confirmOverlay(background, 'Quit XYPH?', 80, 14, style, customHint);
     const hintLine = rendered
       .split('\n')
       .find((line) => line.includes('confirm') && line.includes('cancel'));

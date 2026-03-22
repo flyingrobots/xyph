@@ -1451,7 +1451,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
             showHelp: false,
             mode: 'confirm',
             confirmState: {
-              prompt: 'Quit XYPH AION?',
+              prompt: 'Quit XYPH?',
               action: { kind: 'quit' },
               hint: quitHint,
             },

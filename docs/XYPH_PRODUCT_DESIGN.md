@@ -1,7 +1,7 @@
-# AION Product Design
+# XYPH Product Design
 
 **Status:** Current source of truth for XYPH's human-facing product design.  
-**Scope:** AION landing page, drill-in pages, attention model, page taxonomy,
+**Scope:** XYPH landing page, drill-in pages, attention model, page taxonomy,
 navigation, and design-review practice.  
 **Relationship to architecture:** `docs/canonical/ARCHITECTURE.md` remains the
 technical architecture source of truth. This document is the product and
@@ -18,7 +18,7 @@ What it does **not** yet have is one explicit design model for:
 - what each page is for
 - what belongs on the landing page vs a drill-in page
 - how attention should be routed
-- what "done" looks like for AION product slices
+- what "done" looks like for XYPH product slices
 
 This document is the answer. It applies **IBM Design Thinking** to XYPH's
 human surface, using the parts that fit this product best:
@@ -39,7 +39,11 @@ discipline without pretending it is an enterprise SaaS admin console.
 
 ## Product Intent
 
-AION is the human-facing operational surface for XYPH.
+XYPH is the app.
+
+`AION` is the underlying computational / time-travel model that git-warp
+implements and that can inform future XYPH surfaces. It is not the product
+name of this application.
 
 It exists so a human can:
 
@@ -49,20 +53,20 @@ It exists so a human can:
 - take lawful action with full context
 - recover dead or rejected work without losing causal history
 
-AION is **not**:
+XYPH is **not**:
 
 - a generic terminal dashboard
 - a second workflow engine separate from the graph
 - a decorative history browser
 - a branch browser with better branding
 
-The graph is still the plan. AION is the place where a human can perceive,
+The graph is still the plan. XYPH is the place where a human can perceive,
 judge, and act on that plan.
 
 ## Sponsor Users
 
 IBM Design Thinking starts by designing for real users with specific outcomes.
-For AION, the sponsor-user set is:
+For XYPH, the sponsor-user set is:
 
 ### 1. The Operator-Supervisor
 
@@ -110,12 +114,12 @@ Primary success condition:
 
 ## Hills
 
-These are the current product hills for AION. A hill is an outcome, not a
+These are the current product hills for XYPH. A hill is an outcome, not a
 feature checklist.
 
 ### Hill 1: Orient In Under 30 Seconds
 
-When a sponsor user opens AION, they can tell:
+When a sponsor user opens XYPH, they can tell:
 
 - what changed recently
 - who changed it
@@ -174,7 +178,7 @@ inspector is a preview surface, not the final home for deep workflows.
 
 ### 3. Freshness Is Not The Same As Urgency
 
-AION must distinguish:
+XYPH must distinguish:
 
 - **fresh**: new since this observer last saw it
 - **hot**: needs judgment or action now
@@ -213,7 +217,7 @@ focused region. It should not replace the app with an unrelated global screen.
 
 ### 9. The Design System Must Be Intentional
 
-BIJOU provides the toolkit. AION still needs its own semantic token layer and
+BIJOU provides the toolkit. XYPH still needs its own semantic token layer and
 page rules:
 
 - lane identity
@@ -480,7 +484,7 @@ Good uses:
 
 Bad uses:
 
-- turning the top-level AION lanes into a wizard
+- turning the top-level XYPH lanes into a wizard
 - pretending the whole app is one linear process
 
 ## Contextual Help
@@ -497,7 +501,7 @@ It should not replace the current page with a generic toolkit screen.
 
 ## Design-System Requirements
 
-AION should sit on BIJOU while defining its own semantic product tokens and
+XYPH should sit on BIJOU while defining its own semantic product tokens and
 interaction rules.
 
 Requirements:
@@ -509,14 +513,14 @@ Requirements:
 - scroll/overflow behavior that is explicit but not noisy
 - page-local action treatment that reads as intentional, not improvised
 
-The rule is: BIJOU provides primitives; AION provides product meaning.
+The rule is: BIJOU provides primitives; XYPH provides product meaning.
 
 ## Playback Cadence
 
-To adapt IBM Design Thinking honestly, AION work should be reviewed through
+To adapt IBM Design Thinking honestly, XYPH human-surface work should be reviewed through
 playbacks rather than only through code completion.
 
-Each substantial AION slice should be demoable against the real graph and
+Each substantial XYPH product slice should be demoable against the real graph and
 evaluated against these questions:
 
 1. Can a sponsor user orient faster than before?
@@ -527,7 +531,7 @@ evaluated against these questions:
 
 ## Observe / Reflect / Make Loop
 
-Every AION slice should follow this loop:
+Every XYPH product slice should follow this loop:
 
 ### Observe
 
@@ -554,7 +558,7 @@ Every AION slice should follow this loop:
 - Do not keep inventing new panes when a real page is required.
 - Do not overload freshness badges with urgency semantics.
 - Do not hide Graveyard because it feels less flattering than active work.
-- Do not use BIJOU primitives without defining AION product meaning on top.
+- Do not use BIJOU primitives without defining XYPH product meaning on top.
 - Do not ship deep interaction changes without updating this document when the
   product model changes.
 
@@ -566,7 +570,7 @@ The next design-led product slices should follow this order:
 2. add dedicated page types for review and settlement artifacts
 3. tighten contextual action models on those pages
 4. deepen the recent-activity and attention-routing model
-5. refine the semantic token layer for AION on top of BIJOU
+5. refine the semantic token layer for XYPH on top of BIJOU
 
-This keeps AION from becoming a forever-dashboard and moves it toward a real
+This keeps XYPH from becoming a forever-dashboard and moves it toward a real
 operator application with destinations, context, and governed action.
