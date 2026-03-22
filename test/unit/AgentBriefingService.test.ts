@@ -649,6 +649,22 @@ describe('AgentBriefingService', () => {
       source: 'governance',
       questStatus: 'Compared',
     });
+    expect(next.candidates).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: 'attest',
+        targetId: 'comparison-artifact:AGT-GOV',
+        source: 'governance',
+        requiresHumanApproval: true,
+        validationCode: 'human-only-action',
+      }),
+      expect.objectContaining({
+        kind: 'collapse_preview',
+        targetId: 'comparison-artifact:AGT-GOV',
+        source: 'governance',
+        requiresHumanApproval: true,
+        validationCode: 'human-only-action',
+      }),
+    ]));
   });
 
   it('omits CHANGES_REQUESTED submissions from the briefing review queue', async () => {

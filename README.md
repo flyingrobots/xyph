@@ -739,14 +739,19 @@ Current highlights:
 
 - `xyph briefing --json` now includes a `governanceQueue` alongside quest and
   submission intake, so agent cold-start sees governance attention work too.
-- `xyph next --json` can now surface governance-oriented `inspect` candidates
-  in addition to quest and submission workflow candidates.
+- `xyph next --json` can now surface governance-oriented follow-up candidates,
+  including human-bound attestation or collapse progression work, instead of
+  treating governance as inspect-only intake.
 - `xyph context --json <id>` now emits typed work packets not only for
   `task:*`, but also for `submission:*`, `patchset:*`,
-  `comparison-artifact:*`, `collapse-proposal:*`, and `attestation:*` targets.
+  `comparison-artifact:*`, `collapse-proposal:*`, and `attestation:*` targets,
+  including recommendation requests when governance follow-up or missing
+  evidence needs explicit routing.
 - `xyph act --json` now carries shared submission semantics on `review` /
   `merge` refusal, dry-run, success, and partial-failure outcomes when XYPH can
-  derive them truthfully.
+  derive them truthfully, and now rejects governance-only actions like
+  `attest` / `collapse_preview` / `collapse_live` with explicit
+  `human-only-action` envelopes instead of vague unsupported-action failures.
 
 ## How XYPH Works (Part II)
 

@@ -34,6 +34,7 @@ import {
   type AgentQuestRef,
 } from './AgentRecommender.js';
 import {
+  buildGovernanceActionCandidates,
   buildAgentDependencyContext,
   toAgentQuestRef,
 } from './AgentContextService.js';
@@ -490,29 +491,19 @@ export class AgentBriefingService {
   }
 
   private buildGovernanceCandidates(snapshot: GraphSnapshot): AgentNextCandidate[] {
-    return this.buildGovernanceQueue(snapshot).map((entry) => ({
-      kind: 'inspect',
-      targetId: entry.artifactId,
-      args: {},
-      reason: entry.reason,
-      confidence: entry.semantics.attentionState === 'ready'
-        ? 0.9
-        : entry.semantics.attentionState === 'review'
-          ? 0.86
-          : 0.8,
-      requiresHumanApproval: false,
-      dryRunSummary: 'Inspect the governance artifact context before taking follow-on action.',
-      blockedBy: [],
-      allowed: true,
-      underlyingCommand: `xyph context ${entry.artifactId}`,
-      sideEffects: [],
-      validationCode: null,
-      priority: DEFAULT_QUEST_PRIORITY,
-      questTitle: `${entry.artifactKind} ${entry.artifactId}`,
-      questStatus: entry.semantics.progress.currentLabel,
-      source: 'governance',
-      semantics: entry.semantics,
-    }));
+    return this.buildGovernanceQueue(snapshot).flatMap((entry) =>
+      buildGovernanceActionCandidates({
+        artifactId: entry.artifactId,
+        semantics: entry.semantics,
+      }).map((candidate) => ({
+        ...candidate,
+        priority: candidate.priority ?? DEFAULT_QUEST_PRIORITY,
+        questTitle: `${entry.artifactKind} ${entry.artifactId}`,
+        questStatus: entry.semantics.progress.currentLabel,
+        source: 'governance' as const,
+        semantics: entry.semantics,
+      }))
+    );
   }
 
   private toGovernanceDetail(artifact: GraphSnapshot['governanceArtifacts'][number]): EntityDetail {

@@ -390,6 +390,34 @@ describe('AgentActionService', () => {
     });
   });
 
+  it('rejects governance-only human judgment actions with the same machine-readable code', async () => {
+    const service = new AgentActionService(
+      makeGraphPort({}),
+      makeRoadmap(makeQuest()),
+      'agent.hal',
+      makeDoctor(),
+    );
+
+    const outcome = await service.execute({
+      kind: 'attest',
+      targetId: 'comparison-artifact:AGT-001',
+      dryRun: true,
+      args: {},
+    });
+
+    expect(outcome).toMatchObject({
+      kind: 'attest',
+      targetId: 'comparison-artifact:AGT-001',
+      allowed: false,
+      requiresHumanApproval: true,
+      result: 'rejected',
+      validation: {
+        valid: false,
+        code: 'human-only-action',
+      },
+    });
+  });
+
   it('supports dry-run claim with normalized side effects', async () => {
     const service = new AgentActionService(
       makeGraphPort({}),

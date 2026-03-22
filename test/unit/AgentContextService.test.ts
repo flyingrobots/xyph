@@ -625,6 +625,38 @@ describe('AgentContextService', () => {
         kind: 'comment',
         targetId: 'comparison-artifact:CTX-GOV',
       }),
+      expect.objectContaining({
+        kind: 'attest',
+        targetId: 'comparison-artifact:CTX-GOV',
+        allowed: false,
+        requiresHumanApproval: true,
+        validationCode: 'human-only-action',
+      }),
+      expect.objectContaining({
+        kind: 'collapse_preview',
+        targetId: 'comparison-artifact:CTX-GOV',
+        allowed: false,
+        requiresHumanApproval: true,
+        validationCode: 'human-only-action',
+      }),
+    ]));
+    expect(result.recommendationRequests).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: 'governance-followup',
+        source: 'governance',
+        category: 'governance-attention',
+        subjectId: 'comparison-artifact:CTX-GOV',
+        blockedTransitions: ['attest'],
+        materializable: false,
+      }),
+      expect.objectContaining({
+        kind: 'governance-followup',
+        source: 'governance',
+        category: 'governance-attention',
+        subjectId: 'comparison-artifact:CTX-GOV',
+        blockedTransitions: ['collapse_preview'],
+        materializable: false,
+      }),
     ]));
   });
 

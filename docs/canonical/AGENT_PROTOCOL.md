@@ -207,6 +207,8 @@ built from the shared domain services, including:
 - `blockingReasons`
 - `expectedActor`
 - `nextLawfulActions`
+- `recommendationRequests` when the entry implies routed follow-up work rather
+  than routine agent execution
 
 ### 4.2 `next --json`
 
@@ -230,11 +232,14 @@ The first candidate is the default recommendation. Remaining candidates are
 ordered alternatives.
 
 `next` should combine quest-shaping work with active submission workflow
-candidates such as `review`, `merge`, and `inspect`, plus urgent doctor-driven
-graph-health remediation work when structural blockers are competing with normal
-delivery. When a candidate needs additional operator input, it should still be
-surfaced with machine-readable blocking reasons instead of silently disappearing
-from the queue.
+candidates such as `review`, `merge`, and `inspect`, plus governance follow-up
+candidates such as `attest`, `collapse_preview`, or `collapse_live` when those
+judgments are currently hot. Governance candidates may be human-bound while
+still being worth surfacing to an agent so the agent can route or explain them.
+Urgent doctor-driven graph-health remediation work should still compete with
+normal delivery when structural blockers are present. When a candidate needs
+additional operator input, it should still be surfaced with machine-readable
+blocking reasons instead of silently disappearing from the queue.
 
 `next` now carries the same semantic vocabulary on quest, submission, and
 governance candidates when that judgment already exists in the shared domain

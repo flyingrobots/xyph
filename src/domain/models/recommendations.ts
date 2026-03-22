@@ -1,18 +1,22 @@
 import type { QuestPriority } from '../entities/Quest.js';
 
-export type RecommendationSource = 'doctor';
-export type RecommendationKind = 'doctor-fix';
+export type RecommendationSource = 'doctor' | 'governance';
+export type RecommendationKind = 'doctor-fix' | 'governance-followup';
 export type RecommendationCategory =
   | 'structural-blocker'
   | 'structural-defect'
   | 'workflow-gap'
-  | 'hygiene-gap';
+  | 'hygiene-gap'
+  | 'governance-attention';
 export type RecommendationBlockedTransition =
   | 'ready'
   | 'submit'
   | 'review'
   | 'merge'
-  | 'seal';
+  | 'seal'
+  | 'attest'
+  | 'collapse_preview'
+  | 'collapse_live';
 
 export interface RecommendationRequest {
   id: string;

@@ -50,7 +50,7 @@ export const ROUTINE_AGENT_ACTION_KINDS = [
 ] as const;
 
 export const HUMAN_ONLY_AGENT_ACTION_KINDS = [
-  'intent', 'promote', 'reject', 'reopen', 'depend',
+  'intent', 'promote', 'reject', 'reopen', 'depend', 'attest', 'collapse_preview', 'collapse_live',
 ] as const;
 
 export type RoutineAgentActionKind = typeof ROUTINE_AGENT_ACTION_KINDS[number];

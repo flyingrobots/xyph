@@ -198,7 +198,11 @@ function renderRecommendedActions(recommendedActions: AgentActionCandidate[]): s
   }
 
   for (const action of recommendedActions) {
-    const status = action.allowed ? 'allowed' : 'blocked';
+    const statusParts = [action.allowed ? 'allowed' : 'blocked'];
+    if (action.requiresHumanApproval) {
+      statusParts.push('human');
+    }
+    const status = statusParts.join(', ');
     lines.push(`  - ${action.kind} (${status})`);
     lines.push(`      ${action.reason}`);
     if (action.blockedBy.length > 0) {
@@ -217,7 +221,7 @@ function renderRecommendationRequests(recommendationRequests: RecommendationRequ
   }
 
   for (const request of recommendationRequests.slice(0, 5)) {
-    lines.push(`  - ${request.priority} ${request.category}`);
+    lines.push(`  - ${request.priority} ${request.source}/${request.category}`);
     lines.push(`      ${request.summary}`);
     if (request.blockedTransitions.length > 0) {
       lines.push(`      blocks: ${request.blockedTransitions.join(', ')}`);
@@ -427,6 +431,9 @@ function renderBriefing(briefing: {
       lines.push(`  - ${entry.artifactId} [${entry.artifactKind}]`);
       lines.push(`      ${entry.reason}`);
       lines.push(`      attention: ${entry.semantics.attentionState} · progress: ${entry.semantics.progress.currentLabel}`);
+      if (entry.semantics.nextLawfulActions[0]) {
+        lines.push(`      next: ${entry.semantics.nextLawfulActions[0].label}`);
+      }
     }
   }
 
@@ -501,6 +508,7 @@ function renderNext(candidates: {
   priority: string;
   reason: string;
   blockedBy: string[];
+  requiresHumanApproval: boolean;
   semantics?: AgentWorkSemantics;
 }[]): string {
   const lines: string[] = [];
@@ -516,6 +524,9 @@ function renderNext(candidates: {
     lines.push(`      ${candidate.reason}`);
     if (candidate.semantics) {
       lines.push(`      attention: ${candidate.semantics.attentionState} · expected: ${candidate.semantics.expectedActor}`);
+    }
+    if (candidate.requiresHumanApproval) {
+      lines.push('      requires: human governance judgment');
     }
     if (candidate.blockedBy.length > 0) {
       lines.push(`      blockedBy: ${candidate.blockedBy.join(' | ')}`);
