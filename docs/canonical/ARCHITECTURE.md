@@ -81,6 +81,35 @@ opened.
 - **`src/tui/`** — TUI (bijou-tui v3.1): a XYPH landing cockpit plus drill-in item pages, built around one lane rail, one scannable worklist, one preview inspector, breadcrumbed item pages, theme presets, and `StylePort`-based styling. The current shell projects `Now`, `Plan`, `Review`, `Settlement`, `Campaigns`, and `Graveyard` lanes over the same graph-backed snapshot truth. Product and page-design truth for this surface lives in [`docs/XYPH_PRODUCT_DESIGN.md`](../XYPH_PRODUCT_DESIGN.md); this architecture doc describes the implementation boundary, not the full UX contract.
 - **`src/validation/`** — Cross-cutting concerns: cryptographic utilities, invariant enforcement.
 
+## Shared Work And Governance Semantics
+
+XYPH should expose one shared semantic layer across the human cockpit, drill-in
+pages, and agent-native CLI.
+
+The load-bearing distinction is:
+
+- **explicit graph truth** such as quests, submissions, requirements,
+  criteria, evidence, comments, suggestions, comparison artifacts,
+  attestations, and collapse proposals
+- **derived XYPH judgments** such as readiness, missing evidence,
+  blocking reasons, expected actor, next lawful actions, claimability, and
+  attention state
+
+This architecture matters because those derived judgments should not be
+recomputed ad hoc in every adapter or UI surface. They belong in shared domain
+services and shared projection models so:
+
+- a review page and a settlement page can explain the same blocker the same way
+- `briefing`, `next`, `context`, and `act` can use the same machine-readable
+  names as the human pages
+- suggestion queues and future live feeds can route through the same lawful
+  action model instead of inventing a second workflow layer
+
+The product-design source of truth for these primitives lives in
+[`docs/XYPH_PRODUCT_DESIGN.md`](../XYPH_PRODUCT_DESIGN.md). This architecture
+document records the implementation boundary: explicit graph truth plus shared
+derived judgments, not per-surface reinvention.
+
 ## Canonical Control Plane
 
 The long-term machine-facing interface is `xyph api`, a versioned JSONL control

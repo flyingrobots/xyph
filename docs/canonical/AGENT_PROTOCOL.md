@@ -119,6 +119,31 @@ includes:
 - recent graph-native docs and comments
 - recommended next actions for that specific target
 
+### 3.2 Shared Semantic Fields
+
+The agent-native layer should reuse the same semantic field names across
+`briefing`, `next`, `context`, `submissions`, and `act` wherever they apply.
+
+The product-design reason is in
+[`../XYPH_PRODUCT_DESIGN.md`](../XYPH_PRODUCT_DESIGN.md): agents should not
+need shell archaeology to reconstruct the same work and governance judgments
+from different command outputs.
+
+Preferred shared fields:
+
+- `requirements`
+- `acceptanceCriteria`
+- `evidenceSummary`
+- `blockingReasons`
+- `missingEvidence`
+- `nextLawfulActions`
+- `claimability`
+- `expectedActor`
+- `attentionState`
+
+Not every command must return every field, but commands that speak about the
+same target should prefer these names instead of command-local synonyms.
+
 ## 4. JSON Contracts
 
 All `--json` commands use JSONL framing. Consumers must read records line by
@@ -164,6 +189,15 @@ an action candidate reference.
 The runtime may also include `recentHandoffs` so agents can resume from their
 own recent closeout notes without hunting through raw quest history.
 
+Where possible, briefing entries should also expose enough shared semantics to
+answer the cold-start questions "what is true?", "what is blocked?", and "what
+needs me?" without another round-trip:
+
+- `attentionState`
+- `blockingReasons`
+- `expectedActor`
+- `nextLawfulActions`
+
 ### 4.2 `next --json`
 
 `next` returns structured action candidates, not prose-only recommendations.
@@ -179,6 +213,8 @@ Each candidate must include at least:
 - `requiresHumanApproval`
 - `dryRunSummary`
 - `blockedBy`
+- `nextLawfulActions` when the candidate is informative but not immediately executable
+- `claimability` when the candidate competes with other actors
 
 The first candidate is the default recommendation. Remaining candidates are
 ordered alternatives.
@@ -189,6 +225,15 @@ graph-health remediation work when structural blockers are competing with normal
 delivery. When a candidate needs additional operator input, it should still be
 surfaced with machine-readable blocking reasons instead of silently disappearing
 from the queue.
+
+When the candidate targets a quest or governance artifact, the payload should
+also prefer:
+
+- `requirements`
+- `acceptanceCriteria`
+- `evidenceSummary`
+- `missingEvidence`
+- `expectedActor`
 
 ### 4.3 `submissions --json`
 
@@ -211,6 +256,17 @@ agent-specific payload must include:
 - `recommendedActions`
 - `recommendationRequests`
 - `diagnostics`
+- `requirements`
+- `acceptanceCriteria`
+- `evidenceSummary`
+- `blockingReasons`
+- `missingEvidence`
+- `nextLawfulActions`
+- `expectedActor`
+- `claimability`
+
+Those fields are what make `context` a work packet instead of a fancy `show`
+command.
 
 ### 4.4 `act --json`
 
@@ -243,6 +299,14 @@ the authoritative graph-side settlement state must return a non-success outcome
 with the committed side effects included so automation can reconcile and retry.
 Actions must also refuse execution when doctor-detected structural blockers make
 the requested transition illegal under the current graph state.
+
+When an action is refused, the response should prefer explaining refusal in the
+same terms the human governance pages will use:
+
+- `blockingReasons`
+- `missingEvidence`
+- `nextLawfulActions`
+- `expectedActor`
 
 ### 4.5 `handoff --json`
 

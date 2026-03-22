@@ -379,6 +379,187 @@ Humans and agents should consume the same graph truth through different lenses.
 The human landing cockpit and the agent-native CLI should disagree in format,
 not in reality.
 
+## Shared Primitive Model
+
+The next XYPH verticals should not be designed as isolated pages or commands.
+They should be designed around a shared primitive model that both the human
+surface and the agent-native surface can project honestly.
+
+### Work Primitives
+
+These are the core work-shaping primitives XYPH should treat as first-class:
+
+- **Intent**: why the work matters in sovereign terms
+- **Story**: human-meaningful scenario that refines intent
+- **Requirement**: specific thing that must be true
+- **Acceptance criterion**: testable or reviewable condition for a requirement
+- **Evidence**: proof, linkage, or attested observation that bears on a
+  criterion
+- **Quest**: the executable work unit that implements one or more requirements
+- **Submission**: proposed change packet that can be reviewed and settled
+
+Design rule:
+
+- quests are labor
+- requirements and criteria are spec
+- evidence is proof
+- submissions are proposed change
+
+The product must stop treating those as specialist traceability trivia. They
+are the primitives that let humans and agents answer "what is this?", "what is
+missing?", and "what would make this done?" without inventing parallel prose.
+This is the product-language projection of the requirements-to-evidence chain
+already described in `docs/canonical/TRACEABILITY.md`, not a second competing
+model.
+
+### Governance Primitives
+
+For the human governance vertical, XYPH should expose these as explicit product
+concepts:
+
+- **Review item**: submission plus its review state
+- **Comparison artifact**: factual worldline comparison ready for governance
+- **Attestation**: approval or rejection evidence from a principal
+- **Collapse proposal**: candidate settlement path with execution readiness
+- **Decision artifact**: durable record of what was approved, rejected,
+  executed, or superseded
+
+These are the core derived governance judgments that pages and queues should
+surface:
+
+- **requirements**
+- **acceptanceCriteria**
+- **evidenceSummary**
+- **blockingReasons**
+- **missingEvidence**
+- **nextLawfulActions**
+- **expectedActor**
+- **claimability**
+- **attentionState**
+
+Where possible, XYPH should prefer stable names like these across both human
+pages and agent-native JSON projections instead of inventing lane-specific or
+page-specific labels for the same underlying judgment.
+
+### Agent-Native Primitives
+
+The agent-native layer should speak in packets, not prose blobs.
+
+The minimum shared packet types are:
+
+- **Briefing packet**: where am I, what is hot, what is risky, what changed
+- **Next candidate**: one suggested next lawful action with machine-readable
+  rationale
+- **Context packet**: the full work packet for one target
+- **Act result**: allowed/refused execution attempt with validation truth
+- **Handoff note**: durable session closeout for the next human or agent
+
+Across those packets, the product should reuse the same semantic fields
+wherever they apply:
+
+- `requirements`
+- `acceptanceCriteria`
+- `evidenceSummary`
+- `blockingReasons`
+- `missingEvidence`
+- `nextLawfulActions`
+- `claimability`
+- `expectedActor`
+- `attentionState`
+
+That is how XYPH avoids shell archaeology: not by hiding reality, but by
+naming the same reality consistently enough that agents do not need to rebuild
+it from scattered outputs.
+
+### Graph Truth vs Derived Judgment
+
+Not every useful field should be a raw stored property.
+
+The design should assume three layers:
+
+1. **Graph truth**
+   Example: quests, requirements, criteria, evidence nodes, submissions,
+   comments, attestations, suggestions.
+2. **Derived judgment**
+   Example: readiness, missing evidence, stale comparison, blocked settlement,
+   expected actor, claimability.
+3. **Surface framing**
+   Example: lane badges, `Why hot`, page stepper state, breadcrumb labels.
+
+This matters because XYPH should not store decorative UI state in the graph
+when a derived projection will do, but it also must not hide important
+governance judgments inside transient UI code if those judgments need to be
+shared by humans and agents.
+
+## Selected Vertical Program
+
+The next two vertical slices should be chosen for leverage, not novelty.
+
+### Human Vertical: Hill 3 — Make Governance Legible
+
+This vertical should build purpose-built `Review` and `Settlement` pages around
+the shared primitive model above.
+
+It should let a human answer, from one page:
+
+- what stage is this artifact in?
+- what requirement, criterion, or evidence gap is blocking it?
+- who is expected to act next?
+- what are the next lawful actions?
+- what durable decision or attestation history already exists?
+
+This vertical should make `comparison-artifact`, `attestation`, and
+`collapse-proposal` pages the canonical place to govern, instead of asking the
+inspector or footer to carry governance forever.
+
+Acceptance criteria:
+
+- a governance reviewer can open any hot review or settlement item and explain
+  its stage, blocker, missing evidence, and next lawful action without leaving
+  the page
+- review and settlement pages expose the same blocker / evidence / next-action
+  semantics as the CLI instead of inventing page-local jargon
+- a human can complete the normal governance loop from page context:
+  inspect -> comment -> attest -> settle or reject
+
+### Agent Vertical: Hill 6 — Let Agents Start Productive Without Shell Archaeology
+
+This vertical should make `briefing`, `next`, `context`, and `act` feel like
+one designed agent workflow rather than a bucket of commands.
+
+It should let a cold-start or queue-consuming agent answer:
+
+- what is true right now?
+- what is mine, claimable, blocked, or awaiting human judgment?
+- what requirements and acceptance criteria matter for this target?
+- what evidence exists, what evidence is missing, and what blocks progress?
+- what is the next lawful action I may actually take?
+
+Acceptance criteria:
+
+- a cold-start agent can orient from XYPH alone without reconstructing project
+  truth from raw shell archaeology
+- `briefing`, `next`, `context`, and `act` all expose the shared primitive
+  names for blockers, evidence, requirements, and next lawful actions
+- an agent can claim, defer, reject, or refuse work with machine-readable
+  reasons instead of silently improvising or disappearing work
+
+### Why These Two First
+
+These two hills buy the most leverage because they sharpen the same product
+center:
+
+- human governance pages define how lawful judgment should feel
+- agent-native packets define how lawful work intake should feel
+- AI suggestions can then route into a stable governance and queue model
+  instead of inventing their own half-truth workflow
+
+The order is intentional:
+
+1. make governance legible for humans
+2. make lawful work intake explicit for agents
+3. then build suggestion pages and queues on top of those stable semantics
+
 ## App Architecture
 
 ## Landing Page
