@@ -1,7 +1,12 @@
 import type { QueryResultV1, AggregateResult } from '@git-stunts/git-warp';
 import type { Diagnostic } from '../models/diagnostics.js';
 import type { RecommendationRequest } from '../models/recommendations.js';
-import type { GraphMeta, GraphSnapshot, QuestNode } from '../models/dashboard.js';
+import type {
+  EntityDetail,
+  GraphMeta,
+  GraphSnapshot,
+  QuestNode,
+} from '../models/dashboard.js';
 import type { GraphPort } from '../../ports/GraphPort.js';
 import type { RoadmapQueryPort } from '../../ports/RoadmapPort.js';
 import { createGraphContext } from '../../infrastructure/GraphContext.js';
@@ -29,9 +34,18 @@ import {
   type AgentQuestRef,
 } from './AgentRecommender.js';
 import {
+  buildGovernanceActionCandidates,
   buildAgentDependencyContext,
   toAgentQuestRef,
 } from './AgentContextService.js';
+import {
+  buildGovernanceWorkSemantics,
+  buildQuestWorkSemantics,
+  buildSubmissionWorkSemantics,
+  type GovernanceWorkSemantics,
+  type QuestWorkSemantics,
+  type SubmissionWorkSemantics,
+} from './WorkSemanticsService.js';
 
 interface QNode {
   id: string;
@@ -61,6 +75,7 @@ export interface AgentWorkSummary {
   quest: AgentQuestRef;
   dependency: AgentDependencyContext;
   nextAction: AgentActionCandidate | null;
+  semantics: QuestWorkSemantics;
 }
 
 export interface AgentReviewQueueEntry {
@@ -72,6 +87,16 @@ export interface AgentReviewQueueEntry {
   submittedAt: number;
   reason: string;
   nextStep: AgentSubmissionNextStep;
+  semantics: SubmissionWorkSemantics;
+}
+
+export interface AgentGovernanceQueueEntry {
+  artifactId: string;
+  artifactKind: string;
+  recordedBy: string | null;
+  recordedAt: number;
+  reason: string;
+  semantics: GovernanceWorkSemantics;
 }
 
 export interface AgentHandoffSummary {
@@ -85,6 +110,7 @@ export interface AgentBriefing {
   identity: AgentBriefingIdentity;
   assignments: AgentWorkSummary[];
   reviewQueue: AgentReviewQueueEntry[];
+  governanceQueue: AgentGovernanceQueueEntry[];
   frontier: AgentWorkSummary[];
   recommendationQueue: RecommendationRequest[];
   recentHandoffs: AgentHandoffSummary[];
@@ -97,7 +123,8 @@ export interface AgentNextCandidate extends AgentActionCandidate {
   questTitle: string;
   questStatus: string;
   priority: QuestPriority;
-  source: 'assignment' | 'frontier' | 'planning' | 'submission' | 'doctor';
+  source: 'assignment' | 'frontier' | 'planning' | 'submission' | 'governance' | 'doctor';
+  semantics?: QuestWorkSemantics | SubmissionWorkSemantics | GovernanceWorkSemantics;
 }
 
 export interface AgentNextResult {
@@ -144,11 +171,27 @@ function sourcePriority(source: AgentNextCandidate['source']): number {
       return 1;
     case 'submission':
       return 2;
-    case 'frontier':
+    case 'governance':
       return 3;
+    case 'frontier':
+      return 4;
     case 'planning':
     default:
-      return 4;
+      return 5;
+  }
+}
+
+function attentionPriority(state: GovernanceWorkSemantics['attentionState']): number {
+  switch (state) {
+    case 'ready':
+      return 0;
+    case 'review':
+      return 1;
+    case 'blocked':
+      return 2;
+    case 'none':
+    default:
+      return 3;
   }
 }
 
@@ -191,6 +234,7 @@ export class AgentBriefingService {
     );
 
     const reviewQueue = this.buildReviewQueue(snapshot);
+    const governanceQueue = this.buildGovernanceQueue(snapshot);
     const recentHandoffs = await this.buildRecentHandoffs();
     const doctorReport = await this.doctor.run();
     const recommendationQueue = buildRecommendationRequests(doctorReport);
@@ -199,6 +243,7 @@ export class AgentBriefingService {
       assignments,
       frontier,
       reviewQueue,
+      governanceQueue,
       recommendationQueue,
       diagnostics,
     );
@@ -210,6 +255,7 @@ export class AgentBriefingService {
       },
       assignments,
       reviewQueue,
+      governanceQueue,
       frontier,
       recommendationQueue,
       recentHandoffs,
@@ -223,27 +269,16 @@ export class AgentBriefingService {
     const snapshot = await this.fetchSnapshot();
     const doctorReport = await this.doctor.run();
     const recommendationQueue = buildRecommendationRequests(doctorReport);
-    const candidates: AgentNextCandidate[] = [];
-
-    for (const quest of snapshot.quests) {
-      if (quest.status === 'DONE' || quest.status === 'GRAVEYARD') continue;
-      const readiness = await this.readiness.assess(quest.id, { transition: false });
-      const dependency = buildAgentDependencyContext(snapshot, quest);
-      const source = determineSource(quest, dependency, this.agentId);
-      const recommendations = await this.recommender.recommendForQuest(quest, readiness, dependency);
-
-      for (const candidate of recommendations) {
-        candidates.push({
-          ...candidate,
-          priority: quest.priority ?? DEFAULT_QUEST_PRIORITY,
-          questTitle: quest.title,
-          questStatus: quest.status,
-          source,
-        });
-      }
-    }
+    const candidates = (
+      await Promise.all(
+        snapshot.quests
+          .filter((quest) => quest.status !== 'DONE' && quest.status !== 'GRAVEYARD')
+          .map(async (quest) => this.buildQuestCandidates(quest, snapshot)),
+      )
+    ).flat();
 
     candidates.push(...this.buildSubmissionCandidates(snapshot));
+    candidates.push(...this.buildGovernanceCandidates(snapshot));
     candidates.push(...this.buildDoctorCandidates(snapshot, recommendationQueue));
 
     candidates.sort((a, b) =>
@@ -281,11 +316,70 @@ export class AgentBriefingService {
         quest: toAgentQuestRef(quest),
         dependency,
         nextAction: recommendations[0] ?? null,
+        semantics: buildQuestWorkSemantics({
+          detail: {
+            id: quest.id,
+            quest,
+            reviews: [],
+            decisions: [],
+            stories: [],
+            requirements: [],
+            criteria: [],
+            evidence: [],
+            policies: [],
+            documents: [],
+            comments: [],
+            timeline: [],
+          },
+          readiness,
+          dependency,
+          recommendedActions: recommendations,
+          agentId: this.agentId,
+        }),
       } satisfies AgentWorkSummary;
     }));
 
     summaries.sort((a, b) => a.quest.id.localeCompare(b.quest.id));
     return summaries;
+  }
+
+  private async buildQuestCandidates(
+    quest: QuestNode,
+    snapshot: GraphSnapshot,
+  ): Promise<AgentNextCandidate[]> {
+    const readiness = await this.readiness.assess(quest.id, { transition: false });
+    const dependency = buildAgentDependencyContext(snapshot, quest);
+    const source = determineSource(quest, dependency, this.agentId);
+    const recommendations = await this.recommender.recommendForQuest(quest, readiness, dependency);
+    const semantics = buildQuestWorkSemantics({
+      detail: {
+        id: quest.id,
+        quest,
+        reviews: [],
+        decisions: [],
+        stories: [],
+        requirements: [],
+        criteria: [],
+        evidence: [],
+        policies: [],
+        documents: [],
+        comments: [],
+        timeline: [],
+      },
+      readiness,
+      dependency,
+      recommendedActions: recommendations,
+      agentId: this.agentId,
+    });
+
+    return recommendations.map((candidate) => ({
+      ...candidate,
+      priority: quest.priority ?? DEFAULT_QUEST_PRIORITY,
+      questTitle: quest.title,
+      questStatus: quest.status,
+      source,
+      semantics,
+    }));
   }
 
   private buildReviewQueue(snapshot: GraphSnapshot): AgentReviewQueueEntry[] {
@@ -296,6 +390,10 @@ export class AgentBriefingService {
       )
       .map((submission) => {
         const quest = questById.get(submission.questId);
+        const reviews = submission.tipPatchsetId
+          ? snapshot.reviews.filter((entry) => entry.patchsetId === submission.tipPatchsetId)
+          : [];
+        const decisions = snapshot.decisions.filter((entry) => entry.submissionId === submission.id);
         return {
           submissionId: submission.id,
           questId: submission.questId,
@@ -305,10 +403,45 @@ export class AgentBriefingService {
           submittedAt: submission.submittedAt,
           reason: 'Open submission awaiting review.',
           nextStep: determineSubmissionNextStep(submission, this.agentId),
+          semantics: buildSubmissionWorkSemantics({
+            submission,
+            quest,
+            reviews,
+            decisions,
+            principalId: this.agentId,
+          }),
         } satisfies AgentReviewQueueEntry;
       });
 
     queue.sort((a, b) => b.submittedAt - a.submittedAt || a.submissionId.localeCompare(b.submissionId));
+    return queue;
+  }
+
+  private buildGovernanceQueue(snapshot: GraphSnapshot): AgentGovernanceQueueEntry[] {
+    const queue = snapshot.governanceArtifacts
+      .flatMap((artifact) => {
+        const semantics = buildGovernanceWorkSemantics(this.toGovernanceDetail(artifact));
+        if (!semantics || semantics.attentionState === 'none') {
+          return [];
+        }
+        return [{
+          artifactId: artifact.id,
+          artifactKind: artifact.type,
+          recordedBy: artifact.recordedBy ?? null,
+          recordedAt: artifact.recordedAt,
+          reason: semantics.blockingReasons[0]
+            ?? semantics.missingEvidence[0]
+            ?? semantics.nextLawfulActions[0]?.reason
+            ?? 'Governance artifact requires inspection.',
+          semantics,
+        } satisfies AgentGovernanceQueueEntry];
+      });
+
+    queue.sort((a, b) =>
+      attentionPriority(a.semantics.attentionState) - attentionPriority(b.semantics.attentionState) ||
+      b.recordedAt - a.recordedAt ||
+      a.artifactId.localeCompare(b.artifactId)
+    );
     return queue;
   }
 
@@ -341,16 +474,59 @@ export class AgentBriefingService {
           nextStep: determineSubmissionNextStep(submission, this.agentId),
         };
 
-        const candidate = this.toSubmissionCandidate(entry, quest?.priority ?? DEFAULT_QUEST_PRIORITY);
+        const reviews = submission.tipPatchsetId
+          ? snapshot.reviews.filter((review) => review.patchsetId === submission.tipPatchsetId)
+          : [];
+        const decisions = snapshot.decisions.filter((decision) => decision.submissionId === submission.id);
+        const semantics = buildSubmissionWorkSemantics({
+          submission,
+          quest,
+          reviews,
+          decisions,
+          principalId: this.agentId,
+        });
+        const candidate = this.toSubmissionCandidate(
+          entry,
+          quest?.priority ?? DEFAULT_QUEST_PRIORITY,
+          semantics,
+        );
         return candidate ? [candidate] : [];
       });
 
     return candidates;
   }
 
+  private buildGovernanceCandidates(snapshot: GraphSnapshot): AgentNextCandidate[] {
+    return this.buildGovernanceQueue(snapshot).flatMap((entry) =>
+      buildGovernanceActionCandidates({
+        artifactId: entry.artifactId,
+        semantics: entry.semantics,
+      }).map((candidate) => ({
+        ...candidate,
+        priority: candidate.priority ?? DEFAULT_QUEST_PRIORITY,
+        questTitle: `${entry.artifactKind} ${entry.artifactId}`,
+        questStatus: entry.semantics.progress.currentLabel,
+        source: 'governance' as const,
+        semantics: entry.semantics,
+      }))
+    );
+  }
+
+  private toGovernanceDetail(artifact: GraphSnapshot['governanceArtifacts'][number]): EntityDetail {
+    return {
+      id: artifact.id,
+      type: artifact.type,
+      props: { type: artifact.type },
+      outgoing: [],
+      incoming: [],
+      governanceDetail: artifact.governance,
+    };
+  }
+
   private toSubmissionCandidate(
     entry: AgentSubmissionEntry,
     priority: QuestPriority,
+    semantics: SubmissionWorkSemantics,
   ): AgentNextCandidate | null {
     const base = {
       questTitle: entry.questTitle,
@@ -358,6 +534,7 @@ export class AgentBriefingService {
       source: 'submission' as const,
       requiresHumanApproval: false,
       priority,
+      semantics,
     };
 
     switch (entry.nextStep.kind) {
@@ -489,6 +666,7 @@ export class AgentBriefingService {
     assignments: AgentWorkSummary[],
     frontier: AgentWorkSummary[],
     reviewQueue: AgentReviewQueueEntry[],
+    governanceQueue: AgentGovernanceQueueEntry[],
     recommendationQueue: RecommendationRequest[],
     diagnostics: Diagnostic[],
   ): AgentBriefingAlert[] {
@@ -523,6 +701,15 @@ export class AgentBriefingService {
         severity: 'info',
         message: `${reviewQueue.length} submission(s) are waiting for review attention.`,
         relatedIds: reviewQueue.map((entry) => entry.submissionId),
+      });
+    }
+
+    if (governanceQueue.length > 0) {
+      alerts.push({
+        code: 'governance-queue',
+        severity: 'info',
+        message: `${governanceQueue.length} governance artifact(s) currently need judgment or inspection.`,
+        relatedIds: governanceQueue.map((entry) => entry.artifactId),
       });
     }
 

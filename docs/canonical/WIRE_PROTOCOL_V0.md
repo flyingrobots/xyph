@@ -127,12 +127,12 @@ Current foundation-slice implementation status:
 - implemented now: `fork_worldline`
 - implemented now: `braid_worldlines`
 - implemented now: `compare_worldlines`
+- implemented now: `collapse_worldline`
 - implemented now: `apply`
 - implemented now: `propose`
 - implemented now: `comment`
 - implemented now: `attest`
-- reserved, not yet implemented: `collapse_worldline`
-- reserved, not yet implemented: `query`
+- implemented now (admin-only): `query`
 - reserved, not yet implemented: `rewind_worldline`
 
 `snapshot_at` is not a distinct protocol command. It is a readability alias for
@@ -157,12 +157,28 @@ Every read returns a reproducible observation coordinate:
 - `sealedObservationMode`
 - `selectorDigest`
 - `frontierDigest`
+- `backing`
 - `graphMeta`
 - optional `comparisonPolicyVersion`
 
-`compare_worldlines` is the exception to the single-coordinate return shape.
-Because it spans two worldline/selector surfaces, it returns per-side
-observation coordinates inside the `comparison-artifact` payload instead of a
+`backing` makes the substrate truth explicit:
+
+- live-backed reads report `kind: "live_frontier"` with
+  `substrate.kind: "git-warp-frontier"`
+- working-set-backed derived reads report `kind: "derived_working_set"` with
+  substrate details for:
+  - `workingSetId`
+  - `baseLamportCeiling`
+  - `overlayHeadPatchSha`
+  - `overlayPatchCount`
+  - `overlayWritable`
+  - `braid.supportCount`
+  - `braid.supportWorldlineIds`
+  - `braid.supportWorkingSetIds`
+
+`compare_worldlines` and preview `collapse_worldline` are the exceptions to the
+single-coordinate return shape. Because they span two worldline surfaces, they
+return per-side observation coordinates inside the artifact payload instead of a
 single top-level `observation`.
 
 Every read accepts:
@@ -196,7 +212,7 @@ surface than `worldline:live`:
 
 - working-set-aware now: `observe(graph.summary)`,
   `observe(worldline.summary)`, `observe(entity.detail)`, `history`, `diff`,
-  `apply`, `observe(conflicts)`, `compare_worldlines`
+  `apply`, `observe(conflicts)`, `compare_worldlines`, `collapse_worldline`
 - still live-service-backed for now: compatibility projections such as
   `briefing`, `context`, `next`, `submissions`, `diagnostics`, and
   `prescriptions`
@@ -224,6 +240,11 @@ Current behavior:
 - returns:
   - `requested` normalized analyzer inputs
   - `analysis` as the substrate conflict-analysis payload
+
+When the selected derived worldline is braided, `observe(conflicts)` may also
+return XYPH diagnostics warning that singleton LWW property modeling is causing
+self-erasing co-presence under braid. This is an application-level warning
+derived from substrate conflict facts, not a second conflict engine.
 
 This projection is intentionally **tip-scoped** in v1. XYPH now supports
 live-frontier or derived-worldline tip conflict analysis through git-warp
@@ -268,6 +289,7 @@ Current behavior:
   - `at`
   - `againstAt`
   - optional `targetId`
+- accepts optional `persist: true`
 - currently supports only:
   - `worldline:live`
   - canonical derived worldlines backed by git-warp working sets
@@ -277,10 +299,102 @@ Current behavior:
   - substrate-backed visible patch divergence
   - substrate-backed visible node / edge / property deltas
   - optional target-local comparison details when `targetId` is provided
+  - an operationally scoped git-warp comparison fact in `data.substrate`
+  - the raw whole-graph git-warp comparison fact in `data.substrate.rawWholeGraph`
+  - when `persist: true`, a `data.record` block describing the durable
+    `comparison-artifact:*` node recorded on `worldline:live`
+
+When that durable artifact is later inspected through `observe(entity.detail)`,
+XYPH now returns computed governance detail including:
+
+- `freshness`: `fresh`, `stale`, or `unknown`
+- attestation summary over incoming `attestation:*` records
+- supersession lineage over the artifact’s governance series
+- settlement summary showing downstream `collapse-proposal:*` records
 
 This slice is intentionally comparison-only. It does **not** collapse, approve,
 or otherwise execute settlement. Comparison remains separate from decision and
 execution.
+
+## `collapse_worldline` Current Slice
+
+`collapse_worldline` is now implemented as the first XYPH settlement runway
+preview over git-warp's published transfer-planning helpers.
+
+Current behavior:
+
+- uses the effective `worldlineId` as the source worldline
+- currently supports only canonical derived source worldlines backed by
+  git-warp working sets
+- requires `comparisonArtifactDigest` from a fresh `compare_worldlines` call
+- recomputes the current operationally scoped comparison at source tip vs
+  target tip and rejects stale digest input with `stale_base_observation`
+- currently supports only `targetWorldlineId: "worldline:live"` or omission
+- rejects `at`, `againstAt`, `since`, and `targetId` selectors in this slice
+- defaults to dry-run preview, but accepts `dryRun: false` for live execution
+- uses the same mutation kernel as `apply` for both preview and execution
+- when live execution would make substantive changes, requires approving
+  `attestationIds` over the persisted `comparison-artifact:*` returned by
+  `compare_worldlines persist:true`
+- lowers committed content-clearing transfer ops through the published
+  git-warp clear-content patch primitives when the transfer plan requires them
+- accepts optional `persist: true`
+- returns:
+  - a typed XYPH `collapse-proposal`
+  - per-side observation coordinates for source and target
+  - substrate-backed transfer summary and sanitized transfer ops
+  - either a dry-run mutation side-effect preview or a live mutation result
+  - an operationally scoped git-warp comparison fact and transfer fact in
+    `data.substrate`
+  - the raw whole-graph git-warp comparison fact in
+    `data.substrate.rawWholeGraph`
+  - when `persist: true`, a `data.record` block describing the durable
+    `collapse-proposal:*` node recorded on `worldline:live`
+  - when `dryRun: false`, a terminal `observation` over the resulting
+    `worldline:live` tip
+
+When a persisted `collapse-proposal:*` is later inspected through
+`observe(entity.detail)`, XYPH now returns computed governance detail
+including:
+
+- `freshness`: whether the proposal still matches the current source-vs-live
+  comparison baseline
+- `lifecycle`: `pending_attestation`, `approved`, `no_op`, `executed`, or
+  `stale`
+- direct attestation summary over the proposal itself
+- execution-gate attestation summary over the linked `comparison-artifact:*`
+
+This slice still does **not** introduce a special collapse engine outside the
+shared mutation kernel path. The current governed live path is:
+persist comparison -> approve comparison -> collapse against that approved
+comparison baseline.
+
+## `query` Current Slice
+
+`query` is now implemented as an admin-only governance read surface.
+
+Current behavior:
+
+- requires explicit human admin capability
+- currently operates on the live governance surface only
+- rejects worldline selectors and historical selectors in this slice
+- supports:
+  - `view: "governance.worklist"`
+  - `view: "governance.series"` with `artifactId`
+- returns:
+  - for `governance.worklist`, queue-style summaries for:
+    - fresh comparison artifacts
+    - stale comparison artifacts
+    - pending collapse proposals
+    - approved collapse proposals
+    - stale collapse proposals
+    - executed collapse proposals
+  - for `governance.series`, chronological series history for one durable
+    `comparison-artifact:*` or `collapse-proposal:*` lane
+
+This is intentionally narrow. It is not a generic graph query language yet.
+The first slice is artifact-centric and operator-centric: make governance lanes
+visible and navigable before opening a broader query grammar.
 
 ## `braid_worldlines` Current Slice
 
@@ -329,13 +443,16 @@ first honest execution slice:
 - `apply` lowers through the same mutation kernel as live writes, but commits to
   the working-set overlay patch log instead of the shared graph
 - observation metadata for these commands uses the working set's visible
-  frontier digest
+  frontier digest and explicit working-set / braid backing details
+- braided `observe(conflicts)` adds an explicit warning when competing
+  singleton property winners would self-erase co-presence under LWW
 
 This is still intentionally partial. XYPH does **not** yet expose general
 working-set-backed compatibility projections such as `briefing`, `context`,
 `next`, `submissions`, `diagnostics`, or `prescriptions`, and it does **not**
-yet expose collapse semantics in this slice. Explicit braid-wide parity and
-diagnostics across every worldline-backed command remain the next slice.
+yet expose collapse semantics in this slice. Broader compatibility-projection
+parity remains future work, but the canonical derived-worldline execution slice
+now keeps braid backing explicit across the commands listed above.
 
 ## Error Taxonomy
 
@@ -358,6 +475,32 @@ Stable machine-readable error codes:
 
 `explain` is the companion command for turning these codes into structured
 reasoning, basis, and remediation hints.
+
+It also now supports governance-target diagnosis when called with `targetId`
+for a durable:
+
+- `comparison-artifact:*`
+- `collapse-proposal:*`
+- `attestation:*`
+
+In that mode, `data.explanation` is a structured governance explanation with:
+
+- `kind: "governance"`
+- `governanceKind`
+- `summary`
+- `state`
+- `reasons[]` with stable reason codes
+- `nextActions[]` with suggested follow-up commands
+
+This is intentionally artifact-centric, not a generic graph explanation
+language. The current slice is meant to answer concrete operator questions such
+as:
+
+- why a comparison artifact is stale or superseded
+- why a collapse proposal is still blocked
+- why approving a `collapse-proposal:*` does not satisfy the live execution
+  gate
+- which comparison artifact still needs approval before live collapse can run
 
 `redacted` may also appear inside successful read payloads as a per-field
 redaction code when sealed observation preserves structure but withholds

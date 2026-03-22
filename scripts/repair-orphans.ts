@@ -13,8 +13,10 @@ import Plumbing from '@git-stunts/plumbing';
 import chalk from 'chalk';
 import { createPatchSession } from '../src/infrastructure/helpers/createPatchSession.js';
 import { toNeighborEntries } from '../src/infrastructure/helpers/isNeighborEntry.js';
+import { resolveGraphRuntime } from '../src/cli/runtimeGraph.js';
 
 const WRITER_ID = process.env['XYPH_AGENT_ID'] ?? 'human.james';
+const runtime = resolveGraphRuntime({ cwd: process.cwd() });
 
 // ─── Patch 1: Campaign nodes with wrong type ────────────────────────────────
 const CAMPAIGNS = [
@@ -51,18 +53,18 @@ const QUESTS_NEEDING_INTENT = [
 
 const INTENT_TARGET = 'intent:SOVEREIGNTY';
 
-const plumbing = Plumbing.createDefault({ cwd: process.cwd() });
-const persistence = new GitGraphAdapter({ plumbing });
-
 // Campaign nodes were originally created by agent.james with Lamport ticks 21-32.
 // PropSet LWW uses the patch-level lamport, so we must commit via agent.james
 // to get a lamport tick > 44 (agent.james's current max). Using human.james
 // would only produce lamport ~15, losing the LWW race.
 const CAMPAIGN_WRITER = 'agent.james';
 
+const plumbing = Plumbing.createDefault({ cwd: runtime.repoPath });
+const persistence = new GitGraphAdapter({ plumbing });
+
 const graph = await WarpGraph.open({
   persistence,
-  graphName: 'xyph-roadmap',
+  graphName: runtime.graphName,
   writerId: CAMPAIGN_WRITER,
   autoMaterialize: true,
 });
@@ -107,7 +109,7 @@ console.log(chalk.cyan('\n── Patch 2: Wire authorized-by edges → intent:SO
 
 const edgeGraph = await WarpGraph.open({
   persistence,
-  graphName: 'xyph-roadmap',
+  graphName: runtime.graphName,
   writerId: WRITER_ID,
   autoMaterialize: true,
 });
@@ -153,7 +155,7 @@ console.log(chalk.cyan('\n── Verification ──\n'));
 
 const verifyGraph = await WarpGraph.open({
   persistence,
-  graphName: 'xyph-roadmap',
+  graphName: runtime.graphName,
   writerId: WRITER_ID,
   autoMaterialize: true,
 });

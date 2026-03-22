@@ -1,5 +1,10 @@
 import {
-  headerBox, table, separator, badge, enumeratedList,
+  headerBox as headerBoxSurface,
+  table,
+  separator as separatorSurface,
+  badge as badgeSurface,
+  enumeratedList as enumeratedListSurface,
+  getDefaultContext, surfaceToString, type Surface,
 } from '@flyingrobots/bijou';
 import type {
   CriterionNode,
@@ -18,29 +23,49 @@ import { statusVariant, sliceDate, groupBy } from './view-helpers.js';
 
 type BorderKey = keyof StylePort['theme']['border'];
 
+function toText(value: string | Surface): string {
+  return typeof value === 'string' ? value : surfaceToString(value, getDefaultContext().style);
+}
+
+function headerBox(...args: Parameters<typeof headerBoxSurface>): string {
+  return toText(headerBoxSurface(...args));
+}
+
+function separator(...args: Parameters<typeof separatorSurface>): string {
+  return toText(separatorSurface(...args));
+}
+
+function badge(...args: Parameters<typeof badgeSurface>): string {
+  return toText(badgeSurface(...args));
+}
+
+function enumeratedList(...args: Parameters<typeof enumeratedListSurface>): string {
+  return toText(enumeratedListSurface(...args));
+}
+
 function snapshotHeader(style: StylePort, label: string, detail: string, borderToken: BorderKey): string {
-  return headerBox(label, {
+  return toText(headerBox(label, {
     detail: style.styled(style.theme.semantic.muted, detail),
     borderToken: style.theme.border[borderToken],
-  });
+  }));
 }
 
 function renderCompletionBadge(summary: ComputedCompletionSummary | undefined): string {
   if (!summary || !summary.tracked) {
-    return badge('—', { variant: 'muted' });
+    return toText(badge('—', { variant: 'muted' }));
   }
   switch (summary.verdict) {
     case 'SATISFIED':
-      return badge('SAT', { variant: 'success' });
+      return toText(badge('SAT', { variant: 'success' }));
     case 'FAILED':
-      return badge('FAIL', { variant: 'error' });
+      return toText(badge('FAIL', { variant: 'error' }));
     case 'LINKED':
-      return badge('LINK', { variant: 'warning' });
+      return toText(badge('LINK', { variant: 'warning' }));
     case 'MISSING':
-      return badge('MISS', { variant: 'warning' });
+      return toText(badge('MISS', { variant: 'warning' }));
     case 'UNTRACKED':
     default:
-      return badge('—', { variant: 'muted' });
+      return toText(badge('—', { variant: 'muted' }));
   }
 }
 

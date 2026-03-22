@@ -1,524 +1,282 @@
-/**
- * Integration tests for the DashboardApp TEA loop.
- *
- * These drive the full init → update → view cycle deterministically
- * using direct message dispatch (no runScript, no async settling).
- * The snapshot is injected synchronously via the snapshot-loaded message.
- */
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import type { App, KeyMsg } from '@flyingrobots/bijou-tui';
 import { createPlainStylePort, ensurePlainBijouContext } from '../../../infrastructure/adapters/PlainStyleAdapter.js';
 import { createDashboardApp, type DashboardModel, type DashboardMsg } from '../DashboardApp.js';
 import type { GraphSnapshot } from '../../../domain/models/dashboard.js';
-import type { IntakePort } from '../../../ports/IntakePort.js';
-import type { GraphPort } from '../../../ports/GraphPort.js';
-import type { SubmissionPort } from '../../../ports/SubmissionPort.js';
+import { createMemoryObserverWatermarkStore } from '../observer-watermarks.js';
 import { strip } from '../../../../test/helpers/ansi.js';
 import { makeSnapshot } from '../../../../test/helpers/snapshot.js';
-import { makeKey as key } from '../../../../test/helpers/keys.js';
-import { mockGraphContext, mockIntakePort, mockGraphPort as createMockGraphPort, mockSubmissionPort } from '../../../../test/helpers/ports.js';
+import { makeKey as key, makeResize as resize } from '../../../../test/helpers/keys.js';
+import { mockGraphContext, mockIntakePort, mockGraphPort, mockSubmissionPort } from '../../../../test/helpers/ports.js';
 
-// ── Helpers ───────────────────────────────────────────────────────────
+ensurePlainBijouContext();
 
-function buildApp(): { app: App<DashboardModel, DashboardMsg>; mockIntake: IntakePort; mockGraphPort: GraphPort; mockSubmissionPort: SubmissionPort } {
-  const mockCtx = mockGraphContext();
-  const mockIntake = mockIntakePort();
-  const mockGraph = createMockGraphPort();
-  const mockSubmission = mockSubmissionPort();
-
-  const app = createDashboardApp({
-    ctx: mockCtx, intake: mockIntake, graphPort: mockGraph,
-    submissionPort: mockSubmission, style: createPlainStylePort(),
-    agentId: 'agent.test', logoText: 'XYPH',
+function buildApp(snapshotOverrides?: Partial<GraphSnapshot>): App<DashboardModel, DashboardMsg> {
+  return createDashboardApp({
+    ctx: mockGraphContext(snapshotOverrides),
+    intake: mockIntakePort(),
+    graphPort: mockGraphPort(),
+    submissionPort: mockSubmissionPort(),
+    style: createPlainStylePort(),
+    agentId: 'agent.test',
+    logoText: 'XYPH',
+    observerWatermarkStore: createMemoryObserverWatermarkStore(),
+    observerWatermarkScope: { agentId: 'agent.test', repoPath: '/tmp/xyph-test', graphName: 'xyph' },
   });
-
-  return { app, mockIntake, mockGraphPort: mockGraph, mockSubmissionPort: mockSubmission };
 }
 
-/** Shortcut: init → inject snapshot → dismiss landing → return ready model. */
-function ready(
-  app: App<DashboardModel, DashboardMsg>,
-  snap: GraphSnapshot,
-): DashboardModel {
-  const [init] = app.init();
-  const [loaded] = app.update(
-    { type: 'snapshot-loaded', snapshot: snap, requestId: init.requestId },
-    init,
-  );
-  const [dismissed] = app.update(key('a'), loaded); // any key dismisses landing
-  return dismissed;
+function ready(app: App<DashboardModel, DashboardMsg>, snap: GraphSnapshot): DashboardModel {
+  const [initial] = app.init();
+  const [loaded] = app.update({ type: 'snapshot-loaded', snapshot: snap, requestId: initial.requestId }, initial);
+  return loaded;
 }
 
-/** Drive a sequence of keys through the app, returning final model + all frames. */
+function viewText(app: App<DashboardModel, DashboardMsg>, model: DashboardModel): string {
+  return app.view(model) as string;
+}
+
 function drive(
   app: App<DashboardModel, DashboardMsg>,
   model: DashboardModel,
   keys: KeyMsg[],
-): { model: DashboardModel; frames: string[] } {
-  let m = model;
-  const frames: string[] = [];
-  for (const k of keys) {
-    const [next] = app.update(k, m);
-    m = next;
-    frames.push(app.view(m));
+): DashboardModel {
+  let current = model;
+  for (const press of keys) {
+    const [next] = app.update(press, current);
+    current = next;
   }
-  return { model: m, frames };
+  return current;
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────
+function widen(app: App<DashboardModel, DashboardMsg>, model: DashboardModel, cols = 140, rows = 40): DashboardModel {
+  const [resized] = app.update(resize(cols, rows), model);
+  return resized;
+}
 
-ensurePlainBijouContext();
+describe('DashboardApp integration', () => {
+  it('renders the cockpit chrome and lane rail after loading', () => {
+    const app = buildApp();
+    const model = widen(app, ready(app, makeSnapshot()));
+    const plain = strip(viewText(app, model));
 
-describe('DashboardApp integration (full loop)', () => {
-  beforeEach(() => {
-    delete process.env['NO_COLOR'];
-    delete process.env['XYPH_THEME'];
+    expect(plain).toContain('XYPH');
+    expect(plain).toContain('Lanes');
+    expect(plain).toContain('NOW');
+    expect(plain).toContain('PLAN');
+    expect(plain).toContain('Inspector');
   });
 
-  afterEach(() => {
-    vi.unstubAllEnvs();
-    vi.clearAllMocks();
+  it('lets the worklist reclaim the right pane when the inspector is toggled off', () => {
+    const app = buildApp();
+    const model = widen(app, ready(app, makeSnapshot({
+      quests: [{ id: 'task:Q1', title: 'Quest One', status: 'READY', hours: 2 }],
+    })));
+
+    const [closed] = app.update(key('i'), model);
+    const plain = strip(viewText(app, closed));
+
+    expect(closed.inspectorOpen).toBe(false);
+    expect(plain).not.toContain('Inspector');
+    expect(plain).toContain('Quest One');
   });
 
-  // ── Navigation ────────────────────────────────────────────────────
-
-  it('number keys 1-5 jump to respective views and render each', () => {
-    const { app } = buildApp();
-    const m = ready(app, makeSnapshot());
-
-    const pairs: [string, string][] = [
-      ['1', 'dashboard'], ['2', 'roadmap'], ['3', 'submissions'],
-      ['4', 'lineage'], ['5', 'backlog'],
-    ];
-    for (const [k, expected] of pairs) {
-      const [next] = app.update(key(k), m);
-      expect(next.activeView).toBe(expected);
-      const frame = app.view(next);
-      expect(frame.length).toBeGreaterThan(0);
-    }
-  });
-
-  // ── Roadmap selection + detail drawer ─────────────────────────────
-
-  it('j/k selection → view renders quest detail in drawer', () => {
-    const { app } = buildApp();
-    const snap = makeSnapshot({
-      campaigns: [{ id: 'campaign:M1', title: 'Milestone 1', status: 'IN_PROGRESS' }],
-      intents: [{ id: 'intent:SOV', title: 'Sovereignty', requestedBy: 'human.james', createdAt: 0 }],
-      quests: [
-        { id: 'task:A', title: 'Alpha', status: 'READY', hours: 4, campaignId: 'campaign:M1', intentId: 'intent:SOV' },
-        { id: 'task:B', title: 'Bravo', status: 'IN_PROGRESS', hours: 2 },
+  it('shows settlement details in the inspector', () => {
+    const app = buildApp();
+    const model = widen(app, ready(app, makeSnapshot({
+      governanceArtifacts: [
+        {
+          id: 'comparison-artifact:cmp-1',
+          type: 'comparison-artifact',
+          recordedAt: 200,
+          leftWorldlineId: 'worldline:live',
+          rightWorldlineId: 'worldline:alt',
+          governance: {
+            kind: 'comparison-artifact',
+            freshness: 'fresh',
+            attestation: { total: 0, approvals: 0, rejections: 0, other: 0, state: 'unattested' },
+            series: { supersededByIds: [], latestInSeries: true },
+            comparison: { leftWorldlineId: 'worldline:live', rightWorldlineId: 'worldline:alt', operationalComparisonDigest: 'abc123def4567890xyz' },
+            settlement: { proposalCount: 1, executedCount: 0 },
+          },
+        },
+        {
+          id: 'collapse-proposal:settle-1',
+          type: 'collapse-proposal',
+          recordedAt: 100,
+          sourceWorldlineId: 'worldline:alt',
+          targetWorldlineId: 'worldline:live',
+          comparisonArtifactId: 'comparison-artifact:cmp-1',
+          governance: {
+            kind: 'collapse-proposal',
+            freshness: 'fresh',
+            lifecycle: 'approved',
+            attestation: { total: 1, approvals: 1, rejections: 0, other: 0, state: 'approved' },
+            series: { supersededByIds: [], latestInSeries: true },
+            execution: { dryRun: false, executable: true, executed: false, changed: true },
+            executionGate: {
+              attestation: { total: 1, approvals: 1, rejections: 0, other: 0, state: 'approved' },
+            },
+          },
+        },
       ],
-    });
-    const m = ready(app, snap);
+    })));
 
-    const { model, frames } = drive(app, m, [
-      key('2'),            // → roadmap
-      key('j'),            // focusRow advances 0 → 1
-    ]);
+    const settlement = drive(app, model, [key('4'), key('j')]);
+    const plain = strip(viewText(app, settlement));
 
-    expect(model.activeView).toBe('roadmap');
-    // snapshot-loaded rebuilds table with focusRow=0; j advances to 1
-    expect(model.roadmap.table.focusRow).toBe(1);
-
-    // The last frame should contain detail drawer content for the selected quest
-    const last = strip(frames[frames.length - 1] ?? '');
-    expect(last).toContain('Bravo');
-    expect(last).toContain('IN_PROGRESS');
+    expect(settlement.lane).toBe('settlement');
+    expect(plain).toContain('SETTLE');
+    expect(plain).toContain('approved');
+    expect(plain).toContain('Executable');
   });
 
-  it('j on roadmap advances selection; k retreats', () => {
-    const { app } = buildApp();
-    const snap = makeSnapshot({
-      quests: [
-        { id: 'task:A', title: 'A', status: 'READY', hours: 1 },
-        { id: 'task:B', title: 'B', status: 'IN_PROGRESS', hours: 2 },
-        { id: 'task:C', title: 'C', status: 'READY', hours: 3 },
-      ],
-    });
-    const m = ready(app, snap);
-
-    const { model } = drive(app, m, [
-      key('2'),            // → roadmap (focusRow already 0 from snapshot-loaded)
-      key('j'),            // 0 → 1
-      key('j'),            // 1 → 2
-    ]);
-    expect(model.roadmap.table.focusRow).toBe(2);
-
-    // k retreats
-    const [back] = app.update(key('k'), model);
-    expect(back.roadmap.table.focusRow).toBe(1);
-  });
-
-  // ── Claim flow (confirm mode) ────────────────────────────────────
-
-  it('c → y claim flow dispatches write and renders confirm overlay', () => {
-    const { app } = buildApp();
-    const snap = makeSnapshot({
-      quests: [{ id: 'task:Q1', title: 'Quest One', status: 'READY', hours: 1 }],
-    });
-    const m = ready(app, snap);
-
-    // Navigate to roadmap (focusRow is already 0 from snapshot-loaded)
-    const [roadmap] = app.update(key('2'), m);
-
-    // Press c → confirm mode
-    const [confirming] = app.update(key('c'), roadmap);
-    expect(confirming.mode).toBe('confirm');
-    expect(confirming.confirmState?.action).toEqual({ kind: 'claim', questId: 'task:Q1' });
-
-    // Confirm overlay should be visible in view output
-    const confirmFrame = strip(app.view(confirming));
-    expect(confirmFrame.length).toBeGreaterThan(0);
-
-    // Press y → write dispatched
-    const [afterY, cmds] = app.update(key('y'), confirming);
-    expect(afterY.mode).toBe('normal');
-    expect(afterY.writePending).toBe(true);
-    expect(cmds.length).toBeGreaterThan(0);
-  });
-
-  it('c → n cancels claim', () => {
-    const { app } = buildApp();
-    const snap = makeSnapshot({
-      quests: [{ id: 'task:Q1', title: 'Q', status: 'READY', hours: 1 }],
-    });
-    const m = ready(app, snap);
-
-    const { model } = drive(app, m, [key('2'), key('c'), key('n')]);
-    expect(model.mode).toBe('normal');
-    expect(model.confirmState).toBeNull();
-    expect(model.writePending).toBe(false);
-  });
-
-  // ── Backlog input mode ────────────────────────────────────────────
-
-  it('D (shift+d) on backlog → type rationale → enter submits reject', () => {
-    const { app } = buildApp();
-    const snap = makeSnapshot({
-      quests: [{ id: 'task:I1', title: 'Inbox', status: 'BACKLOG', hours: 1, suggestedBy: 'agent.test' }],
-    });
-    const m = ready(app, snap);
-
-    const { model } = drive(app, m, [
-      key('5'),                                            // → backlog
-    ]);
-    expect(model.activeView).toBe('backlog');
-
-    // focusRow is already 0 from snapshot-loaded — press D (shift+d)
-    const [inputMode] = app.update(key('d', { shift: true }), model);
-    expect(inputMode.mode).toBe('input');
-    expect(inputMode.inputState?.action.kind).toBe('reject');
-
-    // Type "bad"
-    const [m1] = app.update(key('b'), inputMode);
-    const [m2] = app.update(key('a'), m1);
-    const [m3] = app.update(key('d'), m2);
-    expect(m3.inputState?.value).toBe('bad');
-
-    // Enter submits
-    const [submitted, cmds] = app.update(key('enter'), m3);
-    expect(submitted.mode).toBe('normal');
-    expect(submitted.inputState).toBeNull();
-    expect(submitted.writePending).toBe(true);
-    expect(cmds.length).toBeGreaterThan(0);
-  });
-
-  it('p on backlog → type intent → enter submits promote', () => {
-    const { app } = buildApp();
-    const snap = makeSnapshot({
-      quests: [{ id: 'task:I1', title: 'Inbox', status: 'BACKLOG', hours: 1, suggestedBy: 'agent.test' }],
-    });
-    const m = ready(app, snap);
-
-    const { model } = drive(app, m, [
-      key('5'),
-    ]);
-
-    const [inputMode] = app.update(key('p'), model);
-    expect(inputMode.mode).toBe('input');
-    expect(inputMode.inputState?.action.kind).toBe('promote');
-
-    const [m1] = app.update(key('i'), inputMode);
-    const [m2] = app.update(key('d'), m1);
-    const [submitted, cmds] = app.update(key('enter'), m2);
-    expect(submitted.mode).toBe('normal');
-    expect(submitted.writePending).toBe(true);
-    expect(cmds.length).toBeGreaterThan(0);
-  });
-
-  it('escape cancels input mode mid-typing', () => {
-    const { app } = buildApp();
-    const snap = makeSnapshot({
-      quests: [{ id: 'task:I1', title: 'Item', status: 'BACKLOG', hours: 1, suggestedBy: 'agent.test' }],
-    });
-    const m = ready(app, snap);
-
-    const { model } = drive(app, m, [
-      key('5'),
-    ]);
-
-    const [inputMode] = app.update(key('d', { shift: true }), model);
-    const [typed] = app.update(key('x'), inputMode);
-    const [cancelled] = app.update(key('escape'), typed);
-    expect(cancelled.mode).toBe('normal');
-    expect(cancelled.inputState).toBeNull();
-  });
-
-  it('empty enter in input mode does not submit', () => {
-    const { app } = buildApp();
-    const snap = makeSnapshot({
-      quests: [{ id: 'task:I1', title: 'Item', status: 'BACKLOG', hours: 1, suggestedBy: 'agent.test' }],
-    });
-    const m = ready(app, snap);
-
-    const { model } = drive(app, m, [
-      key('5'),
-    ]);
-
-    const [inputMode] = app.update(key('d', { shift: true }), model);
-    const [noSubmit, cmds] = app.update(key('enter'), inputMode);
-    expect(noSubmit.mode).toBe('input');
-    expect(cmds).toHaveLength(0);
-  });
-
-  it('backspace removes characters in input mode', () => {
-    const { app } = buildApp();
-    const snap = makeSnapshot({
-      quests: [{ id: 'task:I1', title: 'Item', status: 'BACKLOG', hours: 1, suggestedBy: 'agent.test' }],
-    });
-    const m = ready(app, snap);
-
-    const { model } = drive(app, m, [
-      key('5'),
-    ]);
-
-    const [inputMode] = app.update(key('d', { shift: true }), model);
-    const [m1] = app.update(key('a'), inputMode);
-    const [m2] = app.update(key('b'), m1);
-    const [m3] = app.update(key('c'), m2);
-    expect(m3.inputState?.value).toBe('abc');
-
-    const [afterBs] = app.update(key('backspace'), m3);
-    expect(afterBs.inputState?.value).toBe('ab');
-  });
-
-  // ── Submissions expand/collapse ───────────────────────────────────
-
-  it('enter expands and collapses submission detail', () => {
-    const { app } = buildApp();
-    const snap = makeSnapshot({
-      quests: [{ id: 'task:A', title: 'Quest A', status: 'IN_PROGRESS', hours: 1 }],
+  it('surfaces review work and opens the submission inspector', () => {
+    const app = buildApp();
+    const model = widen(app, ready(app, makeSnapshot({
+      quests: [{ id: 'task:Q1', title: 'Quest One', status: 'IN_PROGRESS', hours: 1 }],
       submissions: [{
-        id: 'submission:S1', questId: 'task:A', status: 'OPEN',
-        headsCount: 1, approvalCount: 0, submittedBy: 'agent.test', submittedAt: 100,
+        id: 'submission:S1',
+        questId: 'task:Q1',
+        status: 'OPEN',
+        tipPatchsetId: 'patchset:P1',
+        headsCount: 1,
+        approvalCount: 2,
+        submittedBy: 'agent.hal',
+        submittedAt: 100,
       }],
-    });
-    const m = ready(app, snap);
-
-    const { model } = drive(app, m, [key('3')]); // → submissions
-    expect(model.activeView).toBe('submissions');
-
-    // focusRow is 0 from snapshot-loaded — expand
-    const [expanded] = app.update(key('enter'), model);
-    expect(expanded.submissions.expandedId).toBe('submission:S1');
-
-    // Collapse
-    const [collapsed] = app.update(key('enter'), expanded);
-    expect(collapsed.submissions.expandedId).toBeNull();
-  });
-
-  // ── Review actions ────────────────────────────────────────────────
-
-  it('a on submission with tip patchset enters approve input', () => {
-    const { app } = buildApp();
-    const snap = makeSnapshot({
-      submissions: [{
-        id: 'submission:S1', questId: 'task:A', status: 'OPEN',
-        headsCount: 1, approvalCount: 0, submittedBy: 'agent.test',
-        submittedAt: 100, tipPatchsetId: 'patchset:P1',
+      reviews: [{
+        id: 'review:R1',
+        patchsetId: 'patchset:P1',
+        verdict: 'approve',
+        comment: 'Looks good',
+        reviewedBy: 'human.ada',
+        reviewedAt: 120,
       }],
-    });
-    const m = ready(app, snap);
+    })));
 
-    const { model } = drive(app, m, [key('3')]); // → submissions
-    const [approving] = app.update(key('a'), model);
-    expect(approving.mode).toBe('input');
-    expect(approving.inputState?.action.kind).toBe('approve');
+    const review = drive(app, model, [key('3')]);
+    const plain = strip(viewText(app, review));
+
+    expect(review.lane).toBe('review');
+    expect(plain).toContain('Quest One');
+    expect(plain).toContain('Latest reviews');
+    expect(plain).toContain('Looks good');
+    expect(plain).not.toContain('[object Object]');
   });
 
-  // ── Help toggle ───────────────────────────────────────────────────
-
-  it('? toggles help; view renders keybinding groups', () => {
-    const { app } = buildApp();
-    const m = ready(app, makeSnapshot());
-
-    const [withHelp] = app.update(key('?'), m);
-    expect(withHelp.showHelp).toBe(true);
-
-    const helpFrame = strip(app.view(withHelp));
-    expect(helpFrame.length).toBeGreaterThan(0);
-
-    const [noHelp] = app.update(key('?'), withHelp);
-    expect(noHelp.showHelp).toBe(false);
-  });
-
-  // ── Refresh ───────────────────────────────────────────────────────
-
-  it('r triggers refresh with loading state', () => {
-    const { app } = buildApp();
-    const m = ready(app, makeSnapshot());
-
-    const [refreshing, cmds] = app.update(key('r'), m);
-    expect(refreshing.loading).toBe(true);
-    expect(refreshing.error).toBeNull();
-    expect(cmds.length).toBeGreaterThan(0);
-  });
-
-  // ── Toast lifecycle ───────────────────────────────────────────────
-
-  it('write-success → toast visible in view → dismiss-toast clears it', () => {
-    const { app } = buildApp();
-    const m = ready(app, makeSnapshot());
-
-    // Inject write-success
-    const [withToast] = app.update({ type: 'write-success', message: 'Claimed task:Q1' }, m);
-    expect(withToast.toast?.variant).toBe('success');
-
-    const toastFrame = strip(app.view(withToast));
-    expect(toastFrame).toContain('Claimed task:Q1');
-
-    // Dismiss
-    const [cleared] = app.update(
-      { type: 'dismiss-toast', expiresAt: withToast.toast?.expiresAt ?? 0 },
-      withToast,
-    );
-    expect(cleared.toast).toBeNull();
-  });
-
-  // ── End-to-end render chain ───────────────────────────────────────
-
-  it('full navigation sequence renders non-empty frames for every view', () => {
-    const { app } = buildApp();
-    const snap = makeSnapshot({
-      campaigns: [{ id: 'campaign:M1', title: 'M1', status: 'IN_PROGRESS' }],
-      intents: [{ id: 'intent:SOV', title: 'SOV', requestedBy: 'human.j', createdAt: 0 }],
+  it('keeps the Now lane mixed and actionable', () => {
+    const app = buildApp();
+    const model = widen(app, ready(app, makeSnapshot({
       quests: [
-        { id: 'task:A', title: 'Alpha', status: 'PLANNED', hours: 1, campaignId: 'campaign:M1', intentId: 'intent:SOV' },
-        { id: 'task:B', title: 'Bravo', status: 'BACKLOG', hours: 2, suggestedBy: 'agent.test' },
+        { id: 'task:READY', title: 'Ready Quest', status: 'READY', hours: 2 },
+        { id: 'task:BACKLOG', title: 'Backlog Quest', status: 'BACKLOG', hours: 1 },
       ],
       submissions: [{
-        id: 'submission:S1', questId: 'task:A', status: 'OPEN',
-        headsCount: 1, approvalCount: 0, submittedBy: 'agent.test', submittedAt: 100,
+        id: 'submission:S1',
+        questId: 'task:READY',
+        status: 'OPEN',
+        tipPatchsetId: 'patchset:P1',
+        headsCount: 1,
+        approvalCount: 0,
+        submittedBy: 'agent.hal',
+        submittedAt: 100,
       }],
-    });
-    const m = ready(app, snap);
+    })));
 
-    // Visit every view and capture frames
-    const { frames } = drive(app, m, [
-      key('2'),            // roadmap
-      key('3'),            // submissions
-      key('4'),            // lineage
-      key('5'),            // backlog
-      key('1'),            // dashboard
-    ]);
-
-    expect(frames).toHaveLength(5);
-    for (const frame of frames) {
-      expect(frame.length).toBeGreaterThan(0);
-    }
-
-    // Spot-check view-specific content
-    expect(strip(frames[0] ?? '')).toContain('Alpha');     // roadmap shows quests
-    expect(strip(frames[2] ?? '')).toContain('intent:SOV'); // lineage shows intents
+    const plain = strip(viewText(app, model));
+    expect(model.lane).toBe('now');
+    expect(plain).toContain('REVIEW');
+    expect(plain).toContain('TRIAGE');
+    expect(plain).toContain('QUEST');
   });
 
-  // ── Command palette ────────────────────────────────────────────────
+  it('opens a quest tree modal with lineage and dependency structure', () => {
+    const app = buildApp();
+    const model = widen(app, ready(app, makeSnapshot({
+      intents: [{
+        id: 'intent:TRACE',
+        title: 'Trace everything',
+        requestedBy: 'human.james',
+        createdAt: 50,
+      }],
+      campaigns: [{
+        id: 'campaign:TRACE',
+        title: 'Traceability',
+        status: 'IN_PROGRESS',
+      }],
+      quests: [
+        {
+          id: 'task:ROOT',
+          title: 'Root quest',
+          status: 'READY',
+          hours: 2,
+          intentId: 'intent:TRACE',
+          campaignId: 'campaign:TRACE',
+          dependsOn: ['task:UP'],
+          submissionId: 'submission:S1',
+          scrollId: 'scroll:SC1',
+        },
+        {
+          id: 'task:UP',
+          title: 'Upstream dependency',
+          status: 'DONE',
+          hours: 1,
+        },
+        {
+          id: 'task:DOWN',
+          title: 'Downstream dependent',
+          status: 'BACKLOG',
+          hours: 1,
+          dependsOn: ['task:ROOT'],
+        },
+      ],
+      submissions: [{
+        id: 'submission:S1',
+        questId: 'task:ROOT',
+        status: 'OPEN',
+        tipPatchsetId: 'patchset:P1',
+        headsCount: 1,
+        approvalCount: 0,
+        submittedBy: 'agent.hal',
+        submittedAt: 100,
+      }],
+      reviews: [{
+        id: 'review:R1',
+        patchsetId: 'patchset:P1',
+        verdict: 'approve',
+        comment: 'Looks good',
+        reviewedBy: 'human.ada',
+        reviewedAt: 120,
+      }],
+      decisions: [{
+        id: 'decision:D1',
+        submissionId: 'submission:S1',
+        kind: 'merge',
+        decidedBy: 'human.ada',
+        rationale: 'Ship it',
+        decidedAt: 140,
+      }],
+      scrolls: [{
+        id: 'scroll:SC1',
+        questId: 'task:ROOT',
+        artifactHash: 'abc123',
+        sealedBy: 'agent.hal',
+        sealedAt: 150,
+        hasSeal: true,
+      }],
+      sortedTaskIds: ['task:UP', 'task:ROOT', 'task:DOWN'],
+    })));
 
-  it(': opens command palette; escape closes it', () => {
-    const { app } = buildApp();
-    const m = ready(app, makeSnapshot());
+    const tree = drive(app, model, [key('2'), key('t')]);
+    const plain = strip(viewText(app, tree));
 
-    const [withPalette] = app.update(key(':'), m);
-    expect(withPalette.mode).toBe('palette');
-    expect(withPalette.paletteState).not.toBeNull();
-
-    const [closed] = app.update(key('escape'), withPalette);
-    expect(closed.mode).toBe('normal');
-    expect(closed.paletteState).toBeNull();
-  });
-
-  it('/ also opens command palette', () => {
-    const { app } = buildApp();
-    const m = ready(app, makeSnapshot());
-
-    const [withPalette] = app.update(key('/'), m);
-    expect(withPalette.mode).toBe('palette');
-  });
-
-  it('palette: typing filters items', () => {
-    const { app } = buildApp();
-    const m = ready(app, makeSnapshot());
-
-    const [withPalette] = app.update(key(':'), m);
-    const [filtered] = app.update(key('q'), withPalette);
-    expect(filtered.paletteState?.query).toBe('q');
-    expect(filtered.paletteState?.filteredItems.length).toBeLessThan(
-      withPalette.paletteState?.items.length ?? 0,
-    );
-  });
-
-  it('palette: enter executes selected action (view switch)', () => {
-    const { app } = buildApp();
-    const m = ready(app, makeSnapshot());
-
-    // Open palette, filter to "Roadmap", select it
-    const [p1] = app.update(key(':'), m);
-    const [p2] = app.update(key('R'), p1);
-    const [p3] = app.update(key('o'), p2);
-    const [p4] = app.update(key('a'), p3);
-    const [result] = app.update(key('enter'), p4);
-
-    expect(result.mode).toBe('normal');
-    expect(result.activeView).toBe('roadmap');
-  });
-
-  it('palette: down/up navigates focus', () => {
-    const { app } = buildApp();
-    const m = ready(app, makeSnapshot());
-
-    const [p1] = app.update(key(':'), m);
-    const initialFocus = p1.paletteState?.focusIndex ?? -1;
-
-    const [p2] = app.update(key('down'), p1);
-    expect(p2.paletteState?.focusIndex).toBe(initialFocus + 1);
-
-    const [p3] = app.update(key('up'), p2);
-    expect(p3.paletteState?.focusIndex).toBe(initialFocus);
-  });
-
-  it('palette: j/k types filter characters (not navigation)', () => {
-    const { app } = buildApp();
-    const m = ready(app, makeSnapshot());
-
-    const [p1] = app.update(key(':'), m);
-    const [p2] = app.update(key('j'), p1);
-    expect(p2.paletteState?.query).toBe('j');
-
-    const [p3] = app.update(key('k'), p2);
-    expect(p3.paletteState?.query).toBe('jk');
-  });
-
-  it('palette: backspace removes filter chars', () => {
-    const { app } = buildApp();
-    const m = ready(app, makeSnapshot());
-
-    const [p1] = app.update(key(':'), m);
-    const [p2] = app.update(key('a'), p1);
-    const [p3] = app.update(key('b'), p2);
-    expect(p3.paletteState?.query).toBe('ab');
-
-    const [p4] = app.update(key('backspace'), p3);
-    expect(p4.paletteState?.query).toBe('a');
+    expect(tree.mode).toBe('quest-tree');
+    expect(plain).toContain('Lineage');
+    expect(plain).toContain('Upstream Dependencies');
+    expect(plain).toContain('Downstream Dependents');
+    expect(plain).toContain('TRACE  Trace everything');
+    expect(plain).toContain('TRACE  Traceability');
+    expect(plain).toContain('UP  Upstream dependency');
+    expect(plain).toContain('DOWN  Downstream dependent');
   });
 });

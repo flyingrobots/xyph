@@ -42,8 +42,13 @@ function spiralCell(x: number, y: number, cols: number, rows: number, timeMs: nu
 }
 
 /** ShaderFn-compatible per-cell function for bijou's `canvas()`. */
-export const spiralShader: ShaderFn = (x, y, cols, rows, time) =>
-  spiralCell(x, y, cols, rows, time);
+export const spiralShader: ShaderFn = ({ u, v, time, uniforms }) => {
+  const cols = Math.max(1, Number(uniforms['cols'] ?? 0));
+  const rows = Math.max(1, Number(uniforms['rows'] ?? 0));
+  const x = Math.round(u * Math.max(0, cols - 1));
+  const y = Math.round(v * Math.max(0, rows - 1));
+  return spiralCell(x, y, cols, rows, time * 1000);
+};
 
 /**
  * Render a single frame of the spiral shader.

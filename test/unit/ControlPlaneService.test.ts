@@ -1,5 +1,23 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createHash } from 'node:crypto';
 import { CONTROL_PLANE_VERSION } from '../../src/domain/models/controlPlane.js';
+
+const XYPH_OPERATIONAL_COMPARISON_SCOPE_VERSION = 'xyph-operational-visible-state/v1' as const;
+const XYPH_OPERATIONAL_COMPARISON_SCOPE = {
+  nodeIdPrefixes: {
+    exclude: [
+      'attestation-record:',
+      'attestation:',
+      'audit-record:',
+      'collapse-proposal:',
+      'comment:',
+      'comparison-artifact:',
+      'conflict-artifact:',
+      'observation-record:',
+      'proposal:',
+    ],
+  },
+} as const;
 
 const mocks = vi.hoisted(() => ({
   fetchSnapshot: vi.fn(),
@@ -15,18 +33,81 @@ const mocks = vi.hoisted(() => ({
   createComment: vi.fn(),
   createProposal: vi.fn(),
   createAttestation: vi.fn(),
+  createCanonicalArtifact: vi.fn(),
   createWorkingSet: vi.fn(),
   braidWorkingSet: vi.fn(),
   analyzeConflicts: vi.fn(),
+  getNodeProps: vi.fn(),
   materializeWorkingSet: vi.fn(),
+  getWorkingSet: vi.fn(),
   patchesForWorkingSet: vi.fn(),
   compareCoordinates: vi.fn(),
+  planCoordinateTransfer: vi.fn(),
+  queryRun: vi.fn(),
   getFrontier: vi.fn(),
   getStateSnapshot: vi.fn(),
   getGraph: vi.fn(),
   openIsolatedGraph: vi.fn(),
   WarpRoadmapAdapter: vi.fn(),
 }));
+
+function stable(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stable);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([key, inner]) => [key, stable(inner)]),
+    );
+  }
+  return value;
+}
+
+function digest(value: unknown): string {
+  return createHash('sha256').update(JSON.stringify(stable(value))).digest('hex');
+}
+
+function buildComparisonArtifactDigest(comparisonDigest: string, leftWorldlineId: string, rightWorldlineId: string): string {
+  return digest({
+    kind: 'comparison-artifact',
+    comparisonDigest,
+    comparisonPolicyVersion: 'compat-v0',
+    comparisonScopeVersion: XYPH_OPERATIONAL_COMPARISON_SCOPE_VERSION,
+    left: {
+      worldlineId: leftWorldlineId,
+      at: 'tip',
+    },
+    right: {
+      worldlineId: rightWorldlineId,
+      at: 'tip',
+    },
+    targetId: null,
+  });
+}
+
+function buildCollapseArtifactDigest(
+  comparisonArtifactDigest: string,
+  transferDigest: string,
+  sourceWorldlineId: string,
+  targetWorldlineId: string,
+  dryRun: boolean,
+): string {
+  return digest({
+    kind: 'collapse-proposal',
+    comparisonArtifactDigest,
+    transferDigest,
+    source: {
+      worldlineId: sourceWorldlineId,
+      at: 'tip',
+    },
+    target: {
+      worldlineId: targetWorldlineId,
+      at: 'tip',
+    },
+    comparisonScopeVersion: XYPH_OPERATIONAL_COMPARISON_SCOPE_VERSION,
+    dryRun,
+  });
+}
 
 function makeOrSet(elements: string[]) {
   return {
@@ -72,7 +153,7 @@ function makeWorkingSetDescriptor(
   return {
     schemaVersion: 1,
     workingSetId: overrides.workingSetId ?? 'wl_review-auth',
-    graphName: 'xyph-roadmap',
+    graphName: 'xyph',
     createdAt: '2026-03-16T00:00:00.000Z',
     updatedAt: '2026-03-16T00:00:00.000Z',
     owner: overrides.owner ?? 'agent.prime',
@@ -105,6 +186,7 @@ function makeWorkingSetDescriptor(
 function makeCoordinateComparison(
   overrides: Partial<{
     comparisonDigest: string;
+    scope: typeof XYPH_OPERATIONAL_COMPARISON_SCOPE | null;
     leftLamportFrontierDigest: string;
     rightLamportFrontierDigest: string;
     leftWorkingSetId: string | null;
@@ -118,6 +200,7 @@ function makeCoordinateComparison(
   return {
     comparisonVersion: 'coordinate-compare/v1',
     comparisonDigest: overrides.comparisonDigest ?? 'comparison:123',
+    ...(overrides.scope ? { scope: overrides.scope } : {}),
     left: {
       requested: leftWorkingSetId
         ? { kind: 'working_set', workingSetId: leftWorkingSetId }
@@ -146,6 +229,11 @@ function makeCoordinateComparison(
               baseLamportCeiling: null,
               overlayHeadPatchSha: null,
               overlayPatchCount: 1,
+              overlayWritable: true,
+              braid: {
+                readOverlayCount: 0,
+                braidedWorkingSetIds: [],
+              },
             },
           }),
       },
@@ -178,6 +266,11 @@ function makeCoordinateComparison(
               baseLamportCeiling: null,
               overlayHeadPatchSha: null,
               overlayPatchCount: 0,
+              overlayWritable: true,
+              braid: {
+                readOverlayCount: 0,
+                braidedWorkingSetIds: [],
+              },
             },
           }),
       },
@@ -277,6 +370,121 @@ function makeCoordinateComparison(
           },
         }),
     },
+  };
+}
+
+function makeCoordinateTransferPlan(
+  overrides: Partial<{
+    comparisonDigest: string;
+    transferDigest: string;
+    changed: boolean;
+    scope: typeof XYPH_OPERATIONAL_COMPARISON_SCOPE | null;
+    sourceWorkingSetId: string | null;
+    targetWorkingSetId: string | null;
+    ops: unknown[];
+  }> = {},
+) {
+  const sourceWorkingSetId = overrides.sourceWorkingSetId ?? 'wl_review-auth';
+  const targetWorkingSetId = overrides.targetWorkingSetId ?? null;
+  return {
+    transferVersion: 'coordinate-transfer-plan/v1',
+    transferDigest: overrides.transferDigest ?? 'transfer:123',
+    comparisonDigest: overrides.comparisonDigest ?? 'comparison:123',
+    ...(overrides.scope ? { scope: overrides.scope } : {}),
+    changed: overrides.changed ?? true,
+    source: {
+      requested: sourceWorkingSetId
+        ? { kind: 'working_set', workingSetId: sourceWorkingSetId }
+        : { kind: 'live' },
+      resolved: {
+        coordinateKind: sourceWorkingSetId ? 'working_set' : 'frontier',
+        patchFrontier: { 'agent.prime': 'patch:left' },
+        patchFrontierDigest: 'patch-frontier:left',
+        lamportFrontier: { 'agent.prime': 12 },
+        lamportFrontierDigest: 'lamport:left',
+        lamportCeiling: null,
+        stateHash: 'state:left',
+        patchUniverseDigest: 'universe:left',
+        summary: {
+          patchCount: 2,
+          nodeCount: 3,
+          edgeCount: 1,
+          nodePropertyCount: 4,
+          edgePropertyCount: 0,
+        },
+        ...(sourceWorkingSetId === null
+          ? {}
+          : {
+            workingSet: {
+              workingSetId: sourceWorkingSetId,
+              baseLamportCeiling: null,
+              overlayHeadPatchSha: null,
+              overlayPatchCount: 1,
+              overlayWritable: true,
+              braid: {
+                readOverlayCount: 0,
+                braidedWorkingSetIds: [],
+              },
+            },
+          }),
+      },
+    },
+    target: {
+      requested: targetWorkingSetId
+        ? { kind: 'working_set', workingSetId: targetWorkingSetId }
+        : { kind: 'live' },
+      resolved: {
+        coordinateKind: targetWorkingSetId ? 'working_set' : 'frontier',
+        patchFrontier: { 'agent.prime': 'patch:right' },
+        patchFrontierDigest: 'patch-frontier:right',
+        lamportFrontier: { 'agent.prime': 12 },
+        lamportFrontierDigest: 'lamport:right',
+        lamportCeiling: null,
+        stateHash: 'state:right',
+        patchUniverseDigest: 'universe:right',
+        summary: {
+          patchCount: 1,
+          nodeCount: 2,
+          edgeCount: 1,
+          nodePropertyCount: 3,
+          edgePropertyCount: 0,
+        },
+        ...(targetWorkingSetId === null
+          ? {}
+          : {
+            workingSet: {
+              workingSetId: targetWorkingSetId,
+              baseLamportCeiling: null,
+              overlayHeadPatchSha: null,
+              overlayPatchCount: 0,
+              overlayWritable: true,
+              braid: {
+                readOverlayCount: 0,
+                braidedWorkingSetIds: [],
+              },
+            },
+          }),
+      },
+    },
+    summary: {
+      opCount: overrides.ops?.length ?? 2,
+      addNodeCount: 0,
+      removeNodeCount: 0,
+      setNodePropertyCount: 1,
+      clearNodePropertyCount: 0,
+      addEdgeCount: 0,
+      removeEdgeCount: 0,
+      setEdgePropertyCount: 0,
+      clearEdgePropertyCount: 0,
+      attachNodeContentCount: 0,
+      clearNodeContentCount: 1,
+      attachEdgeContentCount: 0,
+      clearEdgeContentCount: 0,
+    },
+    ops: overrides.ops ?? [
+      { op: 'set_node_property', nodeId: 'task:ONE', key: 'status', value: 'READY' },
+      { op: 'clear_node_content', nodeId: 'task:ONE' },
+    ],
   };
 }
 
@@ -383,7 +591,7 @@ vi.mock('../../src/domain/services/AgentActionService.js', () => ({
 
 vi.mock('../../src/domain/services/MutationKernelService.js', () => ({
   MutationKernelService: class MutationKernelService {
-    execute(plan: unknown, opts?: { dryRun?: boolean }) {
+    execute(plan: unknown, opts?: { dryRun?: boolean; allowEmptyPlan?: boolean }) {
       return mocks.executeMutation(plan, opts);
     }
   },
@@ -400,6 +608,9 @@ vi.mock('../../src/domain/services/RecordService.js', () => ({
     createAttestation(input: unknown) {
       return mocks.createAttestation(input);
     }
+    createCanonicalArtifact(input: unknown) {
+      return mocks.createCanonicalArtifact(input);
+    }
   },
 }));
 
@@ -415,7 +626,11 @@ describe('ControlPlaneService', () => {
     mocks.materializeWorkingSet.mockResolvedValue(
       makeWorkingSetState(['task:ONE'], [['agent.prime', 12], ['wl_review-auth', 0]]),
     );
+    mocks.getWorkingSet.mockResolvedValue(
+      makeWorkingSetDescriptor(),
+    );
     mocks.patchesForWorkingSet.mockResolvedValue(['patch:1', 'patch:2']);
+    mocks.getNodeProps.mockResolvedValue(null);
     mocks.compareCoordinates.mockResolvedValue(
       makeCoordinateComparison({
         leftWorkingSetId: 'wl_review-auth',
@@ -423,32 +638,53 @@ describe('ControlPlaneService', () => {
         targetId: 'task:ONE',
       }),
     );
+    mocks.planCoordinateTransfer.mockResolvedValue(
+      makeCoordinateTransferPlan({
+        sourceWorkingSetId: 'wl_review-auth',
+        targetWorkingSetId: null,
+      }),
+    );
+    mocks.queryRun.mockResolvedValue({ nodes: [] });
     mocks.getGraph.mockResolvedValue({
       getFrontier: mocks.getFrontier,
       getStateSnapshot: mocks.getStateSnapshot,
       hasNode: vi.fn(async () => true),
+      getNodeProps: mocks.getNodeProps,
+      syncCoverage: vi.fn(async () => null),
       materialize: vi.fn(async () => null),
+      query: vi.fn(() => ({
+        match: vi.fn(() => ({
+          select: vi.fn(() => ({
+            run: mocks.queryRun,
+          })),
+        })),
+      })),
       patchesFor: vi.fn(async () => ['patch:1', 'patch:2']),
       createWorkingSet: mocks.createWorkingSet,
       braidWorkingSet: mocks.braidWorkingSet,
       analyzeConflicts: mocks.analyzeConflicts,
       materializeWorkingSet: mocks.materializeWorkingSet,
+      getWorkingSet: mocks.getWorkingSet,
       patchesForWorkingSet: mocks.patchesForWorkingSet,
       compareCoordinates: mocks.compareCoordinates,
+      planCoordinateTransfer: mocks.planCoordinateTransfer,
     });
     mocks.openIsolatedGraph.mockResolvedValue({
       getFrontier: mocks.getFrontier,
       getStateSnapshot: mocks.getStateSnapshot,
       hasNode: vi.fn(async () => true),
+      getNodeProps: mocks.getNodeProps,
       syncCoverage: vi.fn(async () => null),
       materialize: vi.fn(async () => null),
       patchesFor: vi.fn(async () => ['patch:1']),
       materializeWorkingSet: mocks.materializeWorkingSet,
+      getWorkingSet: mocks.getWorkingSet,
       patchesForWorkingSet: mocks.patchesForWorkingSet,
       createWorkingSet: mocks.createWorkingSet,
       braidWorkingSet: mocks.braidWorkingSet,
       analyzeConflicts: mocks.analyzeConflicts,
       compareCoordinates: mocks.compareCoordinates,
+      planCoordinateTransfer: mocks.planCoordinateTransfer,
     });
     mocks.analyzeConflicts.mockResolvedValue({
       analysisVersion: 'conflict-analyzer/v2',
@@ -571,6 +807,12 @@ describe('ControlPlaneService', () => {
         principalId: 'agent.prime',
         principalType: 'agent',
         observerProfileId: 'observer:default',
+        backing: expect.objectContaining({
+          kind: 'live_frontier',
+          substrate: expect.objectContaining({
+            kind: 'git-warp-frontier',
+          }),
+        }),
         graphMeta: { maxTick: 12, myTick: 12, writerCount: 1, tipSha: 'abcdef1' },
       }),
     }));
@@ -604,6 +846,17 @@ describe('ControlPlaneService', () => {
       }),
       observation: expect.objectContaining({
         worldlineId: 'worldline:review-auth',
+        backing: expect.objectContaining({
+          kind: 'derived_working_set',
+          substrate: expect.objectContaining({
+            kind: 'git-warp-working-set',
+            workingSetId: 'wl_review-auth',
+            braid: expect.objectContaining({
+              supportCount: 0,
+              supportWorldlineIds: [],
+            }),
+          }),
+        }),
       }),
     }));
   });
@@ -751,6 +1004,12 @@ describe('ControlPlaneService', () => {
       }),
       observation: expect.objectContaining({
         worldlineId: 'worldline:review-auth',
+        backing: expect.objectContaining({
+          kind: 'derived_working_set',
+          substrate: expect.objectContaining({
+            workingSetId: 'wl_review-auth',
+          }),
+        }),
       }),
     }));
   });
@@ -853,6 +1112,16 @@ describe('ControlPlaneService', () => {
       }),
       observation: expect.objectContaining({
         worldlineId: 'worldline:review-auth',
+        backing: expect.objectContaining({
+          kind: 'derived_working_set',
+          substrate: expect.objectContaining({
+            workingSetId: 'wl_review-auth',
+            braid: expect.objectContaining({
+              supportCount: 2,
+              supportWorldlineIds: ['worldline:hold-auth', 'worldline:audit-auth'],
+            }),
+          }),
+        }),
       }),
     }));
   });
@@ -957,6 +1226,12 @@ describe('ControlPlaneService', () => {
       }),
       observation: expect.objectContaining({
         worldlineId: 'worldline:review-auth',
+        backing: expect.objectContaining({
+          kind: 'derived_working_set',
+          substrate: expect.objectContaining({
+            workingSetId: 'wl_review-auth',
+          }),
+        }),
       }),
     }));
   });
@@ -964,10 +1239,18 @@ describe('ControlPlaneService', () => {
   it('compares a derived worldline against live and returns a typed comparison artifact preview', async () => {
     mocks.compareCoordinates.mockResolvedValueOnce(
       makeCoordinateComparison({
-        comparisonDigest: 'comparison:derived-vs-live',
+        comparisonDigest: 'comparison:derived-vs-live:raw',
         leftWorkingSetId: 'wl_review-auth',
         rightWorkingSetId: null,
         targetId: 'task:ONE',
+      }),
+    ).mockResolvedValueOnce(
+      makeCoordinateComparison({
+        comparisonDigest: 'comparison:derived-vs-live:operational',
+        leftWorkingSetId: 'wl_review-auth',
+        rightWorkingSetId: null,
+        targetId: 'task:ONE',
+        scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
       }),
     );
 
@@ -987,10 +1270,16 @@ describe('ControlPlaneService', () => {
       },
     });
 
-    expect(mocks.compareCoordinates).toHaveBeenCalledWith({
+    expect(mocks.compareCoordinates).toHaveBeenNthCalledWith(1, {
       left: { kind: 'working_set', workingSetId: 'wl_review-auth' },
       right: { kind: 'live' },
       targetId: 'task:ONE',
+    });
+    expect(mocks.compareCoordinates).toHaveBeenNthCalledWith(2, {
+      left: { kind: 'working_set', workingSetId: 'wl_review-auth' },
+      right: { kind: 'live' },
+      targetId: 'task:ONE',
+      scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
     });
     expect(result).toEqual(expect.objectContaining({
       ok: true,
@@ -999,6 +1288,7 @@ describe('ControlPlaneService', () => {
         kind: 'comparison-artifact',
         artifactId: expect.stringMatching(/^comparison-artifact:/),
         comparisonPolicyVersion: 'compat-v0',
+        comparisonScopeVersion: XYPH_OPERATIONAL_COMPARISON_SCOPE_VERSION,
         targetId: 'task:ONE',
         left: expect.objectContaining({
           worldlineId: 'worldline:review-auth',
@@ -1006,6 +1296,12 @@ describe('ControlPlaneService', () => {
           observation: expect.objectContaining({
             worldlineId: 'worldline:review-auth',
             frontierDigest: 'lamport:left',
+            backing: expect.objectContaining({
+              kind: 'derived_working_set',
+              substrate: expect.objectContaining({
+                workingSetId: 'wl_review-auth',
+              }),
+            }),
           }),
         }),
         right: expect.objectContaining({
@@ -1014,6 +1310,12 @@ describe('ControlPlaneService', () => {
           observation: expect.objectContaining({
             worldlineId: 'worldline:live',
             frontierDigest: 'lamport:right',
+            backing: expect.objectContaining({
+              kind: 'live_frontier',
+              substrate: expect.objectContaining({
+                kind: 'git-warp-frontier',
+              }),
+            }),
           }),
         }),
         summary: expect.objectContaining({
@@ -1029,7 +1331,25 @@ describe('ControlPlaneService', () => {
         substrate: {
           kind: 'git-warp-coordinate-comparison',
           comparisonVersion: 'coordinate-compare/v1',
-          comparisonDigest: 'comparison:derived-vs-live',
+          comparisonDigest: 'comparison:derived-vs-live:operational',
+          comparisonFact: expect.objectContaining({
+            exportVersion: 'coordinate-comparison-fact/v1',
+            factKind: 'coordinate-comparison',
+            factDigest: 'comparison:derived-vs-live:operational',
+            canonicalFactJson: expect.any(String),
+            fact: expect.objectContaining({
+              comparisonVersion: 'coordinate-compare/v1',
+              scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
+            }),
+          }),
+          comparisonScopeVersion: XYPH_OPERATIONAL_COMPARISON_SCOPE_VERSION,
+          comparisonScope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
+          rawWholeGraph: expect.objectContaining({
+            comparisonDigest: 'comparison:derived-vs-live:raw',
+            comparisonFact: expect.objectContaining({
+              factDigest: 'comparison:derived-vs-live:raw',
+            }),
+          }),
         },
       }),
     }));
@@ -1039,10 +1359,18 @@ describe('ControlPlaneService', () => {
   it('compares two derived worldlines with explicit per-side selectors', async () => {
     mocks.compareCoordinates.mockResolvedValueOnce(
       makeCoordinateComparison({
-        comparisonDigest: 'comparison:derived-vs-derived',
+        comparisonDigest: 'comparison:derived-vs-derived:raw',
         leftWorkingSetId: 'wl_review-auth',
         rightWorkingSetId: 'wl_release-review',
         targetId: null,
+      }),
+    ).mockResolvedValueOnce(
+      makeCoordinateComparison({
+        comparisonDigest: 'comparison:derived-vs-derived:operational',
+        leftWorkingSetId: 'wl_review-auth',
+        rightWorkingSetId: 'wl_release-review',
+        targetId: null,
+        scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
       }),
     );
 
@@ -1064,14 +1392,20 @@ describe('ControlPlaneService', () => {
       },
     });
 
-    expect(mocks.compareCoordinates).toHaveBeenCalledWith({
+    expect(mocks.compareCoordinates).toHaveBeenNthCalledWith(1, {
       left: { kind: 'working_set', workingSetId: 'wl_review-auth', ceiling: 12 },
       right: { kind: 'working_set', workingSetId: 'wl_release-review', ceiling: 10 },
+    });
+    expect(mocks.compareCoordinates).toHaveBeenNthCalledWith(2, {
+      left: { kind: 'working_set', workingSetId: 'wl_review-auth', ceiling: 12 },
+      right: { kind: 'working_set', workingSetId: 'wl_release-review', ceiling: 10 },
+      scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
     });
     expect(result).toEqual(expect.objectContaining({
       ok: true,
       data: expect.objectContaining({
         kind: 'comparison-artifact',
+        comparisonScopeVersion: XYPH_OPERATIONAL_COMPARISON_SCOPE_VERSION,
         left: expect.objectContaining({
           worldlineId: 'worldline:review-auth',
           at: { tick: 12 },
@@ -1079,6 +1413,82 @@ describe('ControlPlaneService', () => {
         right: expect.objectContaining({
           worldlineId: 'worldline:release-review',
           at: { tick: 10 },
+        }),
+      }),
+    }));
+  });
+
+  it('can persist compare_worldlines as a durable live-governance artifact without perturbing operational freshness', async () => {
+    mocks.compareCoordinates.mockResolvedValueOnce(
+      makeCoordinateComparison({
+        comparisonDigest: 'comparison:compare-persisted:raw',
+        leftWorkingSetId: 'wl_review-auth',
+        rightWorkingSetId: null,
+      }),
+    ).mockResolvedValueOnce(
+      makeCoordinateComparison({
+        comparisonDigest: 'comparison:compare-persisted:operational',
+        leftWorkingSetId: 'wl_review-auth',
+        rightWorkingSetId: null,
+        scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
+      }),
+    );
+    const comparisonArtifactDigest = buildComparisonArtifactDigest(
+      'comparison:compare-persisted:operational',
+      'worldline:review-auth',
+      'worldline:live',
+    );
+    mocks.createCanonicalArtifact.mockResolvedValueOnce({
+      id: `comparison-artifact:${comparisonArtifactDigest}`,
+      patch: 'patch:comparison-artifact',
+      recordedAt: 1234,
+      contentOid: 'oid:comparison-artifact',
+      existed: false,
+    });
+
+    const service = new ControlPlaneService({
+      getGraph: mocks.getGraph,
+      openIsolatedGraph: mocks.openIsolatedGraph,
+      reset: vi.fn(),
+    }, 'agent.prime');
+
+    const result = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'req-compare-persisted',
+      cmd: 'compare_worldlines',
+      args: {
+        worldlineId: 'worldline:review-auth',
+        persist: true,
+      },
+    });
+
+    expect(mocks.createCanonicalArtifact).toHaveBeenCalledWith(expect.objectContaining({
+      id: `comparison-artifact:${comparisonArtifactDigest}`,
+      kind: 'comparison-artifact',
+      artifactDigest: comparisonArtifactDigest,
+      recordedBy: 'agent.prime',
+      observerProfileId: 'observer:default',
+      policyPackVersion: 'compat-v0',
+      indexedProperties: expect.objectContaining({
+        comparison_policy_version: 'compat-v0',
+        comparison_scope_version: XYPH_OPERATIONAL_COMPARISON_SCOPE_VERSION,
+        left_worldline_id: 'worldline:review-auth',
+        right_worldline_id: 'worldline:live',
+        operational_comparison_digest: 'comparison:compare-persisted:operational',
+        raw_comparison_digest: 'comparison:compare-persisted:raw',
+      }),
+    }));
+    expect(result).toEqual(expect.objectContaining({
+      ok: true,
+      data: expect.objectContaining({
+        kind: 'comparison-artifact',
+        artifactDigest: comparisonArtifactDigest,
+        record: expect.objectContaining({
+          persisted: true,
+          recordedInWorldlineId: 'worldline:live',
+          patch: 'patch:comparison-artifact',
+          contentOid: 'oid:comparison-artifact',
+          existed: false,
         }),
       }),
     }));
@@ -1103,6 +1513,694 @@ describe('ControlPlaneService', () => {
       ok: false,
       error: expect.objectContaining({
         code: 'invalid_args',
+      }),
+    }));
+  });
+
+  it('previews collapse_worldline against live through transfer planning and dry-run mutation lowering', async () => {
+    mocks.compareCoordinates.mockResolvedValueOnce(
+      makeCoordinateComparison({
+        comparisonDigest: 'comparison:collapse-preview:raw',
+        leftWorkingSetId: 'wl_review-auth',
+        rightWorkingSetId: null,
+        targetId: null,
+      }),
+    ).mockResolvedValueOnce(
+      makeCoordinateComparison({
+        comparisonDigest: 'comparison:collapse-preview:operational',
+        leftWorkingSetId: 'wl_review-auth',
+        rightWorkingSetId: null,
+        targetId: null,
+        scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
+      }),
+    );
+    mocks.planCoordinateTransfer.mockResolvedValueOnce(
+      makeCoordinateTransferPlan({
+        comparisonDigest: 'comparison:collapse-preview:operational',
+        transferDigest: 'transfer:collapse-preview',
+        scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
+        sourceWorkingSetId: 'wl_review-auth',
+        targetWorkingSetId: null,
+        ops: [
+          { op: 'set_node_property', nodeId: 'task:ONE', key: 'status', value: 'READY' },
+          { op: 'clear_node_content', nodeId: 'task:ONE' },
+        ],
+      }),
+    );
+    mocks.executeMutation.mockResolvedValueOnce({
+      valid: true,
+      code: null,
+      reasons: [],
+      sideEffects: ['set task:ONE.status', 'clear content from task:ONE'],
+      patch: null,
+      executed: false,
+    });
+
+    const service = new ControlPlaneService({
+      getGraph: mocks.getGraph,
+      openIsolatedGraph: mocks.openIsolatedGraph,
+      reset: vi.fn(),
+    }, 'agent.prime');
+
+    const comparisonArtifactDigest = buildComparisonArtifactDigest(
+      'comparison:collapse-preview:operational',
+      'worldline:review-auth',
+      'worldline:live',
+    );
+    const result = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'req-collapse-worldline',
+      cmd: 'collapse_worldline',
+      args: {
+        worldlineId: 'worldline:review-auth',
+        comparisonArtifactDigest,
+      },
+    });
+
+    expect(mocks.compareCoordinates).toHaveBeenNthCalledWith(1, {
+      left: { kind: 'working_set', workingSetId: 'wl_review-auth' },
+      right: { kind: 'live' },
+    });
+    expect(mocks.compareCoordinates).toHaveBeenNthCalledWith(2, {
+      left: { kind: 'working_set', workingSetId: 'wl_review-auth' },
+      right: { kind: 'live' },
+      scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
+    });
+    expect(mocks.planCoordinateTransfer).toHaveBeenCalledWith({
+      source: { kind: 'working_set', workingSetId: 'wl_review-auth' },
+      target: { kind: 'live' },
+      scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
+    });
+    expect(mocks.executeMutation).toHaveBeenCalledWith({
+      rationale: 'Preview collapse of worldline:review-auth into worldline:live.',
+      ops: [
+        { op: 'set_node_property', nodeId: 'task:ONE', key: 'status', value: 'READY' },
+        { op: 'clear_node_content', nodeId: 'task:ONE' },
+      ],
+    }, {
+      dryRun: true,
+      allowEmptyPlan: true,
+    });
+    expect(result).toEqual(expect.objectContaining({
+      ok: true,
+      cmd: 'collapse_worldline',
+      data: expect.objectContaining({
+        kind: 'collapse-proposal',
+        artifactId: expect.stringMatching(/^collapse-proposal:/),
+        dryRun: true,
+        executable: true,
+        comparison: expect.objectContaining({
+          artifactDigest: comparisonArtifactDigest,
+          changed: true,
+        }),
+        transfer: expect.objectContaining({
+          transferDigest: 'transfer:collapse-preview',
+          ops: [
+            { op: 'set_node_property', nodeId: 'task:ONE', key: 'status', value: 'READY' },
+            { op: 'clear_node_content', nodeId: 'task:ONE' },
+          ],
+        }),
+        mutationPreview: {
+          dryRun: true,
+          valid: true,
+          executed: false,
+          opCount: 2,
+          sideEffects: ['set task:ONE.status', 'clear content from task:ONE'],
+        },
+        substrate: expect.objectContaining({
+          kind: 'git-warp-coordinate-transfer-plan',
+          sourceWorkingSetId: 'wl_review-auth',
+          transferDigest: 'transfer:collapse-preview',
+          comparisonDigest: 'comparison:collapse-preview:operational',
+          comparisonFact: expect.objectContaining({
+            exportVersion: 'coordinate-comparison-fact/v1',
+            factKind: 'coordinate-comparison',
+            factDigest: 'comparison:collapse-preview:operational',
+            fact: expect.objectContaining({
+              scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
+            }),
+          }),
+          comparisonScopeVersion: XYPH_OPERATIONAL_COMPARISON_SCOPE_VERSION,
+          comparisonScope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
+          rawWholeGraph: expect.objectContaining({
+            comparisonDigest: 'comparison:collapse-preview:raw',
+            comparisonFact: expect.objectContaining({
+              factDigest: 'comparison:collapse-preview:raw',
+            }),
+          }),
+          transferFact: expect.objectContaining({
+            exportVersion: 'coordinate-transfer-plan-fact/v1',
+            factKind: 'coordinate-transfer-plan',
+            factDigest: 'transfer:collapse-preview',
+            canonicalFactJson: expect.any(String),
+            fact: expect.objectContaining({
+              scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
+            }),
+          }),
+        }),
+      }),
+    }));
+    expect(result).not.toHaveProperty('observation');
+  });
+
+  it('rejects collapse_worldline when the comparison artifact digest is stale', async () => {
+    mocks.compareCoordinates.mockResolvedValueOnce(
+      makeCoordinateComparison({
+        comparisonDigest: 'comparison:current:raw',
+        leftWorkingSetId: 'wl_review-auth',
+        rightWorkingSetId: null,
+        targetId: null,
+      }),
+    ).mockResolvedValueOnce(
+      makeCoordinateComparison({
+        comparisonDigest: 'comparison:current:operational',
+        leftWorkingSetId: 'wl_review-auth',
+        rightWorkingSetId: null,
+        targetId: null,
+        scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
+      }),
+    );
+
+    const service = new ControlPlaneService({
+      getGraph: mocks.getGraph,
+      openIsolatedGraph: mocks.openIsolatedGraph,
+      reset: vi.fn(),
+    }, 'agent.prime');
+
+    const result = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'req-collapse-stale',
+      cmd: 'collapse_worldline',
+      args: {
+        worldlineId: 'worldline:review-auth',
+        comparisonArtifactDigest: 'comparison-artifact:stale',
+      },
+    });
+
+    expect(mocks.planCoordinateTransfer).not.toHaveBeenCalled();
+    expect(mocks.executeMutation).not.toHaveBeenCalled();
+    expect(result).toEqual(expect.objectContaining({
+      ok: false,
+      error: expect.objectContaining({
+        code: 'stale_base_observation',
+      }),
+    }));
+  });
+
+  it('can persist a collapse proposal as a durable live-governance record', async () => {
+    mocks.compareCoordinates.mockResolvedValueOnce(
+      makeCoordinateComparison({
+        comparisonDigest: 'comparison:collapse-persisted:raw',
+        leftWorkingSetId: 'wl_review-auth',
+        rightWorkingSetId: null,
+        targetId: null,
+      }),
+    ).mockResolvedValueOnce(
+      makeCoordinateComparison({
+        comparisonDigest: 'comparison:collapse-persisted:operational',
+        leftWorkingSetId: 'wl_review-auth',
+        rightWorkingSetId: null,
+        targetId: null,
+        scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
+      }),
+    );
+    mocks.planCoordinateTransfer.mockResolvedValueOnce(
+      makeCoordinateTransferPlan({
+        comparisonDigest: 'comparison:collapse-persisted:operational',
+        transferDigest: 'transfer:collapse-persisted',
+        scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
+        sourceWorkingSetId: 'wl_review-auth',
+        targetWorkingSetId: null,
+      }),
+    );
+    mocks.executeMutation.mockResolvedValueOnce({
+      valid: true,
+      code: null,
+      reasons: [],
+      sideEffects: ['set task:ONE.status'],
+      patch: null,
+      executed: false,
+    });
+    const comparisonArtifactDigest = buildComparisonArtifactDigest(
+      'comparison:collapse-persisted:operational',
+      'worldline:review-auth',
+      'worldline:live',
+    );
+    const collapseArtifactDigest = buildCollapseArtifactDigest(
+      comparisonArtifactDigest,
+      'transfer:collapse-persisted',
+      'worldline:review-auth',
+      'worldline:live',
+      true,
+    );
+    mocks.createCanonicalArtifact.mockResolvedValueOnce({
+      id: `collapse-proposal:${collapseArtifactDigest}`,
+      patch: 'patch:collapse-proposal',
+      recordedAt: 2345,
+      contentOid: 'oid:collapse-proposal',
+      existed: false,
+    });
+
+    const service = new ControlPlaneService({
+      getGraph: mocks.getGraph,
+      openIsolatedGraph: mocks.openIsolatedGraph,
+      reset: vi.fn(),
+    }, 'agent.prime');
+
+    const result = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'req-collapse-persisted',
+      cmd: 'collapse_worldline',
+      args: {
+        worldlineId: 'worldline:review-auth',
+        comparisonArtifactDigest,
+        attestationIds: ['attestation:1'],
+        persist: true,
+      },
+    });
+
+    expect(mocks.createCanonicalArtifact).toHaveBeenCalledWith(expect.objectContaining({
+      id: `collapse-proposal:${collapseArtifactDigest}`,
+      kind: 'collapse-proposal',
+      artifactDigest: collapseArtifactDigest,
+      recordedBy: 'agent.prime',
+      observerProfileId: 'observer:default',
+      policyPackVersion: 'compat-v0',
+      indexedProperties: expect.objectContaining({
+        comparison_artifact_digest: comparisonArtifactDigest,
+        transfer_digest: 'transfer:collapse-persisted',
+        source_worldline_id: 'worldline:review-auth',
+        target_worldline_id: 'worldline:live',
+        dry_run: true,
+        executable: true,
+        changed: true,
+        attestation_count: 1,
+      }),
+    }));
+    expect(result).toEqual(expect.objectContaining({
+      ok: true,
+      data: expect.objectContaining({
+        kind: 'collapse-proposal',
+        artifactId: `collapse-proposal:${collapseArtifactDigest}`,
+        record: {
+          persisted: true,
+          recordedInWorldlineId: 'worldline:live',
+          recordedAt: 2345,
+          patch: 'patch:collapse-proposal',
+          contentOid: 'oid:collapse-proposal',
+          existed: false,
+        },
+      }),
+    }));
+    expect(result).not.toHaveProperty('observation');
+  });
+
+  it('executes collapse_worldline against live after approving attestations over the persisted comparison artifact', async () => {
+    mocks.compareCoordinates.mockResolvedValueOnce(
+      makeCoordinateComparison({
+        comparisonDigest: 'comparison:collapse-execute:raw',
+        leftWorkingSetId: 'wl_review-auth',
+        rightWorkingSetId: null,
+        targetId: null,
+      }),
+    ).mockResolvedValueOnce(
+      makeCoordinateComparison({
+        comparisonDigest: 'comparison:collapse-execute:operational',
+        leftWorkingSetId: 'wl_review-auth',
+        rightWorkingSetId: null,
+        targetId: null,
+        scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
+      }),
+    );
+    mocks.planCoordinateTransfer.mockResolvedValueOnce(
+      makeCoordinateTransferPlan({
+        comparisonDigest: 'comparison:collapse-execute:operational',
+        transferDigest: 'transfer:collapse-execute',
+        scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
+        sourceWorkingSetId: 'wl_review-auth',
+        targetWorkingSetId: null,
+        ops: [
+          { op: 'set_node_property', nodeId: 'task:ONE', key: 'status', value: 'READY' },
+        ],
+      }),
+    );
+    mocks.executeMutation.mockResolvedValueOnce({
+      valid: true,
+      code: null,
+      reasons: [],
+      sideEffects: ['set task:ONE.status'],
+      patch: 'patch:collapse-execute',
+      executed: true,
+    });
+    const comparisonArtifactDigest = buildComparisonArtifactDigest(
+      'comparison:collapse-execute:operational',
+      'worldline:review-auth',
+      'worldline:live',
+    );
+    const comparisonArtifactId = `comparison-artifact:${comparisonArtifactDigest}`;
+    mocks.getNodeProps.mockImplementation(async (nodeId: string) => {
+      if (nodeId === 'attestation:approve-1') {
+        return {
+          type: 'attestation',
+          decision: 'approve',
+          target_id: comparisonArtifactId,
+          attested_by: 'human.reviewer',
+          attested_at: 4567,
+        };
+      }
+      if (nodeId === comparisonArtifactId) {
+        return {
+          type: 'comparison-artifact',
+          artifact_digest: comparisonArtifactDigest,
+        };
+      }
+      return null;
+    });
+
+    const service = new ControlPlaneService({
+      getGraph: mocks.getGraph,
+      openIsolatedGraph: mocks.openIsolatedGraph,
+      reset: vi.fn(),
+    }, 'agent.prime');
+
+    const result = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'req-collapse-execute',
+      cmd: 'collapse_worldline',
+      args: {
+        worldlineId: 'worldline:review-auth',
+        comparisonArtifactDigest,
+        dryRun: false,
+        attestationIds: ['attestation:approve-1'],
+      },
+    });
+
+    expect(mocks.executeMutation).toHaveBeenCalledWith({
+      rationale: 'Collapse worldline:review-auth into worldline:live.',
+      ops: [
+        { op: 'set_node_property', nodeId: 'task:ONE', key: 'status', value: 'READY' },
+      ],
+    }, {
+      dryRun: false,
+      allowEmptyPlan: true,
+    });
+    expect(result).toEqual(expect.objectContaining({
+      ok: true,
+      cmd: 'collapse_worldline',
+      data: expect.objectContaining({
+        kind: 'collapse-proposal',
+        dryRun: false,
+        executable: true,
+        comparison: expect.objectContaining({
+          artifactId: comparisonArtifactId,
+          artifactDigest: comparisonArtifactDigest,
+        }),
+        mutationExecution: {
+          dryRun: false,
+          valid: true,
+          executed: true,
+          patch: 'patch:collapse-execute',
+          opCount: 1,
+          sideEffects: ['set task:ONE.status'],
+        },
+        executionGate: {
+          comparisonArtifactId,
+          requiredDecision: 'approve',
+          satisfied: true,
+        },
+        attestationIds: ['attestation:approve-1'],
+        attestations: [
+          {
+            id: 'attestation:approve-1',
+            decision: 'approve',
+            targetId: comparisonArtifactId,
+            attestedBy: 'human.reviewer',
+            attestedAt: 4567,
+          },
+        ],
+      }),
+      observation: expect.objectContaining({
+        worldlineId: 'worldline:live',
+      }),
+    }));
+  });
+
+  it('requires approving attestations before executing collapse_worldline with substantive work', async () => {
+    mocks.compareCoordinates.mockResolvedValueOnce(
+      makeCoordinateComparison({
+        comparisonDigest: 'comparison:collapse-gate:raw',
+        leftWorkingSetId: 'wl_review-auth',
+        rightWorkingSetId: null,
+        targetId: null,
+      }),
+    ).mockResolvedValueOnce(
+      makeCoordinateComparison({
+        comparisonDigest: 'comparison:collapse-gate:operational',
+        leftWorkingSetId: 'wl_review-auth',
+        rightWorkingSetId: null,
+        targetId: null,
+        scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
+      }),
+    );
+    mocks.planCoordinateTransfer.mockResolvedValueOnce(
+      makeCoordinateTransferPlan({
+        comparisonDigest: 'comparison:collapse-gate:operational',
+        transferDigest: 'transfer:collapse-gate',
+        scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
+        sourceWorkingSetId: 'wl_review-auth',
+        targetWorkingSetId: null,
+        ops: [
+          { op: 'set_node_property', nodeId: 'task:ONE', key: 'status', value: 'READY' },
+        ],
+      }),
+    );
+    const comparisonArtifactDigest = buildComparisonArtifactDigest(
+      'comparison:collapse-gate:operational',
+      'worldline:review-auth',
+      'worldline:live',
+    );
+
+    const service = new ControlPlaneService({
+      getGraph: mocks.getGraph,
+      openIsolatedGraph: mocks.openIsolatedGraph,
+      reset: vi.fn(),
+    }, 'agent.prime');
+
+    const result = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'req-collapse-missing-attestation',
+      cmd: 'collapse_worldline',
+      args: {
+        worldlineId: 'worldline:review-auth',
+        comparisonArtifactDigest,
+        dryRun: false,
+      },
+    });
+
+    expect(mocks.executeMutation).not.toHaveBeenCalled();
+    expect(result).toEqual(expect.objectContaining({
+      ok: false,
+      error: expect.objectContaining({
+        code: 'attestation_missing',
+      }),
+    }));
+  });
+
+  it('rejects collapse execution when the attestation does not target the comparison artifact', async () => {
+    mocks.compareCoordinates.mockResolvedValueOnce(
+      makeCoordinateComparison({
+        comparisonDigest: 'comparison:collapse-bad-attest:raw',
+        leftWorkingSetId: 'wl_review-auth',
+        rightWorkingSetId: null,
+        targetId: null,
+      }),
+    ).mockResolvedValueOnce(
+      makeCoordinateComparison({
+        comparisonDigest: 'comparison:collapse-bad-attest:operational',
+        leftWorkingSetId: 'wl_review-auth',
+        rightWorkingSetId: null,
+        targetId: null,
+        scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
+      }),
+    );
+    mocks.planCoordinateTransfer.mockResolvedValueOnce(
+      makeCoordinateTransferPlan({
+        comparisonDigest: 'comparison:collapse-bad-attest:operational',
+        transferDigest: 'transfer:collapse-bad-attest',
+        scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
+        sourceWorkingSetId: 'wl_review-auth',
+        targetWorkingSetId: null,
+        ops: [
+          { op: 'set_node_property', nodeId: 'task:ONE', key: 'status', value: 'READY' },
+        ],
+      }),
+    );
+    const comparisonArtifactDigest = buildComparisonArtifactDigest(
+      'comparison:collapse-bad-attest:operational',
+      'worldline:review-auth',
+      'worldline:live',
+    );
+    const comparisonArtifactId = `comparison-artifact:${comparisonArtifactDigest}`;
+    mocks.getNodeProps.mockImplementation(async (nodeId: string) => {
+      if (nodeId === 'attestation:wrong-target') {
+        return {
+          type: 'attestation',
+          decision: 'approve',
+          target_id: 'comparison-artifact:other',
+          attested_by: 'human.reviewer',
+          attested_at: 4567,
+        };
+      }
+      if (nodeId === comparisonArtifactId) {
+        return {
+          type: 'comparison-artifact',
+          artifact_digest: comparisonArtifactDigest,
+        };
+      }
+      return null;
+    });
+
+    const service = new ControlPlaneService({
+      getGraph: mocks.getGraph,
+      openIsolatedGraph: mocks.openIsolatedGraph,
+      reset: vi.fn(),
+    }, 'agent.prime');
+
+    const result = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'req-collapse-bad-attestation',
+      cmd: 'collapse_worldline',
+      args: {
+        worldlineId: 'worldline:review-auth',
+        comparisonArtifactDigest,
+        dryRun: false,
+        attestationIds: ['attestation:wrong-target'],
+      },
+    });
+
+    expect(mocks.executeMutation).not.toHaveBeenCalled();
+    expect(result).toEqual(expect.objectContaining({
+      ok: false,
+      error: expect.objectContaining({
+        code: 'attestation_missing',
+      }),
+    }));
+  });
+
+  it('executes live collapse when the transfer plan includes committed content-clearing ops', async () => {
+    mocks.compareCoordinates.mockResolvedValueOnce(
+      makeCoordinateComparison({
+        comparisonDigest: 'comparison:collapse-clear:raw',
+        leftWorkingSetId: 'wl_review-auth',
+        rightWorkingSetId: null,
+        targetId: null,
+      }),
+    ).mockResolvedValueOnce(
+      makeCoordinateComparison({
+        comparisonDigest: 'comparison:collapse-clear:operational',
+        leftWorkingSetId: 'wl_review-auth',
+        rightWorkingSetId: null,
+        targetId: null,
+        scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
+      }),
+    );
+    mocks.planCoordinateTransfer.mockResolvedValueOnce(
+      makeCoordinateTransferPlan({
+        comparisonDigest: 'comparison:collapse-clear:operational',
+        transferDigest: 'transfer:collapse-clear',
+        scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
+        sourceWorkingSetId: 'wl_review-auth',
+        targetWorkingSetId: null,
+        ops: [
+          { op: 'set_node_property', nodeId: 'task:ONE', key: 'status', value: 'READY' },
+          { op: 'clear_node_content', nodeId: 'task:ONE' },
+        ],
+      }),
+    );
+    mocks.executeMutation.mockResolvedValueOnce({
+      valid: true,
+      code: null,
+      reasons: [],
+      sideEffects: ['set task:ONE.status', 'clear content from task:ONE'],
+      patch: 'patch:collapse-clear',
+      executed: true,
+    });
+    const comparisonArtifactDigest = buildComparisonArtifactDigest(
+      'comparison:collapse-clear:operational',
+      'worldline:review-auth',
+      'worldline:live',
+    );
+    const comparisonArtifactId = `comparison-artifact:${comparisonArtifactDigest}`;
+    mocks.getNodeProps.mockImplementation(async (nodeId: string) => {
+      if (nodeId === 'attestation:approve-clear') {
+        return {
+          type: 'attestation',
+          decision: 'approve',
+          target_id: comparisonArtifactId,
+          attested_by: 'human.reviewer',
+          attested_at: 5678,
+        };
+      }
+      if (nodeId === comparisonArtifactId) {
+        return {
+          type: 'comparison-artifact',
+          artifact_digest: comparisonArtifactDigest,
+        };
+      }
+      return null;
+    });
+
+    const service = new ControlPlaneService({
+      getGraph: mocks.getGraph,
+      openIsolatedGraph: mocks.openIsolatedGraph,
+      reset: vi.fn(),
+    }, 'agent.prime');
+
+    const result = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'req-collapse-clear-execute',
+      cmd: 'collapse_worldline',
+      args: {
+        worldlineId: 'worldline:review-auth',
+        comparisonArtifactDigest,
+        dryRun: false,
+        attestationIds: ['attestation:approve-clear'],
+      },
+    });
+
+    expect(mocks.executeMutation).toHaveBeenCalledWith({
+      rationale: 'Collapse worldline:review-auth into worldline:live.',
+      ops: [
+        { op: 'set_node_property', nodeId: 'task:ONE', key: 'status', value: 'READY' },
+        { op: 'clear_node_content', nodeId: 'task:ONE' },
+      ],
+    }, {
+      dryRun: false,
+      allowEmptyPlan: true,
+    });
+    expect(result).toEqual(expect.objectContaining({
+      ok: true,
+      data: expect.objectContaining({
+        kind: 'collapse-proposal',
+        dryRun: false,
+        executable: true,
+        comparison: expect.objectContaining({
+          artifactId: comparisonArtifactId,
+          artifactDigest: comparisonArtifactDigest,
+        }),
+        mutationExecution: {
+          dryRun: false,
+          valid: true,
+          executed: true,
+          patch: 'patch:collapse-clear',
+          opCount: 2,
+          sideEffects: ['set task:ONE.status', 'clear content from task:ONE'],
+        },
+        executionGate: expect.objectContaining({
+          comparisonArtifactId,
+          requiredDecision: 'approve',
+          satisfied: true,
+        }),
       }),
     }));
   });
@@ -1152,6 +2250,12 @@ describe('ControlPlaneService', () => {
       }),
       observation: expect.objectContaining({
         worldlineId: 'worldline:review-auth',
+        backing: expect.objectContaining({
+          kind: 'derived_working_set',
+          substrate: expect.objectContaining({
+            workingSetId: 'wl_review-auth',
+          }),
+        }),
       }),
     }));
   });
@@ -1302,7 +2406,9 @@ describe('ControlPlaneService', () => {
       v: CONTROL_PLANE_VERSION,
       id: 'req-query-admin',
       cmd: 'query',
-      args: {},
+      args: {
+        view: 'governance.worklist',
+      },
       auth: {
         principalId: 'human.ada',
         admin: true,
@@ -1310,13 +2416,497 @@ describe('ControlPlaneService', () => {
     });
 
     expect(admin).toEqual(expect.objectContaining({
-      ok: false,
-      error: expect.objectContaining({
-        code: 'not_implemented',
+      ok: true,
+      data: expect.objectContaining({
+        view: 'governance.worklist',
+        queues: expect.objectContaining({
+          freshComparisons: [],
+        }),
       }),
       audit: expect.objectContaining({
         principalId: 'human.ada',
         capabilityMode: 'admin',
+      }),
+    }));
+  });
+
+  it('returns governance worklist queues for admin query', async () => {
+    mocks.queryRun
+      .mockResolvedValueOnce({
+        nodes: [
+          {
+            id: 'comparison-artifact:fresh',
+            props: {
+              type: 'comparison-artifact',
+              artifact_digest: 'digest:fresh',
+              recorded_at: 200,
+            },
+          },
+          {
+            id: 'comparison-artifact:stale',
+            props: {
+              type: 'comparison-artifact',
+              artifact_digest: 'digest:stale',
+              recorded_at: 100,
+            },
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        nodes: [
+          {
+            id: 'collapse-proposal:approved',
+            props: {
+              type: 'collapse-proposal',
+              artifact_digest: 'digest:approved',
+              recorded_at: 150,
+            },
+          },
+        ],
+      });
+    mocks.fetchEntityDetail
+      .mockResolvedValueOnce({
+        id: 'comparison-artifact:fresh',
+        type: 'comparison-artifact',
+        props: {
+          type: 'comparison-artifact',
+          artifact_digest: 'digest:fresh',
+          recorded_at: 200,
+        },
+        outgoing: [],
+        incoming: [],
+        governanceDetail: {
+          kind: 'comparison-artifact',
+          freshness: 'fresh',
+          attestation: { total: 0, approvals: 0, rejections: 0, other: 0, state: 'unattested' },
+          series: { latestInSeries: true, supersededByIds: [] },
+          comparison: {},
+          settlement: { proposalCount: 0, executedCount: 0 },
+        },
+      })
+      .mockResolvedValueOnce({
+        id: 'comparison-artifact:stale',
+        type: 'comparison-artifact',
+        props: {
+          type: 'comparison-artifact',
+          artifact_digest: 'digest:stale',
+          recorded_at: 100,
+        },
+        outgoing: [],
+        incoming: [],
+        governanceDetail: {
+          kind: 'comparison-artifact',
+          freshness: 'stale',
+          attestation: { total: 0, approvals: 0, rejections: 0, other: 0, state: 'unattested' },
+          series: { latestInSeries: false, supersededByIds: ['comparison-artifact:fresh'] },
+          comparison: {},
+          settlement: { proposalCount: 1, executedCount: 0 },
+        },
+      })
+      .mockResolvedValueOnce({
+        id: 'collapse-proposal:approved',
+        type: 'collapse-proposal',
+        props: {
+          type: 'collapse-proposal',
+          artifact_digest: 'digest:approved',
+          recorded_at: 150,
+          source_worldline_id: 'worldline:review-auth',
+          target_worldline_id: 'worldline:live',
+        },
+        outgoing: [],
+        incoming: [],
+        governanceDetail: {
+          kind: 'collapse-proposal',
+          freshness: 'fresh',
+          lifecycle: 'approved',
+          attestation: { total: 1, approvals: 1, rejections: 0, other: 0, state: 'approved' },
+          series: { latestInSeries: true, supersededByIds: [] },
+          execution: { dryRun: true, executable: true, executed: false, changed: true },
+          executionGate: {
+            comparisonArtifactId: 'comparison-artifact:fresh',
+            attestation: { total: 1, approvals: 1, rejections: 0, other: 0, state: 'approved' },
+          },
+        },
+      });
+
+    const service = new ControlPlaneService({
+      getGraph: mocks.getGraph,
+      openIsolatedGraph: mocks.openIsolatedGraph,
+      reset: vi.fn(),
+    }, 'agent.prime');
+
+    const result = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'req-query-worklist',
+      cmd: 'query',
+      args: {
+        view: 'governance.worklist',
+      },
+      auth: {
+        principalId: 'human.ada',
+        admin: true,
+      },
+    });
+
+    expect(result).toEqual(expect.objectContaining({
+      ok: true,
+      data: expect.objectContaining({
+        view: 'governance.worklist',
+        summary: expect.objectContaining({
+          freshComparisons: 1,
+          staleComparisons: 1,
+          approvedCollapseProposals: 1,
+        }),
+        queues: expect.objectContaining({
+          freshComparisons: [
+            expect.objectContaining({
+              id: 'comparison-artifact:fresh',
+              freshness: 'fresh',
+            }),
+          ],
+          staleComparisons: [
+            expect.objectContaining({
+              id: 'comparison-artifact:stale',
+              freshness: 'stale',
+            }),
+          ],
+          approvedCollapseProposals: [
+            expect.objectContaining({
+              id: 'collapse-proposal:approved',
+              lifecycle: 'approved',
+            }),
+          ],
+        }),
+      }),
+      observation: expect.objectContaining({
+        worldlineId: 'worldline:live',
+      }),
+    }));
+  });
+
+  it('returns governance series history for an artifact lane', async () => {
+    mocks.queryRun.mockResolvedValueOnce({
+      nodes: [
+        {
+          id: 'comparison-artifact:old',
+          props: {
+            type: 'comparison-artifact',
+            artifact_series_key: 'series:comparison',
+            recorded_at: 100,
+          },
+        },
+        {
+          id: 'comparison-artifact:new',
+          props: {
+            type: 'comparison-artifact',
+            artifact_series_key: 'series:comparison',
+            recorded_at: 200,
+          },
+        },
+      ],
+    });
+    mocks.fetchEntityDetail
+      .mockResolvedValueOnce({
+        id: 'comparison-artifact:new',
+        type: 'comparison-artifact',
+        props: {
+          type: 'comparison-artifact',
+          artifact_digest: 'digest:new',
+          artifact_series_key: 'series:comparison',
+          recorded_at: 200,
+        },
+        outgoing: [{ nodeId: 'comparison-artifact:old', label: 'supersedes' }],
+        incoming: [],
+        governanceDetail: {
+          kind: 'comparison-artifact',
+          freshness: 'fresh',
+          attestation: { total: 0, approvals: 0, rejections: 0, other: 0, state: 'unattested' },
+          series: {
+            seriesKey: 'series:comparison',
+            supersedesId: 'comparison-artifact:old',
+            supersededByIds: [],
+            latestInSeries: true,
+          },
+          comparison: {},
+          settlement: { proposalCount: 0, executedCount: 0 },
+        },
+      })
+      .mockResolvedValueOnce({
+        id: 'comparison-artifact:old',
+        type: 'comparison-artifact',
+        props: {
+          type: 'comparison-artifact',
+          artifact_digest: 'digest:old',
+          artifact_series_key: 'series:comparison',
+          recorded_at: 100,
+        },
+        outgoing: [],
+        incoming: [{ nodeId: 'comparison-artifact:new', label: 'supersedes' }],
+        governanceDetail: {
+          kind: 'comparison-artifact',
+          freshness: 'stale',
+          attestation: { total: 0, approvals: 0, rejections: 0, other: 0, state: 'unattested' },
+          series: {
+            seriesKey: 'series:comparison',
+            supersededByIds: ['comparison-artifact:new'],
+            latestInSeries: false,
+          },
+          comparison: {},
+          settlement: { proposalCount: 0, executedCount: 0 },
+        },
+      })
+      .mockResolvedValueOnce({
+        id: 'comparison-artifact:new',
+        type: 'comparison-artifact',
+        props: {
+          type: 'comparison-artifact',
+          artifact_digest: 'digest:new',
+          artifact_series_key: 'series:comparison',
+          recorded_at: 200,
+        },
+        outgoing: [{ nodeId: 'comparison-artifact:old', label: 'supersedes' }],
+        incoming: [],
+        governanceDetail: {
+          kind: 'comparison-artifact',
+          freshness: 'fresh',
+          attestation: { total: 0, approvals: 0, rejections: 0, other: 0, state: 'unattested' },
+          series: {
+            seriesKey: 'series:comparison',
+            supersedesId: 'comparison-artifact:old',
+            supersededByIds: [],
+            latestInSeries: true,
+          },
+          comparison: {},
+          settlement: { proposalCount: 0, executedCount: 0 },
+        },
+      });
+
+    const service = new ControlPlaneService({
+      getGraph: mocks.getGraph,
+      openIsolatedGraph: mocks.openIsolatedGraph,
+      reset: vi.fn(),
+    }, 'agent.prime');
+
+    const result = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'req-query-series',
+      cmd: 'query',
+      args: {
+        view: 'governance.series',
+        artifactId: 'comparison-artifact:new',
+      },
+      auth: {
+        principalId: 'human.ada',
+        admin: true,
+      },
+    });
+
+    expect(result).toEqual(expect.objectContaining({
+      ok: true,
+      data: expect.objectContaining({
+        view: 'governance.series',
+        artifactId: 'comparison-artifact:new',
+        series: expect.objectContaining({
+          kind: 'comparison-artifact',
+          seriesKey: 'series:comparison',
+          latestArtifactId: 'comparison-artifact:new',
+          entries: [
+            expect.objectContaining({
+              id: 'comparison-artifact:old',
+              current: false,
+              freshness: 'stale',
+            }),
+            expect.objectContaining({
+              id: 'comparison-artifact:new',
+              current: true,
+              freshness: 'fresh',
+            }),
+          ],
+        }),
+      }),
+    }));
+  });
+
+  it('explains stale comparison artifacts through governance reason codes and next actions', async () => {
+    mocks.fetchContext.mockResolvedValue({
+      detail: {
+        id: 'comparison-artifact:stale',
+        type: 'comparison-artifact',
+        props: {
+          type: 'comparison-artifact',
+        },
+        outgoing: [],
+        incoming: [],
+        governanceDetail: {
+          kind: 'comparison-artifact',
+          freshness: 'stale',
+          attestation: { total: 0, approvals: 0, rejections: 0, other: 0, state: 'unattested' },
+          series: {
+            latestInSeries: false,
+            supersededByIds: ['comparison-artifact:fresh'],
+          },
+          comparison: {
+            leftWorldlineId: 'worldline:review-auth',
+            rightWorldlineId: 'worldline:live',
+          },
+          settlement: {
+            proposalCount: 1,
+            executedCount: 0,
+          },
+        },
+      },
+      readiness: null,
+      dependency: null,
+      recommendedActions: [],
+      recommendationRequests: [],
+      diagnostics: [],
+    });
+
+    const service = new ControlPlaneService({
+      getGraph: mocks.getGraph,
+      openIsolatedGraph: mocks.openIsolatedGraph,
+      reset: vi.fn(),
+    }, 'agent.prime');
+
+    const result = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'req-explain-stale-comparison',
+      cmd: 'explain',
+      args: {
+        targetId: 'comparison-artifact:stale',
+      },
+    });
+
+    expect(result).toEqual(expect.objectContaining({
+      ok: true,
+      data: expect.objectContaining({
+        targetId: 'comparison-artifact:stale',
+        targetType: 'comparison-artifact',
+        explanation: expect.objectContaining({
+          governanceKind: 'comparison-artifact',
+          summary: 'This comparison artifact is stale against current operational truth.',
+          state: expect.objectContaining({
+            freshness: 'stale',
+            latestInSeries: false,
+            attestationState: 'unattested',
+          }),
+          reasons: expect.arrayContaining([
+            expect.objectContaining({ code: 'comparison_stale' }),
+            expect.objectContaining({ code: 'artifact_superseded' }),
+            expect.objectContaining({ code: 'comparison_unattested' }),
+            expect.objectContaining({ code: 'settlement_planned' }),
+          ]),
+          nextActions: expect.arrayContaining([
+            expect.objectContaining({
+              command: 'query',
+              args: expect.objectContaining({
+                view: 'governance.series',
+                artifactId: 'comparison-artifact:stale',
+              }),
+            }),
+            expect.objectContaining({
+              command: 'compare_worldlines',
+              args: expect.objectContaining({
+                worldlineId: 'worldline:review-auth',
+                persist: true,
+              }),
+            }),
+          ]),
+        }),
+      }),
+    }));
+  });
+
+  it('explains collapse proposals that were attested directly but still lack comparison approval', async () => {
+    mocks.fetchContext.mockResolvedValue({
+      detail: {
+        id: 'collapse-proposal:blocked',
+        type: 'collapse-proposal',
+        props: {
+          type: 'collapse-proposal',
+          source_worldline_id: 'worldline:review-auth',
+          target_worldline_id: 'worldline:live',
+          comparison_artifact_digest: 'digest:comparison',
+        },
+        outgoing: [],
+        incoming: [],
+        governanceDetail: {
+          kind: 'collapse-proposal',
+          freshness: 'fresh',
+          lifecycle: 'pending_attestation',
+          attestation: { total: 1, approvals: 1, rejections: 0, other: 0, state: 'approved' },
+          series: {
+            latestInSeries: true,
+            supersededByIds: [],
+          },
+          execution: {
+            dryRun: true,
+            executable: true,
+            executed: false,
+            changed: true,
+          },
+          executionGate: {
+            comparisonArtifactId: 'comparison-artifact:comparison',
+            attestation: { total: 0, approvals: 0, rejections: 0, other: 0, state: 'unattested' },
+          },
+        },
+      },
+      readiness: null,
+      dependency: null,
+      recommendedActions: [],
+      recommendationRequests: [],
+      diagnostics: [],
+    });
+
+    const service = new ControlPlaneService({
+      getGraph: mocks.getGraph,
+      openIsolatedGraph: mocks.openIsolatedGraph,
+      reset: vi.fn(),
+    }, 'agent.prime');
+
+    const result = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'req-explain-blocked-collapse',
+      cmd: 'explain',
+      args: {
+        targetId: 'collapse-proposal:blocked',
+      },
+    });
+
+    expect(result).toEqual(expect.objectContaining({
+      ok: true,
+      data: expect.objectContaining({
+        targetId: 'collapse-proposal:blocked',
+        targetType: 'collapse-proposal',
+        explanation: expect.objectContaining({
+          governanceKind: 'collapse-proposal',
+          summary: 'This collapse proposal is waiting on comparison approval before it can execute.',
+          state: expect.objectContaining({
+            freshness: 'fresh',
+            lifecycle: 'pending_attestation',
+            proposalAttestationState: 'approved',
+            executionGateAttestationState: 'unattested',
+          }),
+          reasons: expect.arrayContaining([
+            expect.objectContaining({ code: 'proposal_pending_attestation' }),
+            expect.objectContaining({ code: 'comparison_gate_unattested' }),
+            expect.objectContaining({ code: 'proposal_attestation_not_execution_gate' }),
+          ]),
+          nextActions: expect.arrayContaining([
+            expect.objectContaining({
+              command: 'explain',
+              args: expect.objectContaining({
+                targetId: 'comparison-artifact:comparison',
+              }),
+            }),
+            expect.objectContaining({
+              command: 'attest',
+              args: expect.objectContaining({
+                targetId: 'comparison-artifact:comparison',
+              }),
+            }),
+          ]),
+        }),
       }),
     }));
   });
@@ -1606,6 +3196,11 @@ describe('ControlPlaneService', () => {
           baseLamportCeiling: null,
           overlayHeadPatchSha: null,
           overlayPatchCount: 0,
+          overlayWritable: true,
+          braid: {
+            readOverlayCount: 0,
+            braidedWorkingSetIds: [],
+          },
         },
       },
       analysisSnapshotHash: 'snapshot:working-set',
@@ -1654,6 +3249,128 @@ describe('ControlPlaneService', () => {
       }),
       observation: expect.objectContaining({
         worldlineId: 'worldline:review-auth',
+        backing: expect.objectContaining({
+          kind: 'derived_working_set',
+          substrate: expect.objectContaining({
+            workingSetId: 'wl_review-auth',
+          }),
+        }),
+      }),
+    }));
+  });
+
+  it('adds an explicit braid singleton diagnostic when co-present overlays compete on one property winner', async () => {
+    mocks.getWorkingSet.mockResolvedValueOnce(
+      makeWorkingSetDescriptor({
+        braidReadOverlays: [
+          {
+            workingSetId: 'wl_hold-auth',
+            overlayId: 'wl_hold-auth',
+            kind: 'patch-log',
+            headPatchSha: 'patch:support',
+            patchCount: 1,
+          },
+        ],
+      }),
+    );
+    mocks.analyzeConflicts.mockResolvedValueOnce({
+      analysisVersion: 'conflict-analyzer/v2',
+      resolvedCoordinate: {
+        analysisVersion: 'conflict-analyzer/v2',
+        coordinateKind: 'working_set',
+        frontier: { 'agent.prime': 'abcdef123456' },
+        frontierDigest: 'frontier:working-set',
+        lamportCeiling: null,
+        scanBudgetApplied: { maxPatches: null },
+        truncationPolicy: 'reverse-causal-order',
+        workingSet: {
+          workingSetId: 'wl_review-auth',
+          baseLamportCeiling: null,
+          overlayHeadPatchSha: 'patch:target',
+          overlayPatchCount: 1,
+          overlayWritable: true,
+          braid: {
+            readOverlayCount: 1,
+            braidedWorkingSetIds: ['wl_hold-auth'],
+          },
+        },
+      },
+      analysisSnapshotHash: 'snapshot:working-set-braid',
+      conflicts: [
+        {
+          conflictId: 'conflict:singleton',
+          kind: 'supersession',
+          target: {
+            targetKind: 'node_property',
+            targetDigest: 'target:task:ONE#status',
+            entityId: 'task:ONE',
+            propertyKey: 'status',
+          },
+          winner: {
+            anchor: { patchSha: 'patch:target', writerId: 'wl_review-auth', lamport: 4, opIndex: 0 },
+            effectDigest: 'effect:winner',
+          },
+          losers: [
+            {
+              anchor: { patchSha: 'patch:support', writerId: 'wl_hold-auth', lamport: 3, opIndex: 0 },
+              effectDigest: 'effect:loser',
+              structurallyDistinctAlternative: true,
+              replayableFromAnchors: true,
+            },
+          ],
+          resolution: {
+            reducerId: 'reduceV5',
+            basis: { code: 'lww' },
+            winnerMode: 'immediate',
+          },
+          whyFingerprint: 'why:singleton',
+          evidence: {
+            level: 'standard',
+            patchRefs: ['patch:target', 'patch:support'],
+            receiptRefs: [],
+          },
+        },
+      ],
+    });
+
+    const service = new ControlPlaneService({
+      getGraph: mocks.getGraph,
+      openIsolatedGraph: mocks.openIsolatedGraph,
+      reset: vi.fn(),
+    }, 'agent.prime');
+
+    const result = await service.execute({
+      v: CONTROL_PLANE_VERSION,
+      id: 'req-conflicts-braid-singleton',
+      cmd: 'observe',
+      args: {
+        projection: 'conflicts',
+        worldlineId: 'worldline:review-auth',
+      },
+    });
+
+    expect(result).toEqual(expect.objectContaining({
+      ok: true,
+      diagnostics: expect.arrayContaining([
+        expect.objectContaining({
+          code: 'braid_singleton_self_erasure',
+          category: 'structural',
+          source: 'substrate',
+          severity: 'warning',
+          subjectId: 'task:ONE',
+          relatedIds: expect.arrayContaining(['worldline:review-auth', 'worldline:hold-auth']),
+        }),
+      ]),
+      observation: expect.objectContaining({
+        backing: expect.objectContaining({
+          kind: 'derived_working_set',
+          substrate: expect.objectContaining({
+            braid: expect.objectContaining({
+              supportCount: 1,
+              supportWorldlineIds: ['worldline:hold-auth'],
+            }),
+          }),
+        }),
       }),
     }));
   });

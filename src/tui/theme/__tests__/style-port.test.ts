@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { type TokenValue } from '@flyingrobots/bijou';
-import { _resetThemeForTesting, _resetDefaultContextForTesting } from '@flyingrobots/bijou/adapters/test';
+import { _resetDefaultContextForTesting } from '@flyingrobots/bijou/adapters/test';
 import { createStylePort } from '../../../infrastructure/adapters/BijouStyleAdapter.js';
 import { createPlainStylePort } from '../../../infrastructure/adapters/PlainStyleAdapter.js';
 import { XYPH_TEAL_ORANGE_PINK_DARK, XYPH_CYAN_MAGENTA_DARK } from '../xyph-presets.js';
@@ -66,7 +66,6 @@ describe('PlainStyleAdapter', () => {
 
 describe('BijouStyleAdapter', () => {
   beforeEach(() => {
-    _resetThemeForTesting();
     _resetDefaultContextForTesting();
     delete process.env['NO_COLOR'];
     delete process.env['XYPH_THEME'];
@@ -74,7 +73,6 @@ describe('BijouStyleAdapter', () => {
 
   afterEach(() => {
     vi.unstubAllEnvs();
-    _resetThemeForTesting();
     _resetDefaultContextForTesting();
   });
 

@@ -10,6 +10,7 @@ export const PREFIXES = [
   'submission', 'patchset', 'review',
   'story', 'req', 'criterion', 'evidence',
   'policy', 'config', 'suggestion',
+  'proposal', 'attestation', 'comparison-artifact', 'collapse-proposal',
 ] as const;
 
 export type Prefix = typeof PREFIXES[number];
@@ -19,6 +20,7 @@ export const EDGE_TYPES = [
   'belongs-to', 'consumed-by', 'depends-on', 'documents', 'fulfills',
   'comments-on', 'replies-to',
   'authorized-by', 'approves',
+  'proposes', 'targets', 'attests',
   'submits', 'has-patchset', 'supersedes', 'reviews', 'decides',
   'decomposes-to', 'has-criterion', 'verifies',
   'governs', 'suggests',

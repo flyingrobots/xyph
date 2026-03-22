@@ -12,11 +12,12 @@ import { writeFileSync } from 'node:fs';
 import { normalizeQuestStatus } from '../src/domain/entities/Quest.js';
 import { computeTopBlockers, type TaskSummary, type DepEdge } from '../src/domain/services/DepAnalysis.js';
 import { toNeighborEntries } from '../src/infrastructure/helpers/isNeighborEntry.js';
+import { resolveGraphRuntime } from '../src/cli/runtimeGraph.js';
 
 const WRITER_ID = process.env['XYPH_AGENT_ID'] ?? 'agent.prime';
 const outputFile = process.argv[2] ?? 'roadmap-dag.svg';
-
-const plumbing = Plumbing.createDefault({ cwd: process.cwd() });
+const runtime = resolveGraphRuntime({ cwd: process.cwd() });
+const plumbing = Plumbing.createDefault({ cwd: runtime.repoPath });
 const persistence = new GitGraphAdapter({ plumbing });
 
 // Colors by normalized status
@@ -54,7 +55,7 @@ interface TaskNode {
 async function main(): Promise<void> {
   const graph = await WarpGraph.open({
     persistence,
-    graphName: 'xyph-roadmap',
+    graphName: runtime.graphName,
     writerId: WRITER_ID,
     autoMaterialize: true,
   });

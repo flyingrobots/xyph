@@ -1,314 +1,233 @@
-/**
- * DashboardApp — TEA (The Elm Architecture) application for XYPH.
- *
- * Replaces the old Ink/React Dashboard with a pure-function model/update/view
- * loop powered by bijou-tui's `run()`.
- */
-
-import type { App, Cmd, KeyMsg, ResizeMsg } from '@flyingrobots/bijou-tui';
-import { quit, animate, EASINGS } from '@flyingrobots/bijou-tui';
-import { flex } from '@flyingrobots/bijou-tui';
-import { createKeyMap, type KeyMap } from '@flyingrobots/bijou-tui';
-import { navTableKeyMap } from '@flyingrobots/bijou-tui';
-import { accordionKeyMap } from '@flyingrobots/bijou-tui';
-import { commandPaletteKeyMap, cpPageDown, cpPageUp } from '@flyingrobots/bijou-tui';
-import { statusBar, visibleLength } from '@flyingrobots/bijou-tui';
-import { composite, toast as toastOverlay, drawer } from '@flyingrobots/bijou-tui';
-import { helpView, helpShort } from '@flyingrobots/bijou-tui';
-import { createNavigableTableState, navTableFocusNext, navTableFocusPrev, navTablePageDown, navTablePageUp, type NavigableTableState } from '@flyingrobots/bijou-tui';
-import { createDagPaneState, dagPaneSelectNode, dagPanePageDown, dagPanePageUp, dagPaneScrollByX, type DagPaneState } from '@flyingrobots/bijou-tui';
-import { createCommandPaletteState, cpFilter, cpFocusNext, cpFocusPrev, cpSelectedItem, commandPalette, modal, type CommandPaletteState, type CommandPaletteItem } from '@flyingrobots/bijou-tui';
-import { tabs, getDefaultContext, progressBar, type TokenValue } from '@flyingrobots/bijou';
+import type { App, Cmd, KeyMsg, MouseMsg, ResizeMsg } from '@flyingrobots/bijou-tui';
+import {
+  animate,
+  commandPalette,
+  commandPaletteKeyMap,
+  composite,
+  createCommandPaletteState,
+  createKeyMap,
+  createNavigableTableState,
+  cpFilter,
+  cpFocusNext,
+  cpFocusPrev,
+  cpPageDown,
+  cpPageUp,
+  cpSelectedItem,
+  drawer,
+  flex,
+  modal,
+  quit,
+  statusBar,
+  toast as toastOverlay,
+  visibleLength,
+  type CommandPaletteItem,
+  type CommandPaletteState,
+  type KeyMap,
+  type NavigableTableState,
+} from '@flyingrobots/bijou-tui';
+import { EASINGS } from '@flyingrobots/bijou-tui';
+import { type TokenValue } from '@flyingrobots/bijou';
 import type { StylePort } from '../../ports/StylePort.js';
 import type { GraphContext } from '../../infrastructure/GraphContext.js';
-import type { GraphSnapshot } from '../../domain/models/dashboard.js';
+import type {
+  AiSuggestionNode,
+  EntityDetail,
+  GraphSnapshot,
+  GovernanceArtifactNode,
+  QuestNode,
+  SubmissionNode,
+} from '../../domain/models/dashboard.js';
 import type { IntakePort } from '../../ports/IntakePort.js';
 import type { GraphPort } from '../../ports/GraphPort.js';
-import { roadmapView, buildDagSource } from './views/roadmap-view.js';
-import { lineageView } from './views/lineage-view.js';
-import { dashboardView } from './views/dashboard-view.js';
-import { backlogView } from './views/backlog-view.js';
-import { submissionsView } from './views/submissions-view.js';
+import type { SubmissionPort } from '../../ports/SubmissionPort.js';
+import { cockpitView, describeCockpitInteractionMap, type CockpitRect } from './views/cockpit-view.js';
 import { landingView } from './views/landing-view.js';
 import { confirmOverlay, inputOverlay } from './overlays.js';
-import { renderMyStuffDrawer } from './views/my-stuff-drawer.js';
-import { claimQuest, promoteQuest, rejectQuest, reviewSubmission, type WriteDeps } from './write-cmds.js';
-import { roadmapQuestIds, submissionIds, sortedSubmissions, backlogQuestIds, lineageIntentIds } from './selection-order.js';
-import type { SubmissionPort } from '../../ports/SubmissionPort.js';
-import { computeCriticalPath, type TaskSummary, type DepEdge } from '../../domain/services/DepAnalysis.js';
+import { buildMyStuffDrawerLines, renderMyStuffDrawer } from './views/my-stuff-drawer.js';
+import { questTreeOverlay, questTreeOverlayBounds } from './views/quest-tree-modal.js';
+import { questPageView } from './views/quest-page-view.js';
+import { governancePageView } from './views/governance-page-view.js';
+import { reviewPageView } from './views/review-page-view.js';
+import { suggestionPageView } from './views/suggestion-page-view.js';
+import {
+  claimQuest,
+  commentOnEntity,
+  promoteQuest,
+  rejectQuest,
+  reopenQuest,
+  reviewSubmission,
+  type WriteDeps,
+} from './write-cmds.js';
+import {
+  buildLaneTable,
+  cockpitLaneOrder,
+  freshnessItemKey,
+  laneFreshCount,
+  laneLatestTimestamp,
+  laneTitle,
+  selectedLaneItem,
+  shortId,
+  type NowViewMode,
+  type CockpitItem,
+  type CockpitLaneId,
+} from './cockpit.js';
+import {
+  type ObserverSeenItems,
+  type ObserverFreshnessState,
+  type ObserverWatermarkScope,
+  type ObserverWatermarkStore,
+  type ObserverWatermarks,
+} from './observer-watermarks.js';
+import { wrapWhitespaceText } from '../view-helpers.js';
 
-// ── Public types ────────────────────────────────────────────────────────
-
-export type ViewName = 'dashboard' | 'roadmap' | 'submissions' | 'lineage' | 'backlog';
-
-const VIEWS: ViewName[] = ['dashboard', 'roadmap', 'submissions', 'lineage', 'backlog'];
-
-/** Pending write action stored in confirm/input state. */
 export type PendingWrite =
   | { kind: 'claim'; questId: string }
   | { kind: 'promote'; questId: string }
   | { kind: 'reject'; questId: string }
+  | { kind: 'reopen'; questId: string }
+  | { kind: 'comment'; targetId: string }
   | { kind: 'approve'; patchsetId: string }
   | { kind: 'request-changes'; patchsetId: string };
 
-/** Actions that can be confirmed via the confirm overlay. */
 export type ConfirmAction = PendingWrite | { kind: 'quit' };
 
-export interface RoadmapState {
-  table: NavigableTableState;
-  dagPane: DagPaneState | null;
-  fallbackScrollY: number;
-  detailScrollY: number;
-}
-
-export interface SubmissionsState {
-  table: NavigableTableState;
-  expandedId: string | null;
-  detailScrollY: number;
-}
-
-export interface BacklogState {
-  table: NavigableTableState;
-}
-
-export interface LineageState {
-  selectedIndex: number;
-  collapsedIntents: string[];
-}
-
-export interface DashboardViewState {
-  focusPanel: 'in-progress';
+export interface LaneState {
   focusRow: number;
-  detailId: string | null;
-  leftScrollY: number;
+  inspectorScrollY: number;
 }
+
+export interface ScrollbarVisibilityState {
+  level: number;
+  generation: number;
+}
+
+export interface LandingPageRoute {
+  kind: 'landing';
+}
+
+export interface QuestPageRoute {
+  kind: 'quest';
+  questId: string;
+  sourceLane: CockpitLaneId;
+}
+
+export interface ReviewPageRoute {
+  kind: 'review';
+  submissionId: string;
+  questId: string;
+  sourceLane: CockpitLaneId;
+}
+
+export interface GovernancePageRoute {
+  kind: 'governance';
+  entityId: string;
+  sourceLane: CockpitLaneId;
+}
+
+export interface SuggestionPageRoute {
+  kind: 'suggestion';
+  suggestionId: string;
+  sourceLane: CockpitLaneId;
+}
+
+export type DashboardPageRoute =
+  | LandingPageRoute
+  | QuestPageRoute
+  | ReviewPageRoute
+  | GovernancePageRoute
+  | SuggestionPageRoute;
 
 export interface DashboardModel {
-  activeView: ViewName;
+  lane: CockpitLaneId;
+  nowView: NowViewMode;
+  pageStack: DashboardPageRoute[];
+  laneState: Record<CockpitLaneId, LaneState>;
+  scrollbars: {
+    worklist: ScrollbarVisibilityState;
+    inspector: ScrollbarVisibilityState;
+    page: ScrollbarVisibilityState;
+  };
+  table: NavigableTableState;
+  inspectorOpen: boolean;
   snapshot: GraphSnapshot | null;
   loading: boolean;
   error: string | null;
   showLanding: boolean;
   showHelp: boolean;
+  helpScrollY: number;
   cols: number;
   rows: number;
   logoText: string;
-  /** Monotonic request counter — used to discard stale snapshot responses. */
   requestId: number;
-  /** 0-100, drives landing progress bar animation. */
   loadingProgress: number;
-  /** 0-100, drives pulse animation for landing screen. */
   pulsePhase: number;
-
-  // Per-view state
-  roadmap: RoadmapState;
-  submissions: SubmissionsState;
-  backlog: BacklogState;
-  lineage: LineageState;
-  dashboardView?: DashboardViewState;
-
-  // Interaction mode
-  mode: 'normal' | 'confirm' | 'input' | 'palette';
+  mode: 'normal' | 'confirm' | 'input' | 'palette' | 'quest-tree';
   confirmState: { prompt: string; action: ConfirmAction; hint?: string } | null;
   inputState: { label: string; value: string; action: PendingWrite } | null;
   paletteState: CommandPaletteState | null;
-
-  // Toast notifications
+  questTreeScrollY: number;
+  drawerScrollY: number;
   toast: { message: string; variant: 'success' | 'error'; expiresAt: number } | null;
-
-  /** Guards against double-writes while a write command is in flight. */
   writePending: boolean;
-
-  /** Whether the "My Stuff" drawer is logically open. */
   drawerOpen: boolean;
-  /** Current drawer width in columns (0 when fully closed, animated). */
   drawerWidth: number;
-
-  /** True once graph.watch() polling has been started (fires after first snapshot load). */
   watching: boolean;
-
-  /** True when a remote-change arrived while a fetch was in-flight; triggers follow-up refresh. */
   refreshPending: boolean;
-
-  /** The current user's writer ID (e.g. 'agent.james'). Used to filter personal panels. */
   agentId?: string;
+  observerWatermarks: ObserverWatermarks;
+  observerSeenItems: ObserverSeenItems;
+  pageScrollY: number;
+  pageDetail: EntityDetail | null;
+  pageLoading: boolean;
+  pageError: string | null;
+  pageRequestId: number;
 }
 
 export type DashboardMsg =
   | KeyMsg
+  | MouseMsg
   | ResizeMsg
   | { type: 'snapshot-loaded'; snapshot: GraphSnapshot; requestId: number }
   | { type: 'snapshot-error'; error: string; requestId: number }
   | { type: 'loading-progress'; value: number }
-  | { type: 'pulse-frame'; value: number }
-  | { type: 'pulse-done' }
   | { type: 'write-success'; message: string }
   | { type: 'write-error'; message: string }
   | { type: 'dismiss-toast'; expiresAt: number }
   | { type: 'remote-change' }
-  | { type: 'drawer-frame'; value: number };
-
-// ── Keybindings ─────────────────────────────────────────────────────────
+  | { type: 'drawer-frame'; value: number }
+  | { type: 'scrollbar-visibility'; pane: 'worklist' | 'inspector' | 'page'; level: number; generation: number }
+  | { type: 'page-detail-loaded'; entityId: string; detail: EntityDetail | null; requestId: number }
+  | { type: 'page-detail-error'; entityId: string; error: string; requestId: number };
 
 type GlobalAction =
-  | { type: 'quit' }
-  | { type: 'jump-view'; view: ViewName }
-  | { type: 'next-view' }
-  | { type: 'prev-view' }
+  | { type: 'jump-lane'; lane: CockpitLaneId }
+  | { type: 'next-lane' }
+  | { type: 'prev-lane' }
   | { type: 'refresh' }
+  | { type: 'toggle-now-view' }
   | { type: 'toggle-help' }
-  | { type: 'toggle-drawer' };
+  | { type: 'toggle-drawer' }
+  | { type: 'toggle-inspector' };
 
 type ViewAction =
+  | { type: 'open-item-page' }
   | { type: 'select-next' }
   | { type: 'select-prev' }
+  | { type: 'top' }
+  | { type: 'bottom' }
+  | { type: 'page-down-list' }
+  | { type: 'page-up-list' }
+  | { type: 'page-down-inspector' }
+  | { type: 'page-up-inspector' }
+  | { type: 'toggle-quest-tree' }
+  | { type: 'comment' }
   | { type: 'claim' }
   | { type: 'promote' }
   | { type: 'reject' }
-  | { type: 'expand' }
+  | { type: 'reopen' }
   | { type: 'approve' }
   | { type: 'request-changes' }
-  | { type: 'scroll-dag-down' }
-  | { type: 'scroll-dag-up' }
-  | { type: 'scroll-dag-left' }
-  | { type: 'scroll-dag-right' }
-  | { type: 'page-down' }
-  | { type: 'page-up' }
-  | { type: 'scroll-col-down' }
-  | { type: 'scroll-col-up' }
-  | { type: 'top' }
-  | { type: 'bottom' };
-
-function buildGlobalKeys(): KeyMap<GlobalAction> {
-  return createKeyMap<GlobalAction>()
-    .group('Global', g => g
-      .bind('q', 'Quit', { type: 'quit' })
-      .bind('1', 'Dashboard', { type: 'jump-view', view: 'dashboard' })
-      .bind('2', 'Roadmap', { type: 'jump-view', view: 'roadmap' })
-      .bind('3', 'Submissions', { type: 'jump-view', view: 'submissions' })
-      .bind('4', 'Lineage', { type: 'jump-view', view: 'lineage' })
-      .bind('5', 'Backlog', { type: 'jump-view', view: 'backlog' })
-      .bind('[', 'Prev view', { type: 'prev-view' })
-      .bind(']', 'Next view', { type: 'next-view' })
-      .bind('r', 'Refresh', { type: 'refresh' })
-      .bind('m', 'My Stuff', { type: 'toggle-drawer' })
-      .bind('?', 'Toggle help', { type: 'toggle-help' })
-    );
-}
-
-function buildRoadmapKeys(): KeyMap<ViewAction> {
-  const km = navTableKeyMap<ViewAction>({
-    focusNext: { type: 'select-next' },
-    focusPrev: { type: 'select-prev' },
-    pageDown:  { type: 'scroll-dag-down' },
-    pageUp:    { type: 'scroll-dag-up' },
-    quit:      { type: 'top' }, // placeholder — global handles quit
-  });
-  km.disable('Quit');
-  return km.group('Roadmap', g => g
-    .bind('c', 'Claim quest', { type: 'claim' })
-    .bind('h', 'Scroll DAG left', { type: 'scroll-dag-left' })
-    .bind('left', 'Scroll DAG left', { type: 'scroll-dag-left' })
-    .bind('l', 'Scroll DAG right', { type: 'scroll-dag-right' })
-    .bind('right', 'Scroll DAG right', { type: 'scroll-dag-right' })
-    .bind('g', 'Jump to first', { type: 'top' })
-    .bind('shift+g', 'Jump to last', { type: 'bottom' })
-  );
-}
-
-function buildSubmissionsKeys(): KeyMap<ViewAction> {
-  const km = navTableKeyMap<ViewAction>({
-    focusNext: { type: 'select-next' },
-    focusPrev: { type: 'select-prev' },
-    pageDown:  { type: 'page-down' },
-    pageUp:    { type: 'page-up' },
-    quit:      { type: 'top' },
-  });
-  km.disable('Quit');
-  return km.group('Submissions', g => g
-    .bind('enter', 'Expand/collapse', { type: 'expand' })
-    .bind('a', 'Approve', { type: 'approve' })
-    .bind('x', 'Request changes', { type: 'request-changes' })
-    .bind('g', 'Jump to first', { type: 'top' })
-    .bind('shift+g', 'Jump to last', { type: 'bottom' })
-  );
-}
-
-function buildBacklogKeys(): KeyMap<ViewAction> {
-  const km = navTableKeyMap<ViewAction>({
-    focusNext: { type: 'select-next' },
-    focusPrev: { type: 'select-prev' },
-    pageDown:  { type: 'page-down' },
-    pageUp:    { type: 'page-up' },
-    quit:      { type: 'top' },
-  });
-  km.disable('Quit');
-  return km.group('Backlog', g => g
-    .bind('p', 'Promote', { type: 'promote' })
-    .bind('shift+d', 'Reject', { type: 'reject' })
-    .bind('g', 'Jump to first', { type: 'top' })
-    .bind('shift+g', 'Jump to last', { type: 'bottom' })
-  );
-}
-
-function buildDashboardKeys(): KeyMap<ViewAction> {
-  const km = navTableKeyMap<ViewAction>({
-    focusNext: { type: 'select-next' },
-    focusPrev: { type: 'select-prev' },
-    pageDown:  { type: 'scroll-col-down' },
-    pageUp:    { type: 'scroll-col-up' },
-    quit:      { type: 'top' },
-  });
-  km.disable('Quit');
-  return km.group('Dashboard', g => g
-    .bind('enter', 'Show detail', { type: 'expand' })
-    .bind('g', 'Jump to first', { type: 'top' })
-    .bind('shift+g', 'Jump to last', { type: 'bottom' })
-  );
-}
-
-function buildLineageKeys(): KeyMap<ViewAction> {
-  const km = accordionKeyMap<ViewAction>({
-    focusNext: { type: 'select-next' },
-    focusPrev: { type: 'select-prev' },
-    toggle:    { type: 'expand' },
-    quit:      { type: 'top' },
-  });
-  km.disable('Quit');
-  return km.group('Lineage', g => g
-    .bind('g', 'Jump to first', { type: 'top' })
-    .bind('shift+g', 'Jump to last', { type: 'bottom' })
-  );
-}
-
-// ── Selection helpers ───────────────────────────────────────────────────
-// Ordering functions imported from ./selection-order.ts (shared with views)
-
-function clampIndex(idx: number, count: number): number {
-  if (count <= 0) return -1;
-  return Math.max(0, Math.min(idx, count - 1));
-}
-
-function computeDagPaneSize(cols: number, rows: number): { dagWidth: number; dagHeight: number } {
-  const leftWidth = Math.max(28, Math.floor(cols * 0.3));
-  return {
-    dagWidth: Math.max(1, cols - leftWidth - 1),
-    dagHeight: Math.max(1, rows - 3),
-  };
-}
-
-function roadmapPageStep(rows: number): number {
-  return Math.max(1, rows - 3);
-}
-
-function snapshotHasQuestDependencies(snap: GraphSnapshot | null): boolean {
-  if (!snap) return false;
-  return snap.quests.some((q) => (q.dependsOn?.length ?? 0) > 0);
-}
-
-// ── View hints (auto-generated from keymaps) ────────────────────────────
-
-// ── Factory ─────────────────────────────────────────────────────────────
+  | { type: 'mark-lane-seen' };
 
 export interface DashboardDeps {
   ctx: GraphContext;
@@ -318,15 +237,947 @@ export interface DashboardDeps {
   style: StylePort;
   agentId: string;
   logoText: string;
+  observerWatermarkStore: ObserverWatermarkStore;
+  observerWatermarkScope: ObserverWatermarkScope;
+}
+
+const LANE_ORDER = [...cockpitLaneOrder()];
+const MAX_SCROLLBAR_VISIBILITY = 4;
+
+function currentPage(model: DashboardModel): DashboardPageRoute {
+  return model.pageStack[model.pageStack.length - 1] ?? { kind: 'landing' };
+}
+
+function isLandingPage(model: DashboardModel): boolean {
+  return currentPage(model).kind === 'landing';
+}
+
+function emptyScrollbars(): DashboardModel['scrollbars'] {
+  return {
+    worklist: { level: MAX_SCROLLBAR_VISIBILITY, generation: 1 },
+    inspector: { level: 0, generation: 0 },
+    page: { level: 0, generation: 0 },
+  };
+}
+
+function emptyLaneState(): Record<CockpitLaneId, LaneState> {
+  return {
+    now: { focusRow: 0, inspectorScrollY: 0 },
+    plan: { focusRow: 0, inspectorScrollY: 0 },
+    review: { focusRow: 0, inspectorScrollY: 0 },
+    settlement: { focusRow: 0, inspectorScrollY: 0 },
+    suggestions: { focusRow: 0, inspectorScrollY: 0 },
+    campaigns: { focusRow: 0, inspectorScrollY: 0 },
+    graveyard: { focusRow: 0, inspectorScrollY: 0 },
+  };
+}
+
+function buildGlobalKeys(): KeyMap<GlobalAction> {
+  return createKeyMap<GlobalAction>()
+    .group('Global', (group) => group
+      .bind('1', 'Now lane', { type: 'jump-lane', lane: 'now' })
+      .bind('2', 'Plan lane', { type: 'jump-lane', lane: 'plan' })
+      .bind('3', 'Review lane', { type: 'jump-lane', lane: 'review' })
+      .bind('4', 'Settlement lane', { type: 'jump-lane', lane: 'settlement' })
+      .bind('5', 'Suggestions lane', { type: 'jump-lane', lane: 'suggestions' })
+      .bind('6', 'Campaigns lane', { type: 'jump-lane', lane: 'campaigns' })
+      .bind('7', 'Graveyard lane', { type: 'jump-lane', lane: 'graveyard' })
+      .bind('[', 'Previous lane', { type: 'prev-lane' })
+      .bind(']', 'Next lane', { type: 'next-lane' })
+      .bind('r', 'Refresh snapshot', { type: 'refresh' })
+      .bind('v', 'Toggle Now view', { type: 'toggle-now-view' })
+      .bind('i', 'Toggle inspector', { type: 'toggle-inspector' })
+      .bind('m', 'Toggle drawer', { type: 'toggle-drawer' })
+      .bind('?', 'Toggle help', { type: 'toggle-help' }),
+    );
+}
+
+function buildViewKeys(): KeyMap<ViewAction> {
+  return createKeyMap<ViewAction>()
+    .group('Cockpit', (group) => group
+      .bind('enter', 'Open selected item page', { type: 'open-item-page' })
+      .bind('return', 'Open selected item page', { type: 'open-item-page' })
+      .bind('j', 'Next row', { type: 'select-next' })
+      .bind('down', 'Next row', { type: 'select-next' })
+      .bind('k', 'Previous row', { type: 'select-prev' })
+      .bind('up', 'Previous row', { type: 'select-prev' })
+      .bind('g', 'Jump to first', { type: 'top' })
+      .bind('shift+g', 'Jump to last', { type: 'bottom' })
+      .bind('pagedown', 'Page worklist down', { type: 'page-down-list' })
+      .bind('pageup', 'Page worklist up', { type: 'page-up-list' })
+      .bind('shift+pagedown', 'Scroll inspector down', { type: 'page-down-inspector' })
+      .bind('shift+pageup', 'Scroll inspector up', { type: 'page-up-inspector' })
+      .bind('t', 'Open quest tree', { type: 'toggle-quest-tree' })
+      .bind(';', 'Comment on selected quest', { type: 'comment' })
+      .bind('c', 'Claim selected quest', { type: 'claim' })
+      .bind('p', 'Promote selected backlog quest', { type: 'promote' })
+      .bind('shift+d', 'Reject selected backlog quest', { type: 'reject' })
+      .bind('o', 'Reopen selected graveyard quest', { type: 'reopen' })
+      .bind('a', 'Approve selected submission', { type: 'approve' })
+      .bind('x', 'Request changes on selected submission', { type: 'request-changes' })
+      .bind('shift+s', 'Mark current lane seen', { type: 'mark-lane-seen' }),
+    );
+}
+
+function chromeLine(text: string, width: number, token: TokenValue, style: StylePort): string {
+  let display = text;
+  const visible = visibleLength(display);
+  if (visible > width) {
+    display = width <= 1
+      ? '…'
+      : `${display.slice(0, Math.max(0, width - 1))}…`;
+  }
+  const padded = visibleLength(display) < width ? display + ' '.repeat(width - visibleLength(display)) : display;
+  return style.styled(token, padded);
+}
+
+function padVisible(text: string, width: number): string {
+  return text + ' '.repeat(Math.max(0, width - visibleLength(text)));
+}
+
+function fadeScrollbar(
+  pane: 'worklist' | 'inspector' | 'page',
+  generation: number,
+): Cmd<DashboardMsg> {
+  return animate<DashboardMsg>({
+    type: 'tween',
+    from: MAX_SCROLLBAR_VISIBILITY,
+    to: 0,
+    duration: 1400,
+    ease: EASINGS.easeOut,
+    onFrame: (value) => ({
+      type: 'scrollbar-visibility',
+      pane,
+      level: Math.max(0, Math.min(MAX_SCROLLBAR_VISIBILITY, Math.round(value))),
+      generation,
+    }),
+  });
+}
+
+function wakeScrollbar(
+  model: DashboardModel,
+  pane: 'worklist' | 'inspector' | 'page',
+): [DashboardModel, Cmd<DashboardMsg>[]] {
+  const nextGeneration = model.scrollbars[pane].generation + 1;
+  return [{
+    ...model,
+    scrollbars: {
+      ...model.scrollbars,
+      [pane]: {
+        level: MAX_SCROLLBAR_VISIBILITY,
+        generation: nextGeneration,
+      },
+    },
+  }, [fadeScrollbar(pane, nextGeneration)]];
+}
+
+function pointInRect(rect: CockpitRect, col: number, row: number): boolean {
+  return col >= rect.x
+    && col < rect.x + rect.width
+    && row >= rect.y
+    && row < rect.y + rect.height;
+}
+
+function selectRow(model: DashboardModel, rowIndex: number): DashboardModel {
+  return rebuildForLane(updateInspectorScroll(updateFocus(model, rowIndex), 0), model.lane);
+}
+
+function scrollWorklistBy(model: DashboardModel, delta: number, deps: DashboardDeps): [DashboardModel, Cmd<DashboardMsg>[]] {
+  const rows = model.table.rows.length;
+  if (rows === 0) return [model, []];
+  const nextRow = Math.max(0, Math.min(rows - 1, model.table.focusRow + delta));
+  return wakeScrollbar(visitSelectedItem(selectRow(model, nextRow), deps), 'worklist');
+}
+
+function scrollInspectorBy(model: DashboardModel, delta: number): [DashboardModel, Cmd<DashboardMsg>[]] {
+  return wakeScrollbar(updateInspectorScroll(model, model.laneState[model.lane].inspectorScrollY + delta), 'inspector');
+}
+
+function currentSelectedItem(model: DashboardModel): CockpitItem | undefined {
+  return selectedLaneItem(model.snapshot, model.lane, model.table.focusRow, model.agentId, model.nowView);
+}
+
+function governancePrefixes(): readonly string[] {
+  return ['comparison-artifact:', 'collapse-proposal:', 'attestation:'];
+}
+
+function isGovernanceId(id: string | undefined): boolean {
+  return Boolean(id && governancePrefixes().some((prefix) => id.startsWith(prefix)));
+}
+
+function governanceIdForItem(item: CockpitItem | undefined): string | undefined {
+  if (!item) return undefined;
+  switch (item.kind) {
+    case 'comparison-artifact':
+    case 'collapse-proposal':
+    case 'attestation':
+      return item.id;
+    case 'activity':
+      return isGovernanceId(item.event.targetId) ? item.event.targetId : undefined;
+    default:
+      return undefined;
+  }
+}
+
+function suggestionIdForItem(item: CockpitItem | undefined): string | undefined {
+  if (!item) return undefined;
+  switch (item.kind) {
+    case 'ai-suggestion':
+      return item.suggestion.id;
+    case 'activity':
+      return item.event.relatedId?.startsWith('suggestion:') ? item.event.relatedId : undefined;
+    default:
+      return undefined;
+  }
+}
+
+function reviewPageForItem(item: CockpitItem | undefined): { submissionId: string; questId: string } | undefined {
+  if (!item) return undefined;
+  switch (item.kind) {
+    case 'submission':
+      return { submissionId: item.submission.id, questId: item.submission.questId };
+    case 'activity':
+      return item.event.relatedId?.startsWith('submission:') && item.event.targetId?.startsWith('task:')
+        ? { submissionId: item.event.relatedId, questId: item.event.targetId }
+        : undefined;
+    default:
+      return undefined;
+  }
+}
+
+function questIdForItem(item: CockpitItem | undefined): string | undefined {
+  if (!item) return undefined;
+  switch (item.kind) {
+    case 'quest':
+      return item.quest.id;
+    case 'submission':
+      return item.submission.questId;
+    case 'activity':
+      return item.event.targetId?.startsWith('task:') ? item.event.targetId : undefined;
+    case 'comparison-artifact':
+      return item.artifact.targetId?.startsWith('task:') ? item.artifact.targetId : undefined;
+    case 'collapse-proposal':
+      return undefined;
+    case 'attestation':
+      return item.artifact.targetId?.startsWith('task:') ? item.artifact.targetId : undefined;
+    case 'campaign':
+      return undefined;
+    default:
+      return undefined;
+  }
+}
+
+function activeQuestId(model: DashboardModel): string | undefined {
+  const page = currentPage(model);
+  if (page.kind === 'quest') return page.questId;
+  if (page.kind === 'review') return undefined;
+  if (page.kind === 'governance') return undefined;
+  if (page.kind === 'suggestion') return undefined;
+  return questIdForItem(currentSelectedItem(model));
+}
+
+function selectedQuest(model: DashboardModel): QuestNode | undefined {
+  const questId = activeQuestId(model);
+  if (!questId) return undefined;
+  if (model.pageDetail?.questDetail?.quest.id === questId) {
+    return model.pageDetail.questDetail.quest;
+  }
+  return model.snapshot?.quests.find((quest) => quest.id === questId);
+}
+
+function selectedSubmission(model: DashboardModel): SubmissionNode | undefined {
+  const page = currentPage(model);
+  if (page.kind === 'review') {
+    if (model.pageDetail?.questDetail?.submission?.id === page.submissionId) {
+      return model.pageDetail.questDetail.submission;
+    }
+    return model.snapshot?.submissions.find((submission) => submission.id === page.submissionId);
+  }
+  if (page.kind === 'suggestion') return undefined;
+  if (page.kind === 'quest' && model.pageDetail?.questDetail?.submission) {
+    return model.pageDetail.questDetail.submission;
+  }
+  const item = currentSelectedItem(model);
+  return item?.kind === 'submission' ? item.submission : undefined;
+}
+
+function activeGovernanceId(model: DashboardModel): string | undefined {
+  const page = currentPage(model);
+  if (page.kind === 'governance') return page.entityId;
+  if (page.kind === 'suggestion') return undefined;
+  if (!isLandingPage(model)) return undefined;
+  return governanceIdForItem(currentSelectedItem(model));
+}
+
+function selectedGovernanceArtifact(model: DashboardModel): GovernanceArtifactNode | undefined {
+  const governanceId = activeGovernanceId(model);
+  if (!governanceId) return undefined;
+  return model.snapshot?.governanceArtifacts.find((artifact) => artifact.id === governanceId);
+}
+
+function activeSuggestionId(model: DashboardModel): string | undefined {
+  const page = currentPage(model);
+  if (page.kind === 'suggestion') return page.suggestionId;
+  if (!isLandingPage(model)) return undefined;
+  return suggestionIdForItem(currentSelectedItem(model));
+}
+
+function selectedAiSuggestion(model: DashboardModel): AiSuggestionNode | undefined {
+  const suggestionId = activeSuggestionId(model);
+  if (!suggestionId) return undefined;
+  return model.snapshot?.aiSuggestions.find((suggestion) => suggestion.id === suggestionId);
+}
+
+function resetToLanding(model: DashboardModel): DashboardModel {
+  return {
+    ...model,
+    pageStack: [{ kind: 'landing' }],
+    pageScrollY: 0,
+    pageDetail: null,
+    pageLoading: false,
+    pageError: null,
+  };
+}
+
+function updatePageScroll(model: DashboardModel, pageScrollY: number): DashboardModel {
+  return {
+    ...model,
+    pageScrollY: Math.max(0, pageScrollY),
+  };
+}
+
+function pageEntityId(page: DashboardPageRoute): string | null {
+  switch (page.kind) {
+    case 'landing':
+      return null;
+    case 'quest':
+      return page.questId;
+    case 'review':
+      return page.questId;
+    case 'governance':
+      return page.entityId;
+    case 'suggestion':
+      return page.suggestionId;
+  }
+}
+
+function fetchPageDetail(requestId: number, entityId: string, deps: DashboardDeps): Cmd<DashboardMsg> {
+  return async (emit) => {
+    try {
+      const detail = await deps.ctx.fetchEntityDetail(entityId);
+      emit({ type: 'page-detail-loaded', entityId, detail, requestId });
+    } catch (err: unknown) {
+      emit({
+        type: 'page-detail-error',
+        entityId,
+        error: err instanceof Error ? err.message : String(err),
+        requestId,
+      });
+    }
+  };
+}
+
+function openReviewPage(
+  model: DashboardModel,
+  submissionId: string,
+  questId: string,
+  sourceLane: CockpitLaneId,
+  deps: DashboardDeps,
+): [DashboardModel, Cmd<DashboardMsg>[]] {
+  const nextRequestId = model.pageRequestId + 1;
+  return [{
+    ...model,
+    pageStack: [...model.pageStack, { kind: 'review', submissionId, questId, sourceLane }],
+    pageScrollY: 0,
+    pageDetail: null,
+    pageLoading: true,
+    pageError: null,
+    pageRequestId: nextRequestId,
+  }, [fetchPageDetail(nextRequestId, questId, deps)]];
+}
+
+function openQuestPage(model: DashboardModel, questId: string, sourceLane: CockpitLaneId, deps: DashboardDeps): [DashboardModel, Cmd<DashboardMsg>[]] {
+  const nextRequestId = model.pageRequestId + 1;
+  return [{
+    ...model,
+    pageStack: [...model.pageStack, { kind: 'quest', questId, sourceLane }],
+    pageScrollY: 0,
+    pageDetail: null,
+    pageLoading: true,
+    pageError: null,
+    pageRequestId: nextRequestId,
+  }, [fetchPageDetail(nextRequestId, questId, deps)]];
+}
+
+function openGovernancePage(
+  model: DashboardModel,
+  entityId: string,
+  sourceLane: CockpitLaneId,
+  deps: DashboardDeps,
+): [DashboardModel, Cmd<DashboardMsg>[]] {
+  const nextRequestId = model.pageRequestId + 1;
+  return [{
+    ...model,
+    pageStack: [...model.pageStack, { kind: 'governance', entityId, sourceLane }],
+    pageScrollY: 0,
+    pageDetail: null,
+    pageLoading: true,
+    pageError: null,
+    pageRequestId: nextRequestId,
+  }, [fetchPageDetail(nextRequestId, entityId, deps)]];
+}
+
+function openSuggestionPage(
+  model: DashboardModel,
+  suggestionId: string,
+  sourceLane: CockpitLaneId,
+  deps: DashboardDeps,
+): [DashboardModel, Cmd<DashboardMsg>[]] {
+  const nextRequestId = model.pageRequestId + 1;
+  return [{
+    ...model,
+    pageStack: [...model.pageStack, { kind: 'suggestion', suggestionId, sourceLane }],
+    pageScrollY: 0,
+    pageDetail: null,
+    pageLoading: true,
+    pageError: null,
+    pageRequestId: nextRequestId,
+  }, [fetchPageDetail(nextRequestId, suggestionId, deps)]];
+}
+
+function openSelectedItemPage(model: DashboardModel, deps: DashboardDeps): [DashboardModel, Cmd<DashboardMsg>[]] {
+  const item = currentSelectedItem(model);
+  const suggestionId = suggestionIdForItem(item);
+  if (suggestionId) return openSuggestionPage(model, suggestionId, model.lane, deps);
+  const governanceId = governanceIdForItem(item);
+  if (governanceId) return openGovernancePage(model, governanceId, model.lane, deps);
+  const reviewPage = reviewPageForItem(item);
+  if (reviewPage) return openReviewPage(model, reviewPage.submissionId, reviewPage.questId, model.lane, deps);
+  const questId = questIdForItem(item);
+  if (questId) return openQuestPage(model, questId, model.lane, deps);
+  return [model, []];
+}
+
+function popPage(model: DashboardModel, deps: DashboardDeps): [DashboardModel, Cmd<DashboardMsg>[]] {
+  if (model.pageStack.length <= 1) return [model, []];
+  const pageStack = model.pageStack.slice(0, -1);
+  const nextPage = pageStack[pageStack.length - 1] ?? { kind: 'landing' as const };
+  if (nextPage.kind === 'landing') {
+    return [{
+      ...model,
+      pageStack,
+      pageScrollY: 0,
+      pageDetail: null,
+      pageLoading: false,
+      pageError: null,
+    }, []];
+  }
+  const nextRequestId = model.pageRequestId + 1;
+  const entityId = pageEntityId(nextPage);
+  if (!entityId) {
+    return [{
+      ...model,
+      pageStack,
+      pageScrollY: 0,
+      pageDetail: null,
+      pageLoading: false,
+      pageError: null,
+    }, []];
+  }
+  return [{
+    ...model,
+    pageStack,
+    pageScrollY: 0,
+    pageDetail: null,
+    pageLoading: true,
+    pageError: null,
+    pageRequestId: nextRequestId,
+  }, [fetchPageDetail(nextRequestId, entityId, deps)]];
+}
+
+function rebuildForLane(model: DashboardModel, lane: CockpitLaneId, snapshot = model.snapshot): DashboardModel {
+  const memory = model.laneState[lane];
+  const table = buildLaneTable(snapshot, lane, Math.max(8, model.rows - 8), memory.focusRow, model.agentId, model.nowView);
+  return {
+    ...model,
+    lane,
+    table,
+    laneState: {
+      ...model.laneState,
+      [lane]: {
+        ...memory,
+        focusRow: table.focusRow,
+      },
+    },
+  };
+}
+
+function updateFocus(model: DashboardModel, focusRow: number): DashboardModel {
+  return {
+    ...model,
+    laneState: {
+      ...model.laneState,
+      [model.lane]: {
+        ...model.laneState[model.lane],
+        focusRow,
+      },
+    },
+  };
+}
+
+function updateInspectorScroll(model: DashboardModel, inspectorScrollY: number): DashboardModel {
+  return {
+    ...model,
+    laneState: {
+      ...model.laneState,
+      [model.lane]: {
+        ...model.laneState[model.lane],
+        inspectorScrollY: Math.max(0, inspectorScrollY),
+      },
+    },
+  };
+}
+
+function switchLane(model: DashboardModel, lane: CockpitLaneId): DashboardModel {
+  const withLane = rebuildForLane(model, lane);
+  const rememberedScroll = withLane.laneState[lane].inspectorScrollY;
+  return updateInspectorScroll(withLane, rememberedScroll);
+}
+
+function persistFreshnessState(
+  model: DashboardModel,
+  deps: DashboardDeps,
+  watermarks: ObserverWatermarks,
+  seenItems: ObserverSeenItems,
+): DashboardModel {
+  const freshnessState: ObserverFreshnessState = { watermarks, seenItems };
+  deps.observerWatermarkStore.save(deps.observerWatermarkScope, freshnessState);
+  return {
+    ...model,
+    observerWatermarks: watermarks,
+    observerSeenItems: seenItems,
+  };
+}
+
+function persistLaneWatermark(model: DashboardModel, deps: DashboardDeps, lane: CockpitLaneId, value: number): DashboardModel {
+  if (value <= 0) return model;
+  const current = model.observerWatermarks[lane];
+  if (value <= current) return model;
+  const observerWatermarks = {
+    ...model.observerWatermarks,
+    [lane]: value,
+  };
+  return persistFreshnessState(model, deps, observerWatermarks, model.observerSeenItems);
+}
+
+function persistSeenItem(model: DashboardModel, deps: DashboardDeps, lane: CockpitLaneId, item: CockpitItem | undefined): DashboardModel {
+  const timestamp = item?.timestamp ?? 0;
+  if (!item || timestamp <= 0) return model;
+  const key = freshnessItemKey(item, lane);
+  const current = model.observerSeenItems[key] ?? 0;
+  if (timestamp <= current) return model;
+  return persistFreshnessState(model, deps, model.observerWatermarks, {
+    ...model.observerSeenItems,
+    [key]: timestamp,
+  });
+}
+
+function markLaneSeen(model: DashboardModel, deps: DashboardDeps, lane = model.lane): DashboardModel {
+  return persistLaneWatermark(
+    model,
+    deps,
+    lane,
+    laneLatestTimestamp(model.snapshot, lane, model.agentId, model.nowView),
+  );
+}
+
+function visitSelectedItem(model: DashboardModel, deps: DashboardDeps): DashboardModel {
+  return persistSeenItem(model, deps, model.lane, currentSelectedItem(model));
+}
+
+function switchLaneWithWatermark(model: DashboardModel, lane: CockpitLaneId, deps: DashboardDeps): DashboardModel {
+  return visitSelectedItem(switchLane(markLaneSeen(model, deps), lane), deps);
+}
+
+function toggleNowView(model: DashboardModel, deps: DashboardDeps): DashboardModel {
+  const nextView: NowViewMode = model.nowView === 'queue' ? 'activity' : 'queue';
+  return visitSelectedItem(rebuildForLane({
+    ...model,
+    nowView: nextView,
+    laneState: {
+      ...model.laneState,
+      now: {
+        ...model.laneState.now,
+        inspectorScrollY: 0,
+      },
+    },
+  }, 'now'), deps);
+}
+
+interface ControlHint {
+  key: string;
+  label: string;
+}
+
+function formatControlHints(entries: ControlHint[]): string {
+  return entries.map((entry) => `${entry.key} ${entry.label}`).join(' · ');
+}
+
+function contextControls(model: DashboardModel): ControlHint[] {
+  if (!isLandingPage(model)) {
+    const hints: ControlHint[] = [
+      { key: 'Esc', label: 'back' },
+      { key: 'PgUp/PgDn', label: 'page' },
+    ];
+    const suggestion = selectedAiSuggestion(model);
+    if (suggestion) {
+      hints.push({ key: ';', label: 'comment' });
+      return hints;
+    }
+    const governance = selectedGovernanceArtifact(model);
+    if (governance) {
+      hints.push({ key: ';', label: 'comment' });
+      return hints;
+    }
+    if (currentPage(model).kind === 'review') {
+      hints.push({ key: ';', label: 'comment' });
+      const submission = selectedSubmission(model);
+      if (submission && (submission.status === 'OPEN' || submission.status === 'CHANGES_REQUESTED')) {
+        hints.push({ key: 'a', label: 'approve' });
+        hints.push({ key: 'x', label: 'changes' });
+      }
+      return hints;
+    }
+    const quest = selectedQuest(model);
+    if (quest) {
+      hints.push({ key: ';', label: 'comment' });
+      hints.push({ key: 't', label: 'tree' });
+      if (quest.status === 'READY') {
+        hints.push({ key: 'c', label: 'claim' });
+      } else if (quest.status === 'BACKLOG') {
+        hints.push({ key: 'p', label: 'promote' });
+        hints.push({ key: 'D', label: 'reject' });
+      } else if (quest.status === 'GRAVEYARD') {
+        hints.push({ key: 'o', label: 'reopen' });
+      }
+      const submission = selectedSubmission(model);
+      if (submission && (submission.status === 'OPEN' || submission.status === 'CHANGES_REQUESTED')) {
+        hints.push({ key: 'a', label: 'approve' });
+        hints.push({ key: 'x', label: 'changes' });
+      }
+    }
+    return hints;
+  }
+
+  const hints: ControlHint[] = [];
+  const item = currentSelectedItem(model);
+  if (governanceIdForItem(item)
+    || suggestionIdForItem(item)
+    || reviewPageForItem(item)
+    || questIdForItem(item)) {
+    hints.push({ key: 'Enter', label: 'open' });
+  }
+  if (item?.kind === 'submission') {
+    const submission = selectedSubmission(model);
+    if (submission && (submission.status === 'OPEN' || submission.status === 'CHANGES_REQUESTED')) {
+      hints.push({ key: 'a', label: 'approve' });
+      hints.push({ key: 'x', label: 'changes' });
+    }
+  } else {
+    const quest = selectedQuest(model);
+    if (quest) {
+      if (quest.status === 'READY') {
+        hints.push({ key: 'c', label: 'claim' });
+      } else if (quest.status === 'BACKLOG') {
+        hints.push({ key: 'p', label: 'promote' });
+        hints.push({ key: 'D', label: 'reject' });
+      } else if (quest.status === 'GRAVEYARD') {
+        hints.push({ key: 'o', label: 'reopen' });
+      }
+      hints.push({ key: 't', label: 'tree' });
+    }
+  }
+  if (item?.kind !== 'submission') {
+    const quest = selectedQuest(model);
+    if (!quest) {
+      const submission = selectedSubmission(model);
+      if (submission && (submission.status === 'OPEN' || submission.status === 'CHANGES_REQUESTED')) {
+        hints.push({ key: 'a', label: 'approve' });
+        hints.push({ key: 'x', label: 'changes' });
+      }
+    }
+  }
+  hints.push({ key: 'j/k', label: 'move' });
+  hints.push({ key: 'PgUp/PgDn', label: 'list' });
+  if (model.inspectorOpen) {
+    hints.push({ key: 'Shift+Pg', label: 'inspect' });
+  }
+  if (model.lane === 'now') {
+    hints.push({ key: 'v', label: model.nowView === 'queue' ? 'recent' : 'queue' });
+  }
+  if (laneFreshCount(model.snapshot, model.lane, model.observerWatermarks, model.observerSeenItems, model.agentId, model.nowView) > 0) {
+    hints.push({ key: 'Shift+S', label: 'lane seen' });
+  }
+  return hints;
+}
+
+function globalControls(model: DashboardModel): { left: ControlHint[]; center: ControlHint[] } {
+  return {
+    left: [
+      { key: '1-7', label: 'lanes' },
+      { key: '[/]', label: 'switch' },
+    ],
+    center: [
+      { key: 'r', label: 'refresh' },
+      ...(isLandingPage(model) ? [{ key: 'i', label: 'inspector' } satisfies ControlHint] : []),
+      { key: 'm', label: 'drawer' },
+      { key: ':', label: 'palette' },
+      { key: '?', label: 'help' },
+    ],
+  };
+}
+
+function pageRows(model: DashboardModel): number {
+  return Math.max(1, Math.floor(Math.max(3, model.table.height) / 3));
+}
+
+function renderStatusLine(model: DashboardModel): string {
+  const meta = model.snapshot?.graphMeta;
+  const page = currentPage(model);
+  const laneLabel = page.kind === 'quest'
+    ? `${laneTitle(page.sourceLane)} / ${shortId(page.questId)}`
+    : page.kind === 'review'
+      ? `${laneTitle(page.sourceLane)} / ${shortId(page.submissionId)}`
+    : page.kind === 'governance'
+      ? `${laneTitle(page.sourceLane)} / ${shortId(page.entityId)}`
+      : page.kind === 'suggestion'
+        ? `${laneTitle(page.sourceLane)} / ${shortId(page.suggestionId)}`
+      : model.lane === 'now' && model.nowView === 'activity'
+        ? `${laneTitle(model.lane)} Recent`
+        : laneTitle(model.lane);
+  const left = [
+    ` ${laneLabel}`,
+    meta ? `· ${meta.tipSha}` : '',
+    model.loading ? '· syncing' : '',
+    model.pageLoading ? '· page' : '',
+  ].join(' ');
+  const center = page.kind === 'quest'
+    ? `Quest page · ${shortId(page.questId)}`
+    : page.kind === 'review'
+      ? `Review page · ${shortId(page.submissionId)}`
+    : page.kind === 'governance'
+      ? `Governance page · ${shortId(page.entityId)}`
+    : page.kind === 'suggestion'
+      ? `Suggestion page · ${shortId(page.suggestionId)}`
+      : currentSelectedItem(model)
+        ? `${currentSelectedItem(model)?.label} · ${currentSelectedItem(model)?.primary}`
+        : 'No selection';
+  return statusBar({
+    left,
+    center,
+    right: '',
+    width: model.cols,
+  });
+}
+
+function renderControlsLine(model: DashboardModel): string {
+  const controls = globalControls(model);
+  return statusBar({
+    left: formatControlHints(controls.left),
+    center: formatControlHints(controls.center),
+    right: formatControlHints(contextControls(model)),
+    width: model.cols,
+  });
+}
+
+function helpSections(model: DashboardModel): { title: string; entries: ControlHint[] }[] {
+  const controls = globalControls(model);
+  return [
+    { title: 'Current context', entries: contextControls(model) },
+    { title: 'Global', entries: [...controls.left, ...controls.center, { key: 'q', label: 'quit' }] },
+    {
+      title: 'Mouse',
+      entries: [
+        { key: 'click lane', label: 'switch surface lane' },
+        { key: 'click row', label: 'select worklist item' },
+        { key: 'wheel', label: 'scroll worklist, page, inspector, drawer, or quest tree' },
+      ],
+    },
+  ].filter((section) => section.entries.length > 0);
+}
+
+function helpModalWidth(model: DashboardModel): number {
+  return Math.min(84, Math.max(52, model.cols - 10));
+}
+
+function helpModalBodyHeight(model: DashboardModel): number {
+  return Math.min(20, Math.max(10, model.rows - 10));
+}
+
+function buildHelpLines(model: DashboardModel, style: StylePort, width: number): string[] {
+  const lines: string[] = [];
+  const keyWidth = Math.max(10, Math.min(18, Math.floor(width * 0.24)));
+  lines.push(style.styled(style.theme.semantic.primary, 'Cockpit Controls'));
+  lines.push(style.styled(style.theme.semantic.muted, 'The help modal now mirrors the actual footer and current selection.'));
+  lines.push('');
+
+  for (const section of helpSections(model)) {
+    lines.push(style.styled(style.theme.semantic.primary, section.title));
+    for (const entry of section.entries) {
+      const wrapped = wrapWhitespaceText(entry.label, Math.max(8, width - keyWidth - 2));
+      const keyText = style.styled(style.theme.semantic.primary, padVisible(entry.key, keyWidth));
+      lines.push(`${keyText}  ${wrapped[0] ?? ''}`);
+      for (const line of wrapped.slice(1)) {
+        lines.push(`${' '.repeat(keyWidth)}  ${line}`);
+      }
+    }
+    lines.push('');
+  }
+
+  while (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
+  return lines;
+}
+
+function helpMaxScroll(model: DashboardModel, style: StylePort): number {
+  const width = Math.max(20, helpModalWidth(model) - 4);
+  const contentLines = buildHelpLines(model, style, width);
+  return Math.max(0, contentLines.length - Math.max(1, helpModalBodyHeight(model) - 1));
+}
+
+function clampHelpScroll(model: DashboardModel, style: StylePort): DashboardModel {
+  const maxScroll = helpMaxScroll(model, style);
+  if (model.helpScrollY >= 0 && model.helpScrollY <= maxScroll) return model;
+  return { ...model, helpScrollY: Math.max(0, Math.min(model.helpScrollY, maxScroll)) };
+}
+
+function renderHelpModalBody(model: DashboardModel, style: StylePort): string {
+  const contentWidth = Math.max(20, helpModalWidth(model) - 4);
+  const bodyHeight = helpModalBodyHeight(model);
+  const contentLines = buildHelpLines(model, style, contentWidth);
+  const scrollY = Math.max(0, Math.min(model.helpScrollY, Math.max(0, contentLines.length - Math.max(1, bodyHeight - 1))));
+  const viewportHeight = Math.max(1, bodyHeight - 1);
+  const visible = contentLines.slice(scrollY, scrollY + viewportHeight);
+  while (visible.length < viewportHeight) visible.push('');
+  const footer = style.styled(
+    style.theme.semantic.muted,
+    `Scroll ${Math.min(scrollY + 1, Math.max(1, contentLines.length))}/${Math.max(1, contentLines.length)} · ? / esc close`,
+  );
+  return [...visible, footer].join('\n');
+}
+
+function buildPaletteItems(model: DashboardModel): CommandPaletteItem[] {
+  const items: CommandPaletteItem[] = [
+    { id: 'lane:now', label: 'Open Now lane', category: 'Navigate', shortcut: '1' },
+    { id: 'lane:plan', label: 'Open Plan lane', category: 'Navigate', shortcut: '2' },
+    { id: 'lane:review', label: 'Open Review lane', category: 'Navigate', shortcut: '3' },
+    { id: 'lane:settlement', label: 'Open Settlement lane', category: 'Navigate', shortcut: '4' },
+    { id: 'lane:suggestions', label: 'Open Suggestions lane', category: 'Navigate', shortcut: '5' },
+    { id: 'lane:campaigns', label: 'Open Campaigns lane', category: 'Navigate', shortcut: '6' },
+    { id: 'lane:graveyard', label: 'Open Graveyard lane', category: 'Navigate', shortcut: '7' },
+    { id: 'refresh', label: 'Refresh snapshot', category: 'Global', shortcut: 'r' },
+    ...(isLandingPage(model) && model.lane === 'now'
+      ? [{
+          id: 'toggle-now-view',
+          label: model.nowView === 'queue' ? 'Show recent activity in Now lane' : 'Show action queue in Now lane',
+          category: 'Global',
+          shortcut: 'v',
+        } satisfies CommandPaletteItem]
+      : []),
+    { id: 'toggle-drawer', label: 'Toggle My Stuff drawer', category: 'Global', shortcut: 'm' },
+  ];
+
+  if (isLandingPage(model)
+    && (suggestionIdForItem(currentSelectedItem(model))
+      || reviewPageForItem(currentSelectedItem(model))
+      || questIdForItem(currentSelectedItem(model))
+      || governanceIdForItem(currentSelectedItem(model)))) {
+    items.push({ id: 'open-page', label: 'Open selected item page', category: 'Inspect', shortcut: 'Enter' });
+  }
+  if (!isLandingPage(model)) {
+    items.push({ id: 'back', label: 'Return to landing', category: 'Navigate', shortcut: 'Esc' });
+  }
+
+  const governance = selectedGovernanceArtifact(model);
+  if (governance && !isLandingPage(model)) {
+    items.push({ id: 'comment', label: 'Comment on this artifact', category: 'Action', shortcut: ';' });
+  }
+  const suggestion = selectedAiSuggestion(model);
+  if (suggestion && !isLandingPage(model)) {
+    items.push({ id: 'comment', label: 'Comment on this suggestion', category: 'Action', shortcut: ';' });
+  }
+  if (currentPage(model).kind === 'review') {
+    items.push({ id: 'comment', label: 'Comment on this submission', category: 'Action', shortcut: ';' });
+  }
+
+  const quest = selectedQuest(model);
+  if (quest) {
+    items.push({ id: 'quest-tree', label: 'Open selected quest tree', category: 'Inspect', shortcut: 't' });
+    if (!isLandingPage(model)) {
+      items.push({ id: 'comment', label: 'Comment on this quest', category: 'Action', shortcut: ';' });
+    }
+  }
+  if (isLandingPage(model)
+    && laneFreshCount(model.snapshot, model.lane, model.observerWatermarks, model.observerSeenItems, model.agentId, model.nowView) > 0) {
+    items.push({ id: 'mark-lane-seen', label: `Mark ${laneTitle(model.lane)} lane seen`, category: 'Freshness', shortcut: 'S' });
+  }
+  if (quest?.status === 'READY') {
+    items.push({ id: 'claim', label: 'Claim selected quest', category: 'Action', shortcut: 'c' });
+  }
+  if (quest?.status === 'BACKLOG') {
+    items.push({ id: 'promote', label: 'Promote selected backlog quest', category: 'Action', shortcut: 'p' });
+    items.push({ id: 'reject', label: 'Reject selected backlog quest', category: 'Action', shortcut: 'D' });
+  }
+  if (quest?.status === 'GRAVEYARD') {
+    items.push({ id: 'reopen', label: 'Reopen selected graveyard quest', category: 'Action', shortcut: 'o' });
+  }
+
+  const submission = selectedSubmission(model);
+  if (submission && (submission.status === 'OPEN' || submission.status === 'CHANGES_REQUESTED')) {
+    items.push({ id: 'approve', label: 'Approve selected submission', category: 'Action', shortcut: 'a' });
+    items.push({ id: 'request-changes', label: 'Request changes on selected submission', category: 'Action', shortcut: 'x' });
+  }
+
+  return items;
+}
+
+function laneForIndex(index: number): CockpitLaneId {
+  return LANE_ORDER[Math.max(0, Math.min(index, LANE_ORDER.length - 1))] ?? 'now';
+}
+
+function drawerRect(model: DashboardModel): CockpitRect | null {
+  if (model.drawerWidth <= 4) return null;
+  return {
+    x: Math.max(0, model.cols - model.drawerWidth),
+    y: 0,
+    width: model.drawerWidth,
+    height: Math.max(1, model.rows - 2),
+  };
+}
+
+function drawerMaxScroll(model: DashboardModel, deps: DashboardDeps): number {
+  if (!model.snapshot) return 0;
+  const rect = drawerRect(model);
+  if (!rect) return 0;
+  const bodyHeight = Math.max(1, rect.height - 2);
+  const bodyWidth = Math.max(1, rect.width - 2);
+  const totalLines = buildMyStuffDrawerLines(
+    model.snapshot,
+    deps.style,
+    model.agentId,
+    bodyWidth,
+  ).length;
+  return Math.max(0, totalLines - bodyHeight);
+}
+
+function clampDrawerScroll(model: DashboardModel, deps: DashboardDeps): DashboardModel {
+  const maxScroll = drawerMaxScroll(model, deps);
+  if (model.drawerScrollY === maxScroll || (model.drawerScrollY >= 0 && model.drawerScrollY <= maxScroll)) return model;
+  return { ...model, drawerScrollY: Math.max(0, Math.min(model.drawerScrollY, maxScroll)) };
 }
 
 export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, DashboardMsg> {
   const globalKeys = buildGlobalKeys();
-  const dashboardKeys = buildDashboardKeys();
-  const roadmapKeys = buildRoadmapKeys();
-  const submissionsKeys = buildSubmissionsKeys();
-  const backlogKeys = buildBacklogKeys();
-  const lineageKeys = buildLineageKeys();
+  const viewKeys = buildViewKeys();
 
   type PaletteAction = 'next' | 'prev' | 'page-down' | 'page-up' | 'select' | 'close';
   const paletteKeys = commandPaletteKeyMap<PaletteAction>({
@@ -345,7 +1196,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
     agentId: deps.agentId,
   };
 
-  // ── Commands ──────────────────────────────────────────────────────────
+  let watcherUnsub: (() => void) | null = null;
 
   function fetchSnapshot(requestId: number): Cmd<DashboardMsg> {
     return async (emit) => {
@@ -370,25 +1221,22 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
     };
   }
 
-  // Capture the watcher unsubscribe handle so we can tear it down on quit
-  let watcherUnsub: (() => void) | null = null;
-
   function startWatching(): Cmd<DashboardMsg> {
     return async (emit) => {
       try {
         const graph = await deps.graphPort.getGraph();
-        const { unsubscribe } = graph.watch('task:*', {
+        if (typeof graph.watch !== 'function') return;
+        const { unsubscribe } = graph.watch('*', {
           onChange: () => { emit({ type: 'remote-change' }); },
           poll: 10000,
         });
         watcherUnsub = unsubscribe;
       } catch {
-        // Best-effort: polling is a convenience, not critical
+        // Best-effort polling only.
       }
     };
   }
 
-  // Cmd<T> requires an async return — watcher cleanup is sync but must conform to the type
   function stopWatching(): Cmd<DashboardMsg> {
     return async () => {
       if (watcherUnsub) {
@@ -400,12 +1248,11 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
 
   function delayedDismissToast(expiresAt: number): Cmd<DashboardMsg> {
     return async (emit) => {
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      await new Promise((resolve) => setTimeout(resolve, 3000));
       emit({ type: 'dismiss-toast', expiresAt });
     };
   }
 
-  /** Execute a PendingWrite action. For input-based actions, value comes from inputState. */
   function executeWrite(action: PendingWrite, inputValue?: string): Cmd<DashboardMsg> {
     switch (action.kind) {
       case 'claim':
@@ -414,6 +1261,10 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         return promoteQuest(writeDeps, action.questId, inputValue ?? '');
       case 'reject':
         return rejectQuest(writeDeps, action.questId, inputValue ?? '');
+      case 'reopen':
+        return reopenQuest(writeDeps, action.questId);
+      case 'comment':
+        return commentOnEntity(writeDeps, action.targetId, inputValue ?? '');
       case 'approve':
         return reviewSubmission(writeDeps, action.patchsetId, 'approve', inputValue ?? '');
       case 'request-changes':
@@ -421,193 +1272,345 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
     }
   }
 
-  // ── Dispatch view-specific keys ───────────────────────────────────────
+  function promptForAction(model: DashboardModel, action: ViewAction): [DashboardModel, Cmd<DashboardMsg>[]] {
+    if (!model.snapshot || model.writePending) return [model, []];
 
-  function viewKeyMap(view: ViewName): KeyMap<ViewAction> | null {
-    switch (view) {
-      case 'dashboard':   return dashboardKeys;
-      case 'roadmap':     return roadmapKeys;
-      case 'submissions': return submissionsKeys;
-      case 'backlog':     return backlogKeys;
-      case 'lineage':     return lineageKeys;
-      default:            return null;
+    switch (action.type) {
+      case 'claim': {
+        const quest = selectedQuest(model);
+        if (!quest || quest.status !== 'READY') return [model, []];
+        return [{
+          ...model,
+          mode: 'confirm',
+          confirmState: { prompt: `Claim ${quest.id}?`, action: { kind: 'claim', questId: quest.id } },
+        }, []];
+      }
+      case 'promote': {
+        const quest = selectedQuest(model);
+        if (!quest || quest.status !== 'BACKLOG') return [model, []];
+        return [{
+          ...model,
+          mode: 'input',
+          inputState: { label: `Intent ID for ${quest.id}:`, value: '', action: { kind: 'promote', questId: quest.id } },
+        }, []];
+      }
+      case 'reject': {
+        const quest = selectedQuest(model);
+        if (!quest || quest.status !== 'BACKLOG') return [model, []];
+        return [{
+          ...model,
+          mode: 'input',
+          inputState: { label: `Rejection rationale for ${quest.id}:`, value: '', action: { kind: 'reject', questId: quest.id } },
+        }, []];
+      }
+      case 'reopen': {
+        const quest = selectedQuest(model);
+        if (!quest || quest.status !== 'GRAVEYARD') return [model, []];
+        return [{
+          ...model,
+          mode: 'confirm',
+          confirmState: { prompt: `Reopen ${quest.id}?`, action: { kind: 'reopen', questId: quest.id } },
+        }, []];
+      }
+      case 'comment': {
+        if (isLandingPage(model)) return [model, []];
+        const suggestion = selectedAiSuggestion(model);
+        if (suggestion) {
+          return [{
+            ...model,
+            mode: 'input',
+            inputState: {
+              label: `Comment on ${suggestion.id}:`,
+              value: '',
+              action: { kind: 'comment', targetId: suggestion.id },
+            },
+          }, []];
+        }
+        const governance = selectedGovernanceArtifact(model);
+        if (governance) {
+          return [{
+            ...model,
+            mode: 'input',
+            inputState: {
+              label: `Comment on ${governance.id}:`,
+              value: '',
+              action: { kind: 'comment', targetId: governance.id },
+            },
+          }, []];
+        }
+        if (currentPage(model).kind === 'review') {
+          const submission = selectedSubmission(model);
+          if (!submission) return [model, []];
+          return [{
+            ...model,
+            mode: 'input',
+            inputState: {
+              label: `Comment on ${submission.id}:`,
+              value: '',
+              action: { kind: 'comment', targetId: submission.id },
+            },
+          }, []];
+        }
+        const quest = selectedQuest(model);
+        if (!quest) return [model, []];
+        return [{
+          ...model,
+          mode: 'input',
+          inputState: {
+            label: `Comment on ${quest.id}:`,
+            value: '',
+            action: { kind: 'comment', targetId: quest.id },
+          },
+        }, []];
+      }
+      case 'approve': {
+        const submission = selectedSubmission(model);
+        if (!submission || !submission.tipPatchsetId) return [model, []];
+        return [{
+          ...model,
+          mode: 'input',
+          inputState: {
+            label: `Approval comment for ${submission.tipPatchsetId}:`,
+            value: '',
+            action: { kind: 'approve', patchsetId: submission.tipPatchsetId },
+          },
+        }, []];
+      }
+      case 'request-changes': {
+        const submission = selectedSubmission(model);
+        if (!submission || !submission.tipPatchsetId) return [model, []];
+        return [{
+          ...model,
+          mode: 'input',
+          inputState: {
+            label: `Change request for ${submission.tipPatchsetId}:`,
+            value: '',
+            action: { kind: 'request-changes', patchsetId: submission.tipPatchsetId },
+          },
+        }, []];
+      }
+      default:
+        return [model, []];
     }
   }
 
-  // ── App ───────────────────────────────────────────────────────────────
+  function dispatchPaletteAction(actionId: string, model: DashboardModel): [DashboardModel, Cmd<DashboardMsg>[]] {
+    switch (actionId) {
+      case 'lane:now':
+        return [switchLaneWithWatermark(resetToLanding(model), 'now', deps), []];
+      case 'lane:plan':
+        return [switchLaneWithWatermark(resetToLanding(model), 'plan', deps), []];
+      case 'lane:review':
+        return [switchLaneWithWatermark(resetToLanding(model), 'review', deps), []];
+      case 'lane:settlement':
+        return [switchLaneWithWatermark(resetToLanding(model), 'settlement', deps), []];
+      case 'lane:suggestions':
+        return [switchLaneWithWatermark(resetToLanding(model), 'suggestions', deps), []];
+      case 'lane:campaigns':
+        return [switchLaneWithWatermark(resetToLanding(model), 'campaigns', deps), []];
+      case 'lane:graveyard':
+        return [switchLaneWithWatermark(resetToLanding(model), 'graveyard', deps), []];
+      case 'open-page':
+        return openSelectedItemPage(model, deps);
+      case 'back':
+        return popPage(model, deps);
+      case 'refresh': {
+        const nextReqId = model.requestId + 1;
+        return [{ ...model, loading: true, error: null, requestId: nextReqId }, [fetchSnapshot(nextReqId)]];
+      }
+      case 'toggle-now-view':
+        return model.lane === 'now' ? wakeScrollbar(toggleNowView(model, deps), 'worklist') : [model, []];
+      case 'toggle-drawer':
+        return toggleDrawer(model);
+      case 'quest-tree':
+        return selectedQuest(model)
+          ? [{ ...model, mode: 'quest-tree', questTreeScrollY: 0 }, []]
+          : [model, []];
+      case 'mark-lane-seen':
+        return [markLaneSeen(model, deps), []];
+      case 'claim':
+        return promptForAction(model, { type: 'claim' });
+      case 'comment':
+        return promptForAction(model, { type: 'comment' });
+      case 'promote':
+        return promptForAction(model, { type: 'promote' });
+      case 'reject':
+        return promptForAction(model, { type: 'reject' });
+      case 'reopen':
+        return promptForAction(model, { type: 'reopen' });
+      case 'approve':
+        return promptForAction(model, { type: 'approve' });
+      case 'request-changes':
+        return promptForAction(model, { type: 'request-changes' });
+      default:
+        return [model, []];
+    }
+  }
+
+  function toggleDrawer(model: DashboardModel): [DashboardModel, Cmd<DashboardMsg>[]] {
+    const opening = !model.drawerOpen;
+    const targetWidth = opening
+      ? Math.min(Math.max(48, Math.floor(model.cols * 0.44)), Math.max(24, model.cols - 6))
+      : 0;
+    const fromWidth = model.drawerWidth;
+    return [
+      { ...model, drawerOpen: opening },
+      [animate<DashboardMsg>({
+        type: 'tween',
+        from: fromWidth,
+        to: targetWidth,
+        duration: 180,
+        ease: EASINGS.easeOut,
+        onFrame: (value) => ({ type: 'drawer-frame', value }),
+        onComplete: () => ({ type: 'drawer-frame', value: targetWidth }),
+      })],
+    ];
+  }
 
   return {
     init(): [DashboardModel, Cmd<DashboardMsg>[]] {
       const cols = process.stdout.columns ?? 80;
       const rows = process.stdout.rows ?? 24;
+      const laneState = emptyLaneState();
+      const lane = 'now' as const;
+      const freshnessState = deps.observerWatermarkStore.load(deps.observerWatermarkScope);
       const model: DashboardModel = {
-        activeView: 'dashboard',
+        lane,
+        nowView: 'queue',
+        pageStack: [{ kind: 'landing' }],
+        laneState,
+        scrollbars: emptyScrollbars(),
+        table: createNavigableTableState({ columns: [], rows: [], height: Math.max(8, rows - 8) }),
+        inspectorOpen: true,
         snapshot: null,
         loading: true,
         error: null,
         showLanding: true,
         showHelp: false,
+        helpScrollY: 0,
         cols,
         rows,
         logoText: deps.logoText,
         requestId: 1,
         loadingProgress: 0,
-        roadmap: { table: createNavigableTableState({ columns: [], rows: [], height: 20 }), dagPane: null, fallbackScrollY: 0, detailScrollY: 0 },
-        submissions: { table: createNavigableTableState({ columns: [], rows: [], height: 20 }), expandedId: null, detailScrollY: 0 },
-        backlog: { table: createNavigableTableState({ columns: [], rows: [], height: 20 }) },
-        lineage: { selectedIndex: -1, collapsedIntents: [] },
-        dashboardView: { focusPanel: 'in-progress', focusRow: 0, detailId: null, leftScrollY: 0 },
-        drawerOpen: false,
-        drawerWidth: 0,
         pulsePhase: 0,
         mode: 'normal',
         confirmState: null,
         inputState: null,
         paletteState: null,
+        questTreeScrollY: 0,
+        drawerScrollY: 0,
         toast: null,
         writePending: false,
+        drawerOpen: false,
+        drawerWidth: 0,
         watching: false,
         refreshPending: false,
         agentId: deps.agentId,
+        observerWatermarks: freshnessState.watermarks,
+        observerSeenItems: freshnessState.seenItems,
+        pageScrollY: 0,
+        pageDetail: null,
+        pageLoading: false,
+        pageError: null,
+        pageRequestId: 0,
       };
       return [model, [
         fetchSnapshot(model.requestId),
         startWatching(),
+        fadeScrollbar('worklist', model.scrollbars.worklist.generation),
         animate<DashboardMsg>({
           type: 'tween',
           from: 0,
           to: 95,
-          duration: 2000,
+          duration: 1800,
           ease: EASINGS.easeOut,
-          onFrame: (v) => ({ type: 'loading-progress', value: v }),
-        }),
-        animate<DashboardMsg>({
-          type: 'tween',
-          from: 0,
-          to: 100,
-          duration: 1500,
-          ease: EASINGS.easeInOut,
-          onFrame: (v) => ({ type: 'pulse-frame', value: v }),
-          onComplete: () => ({ type: 'pulse-done' }),
+          onFrame: (value) => ({ type: 'loading-progress', value }),
         }),
       ]];
     },
 
-    update(msg: KeyMsg | ResizeMsg | DashboardMsg, model: DashboardModel): [DashboardModel, Cmd<DashboardMsg>[]] {
-      // Handle resize
+    update(msg: DashboardMsg, model: DashboardModel): [DashboardModel, Cmd<DashboardMsg>[]] {
       if (msg.type === 'resize') {
-        let newDagPane = model.roadmap.dagPane;
-        if (newDagPane) {
-          const { dagWidth, dagHeight } = computeDagPaneSize(msg.columns, msg.rows);
-          newDagPane = createDagPaneState({
-            source: newDagPane.source,
-            width: dagWidth,
-            height: dagHeight,
-            selectedId: newDagPane.selectedId,
-            dagOptions: newDagPane.dagOptions,
-            ctx: getDefaultContext(),
-          });
-        }
-        return [{
+        const resized = {
           ...model,
           cols: msg.columns,
           rows: msg.rows,
-          roadmap: { ...model.roadmap, dagPane: newDagPane },
+        };
+        return [clampHelpScroll(clampDrawerScroll(rebuildForLane(resized, resized.lane), deps), deps.style), []];
+      }
+
+      if (msg.type === 'snapshot-loaded') {
+        if (msg.requestId !== model.requestId) return [model, []];
+        const pendingRefresh = model.refreshPending;
+        const updated = visitSelectedItem(rebuildForLane({
+          ...model,
+          snapshot: msg.snapshot,
+          loading: pendingRefresh,
+          error: null,
+          showLanding: false,
+          loadingProgress: 100,
+          refreshPending: false,
+          watching: true,
+          requestId: pendingRefresh ? model.requestId + 1 : model.requestId,
+        }, model.lane, msg.snapshot), deps);
+        const clamped = clampDrawerScroll(updated, deps);
+        const nextPage = currentPage(clamped);
+        const cmds: Cmd<DashboardMsg>[] = pendingRefresh ? [fetchSnapshot(clamped.requestId)] : [];
+        const entityId = pageEntityId(nextPage);
+        if (entityId) {
+          const nextPageRequestId = clamped.pageRequestId + 1;
+          return [{
+            ...clamped,
+            pageLoading: true,
+            pageError: null,
+            pageRequestId: nextPageRequestId,
+          }, [...cmds, fetchPageDetail(nextPageRequestId, entityId, deps)]];
+        }
+        return [clamped, cmds];
+      }
+
+      if (msg.type === 'snapshot-error') {
+        if (msg.requestId !== model.requestId) return [model, []];
+        return [{ ...model, error: msg.error, loading: false, showLanding: false }, []];
+      }
+
+      if (msg.type === 'page-detail-loaded') {
+        if (msg.requestId !== model.pageRequestId) return [model, []];
+        const page = currentPage(model);
+        const entityId = pageEntityId(page);
+        if (!entityId || entityId !== msg.entityId) return [model, []];
+        return [{
+          ...model,
+          pageDetail: msg.detail,
+          pageLoading: false,
+          pageError: msg.detail ? null : 'Page detail is not available for this item.',
         }, []];
       }
 
-      // Handle loading progress animation frames
-      if (msg.type === 'loading-progress') {
-        if (!model.loading) return [model, []];
-        return [{ ...model, loadingProgress: msg.value }, []];
+      if (msg.type === 'page-detail-error') {
+        if (msg.requestId !== model.pageRequestId) return [model, []];
+        const page = currentPage(model);
+        const entityId = pageEntityId(page);
+        if (!entityId || entityId !== msg.entityId) return [model, []];
+        return [{
+          ...model,
+          pageLoading: false,
+          pageError: msg.error,
+        }, []];
       }
 
-      // Handle snapshot lifecycle (ignore stale responses)
-      if (msg.type === 'snapshot-loaded') {
-        if (msg.requestId !== model.requestId) return [model, []];
-        const snap = msg.snapshot;
-        // Clamp dashboard focusRow to visible panel size after data refresh
-        const currentDv = model.dashboardView ?? { focusPanel: 'in-progress' as const, focusRow: 0, detailId: null, leftScrollY: 0 };
-        const panelCount = dashboardPanelCount(snap);
-        const clampedFocusRow = panelCount > 0 ? Math.min(currentDv.focusRow, panelCount - 1) : 0;
-        // Build dagPane from dependency data
-        const newRoadmapTable = rebuildRoadmapTable(snap, model.roadmap.table.focusRow, model.rows - 4);
-        const dagTasks: TaskSummary[] = snap.quests.map(q => ({ id: q.id, status: q.status, hours: q.hours }));
-        const dagEdges: DepEdge[] = [];
-        for (const q of snap.quests) {
-          if (q.dependsOn) {
-            for (const dep of q.dependsOn) {
-              dagEdges.push({ from: q.id, to: dep });
-            }
-          }
-        }
-        let newDagPane: DagPaneState | null = null;
-        if (dagTasks.length > 0) {
-          const criticalPath = dagEdges.length > 0
-            ? computeCriticalPath(snap.sortedTaskIds, dagTasks, dagEdges).path
-            : [];
-          const critSet = new Set(criticalPath);
-          const source = buildDagSource(snap, critSet, deps.style);
-          const { dagWidth, dagHeight } = computeDagPaneSize(model.cols, model.rows);
-          newDagPane = createDagPaneState({
-            source,
-            width: dagWidth,
-            height: dagHeight,
-            dagOptions: {
-              highlightToken: deps.style.theme.semantic.warning,
-              selectedToken: deps.style.theme.semantic.primary,
-              direction: 'right',
-              maxWidth: Math.max(model.cols * 2, 120),
-            },
-            ctx: getDefaultContext(),
-          });
-          const ids = roadmapQuestIds(snap);
-          const selectedId = ids[newRoadmapTable.focusRow];
-          if (selectedId) {
-            newDagPane = dagPaneSelectNode(newDagPane, selectedId, getDefaultContext());
-          }
-        }
-        // If a remote-change arrived while we were loading, schedule a follow-up fetch
-        const pendingRefresh = model.refreshPending;
-        const followUpReqId = pendingRefresh ? model.requestId + 1 : model.requestId;
-        const updated: DashboardModel = {
-          ...model,
-          snapshot: snap,
-          loading: pendingRefresh,
-          showLanding: false,
-          error: null,
-          loadingProgress: 100,
-          watching: true,
-          refreshPending: false,
-          requestId: followUpReqId,
-          roadmap: { table: newRoadmapTable, dagPane: newDagPane, fallbackScrollY: 0, detailScrollY: 0 },
-          submissions: { ...model.submissions, table: rebuildSubmissionsTable(snap, model.submissions.table.focusRow, model.rows - 4) },
-          backlog: { ...model.backlog, table: rebuildBacklogTable(snap, model.backlog.table.focusRow, model.rows - 4) },
-          lineage: {
-            ...model.lineage,
-            selectedIndex: clampIndex(model.lineage.selectedIndex, lineageIntentIds(snap).length),
-            collapsedIntents: model.lineage.collapsedIntents.filter(id => snap.intents.some(i => i.id === id)),
-          },
-          dashboardView: {
-            ...currentDv,
-            focusRow: clampedFocusRow,
-            detailId: currentDv.detailId && snap.quests.some(q => q.id === currentDv.detailId) ? currentDv.detailId : null,
-          },
-        };
-        const cmds: Cmd<DashboardMsg>[] = pendingRefresh ? [fetchSnapshot(followUpReqId)] : [];
-        return [updated, cmds];
-      }
       if (msg.type === 'remote-change') {
         if (model.loading) return [{ ...model, refreshPending: true }, []];
         const nextReqId = model.requestId + 1;
         return [{ ...model, loading: true, requestId: nextReqId, refreshPending: false }, [fetchSnapshot(nextReqId)]];
       }
-      if (msg.type === 'snapshot-error') {
-        if (msg.requestId !== model.requestId) return [model, []];
-        return [{ ...model, error: msg.error, loading: false }, []];
+
+      if (msg.type === 'loading-progress') {
+        if (!model.loading) return [model, []];
+        return [{ ...model, loadingProgress: msg.value }, []];
       }
 
-      // Handle write results
       if (msg.type === 'write-success') {
         const nextReqId = model.requestId + 1;
         const expiresAt = Date.now() + 3000;
@@ -619,6 +1622,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
           toast: { message: msg.message, variant: 'success', expiresAt },
         }, [refreshAfterWrite(nextReqId), delayedDismissToast(expiresAt)]];
       }
+
       if (msg.type === 'write-error') {
         const expiresAt = Date.now() + 3000;
         return [{
@@ -628,48 +1632,132 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         }, [delayedDismissToast(expiresAt)]];
       }
 
-      // Handle toast dismissal (only clear if token matches to prevent stale timers)
       if (msg.type === 'dismiss-toast') {
         if (!model.toast || model.toast.expiresAt !== msg.expiresAt) return [model, []];
         return [{ ...model, toast: null }, []];
       }
 
-      // Handle pulse animation
-      if (msg.type === 'pulse-frame') {
-        if (!model.showLanding) return [model, []];
-        return [{ ...model, pulsePhase: msg.value }, []];
-      }
-      if (msg.type === 'pulse-done') {
-        if (!model.showLanding) return [model, []];
-        // Reverse direction: if phase is high, go back down; otherwise go up
-        const wasRising = model.pulsePhase >= 50;
-        const [from, to] = wasRising ? [100, 0] as const : [0, 100] as const;
-        return [model, [animate<DashboardMsg>({
-          type: 'tween',
-          from,
-          to,
-          duration: 1500,
-          ease: EASINGS.easeInOut,
-          onFrame: (v) => ({ type: 'pulse-frame', value: v }),
-          onComplete: () => ({ type: 'pulse-done' }),
-        })]];
-      }
-
-      // Handle drawer animation frame
       if (msg.type === 'drawer-frame') {
         return [{ ...model, drawerWidth: Math.round(msg.value) }, []];
       }
 
-      // ── Key handling ──────────────────────────────────────────────────
+      if (msg.type === 'scrollbar-visibility') {
+        if (model.scrollbars[msg.pane].generation !== msg.generation) return [model, []];
+        return [{
+          ...model,
+          scrollbars: {
+            ...model.scrollbars,
+            [msg.pane]: {
+              ...model.scrollbars[msg.pane],
+              level: msg.level,
+            },
+          },
+        }, []];
+      }
 
-      if (msg.type === 'key') {
-        // Ctrl+C always quits, regardless of mode
-        if (msg.key === 'c' && msg.ctrl) {
-          return [model, [stopWatching(), quit()]];
+      if (msg.type === 'mouse') {
+        if (model.showLanding) return [model, []];
+        if (model.showHelp) {
+          if (msg.action === 'scroll-down') {
+            return [clampHelpScroll({ ...model, helpScrollY: model.helpScrollY + 3 }, deps.style), []];
+          }
+          if (msg.action === 'scroll-up') {
+            return [clampHelpScroll({ ...model, helpScrollY: Math.max(0, model.helpScrollY - 3) }, deps.style), []];
+          }
+          if (msg.action === 'press' && msg.button === 'left') {
+            return [{ ...model, showHelp: false, helpScrollY: 0 }, []];
+          }
+          return [model, []];
         }
 
-        // ── Quit confirmation (modal dialog) ──────────────────────────
-        if (msg.key === 'q' && !msg.ctrl && !msg.alt && model.mode === 'normal') {
+        if (model.mode === 'quest-tree' && model.snapshot) {
+          const quest = selectedQuest(model);
+          if (!quest) return [model, []];
+          const bounds = questTreeOverlayBounds(
+            model.snapshot,
+            quest,
+            model.questTreeScrollY,
+            model.cols,
+            model.rows,
+            deps.style,
+          );
+          const rect: CockpitRect = { x: bounds.col, y: bounds.row, width: bounds.width, height: bounds.height };
+          if (msg.action === 'scroll-down' && pointInRect(rect, msg.col, msg.row)) {
+            return [{ ...model, questTreeScrollY: model.questTreeScrollY + 3 }, []];
+          }
+          if (msg.action === 'scroll-up' && pointInRect(rect, msg.col, msg.row)) {
+            return [{ ...model, questTreeScrollY: Math.max(0, model.questTreeScrollY - 3) }, []];
+          }
+          if (msg.action === 'press' && msg.button === 'left' && !pointInRect(rect, msg.col, msg.row)) {
+            return [{ ...model, mode: 'normal', questTreeScrollY: 0 }, []];
+          }
+          return [model, []];
+        }
+
+        if (model.mode !== 'normal') return [model, []];
+
+        const currentDrawerRect = drawerRect(model);
+        if (currentDrawerRect) {
+          if (pointInRect(currentDrawerRect, msg.col, msg.row)) {
+            if (msg.action === 'scroll-down') {
+              const maxScroll = drawerMaxScroll(model, deps);
+              return [{ ...model, drawerScrollY: Math.min(maxScroll, model.drawerScrollY + 3) }, []];
+            }
+            if (msg.action === 'scroll-up') {
+              return [{ ...model, drawerScrollY: Math.max(0, model.drawerScrollY - 3) }, []];
+            }
+            return [model, []];
+          }
+          if (msg.action === 'press' && msg.button === 'left') {
+            return toggleDrawer(model);
+          }
+        }
+
+        const contentHeight = Math.max(1, model.rows - 2);
+        if (msg.row >= contentHeight) return [model, []];
+        if (!isLandingPage(model)) {
+          if (msg.action === 'scroll-down') {
+            return wakeScrollbar(updatePageScroll(model, model.pageScrollY + 3), 'page');
+          }
+          if (msg.action === 'scroll-up') {
+            return wakeScrollbar(updatePageScroll(model, model.pageScrollY - 3), 'page');
+          }
+          return [model, []];
+        }
+        const interactionMap = describeCockpitInteractionMap(model, deps.style, model.cols, contentHeight);
+        if (!interactionMap) return [model, []];
+
+        if (msg.action === 'press' && msg.button === 'left') {
+          const laneRegion = interactionMap.laneRegions.find((region) => pointInRect(region.rect, msg.col, msg.row));
+          if (laneRegion) {
+            return wakeScrollbar(switchLaneWithWatermark(model, laneRegion.lane, deps), 'worklist');
+          }
+
+          const rowRegion = interactionMap.worklistRows.find((region) => pointInRect(region.rect, msg.col, msg.row));
+          if (rowRegion) {
+            return wakeScrollbar(visitSelectedItem(selectRow(model, rowRegion.rowIndex), deps), 'worklist');
+          }
+        }
+
+        if (msg.action === 'scroll-down' || msg.action === 'scroll-up') {
+          const delta = msg.action === 'scroll-down' ? 1 : -1;
+          if (interactionMap.inspectorRect && model.inspectorOpen && pointInRect(interactionMap.inspectorRect, msg.col, msg.row)) {
+            return scrollInspectorBy(model, delta * 3);
+          }
+          if (pointInRect(interactionMap.worklistRect, msg.col, msg.row)) {
+            return scrollWorklistBy(model, delta, deps);
+          }
+        }
+
+        return [model, []];
+      }
+
+      if (msg.type === 'key') {
+        if (msg.key === 'c' && msg.ctrl) {
+          return [markLaneSeen(model, deps), [stopWatching(), quit()]];
+        }
+
+        if (msg.key === 'q' && !msg.ctrl && !msg.alt && model.mode === 'normal' && !model.showHelp) {
           const quitHint =
             deps.style.styled(deps.style.theme.semantic.info, 'q') + ' / ' +
             deps.style.styled(deps.style.theme.semantic.info, 'y') + '  confirm · ' +
@@ -677,7 +1765,6 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
             deps.style.styled(deps.style.theme.semantic.error, 'esc') + '  cancel';
           return [{
             ...model,
-            showLanding: false,
             showHelp: false,
             mode: 'confirm',
             confirmState: {
@@ -688,13 +1775,12 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
           }, []];
         }
 
-        // ── Confirm mode ────────────────────────────────────────────────
         if (model.mode === 'confirm' && model.confirmState) {
           const isQuitConfirm = model.confirmState.action.kind === 'quit';
           if (msg.key === 'y' || (msg.key === 'q' && isQuitConfirm)) {
             const { action } = model.confirmState;
             if (action.kind === 'quit') {
-              return [{ ...model, mode: 'normal', confirmState: null }, [stopWatching(), quit()]];
+              return [{ ...markLaneSeen(model, deps), mode: 'normal', confirmState: null }, [stopWatching(), quit()]];
             }
             return [{
               ...model,
@@ -706,19 +1792,16 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
           if (msg.key === 'n' || msg.key === 'escape') {
             return [{ ...model, mode: 'normal', confirmState: null }, []];
           }
-          return [model, []]; // swallow other keys
+          return [model, []];
         }
 
-        // ── Input mode ──────────────────────────────────────────────────
         if (model.mode === 'input' && model.inputState) {
           if (msg.key === 'escape') {
             return [{ ...model, mode: 'normal', inputState: null }, []];
           }
           if (msg.key === 'enter' || msg.key === 'return') {
             const { action, value } = model.inputState;
-            if (value.trim().length === 0) {
-              return [model, []]; // don't submit empty
-            }
+            if (value.trim().length === 0) return [model, []];
             return [{
               ...model,
               mode: 'normal',
@@ -727,24 +1810,39 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
             }, [executeWrite(action, value)]];
           }
           if (msg.key === 'backspace' || msg.key === 'delete') {
-            const newValue = model.inputState.value.slice(0, -1);
             return [{
               ...model,
-              inputState: { ...model.inputState, value: newValue },
+              inputState: { ...model.inputState, value: model.inputState.value.slice(0, -1) },
             }, []];
           }
-          // Printable character
           if (msg.key.length === 1 && !msg.ctrl && !msg.alt) {
-            const newValue = model.inputState.value + msg.key;
             return [{
               ...model,
-              inputState: { ...model.inputState, value: newValue },
+              inputState: { ...model.inputState, value: model.inputState.value + msg.key },
             }, []];
           }
-          return [model, []]; // swallow other keys
+          return [model, []];
         }
 
-        // ── Palette mode ──────────────────────────────────────────────
+        if (model.mode === 'quest-tree') {
+          if (msg.key === 'escape' || msg.key === 't') {
+            return [{ ...model, mode: 'normal', questTreeScrollY: 0 }, []];
+          }
+          if (msg.key === 'pagedown') {
+            return [{ ...model, questTreeScrollY: model.questTreeScrollY + Math.max(6, model.rows - 12) }, []];
+          }
+          if (msg.key === 'pageup') {
+            return [{ ...model, questTreeScrollY: Math.max(0, model.questTreeScrollY - Math.max(6, model.rows - 12)) }, []];
+          }
+          if (msg.key === 'j' || msg.key === 'down') {
+            return [{ ...model, questTreeScrollY: model.questTreeScrollY + 1 }, []];
+          }
+          if (msg.key === 'k' || msg.key === 'up') {
+            return [{ ...model, questTreeScrollY: Math.max(0, model.questTreeScrollY - 1) }, []];
+          }
+          return [model, []];
+        }
+
         if (model.mode === 'palette' && model.paletteState) {
           const paletteAction = paletteKeys.handle(msg);
           if (paletteAction) {
@@ -766,97 +1864,189 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
                 return [{ ...model, mode: 'normal', paletteState: null }, []];
             }
           }
-          // Fall through to character typing
           if (msg.key === 'backspace' || msg.key === 'delete') {
-            const q = model.paletteState.query.slice(0, -1);
-            return [{ ...model, paletteState: cpFilter(model.paletteState, q) }, []];
+            return [{ ...model, paletteState: cpFilter(model.paletteState, model.paletteState.query.slice(0, -1)) }, []];
           }
           if (msg.key.length === 1 && !msg.ctrl && !msg.alt) {
-            const q = model.paletteState.query + msg.key;
-            return [{ ...model, paletteState: cpFilter(model.paletteState, q) }, []];
+            return [{ ...model, paletteState: cpFilter(model.paletteState, model.paletteState.query + msg.key) }, []];
           }
           return [model, []];
         }
 
-        // ── Landing screen ──────────────────────────────────────────────
         if (model.showLanding) {
-          // q caught by quit confirm dialog above
-          if (!model.loading) {
-            return [{ ...model, showLanding: false }, []];
-          }
           return [model, []];
         }
 
-        // ── Help screen ─────────────────────────────────────────────────
         if (model.showHelp) {
-          // q caught by quit confirm dialog above
           if (msg.key === '?' || msg.key === 'escape') {
-            return [{ ...model, showHelp: false }, []];
+            return [{ ...model, showHelp: false, helpScrollY: 0 }, []];
+          }
+          if (msg.key === 'pagedown') {
+            return [clampHelpScroll({ ...model, helpScrollY: model.helpScrollY + Math.max(6, model.rows - 14) }, deps.style), []];
+          }
+          if (msg.key === 'pageup') {
+            return [clampHelpScroll({ ...model, helpScrollY: Math.max(0, model.helpScrollY - Math.max(6, model.rows - 14)) }, deps.style), []];
+          }
+          if (msg.key === 'j' || msg.key === 'down') {
+            return [clampHelpScroll({ ...model, helpScrollY: model.helpScrollY + 1 }, deps.style), []];
+          }
+          if (msg.key === 'k' || msg.key === 'up') {
+            return [clampHelpScroll({ ...model, helpScrollY: Math.max(0, model.helpScrollY - 1) }, deps.style), []];
           }
           return [model, []];
         }
 
-        // ── Dismiss dashboard detail overlay on escape ─────────────────
-        if (msg.key === 'escape' && model.activeView === 'dashboard' && model.dashboardView?.detailId) {
-          return [{ ...model, dashboardView: { ...model.dashboardView, detailId: null } }, []];
+        if (!isLandingPage(model)) {
+          if (msg.key === 'escape' || msg.key === 'backspace') {
+            return popPage(model, deps);
+          }
         }
 
-        // ── Normal mode: global keys ────────────────────────────────────
         const globalAction = globalKeys.handle(msg);
         if (globalAction) {
           switch (globalAction.type) {
-            case 'quit':
-              return [model, [stopWatching(), quit()]];
-            case 'jump-view':
-              return [{ ...model, activeView: globalAction.view }, []];
-            case 'next-view': {
-              const idx = VIEWS.indexOf(model.activeView);
-              const next = VIEWS[(idx + 1) % VIEWS.length] ?? model.activeView;
-              return [{ ...model, activeView: next }, []];
+            case 'jump-lane':
+              return wakeScrollbar(switchLaneWithWatermark(resetToLanding(model), globalAction.lane, deps), 'worklist');
+            case 'next-lane': {
+              const currentIndex = LANE_ORDER.indexOf(model.lane);
+              return wakeScrollbar(switchLaneWithWatermark(resetToLanding(model), laneForIndex((currentIndex + 1) % LANE_ORDER.length), deps), 'worklist');
             }
-            case 'prev-view': {
-              const idx = VIEWS.indexOf(model.activeView);
-              const prev = VIEWS[(idx - 1 + VIEWS.length) % VIEWS.length] ?? model.activeView;
-              return [{ ...model, activeView: prev }, []];
+            case 'prev-lane': {
+              const currentIndex = LANE_ORDER.indexOf(model.lane);
+              return wakeScrollbar(switchLaneWithWatermark(resetToLanding(model), laneForIndex((currentIndex - 1 + LANE_ORDER.length) % LANE_ORDER.length), deps), 'worklist');
             }
             case 'refresh': {
               const nextReqId = model.requestId + 1;
               return [{ ...model, loading: true, error: null, requestId: nextReqId }, [fetchSnapshot(nextReqId)]];
             }
+            case 'toggle-now-view':
+              return isLandingPage(model) && model.lane === 'now'
+                ? wakeScrollbar(toggleNowView(model, deps), 'worklist')
+                : [model, []];
             case 'toggle-help':
-              return [{ ...model, showHelp: !model.showHelp }, []];
-            case 'toggle-drawer': {
-              const opening = !model.drawerOpen;
-              const targetWidth = opening ? Math.min(40, Math.floor(model.cols * 0.35)) : 0;
-              const fromWidth = model.drawerWidth;
-              return [
-                { ...model, drawerOpen: opening },
-                [animate<DashboardMsg>({
-                  type: 'tween',
-                  from: fromWidth,
-                  to: targetWidth,
-                  duration: 200,
-                  ease: EASINGS.easeOut,
-                  onFrame: (v) => ({ type: 'drawer-frame', value: v }),
-                  onComplete: () => ({ type: 'drawer-frame', value: targetWidth }),
-                })],
-              ];
-            }
+              return [{ ...model, showHelp: !model.showHelp, helpScrollY: 0 }, []];
+            case 'toggle-inspector':
+              return !isLandingPage(model)
+                ? [model, []]
+                : model.inspectorOpen
+                ? [{ ...model, inspectorOpen: false }, []]
+                : wakeScrollbar({ ...model, inspectorOpen: true }, 'inspector');
+            case 'toggle-drawer':
+              return toggleDrawer(model);
           }
         }
 
-        // ── Command palette trigger ───────────────────────────────────
         if (msg.key === ':' || msg.key === '/') {
           const items = buildPaletteItems(model);
-          const paletteState = createCommandPaletteState(items, Math.min(model.rows - 6, 15));
-          return [{ ...model, mode: 'palette', paletteState }, []];
+          return [{
+            ...model,
+            mode: 'palette',
+            paletteState: createCommandPaletteState(items, Math.min(model.rows - 6, 15)),
+          }, []];
         }
 
-        // ── Normal mode: view-specific keys ─────────────────────────────
-        const vk = viewKeyMap(model.activeView);
-        const viewAction = vk?.handle(msg);
+        const viewAction = viewKeys.handle(msg);
         if (viewAction) {
-          return handleViewAction(viewAction, model);
+          switch (viewAction.type) {
+            case 'open-item-page':
+              return isLandingPage(model) ? openSelectedItemPage(model, deps) : [model, []];
+            case 'select-next': {
+              if (!isLandingPage(model)) {
+                return wakeScrollbar(updatePageScroll(model, model.pageScrollY + 1), 'page');
+              }
+              const rows = model.table.rows.length;
+              if (rows === 0) return [model, []];
+              const nextRow = Math.min(rows - 1, model.table.focusRow + 1);
+              const nextModel = visitSelectedItem(
+                rebuildForLane(updateInspectorScroll(updateFocus(model, nextRow), 0), model.lane),
+                deps,
+              );
+              return wakeScrollbar(nextModel, 'worklist');
+            }
+            case 'select-prev': {
+              if (!isLandingPage(model)) {
+                return wakeScrollbar(updatePageScroll(model, model.pageScrollY - 1), 'page');
+              }
+              const rows = model.table.rows.length;
+              if (rows === 0) return [model, []];
+              const nextRow = Math.max(0, model.table.focusRow - 1);
+              const nextModel = visitSelectedItem(
+                rebuildForLane(updateInspectorScroll(updateFocus(model, nextRow), 0), model.lane),
+                deps,
+              );
+              return wakeScrollbar(nextModel, 'worklist');
+            }
+            case 'top': {
+              if (!isLandingPage(model)) {
+                return wakeScrollbar(updatePageScroll(model, 0), 'page');
+              }
+              const nextModel = visitSelectedItem(
+                rebuildForLane(updateInspectorScroll(updateFocus(model, 0), 0), model.lane),
+                deps,
+              );
+              return wakeScrollbar(nextModel, 'worklist');
+            }
+            case 'bottom': {
+              if (!isLandingPage(model)) {
+                return [model, []];
+              }
+              const targetRow = Math.max(0, model.table.rows.length - 1);
+              const nextModel = visitSelectedItem(
+                rebuildForLane(updateInspectorScroll(updateFocus(model, targetRow), 0), model.lane),
+                deps,
+              );
+              return wakeScrollbar(nextModel, 'worklist');
+            }
+            case 'page-down-list': {
+              if (!isLandingPage(model)) {
+                return wakeScrollbar(updatePageScroll(model, model.pageScrollY + Math.max(6, model.rows - 12)), 'page');
+              }
+              const rows = model.table.rows.length;
+              if (rows === 0) return [model, []];
+              const nextRow = Math.min(rows - 1, model.table.focusRow + pageRows(model));
+              const nextModel = visitSelectedItem(
+                rebuildForLane(updateInspectorScroll(updateFocus(model, nextRow), 0), model.lane),
+                deps,
+              );
+              return wakeScrollbar(nextModel, 'worklist');
+            }
+            case 'page-up-list': {
+              if (!isLandingPage(model)) {
+                return wakeScrollbar(updatePageScroll(model, model.pageScrollY - Math.max(6, model.rows - 12)), 'page');
+              }
+              const rows = model.table.rows.length;
+              if (rows === 0) return [model, []];
+              const nextRow = Math.max(0, model.table.focusRow - pageRows(model));
+              const nextModel = visitSelectedItem(
+                rebuildForLane(updateInspectorScroll(updateFocus(model, nextRow), 0), model.lane),
+                deps,
+              );
+              return wakeScrollbar(nextModel, 'worklist');
+            }
+            case 'page-down-inspector':
+              return isLandingPage(model)
+                ? wakeScrollbar(updateInspectorScroll(model, model.laneState[model.lane].inspectorScrollY + 10), 'inspector')
+                : [model, []];
+            case 'page-up-inspector':
+              return isLandingPage(model)
+                ? wakeScrollbar(updateInspectorScroll(model, model.laneState[model.lane].inspectorScrollY - 10), 'inspector')
+                : [model, []];
+            case 'toggle-quest-tree':
+              return selectedQuest(model)
+                ? [{ ...model, mode: 'quest-tree', questTreeScrollY: 0 }, []]
+                : [model, []];
+            case 'mark-lane-seen':
+              return isLandingPage(model) ? [markLaneSeen(model, deps), []] : [model, []];
+            case 'comment':
+              return !isLandingPage(model) ? promptForAction(model, viewAction) : [model, []];
+            case 'claim':
+            case 'promote':
+            case 'reject':
+            case 'reopen':
+            case 'approve':
+            case 'request-changes':
+              return promptForAction(model, viewAction);
+          }
         }
       }
 
@@ -866,693 +2056,166 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
     view(model: DashboardModel): string {
       const { style } = deps;
 
-      // Landing view
       if (model.showLanding) {
         return landingView(model, style);
       }
 
-      // Help view (auto-generated from keymaps)
-      if (model.showHelp) {
-        const vk = viewKeyMap(model.activeView);
-        return helpView(globalKeys, { title: 'XYPH Dashboard' })
-          + (vk ? '\n' + helpView(vk) : '');
-      }
+      const controls = renderControlsLine(model);
+      const statusLine = renderStatusLine(model);
 
-      // Tab bar
-      const tabItems = VIEWS.map(v => ({ label: v }));
-      const activeIdx = VIEWS.indexOf(model.activeView);
-      const tabBar = tabs(tabItems, { active: activeIdx });
-
-      // Hints line (auto-generated from keymaps — view-specific when available)
-      const vk = viewKeyMap(model.activeView);
-      const hints = '  ' + (vk ? helpShort(vk) : helpShort(globalKeys));
-
-      // Status line with toast
-      const statusLine = renderStatusLine(model, style);
-
-      // Active view content
       const viewRenderer = (w: number, h: number): string => {
-        let content: string;
-        switch (model.activeView) {
-          case 'dashboard':   content = dashboardView(model, style, w, h); break;
-          case 'roadmap':     content = roadmapView(model, style, w, h); break;
-          case 'submissions': content = submissionsView(model, style, w, h); break;
-          case 'lineage':     content = lineageView(model, style, w, h); break;
-          case 'backlog':     content = backlogView(model, style, w, h); break;
-          default: { const _exhaustive: never = model.activeView; void _exhaustive; content = ''; break; }
+        const page = currentPage(model);
+        let content = cockpitView(model, style, w, h);
+        if (model.snapshot && page.kind === 'quest') {
+          const quest = model.pageDetail?.questDetail?.quest
+            ?? model.snapshot.quests.find((entry) => entry.id === page.questId);
+          if (quest) {
+            content = questPageView({
+              model,
+              snapshot: model.snapshot,
+              page,
+              quest,
+              detail: model.pageDetail,
+              sourceItem: currentSelectedItem(model),
+              style,
+              width: w,
+              height: h,
+            });
+          }
+        } else if (model.snapshot && page.kind === 'review') {
+          const quest = model.pageDetail?.questDetail?.quest
+            ?? model.snapshot.quests.find((entry) => entry.id === page.questId);
+          const submission = selectedSubmission(model);
+          if (quest && submission) {
+            content = reviewPageView({
+              model,
+              snapshot: model.snapshot,
+              page,
+              quest,
+              submission,
+              detail: model.pageDetail,
+              sourceItem: currentSelectedItem(model),
+              style,
+              width: w,
+              height: h,
+            });
+          }
+        } else if (model.snapshot && page.kind === 'governance') {
+          const artifact = selectedGovernanceArtifact(model);
+          if (artifact) {
+            content = governancePageView({
+              model,
+              snapshot: model.snapshot,
+              page,
+              artifact,
+              detail: model.pageDetail,
+              sourceItem: currentSelectedItem(model),
+              style,
+              width: w,
+              height: h,
+            });
+          }
+        } else if (model.snapshot && page.kind === 'suggestion') {
+          const suggestion = selectedAiSuggestion(model);
+          if (suggestion) {
+            content = suggestionPageView({
+              model,
+              snapshot: model.snapshot,
+              page,
+              suggestion,
+              detail: model.pageDetail,
+              sourceItem: currentSelectedItem(model),
+              style,
+              width: w,
+              height: h,
+            });
+          }
         }
-
-        // Overlay rendering for modal modes
         if (model.mode === 'confirm' && model.confirmState) {
-          return confirmOverlay(content, model.confirmState.prompt, model.cols, h, style, model.confirmState.hint);
+          content = confirmOverlay(content, model.confirmState.prompt, model.cols, h, style, model.confirmState.hint);
         }
         if (model.mode === 'input' && model.inputState) {
-          return inputOverlay(content, model.inputState.label, model.inputState.value, model.cols, h, style);
+          content = inputOverlay(content, model.inputState.label, model.inputState.value, model.cols, h, style);
         }
         return content;
       };
 
-      // Apply surface backgrounds to chrome lines
-      const tabLine = chromeLine(`  ${tabBar}`, model.cols, style.theme.surface.elevated, style);
       const statusBg = chromeLine(statusLine, model.cols, style.theme.surface.secondary, style);
-      const hintLine = chromeLine(hints, model.cols, style.theme.surface.muted, style);
+      const controlsBg = chromeLine(controls, model.cols, style.theme.surface.muted, style);
 
-      // Layout: tabBar → content → WARP gutter → hints
       let output = flex(
         { direction: 'column', width: model.cols, height: model.rows },
-        { basis: 1, content: tabLine },
         { flex: 1, content: viewRenderer },
         { basis: 1, content: statusBg },
-        { basis: 1, content: hintLine },
+        { basis: 1, content: controlsBg },
       );
 
-      // "My Stuff" drawer overlay (global — available from any screen)
       if (model.drawerWidth > 4 && model.snapshot) {
-        const drawerH = model.rows - 2; // exclude status + hints
+        const drawerHeight = model.rows - 2;
         const drawerContent = renderMyStuffDrawer(
-          model.snapshot, style, model.agentId,
-          model.drawerWidth - 2,  // account for border
-          drawerH - 2,            // account for border
+          model.snapshot,
+          style,
+          model.agentId,
+          model.drawerWidth - 2,
+          drawerHeight - 2,
+          model.drawerScrollY,
         );
-        const drawerTitle = model.agentId ? 'My Stuff' : 'Activity';
-        const dov = drawer({
+        const drawerOverlay = drawer({
           content: drawerContent,
           anchor: 'right',
           width: model.drawerWidth,
           screenWidth: model.cols,
-          screenHeight: drawerH,
-          title: drawerTitle,
+          screenHeight: drawerHeight,
+          title: model.agentId ? 'My Stuff' : 'Activity',
           borderToken: style.theme.border.primary,
         });
-        output = composite(output, [dov]);
+        output = composite(output, [drawerOverlay]);
       }
 
-      // Command palette overlay
       if (model.mode === 'palette' && model.paletteState) {
         const rendered = commandPalette(model.paletteState, {
           width: Math.min(60, model.cols - 4),
           showCategory: true,
           showShortcut: true,
         });
-        const ov = modal({
+        const overlay = modal({
           body: rendered,
           screenWidth: model.cols,
           screenHeight: model.rows,
           borderToken: style.theme.border.primary,
         });
-        output = composite(output, [ov]);
+        output = composite(output, [overlay]);
       }
 
-      // Dashboard detail overlay
-      if (model.activeView === 'dashboard' && model.dashboardView?.detailId) {
-        const quest = model.snapshot?.quests.find(q => q.id === model.dashboardView?.detailId);
+      if (model.mode === 'quest-tree' && model.snapshot) {
+        const quest = selectedQuest(model);
         if (quest) {
-          const dl: string[] = [];
-          dl.push(style.styled(style.theme.semantic.primary, ` ${quest.id}`));
-          dl.push('');
-          dl.push(` Title:    ${quest.title}`);
-          dl.push(` Status:   ${style.styledStatus(quest.status)}`);
-          dl.push(` Hours:    ${quest.hours}`);
-          if (quest.assignedTo) dl.push(` Assigned: ${quest.assignedTo}`);
-          if (quest.campaignId) dl.push(` Campaign: ${quest.campaignId}`);
-          if (quest.intentId) dl.push(` Intent:   ${quest.intentId}`);
-          const dov = modal({
-            body: dl.join('\n'),
-            screenWidth: model.cols,
-            screenHeight: model.rows,
-            borderToken: style.theme.border.primary,
-          });
-          output = composite(output, [dov]);
+          output = questTreeOverlay(output, model.snapshot, quest, model.questTreeScrollY, model.cols, model.rows, style);
         }
       }
 
-      // Toast overlay
+      if (model.showHelp) {
+        const overlay = modal({
+          body: renderHelpModalBody(model, style),
+          screenWidth: model.cols,
+          screenHeight: model.rows,
+          borderToken: style.theme.border.primary,
+        });
+        output = composite(output, [overlay], { dim: true });
+      }
+
       if (model.toast) {
-        const tov = toastOverlay({
+        const overlay = toastOverlay({
           message: model.toast.message,
           variant: model.toast.variant,
           anchor: 'bottom-right',
           screenWidth: model.cols,
           screenHeight: model.rows,
         });
-        output = composite(output, [tov]);
+        output = composite(output, [overlay]);
       }
 
       return output;
     },
   };
-
-  // ── View action handler ─────────────────────────────────────────────
-
-  function handleViewAction(
-    action: ViewAction,
-    model: DashboardModel,
-  ): [DashboardModel, Cmd<DashboardMsg>[]] {
-    const snap = model.snapshot;
-
-    switch (action.type) {
-      case 'select-next':
-        return [selectDelta(model, +1), []];
-      case 'select-prev':
-        return [selectDelta(model, -1), []];
-
-      case 'claim': {
-        if (!snap || model.writePending) return [model, []];
-        const ids = roadmapQuestIds(snap);
-        const questId = ids[model.roadmap.table.focusRow];
-        if (!questId) return [model, []];
-        return [{
-          ...model,
-          mode: 'confirm',
-          confirmState: { prompt: `Claim ${questId}?`, action: { kind: 'claim', questId } },
-        }, []];
-      }
-
-      case 'promote': {
-        if (!snap || model.writePending) return [model, []];
-        const ids = backlogQuestIds(snap);
-        const questId = ids[model.backlog.table.focusRow];
-        if (!questId) return [model, []];
-        return [{
-          ...model,
-          mode: 'input',
-          inputState: { label: `Intent ID for ${questId}:`, value: '', action: { kind: 'promote', questId } },
-        }, []];
-      }
-
-      case 'reject': {
-        if (!snap || model.writePending) return [model, []];
-        const ids = backlogQuestIds(snap);
-        const questId = ids[model.backlog.table.focusRow];
-        if (!questId) return [model, []];
-        return [{
-          ...model,
-          mode: 'input',
-          inputState: { label: `Rejection rationale for ${questId}:`, value: '', action: { kind: 'reject', questId } },
-        }, []];
-      }
-
-      case 'expand': {
-        if (!snap) return [model, []];
-        if (model.activeView === 'dashboard') {
-          if (!model.dashboardView) return [model, []];
-          if (model.dashboardView.detailId !== null) {
-            return [{ ...model, dashboardView: { ...model.dashboardView, detailId: null } }, []];
-          }
-          const questId = dashboardFocusedQuestId(snap, model);
-          if (!questId) return [model, []];
-          return [{ ...model, dashboardView: { ...model.dashboardView, detailId: questId } }, []];
-        }
-        if (model.activeView === 'lineage') {
-          const ids = lineageIntentIds(snap);
-          const intentId = ids[model.lineage.selectedIndex];
-          if (!intentId) return [model, []];
-          const collapsed = model.lineage.collapsedIntents;
-          const nextCollapsed = collapsed.includes(intentId)
-            ? collapsed.filter(id => id !== intentId)
-            : [...collapsed, intentId];
-          return [{
-            ...model,
-            lineage: { ...model.lineage, collapsedIntents: nextCollapsed },
-          }, []];
-        }
-        const ids = submissionIds(snap);
-        const subId = ids[model.submissions.table.focusRow];
-        if (!subId) return [model, []];
-        const expandedId = model.submissions.expandedId === subId ? null : subId;
-        return [{
-          ...model,
-          submissions: { ...model.submissions, expandedId, detailScrollY: 0 },
-        }, []];
-      }
-
-      case 'approve':
-      case 'request-changes': {
-        if (!snap || model.writePending) return [model, []];
-        const ids = submissionIds(snap);
-        const subId = ids[model.submissions.table.focusRow];
-        if (!subId) return [model, []];
-        const sub = snap.submissions.find(s => s.id === subId);
-        if (!sub?.tipPatchsetId) {
-          const expiresAt = Date.now() + 3000;
-          return [{
-            ...model,
-            toast: { message: `No patchset to review for ${subId}`, variant: 'error', expiresAt },
-          }, [delayedDismissToast(expiresAt)]];
-        }
-        const label = action.type === 'approve' ? 'Approve' : 'Request changes';
-        return [{
-          ...model,
-          mode: 'input',
-          inputState: {
-            label: `${label} comment for ${subId}:`,
-            value: '',
-            action: { kind: action.type, patchsetId: sub.tipPatchsetId },
-          },
-        }, []];
-      }
-
-      case 'scroll-dag-down': {
-        if (!snapshotHasQuestDependencies(snap)) {
-          return [{
-            ...model,
-            roadmap: {
-              ...model.roadmap,
-              fallbackScrollY: model.roadmap.fallbackScrollY + roadmapPageStep(model.rows),
-            },
-          }, []];
-        }
-        if (!model.roadmap.dagPane) return [model, []];
-        return [{
-          ...model,
-          roadmap: { ...model.roadmap, dagPane: dagPanePageDown(model.roadmap.dagPane) },
-        }, []];
-      }
-      case 'scroll-dag-up': {
-        if (!snapshotHasQuestDependencies(snap)) {
-          return [{
-            ...model,
-            roadmap: {
-              ...model.roadmap,
-              fallbackScrollY: Math.max(0, model.roadmap.fallbackScrollY - roadmapPageStep(model.rows)),
-            },
-          }, []];
-        }
-        if (!model.roadmap.dagPane) return [model, []];
-        return [{
-          ...model,
-          roadmap: { ...model.roadmap, dagPane: dagPanePageUp(model.roadmap.dagPane) },
-        }, []];
-      }
-      case 'scroll-dag-left': {
-        if (!model.roadmap.dagPane) return [model, []];
-        return [{
-          ...model,
-          roadmap: { ...model.roadmap, dagPane: dagPaneScrollByX(model.roadmap.dagPane, -8) },
-        }, []];
-      }
-      case 'scroll-dag-right': {
-        if (!model.roadmap.dagPane) return [model, []];
-        return [{
-          ...model,
-          roadmap: { ...model.roadmap, dagPane: dagPaneScrollByX(model.roadmap.dagPane, 8) },
-        }, []];
-      }
-
-      case 'page-down': {
-        if (model.activeView === 'submissions') {
-          return [{ ...model, submissions: { ...model.submissions, table: navTablePageDown(model.submissions.table) } }, []];
-        }
-        if (model.activeView === 'backlog') {
-          return [{ ...model, backlog: { ...model.backlog, table: navTablePageDown(model.backlog.table) } }, []];
-        }
-        return [model, []];
-      }
-      case 'page-up': {
-        if (model.activeView === 'submissions') {
-          return [{ ...model, submissions: { ...model.submissions, table: navTablePageUp(model.submissions.table) } }, []];
-        }
-        if (model.activeView === 'backlog') {
-          return [{ ...model, backlog: { ...model.backlog, table: navTablePageUp(model.backlog.table) } }, []];
-        }
-        return [model, []];
-      }
-
-      case 'scroll-col-down': {
-        if (model.activeView !== 'dashboard' || !model.dashboardView) return [model, []];
-        const step = Math.max(1, model.rows - 6);
-        const maxScroll = model.rows * 5;
-        const dv = model.dashboardView;
-        return [{ ...model, dashboardView: { ...dv, leftScrollY: Math.min(dv.leftScrollY + step, maxScroll) } }, []];
-      }
-
-      case 'scroll-col-up': {
-        if (model.activeView !== 'dashboard' || !model.dashboardView) return [model, []];
-        const step = Math.max(1, model.rows - 6);
-        const dv = model.dashboardView;
-        return [{ ...model, dashboardView: { ...dv, leftScrollY: Math.max(0, dv.leftScrollY - step) } }, []];
-      }
-
-      case 'top':
-        return [jumpToEdge(model, 'top'), []];
-
-      case 'bottom':
-        return [jumpToEdge(model, 'bottom'), []];
-
-      default: {
-        const _exhaustive: never = action; void _exhaustive;
-        return [model, []];
-      }
-    }
-  }
-
-  function selectDelta(model: DashboardModel, delta: number): DashboardModel {
-    const snap = model.snapshot;
-    if (!snap) return model;
-
-    switch (model.activeView) {
-      case 'roadmap': {
-        const nextTable = delta > 0
-          ? navTableFocusNext(model.roadmap.table)
-          : navTableFocusPrev(model.roadmap.table);
-        let dagPaneState = model.roadmap.dagPane;
-        if (snap && dagPaneState) {
-          const ids = roadmapQuestIds(snap);
-          const selectedId = ids[nextTable.focusRow];
-          if (selectedId) {
-            dagPaneState = dagPaneSelectNode(dagPaneState, selectedId, getDefaultContext());
-          }
-        }
-        return { ...model, roadmap: { ...model.roadmap, table: nextTable, dagPane: dagPaneState } };
-      }
-      case 'submissions': {
-        const nextTable = delta > 0
-          ? navTableFocusNext(model.submissions.table)
-          : navTableFocusPrev(model.submissions.table);
-        return { ...model, submissions: { ...model.submissions, table: nextTable } };
-      }
-      case 'backlog': {
-        const nextTable = delta > 0
-          ? navTableFocusNext(model.backlog.table)
-          : navTableFocusPrev(model.backlog.table);
-        return { ...model, backlog: { ...model.backlog, table: nextTable } };
-      }
-      case 'lineage': {
-        const count = lineageIntentIds(snap).length;
-        const next = clampIndex(model.lineage.selectedIndex + delta, count);
-        return { ...model, lineage: { ...model.lineage, selectedIndex: next } };
-      }
-      case 'dashboard': {
-        if (!model.dashboardView) {
-          return { ...model, dashboardView: { focusPanel: 'in-progress', focusRow: 0, detailId: null, leftScrollY: 0 } };
-        }
-        const count = dashboardPanelCount(snap);
-        if (count === 0) return model;
-        const nextRow = ((model.dashboardView.focusRow + delta) % count + count) % count;
-        return { ...model, dashboardView: { ...model.dashboardView, focusRow: nextRow } };
-      }
-      default:
-        return model;
-    }
-  }
-
-  function jumpToEdge(model: DashboardModel, edge: 'top' | 'bottom'): DashboardModel {
-    const snap = model.snapshot;
-    if (!snap) return model;
-
-    switch (model.activeView) {
-      case 'roadmap': {
-        const ids = roadmapQuestIds(snap);
-        if (ids.length === 0) return model;
-        const targetRow = edge === 'top' ? 0 : ids.length - 1;
-        const newTable = rebuildRoadmapTable(snap, targetRow, model.rows - 4);
-        let dagPaneState = model.roadmap.dagPane;
-        if (dagPaneState) {
-          const selectedId = ids[targetRow];
-          if (selectedId) {
-            dagPaneState = dagPaneSelectNode(dagPaneState, selectedId, getDefaultContext());
-          }
-        }
-        return { ...model, roadmap: { ...model.roadmap, table: newTable, dagPane: dagPaneState } };
-      }
-      case 'submissions': {
-        const subs = sortedSubmissions(snap);
-        if (subs.length === 0) return model;
-        const targetRow = edge === 'top' ? 0 : subs.length - 1;
-        return { ...model, submissions: { ...model.submissions, table: rebuildSubmissionsTable(snap, targetRow, model.rows - 4) } };
-      }
-      case 'backlog': {
-        const ids = backlogQuestIds(snap);
-        if (ids.length === 0) return model;
-        const targetRow = edge === 'top' ? 0 : ids.length - 1;
-        return { ...model, backlog: { ...model.backlog, table: rebuildBacklogTable(snap, targetRow, model.rows - 4) } };
-      }
-      case 'lineage': {
-        const count = lineageIntentIds(snap).length;
-        if (count === 0) return model;
-        const targetIdx = edge === 'top' ? 0 : count - 1;
-        return { ...model, lineage: { ...model.lineage, selectedIndex: targetIdx } };
-      }
-      case 'dashboard': {
-        if (!model.dashboardView) return model;
-        const count = dashboardPanelCount(snap);
-        if (count === 0) return model;
-        const targetRow = edge === 'top' ? 0 : count - 1;
-        return { ...model, dashboardView: { ...model.dashboardView, focusRow: targetRow } };
-      }
-      default:
-        return model;
-    }
-  }
-
-  function dispatchPaletteAction(
-    actionId: string,
-    model: DashboardModel,
-  ): [DashboardModel, Cmd<DashboardMsg>[]] {
-    switch (actionId) {
-      case 'quit':
-        return [model, [stopWatching(), quit()]];
-      case 'refresh': {
-        const nextReqId = model.requestId + 1;
-        return [{ ...model, loading: true, error: null, requestId: nextReqId }, [fetchSnapshot(nextReqId)]];
-      }
-      case 'help':
-        return [{ ...model, showHelp: !model.showHelp }, []];
-      case 'view-dashboard':
-        return [{ ...model, activeView: 'dashboard' }, []];
-      case 'view-roadmap':
-        return [{ ...model, activeView: 'roadmap' }, []];
-      case 'view-submissions':
-        return [{ ...model, activeView: 'submissions' }, []];
-      case 'view-lineage':
-        return [{ ...model, activeView: 'lineage' }, []];
-      case 'view-backlog':
-        return [{ ...model, activeView: 'backlog' }, []];
-      case 'claim':
-        return handleViewAction({ type: 'claim' }, model);
-      case 'promote':
-        return handleViewAction({ type: 'promote' }, model);
-      case 'reject':
-        return handleViewAction({ type: 'reject' }, model);
-      case 'expand':
-        return handleViewAction({ type: 'expand' }, model);
-      case 'approve':
-        return handleViewAction({ type: 'approve' }, model);
-      case 'request-changes':
-        return handleViewAction({ type: 'request-changes' }, model);
-      default:
-        return [model, []];
-    }
-  }
-}
-
-// ── Render helpers ──────────────────────────────────────────────────────
-
-/** Pad a line to `width` visible chars and apply a token (foreground + optional bg). */
-function chromeLine(text: string, width: number, token: TokenValue, style: StylePort): string {
-  const vis = visibleLength(text);
-  const padded = vis < width ? text + ' '.repeat(width - vis) : text;
-  return style.styled(token, padded);
-}
-
-function renderStatusLine(model: DashboardModel, style: StylePort): string {
-  const meta = model.snapshot?.graphMeta;
-  const snap = model.snapshot;
-
-  // WARP tag
-  let tagText: string;
-  if (meta) {
-    tagText = `WARP(${meta.tipSha.slice(0, 6)}) tick: ${meta.maxTick}`;
-  } else {
-    tagText = 'WARP';
-  }
-
-  if (model.loading) {
-    tagText += ' loading\u2026';
-  } else if (model.error) {
-    tagText += ` err: ${model.error.slice(0, 20)}`;
-  }
-
-  // Apply gradient to WARP tag
-  const styledTag = style.gradient(tagText, style.theme.gradient.brand);
-
-  // Right side: project stats with progress bar
-  let rightStats = '';
-  if (snap) {
-    const total = snap.quests.filter(q => q.status !== 'BACKLOG' && q.status !== 'GRAVEYARD').length;
-    const done = snap.quests.filter(q => q.status === 'DONE').length;
-    const ip = snap.quests.filter(q => q.status === 'IN_PROGRESS').length;
-    const statusPct = total > 0 ? Math.round((done / total) * 100) : 0;
-    const bar = progressBar(statusPct, { width: 12, gradient: style.theme.gradient.progress });
-    rightStats = `${bar} ${done}/${total} done \u00B7 ${ip} active`;
-  }
-
-  return statusBar({
-    left: ` ${styledTag}`,
-    right: rightStats ? style.styled(style.theme.semantic.muted, rightStats) : undefined,
-    width: model.cols,
-    fillChar: '\u2500',
-  });
-}
-
-// ── Command palette ──────────────────────────────────────────────────
-
-function buildPaletteItems(model: DashboardModel): CommandPaletteItem[] {
-  const items: CommandPaletteItem[] = [
-    { id: 'refresh',          label: 'Refresh snapshot',    category: 'Global',  shortcut: 'r' },
-    { id: 'help',             label: 'Toggle help',         category: 'Global',  shortcut: '?' },
-    { id: 'quit',             label: 'Quit',                category: 'Global',  shortcut: 'q' },
-    { id: 'view-dashboard',   label: 'Dashboard',           category: 'Views',   shortcut: '1' },
-    { id: 'view-roadmap',     label: 'Roadmap',             category: 'Views',   shortcut: '2' },
-    { id: 'view-submissions', label: 'Submissions',         category: 'Views',   shortcut: '3' },
-    { id: 'view-lineage',     label: 'Lineage',             category: 'Views',   shortcut: '4' },
-    { id: 'view-backlog',     label: 'Backlog',             category: 'Views',   shortcut: '5' },
-  ];
-
-  if (model.activeView === 'roadmap' && model.roadmap.table.rows.length > 0) {
-    items.push({ id: 'claim', label: 'Claim selected quest', category: 'Roadmap', shortcut: 'c' });
-  }
-  if (model.activeView === 'backlog' && model.backlog.table.rows.length > 0) {
-    items.push({ id: 'promote', label: 'Promote selected', category: 'Backlog', shortcut: 'p' });
-    items.push({ id: 'reject',  label: 'Reject selected',  category: 'Backlog', shortcut: 'D' });
-  }
-  if (model.activeView === 'submissions' && model.submissions.table.rows.length > 0) {
-    items.push({ id: 'expand',          label: 'Expand/collapse detail', category: 'Submissions', shortcut: 'Enter' });
-    items.push({ id: 'approve',         label: 'Approve patchset',      category: 'Submissions', shortcut: 'a' });
-    items.push({ id: 'request-changes', label: 'Request changes',       category: 'Submissions', shortcut: 'x' });
-  }
-
-  return items;
-}
-
-// ── Backlog table builder ────────────────────────────────────────────
-
-function rebuildBacklogTable(
-  snap: GraphSnapshot,
-  prevFocusRow: number,
-  height: number,
-): NavigableTableState {
-  const ids = backlogQuestIds(snap);
-  const questMap = new Map(snap.quests.map(q => [q.id, q]));
-  const rows = ids.map(id => {
-    const q = questMap.get(id);
-    if (!q) return [id, '', '0', '\u2014', '\u2014'];
-    const suggestedAt = q.suggestedAt !== undefined
-      ? new Date(q.suggestedAt).toISOString().slice(0, 10)
-      : '\u2014';
-    const prevRej = q.rejectionRationale !== undefined
-      ? q.rejectionRationale.slice(0, 24) + (q.rejectionRationale.length > 24 ? '\u2026' : '')
-      : '\u2014';
-    return [q.id, q.title.slice(0, 38), String(q.hours), suggestedAt, prevRej];
-  });
-
-  const table = createNavigableTableState({
-    columns: [
-      { header: 'ID', width: 20 },
-      { header: 'Title' },
-      { header: 'h', width: 5 },
-      { header: 'Suggested' },
-      { header: 'Prev rejection' },
-    ],
-    rows,
-    height: Math.max(height, 5),
-  });
-
-  // Preserve focus row (clamped to new row count)
-  if (ids.length === 0) return table;
-  const clamped = Math.max(0, Math.min(prevFocusRow, ids.length - 1));
-  let t = table;
-  for (let i = 0; i < clamped; i++) {
-    t = navTableFocusNext(t);
-  }
-  return t;
-}
-
-// ── Submissions table builder ─────────────────────────────────────────
-
-function rebuildSubmissionsTable(
-  snap: GraphSnapshot,
-  prevFocusRow: number,
-  height: number,
-): NavigableTableState {
-  const sorted = sortedSubmissions(snap);
-  const questTitle = new Map(snap.quests.map(q => [q.id, q.title]));
-  const rows = sorted.map(s => {
-    const qTitle = questTitle.get(s.questId) ?? s.questId;
-    const shortId = s.id.replace(/^submission:/, '');
-    const approvals = s.approvalCount > 0 ? `\u2713${s.approvalCount}` : '\u2014';
-    return [shortId, qTitle.slice(0, 38), s.status, approvals];
-  });
-
-  const table = createNavigableTableState({
-    columns: [
-      { header: 'ID', width: 20 },
-      { header: 'Quest' },
-      { header: 'Status', width: 12 },
-      { header: '\u2713', width: 5 },
-    ],
-    rows,
-    height: Math.max(height, 5),
-  });
-
-  if (sorted.length === 0) return table;
-  const clamped = Math.max(0, Math.min(prevFocusRow, sorted.length - 1));
-  let t = table;
-  for (let i = 0; i < clamped; i++) {
-    t = navTableFocusNext(t);
-  }
-  return t;
-}
-
-// ── Roadmap table builder ─────────────────────────────────────────────
-
-function rebuildRoadmapTable(
-  snap: GraphSnapshot,
-  prevFocusRow: number,
-  height: number,
-): NavigableTableState {
-  const ids = roadmapQuestIds(snap);
-  const questMap = new Map(snap.quests.map(q => [q.id, q]));
-  const rows = ids.map(id => {
-    const q = questMap.get(id);
-    if (!q) return [id, '', ''];
-    return [q.id, q.title.slice(0, 38), q.status];
-  });
-
-  const table = createNavigableTableState({
-    columns: [
-      { header: 'ID', width: 20 },
-      { header: 'Title' },
-      { header: 'Status', width: 12 },
-    ],
-    rows,
-    height: Math.max(height, 5),
-  });
-
-  if (ids.length === 0) return table;
-  const clamped = Math.max(0, Math.min(prevFocusRow, ids.length - 1));
-  let t = table;
-  for (let i = 0; i < clamped; i++) {
-    t = navTableFocusNext(t);
-  }
-  return t;
-}
-
-// ── Dashboard panel helpers ───────────────────────────────────────────
-
-// Visibility cap — must match the .slice() limit used by dashboard-view.ts
-const DASHBOARD_IN_PROGRESS_VISIBLE = 8;
-
-function dashboardFocusedQuestId(snap: GraphSnapshot, model: DashboardModel): string | null {
-  if (!model.dashboardView) return null;
-  const { focusRow } = model.dashboardView;
-  const inProgress = snap.quests.filter(q => q.status === 'IN_PROGRESS');
-  return inProgress.slice(0, DASHBOARD_IN_PROGRESS_VISIBLE)[focusRow]?.id ?? null;
-}
-
-function dashboardPanelCount(snap: GraphSnapshot): number {
-  return Math.min(
-    snap.quests.filter(q => q.status === 'IN_PROGRESS').length,
-    DASHBOARD_IN_PROGRESS_VISIBLE,
-  );
 }

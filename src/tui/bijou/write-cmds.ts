@@ -13,6 +13,7 @@ import type { DashboardMsg } from './DashboardApp.js';
 import type { GraphPort } from '../../ports/GraphPort.js';
 import type { IntakePort } from '../../ports/IntakePort.js';
 import type { SubmissionPort } from '../../ports/SubmissionPort.js';
+import { RecordService } from '../../domain/services/RecordService.js';
 
 /** Generate a lexicographically-sortable unique ID (matches actuator pattern). */
 export function generateId(): string {
@@ -93,6 +94,44 @@ export function rejectQuest(deps: WriteDeps, questId: string, rationale: string)
       }
       await deps.intake.reject(questId, rationale);
       emit({ type: 'write-success', message: `Rejected ${questId}` });
+    } catch (err: unknown) {
+      emit({ type: 'write-error', message: err instanceof Error ? err.message : String(err) });
+    }
+  };
+}
+
+/**
+ * Reopen a GRAVEYARD quest back onto the live work surface via IntakePort.
+ */
+export function reopenQuest(deps: WriteDeps, questId: string): Cmd<DashboardMsg> {
+  return async (emit) => {
+    try {
+      await deps.intake.reopen(questId);
+      emit({ type: 'write-success', message: `Reopened ${questId}` });
+    } catch (err: unknown) {
+      emit({ type: 'write-error', message: err instanceof Error ? err.message : String(err) });
+    }
+  };
+}
+
+/**
+ * Add a graph-native comment to an entity via the shared record service.
+ */
+export function commentOnEntity(deps: WriteDeps, targetId: string, message: string): Cmd<DashboardMsg> {
+  return async (emit) => {
+    try {
+      const trimmed = message.trim();
+      if (!trimmed) {
+        emit({ type: 'write-error', message: 'Comment message is required' });
+        return;
+      }
+      const records = new RecordService(deps.graphPort);
+      await records.createComment({
+        targetId,
+        message: trimmed,
+        authoredBy: deps.agentId,
+      });
+      emit({ type: 'write-success', message: `Commented on ${targetId}` });
     } catch (err: unknown) {
       emit({ type: 'write-error', message: err instanceof Error ? err.message : String(err) });
     }

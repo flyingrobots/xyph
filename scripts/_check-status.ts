@@ -5,11 +5,13 @@
 
 import WarpGraph, { GitGraphAdapter } from '@git-stunts/git-warp';
 import Plumbing from '@git-stunts/plumbing';
+import { resolveGraphRuntime } from '../src/cli/runtimeGraph.js';
 
 async function main(): Promise<void> {
-  const plumbing = Plumbing.createDefault({ cwd: process.cwd() });
+  const runtime = resolveGraphRuntime({ cwd: process.cwd() });
+  const plumbing = Plumbing.createDefault({ cwd: runtime.repoPath });
   const persistence = new GitGraphAdapter({ plumbing });
-  const graph = await WarpGraph.open({ persistence, graphName: 'xyph-roadmap', writerId: 'agent.prime', autoMaterialize: true });
+  const graph = await WarpGraph.open({ persistence, graphName: runtime.graphName, writerId: 'agent.prime', autoMaterialize: true });
   await graph.syncCoverage();
   await graph.materialize();
   const ids = ['task:BX-001', 'task:BJU-009', 'task:ORC-001', 'task:cli-api', 'task:OVR-012', 'task:GRV-001', 'task:FRG-001', 'task:DSH-002'];

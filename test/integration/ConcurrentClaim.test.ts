@@ -19,7 +19,7 @@ import Plumbing from '@git-stunts/plumbing';
  */
 describe('Concurrent OCP Claim — LWW determinism', () => {
   let repoPath: string;
-  const graphName = 'xyph-roadmap';
+  const graphName = 'xyph';
   const questId = 'task:RACE-001';
 
   // Two agents — writerId lexicographic order: agent.alice < agent.bob

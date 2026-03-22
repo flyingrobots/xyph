@@ -263,6 +263,7 @@ describe('AgentBriefingService', () => {
         },
       },
     ]);
+    expect(briefing.governanceQueue).toEqual([]);
     expect(briefing.recentHandoffs).toEqual([
       {
         noteId: 'note:handoff-1',
@@ -574,6 +575,96 @@ describe('AgentBriefingService', () => {
       allowed: false,
       validationCode: 'requires-additional-input',
     });
+  });
+
+  it('surfaces governance attention in briefing and next', async () => {
+    const snapshot = makeSnapshot({
+      governanceArtifacts: [
+        {
+          id: 'comparison-artifact:AGT-GOV',
+          type: 'comparison-artifact',
+          recordedAt: 300,
+          recordedBy: 'agent.hal',
+          targetId: 'task:AGT-GOV',
+          governance: {
+            kind: 'comparison-artifact',
+            freshness: 'fresh',
+            attestation: {
+              total: 0,
+              approvals: 0,
+              rejections: 0,
+              other: 0,
+              state: 'unattested',
+            },
+            series: {
+              supersededByIds: [],
+              latestInSeries: true,
+            },
+            comparison: {
+              targetId: 'task:AGT-GOV',
+            },
+            settlement: {
+              proposalCount: 0,
+              executedCount: 0,
+            },
+          },
+        },
+      ],
+    });
+
+    mocks.createGraphContext.mockReturnValue({
+      fetchSnapshot: vi.fn().mockResolvedValue(snapshot),
+      fetchEntityDetail: vi.fn(),
+      filterSnapshot: vi.fn(),
+      invalidateCache: vi.fn(),
+      get graph() {
+        throw new Error('not used in test');
+      },
+    });
+
+    const service = new AgentBriefingService(
+      makeGraphWithHandoffs([]),
+      makeRoadmap([]),
+      'agent.hal',
+      makeDoctor(),
+    );
+
+    const briefing = await service.buildBriefing();
+    expect(briefing.governanceQueue).toMatchObject([
+      {
+        artifactId: 'comparison-artifact:AGT-GOV',
+        artifactKind: 'comparison-artifact',
+        semantics: {
+          attentionState: 'review',
+          expectedActor: 'human',
+        },
+      },
+    ]);
+    expect(briefing.alerts.map((alert) => alert.code)).toContain('governance-queue');
+
+    const next = await service.next(3);
+    expect(next.candidates[0]).toMatchObject({
+      kind: 'inspect',
+      targetId: 'comparison-artifact:AGT-GOV',
+      source: 'governance',
+      questStatus: 'Compared',
+    });
+    expect(next.candidates).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: 'attest',
+        targetId: 'comparison-artifact:AGT-GOV',
+        source: 'governance',
+        requiresHumanApproval: true,
+        validationCode: 'human-only-action',
+      }),
+      expect.objectContaining({
+        kind: 'collapse_preview',
+        targetId: 'comparison-artifact:AGT-GOV',
+        source: 'governance',
+        requiresHumanApproval: true,
+        validationCode: 'human-only-action',
+      }),
+    ]));
   });
 
   it('omits CHANGES_REQUESTED submissions from the briefing review queue', async () => {

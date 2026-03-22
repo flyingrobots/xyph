@@ -4,9 +4,13 @@ import type {
   ConflictDiagnostic,
   CoordinateComparisonSelectorV1,
   CoordinateComparisonV1,
+  CoordinateTransferPlanV1,
+  VisibleStateTransferOperationV1,
 } from '@git-stunts/git-warp';
 import {
   createStateReaderV5,
+  exportCoordinateComparisonFact,
+  exportCoordinateTransferPlanFact,
   type VisibleStateProjectionV5,
   type VisibleStateReaderV5,
   type WarpStateV5,
@@ -16,6 +20,7 @@ import type { ControlPlaneHooks, ControlPlanePort } from '../../ports/ControlPla
 import {
   CONTROL_PLANE_VERSION,
   DEFAULT_WORLDLINE_ID,
+  fromSubstrateWorkingSetId,
   isCanonicalDerivedWorldlineId,
   toSubstrateWorkingSetId,
   type ControlPlaneAudit,
@@ -26,6 +31,7 @@ import {
   type ControlPlaneRequestV1,
   type ControlPlaneTerminalRecordV1,
   type ObservationCoordinate,
+  type ObservationCoordinateBacking,
 } from '../models/controlPlane.js';
 import type { Diagnostic } from '../models/diagnostics.js';
 import type { EntityDetail } from '../models/dashboard.js';
@@ -36,11 +42,21 @@ import { AgentContextService } from './AgentContextService.js';
 import { AgentSubmissionService } from './AgentSubmissionService.js';
 import { DoctorService } from './DoctorService.js';
 import { AgentActionService } from './AgentActionService.js';
-import { explainError, explainErrorCode } from './ExplainService.js';
+import { explainError, explainErrorCode, explainGovernanceTarget } from './ExplainService.js';
 import { MutationKernelService } from './MutationKernelService.js';
 import { RecordService } from './RecordService.js';
 import type { GraphMeta } from '../models/dashboard.js';
 import { CapabilityResolverService } from './CapabilityResolverService.js';
+import {
+  buildCollapseArtifactDigest,
+  buildCollapseProposalSeriesKey,
+  buildComparisonArtifactDigest,
+  buildComparisonArtifactSeriesKey,
+  normalizeSelectorValue,
+  type ObservationSelector,
+  XYPH_OPERATIONAL_COMPARISON_SCOPE,
+  XYPH_OPERATIONAL_COMPARISON_SCOPE_VERSION,
+} from './GovernanceArtifacts.js';
 
 function stable(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(stable);
@@ -118,12 +134,11 @@ function controlPlaneFailure(
   };
 }
 
-type ObservationSelector =
-  | { kind: 'tip' }
-  | { kind: 'tick'; tick: number };
-
 type AnalyzeConflictsOptions = NonNullable<Parameters<WarpGraph['analyzeConflicts']>[0]>;
 type ConflictAnalysisResult = Awaited<ReturnType<WarpGraph['analyzeConflicts']>>;
+type WorkingSetDescriptor = NonNullable<Awaited<ReturnType<WarpGraph['getWorkingSet']>>>;
+type ResolvedWorkingSetContext = NonNullable<ConflictAnalysisResult['resolvedCoordinate']['workingSet']>;
+type ComparisonResolvedSide = CoordinateComparisonV1['left']['resolved'];
 
 interface WorkingSetProjectionContext {
   graph: WarpGraph;
@@ -132,11 +147,13 @@ interface WorkingSetProjectionContext {
   reader: VisibleStateReaderV5;
   projection: VisibleStateProjectionV5;
   frontierDigest: string;
+  backing: ObservationCoordinateBacking;
 }
 
 interface DerivedWorldlineGraphContext {
   graphCtx: ReturnType<typeof createGraphContextFromGraph>;
   frontierDigest: string;
+  backing: ObservationCoordinateBacking;
 }
 
 interface RedactionRecord {
@@ -144,6 +161,101 @@ interface RedactionRecord {
   code: 'redacted';
   reason: string;
   contentOid?: string;
+}
+
+interface ApprovedAttestationRecord {
+  id: string;
+  decision: string;
+  targetId: string;
+  attestedBy: string | null;
+  attestedAt: number | null;
+}
+
+type LoweredCollapseMutationOp =
+  | { op: 'add_node'; nodeId: string }
+  | { op: 'remove_node'; nodeId: string }
+  | { op: 'set_node_property'; nodeId: string; key: string; value: unknown }
+  | { op: 'add_edge'; from: string; to: string; label: string }
+  | { op: 'remove_edge'; from: string; to: string; label: string }
+  | { op: 'set_edge_property'; from: string; to: string; label: string; key: string; value: unknown }
+  | { op: 'attach_node_content'; nodeId: string; content: Uint8Array; contentOid: string; mime?: string | null; size?: number | null }
+  | { op: 'clear_node_content'; nodeId: string }
+  | { op: 'attach_edge_content'; from: string; to: string; label: string; content: Uint8Array; contentOid: string; mime?: string | null; size?: number | null }
+  | { op: 'clear_edge_content'; from: string; to: string; label: string };
+
+function sanitizeTransferOperation(op: VisibleStateTransferOperationV1): Record<string, unknown> {
+  switch (op.op) {
+    case 'attach_node_content':
+      return {
+        op: op.op,
+        nodeId: op.nodeId,
+        contentOid: op.contentOid,
+        mime: op.mime ?? null,
+        size: op.size ?? null,
+      };
+    case 'attach_edge_content':
+      return {
+        op: op.op,
+        from: op.from,
+        to: op.to,
+        label: op.label,
+        contentOid: op.contentOid,
+        mime: op.mime ?? null,
+        size: op.size ?? null,
+      };
+    default:
+      return { ...op };
+  }
+}
+
+function lowerTransferOpsToMutationOps(ops: VisibleStateTransferOperationV1[]): LoweredCollapseMutationOp[] {
+  return ops.map((op) => {
+    switch (op.op) {
+      case 'add_node':
+      case 'remove_node':
+      case 'set_node_property':
+      case 'add_edge':
+      case 'remove_edge':
+      case 'set_edge_property':
+      case 'clear_node_content':
+      case 'clear_edge_content':
+        return { ...op };
+      case 'attach_node_content':
+        return {
+          op: op.op,
+          nodeId: op.nodeId,
+          content: op.content,
+          contentOid: op.contentOid,
+          mime: op.mime ?? null,
+          size: op.size ?? null,
+        };
+      case 'attach_edge_content':
+        return {
+          op: op.op,
+          from: op.from,
+          to: op.to,
+          label: op.label,
+          content: op.content,
+          contentOid: op.contentOid,
+          mime: op.mime ?? null,
+          size: op.size ?? null,
+        };
+    }
+  });
+}
+
+function comparisonHasPatchDivergence(comparison: CoordinateComparisonV1): boolean {
+  return comparison.visiblePatchDivergence.leftOnlyCount > 0
+    || comparison.visiblePatchDivergence.rightOnlyCount > 0;
+}
+
+function buildComparisonSummary(comparison: CoordinateComparisonV1): Record<string, unknown> {
+  return {
+    visibleStateChanged: comparison.visibleState.changed,
+    patchDiverged: comparisonHasPatchDivergence(comparison),
+    visiblePatchDivergence: comparison.visiblePatchDivergence,
+    visibleState: comparison.visibleState.summary,
+  };
 }
 
 function conflictDiagnosticSummary(code: string): string {
@@ -181,12 +293,6 @@ function parseTickLike(value: unknown): number | null {
     : null;
 }
 
-function normalizeSelectorValue(selector: ObservationSelector): 'tip' | { tick: number } {
-  return selector.kind === 'tip'
-    ? 'tip'
-    : { tick: selector.tick };
-}
-
 function workingSetErrorCode(err: unknown): string | null {
   return typeof err === 'object'
     && err !== null
@@ -198,6 +304,106 @@ function workingSetErrorCode(err: unknown): string | null {
 
 function frontierDigestFromObservedFrontier(frontier: Map<string, unknown>): string {
   return digest([...frontier.entries()].sort(([a], [b]) => a.localeCompare(b)));
+}
+
+function liveObservationBacking(): ObservationCoordinateBacking {
+  return {
+    kind: 'live_frontier',
+    substrate: {
+      kind: 'git-warp-frontier',
+    },
+  };
+}
+
+function mapSupportWorldlineIds(supportWorkingSetIds: string[]): string[] {
+  return supportWorkingSetIds
+    .map(fromSubstrateWorkingSetId)
+    .filter((worldlineId): worldlineId is string => worldlineId !== null);
+}
+
+function workingSetObservationBacking(fields: {
+  workingSetId: string;
+  baseLamportCeiling: number | null;
+  overlayHeadPatchSha: string | null;
+  overlayPatchCount: number;
+  overlayWritable: boolean;
+  supportWorkingSetIds: string[];
+}): ObservationCoordinateBacking {
+  return {
+    kind: 'derived_working_set',
+    substrate: {
+      kind: 'git-warp-working-set',
+      workingSetId: fields.workingSetId,
+      baseLamportCeiling: fields.baseLamportCeiling,
+      overlayHeadPatchSha: fields.overlayHeadPatchSha,
+      overlayPatchCount: fields.overlayPatchCount,
+      overlayWritable: fields.overlayWritable,
+      braid: {
+        supportCount: fields.supportWorkingSetIds.length,
+        supportWorldlineIds: mapSupportWorldlineIds(fields.supportWorkingSetIds),
+        supportWorkingSetIds: [...fields.supportWorkingSetIds],
+      },
+    },
+  };
+}
+
+function workingSetObservationBackingFromDescriptor(descriptor: WorkingSetDescriptor): ObservationCoordinateBacking {
+  return workingSetObservationBacking({
+    workingSetId: descriptor.workingSetId,
+    baseLamportCeiling: descriptor.baseObservation.lamportCeiling,
+    overlayHeadPatchSha: descriptor.overlay.headPatchSha,
+    overlayPatchCount: descriptor.overlay.patchCount,
+    overlayWritable: descriptor.overlay.writable,
+    supportWorkingSetIds: descriptor.braid.readOverlays.map((overlay) => overlay.workingSetId),
+  });
+}
+
+function workingSetObservationBackingFromResolved(workingSet: ResolvedWorkingSetContext): ObservationCoordinateBacking {
+  return workingSetObservationBacking({
+    workingSetId: workingSet.workingSetId,
+    baseLamportCeiling: workingSet.baseLamportCeiling,
+    overlayHeadPatchSha: workingSet.overlayHeadPatchSha,
+    overlayPatchCount: workingSet.overlayPatchCount,
+    overlayWritable: workingSet.overlayWritable,
+    supportWorkingSetIds: workingSet.braid.braidedWorkingSetIds,
+  });
+}
+
+function comparisonResolvedSideBacking(resolved: ComparisonResolvedSide): ObservationCoordinateBacking {
+  return resolved.workingSet
+    ? workingSetObservationBackingFromResolved(resolved.workingSet)
+    : liveObservationBacking();
+}
+
+function singletonConflictTargetId(
+  target: ConflictAnalysisResult['conflicts'][number]['target'],
+): string | undefined {
+  if (typeof target.entityId === 'string') return target.entityId;
+  if (target.targetKind === 'edge_property' && target.from && target.to && target.label) {
+    return `${target.from}:${target.label}:${target.to}`;
+  }
+  return undefined;
+}
+
+function singletonConflictTargetLabel(
+  target: ConflictAnalysisResult['conflicts'][number]['target'],
+): string {
+  if (target.targetKind === 'node_property') {
+    return target.propertyKey
+      ? `node property ${target.entityId ?? 'unknown'}#${target.propertyKey}`
+      : `node property ${target.entityId ?? 'unknown'}`;
+  }
+  if (target.targetKind === 'edge_property') {
+    const edgeKey = target.edgeKey ?? (
+      target.from && target.to && target.label
+        ? `${target.from}:${target.label}:${target.to}`
+        : 'unknown-edge'
+    );
+    return target.propertyKey
+      ? `edge property ${edgeKey}#${target.propertyKey}`
+      : `edge property ${edgeKey}`;
+  }
+  return target.targetKind;
 }
 
 export class ControlPlaneService implements ControlPlanePort {
@@ -323,7 +529,9 @@ export class ControlPlaneService implements ControlPlanePort {
       case 'attest':
         return this.attest(request, capability);
       case 'collapse_worldline':
+        return this.collapseWorldline(request, capability);
       case 'query':
+        return this.query(request, capability);
       case 'rewind_worldline':
         throw controlPlaneFailure(
           'not_implemented',
@@ -595,6 +803,7 @@ export class ControlPlaneService implements ControlPlanePort {
             false,
             graphCtx.graph,
             derived?.frontierDigest,
+            derived?.backing,
           ),
         };
       }
@@ -602,10 +811,16 @@ export class ControlPlaneService implements ControlPlanePort {
         const { options, requested } = this.buildConflictAnalysisRequest(request, selector, capability);
         const graph = await this.graphPort.getGraph();
         const analysis = await this.analyzeConflicts(graph, options);
-        const diagnostics = toConflictProjectionDiagnostics(analysis.diagnostics);
+        const diagnostics = [
+          ...toConflictProjectionDiagnostics(analysis.diagnostics),
+          ...this.braidSingletonDiagnostics(capability.worldlineId, analysis),
+        ];
         const frontierDigest = capability.worldlineId === DEFAULT_WORLDLINE_ID
           ? analysis.resolvedCoordinate.frontierDigest
           : (await this.materializeWorkingSetProjection(capability, selector)).frontierDigest;
+        const observationBacking = analysis.resolvedCoordinate.workingSet
+          ? workingSetObservationBackingFromResolved(analysis.resolvedCoordinate.workingSet)
+          : undefined;
         return {
           data: {
             projection,
@@ -623,6 +838,7 @@ export class ControlPlaneService implements ControlPlanePort {
             false,
             graph,
             frontierDigest,
+            observationBacking,
           ),
         };
       }
@@ -666,6 +882,7 @@ export class ControlPlaneService implements ControlPlanePort {
             true,
             graphCtx.graph,
             derived?.frontierDigest,
+            derived?.backing,
           ),
         };
       }
@@ -953,6 +1170,34 @@ export class ControlPlaneService implements ControlPlanePort {
       : { kind: 'working_set', workingSetId };
   }
 
+  private async findLatestCanonicalArtifactInSeries(
+    kind: 'comparison-artifact' | 'collapse-proposal',
+    seriesKey: string,
+    nextArtifactId: string,
+  ): Promise<string | null> {
+    const graph = await this.graphPort.getGraph();
+    await graph.syncCoverage?.();
+    await graph.materialize?.();
+
+    const result = await graph.query().match(`${kind}:*`).select(['id', 'props']).run();
+    const nodes = 'nodes' in result
+      ? result.nodes.filter(
+        (node): node is { id: string; props: Record<string, unknown> } =>
+          typeof node.id === 'string' && node.props !== undefined,
+      )
+      : [];
+
+    const candidates = nodes
+      .filter((node) => node.id !== nextArtifactId && node.props['artifact_series_key'] === seriesKey)
+      .map((node) => ({
+        id: node.id,
+        recordedAt: typeof node.props['recorded_at'] === 'number' ? node.props['recorded_at'] : 0,
+      }))
+      .sort((left, right) => right.recordedAt - left.recordedAt || right.id.localeCompare(left.id));
+
+    return candidates[0]?.id ?? null;
+  }
+
   private resolveComparisonWorldlineId(
     capability: EffectiveCapabilityGrant,
     request: ControlPlaneRequestV1,
@@ -1120,6 +1365,60 @@ export class ControlPlaneService implements ControlPlanePort {
     }
   }
 
+  private async loadWorkingSetDescriptor(
+    graph: WarpGraph,
+    worldlineId: string,
+    workingSetId: string,
+  ): Promise<WorkingSetDescriptor> {
+    try {
+      const descriptor = await graph.getWorkingSet(workingSetId);
+      if (!descriptor) {
+        throw controlPlaneFailure(
+          'not_found',
+          `Worldline backing working set not found: ${workingSetId}`,
+          {
+            worldlineId,
+            workingSetId,
+          },
+        );
+      }
+      return descriptor;
+    } catch (err) {
+      if (typeof err === 'object' && err !== null && 'code' in err) {
+        this.rethrowWorkingSetError(err, worldlineId, workingSetId);
+      }
+      throw err;
+    }
+  }
+
+  private braidSingletonDiagnostics(
+    worldlineId: string,
+    analysis: ConflictAnalysisResult,
+  ): Diagnostic[] {
+    const workingSet = analysis.resolvedCoordinate.workingSet;
+    if (!workingSet || workingSet.braid.readOverlayCount === 0) return [];
+
+    const supportWorldlineIds = mapSupportWorldlineIds(workingSet.braid.braidedWorkingSetIds);
+    return analysis.conflicts
+      .filter((trace) => (
+        (trace.target.targetKind === 'node_property' || trace.target.targetKind === 'edge_property')
+        && trace.losers.some((loser) => loser.structurallyDistinctAlternative)
+      ))
+      .map((trace) => ({
+        code: 'braid_singleton_self_erasure',
+        severity: 'warning',
+        category: 'structural',
+        source: 'substrate',
+        summary: 'Braided singleton state may self-erase',
+        message: `Braided worldline ${worldlineId} contains competing writes to ${singletonConflictTargetLabel(trace.target)}. Under LWW only one winner remains visible, so co-present support effects can erase each other in the projection. Model the coexistence as explicit entities or edges if it must remain observable under braid.`,
+        ...(singletonConflictTargetId(trace.target) === undefined
+          ? {}
+          : { subjectId: singletonConflictTargetId(trace.target) }),
+        relatedIds: Array.from(new Set([worldlineId, ...supportWorldlineIds])),
+        blocking: false,
+      }));
+  }
+
   private async materializeWorkingSetProjection(
     capability: EffectiveCapabilityGrant,
     selector: ObservationSelector,
@@ -1141,6 +1440,7 @@ export class ControlPlaneService implements ControlPlanePort {
       },
     );
     try {
+      const descriptor = await this.loadWorkingSetDescriptor(graph, capability.worldlineId, workingSetId);
       const state = await graph.materializeWorkingSet(workingSetId, this.workingSetReadOptions(selector));
       const reader = createStateReaderV5(state);
       return {
@@ -1150,6 +1450,7 @@ export class ControlPlaneService implements ControlPlanePort {
         reader,
         projection: reader.project(),
         frontierDigest: frontierDigestFromObservedFrontier(state.observedFrontier),
+        backing: workingSetObservationBackingFromDescriptor(descriptor),
       };
     } catch (err) {
       this.rethrowWorkingSetError(err, capability.worldlineId, workingSetId);
@@ -1177,19 +1478,34 @@ export class ControlPlaneService implements ControlPlanePort {
       },
     );
 
-    let frontierDigest: string;
+    let frontierDigest: string | undefined;
+    let backing: ObservationCoordinateBacking | undefined;
     try {
+      const descriptor = await this.loadWorkingSetDescriptor(graph, capability.worldlineId, workingSetId);
       const state = await graph.materializeWorkingSet(
         workingSetId,
         this.workingSetReadOptions(selector),
       );
       frontierDigest = frontierDigestFromObservedFrontier(state.observedFrontier);
+      backing = workingSetObservationBackingFromDescriptor(descriptor);
     } catch (err) {
       this.rethrowWorkingSetError(err, capability.worldlineId, workingSetId);
     }
 
+    if (frontierDigest === undefined || backing === undefined) {
+      throw controlPlaneFailure(
+        'invariant_violation',
+        'Derived-worldline read failed to resolve backing metadata.',
+        {
+          worldlineId: capability.worldlineId,
+          selector,
+        },
+      );
+    }
+
     return {
       frontierDigest,
+      backing,
       graphCtx: createGraphContextFromGraph(graph, {
         syncCoverage: false,
         materializeGraph: async (workingGraph) => {
@@ -1249,6 +1565,7 @@ export class ControlPlaneService implements ControlPlanePort {
           false,
           materialized.graph,
           materialized.frontierDigest,
+          materialized.backing,
         ),
       };
     }
@@ -1314,6 +1631,7 @@ export class ControlPlaneService implements ControlPlanePort {
         false,
         current.graph,
         current.frontierDigest,
+        current.backing,
       );
 
       if (since.kind === 'frontier-digest') {
@@ -1364,6 +1682,7 @@ export class ControlPlaneService implements ControlPlanePort {
         false,
         current.graph,
         sinceMaterialized.frontierDigest,
+        sinceMaterialized.backing,
       );
 
       return {
@@ -1566,9 +1885,12 @@ export class ControlPlaneService implements ControlPlanePort {
       if (!result) {
         throw controlPlaneFailure('not_found', `Entity ${request.args['targetId']} not found in the graph`);
       }
+      const explanation = explainGovernanceTarget(result.detail);
       return {
         data: {
           targetId: request.args['targetId'],
+          targetType: result.detail.type,
+          explanation,
           diagnostics: result.diagnostics,
           recommendationRequests: result.recommendationRequests,
         },
@@ -1581,6 +1903,275 @@ export class ControlPlaneService implements ControlPlanePort {
       'invalid_args',
       'explain requires errorCode, actionKind+targetId, or targetId',
     );
+  }
+
+  private async query(
+    request: ControlPlaneRequestV1,
+    capability: EffectiveCapabilityGrant,
+  ): Promise<{
+    data: Record<string, unknown>;
+    diagnostics: Diagnostic[];
+    observation?: ObservationCoordinate;
+  }> {
+    if (
+      request.args['worldlineId'] !== undefined
+      || request.args['at'] !== undefined
+      || request.args['againstWorldlineId'] !== undefined
+      || request.args['againstAt'] !== undefined
+      || request.args['since'] !== undefined
+      || request.args['sinceFrontierDigest'] !== undefined
+    ) {
+      throw controlPlaneFailure(
+        'invalid_args',
+        'query currently operates on the live governance surface only and does not accept worldline or selector arguments.',
+      );
+    }
+
+    const view = this.requireString(request.args['view'], 'query view');
+    const graph = await this.graphPort.getGraph();
+    const limitRaw = request.args['limit'];
+    const limit = limitRaw === undefined
+      ? 10
+      : this.requireQueryLimit(limitRaw);
+
+    switch (view) {
+      case 'governance.worklist': {
+        const data = await this.queryGovernanceWorklist(graph, limit);
+        return {
+          data,
+          diagnostics: [],
+          observation: await this.buildObservationCoordinate(request, capability, Date.now(), null, false, graph),
+        };
+      }
+      case 'governance.series': {
+        const artifactId = this.requireString(request.args['artifactId'], 'query artifactId');
+        const data = await this.queryGovernanceSeries(graph, artifactId);
+        return {
+          data,
+          diagnostics: [],
+          observation: await this.buildObservationCoordinate(request, capability, Date.now(), null, true, graph),
+        };
+      }
+      default:
+        throw controlPlaneFailure(
+          'invalid_args',
+          `Unsupported query view '${view}'. Current slice supports governance.worklist and governance.series.`,
+          { view },
+        );
+    }
+  }
+
+  private requireQueryLimit(raw: unknown): number {
+    if (typeof raw !== 'number' || !Number.isInteger(raw) || raw < 1 || raw > 100) {
+      throw controlPlaneFailure(
+        'invalid_args',
+        'query limit must be an integer between 1 and 100 when provided.',
+      );
+    }
+    return raw;
+  }
+
+  private async listCanonicalArtifactNodes(
+    graph: WarpGraph,
+    kind: 'comparison-artifact' | 'collapse-proposal',
+  ): Promise<{ id: string; props: Record<string, unknown> }[]> {
+    await graph.syncCoverage();
+    await graph.materialize();
+    const result = await graph.query().match(`${kind}:*`).select(['id', 'props']).run();
+    if (!('nodes' in result)) return [];
+    return result.nodes.filter(
+      (node): node is { id: string; props: Record<string, unknown> } =>
+        typeof node.id === 'string' && node.props !== undefined,
+    );
+  }
+
+  private async queryGovernanceWorklist(
+    graph: WarpGraph,
+    limit: number,
+  ): Promise<Record<string, unknown>> {
+    const [comparisonNodes, collapseNodes] = await Promise.all([
+      this.listCanonicalArtifactNodes(graph, 'comparison-artifact'),
+      this.listCanonicalArtifactNodes(graph, 'collapse-proposal'),
+    ]);
+    const graphCtx = createGraphContextFromGraph(graph, { syncCoverage: false });
+
+    const comparisonDetails = (await Promise.all(
+      comparisonNodes.map(async ({ id }) => graphCtx.fetchEntityDetail(id)),
+    )).filter((detail): detail is NonNullable<typeof detail> => Boolean(detail));
+    const collapseDetails = (await Promise.all(
+      collapseNodes.map(async ({ id }) => graphCtx.fetchEntityDetail(id)),
+    )).filter((detail): detail is NonNullable<typeof detail> => Boolean(detail));
+
+    const comparisonItems = comparisonDetails
+      .map((detail) => this.toGovernanceWorklistItem(detail))
+      .filter((item): item is Record<string, unknown> & { freshness?: unknown } => Boolean(item));
+    const collapseItems = collapseDetails
+      .map((detail) => this.toGovernanceWorklistItem(detail))
+      .filter((item): item is Record<string, unknown> & { lifecycle?: unknown } => Boolean(item));
+
+    const freshComparisons = comparisonItems.filter((item) => item['freshness'] === 'fresh');
+    const staleComparisons = comparisonItems.filter((item) => item['freshness'] === 'stale');
+    const pendingCollapseProposals = collapseItems.filter((item) => item['lifecycle'] === 'pending_attestation');
+    const approvedCollapseProposals = collapseItems.filter((item) => item['lifecycle'] === 'approved');
+    const staleCollapseProposals = collapseItems.filter((item) => item['lifecycle'] === 'stale');
+    const executedCollapseProposals = collapseItems.filter((item) => item['lifecycle'] === 'executed');
+
+    return {
+      view: 'governance.worklist',
+      asOf: Date.now(),
+      limit,
+      summary: {
+        freshComparisons: freshComparisons.length,
+        staleComparisons: staleComparisons.length,
+        pendingCollapseProposals: pendingCollapseProposals.length,
+        approvedCollapseProposals: approvedCollapseProposals.length,
+        staleCollapseProposals: staleCollapseProposals.length,
+        executedCollapseProposals: executedCollapseProposals.length,
+      },
+      queues: {
+        freshComparisons: freshComparisons.slice(0, limit),
+        staleComparisons: staleComparisons.slice(0, limit),
+        pendingCollapseProposals: pendingCollapseProposals.slice(0, limit),
+        approvedCollapseProposals: approvedCollapseProposals.slice(0, limit),
+        staleCollapseProposals: staleCollapseProposals.slice(0, limit),
+        executedCollapseProposals: executedCollapseProposals.slice(0, limit),
+      },
+    };
+  }
+
+  private toGovernanceWorklistItem(detail: EntityDetail): Record<string, unknown> | null {
+    const recordedAt = typeof detail.props['recorded_at'] === 'number' ? detail.props['recorded_at'] : null;
+    if (detail.governanceDetail?.kind === 'comparison-artifact') {
+      return {
+        id: detail.id,
+        kind: detail.governanceDetail.kind,
+        ...(recordedAt === null ? {} : { recordedAt }),
+        ...(typeof detail.props['artifact_digest'] === 'string' ? { artifactDigest: detail.props['artifact_digest'] } : {}),
+        freshness: detail.governanceDetail.freshness,
+        latestInSeries: detail.governanceDetail.series.latestInSeries,
+        leftWorldlineId: detail.governanceDetail.comparison.leftWorldlineId ?? null,
+        rightWorldlineId: detail.governanceDetail.comparison.rightWorldlineId ?? null,
+        targetId: detail.governanceDetail.comparison.targetId ?? null,
+        attestation: detail.governanceDetail.attestation,
+        settlement: detail.governanceDetail.settlement,
+      };
+    }
+    if (detail.governanceDetail?.kind === 'collapse-proposal') {
+      return {
+        id: detail.id,
+        kind: detail.governanceDetail.kind,
+        ...(recordedAt === null ? {} : { recordedAt }),
+        ...(typeof detail.props['artifact_digest'] === 'string' ? { artifactDigest: detail.props['artifact_digest'] } : {}),
+        freshness: detail.governanceDetail.freshness,
+        lifecycle: detail.governanceDetail.lifecycle,
+        latestInSeries: detail.governanceDetail.series.latestInSeries,
+        sourceWorldlineId: typeof detail.props['source_worldline_id'] === 'string' ? detail.props['source_worldline_id'] : null,
+        targetWorldlineId: typeof detail.props['target_worldline_id'] === 'string' ? detail.props['target_worldline_id'] : null,
+        attestation: detail.governanceDetail.attestation,
+        execution: detail.governanceDetail.execution,
+        executionGate: detail.governanceDetail.executionGate,
+      };
+    }
+    return null;
+  }
+
+  private async queryGovernanceSeries(
+    graph: WarpGraph,
+    artifactId: string,
+  ): Promise<Record<string, unknown>> {
+    const graphCtx = createGraphContextFromGraph(graph, { syncCoverage: false });
+    const detail = await graphCtx.fetchEntityDetail(artifactId);
+    if (!detail) {
+      throw controlPlaneFailure('not_found', `Entity ${artifactId} not found in the graph`);
+    }
+    if (
+      detail.governanceDetail?.kind !== 'comparison-artifact'
+      && detail.governanceDetail?.kind !== 'collapse-proposal'
+    ) {
+      throw controlPlaneFailure(
+        'invalid_args',
+        'governance.series currently supports durable comparison-artifact:* and collapse-proposal:* nodes only.',
+        { artifactId, type: detail.type },
+      );
+    }
+
+    const seriesKey = detail.governanceDetail.series.seriesKey;
+    if (!seriesKey) {
+      throw controlPlaneFailure(
+        'invalid_args',
+        'governance.series requires the target artifact to carry an artifact_series_key.',
+        { artifactId },
+      );
+    }
+
+    const nodes = await this.listCanonicalArtifactNodes(graph, detail.governanceDetail.kind);
+    const entries = (await Promise.all(
+      nodes
+        .filter((node) => node.props['artifact_series_key'] === seriesKey)
+        .map(async ({ id }) => graphCtx.fetchEntityDetail(id)),
+    ))
+      .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry))
+      .sort((left, right) => {
+        const leftRecordedAt = typeof left.props['recorded_at'] === 'number' ? left.props['recorded_at'] : 0;
+        const rightRecordedAt = typeof right.props['recorded_at'] === 'number' ? right.props['recorded_at'] : 0;
+        return leftRecordedAt - rightRecordedAt || left.id.localeCompare(right.id);
+      })
+      .map((entry) => this.toGovernanceSeriesEntry(entry, artifactId));
+
+    return {
+      view: 'governance.series',
+      artifactId,
+      series: {
+        kind: detail.governanceDetail.kind,
+        seriesKey,
+        latestArtifactId: entries.findLast((entry) => entry['latestInSeries'] === true)?.['id'] ?? artifactId,
+        entries,
+      },
+    };
+  }
+
+  private toGovernanceSeriesEntry(
+    detail: EntityDetail,
+    requestedArtifactId: string,
+  ): Record<string, unknown> {
+    const recordedAt = typeof detail.props['recorded_at'] === 'number' ? detail.props['recorded_at'] : null;
+    const base: Record<string, unknown> = {
+      id: detail.id,
+      current: detail.id === requestedArtifactId,
+      latestInSeries: detail.governanceDetail?.kind === 'comparison-artifact'
+        ? detail.governanceDetail.series.latestInSeries
+        : detail.governanceDetail?.kind === 'collapse-proposal'
+          ? detail.governanceDetail.series.latestInSeries
+          : false,
+      ...(recordedAt === null ? {} : { recordedAt }),
+      ...(typeof detail.props['artifact_digest'] === 'string' ? { artifactDigest: detail.props['artifact_digest'] } : {}),
+    };
+
+    if (detail.governanceDetail?.kind === 'comparison-artifact') {
+      return {
+        ...base,
+        kind: 'comparison-artifact',
+        freshness: detail.governanceDetail.freshness,
+        supersedesId: detail.governanceDetail.series.supersedesId ?? null,
+        supersededByIds: detail.governanceDetail.series.supersededByIds,
+        attestation: detail.governanceDetail.attestation,
+        settlement: detail.governanceDetail.settlement,
+      };
+    }
+    if (detail.governanceDetail?.kind === 'collapse-proposal') {
+      return {
+        ...base,
+        kind: 'collapse-proposal',
+        freshness: detail.governanceDetail.freshness,
+        lifecycle: detail.governanceDetail.lifecycle,
+        supersedesId: detail.governanceDetail.series.supersedesId ?? null,
+        supersededByIds: detail.governanceDetail.series.supersededByIds,
+        attestation: detail.governanceDetail.attestation,
+        execution: detail.governanceDetail.execution,
+        executionGate: detail.governanceDetail.executionGate,
+      };
+    }
+    return base;
   }
 
   private async forkWorldline(
@@ -1716,6 +2307,7 @@ export class ControlPlaneService implements ControlPlanePort {
       false,
       graph,
       descriptor.baseObservation.frontierDigest,
+      workingSetObservationBackingFromDescriptor(descriptor),
     );
 
     return {
@@ -1952,6 +2544,7 @@ export class ControlPlaneService implements ControlPlanePort {
         false,
         graph,
         frontierDigestOverride,
+        workingSetObservationBackingFromDescriptor(descriptor),
       ),
     };
   }
@@ -1962,11 +2555,13 @@ export class ControlPlaneService implements ControlPlanePort {
   ): Promise<{
     data: Record<string, unknown>;
     diagnostics: Diagnostic[];
+    observation?: ObservationCoordinate;
   }> {
     const leftWorldlineId = capability.worldlineId;
     const rightWorldlineId = this.resolveComparisonWorldlineId(capability, request);
     const leftSelector = this.resolveAtSelector(request);
     const rightSelector = this.resolveAgainstAtSelector(request);
+    const persist = this.resolvePersistFlag(request, 'compare_worldlines');
     const targetId = request.args['targetId'] === undefined
       ? null
       : this.requireString(request.args['targetId'], 'compare_worldlines targetId');
@@ -1980,12 +2575,19 @@ export class ControlPlaneService implements ControlPlanePort {
     );
     await graph.syncCoverage();
 
-    let comparison: CoordinateComparisonV1;
+    const rawComparisonOptions = {
+      left: this.buildComparisonSelector(leftWorldlineId, leftSelector, 'compare_worldlines'),
+      right: this.buildComparisonSelector(rightWorldlineId, rightSelector, 'compare_worldlines'),
+      ...(targetId === null ? {} : { targetId }),
+    } satisfies Parameters<WarpGraph['compareCoordinates']>[0];
+
+    let rawComparison: CoordinateComparisonV1;
+    let operationalComparison: CoordinateComparisonV1;
     try {
-      comparison = await graph.compareCoordinates({
-        left: this.buildComparisonSelector(leftWorldlineId, leftSelector, 'compare_worldlines'),
-        right: this.buildComparisonSelector(rightWorldlineId, rightSelector, 'compare_worldlines'),
-        ...(targetId === null ? {} : { targetId }),
+      rawComparison = await graph.compareCoordinates(rawComparisonOptions);
+      operationalComparison = await graph.compareCoordinates({
+        ...rawComparisonOptions,
+        scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
       });
     } catch (err) {
       this.rethrowComparisonError(err, leftWorldlineId, rightWorldlineId);
@@ -2007,7 +2609,8 @@ export class ControlPlaneService implements ControlPlanePort {
       null,
       false,
       graph,
-      comparison.left.resolved.lamportFrontierDigest,
+      rawComparison.left.resolved.lamportFrontierDigest,
+      comparisonResolvedSideBacking(rawComparison.left.resolved),
     );
     const rightObservation = await this.buildObservationCoordinate(
       {
@@ -2027,74 +2630,530 @@ export class ControlPlaneService implements ControlPlanePort {
       null,
       false,
       graph,
-      comparison.right.resolved.lamportFrontierDigest,
+      rawComparison.right.resolved.lamportFrontierDigest,
+      comparisonResolvedSideBacking(rawComparison.right.resolved),
     );
 
-    const patchDiverged = comparison.visiblePatchDivergence.leftOnlyCount > 0
-      || comparison.visiblePatchDivergence.rightOnlyCount > 0;
-    const artifactDigest = digest({
-      kind: 'comparison-artifact',
-      comparisonDigest: comparison.comparisonDigest,
+    const rawComparisonFact = exportCoordinateComparisonFact(rawComparison);
+    const operationalComparisonFact = exportCoordinateComparisonFact(operationalComparison);
+    const artifactDigest = buildComparisonArtifactDigest({
+      comparisonDigest: operationalComparison.comparisonDigest,
       comparisonPolicyVersion: capability.comparisonPolicyVersion,
+      comparisonScopeVersion: XYPH_OPERATIONAL_COMPARISON_SCOPE_VERSION,
+      leftWorldlineId,
+      leftSelector,
+      rightWorldlineId,
+      rightSelector,
+      targetId,
+    });
+    const artifactId = `comparison-artifact:${artifactDigest}`;
+    const data: Record<string, unknown> = {
+      kind: 'comparison-artifact',
+      artifactId,
+      artifactDigest,
+      comparedAt,
+      comparisonPolicyVersion: capability.comparisonPolicyVersion,
+      comparisonScopeVersion: XYPH_OPERATIONAL_COMPARISON_SCOPE_VERSION,
+      changed: operationalComparison.visibleState.changed || comparisonHasPatchDivergence(operationalComparison),
+      ...(targetId === null ? {} : { targetId }),
       left: {
         worldlineId: leftWorldlineId,
         at: normalizeSelectorValue(leftSelector),
+        observation: leftObservation,
+        summary: rawComparison.left.resolved.summary,
+        operationalSummary: operationalComparison.left.resolved.summary,
+        substrate: {
+          raw: rawComparison.left,
+          operational: operationalComparison.left,
+        },
       },
       right: {
         worldlineId: rightWorldlineId,
         at: normalizeSelectorValue(rightSelector),
+        observation: rightObservation,
+        summary: rawComparison.right.resolved.summary,
+        operationalSummary: operationalComparison.right.resolved.summary,
+        substrate: {
+          raw: rawComparison.right,
+          operational: operationalComparison.right,
+        },
       },
-      targetId,
-    });
+      summary: {
+        ...buildComparisonSummary(operationalComparison),
+        rawWholeGraph: buildComparisonSummary(rawComparison),
+      },
+      preview: {
+        visiblePatchDivergence: operationalComparison.visiblePatchDivergence,
+        visibleState: {
+          nodes: operationalComparison.visibleState.nodes,
+          edges: operationalComparison.visibleState.edges,
+          nodeProperties: operationalComparison.visibleState.nodeProperties,
+          edgeProperties: operationalComparison.visibleState.edgeProperties,
+          ...(operationalComparison.visibleState.target === undefined
+            ? {}
+            : { target: operationalComparison.visibleState.target }),
+        },
+      },
+      substrate: {
+        kind: 'git-warp-coordinate-comparison',
+        comparisonVersion: operationalComparison.comparisonVersion,
+        comparisonDigest: operationalComparison.comparisonDigest,
+        comparisonFact: operationalComparisonFact,
+        comparisonScopeVersion: XYPH_OPERATIONAL_COMPARISON_SCOPE_VERSION,
+        comparisonScope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
+        rawWholeGraph: {
+          comparisonVersion: rawComparison.comparisonVersion,
+          comparisonDigest: rawComparison.comparisonDigest,
+          comparisonFact: rawComparisonFact,
+        },
+      },
+    };
+
+    if (persist) {
+      const artifactSeriesKey = buildComparisonArtifactSeriesKey({
+        comparisonPolicyVersion: capability.comparisonPolicyVersion,
+        comparisonScopeVersion: XYPH_OPERATIONAL_COMPARISON_SCOPE_VERSION,
+        leftWorldlineId,
+        leftSelector,
+        rightWorldlineId,
+        rightSelector,
+        targetId,
+      });
+      const supersedesTargetId = await this.findLatestCanonicalArtifactInSeries(
+        'comparison-artifact',
+        artifactSeriesKey,
+        artifactId,
+      );
+      const record = await this.records.createCanonicalArtifact({
+        id: artifactId,
+        kind: 'comparison-artifact',
+        artifactDigest,
+        payload: data,
+        recordedBy: capability.principal.principalId,
+        observerProfileId: capability.observer.observerProfileId,
+        policyPackVersion: capability.policyPackVersion,
+        indexedProperties: {
+          artifact_series_key: artifactSeriesKey,
+          comparison_policy_version: capability.comparisonPolicyVersion,
+          comparison_scope_version: XYPH_OPERATIONAL_COMPARISON_SCOPE_VERSION,
+          left_worldline_id: leftWorldlineId,
+          right_worldline_id: rightWorldlineId,
+          operational_comparison_digest: operationalComparison.comparisonDigest,
+          raw_comparison_digest: rawComparison.comparisonDigest,
+          ...(targetId === null ? {} : { target_id: targetId }),
+        },
+        supersedesTargetId,
+        idempotencyKey: typeof request.args['idempotencyKey'] === 'string'
+          ? request.args['idempotencyKey']
+          : undefined,
+      });
+      data['record'] = {
+        persisted: true,
+        recordedInWorldlineId: DEFAULT_WORLDLINE_ID,
+        patch: record.patch,
+        recordedAt: record.recordedAt,
+        contentOid: record.contentOid,
+        existed: record.existed,
+      };
+    }
 
     return {
-      data: {
-        kind: 'comparison-artifact',
-        artifactId: `comparison-artifact:${artifactDigest}`,
-        artifactDigest,
-        comparedAt,
-        comparisonPolicyVersion: capability.comparisonPolicyVersion,
-        changed: comparison.visibleState.changed || patchDiverged,
-        ...(targetId === null ? {} : { targetId }),
-        left: {
-          worldlineId: leftWorldlineId,
-          at: normalizeSelectorValue(leftSelector),
-          observation: leftObservation,
-          summary: comparison.left.resolved.summary,
-          substrate: comparison.left,
+      data,
+      diagnostics: [],
+    };
+  }
+
+  private async collapseWorldline(
+    request: ControlPlaneRequestV1,
+    capability: EffectiveCapabilityGrant,
+  ): Promise<{
+    data: Record<string, unknown>;
+    diagnostics: Diagnostic[];
+  }> {
+    const sourceWorldlineId = capability.worldlineId;
+    const sourceWorkingSetId = this.resolveDerivedWorkingSetId(capability, 'collapse_worldline');
+    if (!sourceWorkingSetId) {
+      throw controlPlaneFailure(
+        'invalid_args',
+        'collapse_worldline requires a canonical derived source worldline backed by a git-warp working set.',
+        {
+          worldlineId: sourceWorldlineId,
         },
-        right: {
-          worldlineId: rightWorldlineId,
-          at: normalizeSelectorValue(rightSelector),
-          observation: rightObservation,
-          summary: comparison.right.resolved.summary,
-          substrate: comparison.right,
+      );
+    }
+
+    if (
+      request.args['at'] !== undefined
+      || request.args['againstAt'] !== undefined
+      || request.args['since'] !== undefined
+      || request.args['sinceFrontierDigest'] !== undefined
+      || request.args['targetId'] !== undefined
+    ) {
+      throw controlPlaneFailure(
+        'invalid_args',
+        'collapse_worldline currently previews only the effective source worldline tip against a whole-target worldline tip. at/againstAt/since/targetId selectors are not supported in this slice.',
+      );
+    }
+
+    if (request.args['againstWorldlineId'] !== undefined) {
+      throw controlPlaneFailure(
+        'invalid_args',
+        'collapse_worldline uses targetWorldlineId rather than compare_worldlines-style againstWorldlineId.',
+      );
+    }
+
+    const rawDryRun = request.args['dryRun'];
+    const persist = this.resolvePersistFlag(request, 'collapse_worldline');
+    if (rawDryRun !== undefined && typeof rawDryRun !== 'boolean') {
+      throw controlPlaneFailure(
+        'invalid_args',
+        'collapse_worldline dryRun must be a boolean when provided.',
+      );
+    }
+    const executeLive = rawDryRun === false;
+
+    const providedComparisonArtifactDigest = this.requireString(
+      request.args['comparisonArtifactDigest'],
+      'collapse_worldline comparisonArtifactDigest',
+    );
+    const targetWorldlineId = request.args['targetWorldlineId'] === undefined
+      ? DEFAULT_WORLDLINE_ID
+      : this.requireString(request.args['targetWorldlineId'], 'collapse_worldline targetWorldlineId');
+    if (targetWorldlineId !== DEFAULT_WORLDLINE_ID) {
+      throw controlPlaneFailure(
+        'collapse_not_allowed',
+        'collapse_worldline currently supports settlement into worldline:live only.',
+        {
+          sourceWorldlineId,
+          targetWorldlineId,
         },
-        summary: {
-          visibleStateChanged: comparison.visibleState.changed,
-          patchDiverged,
-          visiblePatchDivergence: comparison.visiblePatchDivergence,
-          visibleState: comparison.visibleState.summary,
+      );
+    }
+
+    const attestationIds = request.args['attestationIds'] === undefined
+      ? null
+      : this.requireStringArray(request.args['attestationIds'], 'collapse_worldline attestationIds');
+    const rationale = typeof request.args['rationale'] === 'string'
+      && request.args['rationale'].trim().length >= 11
+      ? request.args['rationale'].trim()
+      : `${executeLive ? 'Collapse' : 'Preview collapse of'} ${sourceWorldlineId} into ${targetWorldlineId}.`;
+    const sourceSelector = { kind: 'tip' } as const;
+    const targetSelector = { kind: 'tip' } as const;
+
+    const graph = await this.openIsolatedReadGraph(
+      'collapse_worldline requires an isolated read-graph provider.',
+      {
+        leftWorldlineId: sourceWorldlineId,
+        rightWorldlineId: targetWorldlineId,
+      },
+    );
+    await graph.syncCoverage();
+
+    const comparisonOptions = {
+      left: this.buildComparisonSelector(sourceWorldlineId, sourceSelector, 'collapse_worldline'),
+      right: this.buildComparisonSelector(targetWorldlineId, targetSelector, 'collapse_worldline'),
+    } satisfies Parameters<WarpGraph['compareCoordinates']>[0];
+
+    let rawComparison: CoordinateComparisonV1;
+    let operationalComparison: CoordinateComparisonV1;
+    try {
+      rawComparison = await graph.compareCoordinates(comparisonOptions);
+      operationalComparison = await graph.compareCoordinates({
+        ...comparisonOptions,
+        scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
+      });
+    } catch (err) {
+      this.rethrowComparisonError(err, sourceWorldlineId, targetWorldlineId);
+    }
+
+    const currentComparisonArtifactDigest = buildComparisonArtifactDigest({
+      comparisonDigest: operationalComparison.comparisonDigest,
+      comparisonPolicyVersion: capability.comparisonPolicyVersion,
+      comparisonScopeVersion: XYPH_OPERATIONAL_COMPARISON_SCOPE_VERSION,
+      leftWorldlineId: sourceWorldlineId,
+      leftSelector: sourceSelector,
+      rightWorldlineId: targetWorldlineId,
+      rightSelector: targetSelector,
+      targetId: null,
+    });
+    if (providedComparisonArtifactDigest !== currentComparisonArtifactDigest) {
+      throw controlPlaneFailure(
+        'stale_base_observation',
+        'collapse_worldline comparisonArtifactDigest is stale for the current source and target tips. Re-run compare_worldlines before requesting collapse preview or execution.',
+        {
+          sourceWorldlineId,
+          targetWorldlineId,
+          providedComparisonArtifactDigest,
+          currentComparisonArtifactDigest,
         },
-        preview: {
-          visiblePatchDivergence: comparison.visiblePatchDivergence,
-          visibleState: {
-            nodes: comparison.visibleState.nodes,
-            edges: comparison.visibleState.edges,
-            nodeProperties: comparison.visibleState.nodeProperties,
-            edgeProperties: comparison.visibleState.edgeProperties,
-            ...(comparison.visibleState.target === undefined
-              ? {}
-              : { target: comparison.visibleState.target }),
+      );
+    }
+
+    let transferPlan: CoordinateTransferPlanV1;
+    try {
+      transferPlan = await graph.planCoordinateTransfer({
+        source: comparisonOptions.left,
+        target: comparisonOptions.right,
+        scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
+      });
+    } catch (err) {
+      this.rethrowComparisonError(err, sourceWorldlineId, targetWorldlineId);
+    }
+
+    const loweredOps = lowerTransferOpsToMutationOps(transferPlan.ops);
+    const executable = true;
+    const comparisonArtifactId = `comparison-artifact:${currentComparisonArtifactDigest}`;
+
+    let approvedAttestations: ApprovedAttestationRecord[] | null = null;
+    if (executeLive && transferPlan.changed) {
+      if (attestationIds === null) {
+        throw controlPlaneFailure(
+          'attestation_missing',
+          'collapse_worldline live execution requires one or more approving attestations over the persisted comparison-artifact. Re-run compare_worldlines with persist:true, attest that comparison-artifact, then retry with attestationIds.',
+          {
+            sourceWorldlineId,
+            targetWorldlineId,
+            comparisonArtifactId,
           },
+        );
+      }
+      approvedAttestations = await this.resolveApprovedCollapseAttestations(
+        comparisonArtifactId,
+        attestationIds,
+      );
+    }
+
+    const mutationResult = await this.mutations.execute({
+      rationale,
+      ops: loweredOps,
+      ...(typeof request.args['idempotencyKey'] === 'string'
+        ? { idempotencyKey: request.args['idempotencyKey'] }
+        : {}),
+    }, {
+      dryRun: !executeLive,
+      allowEmptyPlan: true,
+    });
+    if (!mutationResult.valid) {
+      throw controlPlaneFailure(
+        mutationResult.code ?? 'invariant_violation',
+        mutationResult.reasons[0] ?? `Mutation kernel rejected the requested collapse ${executeLive ? 'execution' : 'preview'}`,
+        {
+          reasons: mutationResult.reasons,
+          sourceWorldlineId,
+          targetWorldlineId,
+          transferDigest: transferPlan.transferDigest,
         },
-        substrate: {
-          kind: 'git-warp-coordinate-comparison',
-          comparisonVersion: comparison.comparisonVersion,
-          comparisonDigest: comparison.comparisonDigest,
+      );
+    }
+
+    const preparedAt = Date.now();
+    const sourceObservation = await this.buildObservationCoordinate(
+      {
+        ...request,
+        args: {
+          side: 'source',
+          worldlineId: sourceWorldlineId,
+          at: 'tip',
+          comparisonArtifactDigest: currentComparisonArtifactDigest,
         },
       },
+      capability,
+      preparedAt,
+      null,
+      false,
+      graph,
+      rawComparison.left.resolved.lamportFrontierDigest,
+      comparisonResolvedSideBacking(rawComparison.left.resolved),
+    );
+    const targetObservation = await this.buildObservationCoordinate(
+      {
+        ...request,
+        args: {
+          side: 'target',
+          worldlineId: targetWorldlineId,
+          at: 'tip',
+          comparisonArtifactDigest: currentComparisonArtifactDigest,
+        },
+      },
+      {
+        ...capability,
+        worldlineId: targetWorldlineId,
+      },
+      preparedAt,
+      null,
+      false,
+      graph,
+      rawComparison.right.resolved.lamportFrontierDigest,
+      comparisonResolvedSideBacking(rawComparison.right.resolved),
+    );
+
+    const rawComparisonFact = exportCoordinateComparisonFact(rawComparison);
+    const operationalComparisonFact = exportCoordinateComparisonFact(operationalComparison);
+    const transferFact = exportCoordinateTransferPlanFact(transferPlan);
+    const artifactDigest = buildCollapseArtifactDigest({
+      comparisonArtifactDigest: currentComparisonArtifactDigest,
+      transferDigest: transferPlan.transferDigest,
+      sourceWorldlineId,
+      targetWorldlineId,
+      comparisonScopeVersion: XYPH_OPERATIONAL_COMPARISON_SCOPE_VERSION,
+      dryRun: !executeLive,
+    });
+    const artifactId = `collapse-proposal:${artifactDigest}`;
+    const data: Record<string, unknown> = {
+      kind: 'collapse-proposal',
+      artifactId,
+      artifactDigest,
+      preparedAt,
+      dryRun: !executeLive,
+      executable,
+      source: {
+        worldlineId: sourceWorldlineId,
+        at: 'tip',
+        observation: sourceObservation,
+        summary: transferPlan.source.resolved.summary,
+      },
+      target: {
+        worldlineId: targetWorldlineId,
+        at: 'tip',
+        observation: targetObservation,
+        summary: transferPlan.target.resolved.summary,
+      },
+      comparison: {
+        artifactId: comparisonArtifactId,
+        artifactDigest: currentComparisonArtifactDigest,
+        comparisonScopeVersion: XYPH_OPERATIONAL_COMPARISON_SCOPE_VERSION,
+        changed: operationalComparison.visibleState.changed || comparisonHasPatchDivergence(operationalComparison),
+        summary: buildComparisonSummary(operationalComparison),
+        rawWholeGraph: buildComparisonSummary(rawComparison),
+      },
+      transfer: {
+        changed: transferPlan.changed,
+        transferVersion: transferPlan.transferVersion,
+        transferDigest: transferPlan.transferDigest,
+        comparisonDigest: transferPlan.comparisonDigest,
+        comparisonScopeVersion: XYPH_OPERATIONAL_COMPARISON_SCOPE_VERSION,
+        summary: transferPlan.summary,
+        ops: transferPlan.ops.map((op) => sanitizeTransferOperation(op)),
+      },
+      ...(executeLive
+        ? {
+            mutationExecution: {
+              dryRun: false,
+              valid: mutationResult.valid,
+              executed: mutationResult.executed,
+              patch: mutationResult.patch,
+              opCount: transferPlan.summary.opCount,
+              sideEffects: mutationResult.sideEffects,
+            },
+          }
+        : {
+            mutationPreview: {
+              dryRun: true,
+              valid: mutationResult.valid,
+              executed: mutationResult.executed,
+              opCount: transferPlan.summary.opCount,
+              sideEffects: mutationResult.sideEffects,
+            },
+          }),
+      ...(approvedAttestations === null
+        ? {}
+        : {
+            attestations: approvedAttestations,
+          }),
+      executionGate: {
+        comparisonArtifactId,
+        requiredDecision: 'approve',
+        ...(approvedAttestations === null ? {} : { satisfied: true }),
+      },
+      ...(attestationIds === null ? {} : { attestationIds }),
+      substrate: {
+        kind: 'git-warp-coordinate-transfer-plan',
+        sourceWorkingSetId,
+        transferVersion: transferPlan.transferVersion,
+        transferDigest: transferPlan.transferDigest,
+        comparisonDigest: transferPlan.comparisonDigest,
+        comparisonFact: operationalComparisonFact,
+        comparisonScopeVersion: XYPH_OPERATIONAL_COMPARISON_SCOPE_VERSION,
+        comparisonScope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
+        rawWholeGraph: {
+          comparisonDigest: rawComparison.comparisonDigest,
+          comparisonFact: rawComparisonFact,
+        },
+        transferFact,
+      },
+    };
+
+    if (persist) {
+      const artifactSeriesKey = buildCollapseProposalSeriesKey({
+        sourceWorldlineId,
+        targetWorldlineId,
+        comparisonScopeVersion: XYPH_OPERATIONAL_COMPARISON_SCOPE_VERSION,
+        dryRun: !executeLive,
+      });
+      const supersedesTargetId = await this.findLatestCanonicalArtifactInSeries(
+        'collapse-proposal',
+        artifactSeriesKey,
+        artifactId,
+      );
+      const record = await this.records.createCanonicalArtifact({
+        id: artifactId,
+        kind: 'collapse-proposal',
+        artifactDigest,
+        payload: data,
+        recordedBy: capability.principal.principalId,
+        observerProfileId: capability.observer.observerProfileId,
+        policyPackVersion: capability.policyPackVersion,
+        idempotencyKey: typeof request.args['idempotencyKey'] === 'string'
+          ? request.args['idempotencyKey']
+          : undefined,
+        indexedProperties: {
+          artifact_series_key: artifactSeriesKey,
+          comparison_artifact_digest: currentComparisonArtifactDigest,
+          comparison_scope_version: XYPH_OPERATIONAL_COMPARISON_SCOPE_VERSION,
+          transfer_digest: transferPlan.transferDigest,
+          source_worldline_id: sourceWorldlineId,
+          target_worldline_id: targetWorldlineId,
+          dry_run: !executeLive,
+          executable,
+          executed: mutationResult.executed,
+          changed: transferPlan.changed,
+          ...(mutationResult.patch === null ? {} : { execution_patch: mutationResult.patch }),
+          ...(attestationIds === null ? {} : { attestation_count: attestationIds.length }),
+        },
+        supersedesTargetId,
+      });
+      data['record'] = {
+        persisted: true,
+        recordedInWorldlineId: DEFAULT_WORLDLINE_ID,
+        recordedAt: record.recordedAt,
+        patch: record.patch,
+        contentOid: record.contentOid,
+        existed: record.existed,
+      };
+    }
+
+    return {
+      data,
       diagnostics: [],
+      ...(executeLive
+        ? {
+            observation: await this.buildObservationCoordinate(
+              {
+                ...request,
+                args: {
+                  ...request.args,
+                  worldlineId: targetWorldlineId,
+                },
+              },
+              {
+                ...capability,
+                worldlineId: targetWorldlineId,
+              },
+              Date.now(),
+              null,
+            ),
+          }
+        : {}),
     };
   }
 
@@ -2143,10 +3202,13 @@ export class ControlPlaneService implements ControlPlanePort {
 
     const graph = await this.graphPort.getGraph();
     let frontierDigestOverride: string | undefined;
+    let backingOverride: ObservationCoordinateBacking | undefined;
     if (workingSetId) {
       try {
+        const descriptor = await this.loadWorkingSetDescriptor(graph, capability.worldlineId, workingSetId);
         const state = await graph.materializeWorkingSet(workingSetId);
         frontierDigestOverride = frontierDigestFromObservedFrontier(state.observedFrontier);
+        backingOverride = workingSetObservationBackingFromDescriptor(descriptor);
       } catch (err) {
         this.rethrowWorkingSetError(err, capability.worldlineId, workingSetId);
       }
@@ -2168,6 +3230,7 @@ export class ControlPlaneService implements ControlPlanePort {
         false,
         graph,
         frontierDigestOverride,
+        backingOverride,
       ),
     };
   }
@@ -2288,6 +3351,97 @@ export class ControlPlaneService implements ControlPlanePort {
     };
   }
 
+  private async resolveApprovedCollapseAttestations(
+    comparisonArtifactId: string,
+    attestationIds: string[],
+  ): Promise<ApprovedAttestationRecord[]> {
+    const graph = await this.graphPort.getGraph();
+    if (!await graph.hasNode(comparisonArtifactId)) {
+      throw controlPlaneFailure(
+        'attestation_missing',
+        'collapse_worldline live execution requires the comparison-artifact to exist on worldline:live so approvals can bind to a durable target. Re-run compare_worldlines with persist:true before attesting/executing.',
+        {
+          comparisonArtifactId,
+        },
+      );
+    }
+
+    const seen = new Set<string>();
+    const approved: ApprovedAttestationRecord[] = [];
+    for (const attestationId of attestationIds) {
+      if (seen.has(attestationId)) {
+        throw controlPlaneFailure(
+          'invalid_args',
+          'collapse_worldline attestationIds must not contain duplicates.',
+          {
+            attestationId,
+          },
+        );
+      }
+      seen.add(attestationId);
+
+      const props = await graph.getNodeProps(attestationId);
+      if (!props) {
+        throw controlPlaneFailure(
+          'attestation_missing',
+          'collapse_worldline requires each attestationId to reference an existing attestation node.',
+          {
+            attestationId,
+            comparisonArtifactId,
+          },
+        );
+      }
+
+      const type = typeof props['type'] === 'string' ? props['type'] : null;
+      const decision = typeof props['decision'] === 'string' ? props['decision'] : null;
+      const normalizedDecision = decision?.trim().toLowerCase() ?? null;
+      const targetId = typeof props['target_id'] === 'string' ? props['target_id'] : null;
+      if (type !== 'attestation') {
+        throw controlPlaneFailure(
+          'attestation_missing',
+          'collapse_worldline attestationIds must reference attestation:* nodes.',
+          {
+            attestationId,
+            actualType: type,
+          },
+        );
+      }
+      if (targetId !== comparisonArtifactId) {
+        throw controlPlaneFailure(
+          'attestation_missing',
+          'collapse_worldline live execution currently requires approving attestations over the persisted comparison-artifact for the selected settlement.',
+          {
+            attestationId,
+            attestationTargetId: targetId,
+            requiredTargetId: comparisonArtifactId,
+          },
+        );
+      }
+      if (normalizedDecision !== 'approve') {
+        throw controlPlaneFailure(
+          'attestation_missing',
+          'collapse_worldline live execution currently requires approving attestations. Non-approve attestation decisions do not satisfy this gate.',
+          {
+            attestationId,
+            decision,
+            requiredDecision: 'approve',
+            comparisonArtifactId,
+          },
+        );
+      }
+
+      approved.push({
+        id: attestationId,
+        decision: decision ?? 'approve',
+        targetId: targetId ?? comparisonArtifactId,
+        attestedBy: typeof props['attested_by'] === 'string' ? props['attested_by'] : null,
+        attestedAt: typeof props['attested_at'] === 'number' ? props['attested_at'] : null,
+      });
+    }
+
+    return approved;
+  }
+
   private requireString(value: unknown, label: string): string {
     if (typeof value !== 'string' || value.trim().length === 0) {
       throw controlPlaneFailure('invalid_args', `${label} must be a non-empty string`);
@@ -2300,6 +3454,15 @@ export class ControlPlaneService implements ControlPlanePort {
       throw controlPlaneFailure('invalid_args', `${label} must be a non-empty string array`);
     }
     return value.map((entry, index) => this.requireString(entry, `${label}[${index}]`));
+  }
+
+  private resolvePersistFlag(request: ControlPlaneRequestV1, label: string): boolean {
+    const rawPersist = request.args['persist'];
+    if (rawPersist === undefined) return false;
+    if (typeof rawPersist !== 'boolean') {
+      throw controlPlaneFailure('invalid_args', `${label} persist must be a boolean when provided.`);
+    }
+    return rawPersist;
   }
 
   private mapActionCode(code: string): ControlPlaneErrorCode {
@@ -2329,6 +3492,7 @@ export class ControlPlaneService implements ControlPlanePort {
     onlyMeta = false,
     graphOverride?: WarpGraph,
     frontierDigestOverride?: string,
+    backingOverride?: ObservationCoordinateBacking,
   ): Promise<ObservationCoordinate> {
     let frontierDigest = frontierDigestOverride;
     if (!frontierDigest) {
@@ -2360,6 +3524,7 @@ export class ControlPlaneService implements ControlPlanePort {
         onlyMeta,
       }),
       frontierDigest,
+      backing: backingOverride ?? liveObservationBacking(),
       graphMeta,
       comparisonPolicyVersion: capability.comparisonPolicyVersion,
     };

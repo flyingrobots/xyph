@@ -1,7 +1,18 @@
 import { compareQuestPriority, DEFAULT_QUEST_PRIORITY, isExecutableQuestStatus } from '../entities/Quest.js';
 import type { Diagnostic } from '../models/diagnostics.js';
-import type { RecommendationRequest } from '../models/recommendations.js';
-import type { EntityDetail, GraphSnapshot, QuestNode } from '../models/dashboard.js';
+import type {
+  RecommendationBlockedTransition,
+  RecommendationRequest,
+} from '../models/recommendations.js';
+import type {
+  DecisionNode,
+  EntityDetail,
+  GovernanceArtifactNode,
+  GraphSnapshot,
+  QuestNode,
+  ReviewNode,
+  SubmissionNode,
+} from '../models/dashboard.js';
 import type { GraphPort } from '../../ports/GraphPort.js';
 import type { RoadmapQueryPort } from '../../ports/RoadmapPort.js';
 import { createGraphContext } from '../../infrastructure/GraphContext.js';
@@ -11,21 +22,51 @@ import { DoctorService } from './DoctorService.js';
 import { buildRecommendationRequests, findRelevantRecommendationRequests } from './RecommendationService.js';
 import { ReadinessService, type ReadinessAssessment } from './ReadinessService.js';
 import { AgentActionValidator } from './AgentActionService.js';
-import { determineSubmissionNextStep } from './AgentSubmissionService.js';
+import {
+  determineSubmissionNextStep,
+  type AgentSubmissionNextStep,
+} from './AgentSubmissionService.js';
 import {
   AgentRecommender,
   type AgentActionCandidate,
   type AgentDependencyContext,
   type AgentQuestRef,
 } from './AgentRecommender.js';
+import {
+  buildGovernanceWorkSemantics,
+  buildQuestWorkSemantics,
+  buildSubmissionWorkSemantics,
+  type AgentWorkSemantics,
+  type GovernanceWorkSemantics,
+} from './WorkSemanticsService.js';
+
+export interface AgentSubmissionContext {
+  submission: SubmissionNode;
+  quest: QuestNode | null;
+  reviews: ReviewNode[];
+  decisions: DecisionNode[];
+  focusPatchsetId: string | null;
+  nextStep: AgentSubmissionNextStep;
+}
+
+export interface AgentGovernanceContext {
+  artifactId: string;
+  artifactType: string;
+  recordedAt: number | null;
+  recordedBy: string | null;
+  targetId: string | null;
+}
 
 export interface AgentContextResult {
   detail: EntityDetail;
   readiness: ReadinessAssessment | null;
   dependency: AgentDependencyContext | null;
+  submissionContext: AgentSubmissionContext | null;
+  governanceContext: AgentGovernanceContext | null;
   recommendedActions: AgentActionCandidate[];
   recommendationRequests: RecommendationRequest[];
   diagnostics: Diagnostic[];
+  semantics: AgentWorkSemantics | null;
 }
 
 export function toAgentQuestRef(quest: QuestNode): AgentQuestRef {
@@ -83,6 +124,241 @@ export function buildAgentDependencyContext(
   };
 }
 
+function governancePriorityForAttention(
+  state: GovernanceWorkSemantics['attentionState'],
+): typeof DEFAULT_QUEST_PRIORITY {
+  switch (state) {
+    case 'ready':
+    case 'review':
+      return 'P1';
+    case 'blocked':
+      return 'P2';
+    case 'none':
+    default:
+      return DEFAULT_QUEST_PRIORITY;
+  }
+}
+
+function isGovernanceHumanOnlyAction(kind: string): boolean {
+  return kind === 'attest'
+    || kind === 'attest_comparison'
+    || kind === 'collapse_preview'
+    || kind === 'collapse_live';
+}
+
+function normalizeGovernanceActionKind(kind: string): string {
+  return kind === 'attest_comparison' ? 'attest' : kind;
+}
+
+function governanceBlockedTransitions(kind: string): RecommendationBlockedTransition[] {
+  switch (normalizeGovernanceActionKind(kind)) {
+    case 'attest':
+      return ['attest'];
+    case 'collapse_preview':
+      return ['collapse_preview'];
+    case 'collapse_live':
+      return ['collapse_live'];
+    default:
+      return [];
+  }
+}
+
+function governanceDryRunSummary(kind: string, targetId: string): string {
+  switch (normalizeGovernanceActionKind(kind)) {
+    case 'attest':
+      return `Record a governance attestation on ${targetId} after human review.`;
+    case 'collapse_preview':
+      return `Prepare a governed collapse preview from ${targetId}.`;
+    case 'collapse_live':
+      return `Execute governed collapse from ${targetId} after all approvals are present.`;
+    default:
+      return `Inspect governance follow-up work for ${targetId}.`;
+  }
+}
+
+function governanceSideEffects(kind: string, targetId: string): string[] {
+  switch (normalizeGovernanceActionKind(kind)) {
+    case 'attest':
+      return [`record attestation on ${targetId}`];
+    case 'collapse_preview':
+      return [`prepare collapse preview for ${targetId}`];
+    case 'collapse_live':
+      return [`execute governed collapse for ${targetId}`];
+    default:
+      return [];
+  }
+}
+
+function governanceHumanOnlyReason(kind: string): string {
+  switch (normalizeGovernanceActionKind(kind)) {
+    case 'attest':
+      return 'Attestation remains human-bound in the current governance kernel.';
+    case 'collapse_preview':
+      return 'Governed collapse planning remains human-bound in the current governance kernel.';
+    case 'collapse_live':
+      return 'Governed live collapse remains human-bound in the current governance kernel.';
+    default:
+      return 'This governance action remains human-bound in the current governance kernel.';
+  }
+}
+
+function sortActionCandidates(candidates: AgentActionCandidate[]): AgentActionCandidate[] {
+  return candidates.sort((a, b) =>
+    compareQuestPriority(
+      (a.priority ?? DEFAULT_QUEST_PRIORITY) as typeof DEFAULT_QUEST_PRIORITY,
+      (b.priority ?? DEFAULT_QUEST_PRIORITY) as typeof DEFAULT_QUEST_PRIORITY,
+    ) ||
+    Number(b.allowed) - Number(a.allowed) ||
+    Number(a.requiresHumanApproval) - Number(b.requiresHumanApproval) ||
+    b.confidence - a.confidence ||
+    a.kind.localeCompare(b.kind)
+  );
+}
+
+export function buildGovernanceActionCandidates(input: {
+  artifactId: string;
+  semantics: GovernanceWorkSemantics;
+}): AgentActionCandidate[] {
+  const { artifactId, semantics } = input;
+  const priority = governancePriorityForAttention(semantics.attentionState);
+  const inspectReason = semantics.blockingReasons[0]
+    ?? semantics.missingEvidence[0]
+    ?? semantics.nextLawfulActions[0]?.reason
+    ?? 'Inspect the governance artifact before deciding on follow-on action.';
+
+  const candidates: AgentActionCandidate[] = [{
+    kind: 'inspect',
+    targetId: artifactId,
+    args: {},
+    priority,
+    reason: inspectReason,
+    confidence: 0.78,
+    requiresHumanApproval: false,
+    dryRunSummary: 'Inspect the work packet and graph context before taking follow-on action.',
+    blockedBy: [],
+    allowed: true,
+    underlyingCommand: `xyph context ${artifactId}`,
+    sideEffects: [],
+    validationCode: null,
+  }];
+
+  for (const action of semantics.nextLawfulActions) {
+    if (action.kind === 'comment') {
+      candidates.push({
+        kind: 'comment',
+        targetId: action.targetId ?? artifactId,
+        args: {},
+        priority,
+        reason: action.reason,
+        confidence: 0.81,
+        requiresHumanApproval: false,
+        dryRunSummary: `Record a durable comment on ${action.targetId ?? artifactId} after providing a message.`,
+        blockedBy: ['Provide message to execute the comment.'],
+        allowed: false,
+        underlyingCommand: `xyph act comment ${action.targetId ?? artifactId}`,
+        sideEffects: [`create comment on ${action.targetId ?? artifactId}`],
+        validationCode: 'requires-additional-input',
+      });
+      continue;
+    }
+
+    const normalizedKind = normalizeGovernanceActionKind(action.kind);
+    const targetId = action.targetId ?? artifactId;
+    const humanOnly = isGovernanceHumanOnlyAction(action.kind);
+    const blockedBy = action.allowed && !humanOnly
+      ? []
+      : [
+          ...action.blockedBy,
+          ...(humanOnly ? [governanceHumanOnlyReason(action.kind)] : []),
+        ];
+
+    candidates.push({
+      kind: normalizedKind,
+      targetId,
+      args: {},
+      priority,
+      reason: action.reason,
+      confidence: normalizedKind === 'collapse_live'
+        ? 0.91
+        : normalizedKind === 'attest'
+          ? 0.87
+          : 0.83,
+      requiresHumanApproval: humanOnly,
+      dryRunSummary: governanceDryRunSummary(action.kind, targetId),
+      blockedBy,
+      allowed: action.allowed && !humanOnly,
+      underlyingCommand: `xyph act ${normalizedKind} ${targetId}`,
+      sideEffects: governanceSideEffects(action.kind, targetId),
+      validationCode: action.allowed && !humanOnly
+        ? null
+        : humanOnly
+          ? 'human-only-action'
+          : action.blockedBy.length > 0
+            ? 'blocked-precondition'
+            : 'requires-additional-input',
+    });
+  }
+
+  return sortActionCandidates(candidates);
+}
+
+export function buildGovernanceRecommendationRequests(input: {
+  artifactId: string;
+  targetId: string | null;
+  semantics: GovernanceWorkSemantics;
+}): RecommendationRequest[] {
+  const { artifactId, targetId, semantics } = input;
+  const priority = governancePriorityForAttention(semantics.attentionState);
+  const blockedTaskIds = targetId?.startsWith('task:') ? [targetId] : [];
+  const relatedIds = [artifactId, ...(targetId ? [targetId] : [])];
+  const requests: RecommendationRequest[] = [];
+
+  for (const reason of semantics.blockingReasons) {
+    requests.push({
+      id: `${artifactId}:governance-blocked:${requests.length}`,
+      kind: 'governance-followup',
+      source: 'governance',
+      category: 'governance-attention',
+      groupingKey: `governance-blocked:${semantics.artifactKind}`,
+      summary: reason,
+      suggestedAction: 'Inspect the governance artifact and resolve the blocking governance state before proceeding.',
+      priority,
+      subjectId: artifactId,
+      relatedIds,
+      blockedTransitions: [],
+      blockedTaskIds,
+      materializable: false,
+      sourceIssueCodes: ['governance-blocked'],
+    });
+  }
+
+  for (const action of semantics.nextLawfulActions) {
+    if (action.kind === 'comment') continue;
+    const normalizedKind = normalizeGovernanceActionKind(action.kind);
+    const humanOnly = isGovernanceHumanOnlyAction(action.kind);
+    requests.push({
+      id: `${artifactId}:${normalizedKind}`,
+      kind: 'governance-followup',
+      source: 'governance',
+      category: 'governance-attention',
+      groupingKey: `governance:${semantics.artifactKind}:${normalizedKind}`,
+      summary: action.reason,
+      suggestedAction: humanOnly
+        ? `${action.label} requires human governance judgment; route it explicitly instead of treating it as routine agent work.`
+        : action.reason,
+      priority,
+      subjectId: artifactId,
+      relatedIds: [...new Set([artifactId, ...(action.targetId ? [action.targetId] : relatedIds.slice(1))])],
+      blockedTransitions: governanceBlockedTransitions(action.kind),
+      blockedTaskIds,
+      materializable: action.allowed && !humanOnly,
+      sourceIssueCodes: [`governance-${normalizedKind}`],
+    });
+  }
+
+  return requests;
+}
+
 export class AgentContextService {
   private readonly readiness: ReadinessService;
   private readonly recommender: AgentRecommender;
@@ -113,13 +389,68 @@ export class AgentContextService {
     }
 
     if (!detail.questDetail) {
+      const submissionContext = this.buildSubmissionContext(snapshot, id);
+      if (submissionContext) {
+        const semantics = buildSubmissionWorkSemantics({
+          submission: submissionContext.submission,
+          quest: submissionContext.quest ?? undefined,
+          reviews: submissionContext.reviews,
+          decisions: submissionContext.decisions,
+          principalId: this.agentId,
+        });
+        const submissionAction = this.toSubmissionCandidate(submissionContext.submission);
+
+        return {
+          detail,
+          readiness: null,
+          dependency: null,
+          submissionContext,
+          governanceContext: null,
+          recommendedActions: sortActionCandidates([
+            this.toCommentCandidate(submissionContext.submission.id, 'submission'),
+            ...(submissionAction
+              ? [submissionAction]
+              : []),
+          ]),
+          recommendationRequests: [],
+          diagnostics: [],
+          semantics,
+        };
+      }
+
+      const governanceContext = this.buildGovernanceContext(snapshot, detail);
+      const governanceSemantics = buildGovernanceWorkSemantics(detail);
+      if (governanceContext && governanceSemantics) {
+        return {
+          detail,
+          readiness: null,
+          dependency: null,
+          submissionContext: null,
+          governanceContext,
+          recommendedActions: buildGovernanceActionCandidates({
+            artifactId: detail.id,
+            semantics: governanceSemantics,
+          }),
+          recommendationRequests: buildGovernanceRecommendationRequests({
+            artifactId: detail.id,
+            targetId: governanceContext.targetId,
+            semantics: governanceSemantics,
+          }),
+          diagnostics: [],
+          semantics: governanceSemantics,
+        };
+      }
+
       return {
         detail,
         readiness: null,
         dependency: null,
+        submissionContext: null,
+        governanceContext: null,
         recommendedActions: [],
         recommendationRequests: [],
         diagnostics: [],
+        semantics: null,
       };
     }
 
@@ -141,38 +472,123 @@ export class AgentContextService {
       ? this.toSubmissionCandidate(detail.questDetail.submission)
       : null;
     const recommendedActions = submissionAction
-      ? [...doctorActions, ...questActions, submissionAction].sort((a, b) =>
-        compareQuestPriority(
-          (a.priority ?? DEFAULT_QUEST_PRIORITY) as typeof DEFAULT_QUEST_PRIORITY,
-          (b.priority ?? DEFAULT_QUEST_PRIORITY) as typeof DEFAULT_QUEST_PRIORITY,
-        ) ||
-        Number(b.allowed) - Number(a.allowed) ||
-        b.confidence - a.confidence ||
-        a.kind.localeCompare(b.kind)
-      )
-      : [...doctorActions, ...questActions].sort((a, b) =>
-        compareQuestPriority(
-          (a.priority ?? DEFAULT_QUEST_PRIORITY) as typeof DEFAULT_QUEST_PRIORITY,
-          (b.priority ?? DEFAULT_QUEST_PRIORITY) as typeof DEFAULT_QUEST_PRIORITY,
-        ) ||
-        Number(b.allowed) - Number(a.allowed) ||
-        b.confidence - a.confidence ||
-        a.kind.localeCompare(b.kind)
-      );
+      ? sortActionCandidates([...doctorActions, ...questActions, submissionAction])
+      : sortActionCandidates([...doctorActions, ...questActions]);
     const diagnostics = collectQuestDiagnostics(detail.questDetail, readiness);
+    const semantics = buildQuestWorkSemantics({
+      detail: detail.questDetail,
+      readiness,
+      dependency,
+      recommendedActions,
+      agentId: this.agentId,
+    });
 
     return {
       detail,
       readiness,
       dependency,
+      submissionContext: null,
+      governanceContext: null,
       recommendedActions,
       recommendationRequests,
       diagnostics,
+      semantics,
+    };
+  }
+
+  private buildSubmissionContext(
+    snapshot: GraphSnapshot,
+    id: string,
+  ): AgentSubmissionContext | null {
+    const submission = id.startsWith('submission:')
+      ? snapshot.submissions.find((entry) => entry.id === id)
+      : id.startsWith('patchset:')
+        ? snapshot.submissions.find((entry) => entry.tipPatchsetId === id)
+        : undefined;
+    if (!submission) return null;
+
+    const focusPatchsetId = id.startsWith('patchset:')
+      ? id
+      : submission.tipPatchsetId ?? null;
+    const reviews = focusPatchsetId
+      ? snapshot.reviews.filter((entry) => entry.patchsetId === focusPatchsetId)
+      : [];
+    const decisions = snapshot.decisions.filter((entry) => entry.submissionId === submission.id);
+
+    return {
+      submission,
+      quest: snapshot.quests.find((entry) => entry.id === submission.questId) ?? null,
+      reviews,
+      decisions,
+      focusPatchsetId,
+      nextStep: determineSubmissionNextStep(submission, this.agentId),
+    };
+  }
+
+  private buildGovernanceContext(
+    snapshot: GraphSnapshot,
+    detail: EntityDetail,
+  ): AgentGovernanceContext | null {
+    if (!detail.governanceDetail) return null;
+
+    const artifact = snapshot.governanceArtifacts.find((entry) => entry.id === detail.id);
+    return {
+      artifactId: detail.id,
+      artifactType: artifact?.type ?? detail.type,
+      recordedAt: artifact?.recordedAt
+        ?? (typeof detail.props['recorded_at'] === 'number' ? detail.props['recorded_at'] : null),
+      recordedBy: artifact?.recordedBy
+        ?? (typeof detail.props['recorded_by'] === 'string' ? detail.props['recorded_by'] : null),
+      targetId: this.extractGovernanceTargetId(artifact, detail),
+    };
+  }
+
+  private extractGovernanceTargetId(
+    artifact: GovernanceArtifactNode | undefined,
+    detail: EntityDetail,
+  ): string | null {
+    if (artifact?.type === 'comparison-artifact') {
+      return artifact.targetId ?? null;
+    }
+    if (artifact?.type === 'collapse-proposal') {
+      return artifact.comparisonArtifactId ?? null;
+    }
+    if (artifact?.type === 'attestation') {
+      return artifact.targetId ?? null;
+    }
+
+    if (detail.governanceDetail?.kind === 'comparison-artifact') {
+      return detail.governanceDetail.comparison.targetId ?? null;
+    }
+    if (detail.governanceDetail?.kind === 'collapse-proposal') {
+      return detail.governanceDetail.executionGate.comparisonArtifactId ?? null;
+    }
+    if (detail.governanceDetail?.kind === 'attestation') {
+      return detail.governanceDetail.targetId ?? null;
+    }
+    return null;
+  }
+
+  private toCommentCandidate(targetId: string, subject: string): AgentActionCandidate {
+    return {
+      kind: 'comment',
+      targetId,
+      args: {},
+      priority: DEFAULT_QUEST_PRIORITY,
+      reason: `Capture rationale directly on the ${subject}.`,
+      confidence: 0.81,
+      requiresHumanApproval: false,
+      dryRunSummary: `Record a durable comment on the ${subject} after providing a message.`,
+      blockedBy: ['Provide message to execute the comment.'],
+      allowed: false,
+      underlyingCommand: `xyph act comment ${targetId}`,
+      sideEffects: [`create comment on ${targetId}`],
+      validationCode: 'requires-additional-input',
     };
   }
 
   private toSubmissionCandidate(
-    submission: NonNullable<EntityDetail['questDetail']>['submission'],
+    submission: SubmissionNode | undefined,
   ): AgentActionCandidate | null {
     if (!submission) return null;
 

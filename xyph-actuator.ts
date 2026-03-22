@@ -1,6 +1,6 @@
 #!/usr/bin/env -S npx tsx
 import { program } from 'commander';
-import { createCliContext, parseAsOverrideFromArgv } from './src/cli/index.js';
+import { createCliContext, parseAsOverrideFromArgv, resolveGraphRuntime } from './src/cli/index.js';
 import { registerIngestCommands } from './src/cli/commands/ingest.js';
 import { registerSovereigntyCommands } from './src/cli/commands/sovereignty.js';
 import { registerCoordinationCommands } from './src/cli/commands/coordination.js';
@@ -24,13 +24,14 @@ import { registerApiCommands } from './src/cli/commands/api.js';
 // createCliContext() handles theme init internally based on this flag.
 const jsonFlag = process.argv.includes('--json');
 const asOverride = parseAsOverrideFromArgv(process.argv);
+const runtime = resolveGraphRuntime({ cwd: process.cwd() });
 
 /**
  * XYPH Actuator - The "Hands" of the Causal Agent.
  * Exposes the git-warp Node.js API as a CLI for agentic mutations.
  */
 
-const ctx = createCliContext(process.cwd(), 'xyph-roadmap', {
+const ctx = createCliContext(process.cwd(), runtime.repoPath, runtime.graphName, {
   json: jsonFlag,
   as: asOverride,
 });

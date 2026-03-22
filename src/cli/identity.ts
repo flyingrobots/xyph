@@ -60,6 +60,10 @@ export function assertPrincipalLike(value: string, label: string): void {
 }
 
 export function userIdentityConfigPath(homeDir = homedir()): string {
+  return userConfigPath(homeDir);
+}
+
+export function userConfigPath(homeDir = homedir()): string {
   return join(homeDir, '.xyph', 'config');
 }
 

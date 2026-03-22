@@ -1,6 +1,13 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { GraphPort } from '../../ports/GraphPort.js';
+import type { CanonicalArtifactKind } from '../models/controlPlane.js';
 import { MutationKernelService } from './MutationKernelService.js';
+import type {
+  AiSuggestionAudience,
+  AiSuggestionKind,
+  AiSuggestionOrigin,
+  AiSuggestionStatus,
+} from '../entities/AiSuggestion.js';
 
 interface CreateCommentInput {
   id?: string;
@@ -36,6 +43,37 @@ interface CreateAttestationInput {
   idempotencyKey?: string;
 }
 
+interface CreateCanonicalArtifactInput {
+  id: string;
+  kind: CanonicalArtifactKind;
+  artifactDigest: string;
+  payload: unknown;
+  recordedBy: string;
+  observerProfileId: string;
+  policyPackVersion: string;
+  indexedProperties?: Record<string, string | number | boolean | null>;
+  supersedesTargetId?: string | null;
+  idempotencyKey?: string;
+}
+
+interface CreateAiSuggestionInput {
+  id?: string;
+  kind: AiSuggestionKind;
+  title: string;
+  summary: string;
+  suggestedBy: string;
+  audience: AiSuggestionAudience;
+  origin: AiSuggestionOrigin;
+  status?: AiSuggestionStatus;
+  targetId?: string;
+  requestedBy?: string;
+  why?: string;
+  evidence?: string;
+  nextAction?: string;
+  relatedIds?: string[];
+  idempotencyKey?: string;
+}
+
 function deriveId(prefix: string, explicitId: string | undefined, idempotencyKey: string | undefined): string {
   if (explicitId) return explicitId;
   if (idempotencyKey) {
@@ -48,6 +86,24 @@ function deriveId(prefix: string, explicitId: string | undefined, idempotencyKey
 
 function stringifyContent(payload: unknown): string {
   return JSON.stringify(payload, null, 2);
+}
+
+function stableValue(payload: unknown): unknown {
+  if (Array.isArray(payload)) {
+    return payload.map((entry) => stableValue(entry));
+  }
+  if (payload && typeof payload === 'object') {
+    return Object.fromEntries(
+      Object.entries(payload as Record<string, unknown>)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, value]) => [key, stableValue(value)]),
+    );
+  }
+  return payload;
+}
+
+function stringifyDeterministicContent(payload: unknown): string {
+  return JSON.stringify(stableValue(payload), null, 2);
 }
 
 export class RecordService {
@@ -154,6 +210,94 @@ export class RecordService {
     };
   }
 
+  public async createAiSuggestion(input: CreateAiSuggestionInput): Promise<{
+    id: string;
+    patch: string;
+    suggestedAt: number;
+    contentOid: string | null;
+  }> {
+    const graph = await this.graphPort.getGraph();
+    if (input.targetId && !await graph.hasNode(input.targetId)) {
+      throw new Error(`[NOT_FOUND] Target ${input.targetId} not found in the graph`);
+    }
+
+    const relatedIds = [...new Set((input.relatedIds ?? []).filter((entry) => entry.length > 0))];
+    for (const relatedId of relatedIds) {
+      if (!await graph.hasNode(relatedId)) {
+        throw new Error(`[NOT_FOUND] Related target ${relatedId} not found in the graph`);
+      }
+    }
+
+    const id = deriveId('suggestion:', input.id, input.idempotencyKey);
+    const suggestedAt = Date.now();
+    const content = stringifyDeterministicContent({
+      title: input.title.trim(),
+      summary: input.summary.trim(),
+      why: input.why?.trim() ?? null,
+      evidence: input.evidence?.trim() ?? null,
+      nextAction: input.nextAction?.trim() ?? null,
+      targetId: input.targetId ?? null,
+      relatedIds,
+      audience: input.audience,
+      origin: input.origin,
+      requestedBy: input.requestedBy ?? null,
+      suggestedBy: input.suggestedBy,
+      kind: input.kind,
+      status: input.status ?? 'suggested',
+    });
+
+    const result = await this.kernel.execute({
+      idempotencyKey: input.idempotencyKey,
+      rationale: 'Record an AI suggestion as a visible advisory artifact in the shared graph.',
+      ops: [
+        { op: 'add_node', nodeId: id },
+        { op: 'set_node_property', nodeId: id, key: 'type', value: 'ai_suggestion' },
+        { op: 'set_node_property', nodeId: id, key: 'suggestion_kind', value: input.kind },
+        { op: 'set_node_property', nodeId: id, key: 'title', value: input.title.trim() },
+        { op: 'set_node_property', nodeId: id, key: 'summary', value: input.summary.trim() },
+        { op: 'set_node_property', nodeId: id, key: 'status', value: input.status ?? 'suggested' },
+        { op: 'set_node_property', nodeId: id, key: 'audience', value: input.audience },
+        { op: 'set_node_property', nodeId: id, key: 'origin', value: input.origin },
+        { op: 'set_node_property', nodeId: id, key: 'suggested_by', value: input.suggestedBy },
+        { op: 'set_node_property', nodeId: id, key: 'suggested_at', value: suggestedAt },
+        { op: 'set_node_property', nodeId: id, key: 'related_ids', value: JSON.stringify(relatedIds) },
+        ...(input.targetId
+          ? [
+              { op: 'set_node_property', nodeId: id, key: 'target_id', value: input.targetId } as const,
+              { op: 'add_edge', from: id, to: input.targetId, label: 'suggests' } as const,
+            ]
+          : []),
+        ...(input.requestedBy
+          ? [{ op: 'set_node_property', nodeId: id, key: 'requested_by', value: input.requestedBy } as const]
+          : []),
+        ...(input.why?.trim()
+          ? [{ op: 'set_node_property', nodeId: id, key: 'why', value: input.why.trim() } as const]
+          : []),
+        ...(input.evidence?.trim()
+          ? [{ op: 'set_node_property', nodeId: id, key: 'evidence', value: input.evidence.trim() } as const]
+          : []),
+        ...(input.nextAction?.trim()
+          ? [{ op: 'set_node_property', nodeId: id, key: 'next_action', value: input.nextAction.trim() } as const]
+          : []),
+        ...relatedIds
+          .filter((relatedId) => relatedId !== input.targetId)
+          .map((relatedId) => ({ op: 'add_edge', from: id, to: relatedId, label: 'relates-to' } as const)),
+        { op: 'attach_node_content', nodeId: id, content },
+      ],
+    });
+
+    if (!result.executed || !result.patch) {
+      throw new Error(`[INVALID_STATE] Failed to materialize AI suggestion ${id}`);
+    }
+
+    return {
+      id,
+      patch: result.patch,
+      suggestedAt,
+      contentOid: await graph.getContentOid(id),
+    };
+  }
+
   public async createAttestation(input: CreateAttestationInput): Promise<{
     id: string;
     patch: string;
@@ -197,6 +341,75 @@ export class RecordService {
       patch: result.patch,
       attestedAt,
       contentOid: await graph.getContentOid(id),
+    };
+  }
+
+  public async createCanonicalArtifact(input: CreateCanonicalArtifactInput): Promise<{
+    id: string;
+    patch: string | null;
+    recordedAt: number;
+    contentOid: string | null;
+    existed: boolean;
+  }> {
+    const graph = await this.graphPort.getGraph();
+    if (await graph.hasNode(input.id)) {
+      const props = (await graph.getNodeProps(input.id)) ?? {};
+      const existingType = typeof props['type'] === 'string' ? props['type'] : null;
+      const existingDigest = typeof props['artifact_digest'] === 'string' ? props['artifact_digest'] : null;
+      if (existingType !== input.kind || existingDigest !== input.artifactDigest) {
+        throw new Error(
+          `[INVALID_STATE] Existing canonical artifact ${input.id} does not match the requested kind/digest`,
+        );
+      }
+
+      return {
+        id: input.id,
+        patch: null,
+        recordedAt: typeof props['recorded_at'] === 'number' ? props['recorded_at'] : Date.now(),
+        contentOid: await graph.getContentOid(input.id),
+        existed: true,
+      };
+    }
+
+    const recordedAt = Date.now();
+    const result = await this.kernel.execute({
+      idempotencyKey: input.idempotencyKey,
+      rationale: 'Record a canonical control-plane artifact in the shared graph.',
+      ops: [
+        { op: 'add_node', nodeId: input.id },
+        { op: 'set_node_property', nodeId: input.id, key: 'type', value: input.kind },
+        { op: 'set_node_property', nodeId: input.id, key: 'artifact_digest', value: input.artifactDigest },
+        { op: 'set_node_property', nodeId: input.id, key: 'recorded_by', value: input.recordedBy },
+        { op: 'set_node_property', nodeId: input.id, key: 'recorded_at', value: recordedAt },
+        { op: 'set_node_property', nodeId: input.id, key: 'observer_profile_id', value: input.observerProfileId },
+        { op: 'set_node_property', nodeId: input.id, key: 'policy_pack_version', value: input.policyPackVersion },
+        ...Object.entries(input.indexedProperties ?? {}).map(([key, value]) => ({
+          op: 'set_node_property' as const,
+          nodeId: input.id,
+          key,
+          value,
+        })),
+        {
+          op: 'attach_node_content' as const,
+          nodeId: input.id,
+          content: stringifyDeterministicContent(input.payload),
+        },
+        ...(input.supersedesTargetId
+          ? [{ op: 'add_edge', from: input.id, to: input.supersedesTargetId, label: 'supersedes' } as const]
+          : []),
+      ],
+    });
+
+    if (!result.executed || !result.patch) {
+      throw new Error(`[INVALID_STATE] Failed to materialize canonical artifact ${input.id}`);
+    }
+
+    return {
+      id: input.id,
+      patch: result.patch,
+      recordedAt,
+      contentOid: await graph.getContentOid(input.id),
+      existed: false,
     };
   }
 }

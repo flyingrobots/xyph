@@ -38,6 +38,7 @@ import type {
   ApprovalNode,
   CampaignNode,
   CampaignStatus,
+  ComparisonArtifactGovernanceDetail,
   CommentNode,
   CriterionNode,
   DecisionNode,
@@ -46,6 +47,8 @@ import type {
   GraphMeta,
   GraphSnapshot,
   IntentNode,
+  GovernanceAttestationSummary,
+  GovernanceDetail,
   NarrativeNode,
   PolicyNode,
   QuestDetail,
@@ -57,9 +60,25 @@ import type {
   StoryNode,
   SubmissionNode,
   SuggestionNode,
+  AiSuggestionNode,
+  CollapseProposalGovernanceDetail,
+  AttestationGovernanceDetail,
+  GovernanceArtifactNode,
 } from '../domain/models/dashboard.js';
 import { VALID_SUGGESTION_STATUSES } from '../domain/entities/Suggestion.js';
 import type { SuggestionStatus } from '../domain/entities/Suggestion.js';
+import {
+  VALID_AI_SUGGESTION_AUDIENCES,
+  VALID_AI_SUGGESTION_KINDS,
+  VALID_AI_SUGGESTION_ORIGINS,
+  VALID_AI_SUGGESTION_STATUSES,
+} from '../domain/entities/AiSuggestion.js';
+import type {
+  AiSuggestionAudience,
+  AiSuggestionKind,
+  AiSuggestionOrigin,
+  AiSuggestionStatus,
+} from '../domain/entities/AiSuggestion.js';
 import type { LayerScore } from '../domain/services/analysis/types.js';
 import type { RequirementKind, RequirementPriority } from '../domain/entities/Requirement.js';
 import { VALID_REQUIREMENT_KINDS, VALID_REQUIREMENT_PRIORITIES } from '../domain/entities/Requirement.js';
@@ -74,6 +93,14 @@ import {
 } from '../domain/entities/Policy.js';
 import type { GraphPort } from '../ports/GraphPort.js';
 import { toNeighborEntries, type NeighborEntry } from './helpers/isNeighborEntry.js';
+import {
+  buildComparisonArtifactDigest,
+  parseSelectorValue,
+  type ObservationSelector,
+  XYPH_OPERATIONAL_COMPARISON_SCOPE,
+  XYPH_OPERATIONAL_COMPARISON_SCOPE_VERSION,
+} from '../domain/services/GovernanceArtifacts.js';
+import { DEFAULT_WORLDLINE_ID, toSubstrateWorkingSetId } from '../domain/models/controlPlane.js';
 
 // ---------------------------------------------------------------------------
 // Validation sets
@@ -173,6 +200,54 @@ function yieldEventLoop(): Promise<void> {
 function decodeNodeContent(content: Uint8Array | null): string | undefined {
   if (!content) return undefined;
   return Buffer.from(content).toString('utf8');
+}
+
+function parseJsonObject(content: string | undefined): Record<string, unknown> | null {
+  if (content === undefined) return null;
+  try {
+    const parsed: unknown = JSON.parse(content);
+    return parsed && typeof parsed === 'object'
+      ? parsed as Record<string, unknown>
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function asString(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined;
+}
+
+function asBoolean(value: unknown): boolean | undefined {
+  return typeof value === 'boolean' ? value : undefined;
+}
+
+function extractAttestationState(summary: GovernanceAttestationSummary): GovernanceAttestationSummary['state'] {
+  if (summary.total === 0) return 'unattested';
+  if (summary.approvals > 0 && summary.rejections === 0 && summary.other === 0) return 'approved';
+  if (summary.rejections > 0 && summary.approvals === 0 && summary.other === 0) return 'rejected';
+  if (summary.approvals === 0 && summary.rejections === 0 && summary.other > 0) return 'other';
+  return 'mixed';
+}
+
+function buildComparisonSelector(
+  worldlineId: string,
+  selector: ObservationSelector,
+): { kind: 'live'; ceiling?: number } | { kind: 'working_set'; workingSetId: string; ceiling?: number } | null {
+  if (worldlineId === DEFAULT_WORLDLINE_ID) {
+    return selector.kind === 'tick'
+      ? { kind: 'live', ceiling: selector.tick }
+      : { kind: 'live' };
+  }
+
+  const workingSetId = toSubstrateWorkingSetId(worldlineId);
+  if (!workingSetId) {
+    return null;
+  }
+
+  return selector.kind === 'tick'
+    ? { kind: 'working_set', workingSetId, ceiling: selector.tick }
+    : { kind: 'working_set', workingSetId };
 }
 
 function deriveCampaignStatusFromQuests(quests: QuestNode[]): CampaignStatus {
@@ -288,6 +363,7 @@ class GraphContextImpl implements GraphContext {
       patchsetNodes, reviewNodes, decisionNodes,
       storyNodes, requirementNodes, criterionNodes, evidenceNodes, policyNodes,
       suggestionNodes,
+      comparisonArtifactNodes, collapseProposalNodes, attestationNodes,
     ] = await Promise.all([
       graph.query().match('task:*').select(['id', 'props']).run().then(extractNodes),
       graph.query().match('campaign:*').select(['id', 'props']).run().then(extractNodes),
@@ -305,6 +381,9 @@ class GraphContextImpl implements GraphContext {
       graph.query().match('evidence:*').select(['id', 'props']).run().then(extractNodes),
       graph.query().match('policy:*').select(['id', 'props']).run().then(extractNodes),
       graph.query().match('suggestion:*').select(['id', 'props']).run().then(extractNodes),
+      graph.query().match('comparison-artifact:*').select(['id', 'props']).run().then(extractNodes),
+      graph.query().match('collapse-proposal:*').select(['id', 'props']).run().then(extractNodes),
+      graph.query().match('attestation:*').select(['id', 'props']).run().then(extractNodes),
     ]);
 
     await yieldEventLoop();
@@ -828,7 +907,75 @@ class GraphContextImpl implements GraphContext {
     // --- Build suggestions (M11 Phase 4) ---
     log('Building suggestion models…');
     const suggestions: SuggestionNode[] = [];
+    const aiSuggestions: AiSuggestionNode[] = [];
     for (const n of suggestionNodes) {
+      if (n.props['type'] === 'ai_suggestion') {
+        const kind = n.props['suggestion_kind'];
+        const title = n.props['title'];
+        const summary = n.props['summary'];
+        const status = n.props['status'];
+        const audience = n.props['audience'];
+        const origin = n.props['origin'];
+        const suggestedBy = n.props['suggested_by'];
+        const suggestedAt = n.props['suggested_at'];
+
+        if (
+          typeof kind !== 'string' ||
+          !VALID_AI_SUGGESTION_KINDS.has(kind) ||
+          typeof title !== 'string' ||
+          typeof summary !== 'string' ||
+          typeof status !== 'string' ||
+          !VALID_AI_SUGGESTION_STATUSES.has(status) ||
+          typeof audience !== 'string' ||
+          !VALID_AI_SUGGESTION_AUDIENCES.has(audience) ||
+          typeof origin !== 'string' ||
+          !VALID_AI_SUGGESTION_ORIGINS.has(origin) ||
+          typeof suggestedBy !== 'string' ||
+          typeof suggestedAt !== 'number'
+        ) {
+          continue;
+        }
+
+        const targetId = n.props['target_id'];
+        const requestedBy = n.props['requested_by'];
+        const why = n.props['why'];
+        const evidence = n.props['evidence'];
+        const nextAction = n.props['next_action'];
+        const relatedIdsRaw = n.props['related_ids'];
+
+        let relatedIds: string[] = [];
+        if (typeof relatedIdsRaw === 'string') {
+          try {
+            const parsed = JSON.parse(relatedIdsRaw) as unknown;
+            if (Array.isArray(parsed)) {
+              relatedIds = parsed.filter((entry): entry is string => typeof entry === 'string');
+            }
+          } catch {
+            relatedIds = [];
+          }
+        }
+
+        aiSuggestions.push({
+          id: n.id,
+          type: 'ai-suggestion',
+          kind: kind as AiSuggestionKind,
+          title,
+          summary,
+          status: status as AiSuggestionStatus,
+          audience: audience as AiSuggestionAudience,
+          origin: origin as AiSuggestionOrigin,
+          suggestedBy,
+          suggestedAt,
+          targetId: typeof targetId === 'string' ? targetId : undefined,
+          requestedBy: typeof requestedBy === 'string' ? requestedBy : undefined,
+          why: typeof why === 'string' ? why : undefined,
+          evidence: typeof evidence === 'string' ? evidence : undefined,
+          nextAction: typeof nextAction === 'string' ? nextAction : undefined,
+          relatedIds,
+        });
+        continue;
+      }
+
       if (n.props['type'] !== 'suggestion') continue;
       const testFile = n.props['test_file'];
       const targetId = n.props['target_id'];
@@ -945,17 +1092,408 @@ class GraphContextImpl implements GraphContext {
       if (count > 0) transitiveDownstream.set(taskId, count);
     }
 
+    const governanceArtifacts = await this.buildGovernanceArtifacts(graph, [
+      ...comparisonArtifactNodes,
+      ...collapseProposalNodes,
+      ...attestationNodes,
+    ]);
+
     log(`Snapshot ready — ${quests.length} quests, ${campaigns.length} campaigns`);
     const snap: GraphSnapshot = {
       campaigns, quests, intents, scrolls, approvals,
       submissions, reviews, decisions,
-      stories, requirements, criteria, evidence, policies, suggestions,
+      stories, requirements, criteria, evidence, policies, suggestions, aiSuggestions,
+      governanceArtifacts,
       asOf: Date.now(), graphMeta, sortedTaskIds, sortedCampaignIds,
       transitiveDownstream,
     };
     this.cachedSnapshot = snap;
     this.cachedFrontierKey = this.frontierKeyFromState(state);
     return snap;
+  }
+
+  private async queryNodesByPrefix(
+    graph: WarpGraph,
+    prefix: 'comparison-artifact' | 'collapse-proposal' | 'attestation',
+  ): Promise<QNode[]> {
+    const result = await graph.query().match(`${prefix}:*`).select(['id', 'props']).run();
+    return extractNodes(result);
+  }
+
+  private async summarizeAttestations(
+    graph: WarpGraph,
+    attestationIds: string[],
+  ): Promise<GovernanceAttestationSummary> {
+    const attestationEntries = (await Promise.all(
+      [...new Set(attestationIds)].map(async (attestationId) => {
+        const props = await graph.getNodeProps(attestationId);
+        if (!props || props['type'] !== 'attestation') return null;
+        return {
+          id: attestationId,
+          decision: typeof props['decision'] === 'string' ? props['decision'] : 'unknown',
+          attestedAt: typeof props['attested_at'] === 'number' ? props['attested_at'] : 0,
+          attestedBy: typeof props['attested_by'] === 'string' ? props['attested_by'] : undefined,
+        };
+      }),
+    )).filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
+
+    const approvals = attestationEntries.filter((entry) => entry.decision === 'approve').length;
+    const rejections = attestationEntries.filter((entry) => entry.decision === 'reject').length;
+    const other = attestationEntries.length - approvals - rejections;
+    const latest = [...attestationEntries].sort(
+      (left, right) => right.attestedAt - left.attestedAt || right.id.localeCompare(left.id),
+    )[0];
+
+    const summary: GovernanceAttestationSummary = {
+      total: attestationEntries.length,
+      approvals,
+      rejections,
+      other,
+      state: 'unattested',
+      ...(latest
+        ? {
+            latestAttestationId: latest.id,
+            latestDecision: latest.decision,
+            latestAttestedAt: latest.attestedAt,
+            ...(latest.attestedBy ? { latestAttestedBy: latest.attestedBy } : {}),
+          }
+        : {}),
+    };
+    summary.state = extractAttestationState(summary);
+    return summary;
+  }
+
+  private async computeComparisonArtifactFreshness(
+    graph: WarpGraph,
+    props: Record<string, unknown>,
+    payload: Record<string, unknown> | null,
+  ): Promise<'fresh' | 'stale' | 'unknown'> {
+    const comparisonScopeVersion = asString(props['comparison_scope_version']);
+    const comparisonPolicyVersion = asString(props['comparison_policy_version']);
+    const artifactDigest = asString(props['artifact_digest']);
+    const leftWorldlineId = asString(props['left_worldline_id']);
+    const rightWorldlineId = asString(props['right_worldline_id']);
+    if (
+      comparisonScopeVersion !== XYPH_OPERATIONAL_COMPARISON_SCOPE_VERSION
+      || !comparisonPolicyVersion
+      || !artifactDigest
+      || !leftWorldlineId
+      || !rightWorldlineId
+    ) {
+      return 'unknown';
+    }
+
+    const leftPayload = payload?.['left'];
+    const rightPayload = payload?.['right'];
+    const leftSelector = parseSelectorValue(
+      leftPayload && typeof leftPayload === 'object'
+        ? (leftPayload as Record<string, unknown>)['at']
+        : 'tip',
+    );
+    const rightSelector = parseSelectorValue(
+      rightPayload && typeof rightPayload === 'object'
+        ? (rightPayload as Record<string, unknown>)['at']
+        : 'tip',
+    );
+    if (!leftSelector || !rightSelector) {
+      return 'unknown';
+    }
+
+    const left = buildComparisonSelector(leftWorldlineId, leftSelector);
+    const right = buildComparisonSelector(rightWorldlineId, rightSelector);
+    if (!left || !right) {
+      return 'unknown';
+    }
+
+    try {
+      const comparison = await graph.compareCoordinates({
+        left,
+        right,
+        ...(typeof props['target_id'] === 'string' ? { targetId: props['target_id'] } : {}),
+        scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
+      });
+      const currentDigest = buildComparisonArtifactDigest({
+        comparisonDigest: comparison.comparisonDigest,
+        comparisonPolicyVersion,
+        comparisonScopeVersion,
+        leftWorldlineId,
+        leftSelector,
+        rightWorldlineId,
+        rightSelector,
+        targetId: asString(props['target_id']) ?? null,
+      });
+      return currentDigest === artifactDigest ? 'fresh' : 'stale';
+    } catch {
+      return 'unknown';
+    }
+  }
+
+  private async computeCollapseProposalFreshness(
+    graph: WarpGraph,
+    props: Record<string, unknown>,
+  ): Promise<'fresh' | 'stale' | 'unknown'> {
+    const comparisonArtifactDigest = asString(props['comparison_artifact_digest']);
+    const comparisonScopeVersion = asString(props['comparison_scope_version']) ?? XYPH_OPERATIONAL_COMPARISON_SCOPE_VERSION;
+    const sourceWorldlineId = asString(props['source_worldline_id']);
+    const targetWorldlineId = asString(props['target_worldline_id']);
+    if (
+      comparisonScopeVersion !== XYPH_OPERATIONAL_COMPARISON_SCOPE_VERSION
+      || !comparisonArtifactDigest
+      || !sourceWorldlineId
+      || !targetWorldlineId
+    ) {
+      return 'unknown';
+    }
+
+    const leftSelector: ObservationSelector = { kind: 'tip' };
+    const rightSelector: ObservationSelector = { kind: 'tip' };
+    const left = buildComparisonSelector(sourceWorldlineId, leftSelector);
+    const right = buildComparisonSelector(targetWorldlineId, rightSelector);
+    if (!left || !right) {
+      return 'unknown';
+    }
+
+    try {
+      const comparison = await graph.compareCoordinates({
+        left,
+        right,
+        scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
+      });
+      const currentDigest = buildComparisonArtifactDigest({
+        comparisonDigest: comparison.comparisonDigest,
+        comparisonPolicyVersion: 'compat-v0',
+        comparisonScopeVersion,
+        leftWorldlineId: sourceWorldlineId,
+        leftSelector,
+        rightWorldlineId: targetWorldlineId,
+        rightSelector,
+        targetId: null,
+      });
+      return currentDigest === comparisonArtifactDigest ? 'fresh' : 'stale';
+    } catch {
+      return 'unknown';
+    }
+  }
+
+  private async buildGovernanceDetail(
+    graph: WarpGraph,
+    type: string,
+    props: Record<string, unknown>,
+    content: string | undefined,
+    outgoing: EntityDetail['outgoing'],
+    incoming: EntityDetail['incoming'],
+  ): Promise<GovernanceDetail | undefined> {
+    const series = {
+      ...(typeof props['artifact_series_key'] === 'string' ? { seriesKey: props['artifact_series_key'] } : {}),
+      ...(outgoing.find((entry) => entry.label === 'supersedes')?.nodeId
+        ? { supersedesId: outgoing.find((entry) => entry.label === 'supersedes')?.nodeId }
+        : {}),
+      supersededByIds: incoming
+        .filter((entry) => entry.label === 'supersedes')
+        .map((entry) => entry.nodeId)
+        .sort((left, right) => left.localeCompare(right)),
+      latestInSeries: !incoming.some((entry) => entry.label === 'supersedes'),
+    };
+    const incomingAttestationIds = incoming
+      .filter((entry) => entry.label === 'attests' && entry.nodeId.startsWith('attestation:'))
+      .map((entry) => entry.nodeId);
+
+    if (type === 'comparison-artifact') {
+      const payload = parseJsonObject(content);
+      const attestation = await this.summarizeAttestations(graph, incomingAttestationIds);
+      const freshness = await this.computeComparisonArtifactFreshness(graph, props, payload);
+      const artifactDigest = asString(props['artifact_digest']);
+      const collapseNodes = artifactDigest
+        ? (await this.queryNodesByPrefix(graph, 'collapse-proposal'))
+          .filter((node) => node.props['comparison_artifact_digest'] === artifactDigest)
+          .sort((left, right) => {
+            const leftRecordedAt = typeof left.props['recorded_at'] === 'number' ? left.props['recorded_at'] : 0;
+            const rightRecordedAt = typeof right.props['recorded_at'] === 'number' ? right.props['recorded_at'] : 0;
+            return rightRecordedAt - leftRecordedAt || right.id.localeCompare(left.id);
+          })
+        : [];
+      const latestExecuted = collapseNodes.find((node) => node.props['executed'] === true);
+
+      const detail: ComparisonArtifactGovernanceDetail = {
+        kind: 'comparison-artifact',
+        freshness,
+        attestation,
+        series,
+        comparison: {
+          ...(asString(props['left_worldline_id']) ? { leftWorldlineId: asString(props['left_worldline_id']) } : {}),
+          ...(asString(props['right_worldline_id']) ? { rightWorldlineId: asString(props['right_worldline_id']) } : {}),
+          ...(asString(props['target_id']) ? { targetId: asString(props['target_id']) } : {}),
+          ...(asString(props['comparison_policy_version'])
+            ? { comparisonPolicyVersion: asString(props['comparison_policy_version']) }
+            : {}),
+          ...(asString(props['comparison_scope_version'])
+            ? { comparisonScopeVersion: asString(props['comparison_scope_version']) }
+            : {}),
+          ...(asString(props['operational_comparison_digest'])
+            ? { operationalComparisonDigest: asString(props['operational_comparison_digest']) }
+            : {}),
+          ...(asString(props['raw_comparison_digest'])
+            ? { rawComparisonDigest: asString(props['raw_comparison_digest']) }
+            : {}),
+        },
+        settlement: {
+          proposalCount: collapseNodes.length,
+          executedCount: collapseNodes.filter((node) => node.props['executed'] === true).length,
+          ...(collapseNodes[0] ? { latestProposalId: collapseNodes[0].id } : {}),
+          ...(latestExecuted ? { latestExecutedProposalId: latestExecuted.id } : {}),
+        },
+      };
+      return detail;
+    }
+
+    if (type === 'collapse-proposal') {
+      const attestation = await this.summarizeAttestations(graph, incomingAttestationIds);
+      const freshness = await this.computeCollapseProposalFreshness(graph, props);
+      const comparisonArtifactDigest = asString(props['comparison_artifact_digest']);
+      const comparisonArtifactId = comparisonArtifactDigest
+        ? `comparison-artifact:${comparisonArtifactDigest}`
+        : undefined;
+      let gateAttestation: GovernanceAttestationSummary = {
+        total: 0,
+        approvals: 0,
+        rejections: 0,
+        other: 0,
+        state: 'unattested',
+      };
+      if (comparisonArtifactId && await graph.hasNode(comparisonArtifactId)) {
+        const comparisonIncoming = toNeighborEntries(await graph.neighbors(comparisonArtifactId, 'incoming'))
+          .filter((entry) => entry.label === 'attests' && entry.nodeId.startsWith('attestation:'))
+          .map((entry) => entry.nodeId);
+        gateAttestation = await this.summarizeAttestations(graph, comparisonIncoming);
+      }
+
+      const executed = asBoolean(props['executed']) ?? false;
+      const changed = asBoolean(props['changed']) ?? false;
+      const lifecycle: CollapseProposalGovernanceDetail['lifecycle'] = executed
+        ? 'executed'
+        : freshness === 'stale'
+          ? 'stale'
+          : !changed
+            ? 'no_op'
+            : gateAttestation.approvals > 0
+              ? 'approved'
+              : 'pending_attestation';
+
+      const detail: CollapseProposalGovernanceDetail = {
+        kind: 'collapse-proposal',
+        freshness,
+        lifecycle,
+        attestation,
+        series,
+        execution: {
+          dryRun: asBoolean(props['dry_run']) ?? true,
+          executable: asBoolean(props['executable']) ?? false,
+          executed,
+          changed,
+          ...(asString(props['execution_patch']) ? { executionPatch: asString(props['execution_patch']) } : {}),
+        },
+        executionGate: {
+          ...(comparisonArtifactId ? { comparisonArtifactId } : {}),
+          attestation: gateAttestation,
+        },
+      };
+      return detail;
+    }
+
+    if (type === 'attestation') {
+      const targetId = asString(props['target_id']);
+      let targetType: string | undefined;
+      let targetExists = false;
+      if (targetId) {
+        targetExists = await graph.hasNode(targetId);
+        if (targetExists) {
+          const targetProps = await graph.getNodeProps(targetId);
+          targetType = typeof targetProps?.['type'] === 'string' ? targetProps['type'] : undefined;
+        }
+      }
+
+      const detail: AttestationGovernanceDetail = {
+        kind: 'attestation',
+        ...(asString(props['decision']) ? { decision: asString(props['decision']) } : {}),
+        ...(targetId ? { targetId } : {}),
+        ...(targetType ? { targetType } : {}),
+        targetExists,
+      };
+      return detail;
+    }
+
+    return undefined;
+  }
+
+  private async buildGovernanceArtifacts(
+    graph: WarpGraph,
+    nodes: QNode[],
+  ): Promise<GovernanceArtifactNode[]> {
+    const artifacts = (await Promise.all(nodes.map(async (node) => {
+      const type = typeof node.props['type'] === 'string' ? node.props['type'] : undefined;
+      if (type !== 'comparison-artifact' && type !== 'collapse-proposal' && type !== 'attestation') {
+        return null;
+      }
+
+      const [outgoingRaw, incomingRaw, rawContent] = await Promise.all([
+        graph.neighbors(node.id, 'outgoing'),
+        graph.neighbors(node.id, 'incoming'),
+        graph.getContent(node.id),
+      ]);
+
+      const outgoing = toNeighborEntries(outgoingRaw).map((entry) => ({ nodeId: entry.nodeId, label: entry.label }));
+      const incoming = toNeighborEntries(incomingRaw).map((entry) => ({ nodeId: entry.nodeId, label: entry.label }));
+      const content = decodeNodeContent(rawContent);
+      const governance = await this.buildGovernanceDetail(graph, type, node.props, content, outgoing, incoming);
+      if (!governance) {
+        return null;
+      }
+
+      if (type === 'comparison-artifact' && governance.kind === 'comparison-artifact') {
+        return {
+          id: node.id,
+          type,
+          recordedAt: typeof node.props['recorded_at'] === 'number' ? node.props['recorded_at'] : 0,
+          ...(typeof node.props['recorded_by'] === 'string' ? { recordedBy: node.props['recorded_by'] } : {}),
+          ...(typeof node.props['left_worldline_id'] === 'string' ? { leftWorldlineId: node.props['left_worldline_id'] } : {}),
+          ...(typeof node.props['right_worldline_id'] === 'string' ? { rightWorldlineId: node.props['right_worldline_id'] } : {}),
+          ...(typeof node.props['target_id'] === 'string' ? { targetId: node.props['target_id'] } : {}),
+          governance,
+        } satisfies GovernanceArtifactNode;
+      }
+
+      if (type === 'collapse-proposal' && governance.kind === 'collapse-proposal') {
+        return {
+          id: node.id,
+          type,
+          recordedAt: typeof node.props['recorded_at'] === 'number' ? node.props['recorded_at'] : 0,
+          ...(typeof node.props['recorded_by'] === 'string' ? { recordedBy: node.props['recorded_by'] } : {}),
+          ...(typeof node.props['source_worldline_id'] === 'string' ? { sourceWorldlineId: node.props['source_worldline_id'] } : {}),
+          ...(typeof node.props['target_worldline_id'] === 'string' ? { targetWorldlineId: node.props['target_worldline_id'] } : {}),
+          ...(typeof governance.executionGate.comparisonArtifactId === 'string'
+            ? { comparisonArtifactId: governance.executionGate.comparisonArtifactId }
+            : {}),
+          governance,
+        } satisfies GovernanceArtifactNode;
+      }
+
+      if (type === 'attestation' && governance.kind === 'attestation') {
+        return {
+          id: node.id,
+          type,
+          recordedAt: typeof node.props['attested_at'] === 'number' ? node.props['attested_at'] : 0,
+          ...(typeof node.props['attested_by'] === 'string' ? { recordedBy: node.props['attested_by'] } : {}),
+          ...(typeof node.props['target_id'] === 'string' ? { targetId: node.props['target_id'] } : {}),
+          governance,
+        } satisfies GovernanceArtifactNode;
+      }
+
+      return null;
+    }))).filter((artifact): artifact is GovernanceArtifactNode => artifact !== null);
+
+    return artifacts.sort((left, right) =>
+      right.recordedAt - left.recordedAt || left.id.localeCompare(right.id)
+    );
   }
 
   async fetchEntityDetail(id: string): Promise<EntityDetail | null> {
@@ -987,6 +1525,9 @@ class GraphContextImpl implements GraphContext {
 
     const props = rawProps ?? {};
     const type = typeof props['type'] === 'string' ? props['type'] : 'unknown';
+    const content = decodeNodeContent(rawContent);
+    const outgoing = toNeighborEntries(outgoingRaw).map((entry) => ({ nodeId: entry.nodeId, label: entry.label }));
+    const incoming = toNeighborEntries(incomingRaw).map((entry) => ({ nodeId: entry.nodeId, label: entry.label }));
 
     let questDetail: QuestDetail | undefined;
     if (id.startsWith('task:')) {
@@ -998,11 +1539,12 @@ class GraphContextImpl implements GraphContext {
       id,
       type,
       props,
-      content: decodeNodeContent(rawContent),
+      content,
       contentOid: contentOid ?? undefined,
-      outgoing: toNeighborEntries(outgoingRaw).map((entry) => ({ nodeId: entry.nodeId, label: entry.label })),
-      incoming: toNeighborEntries(incomingRaw).map((entry) => ({ nodeId: entry.nodeId, label: entry.label })),
+      outgoing,
+      incoming,
       questDetail,
+      governanceDetail: await this.buildGovernanceDetail(graph, type, props, content, outgoing, incoming),
     };
   }
 

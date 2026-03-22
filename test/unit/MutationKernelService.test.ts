@@ -17,6 +17,8 @@ function makePatchSession() {
     addEdge: vi.fn().mockReturnThis(),
     removeEdge: vi.fn().mockReturnThis(),
     setEdgeProperty: vi.fn().mockReturnThis(),
+    clearContent: vi.fn().mockReturnThis(),
+    clearEdgeContent: vi.fn().mockReturnThis(),
     attachContent: vi.fn(async () => undefined),
     attachEdgeContent: vi.fn(async () => undefined),
     commit: vi.fn(async () => 'patch:apply'),
@@ -77,6 +79,37 @@ describe('MutationKernelService', () => {
     expect(mocks.createPatchSession).not.toHaveBeenCalled();
   });
 
+  it('dry-runs collapse ops including binary attachments and content clears', async () => {
+    const graph = makeGraph();
+    const service = new MutationKernelService({
+      getGraph: async () => graph,
+      reset: vi.fn(),
+    });
+
+    const result = await service.execute({
+      rationale: 'Preview a collapse transfer plan without mutating live truth.',
+      ops: [
+        {
+          op: 'attach_node_content',
+          nodeId: 'task:ONE',
+          content: new TextEncoder().encode('hello'),
+          mime: 'text/plain',
+          size: 5,
+        },
+        { op: 'clear_edge_content', from: 'task:ONE', to: 'task:TWO', label: 'depends-on' },
+      ],
+    }, { dryRun: true });
+
+    expect(result.valid).toBe(true);
+    expect(result.executed).toBe(false);
+    expect(result.patch).toBeNull();
+    expect(result.sideEffects).toEqual([
+      'attach content to task:ONE',
+      'clear content from edge task:ONE -[depends-on]-> task:TWO',
+    ]);
+    expect(mocks.createPatchSession).not.toHaveBeenCalled();
+  });
+
   it('rejects operations that reference missing nodes or edges', async () => {
     const graph = makeGraph();
     const service = new MutationKernelService({
@@ -122,6 +155,30 @@ describe('MutationKernelService', () => {
     expect(patch.addNode).toHaveBeenCalledWith('proposal:1');
     expect(patch.setProperty).toHaveBeenCalledWith('proposal:1', 'type', 'proposal');
     expect(patch.addEdge).toHaveBeenCalledWith('proposal:1', 'task:ONE', 'proposes');
+  });
+
+  it('commits clear-content ops through the shared patch session', async () => {
+    const graph = makeGraph();
+    const patch = makePatchSession();
+    mocks.createPatchSession.mockResolvedValue(patch);
+    const service = new MutationKernelService({
+      getGraph: async () => graph,
+      reset: vi.fn(),
+    });
+
+    const result = await service.execute({
+      rationale: 'Commit clear-content transfer ops through the shared mutation kernel.',
+      ops: [
+        { op: 'clear_node_content', nodeId: 'task:ONE' },
+        { op: 'clear_edge_content', from: 'task:ONE', to: 'task:TWO', label: 'depends-on' },
+      ],
+    });
+
+    expect(result.valid).toBe(true);
+    expect(result.executed).toBe(true);
+    expect(result.patch).toBe('patch:apply');
+    expect(patch.clearContent).toHaveBeenCalledWith('task:ONE');
+    expect(patch.clearEdgeContent).toHaveBeenCalledWith('task:ONE', 'task:TWO', 'depends-on');
   });
 
   it('validates and commits a valid op batch through a working-set overlay patch', async () => {

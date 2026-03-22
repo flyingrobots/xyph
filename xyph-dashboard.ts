@@ -6,12 +6,23 @@
  *   XYPH_AGENT_ID=human.james ./xyph-dashboard.ts
  *
  * Keys:
- *   [ / ]           — cycle views (prev / next)
- *   1-5             — jump to view (dashboard, roadmap, submissions, lineage, backlog)
+ *   [ / ]           — cycle cockpit lanes (prev / next)
+ *   1-7             — jump to lane (Now, Plan, Review, Settlement, Suggestions, Campaigns, Graveyard)
+ *   Enter           — open the selected item page
+ *   Esc/Backspace   — return from an item page to the landing cockpit
+ *   v               — toggle Now lane between action queue and recent activity
+ *   t               — open the selected quest tree / lineage modal
+ *   i               — toggle inspector pane
+ *   PgUp / PgDn     — page the worklist or the open item page
+ *   Shift+PgUp/PgDn — scroll the inspector
  *   m               — toggle "My Stuff" drawer (quests, submissions, activity)
+ *   Shift+S         — mark the current lane seen
+ *   Mouse           — click lanes/rows, wheel-scroll panes, dismiss the quest tree
+ *   Signals         — freshness dots clear on visit; Review/Settlement keep persistent attention badges until resolved; Suggestions are marked with [AI]
  *   r               — refresh snapshot
+ *   : or /          — command palette
  *   q               — quit
- *   ?               — help
+ *   ?               — contextual help modal
  */
 
 // Suppress DEP0169 stderr output from transitive deps.
@@ -34,9 +45,11 @@ import { WarpGraphAdapter } from './src/infrastructure/adapters/WarpGraphAdapter
 import { WarpIntakeAdapter } from './src/infrastructure/adapters/WarpIntakeAdapter.js';
 import { WarpSubmissionAdapter } from './src/infrastructure/adapters/WarpSubmissionAdapter.js';
 import { createDashboardApp } from './src/tui/bijou/DashboardApp.js';
+import { createFileObserverWatermarkStore } from './src/tui/bijou/observer-watermarks.js';
 import { loadRandomLogo, selectLogoSize } from './src/tui/logo-loader.js';
 import { TuiLogger } from './src/tui/TuiLogger.js';
 import { parseAsOverrideFromArgv, resolveIdentity } from './src/cli/identity.js';
+import { resolveGraphRuntime } from './src/cli/runtimeGraph.js';
 
 // Initialize bijou context with XYPH presets via StylePort.
 const style = createStylePort();
@@ -47,6 +60,7 @@ const identity = resolveIdentity({
 });
 const agentId = identity.agentId;
 const cwd = process.cwd();
+const runtime = resolveGraphRuntime({ cwd });
 
 const currentFilePath = fileURLToPath(import.meta.url);
 const currentDir = dirname(currentFilePath);
@@ -61,10 +75,11 @@ const splash = loadRandomLogo(logosDir, 'xyph', selectLogoSize(cols, rows), {
   maxHeight: rows - 12,
 });
 const logger = new TuiLogger({ component: 'xyph-dashboard' });
-const graphPort = new WarpGraphAdapter(cwd, 'xyph-roadmap', agentId, logger);
+const graphPort = new WarpGraphAdapter(runtime.repoPath, runtime.graphName, agentId, logger);
 const ctx = createGraphContext(graphPort);
 const intake = new WarpIntakeAdapter(graphPort, agentId);
 const submissionPort = new WarpSubmissionAdapter(graphPort, agentId);
+const observerWatermarkStore = createFileObserverWatermarkStore();
 
 const app = createDashboardApp({
   ctx,
@@ -74,6 +89,12 @@ const app = createDashboardApp({
   style,
   agentId,
   logoText: splash.text,
+  observerWatermarkStore,
+  observerWatermarkScope: {
+    agentId,
+    repoPath: runtime.repoPath,
+    graphName: runtime.graphName,
+  },
 });
 
-await run(app, { altScreen: true, hideCursor: true });
+await run(app, { altScreen: true, hideCursor: true, mouse: true });

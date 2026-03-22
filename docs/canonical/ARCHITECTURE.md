@@ -32,6 +32,44 @@ the active command family.
 
 ![Hexagonal architecture](../diagrams/hexagonal-architecture.svg)
 
+## Bootstrap Graph Selection
+
+XYPH resolves its runtime graph from bootstrap config outside the graph. That
+boundary is load-bearing: the control plane must know which Git repo and which
+git-warp graph to open before it can read any in-graph config such as
+`config:xyph`.
+
+Current precedence:
+
+- local `.xyph.json`
+- user config `~/.xyph/config`
+- defaults: current Git repo + graph name `xyph`
+
+The bootstrap file shape is:
+
+```json
+{
+  "graph": {
+    "repoPath": "/abs/or/relative/path",
+    "name": "xyph"
+  }
+}
+```
+
+`repoPath` is optional. `name` is optional only when the target repo is the
+current working repo and it either has no warp graphs yet, or already has
+exactly one graph named `xyph`. If the target repo contains multiple graphs, or
+only a single non-default graph, XYPH now fails loudly until `graph.name` is
+explicit. If `repoPath` points at a different repo, `graph.name` is always
+required; XYPH will not inspect git-warp ref namespaces outside the current
+working repo. Silent guessing here would create or select the wrong graph and
+violate the “graph is the plan” rule.
+
+This is intentionally separate from the layered app config resolved by
+`ConfigAdapter`. Graph bootstrap is an out-of-band runtime concern. In-graph
+config remains appropriate only after the runtime graph is already selected and
+opened.
+
 ### Layers
 
 - **`src/domain/entities/`** — Core business objects: `Quest`, `Intent`, `Submission`, `ApprovalGate`, `Orchestration`.
@@ -39,9 +77,62 @@ the active command family.
 - **`src/domain/models/`** — View models and protocol models, including dashboard snapshots and versioned control-plane JSONL envelopes.
 - **`src/ports/`** — Boundary interfaces: `GraphPort`, `RoadmapPort`, `IntakePort`, `SubmissionPort`, `WorkspacePort`, `ControlPlanePort`.
 - **`src/infrastructure/adapters/`** — Concrete implementations backed by git-warp and git: `WarpGraphAdapter`, `WarpIntakeAdapter`, `WarpSubmissionAdapter`, `WarpRoadmapAdapter`, `GitWorkspaceAdapter`.
-- **`src/infrastructure/GraphContext.ts`** — Shared gateway to the WARP graph. Replaces the old dashboard adapter with `graph.query()` for typed node fetching and frontier-based cache invalidation.
-- **`src/tui/`** — TUI (bijou-tui): `DashboardApp.ts` (TEA app), view functions, theme presets, `StylePort`-based styling.
+- **`src/infrastructure/GraphContext.ts`** — Shared gateway to the WARP graph. Replaces the old dashboard adapter with `graph.query()` for typed node fetching, frontier-based cache invalidation, and typed dashboard projections including persisted governance artifacts for compare/collapse/attestation work.
+- **`src/tui/`** — TUI (bijou-tui v3.1): a XYPH landing cockpit plus drill-in item pages, built around one lane rail, one scannable worklist, one preview inspector, breadcrumbed item pages, theme presets, and `StylePort`-based styling. The current shell projects `Now`, `Plan`, `Review`, `Settlement`, `Campaigns`, and `Graveyard` lanes over the same graph-backed snapshot truth. Product and page-design truth for this surface lives in [`design/README.md`](../../design/README.md); this architecture doc describes the implementation boundary, not the full UX contract.
 - **`src/validation/`** — Cross-cutting concerns: cryptographic utilities, invariant enforcement.
+
+## Shared Work And Governance Semantics
+
+XYPH should expose one shared semantic layer across the human cockpit, drill-in
+pages, and agent-native CLI.
+
+The load-bearing distinction is:
+
+- **explicit graph truth** such as quests, submissions, requirements,
+  criteria, evidence, comments, suggestions, comparison artifacts,
+  attestations, and collapse proposals
+- **derived XYPH judgments** such as readiness, missing evidence,
+  blocking reasons, expected actor, next lawful actions, claimability, and
+  attention state
+
+This architecture matters because those derived judgments should not be
+recomputed ad hoc in every adapter or UI surface. They belong in shared domain
+services and shared projection models so:
+
+- a review page and a settlement page can explain the same blocker the same way
+- `briefing`, `next`, `context`, and `act` can use the same machine-readable
+  names as the human pages
+- suggestion queues and future live feeds can route through the same lawful
+  action model instead of inventing a second workflow layer
+
+The first concrete implementation of this rule now exists:
+
+- the TUI `Review` lane now opens a dedicated review page for `submission:*`
+  items, using the shared submission/governance judgment model for lifecycle,
+  blockers, missing evidence, next lawful actions, and page-local review
+  actions
+- the TUI `Settlement` lane opens a dedicated governance page for
+  `comparison-artifact:*`, `collapse-proposal:*`, and `attestation:*`
+- `xyph context` now emits shared semantic packets for quest targets,
+  submission or patchset targets, and governance artifacts instead of leaving
+  blocker/evidence/next-action reasoning trapped inside human-only
+  presentation layers
+- `xyph briefing` and `xyph next` now carry compatible semantic subsets for
+  quest work, submission review candidates, and governance attention work, so
+  cold-start agent intake uses the same field names and judgments the human
+  review/governance pages use; governance follow-up can now surface as explicit
+  agent-facing recommendation requests and human-bound next candidates rather
+  than disappearing behind inspect-only fallbacks
+- `xyph act` now carries shared submission semantics on review/merge outcomes
+  when that judgment can be derived honestly, and explicitly rejects
+  governance-only actions like `attest` / `collapse_preview` /
+  `collapse_live` as `human-only-action` so the agent surface can route human
+  judgment instead of mistaking it for unsupported plumbing
+
+The product-design source of truth for these primitives lives in
+[`design/README.md`](../../design/README.md). This architecture
+document records the implementation boundary: explicit graph truth plus shared
+derived judgments, not per-surface reinvention.
 
 ## Canonical Control Plane
 
@@ -70,12 +161,13 @@ Current foundation slice:
 - implemented now: `fork_worldline`
 - implemented now: `braid_worldlines`
 - implemented now: `compare_worldlines`
+- implemented now: `collapse_worldline`
 - implemented now: `apply`
 - implemented now: `comment`
 - implemented now: `propose`
 - implemented now: `attest`
-- reserved, not yet implemented: `collapse_worldline`
-- reserved, hidden admin/debug concepts: `query`, `rewind_worldline`
+- implemented now (hidden admin): `query`
+- reserved, hidden admin/debug concept: `rewind_worldline`
 
 Current `observe` projections include a substrate-backed `conflicts` view that
 delegates directly to `git-warp`'s published `analyzeConflicts()` API. This is
@@ -99,11 +191,15 @@ For canonical derived worldlines backed by git-warp working sets, XYPH routes:
 
 - `observe(graph.summary)` / `observe(worldline.summary)` /
   `observe(entity.detail)` through isolated working-set-aware read graphs, with
-  observation coordinates pinned to the working set's visible frontier
+  observation coordinates pinned to the working set's visible frontier and
+  explicit backing metadata for the selected working set / braid
 - `history` through `patchesForWorkingSet(...)`
 - `diff` through working-set-local materialization plus working-set provenance
 - `apply` through the same mutation kernel as live writes, lowered into
   `patchWorkingSet(...)`
+- `observe(conflicts)` through git-warp's working-set-aware conflict analyzer,
+  with explicit warnings when braided overlays compete on singleton LWW
+  properties in a way that can self-erase co-presence
 
 This keeps the reducer and conflict rules worldline-blind while letting the
 visible patch universe vary by worldline. Compatibility projections such as
@@ -120,10 +216,30 @@ with:
 - left/right worldline metadata in XYPH terms
 - per-side observation coordinates
 - substrate divergence facts carried explicitly instead of re-derived in XYPH
+- the published git-warp scoped comparison-fact export carried through in the
+  substrate block as the operational freshness truth
+- the published git-warp whole-graph comparison-fact export carried through
+  alongside it for audit and provenance
 
-That keeps comparison factual and read-only. Decision, attestation, and future
-collapse semantics remain XYPH concerns built on top of this substrate-backed
-preview rather than hidden inside it.
+That keeps comparison factual while separating two jobs that were previously
+conflated:
+
+- raw substrate truth over the whole visible graph
+- XYPH operational freshness truth over a scoped visible graph that excludes
+  governance-only node families
+
+With that split in place, `compare_worldlines persist:true` can now record a
+durable `comparison-artifact:*` node on `worldline:live` without invalidating
+its own operational freshness token.
+
+Persisted governance artifacts now become first-class readable entities too.
+`observe(entity.detail)` over a durable `comparison-artifact:*` or
+`collapse-proposal:*` computes XYPH-owned governance detail on read:
+
+- freshness against the current operational comparison baseline
+- attestation summary
+- supersession lineage via stable series keys plus `supersedes` edges
+- settlement/execution state for downstream collapse review
 
 `braid_worldlines` is now the thin control-plane mapping for that composition
 step. XYPH keeps the public API in worldline terms while delegating the actual
@@ -139,8 +255,68 @@ That matters because the operation is not ordinary merge or rebase; it changes
 the visible patch universe without pretending one line replaced the other.
 Because the core materialized projections already lower through working-set
 truth, selecting a braided target worldline now exposes those co-present
-effects on that surface. The next slice is still responsible for explicit
-braid-wide parity and diagnostics across the rest of the control plane.
+effects on that surface across `observe(graph.summary)`,
+`observe(worldline.summary)`, `observe(entity.detail)`, `history`, `diff`,
+`apply`, and `observe(conflicts)`. Compatibility projections remain future
+work, but the canonical derived-worldline control-plane slice is now
+explicitly braid-aware on the published substrate boundary.
+
+`collapse_worldline` now uses that same substrate boundary for the first
+governed settlement runway. XYPH:
+
+- requires a fresh XYPH `comparison-artifact` digest from `compare_worldlines`
+- recomputes the current operationally scoped substrate comparison to detect
+  drift
+- asks git-warp for a substrate-factual transfer plan from the source
+  worldline’s visible state into the target coordinate
+- lowers that plan through the same mutation kernel used by `apply`
+- defaults to preview mode, but now accepts `dryRun: false` for live
+  execution against `worldline:live`
+- requires approving attestations over the persisted
+  `comparison-artifact:*` when the live execution path would make substantive
+  changes
+- now lowers committed content-clearing transfer ops through git-warp’s
+  published clear-content patch helpers instead of treating them as a special
+  collapse-only gap
+- carries the published git-warp comparison and transfer-fact exports through
+  to the substrate block instead of inventing a second XYPH-side substrate
+  wrapper
+- may record the resulting preview or execution artifact as a durable
+  `collapse-proposal:*` node on `worldline:live` when `persist: true` is
+  requested
+- keeps the execution gate bound to the durable `comparison-artifact:*`, not
+  to the `collapse-proposal:*`, so governance approval attaches to the factual
+  comparison baseline rather than to whichever optional proposal record was
+  emitted
+
+Because the execution actually mutates `worldline:live`, an executed
+`collapse-proposal:*` normally becomes stale immediately after settlement.
+That is intentional: execution is terminal state, not a promise that the
+proposal still describes the current live-vs-source delta.
+
+That keeps settlement planning factual at the substrate boundary while
+preserving XYPH ownership of governance meaning, attestation policy, and
+execution semantics.
+
+`query` now starts to expose that governance meaning directly. The first slice
+is intentionally narrow and admin-only:
+
+- `governance.worklist` summarizes actionable comparison/collapse artifacts
+- `governance.series` shows the history of one governance lane through
+  `artifact_series_key` plus `supersedes` lineage
+
+This is not a generic graph query surface yet. It is the first operator-facing
+read model built specifically around XYPH’s governance artifacts.
+
+`explain` now layers operator diagnosis over that same artifact truth. Pointing
+`explain` at a durable `comparison-artifact:*`, `collapse-proposal:*`, or
+`attestation:*` returns stable reason codes and next-command suggestions rather
+than making operators reverse-engineer lifecycle state from raw props.
+
+That matters most for the execution gate distinction: XYPH now explains
+directly that attesting a `collapse-proposal:*` is governance commentary on the
+proposal, while live execution remains gated by approving attestations on the
+bound `comparison-artifact:*`.
 
 Existing commands such as `briefing`, `next`, `context`, `submit`, `review`,
 and `merge` still exist, but they should be understood as compatibility
@@ -173,10 +349,19 @@ small allowlisted primitive-op vocabulary over git-warp patch sessions:
 - `set_edge_property`
 - `attach_node_content`
 - `attach_edge_content`
+- `clear_node_content`
+- `clear_edge_content`
 
 `collapse_worldline` is not allowed to become a special-case mutation engine.
-When implemented, it must lower to a validated mutation plan through the same
-mutation, audit, and capability pipeline as `apply`.
+The current slice now enforces that in preview mode: collapse transfer plans are
+lowered through the same mutation, audit, and capability pipeline as `apply`
+and dry-run against the mutation kernel before XYPH returns a
+`collapse-proposal`.
+
+`collapse_worldline` uses that same allowlist for both preview and live
+execution, including explicit `clear_*_content` transfer ops lowered through
+published git-warp patch primitives rather than through a special collapse
+engine.
 
 ## Shared Graph Architecture
 
@@ -214,7 +399,7 @@ xyph-actuator command → adapter.method() → graph.patch(p => { ... }) → WAR
 GraphContext.fetchSnapshot()
   → syncCoverage() (discover external writes)
   → frontier key check (cache hit? return cached)
-  → materialize() → query() → build snapshot → cache
+  → materialize() → query() → build snapshot (quests + submissions + governance artifacts) → cache
 ```
 
 ### Historical Read Path (Control Plane → Isolated Graph)

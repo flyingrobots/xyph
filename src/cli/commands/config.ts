@@ -36,7 +36,7 @@ export function registerConfigCommands(program: Command, ctx: CliContext): void 
       assertValidKey(key);
 
       const { ConfigAdapter } = await import('../../infrastructure/adapters/ConfigAdapter.js');
-      const adapter = new ConfigAdapter(ctx.graphPort, process.cwd());
+      const adapter = new ConfigAdapter(ctx.graphPort, ctx.cwd);
       const value = await adapter.get(key);
 
       if (ctx.json) {
@@ -81,7 +81,7 @@ export function registerConfigCommands(program: Command, ctx: CliContext): void 
       }
 
       const { ConfigAdapter } = await import('../../infrastructure/adapters/ConfigAdapter.js');
-      const adapter = new ConfigAdapter(ctx.graphPort, process.cwd());
+      const adapter = new ConfigAdapter(ctx.graphPort, ctx.cwd);
 
       switch (key) {
         case 'minAutoConfidence':
@@ -115,7 +115,7 @@ export function registerConfigCommands(program: Command, ctx: CliContext): void 
     .description('List all resolved configuration values')
     .action(withErrorHandler(async () => {
       const { ConfigAdapter } = await import('../../infrastructure/adapters/ConfigAdapter.js');
-      const adapter = new ConfigAdapter(ctx.graphPort, process.cwd());
+      const adapter = new ConfigAdapter(ctx.graphPort, ctx.cwd);
       const config = await adapter.getAll();
 
       if (ctx.json) {

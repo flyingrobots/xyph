@@ -13,6 +13,7 @@ import {
   type RequirementKind,
   type RequirementPriority,
 } from '../entities/Requirement.js';
+import type { GraphSnapshot } from '../models/dashboard.js';
 import type { RecommendationRequest } from '../models/recommendations.js';
 import { IntakeService } from './IntakeService.js';
 import { ReadinessService } from './ReadinessService.js';
@@ -39,13 +40,17 @@ import { WarpIntakeAdapter } from '../../infrastructure/adapters/WarpIntakeAdapt
 import { WarpSubmissionAdapter } from '../../infrastructure/adapters/WarpSubmissionAdapter.js';
 import { GitWorkspaceAdapter } from '../../infrastructure/adapters/GitWorkspaceAdapter.js';
 import type { ReviewVerdict } from '../entities/Submission.js';
+import {
+  buildSubmissionWorkSemantics,
+  type AgentWorkSemantics,
+} from './WorkSemanticsService.js';
 
 export const ROUTINE_AGENT_ACTION_KINDS = [
   'claim', 'shape', 'packet', 'ready', 'comment', 'submit', 'review', 'handoff', 'seal', 'merge',
 ] as const;
 
 export const HUMAN_ONLY_AGENT_ACTION_KINDS = [
-  'intent', 'promote', 'reject', 'reopen', 'depend',
+  'intent', 'promote', 'reject', 'reopen', 'depend', 'attest', 'collapse_preview', 'collapse_live',
 ] as const;
 
 export type RoutineAgentActionKind = typeof ROUTINE_AGENT_ACTION_KINDS[number];
@@ -75,6 +80,7 @@ export interface AgentActionAssessment {
   normalizedArgs: Record<string, unknown>;
   underlyingCommand: string;
   sideEffects: string[];
+  semantics?: AgentWorkSemantics;
 }
 
 export interface AgentActionOutcome extends AgentActionAssessment {
@@ -216,6 +222,7 @@ function failAssessment(
     normalizedArgs?: Record<string, unknown>;
     underlyingCommand?: string;
     sideEffects?: string[];
+    semantics?: AgentWorkSemantics | null;
   },
 ): ValidatedAssessment {
   return {
@@ -232,6 +239,7 @@ function failAssessment(
     normalizedArgs: opts?.normalizedArgs ?? {},
     underlyingCommand: opts?.underlyingCommand ?? `xyph ${request.kind} ${request.targetId}`,
     sideEffects: opts?.sideEffects ?? [],
+    ...(opts?.semantics ? { semantics: opts.semantics } : {}),
   };
 }
 
@@ -241,6 +249,7 @@ function successAssessment(
   normalizedArgs: Record<string, unknown>,
   underlyingCommand: string,
   sideEffects: string[],
+  semantics?: AgentWorkSemantics | null,
 ): ValidatedAssessment {
   return {
     kind: request.kind,
@@ -256,6 +265,7 @@ function successAssessment(
     normalizedArgs,
     underlyingCommand,
     sideEffects,
+    ...(semantics ? { semantics } : {}),
     normalizedAction,
   };
 }
@@ -303,6 +313,32 @@ export class AgentActionValidator {
     return this.cachedRecommendationRequests;
   }
 
+  private async fetchSnapshot(): Promise<GraphSnapshot> {
+    const graphCtx = createGraphContext(this.graphPort);
+    return graphCtx.fetchSnapshot();
+  }
+
+  private buildSubmissionSemantics(
+    snapshot: GraphSnapshot,
+    submissionId: string,
+  ): AgentWorkSemantics | null {
+    const submission = snapshot.submissions.find((entry) => entry.id === submissionId);
+    if (!submission) return null;
+
+    const quest = snapshot.quests.find((entry) => entry.id === submission.questId);
+    const reviews = submission.tipPatchsetId
+      ? snapshot.reviews.filter((entry) => entry.patchsetId === submission.tipPatchsetId)
+      : [];
+    const decisions = snapshot.decisions.filter((entry) => entry.submissionId === submission.id);
+    return buildSubmissionWorkSemantics({
+      submission,
+      quest,
+      reviews,
+      decisions,
+      principalId: this.agentId,
+    });
+  }
+
   private async checkStructuralBlockers(
     request: AgentActionRequest,
     transition: DoctorBlockedTransition,
@@ -311,6 +347,7 @@ export class AgentActionValidator {
       normalizedArgs?: Record<string, unknown>;
       underlyingCommand?: string;
       sideEffects?: string[];
+      semantics?: AgentWorkSemantics | null;
     },
   ): Promise<ValidatedAssessment | null> {
     const blockers = findBlockingRecommendationRequests(
@@ -919,6 +956,15 @@ export class AgentActionValidator {
       ]);
     }
 
+    const adapter = new WarpSubmissionAdapter(this.graphPort, this.agentId);
+    const submissionId = await adapter.getSubmissionForPatchset(request.targetId);
+    if (submissionId === null) {
+      return failAssessment(request, 'not-found', [
+        `Patchset ${request.targetId} not found or has no parent submission`,
+      ]);
+    }
+    const semantics = this.buildSubmissionSemantics(await this.fetchSnapshot(), submissionId);
+
     try {
       await this.submissions.validateReview(request.targetId, this.agentId);
     } catch (err) {
@@ -927,21 +973,15 @@ export class AgentActionValidator {
         normalizedArgs: {
           verdict: verdictRaw,
           comment,
+          submissionId,
         },
         underlyingCommand: `xyph review ${request.targetId}`,
         sideEffects: [
           'create review node',
           `reviews -> ${request.targetId}`,
         ],
+        semantics,
       });
-    }
-
-    const adapter = new WarpSubmissionAdapter(this.graphPort, this.agentId);
-    const submissionId = await adapter.getSubmissionForPatchset(request.targetId);
-    if (submissionId === null) {
-      return failAssessment(request, 'not-found', [
-        `Patchset ${request.targetId} not found or has no parent submission`,
-      ]);
     }
 
     const blockerFailure = await this.checkStructuralBlockers(
@@ -959,6 +999,7 @@ export class AgentActionValidator {
           'create review node',
           `reviews -> ${request.targetId}`,
         ],
+        semantics,
       },
     );
     if (blockerFailure) return blockerFailure;
@@ -987,6 +1028,7 @@ export class AgentActionValidator {
         `create ${reviewId}`,
         `reviews -> ${request.targetId}`,
       ],
+      semantics,
     );
   }
 
@@ -1180,6 +1222,7 @@ export class AgentActionValidator {
     const explicitPatchsetId = typeof request.args['patchsetId'] === 'string' && request.args['patchsetId'].trim().length > 0
       ? request.args['patchsetId'].trim()
       : undefined;
+    const semantics = this.buildSubmissionSemantics(await this.fetchSnapshot(), request.targetId);
 
     const adapter = new WarpSubmissionAdapter(this.graphPort, this.agentId);
     let tipPatchsetId: string;
@@ -1200,6 +1243,7 @@ export class AgentActionValidator {
           'create merge decision',
           'auto-seal quest when needed',
         ],
+        semantics,
       });
     }
 
@@ -1230,6 +1274,7 @@ export class AgentActionValidator {
         },
         underlyingCommand: `xyph merge ${request.targetId}`,
         sideEffects: mergeEffects,
+        semantics,
       },
     );
     if (blockerFailure) return blockerFailure;
@@ -1251,6 +1296,7 @@ export class AgentActionValidator {
           },
           underlyingCommand: `xyph merge ${request.targetId}`,
           sideEffects: mergeEffects,
+          semantics,
         });
       }
 
@@ -1269,6 +1315,7 @@ export class AgentActionValidator {
           },
           underlyingCommand: `xyph merge ${request.targetId}`,
           sideEffects: mergeEffects,
+          semantics,
         });
       }
     }
@@ -1287,6 +1334,7 @@ export class AgentActionValidator {
         },
         underlyingCommand: `xyph merge ${request.targetId}`,
         sideEffects: mergeEffects,
+        semantics,
       });
     }
     const mergeRef = await adapter.getPatchsetMergeRef(tipPatchsetId);
@@ -1308,6 +1356,7 @@ export class AgentActionValidator {
           'create merge decision',
           ...(shouldAutoSeal ? ['auto-seal quest'] : []),
         ],
+        semantics,
       });
     }
 
@@ -1341,6 +1390,7 @@ export class AgentActionValidator {
         'create merge decision',
         ...(shouldAutoSeal ? ['auto-seal quest'] : []),
       ],
+      semantics,
     );
   }
 }

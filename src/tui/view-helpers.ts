@@ -43,3 +43,34 @@ export function groupBy<T>(arr: readonly T[], keyFn: (item: T) => string): Map<s
   }
   return map;
 }
+
+/** Wrap text on whitespace boundaries, preserving explicit newlines. */
+export function wrapWhitespaceText(text: string, width: number): string[] {
+  return text
+    .split('\n')
+    .flatMap((line) => wrapWhitespaceParagraph(line, width));
+}
+
+function wrapWhitespaceParagraph(text: string, width: number): string[] {
+  const safeWidth = Math.max(1, width);
+  const lines: string[] = [];
+  let remaining = text.trimEnd();
+  if (remaining.length === 0) return [''];
+  while (remaining.length > safeWidth) {
+    let wrapIndex = safeWidth;
+    if (!/\s/.test(remaining[wrapIndex] ?? '')) {
+      for (let cursor = wrapIndex; cursor >= 0; cursor -= 1) {
+        if (/\s/.test(remaining[cursor] ?? '')) {
+          wrapIndex = cursor;
+          break;
+        }
+      }
+    }
+    if (wrapIndex <= 0) wrapIndex = safeWidth;
+    const line = remaining.slice(0, wrapIndex).trimEnd();
+    lines.push(line.length > 0 ? line : remaining.slice(0, safeWidth));
+    remaining = remaining.slice(wrapIndex).trimStart();
+  }
+  if (remaining.length > 0) lines.push(remaining);
+  return lines;
+}

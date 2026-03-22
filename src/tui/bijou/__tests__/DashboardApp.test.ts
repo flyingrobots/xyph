@@ -1,21 +1,54 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import type { App } from '@flyingrobots/bijou-tui';
-
+import { visibleLength, type App } from '@flyingrobots/bijou-tui';
 import { createPlainStylePort, ensurePlainBijouContext } from '../../../infrastructure/adapters/PlainStyleAdapter.js';
 import { createDashboardApp, type DashboardModel, type DashboardMsg } from '../DashboardApp.js';
+import type { GraphSnapshot } from '../../../domain/models/dashboard.js';
+import { createMemoryObserverWatermarkStore, observerWatermarkScopeKey, type ObserverWatermarks } from '../observer-watermarks.js';
+import { describeCockpitInteractionMap } from '../views/cockpit-view.js';
 import { makeSnapshot } from '../../../../test/helpers/snapshot.js';
-import { makeKey, makeResize } from '../../../../test/helpers/keys.js';
+import { makeKey as key, makeMouse as mouse, makeResize as resize } from '../../../../test/helpers/keys.js';
 import { mockGraphContext, mockIntakePort, mockGraphPort, mockSubmissionPort } from '../../../../test/helpers/ports.js';
+import { strip } from '../../../../test/helpers/ansi.js';
 
 ensurePlainBijouContext();
 
-describe('DashboardApp', () => {
-  const mockCtx = mockGraphContext();
-  const mockIntake = mockIntakePort();
-  const mockGraph = mockGraphPort();
-  const mockSubmission = mockSubmissionPort();
-  const style = createPlainStylePort();
+const TEST_SCOPE = {
+  agentId: 'agent.test',
+  repoPath: '/tmp/xyph-test',
+  graphName: 'xyph',
+} as const;
 
+function buildApp(snapshotOverrides?: Partial<GraphSnapshot>, watermarks?: Partial<ObserverWatermarks>): App<DashboardModel, DashboardMsg> {
+  return createDashboardApp({
+    ctx: mockGraphContext(snapshotOverrides),
+    intake: mockIntakePort(),
+    graphPort: mockGraphPort(),
+    submissionPort: mockSubmissionPort(),
+    style: createPlainStylePort(),
+    agentId: 'agent.test',
+    logoText: 'XYPH',
+    observerWatermarkStore: createMemoryObserverWatermarkStore(
+      watermarks ? { [observerWatermarkScopeKey(TEST_SCOPE)]: watermarks } : undefined,
+    ),
+    observerWatermarkScope: TEST_SCOPE,
+  });
+}
+
+function ready(app: App<DashboardModel, DashboardMsg>, snapshot: GraphSnapshot): DashboardModel {
+  const [initial] = app.init();
+  const [loaded] = app.update(
+    { type: 'snapshot-loaded', snapshot, requestId: initial.requestId },
+    initial,
+  );
+  return loaded;
+}
+
+function widen(app: App<DashboardModel, DashboardMsg>, model: DashboardModel, cols = 140, rows = 40): DashboardModel {
+  const [resized] = app.update(resize(cols, rows), model);
+  return resized;
+}
+
+describe('DashboardApp', () => {
   beforeEach(() => {
     delete process.env['NO_COLOR'];
     delete process.env['XYPH_THEME'];
@@ -26,1225 +59,916 @@ describe('DashboardApp', () => {
     vi.clearAllMocks();
   });
 
-  function makeApp(): App<DashboardModel, DashboardMsg> {
-    return createDashboardApp({
-      ctx: mockCtx,
-      intake: mockIntake,
-      graphPort: mockGraph,
-      submissionPort: mockSubmission,
-      style,
+  it('boots into the Now lane and hides the landing view after the first snapshot', () => {
+    const app = buildApp();
+    const [initial] = app.init();
+    expect(initial.lane).toBe('now');
+    expect(initial.loading).toBe(true);
+    expect(initial.showLanding).toBe(true);
+    expect(initial.inspectorOpen).toBe(true);
+    expect(initial.scrollbars.worklist.level).toBe(4);
+    expect(initial.scrollbars.inspector.level).toBe(0);
+
+    const loaded = ready(app, makeSnapshot());
+    expect(loaded.lane).toBe('now');
+    expect(loaded.loading).toBe(false);
+    expect(loaded.showLanding).toBe(false);
+  });
+
+  it('switches lanes with number keys 1-7', () => {
+    const app = buildApp();
+    const loaded = ready(app, makeSnapshot());
+
+    const lanes: [string, DashboardModel['lane']][] = [
+      ['1', 'now'],
+      ['2', 'plan'],
+      ['3', 'review'],
+      ['4', 'settlement'],
+      ['5', 'suggestions'],
+      ['6', 'campaigns'],
+      ['7', 'graveyard'],
+    ];
+
+    for (const [press, lane] of lanes) {
+      const [next] = app.update(key(press), loaded);
+      expect(next.lane).toBe(lane);
+    }
+  });
+
+  it('switches lanes by clicking the lane rail', () => {
+    const app = buildApp();
+    const loaded = widen(app, ready(app, makeSnapshot()));
+    const map = describeCockpitInteractionMap(loaded, createPlainStylePort(), loaded.cols, loaded.rows - 2);
+    expect(map).not.toBeNull();
+    const review = map?.laneRegions.find((region) => region.lane === 'review');
+    expect(review).toBeDefined();
+    if (!review) throw new Error('Expected review lane region');
+
+    const [next] = app.update(
+      mouse('press', review.rect.y + 1, review.rect.x + 2),
+      loaded,
+    );
+
+    expect(next.lane).toBe('review');
+  });
+
+  it('cycles lanes with [ and ]', () => {
+    const app = buildApp();
+    const loaded = ready(app, makeSnapshot());
+
+    const [forward] = app.update(key(']'), loaded);
+    expect(forward.lane).toBe('plan');
+
+    const [backward] = app.update(key('['), loaded);
+    expect(backward.lane).toBe('graveyard');
+  });
+
+  it('marks the current lane as seen when switching away from it', () => {
+    const store = createMemoryObserverWatermarkStore();
+    const app = createDashboardApp({
+      ctx: mockGraphContext(),
+      intake: mockIntakePort(),
+      graphPort: mockGraphPort(),
+      submissionPort: mockSubmissionPort(),
+      style: createPlainStylePort(),
       agentId: 'agent.test',
-      logoText: 'XYPH TEST LOGO',
+      logoText: 'XYPH',
+      observerWatermarkStore: store,
+      observerWatermarkScope: TEST_SCOPE,
     });
-  }
+    const loaded = ready(app, makeSnapshot({
+      quests: [{ id: 'task:Q1', title: 'Quest One', status: 'READY', hours: 1, readyAt: 100 }],
+    }));
 
-  describe('init()', () => {
-    it('returns initial model with showLanding=true and loading=true', () => {
-      const app = makeApp();
-      const [model, cmds] = app.init();
-      expect(model.showLanding).toBe(true);
-      expect(model.loading).toBe(true);
-      expect(model.activeView).toBe('dashboard');
-      expect(model.snapshot).toBeNull();
-      expect(cmds.length).toBeGreaterThan(0);
+    expect(loaded.observerWatermarks.now).toBe(0);
+
+    const [next] = app.update(key('2'), loaded);
+
+    expect(next.lane).toBe('plan');
+    expect(next.observerWatermarks.now).toBe(100);
+    expect(store.load(TEST_SCOPE).watermarks.now).toBe(100);
+  });
+
+  it('marks the highlighted row seen when entering a lane without clearing newer items below it', () => {
+    const app = buildApp(undefined, { plan: 0 });
+    const loaded = ready(app, makeSnapshot({
+      quests: [
+        { id: 'task:Q1', title: 'Newest Quest', status: 'READY', hours: 1, readyAt: 200 },
+        { id: 'task:Q2', title: 'Older Quest', status: 'READY', hours: 1, readyAt: 100 },
+      ],
+    }));
+
+    const [plan] = app.update(key('2'), loaded);
+
+    expect(plan.observerSeenItems['plan:quest:task:Q1']).toBe(200);
+    expect(plan.observerSeenItems['plan:quest:task:Q2']).toBeUndefined();
+    const plain = strip(app.view(plan) as string);
+    expect(plain).not.toContain('● QUEST');
+  });
+
+  it('marks the next highlighted row seen as selection moves', () => {
+    const app = buildApp(undefined, { plan: 0 });
+    const loaded = ready(app, makeSnapshot({
+      quests: [
+        { id: 'task:Q1', title: 'Newest Quest', status: 'READY', hours: 1, readyAt: 200 },
+        { id: 'task:Q2', title: 'Older Quest', status: 'READY', hours: 1, readyAt: 100 },
+      ],
+    }));
+
+    const [plan] = app.update(key('2'), loaded);
+    const [second] = app.update(key('j'), plan);
+
+    expect(second.observerSeenItems['plan:quest:task:Q1']).toBe(200);
+    expect(second.observerSeenItems['plan:quest:task:Q2']).toBe(100);
+    const plain = strip(app.view(second) as string);
+    expect(plain).not.toContain('● 1');
+  });
+
+  it('marks the whole lane seen with shift+s', () => {
+    const app = buildApp(undefined, { plan: 0 });
+    const loaded = ready(app, makeSnapshot({
+      quests: [
+        { id: 'task:Q1', title: 'Newest Quest', status: 'READY', hours: 1, readyAt: 200 },
+        { id: 'task:Q2', title: 'Older Quest', status: 'READY', hours: 1, readyAt: 100 },
+      ],
+    }));
+
+    const [plan] = app.update(key('2'), loaded);
+    const [seen] = app.update(key('s', { shift: true }), plan);
+
+    expect(seen.observerWatermarks.plan).toBe(200);
+    const plain = strip(app.view(seen) as string);
+    expect(plain).not.toContain('● 2');
+  });
+
+  it('does not clear persistent review attention when a lane is marked seen', () => {
+    const app = buildApp();
+    const loaded = ready(app, makeSnapshot({
+      quests: [{ id: 'task:Q1', title: 'Quest One', status: 'IN_PROGRESS', hours: 1 }],
+      submissions: [{
+        id: 'submission:S1',
+        questId: 'task:Q1',
+        status: 'OPEN',
+        tipPatchsetId: 'patchset:P1',
+        headsCount: 1,
+        approvalCount: 0,
+        submittedBy: 'agent.prime',
+        submittedAt: 100,
+      }],
+    }));
+
+    const [review] = app.update(key('3'), loaded);
+    const [seen] = app.update(key('s', { shift: true }), review);
+
+    const plain = strip(app.view(seen) as string);
+    expect(plain).toContain('! REVIEW');
+  });
+
+  it('moves selection inside the Plan lane with j and k', () => {
+    const app = buildApp();
+    const loaded = ready(app, makeSnapshot({
+      quests: [
+        { id: 'task:A', title: 'Alpha', status: 'READY', hours: 1 },
+        { id: 'task:B', title: 'Beta', status: 'IN_PROGRESS', hours: 2 },
+        { id: 'task:C', title: 'Gamma', status: 'BACKLOG', hours: 3 },
+      ],
+    }));
+
+    const [plan] = app.update(key('2'), loaded);
+    expect(plan.table.focusRow).toBe(0);
+
+    const [next] = app.update(key('j'), plan);
+    expect(next.table.focusRow).toBe(1);
+    expect(next.laneState.plan.focusRow).toBe(1);
+
+    const [prev] = app.update(key('k'), next);
+    expect(prev.table.focusRow).toBe(0);
+  });
+
+  it('opens a dedicated governance page for settlement artifacts', () => {
+    const ctx = mockGraphContext({
+      governanceArtifacts: [{
+        id: 'collapse-proposal:settle-1',
+        type: 'collapse-proposal',
+        recordedAt: 100,
+        recordedBy: 'human.reviewer',
+        comparisonArtifactId: 'comparison-artifact:cmp-1',
+        governance: {
+          kind: 'collapse-proposal',
+          freshness: 'fresh',
+          lifecycle: 'pending_attestation',
+          attestation: { total: 0, approvals: 0, rejections: 0, other: 0, state: 'unattested' },
+          series: { supersededByIds: [], latestInSeries: true },
+          execution: { dryRun: true, executable: true, executed: false, changed: true },
+          executionGate: {
+            comparisonArtifactId: 'comparison-artifact:cmp-1',
+            attestation: { total: 0, approvals: 0, rejections: 0, other: 0, state: 'unattested' },
+          },
+        },
+      }],
+    });
+    (ctx.fetchEntityDetail as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'collapse-proposal:settle-1',
+      type: 'collapse-proposal',
+      props: { type: 'collapse-proposal' },
+      outgoing: [],
+      incoming: [],
+      governanceDetail: {
+        kind: 'collapse-proposal',
+        freshness: 'fresh',
+        lifecycle: 'pending_attestation',
+        attestation: { total: 0, approvals: 0, rejections: 0, other: 0, state: 'unattested' },
+        series: { supersededByIds: [], latestInSeries: true },
+        execution: { dryRun: true, executable: true, executed: false, changed: true },
+        executionGate: {
+          comparisonArtifactId: 'comparison-artifact:cmp-1',
+          attestation: { total: 0, approvals: 0, rejections: 0, other: 0, state: 'unattested' },
+        },
+      },
+    });
+    const app = createDashboardApp({
+      ctx,
+      intake: mockIntakePort(),
+      graphPort: mockGraphPort(),
+      submissionPort: mockSubmissionPort(),
+      style: createPlainStylePort(),
+      agentId: 'agent.test',
+      logoText: 'XYPH',
+      observerWatermarkStore: createMemoryObserverWatermarkStore(),
+      observerWatermarkScope: TEST_SCOPE,
+    });
+    const loaded = ready(app, makeSnapshot({
+      governanceArtifacts: [{
+        id: 'collapse-proposal:settle-1',
+        type: 'collapse-proposal',
+        recordedAt: 100,
+        recordedBy: 'human.reviewer',
+        comparisonArtifactId: 'comparison-artifact:cmp-1',
+        governance: {
+          kind: 'collapse-proposal',
+          freshness: 'fresh',
+          lifecycle: 'pending_attestation',
+          attestation: { total: 0, approvals: 0, rejections: 0, other: 0, state: 'unattested' },
+          series: { supersededByIds: [], latestInSeries: true },
+          execution: { dryRun: true, executable: true, executed: false, changed: true },
+          executionGate: {
+            comparisonArtifactId: 'comparison-artifact:cmp-1',
+            attestation: { total: 0, approvals: 0, rejections: 0, other: 0, state: 'unattested' },
+          },
+        },
+      }],
+    }));
+
+    const [settlement] = app.update(key('4'), loaded);
+    const [opened] = app.update(key('enter'), settlement);
+    expect(opened.pageStack[opened.pageStack.length - 1]).toEqual({
+      kind: 'governance',
+      entityId: 'collapse-proposal:settle-1',
+      sourceLane: 'settlement',
     });
 
-    it('initializes per-view state', () => {
-      const app = makeApp();
-      const [model] = app.init();
-      expect(model.roadmap.table.focusRow).toBe(0);
-      expect(model.roadmap.table.rows).toHaveLength(0);
-      expect(model.roadmap.dagPane).toBeNull();
-      expect(model.submissions.table.focusRow).toBe(0);
-      expect(model.submissions.table.rows).toHaveLength(0);
-      expect(model.submissions.expandedId).toBeNull();
-      expect(model.backlog.table.focusRow).toBe(0);
-      expect(model.backlog.table.rows).toHaveLength(0);
-      expect(model.lineage).toEqual({ selectedIndex: -1, collapsedIntents: [] });
-      expect(model.pulsePhase).toBe(0);
-      expect(model.mode).toBe('normal');
-      expect(model.confirmState).toBeNull();
-      expect(model.inputState).toBeNull();
-      expect(model.toast).toBeNull();
+    const [detailLoaded] = app.update({
+      type: 'page-detail-loaded',
+      entityId: 'collapse-proposal:settle-1',
+      detail: {
+        id: 'collapse-proposal:settle-1',
+        type: 'collapse-proposal',
+        props: { type: 'collapse-proposal' },
+        outgoing: [],
+        incoming: [],
+        governanceDetail: {
+          kind: 'collapse-proposal',
+          freshness: 'fresh',
+          lifecycle: 'pending_attestation',
+          attestation: { total: 0, approvals: 0, rejections: 0, other: 0, state: 'unattested' },
+          series: { supersededByIds: [], latestInSeries: true },
+          execution: { dryRun: true, executable: true, executed: false, changed: true },
+          executionGate: {
+            comparisonArtifactId: 'comparison-artifact:cmp-1',
+            attestation: { total: 0, approvals: 0, rejections: 0, other: 0, state: 'unattested' },
+          },
+        },
+      },
+      requestId: opened.pageRequestId,
+    }, opened);
+
+    const plain = strip(app.view(detailLoaded) as string);
+    expect(plain).toContain('Collapse Proposal');
+    expect(plain).toContain('Comment on this governance artifact');
+    expect(plain).toContain('pending attestation');
+
+    const [commenting] = app.update(key(';'), detailLoaded);
+    expect(commenting.mode).toBe('input');
+    expect(commenting.inputState?.action).toEqual({
+      kind: 'comment',
+      targetId: 'collapse-proposal:settle-1',
     });
   });
 
-  describe('update()', () => {
-    it('handles snapshot-loaded message', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      const snap = makeSnapshot({ asOf: 12345 });
-      const [updated, cmds] = app.update(
-        { type: 'snapshot-loaded', snapshot: snap, requestId: initial.requestId },
-        initial,
-      );
-      expect(updated.snapshot).toBe(snap);
-      expect(updated.loading).toBe(false);
-      expect(updated.error).toBeNull();
-      expect(cmds).toHaveLength(0);
+  it('opens a dedicated review page for submissions', () => {
+    const ctx = mockGraphContext({
+      quests: [{
+        id: 'task:REV-1',
+        title: 'Reviewable quest',
+        status: 'IN_PROGRESS',
+        hours: 3,
+      }],
+      submissions: [{
+        id: 'submission:REV-1',
+        questId: 'task:REV-1',
+        status: 'OPEN',
+        tipPatchsetId: 'patchset:REV-1',
+        headsCount: 1,
+        approvalCount: 0,
+        submittedBy: 'agent.other',
+        submittedAt: 100,
+      }],
+    });
+    (ctx.fetchEntityDetail as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'task:REV-1',
+      type: 'task',
+      props: { type: 'task' },
+      outgoing: [],
+      incoming: [],
+      questDetail: {
+        id: 'task:REV-1',
+        quest: {
+          id: 'task:REV-1',
+          title: 'Reviewable quest',
+          status: 'IN_PROGRESS',
+          hours: 3,
+        },
+        submission: {
+          id: 'submission:REV-1',
+          questId: 'task:REV-1',
+          status: 'OPEN',
+          tipPatchsetId: 'patchset:REV-1',
+          headsCount: 1,
+          approvalCount: 0,
+          submittedBy: 'agent.other',
+          submittedAt: 100,
+        },
+        reviews: [],
+        decisions: [],
+        stories: [],
+        requirements: [],
+        criteria: [],
+        evidence: [],
+        policies: [],
+        documents: [],
+        comments: [],
+        timeline: [],
+      },
+    });
+    const app = createDashboardApp({
+      ctx,
+      intake: mockIntakePort(),
+      graphPort: mockGraphPort(),
+      submissionPort: mockSubmissionPort(),
+      style: createPlainStylePort(),
+      agentId: 'agent.test',
+      logoText: 'XYPH',
+      observerWatermarkStore: createMemoryObserverWatermarkStore(),
+      observerWatermarkScope: TEST_SCOPE,
+    });
+    const loaded = ready(app, makeSnapshot({
+      quests: [{
+        id: 'task:REV-1',
+        title: 'Reviewable quest',
+        status: 'IN_PROGRESS',
+        hours: 3,
+      }],
+      submissions: [{
+        id: 'submission:REV-1',
+        questId: 'task:REV-1',
+        status: 'OPEN',
+        tipPatchsetId: 'patchset:REV-1',
+        headsCount: 1,
+        approvalCount: 0,
+        submittedBy: 'agent.other',
+        submittedAt: 100,
+      }],
+    }));
+
+    const [review] = app.update(key('3'), loaded);
+    const [opened] = app.update(key('enter'), review);
+    expect(opened.pageStack[opened.pageStack.length - 1]).toEqual({
+      kind: 'review',
+      submissionId: 'submission:REV-1',
+      questId: 'task:REV-1',
+      sourceLane: 'review',
     });
 
-    it('creates a roadmap dagPane for snapshots with quests but no dependency edges', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      const snap = makeSnapshot({
-        quests: [
-          { id: 'task:A', title: 'Alpha', status: 'PLANNED', hours: 1 },
-          { id: 'task:B', title: 'Bravo', status: 'IN_PROGRESS', hours: 2 },
-        ],
-        sortedTaskIds: ['task:A', 'task:B'],
-      });
-      const [updated] = app.update(
-        { type: 'snapshot-loaded', snapshot: snap, requestId: initial.requestId },
-        initial,
-      );
-      expect(updated.roadmap.dagPane).not.toBeNull();
-    });
-
-    it('handles snapshot-error message', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      const [updated] = app.update(
-        { type: 'snapshot-error', error: 'oops', requestId: initial.requestId },
-        initial,
-      );
-      expect(updated.error).toBe('oops');
-      expect(updated.loading).toBe(false);
-    });
-
-    it('ignores stale snapshot-loaded from a superseded request', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      const loaded: DashboardModel = { ...initial, showLanding: false, loading: false };
-
-      // Trigger two refreshes — second supersedes first
-      const [afterRefresh1, cmds1] = app.update(makeKey('r'), loaded);
-      expect(cmds1.length).toBeGreaterThan(0);
-      const [afterRefresh2] = app.update(makeKey('r'), afterRefresh1);
-
-      // Stale response from first refresh arrives (requestId is old)
-      const staleSnap = makeSnapshot({ asOf: 1 });
-      const [afterStale] = app.update(
-        { type: 'snapshot-loaded', snapshot: staleSnap, requestId: afterRefresh1.requestId },
-        afterRefresh2,
-      );
-      // Should be ignored — model unchanged
-      expect(afterStale.loading).toBe(true);
-      expect(afterStale.snapshot).toBe(afterRefresh2.snapshot);
-
-      // Fresh response from second refresh arrives
-      const freshSnap = makeSnapshot({ asOf: 2 });
-      const [afterFresh] = app.update(
-        { type: 'snapshot-loaded', snapshot: freshSnap, requestId: afterRefresh2.requestId },
-        afterRefresh2,
-      );
-      expect(afterFresh.loading).toBe(false);
-      expect(afterFresh.snapshot).toBe(freshSnap);
-    });
-
-    it('handles resize message', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      const [updated] = app.update(makeResize(120, 40), initial);
-      expect(updated.cols).toBe(120);
-      expect(updated.rows).toBe(40);
-    });
-
-    it('number keys 1-5 jump to respective views', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      const loaded: DashboardModel = { ...initial, showLanding: false, loading: false };
-
-      const [after1] = app.update(makeKey('1'), loaded);
-      expect(after1.activeView).toBe('dashboard');
-
-      const [after2] = app.update(makeKey('2'), loaded);
-      expect(after2.activeView).toBe('roadmap');
-
-      const [after3] = app.update(makeKey('3'), loaded);
-      expect(after3.activeView).toBe('submissions');
-
-      const [after4] = app.update(makeKey('4'), loaded);
-      expect(after4.activeView).toBe('lineage');
-
-      const [after5] = app.update(makeKey('5'), loaded);
-      expect(after5.activeView).toBe('backlog');
-    });
-
-    it('] cycles to next view (with wraparound)', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      const loaded: DashboardModel = { ...initial, showLanding: false, loading: false, activeView: 'dashboard' };
-
-      const [after1] = app.update(makeKey(']'), loaded);
-      expect(after1.activeView).toBe('roadmap');
-
-      const [after2] = app.update(makeKey(']'), after1);
-      expect(after2.activeView).toBe('submissions');
-
-      // Cycle to end and wrap
-      const [after3] = app.update(makeKey(']'), after2);
-      const [after4] = app.update(makeKey(']'), after3);
-      expect(after4.activeView).toBe('backlog');
-
-      const [after5] = app.update(makeKey(']'), after4);
-      expect(after5.activeView).toBe('dashboard'); // wraparound
-    });
-
-    it('[ cycles to prev view (with wraparound)', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      const loaded: DashboardModel = { ...initial, showLanding: false, loading: false, activeView: 'dashboard' };
-
-      const [after1] = app.update(makeKey('['), loaded);
-      expect(after1.activeView).toBe('backlog'); // wraps to end
-
-      const [after2] = app.update(makeKey('['), after1);
-      expect(after2.activeView).toBe('lineage');
-    });
-
-    it('Tab on dashboard is a no-op (single panel)', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      const loaded: DashboardModel = {
-        ...initial,
-        showLanding: false,
-        loading: false,
-        activeView: 'dashboard',
-      };
-
-      expect(loaded.dashboardView?.focusPanel).toBe('in-progress');
-
-      const [afterTab] = app.update(makeKey('tab'), loaded);
-      // Tab is no-op — stays on in-progress
-      expect(afterTab.dashboardView?.focusPanel).toBe('in-progress');
-    });
-
-    it('PageDown scrolls the dashboard column', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      const loaded: DashboardModel = {
-        ...initial,
-        showLanding: false,
-        loading: false,
-        activeView: 'dashboard',
-      };
-
-      // PageDown scrolls the single dashboard column
-      const [afterPgDn] = app.update(makeKey('pagedown'), loaded);
-      expect(afterPgDn.dashboardView?.leftScrollY).toBeGreaterThan(0);
-    });
-
-    it('PageUp scrolls the focused dashboard column back', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      const loaded: DashboardModel = {
-        ...initial,
-        showLanding: false,
-        loading: false,
-        activeView: 'dashboard',
-      };
-
-      // PageDown to scroll left column > 0
-      const [afterPgDn] = app.update(makeKey('pagedown'), loaded);
-      expect(afterPgDn.dashboardView?.leftScrollY).toBeGreaterThan(0);
-
-      // PageUp should decrease leftScrollY
-      const [afterPgUp] = app.update(makeKey('pageup'), afterPgDn);
-      expect(afterPgUp.dashboardView?.leftScrollY).toBe(0);
-
-      // PageUp from scrollY=0 stays at 0
-      const [afterPgUp2] = app.update(makeKey('pageup'), afterPgUp);
-      expect(afterPgUp2.dashboardView?.leftScrollY).toBe(0);
-    });
-
-    it('PageDown/PageUp scroll roadmap fallback content when no DAG edges exist', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      const quests = Array.from({ length: 40 }, (_, i) => ({
-        id: `task:Q-${i.toString().padStart(2, '0')}`,
-        title: `Quest ${i.toString().padStart(2, '0')} with a long title for scrolling`,
-        status: 'PLANNED' as const,
-        hours: 1,
-      }));
-      const snap = makeSnapshot({ quests });
-      const withSmallViewport: DashboardModel = { ...initial, cols: 90, rows: 14 };
-      const [withSnap] = app.update(
-        { type: 'snapshot-loaded', snapshot: snap, requestId: withSmallViewport.requestId },
-        withSmallViewport,
-      );
-      const loaded: DashboardModel = {
-        ...withSnap,
-        showLanding: false,
-        loading: false,
-        activeView: 'roadmap',
-      };
-
-      const beforeScrollY = loaded.roadmap.fallbackScrollY;
-      const [afterPgDn] = app.update(makeKey('pagedown'), loaded);
-      expect(afterPgDn.roadmap.fallbackScrollY).toBeGreaterThan(beforeScrollY);
-
-      const [afterPgUp] = app.update(makeKey('pageup'), afterPgDn);
-      expect(afterPgUp.roadmap.fallbackScrollY).toBe(beforeScrollY);
-    });
-
-    it('toggles help with ?', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      const loaded: DashboardModel = { ...initial, showLanding: false, loading: false };
-
-      const [withHelp] = app.update(makeKey('?'), loaded);
-      expect(withHelp.showHelp).toBe(true);
-
-      const [noHelp] = app.update(makeKey('?'), withHelp);
-      expect(noHelp.showHelp).toBe(false);
-    });
-
-    it('refresh produces a fetch command', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      const loaded: DashboardModel = { ...initial, showLanding: false, loading: false };
-
-      const [updated, cmds] = app.update(makeKey('r'), loaded);
-      expect(updated.loading).toBe(true);
-      expect(cmds.length).toBeGreaterThan(0);
-    });
-
-    it('refresh clears stale error state', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      const withError: DashboardModel = {
-        ...initial,
-        showLanding: false,
-        loading: false,
-        error: 'previous failure',
-      };
-
-      const [updated, cmds] = app.update(makeKey('r'), withError);
-      expect(updated.error).toBeNull();
-      expect(updated.loading).toBe(true);
-      expect(cmds.length).toBeGreaterThan(0);
-    });
-
-    it('dismisses landing on any key (non-q) when loaded', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      const loaded: DashboardModel = { ...initial, loading: false };
-
-      const [updated] = app.update(makeKey('a'), loaded);
-      expect(updated.showLanding).toBe(false);
-    });
-
-    it('q on landing enters quit confirm mode and clears landing', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      const loaded: DashboardModel = { ...initial, loading: false };
-
-      const [afterQ] = app.update(makeKey('q'), loaded);
-      expect(afterQ.mode).toBe('confirm');
-      expect(afterQ.confirmState?.action.kind).toBe('quit');
-      expect(afterQ.showLanding).toBe(false);
-    });
-
-    it('Ctrl+C quits from normal mode', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      const normal: DashboardModel = { ...initial, showLanding: false, loading: false };
-
-      const [, cmds] = app.update(makeKey('c', { ctrl: true }), normal);
-      expect(cmds.length).toBeGreaterThan(0);
-    });
-
-    it('Ctrl+C quits from landing mode (while loading)', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      const [, cmds] = app.update(makeKey('c', { ctrl: true }), initial);
-      expect(cmds.length).toBeGreaterThan(0);
-    });
-
-    it('Ctrl+C quits from help mode', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      const helpMode: DashboardModel = { ...initial, showLanding: false, showHelp: true };
-
-      const [, cmds] = app.update(makeKey('c', { ctrl: true }), helpMode);
-      expect(cmds.length).toBeGreaterThan(0);
-    });
-
-    it('q on help mode enters quit confirm mode and clears help', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      const helpMode: DashboardModel = { ...initial, showLanding: false, showHelp: true };
-
-      const [afterQ] = app.update(makeKey('q'), helpMode);
-      expect(afterQ.mode).toBe('confirm');
-      expect(afterQ.confirmState?.action.kind).toBe('quit');
-      expect(afterQ.showHelp).toBe(false);
-    });
-
-    // ── Quit confirmation modal ─────────────────────────────────────
-
-    it('q in normal mode enters quit confirm mode', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      const normal: DashboardModel = { ...initial, showLanding: false, loading: false };
-
-      const [afterQ, cmds] = app.update(makeKey('q'), normal);
-      expect(afterQ.mode).toBe('confirm');
-      expect(afterQ.confirmState?.action.kind).toBe('quit');
-      expect(cmds).toHaveLength(0);
-    });
-
-    it('y in quit confirm mode quits', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      const withQuitConfirm: DashboardModel = {
-        ...initial,
-        showLanding: false,
-        loading: false,
-        mode: 'confirm',
-        confirmState: { prompt: 'Quit XYPH?', action: { kind: 'quit' }, hint: 'q / y  confirm · n / esc  cancel' },
-      };
-
-      const [afterY, cmds] = app.update(makeKey('y'), withQuitConfirm);
-      expect(afterY.mode).toBe('normal');
-      expect(afterY.confirmState).toBeNull();
-      expect(cmds.length).toBeGreaterThan(0);
-    });
-
-    it('q in quit confirm mode quits', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      const withQuitConfirm: DashboardModel = {
-        ...initial,
-        showLanding: false,
-        loading: false,
-        mode: 'confirm',
-        confirmState: { prompt: 'Quit XYPH?', action: { kind: 'quit' }, hint: 'q / y  confirm · n / esc  cancel' },
-      };
-
-      const [afterQ, cmds] = app.update(makeKey('q'), withQuitConfirm);
-      expect(afterQ.mode).toBe('normal');
-      expect(afterQ.confirmState).toBeNull();
-      expect(cmds.length).toBeGreaterThan(0);
-    });
-
-    it('n in quit confirm mode cancels', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      const withQuitConfirm: DashboardModel = {
-        ...initial,
-        showLanding: false,
-        loading: false,
-        mode: 'confirm',
-        confirmState: { prompt: 'Quit XYPH?', action: { kind: 'quit' }, hint: 'q / y  confirm · n / esc  cancel' },
-      };
-
-      const [afterN, cmds] = app.update(makeKey('n'), withQuitConfirm);
-      expect(afterN.mode).toBe('normal');
-      expect(afterN.confirmState).toBeNull();
-      expect(cmds).toHaveLength(0);
-    });
-
-    it('escape in quit confirm mode cancels', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      const withQuitConfirm: DashboardModel = {
-        ...initial,
-        showLanding: false,
-        loading: false,
-        mode: 'confirm',
-        confirmState: { prompt: 'Quit XYPH?', action: { kind: 'quit' }, hint: 'q / y  confirm · n / esc  cancel' },
-      };
-
-      const [afterEsc, cmds] = app.update(makeKey('escape'), withQuitConfirm);
-      expect(afterEsc.mode).toBe('normal');
-      expect(afterEsc.confirmState).toBeNull();
-      expect(cmds).toHaveLength(0);
-    });
-
-    // ── Selection ─────────────────────────────────────────────────────
-
-    it('j/k selects quests in roadmap view', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      const snap = makeSnapshot({
-        quests: [
-          { id: 'task:A', title: 'A', status: 'READY', hours: 1 },
-          { id: 'task:B', title: 'B', status: 'IN_PROGRESS', hours: 2 },
-        ],
-      });
-      // Feed snapshot through update to rebuild the roadmap table
-      const [withSnap] = app.update(
-        { type: 'snapshot-loaded', snapshot: snap, requestId: initial.requestId },
-        initial,
-      );
-      const loaded: DashboardModel = {
-        ...withSnap,
-        showLanding: false,
-        activeView: 'roadmap',
-      };
-
-      expect(loaded.roadmap.table.focusRow).toBe(0);
-
-      const [after1] = app.update(makeKey('j'), loaded);
-      expect(after1.roadmap.table.focusRow).toBe(1);
-
-      // wraps around (NavigableTable behavior)
-      const [after2] = app.update(makeKey('j'), after1);
-      expect(after2.roadmap.table.focusRow).toBe(0);
-
-      // k goes back (wraps to last)
-      const [after3] = app.update(makeKey('k'), after2);
-      expect(after3.roadmap.table.focusRow).toBe(1);
-    });
-
-    it('j/k selects submissions in submissions view', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      const snap = makeSnapshot({
-        submissions: [
-          { id: 'submission:S1', questId: 'task:A', status: 'OPEN', headsCount: 1, approvalCount: 0, submittedBy: 'agent.test', submittedAt: 100 },
-          { id: 'submission:S2', questId: 'task:B', status: 'MERGED', headsCount: 1, approvalCount: 1, submittedBy: 'agent.test', submittedAt: 200 },
-        ],
-      });
-      // Feed snapshot through update to rebuild the submissions table
-      const [withSnap] = app.update(
-        { type: 'snapshot-loaded', snapshot: snap, requestId: initial.requestId },
-        initial,
-      );
-      const loaded: DashboardModel = {
-        ...withSnap,
-        showLanding: false,
-        activeView: 'submissions',
-      };
-
-      expect(loaded.submissions.table.focusRow).toBe(0);
-
-      const [after1] = app.update(makeKey('j'), loaded);
-      expect(after1.submissions.table.focusRow).toBe(1);
-    });
-
-    it('j/k selects items in backlog view', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      const snap = makeSnapshot({
-        quests: [
-          { id: 'task:I1', title: 'Backlog 1', status: 'BACKLOG', hours: 1, suggestedBy: 'agent.test' },
-          { id: 'task:I2', title: 'Backlog 2', status: 'BACKLOG', hours: 1, suggestedBy: 'agent.test' },
-        ],
-      });
-      // Feed snapshot through update to rebuild the backlog table
-      const [withSnap] = app.update(
-        { type: 'snapshot-loaded', snapshot: snap, requestId: initial.requestId },
-        initial,
-      );
-      const loaded: DashboardModel = {
-        ...withSnap,
-        showLanding: false,
-        activeView: 'backlog',
-      };
-
-      const [after1] = app.update(makeKey('j'), loaded);
-      expect(after1.backlog.table.focusRow).toBe(1);
-
-      const [after2] = app.update(makeKey('j'), after1);
-      expect(after2.backlog.table.focusRow).toBe(0); // wraps around
-    });
-
-    // ── Confirm mode ──────────────────────────────────────────────────
-
-    it('c on roadmap enters confirm mode for claim', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      const snap = makeSnapshot({
-        quests: [
-          { id: 'task:Q1', title: 'Quest 1', status: 'READY', hours: 1 },
-        ],
-      });
-      // Feed snapshot through update to rebuild the roadmap table
-      const [withSnap] = app.update(
-        { type: 'snapshot-loaded', snapshot: snap, requestId: initial.requestId },
-        initial,
-      );
-      const loaded: DashboardModel = {
-        ...withSnap,
-        showLanding: false,
-        activeView: 'roadmap',
-      };
-
-      const [afterC] = app.update(makeKey('c'), loaded);
-      expect(afterC.mode).toBe('confirm');
-      expect(afterC.confirmState?.action.kind).toBe('claim');
-      if (afterC.confirmState?.action.kind === 'claim') {
-        expect(afterC.confirmState.action.questId).toBe('task:Q1');
-      }
-    });
-
-    it('y in confirm mode dispatches write command', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      const withConfirm: DashboardModel = {
-        ...initial,
-        showLanding: false,
-        loading: false,
-        mode: 'confirm',
-        confirmState: { prompt: 'Claim task:Q1?', action: { kind: 'claim', questId: 'task:Q1' } },
-      };
-
-      const [afterY, cmds] = app.update(makeKey('y'), withConfirm);
-      expect(afterY.mode).toBe('normal');
-      expect(afterY.confirmState).toBeNull();
-      expect(cmds.length).toBeGreaterThan(0);
-    });
-
-    it('n in confirm mode cancels', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      const withConfirm: DashboardModel = {
-        ...initial,
-        showLanding: false,
-        loading: false,
-        mode: 'confirm',
-        confirmState: { prompt: 'Claim task:Q1?', action: { kind: 'claim', questId: 'task:Q1' } },
-      };
-
-      const [afterN, cmds] = app.update(makeKey('n'), withConfirm);
-      expect(afterN.mode).toBe('normal');
-      expect(afterN.confirmState).toBeNull();
-      expect(cmds).toHaveLength(0);
-    });
-
-    it('Ctrl+C quits from confirm mode', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      const withConfirm: DashboardModel = {
-        ...initial,
-        showLanding: false,
-        loading: false,
-        mode: 'confirm',
-        confirmState: { prompt: 'test', action: { kind: 'claim', questId: 'task:Q1' } },
-      };
-
-      const [, cmds] = app.update(makeKey('c', { ctrl: true }), withConfirm);
-      expect(cmds.length).toBeGreaterThan(0);
-    });
-
-    // ── Input mode ────────────────────────────────────────────────────
-
-    it('D (shift+d) on backlog enters input mode for reject', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      const snap = makeSnapshot({
-        quests: [
-          { id: 'task:I1', title: 'Backlog 1', status: 'BACKLOG', hours: 1, suggestedBy: 'agent.test' },
-        ],
-      });
-      const [withSnap] = app.update(
-        { type: 'snapshot-loaded', snapshot: snap, requestId: initial.requestId },
-        initial,
-      );
-      const loaded: DashboardModel = {
-        ...withSnap,
-        showLanding: false,
-        activeView: 'backlog',
-      };
-
-      const [afterD] = app.update(makeKey('d', { shift: true }), loaded);
-      expect(afterD.mode).toBe('input');
-      expect(afterD.inputState?.action.kind).toBe('reject');
-    });
-
-    it('d on backlog triggers page-down (not reject)', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      // Seed enough items to exceed one page (default height ~20)
-      const quests = Array.from({ length: 30 }, (_, i) => ({
-        id: `task:I-${i.toString().padStart(2, '0')}`,
-        title: `Backlog ${i}`,
-        status: 'BACKLOG' as const,
-        hours: 1,
-        suggestedBy: 'agent.test',
-      }));
-      const snap = makeSnapshot({ quests });
-      const [withSnap] = app.update(
-        { type: 'snapshot-loaded', snapshot: snap, requestId: initial.requestId },
-        initial,
-      );
-      const loaded: DashboardModel = {
-        ...withSnap,
-        showLanding: false,
-        activeView: 'backlog',
-      };
-
-      expect(loaded.backlog.table.focusRow).toBe(0);
-      const [afterD] = app.update(makeKey('d'), loaded);
-      // d triggers page-down, not reject — mode stays normal, focusRow advances
-      expect(afterD.mode).toBe('normal');
-      expect(afterD.backlog.table.focusRow).toBeGreaterThan(0);
-    });
-
-    it('p on backlog enters input mode for promote', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      const snap = makeSnapshot({
-        quests: [
-          { id: 'task:I1', title: 'Backlog 1', status: 'BACKLOG', hours: 1, suggestedBy: 'agent.test' },
-        ],
-      });
-      const [withSnap] = app.update(
-        { type: 'snapshot-loaded', snapshot: snap, requestId: initial.requestId },
-        initial,
-      );
-      const loaded: DashboardModel = {
-        ...withSnap,
-        showLanding: false,
-        activeView: 'backlog',
-      };
-
-      const [afterP] = app.update(makeKey('p'), loaded);
-      expect(afterP.mode).toBe('input');
-      expect(afterP.inputState?.action.kind).toBe('promote');
-    });
-
-    it('typing in input mode appends characters', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      const withInput: DashboardModel = {
-        ...initial,
-        showLanding: false,
-        loading: false,
-        mode: 'input',
-        inputState: { label: 'test:', value: '', action: { kind: 'reject', questId: 'task:I1' } },
-      };
-
-      const [after1] = app.update(makeKey('h'), withInput);
-      expect(after1.inputState?.value).toBe('h');
-
-      const [after2] = app.update(makeKey('i'), after1);
-      expect(after2.inputState?.value).toBe('hi');
-    });
-
-    it('backspace in input mode removes last char', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      const withInput: DashboardModel = {
-        ...initial,
-        showLanding: false,
-        loading: false,
-        mode: 'input',
-        inputState: { label: 'test:', value: 'abc', action: { kind: 'reject', questId: 'task:I1' } },
-      };
-
-      const [after] = app.update(makeKey('backspace'), withInput);
-      expect(after.inputState?.value).toBe('ab');
-    });
-
-    it('Enter in input mode with value dispatches write command', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      const withInput: DashboardModel = {
-        ...initial,
-        showLanding: false,
-        loading: false,
-        mode: 'input',
-        inputState: { label: 'test:', value: 'reason', action: { kind: 'reject', questId: 'task:I1' } },
-      };
-
-      const [after, cmds] = app.update(makeKey('enter'), withInput);
-      expect(after.mode).toBe('normal');
-      expect(after.inputState).toBeNull();
-      expect(cmds.length).toBeGreaterThan(0);
-    });
-
-    it('Enter in input mode with empty value does nothing', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      const withInput: DashboardModel = {
-        ...initial,
-        showLanding: false,
-        loading: false,
-        mode: 'input',
-        inputState: { label: 'test:', value: '', action: { kind: 'reject', questId: 'task:I1' } },
-      };
-
-      const [after, cmds] = app.update(makeKey('enter'), withInput);
-      expect(after.mode).toBe('input'); // stays in input
-      expect(cmds).toHaveLength(0);
-    });
-
-    it('Escape in input mode cancels', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      const withInput: DashboardModel = {
-        ...initial,
-        showLanding: false,
-        loading: false,
-        mode: 'input',
-        inputState: { label: 'test:', value: 'partial', action: { kind: 'reject', questId: 'task:I1' } },
-      };
-
-      const [after, cmds] = app.update(makeKey('escape'), withInput);
-      expect(after.mode).toBe('normal');
-      expect(after.inputState).toBeNull();
-      expect(cmds).toHaveLength(0);
-    });
-
-    // ── Remote change ────────────────────────────────────────────────
-
-    it('handles remote-change by triggering a refresh', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      const loaded: DashboardModel = { ...initial, showLanding: false, loading: false };
-      const [updated, cmds] = app.update({ type: 'remote-change' }, loaded);
-      expect(updated.loading).toBe(true);
-      expect(updated.requestId).toBe(loaded.requestId + 1);
-      expect(cmds).toHaveLength(1);
-    });
-
-    it('ignores remote-change while already loading', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      // initial.loading is true by default from init()
-      const [updated, cmds] = app.update({ type: 'remote-change' }, initial);
-      expect(updated.requestId).toBe(initial.requestId);
-      expect(cmds).toHaveLength(0);
-    });
-
-    // ── Toast / write results ─────────────────────────────────────────
-
-    it('write-success shows toast and triggers refresh', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      const loaded: DashboardModel = { ...initial, showLanding: false, loading: false };
-
-      const [after, cmds] = app.update({ type: 'write-success', message: 'Claimed task:Q1' }, loaded);
-      expect(after.toast?.variant).toBe('success');
-      expect(after.toast?.message).toBe('Claimed task:Q1');
-      expect(after.loading).toBe(true);
-      expect(cmds.length).toBeGreaterThan(0); // refresh + dismiss timer
-    });
-
-    it('write-error shows error toast', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      const loaded: DashboardModel = { ...initial, showLanding: false, loading: false };
-
-      const [after, cmds] = app.update({ type: 'write-error', message: 'Failed' }, loaded);
-      expect(after.toast?.variant).toBe('error');
-      expect(after.toast?.message).toBe('Failed');
-      expect(cmds.length).toBeGreaterThan(0); // dismiss timer
-    });
-
-    it('dismiss-toast clears toast when expiresAt matches', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      const expiresAt = Date.now() + 3000;
-      const withToast: DashboardModel = {
-        ...initial,
-        showLanding: false,
-        loading: false,
-        toast: { message: 'test', variant: 'success', expiresAt },
-      };
-
-      const [after] = app.update({ type: 'dismiss-toast', expiresAt }, withToast);
-      expect(after.toast).toBeNull();
-    });
-
-    it('dismiss-toast ignores stale timer (expiresAt mismatch)', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      const withToast: DashboardModel = {
-        ...initial,
-        showLanding: false,
-        loading: false,
-        toast: { message: 'newer toast', variant: 'success', expiresAt: Date.now() + 5000 },
-      };
-
-      // Stale timer from an older toast tries to dismiss
-      const [after] = app.update({ type: 'dismiss-toast', expiresAt: Date.now() + 2000 }, withToast);
-      expect(after.toast).not.toBeNull();
-      expect(after.toast?.message).toBe('newer toast');
-    });
-
-    // ── Drawer toggle ──────────────────────────────────────────────────
-
-    it('m toggles drawerOpen and emits animation commands', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      const loaded: DashboardModel = { ...initial, showLanding: false, loading: false };
-
-      const [afterM, cmds] = app.update(makeKey('m'), loaded);
-      expect(afterM.drawerOpen).toBe(true);
-      expect(cmds.length).toBeGreaterThan(0); // animation cmd
-
-      const [afterM2, cmds2] = app.update(makeKey('m'), afterM);
-      expect(afterM2.drawerOpen).toBe(false);
-      expect(cmds2.length).toBeGreaterThan(0); // animation cmd
-    });
-
-    it('drawer-frame updates drawerWidth', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      const loaded: DashboardModel = { ...initial, showLanding: false, loading: false, drawerOpen: true };
-
-      const [after] = app.update({ type: 'drawer-frame', value: 25.7 }, loaded);
-      expect(after.drawerWidth).toBe(26);
-    });
-
-    // ── Landing auto-dismiss ────────────────────────────────────────────
-
-    it('snapshot-loaded auto-dismisses landing screen', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      expect(initial.showLanding).toBe(true);
-
-      const snap = makeSnapshot({ asOf: 12345 });
-      const [updated] = app.update(
-        { type: 'snapshot-loaded', snapshot: snap, requestId: initial.requestId },
-        initial,
-      );
-      expect(updated.showLanding).toBe(false);
-      expect(updated.snapshot).toBe(snap);
-    });
-
-    // ── Submission expand/collapse ────────────────────────────────────
-
-    it('Enter on submissions view toggles expanded detail', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      const snap = makeSnapshot({
-        submissions: [
-          { id: 'submission:S1', questId: 'task:A', status: 'OPEN', headsCount: 1, approvalCount: 0, submittedBy: 'agent.test', submittedAt: 100 },
-        ],
-      });
-      // Feed snapshot through update to rebuild the submissions table
-      const [withSnap] = app.update(
-        { type: 'snapshot-loaded', snapshot: snap, requestId: initial.requestId },
-        initial,
-      );
-      const loaded: DashboardModel = {
-        ...withSnap,
-        showLanding: false,
-        activeView: 'submissions',
-      };
-
-      const [afterExpand] = app.update(makeKey('enter'), loaded);
-      expect(afterExpand.submissions.expandedId).toBe('submission:S1');
-
-      const [afterCollapse] = app.update(makeKey('enter'), afterExpand);
-      expect(afterCollapse.submissions.expandedId).toBeNull();
-    });
-
-    // ── Review actions ────────────────────────────────────────────────
-
-    it('a on submissions enters input mode for approve', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      const snap = makeSnapshot({
-        submissions: [
-          { id: 'submission:S1', questId: 'task:A', status: 'OPEN', headsCount: 1, approvalCount: 0, submittedBy: 'agent.test', submittedAt: 100, tipPatchsetId: 'patchset:P1' },
-        ],
-      });
-      const [withSnap] = app.update(
-        { type: 'snapshot-loaded', snapshot: snap, requestId: initial.requestId },
-        initial,
-      );
-      const loaded: DashboardModel = {
-        ...withSnap,
-        showLanding: false,
-        activeView: 'submissions',
-      };
-
-      const [afterA] = app.update(makeKey('a'), loaded);
-      expect(afterA.mode).toBe('input');
-      expect(afterA.inputState?.action.kind).toBe('approve');
-      if (afterA.inputState?.action.kind === 'approve') {
-        expect(afterA.inputState.action.patchsetId).toBe('patchset:P1');
-      }
-    });
-
-    it('x on submissions enters input mode for request-changes', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      const snap = makeSnapshot({
-        submissions: [
-          { id: 'submission:S1', questId: 'task:A', status: 'OPEN', headsCount: 1, approvalCount: 0, submittedBy: 'agent.test', submittedAt: 100, tipPatchsetId: 'patchset:P1' },
-        ],
-      });
-      const [withSnap] = app.update(
-        { type: 'snapshot-loaded', snapshot: snap, requestId: initial.requestId },
-        initial,
-      );
-      const loaded: DashboardModel = {
-        ...withSnap,
-        showLanding: false,
-        activeView: 'submissions',
-      };
-
-      const [afterX] = app.update(makeKey('x'), loaded);
-      expect(afterX.mode).toBe('input');
-      expect(afterX.inputState?.action.kind).toBe('request-changes');
-    });
-
-    it('a on submission without tipPatchsetId shows error toast', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      const snap = makeSnapshot({
-        submissions: [
-          { id: 'submission:S1', questId: 'task:A', status: 'OPEN', headsCount: 1, approvalCount: 0, submittedBy: 'agent.test', submittedAt: 100 },
-        ],
-      });
-      const [withSnap] = app.update(
-        { type: 'snapshot-loaded', snapshot: snap, requestId: initial.requestId },
-        initial,
-      );
-      const loaded: DashboardModel = {
-        ...withSnap,
-        showLanding: false,
-        activeView: 'submissions',
-      };
-
-      const [afterA] = app.update(makeKey('a'), loaded);
-      expect(afterA.mode).toBe('normal');
-      expect(afterA.toast?.variant).toBe('error');
-    });
-
-    // ── Vim-standard keybindings (bijou v1.6.0 factories) ────────────
-
-    it('d/u on roadmap triggers scroll-dag-down/up', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      const quests = Array.from({ length: 20 }, (_, i) => ({
-        id: `task:Q-${i.toString().padStart(2, '0')}`,
-        title: `Quest ${i}`,
-        status: 'PLANNED' as const,
-        hours: 1,
-        dependsOn: i > 0 ? [`task:Q-${(i - 1).toString().padStart(2, '0')}`] : [],
-      }));
-      const snap = makeSnapshot({ quests });
-      // Use a small viewport so the DAG exceeds the visible area
-      const smallModel: DashboardModel = { ...initial, cols: 90, rows: 10 };
-      const [withSnap] = app.update(
-        { type: 'snapshot-loaded', snapshot: snap, requestId: smallModel.requestId },
-        smallModel,
-      );
-      const loaded: DashboardModel = {
-        ...withSnap,
-        showLanding: false,
-        activeView: 'roadmap',
-      };
-
-      const scrollBefore = loaded.roadmap.dagPane?.focusArea.scroll.y ?? 0;
-      // d scrolls DAG down — scroll offset should increase
-      const [afterD] = app.update(makeKey('d'), loaded);
-      expect(afterD.roadmap.dagPane).not.toBeNull();
-      const scrollAfterD = afterD.roadmap.dagPane?.focusArea.scroll.y ?? 0;
-      expect(scrollAfterD).toBeGreaterThanOrEqual(scrollBefore);
-      // u scrolls DAG up — scroll offset should decrease or stay at floor
-      const [afterU] = app.update(makeKey('u'), afterD);
-      expect(afterU.roadmap.dagPane).not.toBeNull();
-      const scrollAfterU = afterU.roadmap.dagPane?.focusArea.scroll.y ?? 0;
-      expect(scrollAfterU).toBeLessThanOrEqual(scrollAfterD);
-    });
-
-    it('g jumps to first item on roadmap', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      const snap = makeSnapshot({
-        quests: [
-          { id: 'task:A', title: 'A', status: 'READY', hours: 1 },
-          { id: 'task:B', title: 'B', status: 'IN_PROGRESS', hours: 2 },
-          { id: 'task:C', title: 'C', status: 'READY', hours: 3 },
-        ],
-      });
-      const [withSnap] = app.update(
-        { type: 'snapshot-loaded', snapshot: snap, requestId: initial.requestId },
-        initial,
-      );
-      const loaded: DashboardModel = {
-        ...withSnap,
-        showLanding: false,
-        activeView: 'roadmap',
-      };
-
-      // Move to last row
-      const [m1] = app.update(makeKey('j'), loaded);
-      const [m2] = app.update(makeKey('j'), m1);
-      expect(m2.roadmap.table.focusRow).toBe(2);
-
-      // g jumps to first
-      const [afterG] = app.update(makeKey('g'), m2);
-      expect(afterG.roadmap.table.focusRow).toBe(0);
-    });
-
-    it('G (shift+g) jumps to last item on roadmap', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      const snap = makeSnapshot({
-        quests: [
-          { id: 'task:A', title: 'A', status: 'READY', hours: 1 },
-          { id: 'task:B', title: 'B', status: 'IN_PROGRESS', hours: 2 },
-          { id: 'task:C', title: 'C', status: 'READY', hours: 3 },
-        ],
-      });
-      const [withSnap] = app.update(
-        { type: 'snapshot-loaded', snapshot: snap, requestId: initial.requestId },
-        initial,
-      );
-      const loaded: DashboardModel = {
-        ...withSnap,
-        showLanding: false,
-        activeView: 'roadmap',
-      };
-
-      expect(loaded.roadmap.table.focusRow).toBe(0);
-      const [afterG] = app.update(makeKey('g', { shift: true }), loaded);
-      expect(afterG.roadmap.table.focusRow).toBe(2);
-    });
-
-    it('space on lineage toggles accordion (expand/collapse)', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      const snap = makeSnapshot({
-        intents: [
-          { id: 'intent:SOV', title: 'Sovereignty', requestedBy: 'human.james', createdAt: 0 },
-        ],
-      });
-      const [withSnap] = app.update(
-        { type: 'snapshot-loaded', snapshot: snap, requestId: initial.requestId },
-        initial,
-      );
-      const loaded: DashboardModel = {
-        ...withSnap,
-        showLanding: false,
-        activeView: 'lineage',
-        lineage: { selectedIndex: 0, collapsedIntents: [] },
-      };
-
-      // space toggles (collapse)
-      const [afterSpace] = app.update(makeKey('space'), loaded);
-      expect(afterSpace.lineage.collapsedIntents).toContain('intent:SOV');
-
-      // space again toggles (expand)
-      const [afterSpace2] = app.update(makeKey('space'), afterSpace);
-      expect(afterSpace2.lineage.collapsedIntents).not.toContain('intent:SOV');
-    });
-
-    it('review approve input submits write command', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      const withInput: DashboardModel = {
-        ...initial,
-        showLanding: false,
-        loading: false,
-        mode: 'input',
-        inputState: { label: 'comment:', value: 'LGTM', action: { kind: 'approve', patchsetId: 'patchset:P1' } },
-      };
-
-      const [after, cmds] = app.update(makeKey('enter'), withInput);
-      expect(after.mode).toBe('normal');
-      expect(after.inputState).toBeNull();
-      expect(cmds.length).toBeGreaterThan(0);
+    const [detailLoaded] = app.update({
+      type: 'page-detail-loaded',
+      entityId: 'task:REV-1',
+      detail: {
+        id: 'task:REV-1',
+        type: 'task',
+        props: { type: 'task' },
+        outgoing: [],
+        incoming: [],
+        questDetail: {
+          id: 'task:REV-1',
+          quest: {
+            id: 'task:REV-1',
+            title: 'Reviewable quest',
+            status: 'IN_PROGRESS',
+            hours: 3,
+          },
+          submission: {
+            id: 'submission:REV-1',
+            questId: 'task:REV-1',
+            status: 'OPEN',
+            tipPatchsetId: 'patchset:REV-1',
+            headsCount: 1,
+            approvalCount: 0,
+            submittedBy: 'agent.other',
+            submittedAt: 100,
+          },
+          reviews: [],
+          decisions: [],
+          stories: [],
+          requirements: [],
+          criteria: [],
+          evidence: [],
+          policies: [],
+          documents: [],
+          comments: [],
+          timeline: [],
+        },
+      },
+      requestId: opened.pageRequestId,
+    }, opened);
+
+    const plain = strip(app.view(detailLoaded) as string);
+    expect(plain).toContain('Reviewable quest');
+    expect(plain).toContain('Comment on this submission');
+    expect(plain).toContain('Approve current tip patchset');
+
+    const [commenting] = app.update(key(';'), detailLoaded);
+    expect(commenting.mode).toBe('input');
+    expect(commenting.inputState?.action).toEqual({
+      kind: 'comment',
+      targetId: 'submission:REV-1',
     });
   });
 
-  describe('view()', () => {
-    it('returns a string', () => {
-      const app = makeApp();
-      const [model] = app.init();
-      const output = app.view(model);
-      expect(typeof output).toBe('string');
-      expect(output.length).toBeGreaterThan(0);
+  it('selects worklist rows by click and scrolls panes with the mouse wheel', () => {
+    const app = buildApp();
+    const loaded = widen(app, ready(app, makeSnapshot({
+      quests: Array.from({ length: 14 }, (_, index) => ({
+        id: `task:Q${index + 1}`,
+        title: `Quest ${index + 1}`,
+        status: 'BACKLOG',
+        hours: 1,
+        description: Array.from({ length: 12 }, () => 'Long inspector prose for mouse wheel coverage.').join(' '),
+      })),
+    })));
+
+    const [plan] = app.update(key('2'), loaded);
+    const map = describeCockpitInteractionMap(plan, createPlainStylePort(), plan.cols, plan.rows - 2);
+    expect(map?.worklistRows.length).toBeGreaterThan(1);
+
+    const secondRow = map?.worklistRows[1];
+    expect(secondRow).toBeDefined();
+    if (!secondRow) throw new Error('Expected second worklist row');
+    const [clicked] = app.update(
+      mouse('press', secondRow.rect.y + 1, secondRow.rect.x + 2),
+      plan,
+    );
+    expect(clicked.table.focusRow).toBe(1);
+
+    const clickedMap = describeCockpitInteractionMap(clicked, createPlainStylePort(), clicked.cols, clicked.rows - 2);
+    if (!clickedMap) throw new Error('Expected interaction map for clicked state');
+    const [scrolledList] = app.update(
+      mouse('scroll-down', clickedMap.worklistRect.y + 2, clickedMap.worklistRect.x + 2),
+      clicked,
+    );
+    expect(scrolledList.table.focusRow).toBe(2);
+
+    const inspectorRect = clickedMap?.inspectorRect;
+    expect(inspectorRect).toBeDefined();
+    if (!inspectorRect) throw new Error('Expected inspector rect');
+    const [scrolledInspector] = app.update(
+      mouse('scroll-down', inspectorRect.y + 2, inspectorRect.x + 2),
+      clicked,
+    );
+    expect(scrolledInspector.laneState.plan.inspectorScrollY).toBeGreaterThan(0);
+  });
+
+  it('pages the worklist with PgDn and PgUp', () => {
+    const app = buildApp();
+    const quests = Array.from({ length: 12 }, (_, index) => ({
+      id: `task:Q${index + 1}`,
+      title: `Quest ${index + 1}`,
+      status: 'READY' as const,
+      hours: 1,
+    }));
+    const loaded = ready(app, makeSnapshot({ quests }));
+    const [plan] = app.update(key('2'), loaded);
+
+    const [pagedDown] = app.update(key('pagedown'), plan);
+    expect(pagedDown.table.focusRow).toBeGreaterThan(0);
+
+    const [pagedUp] = app.update(key('pageup'), pagedDown);
+    expect(pagedUp.table.focusRow).toBe(0);
+  });
+
+  it('opens claim confirmation for a READY quest', () => {
+    const app = buildApp();
+    const loaded = ready(app, makeSnapshot({
+      quests: [{ id: 'task:Q1', title: 'Quest One', status: 'READY', hours: 1 }],
+    }));
+
+    const [plan] = app.update(key('2'), loaded);
+    const [confirm] = app.update(key('c'), plan);
+    expect(confirm.mode).toBe('confirm');
+    expect(confirm.confirmState?.action).toEqual({ kind: 'claim', questId: 'task:Q1' });
+  });
+
+  it('opens promote and reject input flows for a backlog quest', () => {
+    const app = buildApp();
+    const loaded = ready(app, makeSnapshot({
+      quests: [{ id: 'task:B1', title: 'Backlog One', status: 'BACKLOG', hours: 2 }],
+    }));
+
+    const [plan] = app.update(key('2'), loaded);
+
+    const [promote] = app.update(key('p'), plan);
+    expect(promote.mode).toBe('input');
+    expect(promote.inputState?.action).toEqual({ kind: 'promote', questId: 'task:B1' });
+
+    const [reject] = app.update(key('d', { shift: true }), plan);
+    expect(reject.mode).toBe('input');
+    expect(reject.inputState?.action).toEqual({ kind: 'reject', questId: 'task:B1' });
+  });
+
+  it('opens review input flows for an OPEN submission', () => {
+    const app = buildApp();
+    const loaded = ready(app, makeSnapshot({
+      quests: [{ id: 'task:Q1', title: 'Quest One', status: 'IN_PROGRESS', hours: 1 }],
+      submissions: [{
+        id: 'submission:S1',
+        questId: 'task:Q1',
+        status: 'OPEN',
+        tipPatchsetId: 'patchset:P1',
+        headsCount: 1,
+        approvalCount: 0,
+        submittedBy: 'agent.hal',
+        submittedAt: 100,
+      }],
+    }));
+
+    const [review] = app.update(key('3'), loaded);
+
+    const [approve] = app.update(key('a'), review);
+    expect(approve.mode).toBe('input');
+    expect(approve.inputState?.action).toEqual({ kind: 'approve', patchsetId: 'patchset:P1' });
+
+    const [requestChanges] = app.update(key('x'), review);
+    expect(requestChanges.mode).toBe('input');
+    expect(requestChanges.inputState?.action).toEqual({ kind: 'request-changes', patchsetId: 'patchset:P1' });
+  });
+
+  it('toggles the drawer and opens the command palette', () => {
+    const app = buildApp();
+    const loaded = ready(app, makeSnapshot());
+
+    const [drawer] = app.update(key('m'), loaded);
+    expect(drawer.drawerOpen).toBe(true);
+
+    const [palette] = app.update(key(':'), loaded);
+    expect(palette.mode).toBe('palette');
+    expect(palette.paletteState).not.toBeNull();
+  });
+
+  it('toggles the inspector with i', () => {
+    const app = buildApp();
+    const loaded = ready(app, makeSnapshot());
+
+    const [closed] = app.update(key('i'), loaded);
+    expect(closed.inspectorOpen).toBe(false);
+
+    const [reopened] = app.update(key('i'), closed);
+    expect(reopened.inspectorOpen).toBe(true);
+    expect(reopened.scrollbars.inspector.level).toBe(4);
+  });
+
+  it('opens and closes the quest tree modal with t', () => {
+    const app = buildApp();
+    const loaded = ready(app, makeSnapshot({
+      quests: [{ id: 'task:Q1', title: 'Quest One', status: 'READY', hours: 1 }],
+    }));
+
+    const [tree] = app.update(key('t'), loaded);
+    expect(tree.mode).toBe('quest-tree');
+    expect(strip(app.view(tree) as string)).toContain('Lineage');
+
+    const [closed] = app.update(key('t'), tree);
+    expect(closed.mode).toBe('normal');
+  });
+
+  it('opens the selected quest as a page and returns to landing with escape', () => {
+    const app = buildApp();
+    const loaded = ready(app, makeSnapshot({
+      quests: [{ id: 'task:Q1', title: 'Quest One', status: 'READY', hours: 1 }],
+    }));
+
+    const [plan] = app.update(key('2'), loaded);
+    const [page] = app.update(key('enter'), plan);
+
+    expect(page.pageStack).toEqual([
+      { kind: 'landing' },
+      { kind: 'quest', questId: 'task:Q1', sourceLane: 'plan' },
+    ]);
+    expect(page.pageLoading).toBe(true);
+
+    const plain = strip(app.view(page) as string);
+    expect(plain).toContain('Landing / Plan / Q1');
+    expect(plain).toContain('Quest page · Q1');
+    expect(plain).toContain('Lifecycle');
+    expect(plain).not.toContain('Inspector');
+
+    const [back] = app.update(key('escape'), page);
+    expect(back.pageStack).toEqual([{ kind: 'landing' }]);
+    expect(back.lane).toBe('plan');
+  });
+
+  it('shows the Graveyard lane and opens a rejected quest page from it', () => {
+    const app = buildApp();
+    const loaded = ready(app, makeSnapshot({
+      quests: [
+        {
+          id: 'task:G1',
+          title: 'Rejected Quest',
+          status: 'GRAVEYARD',
+          hours: 1,
+          rejectedAt: 100,
+          rejectedBy: 'human.prime',
+          rejectionRationale: 'Superseded by the sovereign rewrite.',
+        },
+        { id: 'task:Q1', title: 'Quest One', status: 'READY', hours: 1 },
+      ],
+    }));
+
+    const [graveyard] = app.update(key('7'), loaded);
+    expect(graveyard.lane).toBe('graveyard');
+    expect(graveyard.table.rows).toHaveLength(1);
+
+    const lanePlain = strip(app.view(graveyard) as string);
+    expect(lanePlain).toContain('Graveyard');
+    expect(lanePlain).toContain('Rejected Quest');
+
+    const [page] = app.update(key('enter'), graveyard);
+    const pagePlain = strip(app.view(page) as string);
+    expect(pagePlain).toContain('Landing / Graveyard / G1');
+    expect(pagePlain).toContain('Quest retired to Graveyard.');
+    expect(pagePlain).toContain('Actions');
+    expect(pagePlain).toContain('o');
+    expect(pagePlain).toContain('Reopen quest from Graveyard');
+    expect(pagePlain).toContain(';');
+    expect(pagePlain).toContain('Comment on this quest');
+  });
+
+  it('shows the Suggestions lane and opens a suggestion page from it', () => {
+    const app = buildApp();
+    const loaded = ready(app, makeSnapshot({
+      aiSuggestions: [{
+        id: 'suggestion:S1',
+        type: 'ai-suggestion',
+        kind: 'quest',
+        title: 'Create a traceability quest',
+        summary: 'This area would benefit from a dedicated quest for computed completion.',
+        status: 'suggested',
+        audience: 'human',
+        origin: 'spontaneous',
+        suggestedBy: 'agent.prime',
+        suggestedAt: 100,
+        targetId: 'task:Q1',
+        relatedIds: ['campaign:TRACE'],
+      }],
+      quests: [{ id: 'task:Q1', title: 'Quest One', status: 'READY', hours: 1 }],
+    }));
+
+    const [suggestions] = app.update(key('5'), loaded);
+    expect(suggestions.lane).toBe('suggestions');
+    expect(suggestions.table.rows).toHaveLength(1);
+
+    const lanePlain = strip(app.view(suggestions) as string);
+    expect(lanePlain).toContain('Suggestions');
+    expect(lanePlain).toContain('[AI]');
+    expect(lanePlain).toContain('Create a traceability quest');
+
+    const [page] = app.update(key('enter'), suggestions);
+    expect(page.pageStack).toEqual([
+      { kind: 'landing' },
+      { kind: 'suggestion', suggestionId: 'suggestion:S1', sourceLane: 'suggestions' },
+    ]);
+
+    const pagePlain = strip(app.view(page) as string);
+    expect(pagePlain).toContain('Landing / Suggestions / S1');
+    expect(pagePlain).toContain('Suggestions [AI]');
+    expect(pagePlain).toContain('Comment on this suggestion');
+  });
+
+  it('opens a page-local comment input from a quest page', () => {
+    const app = buildApp();
+    const loaded = ready(app, makeSnapshot({
+      quests: [{ id: 'task:Q1', title: 'Quest One', status: 'READY', hours: 1 }],
+    }));
+
+    const [plan] = app.update(key('2'), loaded);
+    const [page] = app.update(key('enter'), plan);
+    const [comment] = app.update(key(';'), page);
+
+    expect(comment.mode).toBe('input');
+    expect(comment.inputState?.action).toEqual({ kind: 'comment', targetId: 'task:Q1' });
+    expect(comment.inputState?.label).toContain('Comment on task:Q1:');
+  });
+
+  it('opens a page-local comment input from a suggestion page', () => {
+    const app = buildApp();
+    const loaded = ready(app, makeSnapshot({
+      aiSuggestions: [{
+        id: 'suggestion:S1',
+        type: 'ai-suggestion',
+        kind: 'general',
+        title: 'Improve queue ranking',
+        summary: 'The queue should probably rank active blockers above generic backlog churn.',
+        status: 'suggested',
+        audience: 'either',
+        origin: 'spontaneous',
+        suggestedBy: 'agent.prime',
+        suggestedAt: 100,
+        relatedIds: [],
+      }],
+    }));
+
+    const [suggestions] = app.update(key('5'), loaded);
+    const [page] = app.update(key('enter'), suggestions);
+    const [comment] = app.update(key(';'), page);
+
+    expect(comment.mode).toBe('input');
+    expect(comment.inputState?.action).toEqual({ kind: 'comment', targetId: 'suggestion:S1' });
+    expect(comment.inputState?.label).toContain('Comment on suggestion:S1:');
+  });
+
+  it('opens a page-local reopen confirmation for a graveyard quest page', () => {
+    const app = buildApp();
+    const loaded = ready(app, makeSnapshot({
+      quests: [{
+        id: 'task:G1',
+        title: 'Rejected Quest',
+        status: 'GRAVEYARD',
+        hours: 1,
+      }],
+    }));
+
+    const [graveyard] = app.update(key('7'), loaded);
+    const [page] = app.update(key('enter'), graveyard);
+    const [confirm] = app.update(key('o'), page);
+
+    expect(confirm.mode).toBe('confirm');
+    expect(confirm.confirmState?.action).toEqual({ kind: 'reopen', questId: 'task:G1' });
+  });
+
+  it('dismisses the quest tree modal on outside click and scrolls the drawer with the mouse wheel', () => {
+    const app = buildApp();
+    const loaded = widen(app, ready(app, makeSnapshot({
+      quests: Array.from({ length: 18 }, (_, index) => ({
+        id: `task:Q${index + 1}`,
+        title: `Quest ${index + 1} with enough drawer content to scroll cleanly`,
+        status: index === 0 ? 'READY' : 'BACKLOG',
+        hours: 1,
+        assignedTo: 'agent.test',
+      })),
+    })), 140, 24);
+
+    const [tree] = app.update(key('t'), loaded);
+    expect(tree.mode).toBe('quest-tree');
+
+    const [closed] = app.update(mouse('press', 0, 0), tree);
+    expect(closed.mode).toBe('normal');
+
+    const [drawer] = app.update(key('m'), loaded);
+    expect(drawer.drawerOpen).toBe(true);
+    const [drawerOpened] = app.update({ type: 'drawer-frame', value: 56 }, drawer);
+    expect(drawerOpened.drawerWidth).toBe(56);
+
+    const drawerX = drawerOpened.cols - Math.max(2, Math.floor(drawerOpened.drawerWidth / 2));
+    const [scrolledDrawer] = app.update(
+      mouse('scroll-down', 3, drawerX),
+      drawerOpened,
+    );
+    expect(scrolledDrawer.drawerScrollY).toBeGreaterThan(0);
+
+    const [closedDrawer] = app.update(mouse('press', 3, 3), scrolledDrawer);
+    expect(closedDrawer.drawerOpen).toBe(false);
+  });
+
+  it('toggles the Now lane between action queue and recent activity with v', () => {
+    const app = buildApp();
+    const loaded = ready(app, makeSnapshot({
+      quests: [{
+        id: 'task:Q1',
+        title: 'Quest One',
+        status: 'READY',
+        hours: 1,
+        readyAt: 100,
+        readyBy: 'agent.hal',
+      }],
+    }));
+
+    expect(loaded.nowView).toBe('queue');
+
+    const [activity] = app.update(key('v'), loaded);
+    expect(activity.nowView).toBe('activity');
+    expect(strip(app.view(activity) as string)).toContain('Recent Activity');
+
+    const [queue] = app.update(key('v'), activity);
+    expect(queue.nowView).toBe('queue');
+  });
+
+  it('wakes the right scrollbar when navigating the worklist or inspector', () => {
+    const app = buildApp({
+      quests: Array.from({ length: 12 }, (_, index) => ({
+        id: `task:Q${index + 1}`,
+        title: `Quest ${index + 1}`,
+        status: 'BACKLOG',
+        hours: 1,
+      })),
     });
+    const loaded = ready(app, makeSnapshot({
+      quests: Array.from({ length: 12 }, (_, index) => ({
+        id: `task:Q${index + 1}`,
+        title: `Quest ${index + 1}`,
+        status: 'BACKLOG',
+        hours: 1,
+      })),
+    }));
 
-    it('shows landing view when showLanding is true', () => {
-      const app = makeApp();
-      const [model] = app.init();
-      const output = app.view(model);
-      expect(output).toContain('XYPH TEST LOGO');
+    const [plan] = app.update(key('2'), loaded);
+    expect(plan.scrollbars.worklist.level).toBe(4);
+
+    const [inspector] = app.update(key('pagedown', { shift: true }), plan);
+    expect(inspector.scrollbars.inspector.level).toBe(4);
+  });
+
+  it('keeps footer chrome within terminal width so it cannot wrap over the cockpit', () => {
+    const app = buildApp({
+      quests: Array.from({ length: 12 }, (_, index) => ({
+        id: `task:Q${index + 1}`,
+        title: `Quest ${index + 1} with enough text to exercise the footer width clamp`,
+        status: 'BACKLOG',
+        hours: 1,
+      })),
     });
+    const loaded = ready(app, makeSnapshot({
+      quests: Array.from({ length: 12 }, (_, index) => ({
+        id: `task:Q${index + 1}`,
+        title: `Quest ${index + 1} with enough text to exercise the footer width clamp`,
+        status: 'BACKLOG',
+        hours: 1,
+      })),
+    }));
+    const [resized] = app.update({ type: 'resize', columns: 100, rows: 32 }, loaded);
+    const output = app.view(resized) as string;
 
-    it('landing view output differs between loading and loaded states', () => {
-      const app = makeApp();
-      const [model] = app.init();
-      const loadingOutput = app.view(model);
+    for (const line of output.split('\n')) {
+      expect(visibleLength(line)).toBeLessThanOrEqual(100);
+    }
+  });
 
-      const loaded: DashboardModel = { ...model, loading: false, snapshot: makeSnapshot() };
-      const loadedOutput = app.view(loaded);
-
-      // Loaded state should have more content than loading state
-      expect(loadedOutput.length).toBeGreaterThan(loadingOutput.length);
+  it('does not repeat the contextual shortcut hint on both footer lines', () => {
+    const app = buildApp({
+      quests: [{ id: 'task:Q1', title: 'Quest One', status: 'IN_PROGRESS', hours: 1 }],
     });
+    const loaded = ready(app, makeSnapshot({
+      quests: [{ id: 'task:Q1', title: 'Quest One', status: 'IN_PROGRESS', hours: 1 }],
+    }));
+    const output = strip(app.view(loaded) as string);
+    const footer = output.split('\n').slice(-2);
 
-    it('shows tab bar with all 5 views when not on landing', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      const model: DashboardModel = {
-        ...initial,
-        showLanding: false,
-        loading: false,
-        snapshot: makeSnapshot(),
-      };
-      const output = app.view(model);
-      expect(output).toContain('roadmap');
-      expect(output).toContain('submissions');
-      expect(output).toContain('dashboard');
-      expect(output).toContain('backlog');
-    });
+    expect(footer[0]).not.toContain('PgUp/PgDn list');
+    expect(footer[1]).toContain('PgUp/PgDn list');
+    expect(footer[1]).not.toContain('QUEST ·');
+  });
 
-    it('shows view-specific hints', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      const model: DashboardModel = {
-        ...initial,
-        showLanding: false,
-        loading: false,
-        snapshot: makeSnapshot(),
-        activeView: 'backlog',
-        cols: 120, // wide enough for all helpShort entries
-      };
-      const output = app.view(model);
-      // Hint bar renders some content for the active view
-      expect(output.length).toBeGreaterThan(0);
+  it('opens help as a modal with contextual controls instead of replacing the cockpit', () => {
+    const app = buildApp({
+      quests: [{ id: 'task:Q1', title: 'Quest One', status: 'READY', hours: 1 }],
     });
+    const loaded = ready(app, makeSnapshot({
+      quests: [{ id: 'task:Q1', title: 'Quest One', status: 'READY', hours: 1 }],
+    }));
 
-    it('shows drawer content when drawerWidth > 4 and snapshot exists', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      const snap = makeSnapshot({
-        quests: [
-          { id: 'task:Q-001', title: 'Active work', status: 'IN_PROGRESS', hours: 2, assignedTo: 'agent.test' },
-        ],
-        submissions: [
-          { id: 'submission:DRAWER-S1', questId: 'task:Q-001', status: 'OPEN', headsCount: 1, approvalCount: 0, submittedBy: 'agent.test', submittedAt: 100 },
-        ],
-      });
-      const model: DashboardModel = {
-        ...initial,
-        showLanding: false,
-        loading: false,
-        snapshot: snap,
-        drawerOpen: true,
-        drawerWidth: 30,
-      };
-      const output = app.view(model);
-      // Assert on drawer-unique content — this submission only appears in the drawer, not the dashboard
-      expect(output).toContain('DRAWER-S1');
-    });
+    const [help] = app.update(key('?'), loaded);
+    const plain = strip(app.view(help) as string);
 
-    it('shows toast in status line', () => {
-      const app = makeApp();
-      const [initial] = app.init();
-      const model: DashboardModel = {
-        ...initial,
-        showLanding: false,
-        loading: false,
-        snapshot: makeSnapshot(),
-        toast: { message: 'Claimed task:Q1', variant: 'success', expiresAt: Date.now() + 3000 },
-      };
-      const output = app.view(model);
-      expect(output).toContain('Claimed task:Q1');
-    });
+    expect(plain).toContain('Cockpit Controls');
+    expect(plain).toContain('Current context');
+    expect(plain).toContain('claim');
+    expect(plain).toContain('Quest One');
   });
 });

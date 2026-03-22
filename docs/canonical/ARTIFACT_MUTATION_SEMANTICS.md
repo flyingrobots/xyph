@@ -83,6 +83,8 @@ Allowlisted primitive ops:
 - `set_edge_property`
 - `attach_node_content`
 - `attach_edge_content`
+- `clear_node_content`
+- `clear_edge_content`
 
 The mutation kernel validates primitive graph invariants before commit and is
 the only sanctioned foundation for sovereign control-plane writes.
@@ -91,8 +93,9 @@ the only sanctioned foundation for sovereign control-plane writes.
 
 `collapse_worldline` must not become a second mutation engine.
 
-When implemented, `collapse_worldline` must lower to a validated mutation plan
-through the same:
+The current slice now enforces that in preview mode: `collapse_worldline`
+lowers a substrate transfer plan to a validated dry-run mutation plan through
+the same:
 
 - mutation validator
 - capability-resolution path
@@ -100,6 +103,10 @@ through the same:
 - idempotency model
 
 used by `apply`.
+
+This preview path may carry explicit content-clear transfer ops internally so
+XYPH can represent substrate settlement truth honestly before live execution
+support exists for that primitive.
 
 ## Lease Semantics
 
@@ -142,6 +149,11 @@ The current sovereign-control-plane foundation implements:
 - append-only attestations
 - non-authoritative proposals
 - read-only `comparison-artifact` previews from `compare_worldlines`
+- optional durable `comparison-artifact:*` records on `worldline:live` when
+  `compare_worldlines` is called with `persist: true`
+- computed governance lifecycle detail for durable `comparison-artifact:*`,
+  `collapse-proposal:*`, and `attestation:*` nodes through
+  `observe(entity.detail)`
 - primitive-op `apply`
 - working-set-backed `fork_worldline` creation from `worldline:live`
 - working-set-backed `braid_worldlines` composition for canonical derived
@@ -153,9 +165,32 @@ The current sovereign-control-plane foundation implements:
 - derived-worldline `observe(graph.summary)`, `observe(worldline.summary)`,
   `observe(entity.detail)`, `history`, `diff`, and `apply` routed through
   git-warp working sets rather than the shared live graph
+- explicit observation backing metadata for those derived-worldline reads,
+  including braid support worldline IDs when applicable
+- braid-aware singleton conflict warnings when co-present overlays compete on
+  one LWW property winner
 - structured redaction for content-bearing `entity.detail` observations
 - substrate-backed worldline comparison previews that remain separate from
   attestation, approval, or collapse execution
+- `collapse_worldline` previews that lower substrate transfer plans through the
+  shared mutation kernel without mutating live truth
+- governed live `collapse_worldline` execution when:
+  - the comparison baseline was persisted as a `comparison-artifact:*`
+  - approving attestations target that durable comparison artifact
+  - the lowered transfer plan runs through the shared mutation kernel,
+    including committed content-clearing ops when git-warp transfer planning
+    requires them
+- optional durable `collapse-proposal:*` records on `worldline:live` when
+  `collapse_worldline` is called with `persist: true`, for either preview or
+  executed artifacts
+- published git-warp comparison/transfer fact exports carried through XYPH’s
+  substrate blocks so later governance can record the same fact without
+  re-serializing it in XYPH first
+- XYPH operational comparison scope over governance-only node families so
+  durable comparison recording does not self-perturb the freshness token used
+  by compare/collapse
+- explicit governance-series lineage for durable compare/collapse artifacts via
+  stable `artifact_series_key` values plus `supersedes` edges
 
 Current `fork_worldline` is intentionally narrow:
 
@@ -175,8 +210,10 @@ Current `braid_worldlines` is likewise intentionally thin:
 - it requires canonical derived support worldlines
 - it may pin one or more read-only support overlays and optionally freeze the
   target overlay with `readOnly`
+- reads against the braided target now keep that braid backing explicit in the
+  observation coordinate instead of silently reporting only the worldline ID
 - it does **not** merge, rebase, collapse, or settle anything into live truth
 
-It does **not** yet implement durable comparison artifact records, collapse
-proposals as first-class executable workflows, full worldline-local execution,
-or lease enforcement. Those remain future slices governed by this contract.
+It does **not** yet implement full worldline-local lease enforcement or broader
+compatibility-projection parity. Those remain future slices governed by this
+contract.

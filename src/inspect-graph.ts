@@ -2,8 +2,10 @@ import WarpGraph, { GitGraphAdapter } from '@git-stunts/git-warp';
 import Plumbing from '@git-stunts/plumbing';
 import { createStylePort } from './infrastructure/adapters/BijouStyleAdapter.js';
 import { toNeighborEntries } from './infrastructure/helpers/isNeighborEntry.js';
+import { resolveGraphRuntime } from './cli/runtimeGraph.js';
 
-const plumbing = Plumbing.createDefault({ cwd: process.cwd() });
+const runtime = resolveGraphRuntime({ cwd: process.cwd() });
+const plumbing = Plumbing.createDefault({ cwd: runtime.repoPath });
 const persistence = new GitGraphAdapter({ plumbing });
 
 async function inspect(): Promise<void> {
@@ -12,7 +14,7 @@ async function inspect(): Promise<void> {
 
   const graph = await WarpGraph.open({
     persistence,
-    graphName: 'xyph-roadmap',
+    graphName: runtime.graphName,
     writerId: 'inspector',
     autoMaterialize: true,
   });
@@ -43,7 +45,7 @@ async function inspect(): Promise<void> {
 
   for (const writerId of writers) {
     console.log(style.styled(t.semantic.warning, `\nWriter: ${writerId}`));
-    const ref = `refs/warp/xyph-roadmap/writers/${writerId}`;
+    const ref = `refs/warp/${runtime.graphName}/writers/${writerId}`;
     const log = await persistence.logNodes({ ref, limit: 10, format: '%h %s' });
     console.log(log);
   }

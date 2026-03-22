@@ -1,5 +1,5 @@
 # GRAPH SCHEMA
-**Version:** 2.2.0
+**Version:** 2.3.0
 **Status:** AUTHORITATIVE
 
 ## 1. Node ID Grammar
@@ -192,6 +192,86 @@ content. The current control-plane slice stores JSON containing at least
 **Edges:**
 - `proposes` → subject node (required)
 - `targets` → target node (optional)
+
+---
+
+### Collapse Proposal (`collapse-proposal:*`)
+
+`collapse_worldline persist:true` records the current collapse artifact on
+`worldline:live` even when the compared source worldline is derived. The
+record may represent either a dry-run preview or an executed collapse attempt;
+the `dry_run`, `executable`, and `executed` properties make that explicit.
+
+| Property | Type | Set By | Notes |
+|----------|------|--------|-------|
+| `type` | `'collapse-proposal'` | control plane | Required. |
+| `artifact_digest` | string | control plane | Stable XYPH artifact identity. |
+| `artifact_series_key` | string | control plane | Stable governance-lane key for supersession lineage. |
+| `comparison_artifact_digest` | string | control plane | Fresh compare digest used for the preview. |
+| `comparison_scope_version` | string | control plane | XYPH operational scope version used for freshness. |
+| `transfer_digest` | string | control plane | Published git-warp transfer-plan digest. |
+| `source_worldline_id` | string | control plane | Source worldline being settled. |
+| `target_worldline_id` | string | control plane | Current slice uses `worldline:live`. |
+| `recorded_by` | string | control plane | Principal ID. |
+| `recorded_at` | number | control plane | Timestamp. |
+| `observer_profile_id` | string | control plane | Observer in force when recorded. |
+| `policy_pack_version` | string | control plane | Policy pack in force when recorded. |
+| `dry_run` | boolean | control plane | `true` for preview artifacts, `false` for live execution artifacts. |
+| `executable` | boolean | control plane | Whether the current slice can honestly commit the planned transfer ops. |
+| `executed` | boolean | control plane | Whether live mutation actually committed during this call. |
+| `execution_patch` | string | control plane | Optional live patch SHA when `executed` is true. |
+| `changed` | boolean | control plane | Whether the transfer plan contains substantive work. |
+| `attestation_count` | number | control plane | Optional count of supplied attestation IDs. |
+
+**Bodies:** stored via `attachContent()` on the node as a deterministic JSON
+copy of the returned `collapse-proposal` payload, including the published
+git-warp comparison/transfer fact exports.
+
+**Edges:**
+- optional `supersedes` → older `collapse-proposal:*` in the same governance lane
+- incoming `attests` from `attestation:*` records are expected
+- current live execution gates on approving attestations over the corresponding
+  `comparison-artifact:*`, not on `collapse-proposal:*`
+
+### Comparison Artifact (`comparison-artifact:*`)
+
+`compare_worldlines persist:true` records a durable governance comparison
+artifact on `worldline:live` without changing the operational freshness digest
+that later compare/collapse flows use. The durable node is append-only and
+carries both:
+
+- the raw whole-graph git-warp comparison fact for audit
+- the XYPH operationally scoped comparison fact used for freshness and
+  settlement preview
+
+| Property | Type | Set By | Notes |
+|----------|------|--------|-------|
+| `type` | `'comparison-artifact'` | control plane | Required. |
+| `artifact_digest` | string | control plane | Stable XYPH artifact identity. |
+| `artifact_series_key` | string | control plane | Stable governance-lane key for supersession lineage. |
+| `comparison_policy_version` | string | control plane | Policy/version label in force for freshness. |
+| `comparison_scope_version` | string | control plane | Current XYPH operational scope version. |
+| `left_worldline_id` | string | control plane | Left-hand worldline under comparison. |
+| `right_worldline_id` | string | control plane | Right-hand worldline under comparison. |
+| `operational_comparison_digest` | string | control plane | Published git-warp scoped comparison digest. |
+| `raw_comparison_digest` | string | control plane | Published git-warp whole-graph comparison digest. |
+| `target_id` | string | control plane | Optional entity-local comparison focus. |
+| `recorded_by` | string | control plane | Principal ID. |
+| `recorded_at` | number | control plane | Timestamp. |
+| `observer_profile_id` | string | control plane | Observer in force when recorded. |
+| `policy_pack_version` | string | control plane | Policy pack in force when recorded. |
+
+**Bodies:** stored via `attachContent()` on the node as a deterministic JSON
+copy of the returned `comparison-artifact` payload, including both the raw
+whole-graph substrate fact and the XYPH-scoped operational substrate fact.
+
+**Edges:**
+- optional `supersedes` → older `comparison-artifact:*` in the same governance lane
+- incoming `attests` from `attestation:*` records are expected
+- current `collapse_worldline dryRun:false` uses approving attestations over
+  this durable comparison artifact as the execution gate
+
+---
 
 ---
 

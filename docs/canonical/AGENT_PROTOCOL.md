@@ -13,6 +13,11 @@ plane. This document describes the higher-level agent workflow surface layered
 over that control plane while XYPH transitions away from workflow-first CLI
 thinking.
 
+The product-design source of truth for how the human and agent surfaces should
+fit together now lives in [`../../design/README.md`](../../design/README.md).
+This protocol document defines command and contract truth; the design document
+defines sponsor actors, hills, queue models, and workflow intent.
+
 The goal is not "friendlier scripting." The goal is that an agent can:
 
 1. enter the repo cold,
@@ -20,6 +25,10 @@ The goal is not "friendlier scripting." The goal is that an agent can:
 3. ask XYPH what it is allowed to do,
 4. execute allowed routine work through XYPH itself,
 5. leave durable graph-native handoff state behind.
+
+That includes the ability to emit advisory suggestions when the agent notices a
+useful structural change while already working. Suggestion jobs are one intake
+path, not the only lawful way for an agent to propose work.
 
 The agent protocol is therefore a **policy-bounded operating interface**, not a
 second workflow model and not an informal wrapper around raw commands.
@@ -70,6 +79,14 @@ and observation/worldline coordinate.
    quest issue-page projection can render change-specific threads without
    deferring to GitHub.
 
+7. **Suggestions may be spontaneous**
+   Agents may emit advisory suggestions opportunistically when they discover
+   likely useful quests, dependencies, promotions, reopen candidates, or
+   governance follow-ups during ordinary work. User-initiated "ask the AI"
+   requests should still become explicit queued jobs, but unsolicited agent
+   suggestions remain lawful as long as they are recorded as visible advisory
+   artifacts instead of hidden automation.
+
 ## 3. Command Set
 
 The agent-native CLI surface is:
@@ -114,6 +131,38 @@ includes:
 - recent graph-native docs and comments
 - recommended next actions for that specific target
 
+### 3.2 Shared Semantic Fields
+
+The agent-native layer should reuse the same semantic field names across
+`briefing`, `next`, `context`, `submissions`, and `act` wherever they apply.
+
+The product-design reason is in
+[`../../design/README.md`](../../design/README.md): agents should not
+need shell archaeology to reconstruct the same work and governance judgments
+from different command outputs.
+
+Preferred shared fields:
+
+- `requirements`
+- `acceptanceCriteria`
+- `evidenceSummary`
+- `blockingReasons`
+- `missingEvidence`
+- `nextLawfulActions`
+- `claimability`
+- `expectedActor`
+- `attentionState`
+
+Not every command must return every field, but commands that speak about the
+same target should prefer these names instead of command-local synonyms.
+
+`context` now ships the deepest concrete version of this packet for quest
+targets, submission or patchset targets, and governance artifacts such as
+`comparison-artifact:*`, `collapse-proposal:*`, and `attestation:*`.
+`briefing` and `next` now also emit compatible semantic subsets for quest work,
+submission review candidates, and governance attention work instead of
+inventing parallel names.
+
 ## 4. JSON Contracts
 
 All `--json` commands use JSONL framing. Consumers must read records line by
@@ -148,6 +197,7 @@ Terminal error record shape:
 - `identity`
 - `assignments`
 - `reviewQueue`
+- `governanceQueue`
 - `frontier`
 - `recommendationQueue`
 - `alerts`
@@ -158,6 +208,19 @@ an action candidate reference.
 
 The runtime may also include `recentHandoffs` so agents can resume from their
 own recent closeout notes without hunting through raw quest history.
+
+`briefing` now exposes enough shared semantics to answer the cold-start
+questions "what is true?", "what is blocked?", and "what needs me?" without
+another round-trip. Quest assignments/frontier work, submission review queue
+entries, and governance queue entries now carry compatible semantic packets
+built from the shared domain services, including:
+
+- `attentionState`
+- `blockingReasons`
+- `expectedActor`
+- `nextLawfulActions`
+- `recommendationRequests` when the entry implies routed follow-up work rather
+  than routine agent execution
 
 ### 4.2 `next --json`
 
@@ -174,16 +237,33 @@ Each candidate must include at least:
 - `requiresHumanApproval`
 - `dryRunSummary`
 - `blockedBy`
+- `nextLawfulActions` when the candidate is informative but not immediately executable
+- `claimability` when the candidate competes with other actors
 
 The first candidate is the default recommendation. Remaining candidates are
 ordered alternatives.
 
 `next` should combine quest-shaping work with active submission workflow
-candidates such as `review`, `merge`, and `inspect`, plus urgent doctor-driven
-graph-health remediation work when structural blockers are competing with normal
-delivery. When a candidate needs additional operator input, it should still be
-surfaced with machine-readable blocking reasons instead of silently disappearing
-from the queue.
+candidates such as `review`, `merge`, and `inspect`, plus governance follow-up
+candidates such as `attest`, `collapse_preview`, or `collapse_live` when those
+judgments are currently hot. Governance candidates may be human-bound while
+still being worth surfacing to an agent so the agent can route or explain them.
+Urgent doctor-driven graph-health remediation work should still compete with
+normal delivery when structural blockers are present. When a candidate needs
+additional operator input, it should still be surfaced with machine-readable
+blocking reasons instead of silently disappearing from the queue.
+
+`next` now carries the same semantic vocabulary on quest, submission, and
+governance candidates when that judgment already exists in the shared domain
+layer. When the candidate targets a quest or governance artifact, the payload
+should
+prefer:
+
+- `requirements`
+- `acceptanceCriteria`
+- `evidenceSummary`
+- `missingEvidence`
+- `expectedActor`
 
 ### 4.3 `submissions --json`
 
@@ -198,14 +278,40 @@ follow-on `context` calls without forcing extra graph archaeology.
 
 ### 4.3.1 `context --json`
 
-`context` remains the target-oriented work packet. For quest targets, the
-agent-specific payload must include:
+`context` remains the target-oriented work packet.
+
+For quest targets, the agent-specific payload must include:
 
 - `readiness`
 - `dependency`
 - `recommendedActions`
 - `recommendationRequests`
 - `diagnostics`
+- `requirements`
+- `acceptanceCriteria`
+- `evidenceSummary`
+- `blockingReasons`
+- `missingEvidence`
+- `nextLawfulActions`
+- `expectedActor`
+- `claimability`
+
+For submission or patchset targets, the payload must include:
+
+- `submissionContext`
+- submission-scoped shared semantics
+- recommended follow-on actions such as `review`, `merge`, `inspect`, or
+  `comment`
+
+For governance artifacts such as `comparison-artifact:*`,
+`collapse-proposal:*`, and `attestation:*`, the payload must include:
+
+- `governanceContext`
+- governance-scoped shared semantics
+- recommended follow-on actions such as `inspect` or `comment`
+
+Those fields are what make `context` a work packet instead of a fancy `show`
+command.
 
 ### 4.4 `act --json`
 
@@ -238,6 +344,20 @@ the authoritative graph-side settlement state must return a non-success outcome
 with the committed side effects included so automation can reconcile and retry.
 Actions must also refuse execution when doctor-detected structural blockers make
 the requested transition illegal under the current graph state.
+
+When an action is refused, the response should prefer explaining refusal in the
+same terms the human governance pages will use:
+
+- `blockingReasons`
+- `missingEvidence`
+- `nextLawfulActions`
+- `expectedActor`
+
+For submission-scoped actions such as `review` and `merge`, the action-kernel
+response should also carry the shared submission semantics packet when it can be
+derived truthfully. That keeps rejected, dry-run, success, and partial-failure
+outcomes aligned with `context`, `briefing`, and `next` instead of inventing a
+second refusal vocabulary.
 
 ### 4.5 `handoff --json`
 

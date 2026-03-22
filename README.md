@@ -35,7 +35,13 @@ Humans decide _what_ to build and _why_. Agents figure out _how_ and do the work
 
 Everything lives in a single [**WARP graph**](https://github.com/git-stunts/git-warp) — a multi-writer CRDT graph database stored in Git. Conflicts are resolved deterministically via **Last-Writer-Wins** using Lamport timestamps. Multiple entities can work with XYPH simultaneously, deterministically, and without fear of merge conflicts.
 
-XYPH is offline-first, distributed, decentralized, and lives in your Git repo alongside the rest of your project. It's invisible to normal Git workflows and tools — it never interacts with any Git worktrees. It works anywhere that Git can push or pull, built on top of the most widely-used, battle-hardened, distributed version control system on Earth.
+XYPH is offline-first, distributed, decentralized, and defaults to living in
+your current Git repo alongside the rest of your project. It can also target a
+different Git repo via bootstrap config when you want a sidecar operational
+graph. It is invisible to normal Git workflows and tools — it never interacts
+with any Git worktrees. It works anywhere that Git can push or pull, built on
+top of the most widely-used, battle-hardened, distributed version control
+system on Earth.
 
 ## How To Use XYPH
 
@@ -61,6 +67,46 @@ export XYPH_AGENT_ID=agent.hal    # Hal is an agent
 ```
 
 If `XYPH_AGENT_ID` is not set, it defaults to `agent.prime`.
+
+#### Selecting The Runtime Graph
+
+XYPH resolves its runtime graph before it can read any graph-backed config, so
+graph selection is a bootstrap concern rather than a `config:xyph` node
+concern.
+
+Bootstrap precedence is:
+
+- local `.xyph.json`
+- user config `~/.xyph/config`
+- defaults: current Git repo + graph name `xyph`
+
+Example local config:
+
+```json
+{
+  "graph": {
+    "name": "xyph-review"
+  }
+}
+```
+
+Example sidecar-style user config:
+
+```json
+{
+  "identity": "human.ada",
+  "graph": {
+    "repoPath": "/Users/ada/git/xyph-dev",
+    "name": "xyph"
+  }
+}
+```
+
+If the target repo already contains multiple git-warp graphs, or only a single
+non-default graph, XYPH now fails loudly until `graph.name` is set explicitly.
+It will not guess and silently mint a second graph. If `repoPath` points at a
+different repo, `graph.name` is also required explicitly; XYPH will not inspect
+git-warp ref namespaces outside the current working repo.
 
 Verify everything is working:
 
@@ -229,10 +275,14 @@ Canonical derived worldlines are currently honest on this substrate surface:
 - `apply`
 - `observe(conflicts)`
 - `compare_worldlines`
+- `collapse_worldline`
 
 Observation coordinates across these derived-worldline reads now report the
-working-set-local frontier digest instead of silently falling back to
-`worldline:live`.
+working-set-local frontier digest and explicit substrate backing details:
+
+- the backing working-set ID
+- overlay head / patch count / writability
+- pinned braid support worldline IDs when the selected worldline is braided
 
 `compare_worldlines` now provides the first honest comparison preview backed by
 published git-warp coordinate comparison facts. It supports:
@@ -244,7 +294,54 @@ published git-warp coordinate comparison facts. It supports:
 
 The result is a typed XYPH `comparison-artifact` preview with per-side
 observation coordinates and substrate-backed divergence facts. It is
-intentionally read-only and does **not** perform collapse or settlement.
+intentionally comparison-only and does **not** perform collapse or settlement.
+Its substrate block now carries two published git-warp facts:
+
+- the XYPH operationally scoped comparison fact used for freshness and
+  settlement preview
+- the raw whole-graph comparison fact kept for audit and provenance
+
+That split lets `compare_worldlines persist:true` record a durable
+`comparison-artifact:*` node on `worldline:live` without invalidating its own
+operational freshness token.
+
+Persisted governance artifacts are now legible through
+`observe(entity.detail)`. Inspecting a durable `comparison-artifact:*` or
+`collapse-proposal:*` now returns computed XYPH governance detail including
+freshness, attestation summary, supersession lineage, and settlement/execution
+state instead of leaving operators to reverse-engineer that status from raw
+properties.
+
+`collapse_worldline` now provides the first governed settlement runway in XYPH
+language, still backed by published git-warp substrate facts. In the current
+slice it:
+
+- requires the effective worldline to be a canonical derived worldline
+- requires a fresh `comparisonArtifactDigest` from `compare_worldlines`
+- currently settles into `worldline:live` only
+- defaults to preview mode, but accepts `dryRun: false` for live execution
+- uses the same mutation kernel as `apply` for both preview and execution
+- requires approving `attestationIds` over a persisted `comparison-artifact:*`
+  when live execution would make substantive changes
+- now lowers committed content-clearing transfer ops through git-warp’s
+  published clear-content patch primitives instead of treating them as
+  preview-only
+- returns a typed `collapse-proposal` with per-side observations, substrate
+  transfer facts, sanitized transfer ops, and either a mutation side-effect
+  preview or a live execution result
+- carries git-warp’s exported comparison and transfer facts in the substrate
+  block for later XYPH recording or attestation work
+- accepts optional `persist: true` to record the current collapse artifact as a
+  durable `collapse-proposal:*` node on `worldline:live`
+- uses approving attestations over the persisted `comparison-artifact:*` as the
+  current execution gate; attesting a `collapse-proposal:*` remains valid
+  governance context but is not the execution gate in this slice
+
+Repeated persisted compare/collapse artifacts in the same governance lane now
+form explicit supersession lineage. XYPH records stable per-lane series keys
+and `supersedes` edges so later `observe(entity.detail)` reads can tell whether
+an artifact is current, stale, or already superseded by a newer governance
+snapshot.
 
 `braid_worldlines` is now implemented as a thin mapping onto git-warp’s
 published braid substrate for canonical derived worldlines. It:
@@ -256,15 +353,65 @@ published braid substrate for canonical derived worldlines. It:
 - changes co-present visibility without pretending merge, rebase, or collapse
 
 Core materialized projections now follow that braid-visible substrate truth
-when the braided target worldline is selected. Broader explicit braid-aware
-parity and diagnostics across every worldline-backed command remain the next
-slice.
+when the braided target worldline is selected. That parity now extends across
+`history`, `diff`, `apply`, and `observe(conflicts)` for canonical derived
+worldlines too, and `observe(conflicts)` adds an explicit warning when braided
+overlays compete on singleton LWW properties in a way that can self-erase
+co-presence in the projection.
 
 Compatibility projections such as `observe(slice.local)`, `observe(context)`,
 `observe(briefing)`, `observe(next)`, `observe(submissions)`,
 `observe(diagnostics)`, and `observe(prescriptions)` are still catching up.
 They remain live-service-backed compatibility views rather than full
 derived-worldline truth.
+
+`query` is now implemented as a hidden admin governance surface. The current
+slice is deliberately narrow and artifact-centric:
+
+- `view: "governance.worklist"` returns the live governance queues for fresh or
+  stale comparisons and pending, approved, stale, or executed collapse
+  proposals
+- `view: "governance.series"` returns the chronology of one durable
+  `comparison-artifact:*` or `collapse-proposal:*` lane using the recorded
+  `artifact_series_key` and `supersedes` edges
+
+This is not a generic graph query language yet. It is the first operator-facing
+governance read model built on top of XYPH’s persisted artifacts.
+
+`explain` now understands persisted governance artifacts too. When you point it
+at a durable `comparison-artifact:*`, `collapse-proposal:*`, or `attestation:*`
+node, it returns stable reason codes plus suggested next commands for common
+operator questions such as:
+
+- why a comparison artifact is stale or superseded
+- why a collapse proposal is blocked, approved, stale, executed, or no-op
+- why attesting a `collapse-proposal:*` does not itself satisfy the live
+  execution gate
+- which comparison artifact still needs approval before live collapse can run
+
+#### Agent Usage
+
+- Stay on `worldline:live` for ordinary low-blast-radius work that should land
+  directly on the shared stigmergic surface.
+- `fork_worldline` when you need a coherent speculative continuation, a review
+  lane, an offline continuation from a pinned observation, or a structural
+  replanning path that should not pollute live truth yet.
+- `braid_worldlines` when one continuation needs another continuation’s effects
+  to stay co-present without pretending merge or rebase semantics.
+- `compare_worldlines` before governance or settlement decisions; it is the
+  factual preview surface, not the decision itself.
+- add `persist: true` to `compare_worldlines` when the factual preview should
+  become a durable `comparison-artifact:*` governance record on live truth.
+- `collapse_worldline` when you want either a candidate settlement runway
+  preview or a governed live collapse. The current live flow is:
+  `compare_worldlines persist:true` -> `attest` the returned
+  `comparison-artifact:*` -> `collapse_worldline dryRun:false
+  attestationIds:[...]`.
+- add `persist: true` to `collapse_worldline` when the current preview or
+  execution artifact should become a durable `collapse-proposal:*` record on
+  `worldline:live`.
+- Hand off explicit `worldlineId` values between humans and agents. Do not pass
+  substrate working-set IDs as the public coordination handle.
 
 For the broader technical framing of XYPH as a WARP-native application, see
 [XYPH As A WARP App](docs/XYPH_AS_A_WARP_APP.md).
@@ -455,33 +602,120 @@ npx tsx xyph-actuator.ts audit-sovereignty
 
 ## XYPH Tools
 
-### XYPH TUI Dashboard
+### XYPH TUI Cockpit
 
 <p align="center">
   <img src="docs/assets/dashboard-demo.gif" alt="XYPH TUI Dashboard Demo" width="700" />
 </p>
 
-XYPH has an interactive TUI that provides a visual browser for your project and its XYPH artifacts.
+The animated asset above still shows the previous dashboard shell. A refreshed
+cockpit demo capture is still pending.
+
+XYPH has an interactive BIJOU-powered TUI that provides a visual browser for
+your project and its XYPH artifacts. The current shell runs on BIJOU `3.1.0`
+and now treats the cockpit as the XYPH landing page instead of forcing every
+surface into one eternal inspector layout. The landing shell centers on seven
+lanes:
+
+- `Now` for cross-surface action
+- `Plan` for the live quest surface
+- `Review` for submissions
+- `Settlement` for compare/attest/collapse artifacts
+- `Suggestions` for visible advisory AI suggestions and recommendation work
+- `Campaigns` for strategic containers
+- `Graveyard` for rejected and retired work
+
+The current product and experience source of truth for this human surface now
+lives in [`design/README.md`](design/README.md). The README section below is
+the quick operator overview, not the full design contract.
+
+The left rail keeps those lanes visible, the center worklist stays scannable as
+a contained-list-style queue, and the right inspector keeps the currently
+selected record legible without dropping to raw JSON first. Press `Enter` on a
+selected quest, suggestion, submission, or governance record to drill into a
+dedicated item page with a breadcrumb under the hero (`Landing / Plan / Q1`,
+`Landing / Suggestions / S1`, `Landing / Review / REV-1`,
+`Landing / Graveyard / G1`, and so on), then use `Esc` or `Backspace` to
+return to the landing surface. Quest pages now expose their own action strip,
+so drill-in is no longer just a read surface: you can comment directly from the
+page, reopen graveyarded quests, and keep claim/promote/reject/review actions
+visible in the place where full context actually lives. `Suggestions` items now
+open a dedicated suggestion page too, with `[AI]` labeling, lifecycle/progress,
+AI transparency copy, graph context, and page-local commenting so unsolicited
+or requested agent suggestions have a real home in the product. `Review` items
+now open a dedicated review page too, with lifecycle/progress, shared blocker
+and missing-evidence judgments, next lawful actions, review/decision history,
+and page-local comment / approve / request-changes actions for the current tip
+patchset. `Settlement` artifacts now open their own governance page too, so
+compare / attestation / collapse records are no longer forced through quest
+pages or the landing inspector when you need their real progress, blockers,
+missing evidence, and next lawful actions. The cockpit is fully
+keyboard-driven, but it now also supports mouse clicks for lane/row selection
+and wheel scrolling in the main panes. `Plan`, `Suggestions`, `Campaigns`,
+`Graveyard`, and the `Now` activity stream use observer-local freshness
+markers from `~/.xyph/dashboard-state.json`, while `Review` and `Settlement`
+now keep a persistent action-needed badge until the underlying submission or
+governance artifact is actually resolved.
 
 ```bash
 XYPH_AGENT_ID=human.yourname ./xyph-dashboard.ts
 ```
 
-| Key     | Context      | Action                                        |
-|---------|-------------|-----------------------------------------------|
-| `Tab`   | Global       | Cycle views (dashboard → roadmap → submissions → lineage → backlog) |
-| `j/k`   | Global       | Select next/prev item                         |
-| `r`     | Global       | Refresh snapshot                              |
-| `?`     | Global       | Help modal                                    |
-| `q`     | Global       | Quit                                          |
-| `c`     | Roadmap      | Claim selected quest                          |
-| `PgDn/Up` | Roadmap   | Scroll DAG                                    |
-| `Enter` | Submissions  | Expand/collapse submission detail             |
-| `a`     | Submissions  | Approve tip patchset                          |
-| `x`     | Submissions  | Request changes on tip patchset               |
-| `p`     | Inbox        | Promote selected task                         |
-| `d`     | Inbox        | Reject selected task                          |
-| `Esc`   | Modal        | Cancel / close                                |
+| Key | Context | Action |
+|---|---|---|
+| `1`-`7` | Global | Jump to Now / Plan / Review / Settlement / Suggestions / Campaigns / Graveyard |
+| `[` / `]` | Global | Cycle lanes backward / forward |
+| `j` / `k` | Cockpit | Select next / previous row |
+| `g` / `G` | Cockpit | Jump to first / last row |
+| `Enter` | Landing page | Open the selected quest / suggestion / review / governance page |
+| `Esc` / `Backspace` | Item page | Return to the landing page |
+| `;` | Quest page | Comment on the open quest |
+| `;` | Suggestion page | Comment on the open AI suggestion |
+| `;` | Review page | Comment on the open submission |
+| `;` | Governance page | Comment on the open governance artifact |
+| `v` | Now lane | Toggle between the action queue and recent activity |
+| `t` | Quest selection | Open the quest tree / lineage modal |
+| `r` | Global | Refresh snapshot |
+| `i` | Global | Toggle the inspector pane |
+| `m` | Global | Toggle the "My Stuff" drawer |
+| `Shift+S` | Fresh lane | Mark the current lane seen |
+| Mouse click | Cockpit | Click lane rail entries and worklist rows |
+| Mouse wheel | Cockpit | Scroll the worklist, inspector, quest tree, and drawer |
+| `:` / `/` | Global | Open the command palette |
+| `?` | Global | Open the contextual help modal |
+| `q` | Global | Quit |
+| `c` | Contextual | Claim selected READY quest |
+| `p` | Contextual | Promote selected BACKLOG quest |
+| `D` | Contextual | Reject selected BACKLOG quest |
+| `o` | Contextual | Reopen selected GRAVEYARD quest |
+| `a` | Contextual / Review page | Approve selected submission or current tip patchset |
+| `x` | Contextual / Review page | Request changes on selected submission or current tip patchset |
+| `PgDn` / `PgUp` | Landing / page | Page the worklist or the open item page |
+| `Shift+PgDn` / `Shift+PgUp` | Cockpit | Scroll the inspector |
+| `Esc` | Modal | Cancel / close |
+
+### AI Suggestions
+
+XYPH now has a first-class `Suggestions` lane and an explicit advisory CLI
+entry point. Agents can emit visible suggestions either in response to an
+explicit ask-AI request or spontaneously while working, as long as the idea is
+recorded as graph-visible advisory content instead of silently mutating truth.
+
+```bash
+npx tsx xyph-actuator.ts suggest \
+  --kind dependency \
+  --title "Recommend a dependency edge" \
+  --summary "This quest should probably depend on task:TRACE-001 before it moves to READY." \
+  --for either \
+  --target task:TRACE-002 \
+  --related task:TRACE-001 campaign:TRACE \
+  --why "The acceptance criteria rely on upstream trace output." \
+  --evidence "Recent review comments point at missing prerequisite work." \
+  --next "Open the suggestion page and either comment or convert it into planned work."
+```
+
+That command records a visible `suggestion:*` artifact with `[AI]`
+transparency. It does not bypass backlog, planning, review, or governance.
 
 ### XYPH CLI Reference
 
@@ -506,6 +740,52 @@ All commands run via `npx tsx xyph-actuator.ts <command>`.
 | `seal <id> --artifact <hash> --rationale "..."`          | Mark done directly (solo work, no review needed)       |
 | `generate-key`                                           | Generate an Ed25519 Guild Seal keypair                 |
 | `audit-sovereignty`                                      | Verify all quests have a Genealogy of Intent           |
+
+### Agent-native CLI
+
+XYPH also exposes an agent-native CLI compatibility layer for cold-start
+orientation, target work packets, and policy-bounded execution. The canonical
+contract for this surface lives in
+[docs/canonical/AGENT_PROTOCOL.md](docs/canonical/AGENT_PROTOCOL.md).
+
+The current runtime already supports a shared semantic vocabulary across
+`briefing`, `next`, `context`, and `act`, so agents do not have to reconstruct
+blockers and next steps from command-local prose. That packet now includes
+fields such as:
+
+- `requirements`
+- `acceptanceCriteria`
+- `evidenceSummary`
+- `blockingReasons`
+- `missingEvidence`
+- `nextLawfulActions`
+- `claimability`
+- `expectedActor`
+- `attentionState`
+
+Current highlights:
+
+- `xyph briefing --json` now includes a `governanceQueue` alongside quest and
+  submission intake, so agent cold-start sees governance attention work too.
+- `xyph next --json` can now surface governance-oriented follow-up candidates,
+  including human-bound attestation or collapse progression work, instead of
+  treating governance as inspect-only intake.
+- `xyph context --json <id>` now emits typed work packets not only for
+  `task:*`, but also for `submission:*`, `patchset:*`,
+  `comparison-artifact:*`, `collapse-proposal:*`, and `attestation:*` targets,
+  including recommendation requests when governance follow-up or missing
+  evidence needs explicit routing.
+- `xyph act --json` now carries shared submission semantics on `review` /
+  `merge` refusal, dry-run, success, and partial-failure outcomes when XYPH can
+  derive them truthfully, and now rejects governance-only actions like
+  `attest` / `collapse_preview` / `collapse_live` with explicit
+  `human-only-action` envelopes instead of vague unsupported-action failures.
+
+Design rule: agents do not need an explicit queued "ask AI" request in order
+to notice and publish a worthwhile suggestion. Request-driven AI jobs are one
+auditable intake path; spontaneous agent-originated suggestions are also valid,
+as long as XYPH records them as visible advisory artifacts instead of silently
+mutating graph truth.
 
 ## How XYPH Works (Part II)
 
@@ -552,15 +832,13 @@ src/
 ├── ports/            # Interfaces (RoadmapPort, DashboardPort, SubmissionPort, WorkspacePort, ...)
 ├── infrastructure/
 │   └── adapters/     # git-warp adapters (WarpSubmissionAdapter, GitWorkspaceAdapter, ...)
-└── tui/              # bijou-powered interactive dashboard
+└── tui/              # bijou v3.1-powered XYPH cockpit
     ├── bijou/
-    │   ├── DashboardApp.ts   # TEA app shell (model, update, view, keymaps)
+    │   ├── DashboardApp.ts   # TEA cockpit shell (lanes, actions, overlays)
+    │   ├── cockpit.ts        # Lane/item derivation from graph snapshots
     │   └── views/
-    │       ├── roadmap-view.ts    # DAG + detail panel (bijou dagLayout)
-    │       ├── submissions-view.ts # Review workflow browser
-    │       ├── lineage-view.ts    # Genealogy of Intent tree
-    │       ├── dashboard-view.ts  # Project overview + campaign progress
-    │       ├── backlog-view.ts    # Triage inbox
+    │       ├── cockpit-view.ts    # Lane rail + worklist + inspector renderer
+    │       ├── my-stuff-drawer.ts # Personal activity / quest drawer
     │       └── landing-view.ts    # Startup screen with WARP stats
     ├── theme/                # Theme bridge (bijou ↔ XYPH tokens)
     ├── logos/                # ASCII art logos organized by family and size

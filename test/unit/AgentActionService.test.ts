@@ -4,6 +4,7 @@ import type { GraphPort } from '../../src/ports/GraphPort.js';
 import type { RoadmapQueryPort } from '../../src/ports/RoadmapPort.js';
 import type { EntityDetail } from '../../src/domain/models/dashboard.js';
 import { AgentActionService } from '../../src/domain/services/AgentActionService.js';
+import { makeSnapshot, quest, review, submission } from '../helpers/snapshot.js';
 
 const mocks = vi.hoisted(() => ({
   createPatchSession: vi.fn(),
@@ -25,6 +26,7 @@ const mocks = vi.hoisted(() => ({
   isMerged: vi.fn(),
   merge: vi.fn(),
   fetchEntityDetail: vi.fn(),
+  fetchSnapshot: vi.fn(),
   hasPrivateKey: vi.fn(),
   sign: vi.fn(),
   payloadDigest: vi.fn(),
@@ -76,6 +78,9 @@ vi.mock('../../src/infrastructure/GraphContext.js', () => ({
   createGraphContext: () => ({
     fetchEntityDetail(id: string) {
       return mocks.fetchEntityDetail(id);
+    },
+    fetchSnapshot() {
+      return mocks.fetchSnapshot();
     },
   }),
 }));
@@ -322,6 +327,36 @@ describe('AgentActionService', () => {
     mocks.isMerged.mockResolvedValue(false);
     mocks.merge.mockResolvedValue('mergecommit123456');
     mocks.fetchEntityDetail.mockResolvedValue(makeQuestDetail());
+    mocks.fetchSnapshot.mockResolvedValue(makeSnapshot({
+      quests: [
+        quest({
+          id: 'task:AGT-001',
+          title: 'Agent kernel quest',
+          status: 'READY',
+          hours: 2,
+          taskKind: 'delivery',
+        }),
+      ],
+      submissions: [
+        submission({
+          id: 'submission:AGT-001',
+          questId: 'task:AGT-001',
+          status: 'APPROVED',
+          tipPatchsetId: 'patchset:tip',
+          approvalCount: 1,
+          submittedBy: 'agent.other',
+          submittedAt: Date.UTC(2026, 2, 12, 18, 0, 0),
+        }),
+      ],
+      reviews: [
+        review({
+          id: 'review:AGT-001',
+          patchsetId: 'patchset:tip',
+          verdict: 'approve',
+          reviewedBy: 'human.reviewer',
+        }),
+      ],
+    }));
     mocks.hasPrivateKey.mockReturnValue(true);
     mocks.sign.mockResolvedValue({ keyId: 'did:key:test', alg: 'ed25519' });
     mocks.payloadDigest.mockReturnValue('blake3:test');
@@ -345,6 +380,34 @@ describe('AgentActionService', () => {
     expect(outcome).toMatchObject({
       kind: 'promote',
       targetId: 'task:AGT-001',
+      allowed: false,
+      requiresHumanApproval: true,
+      result: 'rejected',
+      validation: {
+        valid: false,
+        code: 'human-only-action',
+      },
+    });
+  });
+
+  it('rejects governance-only human judgment actions with the same machine-readable code', async () => {
+    const service = new AgentActionService(
+      makeGraphPort({}),
+      makeRoadmap(makeQuest()),
+      'agent.hal',
+      makeDoctor(),
+    );
+
+    const outcome = await service.execute({
+      kind: 'attest',
+      targetId: 'comparison-artifact:AGT-001',
+      dryRun: true,
+      args: {},
+    });
+
+    expect(outcome).toMatchObject({
+      kind: 'attest',
+      targetId: 'comparison-artifact:AGT-001',
       allowed: false,
       requiresHumanApproval: true,
       result: 'rejected',
@@ -745,6 +808,11 @@ describe('AgentActionService', () => {
         shouldAutoSeal: true,
         workspaceRef: 'feat/agent-action-kernel-v1',
       },
+      semantics: {
+        kind: 'submission',
+        expectedActor: 'either',
+        attentionState: 'ready',
+      },
     });
   });
 
@@ -799,6 +867,11 @@ describe('AgentActionService', () => {
         guildSeal: { keyId: 'did:key:test', alg: 'ed25519' },
         warnings: [],
       },
+      semantics: {
+        kind: 'submission',
+        expectedActor: 'either',
+        attentionState: 'ready',
+      },
     });
     expect(typeof outcome.details?.['decisionId']).toBe('string');
   });
@@ -839,6 +912,11 @@ describe('AgentActionService', () => {
           message: 'graph write failed',
         },
       },
+      semantics: {
+        kind: 'submission',
+        expectedActor: 'either',
+        attentionState: 'ready',
+      },
     });
   });
 
@@ -878,6 +956,11 @@ describe('AgentActionService', () => {
           stage: 'auto-seal',
           message: 'artifact node already exists',
         },
+      },
+      semantics: {
+        kind: 'submission',
+        expectedActor: 'either',
+        attentionState: 'ready',
       },
     });
     expect(outcome.details?.['warnings']).toEqual([
@@ -1015,6 +1098,11 @@ describe('AgentActionService', () => {
         submissionId: 'submission:AGT-001',
         verdict: 'approve',
         reviewedBy: 'agent.hal',
+      },
+      semantics: {
+        kind: 'submission',
+        expectedActor: 'either',
+        attentionState: 'ready',
       },
     });
     expect(typeof outcome.details?.['reviewId']).toBe('string');

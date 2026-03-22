@@ -1,7 +1,7 @@
 import { projectStateV5 } from '@git-stunts/git-warp';
 import type { GraphPort } from '../../ports/GraphPort.js';
 import { createPatchSession } from '../../infrastructure/helpers/createPatchSession.js';
-import type { ApplyOp, ControlPlaneErrorCode, MutationPlan } from '../models/controlPlane.js';
+import type { ControlPlaneErrorCode } from '../models/controlPlane.js';
 
 export interface MutationValidation {
   valid: boolean;
@@ -18,6 +18,27 @@ export interface MutationExecutionResult extends MutationValidation {
 interface MutationExecutionOptions {
   dryRun?: boolean;
   workingSetId?: string;
+  allowEmptyPlan?: boolean;
+}
+
+type ContentPayload = string | Uint8Array;
+
+type KernelMutationOp =
+  | { op: 'add_node'; nodeId: string }
+  | { op: 'remove_node'; nodeId: string }
+  | { op: 'set_node_property'; nodeId: string; key: string; value: unknown }
+  | { op: 'add_edge'; from: string; to: string; label: string }
+  | { op: 'remove_edge'; from: string; to: string; label: string }
+  | { op: 'set_edge_property'; from: string; to: string; label: string; key: string; value: unknown }
+  | { op: 'attach_node_content'; nodeId: string; content: ContentPayload; mime?: string | null; size?: number | null; contentOid?: string }
+  | { op: 'clear_node_content'; nodeId: string }
+  | { op: 'attach_edge_content'; from: string; to: string; label: string; content: ContentPayload; mime?: string | null; size?: number | null; contentOid?: string }
+  | { op: 'clear_edge_content'; from: string; to: string; label: string };
+
+interface KernelMutationPlan {
+  ops: KernelMutationOp[];
+  rationale: string;
+  idempotencyKey?: string;
 }
 
 interface PatchWriter {
@@ -27,15 +48,27 @@ interface PatchWriter {
   addEdge(from: string, to: string, label: string): unknown;
   removeEdge(from: string, to: string, label: string): unknown;
   setEdgeProperty(from: string, to: string, label: string, key: string, value: unknown): unknown;
-  attachContent(nodeId: string, content: string): Promise<unknown>;
-  attachEdgeContent(from: string, to: string, label: string, content: string): Promise<unknown>;
+  clearContent(nodeId: string): unknown;
+  clearEdgeContent(from: string, to: string, label: string): unknown;
+  attachContent(
+    nodeId: string,
+    content: ContentPayload,
+    metadata?: { mime?: string | null; size?: number | null },
+  ): Promise<unknown>;
+  attachEdgeContent(
+    from: string,
+    to: string,
+    label: string,
+    content: ContentPayload,
+    metadata?: { mime?: string | null; size?: number | null },
+  ): Promise<unknown>;
 }
 
 function edgeKey(from: string, to: string, label: string): string {
   return `${from}→${label}→${to}`;
 }
 
-function summarize(op: ApplyOp): string {
+function summarize(op: KernelMutationOp): string {
   switch (op.op) {
     case 'add_node':
       return `add node ${op.nodeId}`;
@@ -51,8 +84,12 @@ function summarize(op: ApplyOp): string {
       return `set edge property ${op.from} -[${op.label}]-> ${op.to}.${op.key}`;
     case 'attach_node_content':
       return `attach content to ${op.nodeId}`;
+    case 'clear_node_content':
+      return `clear content from ${op.nodeId}`;
     case 'attach_edge_content':
       return `attach content to edge ${op.from} -[${op.label}]-> ${op.to}`;
+    case 'clear_edge_content':
+      return `clear content from edge ${op.from} -[${op.label}]-> ${op.to}`;
   }
 }
 
@@ -69,10 +106,10 @@ export class MutationKernelService {
   constructor(private readonly graphPort: GraphPort) {}
 
   public async validate(
-    plan: MutationPlan,
+    plan: KernelMutationPlan,
     opts?: Pick<MutationExecutionOptions, 'workingSetId'>,
   ): Promise<MutationValidation> {
-    if (!Array.isArray(plan.ops) || plan.ops.length === 0) {
+    if (!Array.isArray(plan.ops)) {
       return opError('invalid_args', 'apply requires at least one operation');
     }
     if (plan.rationale.trim().length < 11) {
@@ -111,7 +148,8 @@ export class MutationKernelService {
           break;
         }
         case 'set_node_property':
-        case 'attach_node_content': {
+        case 'attach_node_content':
+        case 'clear_node_content': {
           if (!workingNodes.has(op.nodeId)) {
             return opError('not_found', `${op.op} target ${op.nodeId} does not exist`);
           }
@@ -135,7 +173,8 @@ export class MutationKernelService {
         }
         case 'remove_edge':
         case 'set_edge_property':
-        case 'attach_edge_content': {
+        case 'attach_edge_content':
+        case 'clear_edge_content': {
           const key = edgeKey(op.from, op.to, op.label);
           if (!workingEdges.has(key)) {
             return opError('not_found', `${op.op} target ${key} does not exist`);
@@ -158,9 +197,20 @@ export class MutationKernelService {
   }
 
   public async execute(
-    plan: MutationPlan,
+    plan: KernelMutationPlan,
     opts?: MutationExecutionOptions,
   ): Promise<MutationExecutionResult> {
+    if ((!Array.isArray(plan.ops) || plan.ops.length === 0) && opts?.allowEmptyPlan) {
+      return {
+        valid: true,
+        code: null,
+        reasons: [],
+        sideEffects: [],
+        patch: null,
+        executed: false,
+      };
+    }
+
     const validation = await this.validate(plan, opts);
     if (!validation.valid) {
       return {
@@ -220,7 +270,7 @@ export class MutationKernelService {
     };
   }
 
-  private async applyOps(writer: PatchWriter, ops: ApplyOp[]): Promise<void> {
+  private async applyOps(writer: PatchWriter, ops: KernelMutationOp[]): Promise<void> {
     for (const op of ops) {
       switch (op.op) {
         case 'add_node':
@@ -233,7 +283,13 @@ export class MutationKernelService {
           writer.setProperty(op.nodeId, op.key, op.value);
           break;
         case 'attach_node_content':
-          await writer.attachContent(op.nodeId, op.content);
+          await writer.attachContent(op.nodeId, op.content, {
+            mime: op.mime ?? null,
+            size: op.size ?? null,
+          });
+          break;
+        case 'clear_node_content':
+          writer.clearContent(op.nodeId);
           break;
         case 'add_edge':
           writer.addEdge(op.from, op.to, op.label);
@@ -245,7 +301,13 @@ export class MutationKernelService {
           writer.setEdgeProperty(op.from, op.to, op.label, op.key, op.value);
           break;
         case 'attach_edge_content':
-          await writer.attachEdgeContent(op.from, op.to, op.label, op.content);
+          await writer.attachEdgeContent(op.from, op.to, op.label, op.content, {
+            mime: op.mime ?? null,
+            size: op.size ?? null,
+          });
+          break;
+        case 'clear_edge_content':
+          writer.clearEdgeContent(op.from, op.to, op.label);
           break;
       }
     }
