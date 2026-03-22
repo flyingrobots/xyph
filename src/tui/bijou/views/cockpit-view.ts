@@ -1,6 +1,6 @@
 import { headerBox, box, type TokenValue } from '@flyingrobots/bijou';
 import { flex, createPagerState, pagerScrollTo, pager, viewport, visibleLength } from '@flyingrobots/bijou-tui';
-import type { GraphSnapshot, QuestNode, SubmissionNode, CampaignNode } from '../../../domain/models/dashboard.js';
+import type { AiSuggestionNode, GraphSnapshot, QuestNode, SubmissionNode, CampaignNode } from '../../../domain/models/dashboard.js';
 import type { StylePort } from '../../../ports/StylePort.js';
 import type { DashboardModel } from '../DashboardApp.js';
 import {
@@ -226,11 +226,17 @@ export function laneAccent(style: StylePort, lane: DashboardModel['lane']): Toke
       return style.theme.ui.laneReview;
     case 'settlement':
       return style.theme.ui.laneSettlement;
+    case 'suggestions':
+      return style.theme.ui.laneSuggestions;
     case 'campaigns':
       return style.theme.ui.laneCampaigns;
     case 'graveyard':
       return style.theme.ui.laneGraveyard;
   }
+}
+
+export function renderAiLabel(style: StylePort): string {
+  return style.styled(style.theme.ui.aiLabel, '[AI]');
 }
 
 function stateLabel(state: string): string {
@@ -281,14 +287,17 @@ function metaLine(
 ): string {
   const safeWidth = Math.max(12, width);
   const hot = itemNeedsAttention(item);
+  const aiPrefix = item.kind === 'ai-suggestion' ? '[AI] ' : '';
   const labelText = hot ? `! ${item.label}` : fresh ? `● ${item.label}` : item.label;
+  const plainLabelText = `${aiPrefix}${labelText}`;
+  const aiRendered = item.kind === 'ai-suggestion' ? `${renderAiLabel(style)} ` : '';
   const label = selected
-    ? `${hot ? attentionLabel(style, item) + ' ' : fresh ? style.styled(style.theme.semantic.error, '●') + ' ' : ''}${style.styled(accentToken, item.label)}`
+    ? `${aiRendered}${hot ? attentionLabel(style, item) + ' ' : fresh ? style.styled(style.theme.semantic.error, '●') + ' ' : ''}${style.styled(accentToken, item.label)}`
     : hot
-      ? `${attentionLabel(style, item)} ${style.styled(attentionToken(style, item.attentionState), item.label)}`
+      ? `${aiRendered}${attentionLabel(style, item)} ${style.styled(attentionToken(style, item.attentionState), item.label)}`
       : fresh
-        ? `${style.styled(style.theme.semantic.error, '●')} ${style.styled(style.theme.semantic.muted, item.label)}`
-        : style.styled(style.theme.semantic.muted, item.label);
+        ? `${aiRendered}${style.styled(style.theme.semantic.error, '●')} ${style.styled(style.theme.semantic.muted, item.label)}`
+        : `${aiRendered}${style.styled(style.theme.semantic.muted, item.label)}`;
   const status = statusText(style, item.state);
   const cue = item.cue ? style.styled(style.theme.semantic.warning, item.cue) : '';
   const cueWidth = cue ? Math.min(Math.max(visibleLength(cue), 2), 10) : 0;
@@ -298,7 +307,7 @@ function metaLine(
   if (labelWidth < 6) {
     return [label, status, cue].filter(Boolean).join(' ');
   }
-  const cells = [padVisible(label, Math.max(labelWidth, visibleLength(labelText))), padVisible(status, statusWidth)];
+  const cells = [padVisible(label, Math.max(labelWidth, visibleLength(plainLabelText))), padVisible(status, statusWidth)];
   if (cue) cells.push(padVisible(cue, cueWidth));
   return cells.join(' ');
 }
@@ -649,6 +658,9 @@ function renderHero(
       && artifact.governance.freshness === 'fresh'
       && (artifact.governance.lifecycle === 'approved' || artifact.governance.lifecycle === 'pending_attestation'),
   ).length;
+  const suggestionQueue = snapshot.aiSuggestions.filter((suggestion) =>
+    suggestion.status === 'suggested' || suggestion.status === 'queued',
+  ).length;
 
   const innerWidth = Math.max(12, width - 4);
   const leftVariants: AlignedVariant[] = [
@@ -704,6 +716,7 @@ function renderHero(
     style.styled(style.theme.semantic.primary, ` ready ${ready}`),
     style.styled(style.theme.semantic.warning, ` review ${reviewQueue}`),
     style.styled(style.theme.semantic.success, ` settle ${settlementQueue}`),
+    style.styled(style.theme.ui.aiLabel, ` suggest ${suggestionQueue}`),
     graphMeta
       ? ` tick ${graphMeta.myTick}/${graphMeta.maxTick} · writers ${graphMeta.writerCount}`
       : ' graph meta unavailable',
@@ -769,7 +782,7 @@ function buildLaneRailContent(
       ? style.styled(accentToken, '▶')
       : '·';
     const title = selected
-      ? style.styled(accentToken, lane.title.toUpperCase())
+      ? style.styled(accentToken, lane.id === 'suggestions' ? `${lane.title.toUpperCase()} ${renderAiLabel(style)}` : lane.title.toUpperCase())
       : lane.title.toUpperCase();
     const badge = lane.attentionCount > 0
       ? attentionBadge(style, lane.attentionCount, lane.attentionTone)
@@ -839,6 +852,8 @@ function renderWorklistPane(model: DashboardModel, snapshot: GraphSnapshot, styl
     title: style.styled(accentToken, laneTitle(model.lane)),
     detail: model.lane === 'now'
       ? style.styled(accentToken, model.nowView === 'activity' ? 'Recent Activity' : 'Action Queue')
+      : model.lane === 'suggestions'
+        ? `${renderAiLabel(style)} ${style.styled(accentToken, selected ? shortId(selected.id) : 'Advisory Queue')}`
       : selected
         ? style.styled(accentToken, shortId(selected.id))
         : 'select an item to inspect',
@@ -1043,6 +1058,51 @@ function renderActivityDetail(style: StylePort, item: CockpitItem, width: number
   return lines.join('\n');
 }
 
+function renderAiSuggestionDetail(style: StylePort, suggestion: AiSuggestionNode, item: CockpitItem, width: number): string {
+  const lines: string[] = [];
+  pushWrappedText(lines, `${renderAiLabel(style)} ${suggestion.title}`, {
+    width,
+    decorate: (line) => style.styled(style.theme.semantic.primary, line),
+  });
+  lines.push(`${suggestion.id}  ${statusText(style, suggestion.status)}`);
+  lines.push('');
+  pushReasonBlock(lines, style, item, width);
+  pushField(lines, 'Kind', suggestion.kind, { width });
+  pushField(lines, 'Audience', suggestion.audience, { width });
+  pushField(lines, 'Origin', suggestion.origin, { width });
+  pushField(lines, 'Actor', shortPrincipal(suggestion.suggestedBy), { width });
+  pushField(lines, 'When', `${formatAge(suggestion.suggestedAt)} ago`, { width });
+  pushField(lines, 'Target', suggestion.targetId ? shortId(suggestion.targetId) : '—', { width });
+  if (suggestion.requestedBy) {
+    pushField(lines, 'Requested', shortPrincipal(suggestion.requestedBy), { width });
+  }
+  lines.push('');
+  pushWrappedText(lines, suggestion.summary, {
+    width,
+    decorate: (line) => style.styled(style.theme.semantic.info, line),
+  });
+  if (suggestion.why) {
+    lines.push('');
+    lines.push(style.styled(style.theme.semantic.muted, 'Why'));
+    pushWrappedText(lines, suggestion.why, { width, prefix: '  ' });
+  }
+  if (suggestion.evidence) {
+    lines.push('');
+    lines.push(style.styled(style.theme.semantic.muted, 'Evidence'));
+    pushWrappedText(lines, suggestion.evidence, { width, prefix: '  ' });
+  }
+  if (suggestion.nextAction) {
+    lines.push('');
+    lines.push(style.styled(style.theme.semantic.muted, 'Suggested next action'));
+    pushWrappedText(lines, suggestion.nextAction, { width, prefix: '  ' });
+  }
+  if (suggestion.relatedIds.length > 0) {
+    lines.push('');
+    pushField(lines, 'Related', suggestion.relatedIds.map(shortId).join(', '), { width });
+  }
+  return lines.join('\n');
+}
+
 function renderGovernanceDetail(style: StylePort, item: CockpitItem, width: number): string {
   switch (item.kind) {
     case 'comparison-artifact': {
@@ -1129,6 +1189,8 @@ function renderInspector(model: DashboardModel, snapshot: GraphSnapshot, style: 
         return renderSubmissionDetail(style, snapshot, item.submission, item, innerWidth);
       case 'campaign':
         return renderCampaignDetail(style, snapshot, item.campaign, innerWidth);
+      case 'ai-suggestion':
+        return renderAiSuggestionDetail(style, item.suggestion, item, innerWidth);
       case 'activity':
         return renderActivityDetail(style, item, innerWidth);
       case 'comparison-artifact':

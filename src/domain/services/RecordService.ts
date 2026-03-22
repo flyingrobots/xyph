@@ -2,6 +2,12 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { GraphPort } from '../../ports/GraphPort.js';
 import type { CanonicalArtifactKind } from '../models/controlPlane.js';
 import { MutationKernelService } from './MutationKernelService.js';
+import type {
+  AiSuggestionAudience,
+  AiSuggestionKind,
+  AiSuggestionOrigin,
+  AiSuggestionStatus,
+} from '../entities/AiSuggestion.js';
 
 interface CreateCommentInput {
   id?: string;
@@ -47,6 +53,24 @@ interface CreateCanonicalArtifactInput {
   policyPackVersion: string;
   indexedProperties?: Record<string, string | number | boolean | null>;
   supersedesTargetId?: string | null;
+  idempotencyKey?: string;
+}
+
+interface CreateAiSuggestionInput {
+  id?: string;
+  kind: AiSuggestionKind;
+  title: string;
+  summary: string;
+  suggestedBy: string;
+  audience: AiSuggestionAudience;
+  origin: AiSuggestionOrigin;
+  status?: AiSuggestionStatus;
+  targetId?: string;
+  requestedBy?: string;
+  why?: string;
+  evidence?: string;
+  nextAction?: string;
+  relatedIds?: string[];
   idempotencyKey?: string;
 }
 
@@ -182,6 +206,94 @@ export class RecordService {
       id,
       patch: result.patch,
       proposedAt,
+      contentOid: await graph.getContentOid(id),
+    };
+  }
+
+  public async createAiSuggestion(input: CreateAiSuggestionInput): Promise<{
+    id: string;
+    patch: string;
+    suggestedAt: number;
+    contentOid: string | null;
+  }> {
+    const graph = await this.graphPort.getGraph();
+    if (input.targetId && !await graph.hasNode(input.targetId)) {
+      throw new Error(`[NOT_FOUND] Target ${input.targetId} not found in the graph`);
+    }
+
+    const relatedIds = [...new Set((input.relatedIds ?? []).filter((entry) => entry.length > 0))];
+    for (const relatedId of relatedIds) {
+      if (!await graph.hasNode(relatedId)) {
+        throw new Error(`[NOT_FOUND] Related target ${relatedId} not found in the graph`);
+      }
+    }
+
+    const id = deriveId('suggestion:', input.id, input.idempotencyKey);
+    const suggestedAt = Date.now();
+    const content = stringifyDeterministicContent({
+      title: input.title.trim(),
+      summary: input.summary.trim(),
+      why: input.why?.trim() ?? null,
+      evidence: input.evidence?.trim() ?? null,
+      nextAction: input.nextAction?.trim() ?? null,
+      targetId: input.targetId ?? null,
+      relatedIds,
+      audience: input.audience,
+      origin: input.origin,
+      requestedBy: input.requestedBy ?? null,
+      suggestedBy: input.suggestedBy,
+      kind: input.kind,
+      status: input.status ?? 'suggested',
+    });
+
+    const result = await this.kernel.execute({
+      idempotencyKey: input.idempotencyKey,
+      rationale: 'Record an AI suggestion as a visible advisory artifact in the shared graph.',
+      ops: [
+        { op: 'add_node', nodeId: id },
+        { op: 'set_node_property', nodeId: id, key: 'type', value: 'ai_suggestion' },
+        { op: 'set_node_property', nodeId: id, key: 'suggestion_kind', value: input.kind },
+        { op: 'set_node_property', nodeId: id, key: 'title', value: input.title.trim() },
+        { op: 'set_node_property', nodeId: id, key: 'summary', value: input.summary.trim() },
+        { op: 'set_node_property', nodeId: id, key: 'status', value: input.status ?? 'suggested' },
+        { op: 'set_node_property', nodeId: id, key: 'audience', value: input.audience },
+        { op: 'set_node_property', nodeId: id, key: 'origin', value: input.origin },
+        { op: 'set_node_property', nodeId: id, key: 'suggested_by', value: input.suggestedBy },
+        { op: 'set_node_property', nodeId: id, key: 'suggested_at', value: suggestedAt },
+        { op: 'set_node_property', nodeId: id, key: 'related_ids', value: JSON.stringify(relatedIds) },
+        ...(input.targetId
+          ? [
+              { op: 'set_node_property', nodeId: id, key: 'target_id', value: input.targetId } as const,
+              { op: 'add_edge', from: id, to: input.targetId, label: 'suggests' } as const,
+            ]
+          : []),
+        ...(input.requestedBy
+          ? [{ op: 'set_node_property', nodeId: id, key: 'requested_by', value: input.requestedBy } as const]
+          : []),
+        ...(input.why?.trim()
+          ? [{ op: 'set_node_property', nodeId: id, key: 'why', value: input.why.trim() } as const]
+          : []),
+        ...(input.evidence?.trim()
+          ? [{ op: 'set_node_property', nodeId: id, key: 'evidence', value: input.evidence.trim() } as const]
+          : []),
+        ...(input.nextAction?.trim()
+          ? [{ op: 'set_node_property', nodeId: id, key: 'next_action', value: input.nextAction.trim() } as const]
+          : []),
+        ...relatedIds
+          .filter((relatedId) => relatedId !== input.targetId)
+          .map((relatedId) => ({ op: 'add_edge', from: id, to: relatedId, label: 'relates-to' } as const)),
+        { op: 'attach_node_content', nodeId: id, content },
+      ],
+    });
+
+    if (!result.executed || !result.patch) {
+      throw new Error(`[INVALID_STATE] Failed to materialize AI suggestion ${id}`);
+    }
+
+    return {
+      id,
+      patch: result.patch,
+      suggestedAt,
       contentOid: await graph.getContentOid(id),
     };
   }

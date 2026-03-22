@@ -19,6 +19,7 @@ function makeModel(snapshot: GraphSnapshot | null): DashboardModel {
     plan: { focusRow: 0, inspectorScrollY: 0 },
     review: { focusRow: 0, inspectorScrollY: 0 },
     settlement: { focusRow: 0, inspectorScrollY: 0 },
+    suggestions: { focusRow: 0, inspectorScrollY: 0 },
     campaigns: { focusRow: 0, inspectorScrollY: 0 },
     graveyard: { focusRow: 0, inspectorScrollY: 0 },
   };
@@ -203,6 +204,7 @@ describe('cockpitView', () => {
         plan: 0,
         review: 0,
         settlement: 0,
+        suggestions: 0,
         campaigns: 0,
         graveyard: 0,
       },
@@ -247,6 +249,36 @@ describe('cockpitView', () => {
     expect(plain).toContain('Why hot:');
     expect(plain).toContain('approved and ready');
     expect(plain).toContain('governed settlement');
+  });
+
+  it('renders the Suggestions lane with [AI] labeling', () => {
+    const snapshot = makeSnapshot({
+      aiSuggestions: [{
+        id: 'suggestion:S1',
+        type: 'ai-suggestion',
+        kind: 'dependency',
+        title: 'Recommend a dependency edge',
+        summary: 'This quest probably depends on task:Q1 before it can move safely.',
+        status: 'suggested',
+        audience: 'human',
+        origin: 'spontaneous',
+        suggestedBy: 'agent.prime',
+        suggestedAt: 200,
+        targetId: 'task:Q2',
+        relatedIds: ['task:Q1'],
+      }],
+    });
+    const model = {
+      ...makeModel(snapshot),
+      lane: 'suggestions' as const,
+      table: buildLaneTable(snapshot, 'suggestions', 20, 0, 'agent.test'),
+    };
+
+    const plain = strip(cockpitView(model, style, 120, 30));
+    expect(plain).toContain('Suggestions');
+    expect(plain).toContain('[AI]');
+    expect(plain).toContain('Recommend a dependency edge');
+    expect(plain).toContain('dependency');
   });
 
   it('renders persistent attention badges for review and settlement lanes', () => {

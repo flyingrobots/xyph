@@ -33,8 +33,10 @@ type XyphExtUi =
   | 'lanePlan'
   | 'laneReview'
   | 'laneSettlement'
+  | 'laneSuggestions'
   | 'laneCampaigns'
-  | 'laneGraveyard';
+  | 'laneGraveyard'
+  | 'aiLabel';
 
 /** Union of bijou base + XYPH extension status keys. */
 export type XyphStatusKey = BaseStatusKey | XyphExtStatus;
@@ -149,8 +151,10 @@ export const XYPH_CYAN_MAGENTA_DARK: XyphTheme = extendTheme<XyphExtStatus, Xyph
       lanePlan: tv('#f59e0b'),
       laneReview: tv('#ff00ff'),
       laneSettlement: tv('#22c55e'),
+      laneSuggestions: tv('#38bdf8'),
       laneCampaigns: tv('#8b5cf6'),
       laneGraveyard: tv('#ef4444'),
+      aiLabel: tv('#38bdf8', ['bold']),
     },
   },
 );
@@ -165,8 +169,10 @@ export const XYPH_TEAL_ORANGE_PINK_DARK: XyphTheme = extendTheme<XyphExtStatus, 
       lanePlan: tv('#fc9305'),
       laneReview: tv('#f20094'),
       laneSettlement: tv('#34d399'),
+      laneSuggestions: tv('#2dd4bf'),
       laneCampaigns: tv('#8b5cf6'),
       laneGraveyard: tv('#ef4444'),
+      aiLabel: tv('#2dd4bf', ['bold']),
     },
   },
 );
@@ -215,8 +221,10 @@ export const XYPH_CYAN_MAGENTA_LIGHT: XyphTheme = extendTheme<XyphExtStatus, Xyp
       lanePlan: tv('#b45309'),
       laneReview: tv('#a21caf'),
       laneSettlement: tv('#059669'),
+      laneSuggestions: tv('#0369a1'),
       laneCampaigns: tv('#6d28d9'),
       laneGraveyard: tv('#b91c1c'),
+      aiLabel: tv('#0369a1', ['bold']),
     },
   },
 );
@@ -263,8 +271,10 @@ export const XYPH_TEAL_ORANGE_PINK_LIGHT: XyphTheme = extendTheme<XyphExtStatus,
       lanePlan: tv('#c2410c'),
       laneReview: tv('#be185d'),
       laneSettlement: tv('#059669'),
+      laneSuggestions: tv('#0f766e'),
       laneCampaigns: tv('#6d28d9'),
       laneGraveyard: tv('#b91c1c'),
+      aiLabel: tv('#0f766e', ['bold']),
     },
   },
 );

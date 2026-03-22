@@ -30,6 +30,7 @@ import { type TokenValue } from '@flyingrobots/bijou';
 import type { StylePort } from '../../ports/StylePort.js';
 import type { GraphContext } from '../../infrastructure/GraphContext.js';
 import type {
+  AiSuggestionNode,
   EntityDetail,
   GraphSnapshot,
   GovernanceArtifactNode,
@@ -47,6 +48,7 @@ import { questTreeOverlay, questTreeOverlayBounds } from './views/quest-tree-mod
 import { questPageView } from './views/quest-page-view.js';
 import { governancePageView } from './views/governance-page-view.js';
 import { reviewPageView } from './views/review-page-view.js';
+import { suggestionPageView } from './views/suggestion-page-view.js';
 import {
   claimQuest,
   commentOnEntity,
@@ -122,7 +124,18 @@ export interface GovernancePageRoute {
   sourceLane: CockpitLaneId;
 }
 
-export type DashboardPageRoute = LandingPageRoute | QuestPageRoute | ReviewPageRoute | GovernancePageRoute;
+export interface SuggestionPageRoute {
+  kind: 'suggestion';
+  suggestionId: string;
+  sourceLane: CockpitLaneId;
+}
+
+export type DashboardPageRoute =
+  | LandingPageRoute
+  | QuestPageRoute
+  | ReviewPageRoute
+  | GovernancePageRoute
+  | SuggestionPageRoute;
 
 export interface DashboardModel {
   lane: CockpitLaneId;
@@ -253,6 +266,7 @@ function emptyLaneState(): Record<CockpitLaneId, LaneState> {
     plan: { focusRow: 0, inspectorScrollY: 0 },
     review: { focusRow: 0, inspectorScrollY: 0 },
     settlement: { focusRow: 0, inspectorScrollY: 0 },
+    suggestions: { focusRow: 0, inspectorScrollY: 0 },
     campaigns: { focusRow: 0, inspectorScrollY: 0 },
     graveyard: { focusRow: 0, inspectorScrollY: 0 },
   };
@@ -265,8 +279,9 @@ function buildGlobalKeys(): KeyMap<GlobalAction> {
       .bind('2', 'Plan lane', { type: 'jump-lane', lane: 'plan' })
       .bind('3', 'Review lane', { type: 'jump-lane', lane: 'review' })
       .bind('4', 'Settlement lane', { type: 'jump-lane', lane: 'settlement' })
-      .bind('5', 'Campaigns lane', { type: 'jump-lane', lane: 'campaigns' })
-      .bind('6', 'Graveyard lane', { type: 'jump-lane', lane: 'graveyard' })
+      .bind('5', 'Suggestions lane', { type: 'jump-lane', lane: 'suggestions' })
+      .bind('6', 'Campaigns lane', { type: 'jump-lane', lane: 'campaigns' })
+      .bind('7', 'Graveyard lane', { type: 'jump-lane', lane: 'graveyard' })
       .bind('[', 'Previous lane', { type: 'prev-lane' })
       .bind(']', 'Next lane', { type: 'next-lane' })
       .bind('r', 'Refresh snapshot', { type: 'refresh' })
@@ -404,6 +419,18 @@ function governanceIdForItem(item: CockpitItem | undefined): string | undefined 
   }
 }
 
+function suggestionIdForItem(item: CockpitItem | undefined): string | undefined {
+  if (!item) return undefined;
+  switch (item.kind) {
+    case 'ai-suggestion':
+      return item.suggestion.id;
+    case 'activity':
+      return item.event.relatedId?.startsWith('suggestion:') ? item.event.relatedId : undefined;
+    default:
+      return undefined;
+  }
+}
+
 function reviewPageForItem(item: CockpitItem | undefined): { submissionId: string; questId: string } | undefined {
   if (!item) return undefined;
   switch (item.kind) {
@@ -435,6 +462,8 @@ function questIdForItem(item: CockpitItem | undefined): string | undefined {
       return item.artifact.targetId?.startsWith('task:') ? item.artifact.targetId : undefined;
     case 'campaign':
       return undefined;
+    default:
+      return undefined;
   }
 }
 
@@ -443,6 +472,7 @@ function activeQuestId(model: DashboardModel): string | undefined {
   if (page.kind === 'quest') return page.questId;
   if (page.kind === 'review') return undefined;
   if (page.kind === 'governance') return undefined;
+  if (page.kind === 'suggestion') return undefined;
   return questIdForItem(currentSelectedItem(model));
 }
 
@@ -463,6 +493,7 @@ function selectedSubmission(model: DashboardModel): SubmissionNode | undefined {
     }
     return model.snapshot?.submissions.find((submission) => submission.id === page.submissionId);
   }
+  if (page.kind === 'suggestion') return undefined;
   if (page.kind === 'quest' && model.pageDetail?.questDetail?.submission) {
     return model.pageDetail.questDetail.submission;
   }
@@ -473,6 +504,7 @@ function selectedSubmission(model: DashboardModel): SubmissionNode | undefined {
 function activeGovernanceId(model: DashboardModel): string | undefined {
   const page = currentPage(model);
   if (page.kind === 'governance') return page.entityId;
+  if (page.kind === 'suggestion') return undefined;
   if (!isLandingPage(model)) return undefined;
   return governanceIdForItem(currentSelectedItem(model));
 }
@@ -481,6 +513,19 @@ function selectedGovernanceArtifact(model: DashboardModel): GovernanceArtifactNo
   const governanceId = activeGovernanceId(model);
   if (!governanceId) return undefined;
   return model.snapshot?.governanceArtifacts.find((artifact) => artifact.id === governanceId);
+}
+
+function activeSuggestionId(model: DashboardModel): string | undefined {
+  const page = currentPage(model);
+  if (page.kind === 'suggestion') return page.suggestionId;
+  if (!isLandingPage(model)) return undefined;
+  return suggestionIdForItem(currentSelectedItem(model));
+}
+
+function selectedAiSuggestion(model: DashboardModel): AiSuggestionNode | undefined {
+  const suggestionId = activeSuggestionId(model);
+  if (!suggestionId) return undefined;
+  return model.snapshot?.aiSuggestions.find((suggestion) => suggestion.id === suggestionId);
 }
 
 function resetToLanding(model: DashboardModel): DashboardModel {
@@ -511,6 +556,8 @@ function pageEntityId(page: DashboardPageRoute): string | null {
       return page.questId;
     case 'governance':
       return page.entityId;
+    case 'suggestion':
+      return page.suggestionId;
   }
 }
 
@@ -580,8 +627,28 @@ function openGovernancePage(
   }, [fetchPageDetail(nextRequestId, entityId, deps)]];
 }
 
+function openSuggestionPage(
+  model: DashboardModel,
+  suggestionId: string,
+  sourceLane: CockpitLaneId,
+  deps: DashboardDeps,
+): [DashboardModel, Cmd<DashboardMsg>[]] {
+  const nextRequestId = model.pageRequestId + 1;
+  return [{
+    ...model,
+    pageStack: [...model.pageStack, { kind: 'suggestion', suggestionId, sourceLane }],
+    pageScrollY: 0,
+    pageDetail: null,
+    pageLoading: true,
+    pageError: null,
+    pageRequestId: nextRequestId,
+  }, [fetchPageDetail(nextRequestId, suggestionId, deps)]];
+}
+
 function openSelectedItemPage(model: DashboardModel, deps: DashboardDeps): [DashboardModel, Cmd<DashboardMsg>[]] {
   const item = currentSelectedItem(model);
+  const suggestionId = suggestionIdForItem(item);
+  if (suggestionId) return openSuggestionPage(model, suggestionId, model.lane, deps);
   const governanceId = governanceIdForItem(item);
   if (governanceId) return openGovernancePage(model, governanceId, model.lane, deps);
   const reviewPage = reviewPageForItem(item);
@@ -762,6 +829,11 @@ function contextControls(model: DashboardModel): ControlHint[] {
       { key: 'Esc', label: 'back' },
       { key: 'PgUp/PgDn', label: 'page' },
     ];
+    const suggestion = selectedAiSuggestion(model);
+    if (suggestion) {
+      hints.push({ key: ';', label: 'comment' });
+      return hints;
+    }
     const governance = selectedGovernanceArtifact(model);
     if (governance) {
       hints.push({ key: ';', label: 'comment' });
@@ -800,6 +872,7 @@ function contextControls(model: DashboardModel): ControlHint[] {
   const hints: ControlHint[] = [];
   const item = currentSelectedItem(model);
   if (governanceIdForItem(item)
+    || suggestionIdForItem(item)
     || reviewPageForItem(item)
     || questIdForItem(item)) {
     hints.push({ key: 'Enter', label: 'open' });
@@ -851,7 +924,7 @@ function contextControls(model: DashboardModel): ControlHint[] {
 function globalControls(model: DashboardModel): { left: ControlHint[]; center: ControlHint[] } {
   return {
     left: [
-      { key: '1-6', label: 'lanes' },
+      { key: '1-7', label: 'lanes' },
       { key: '[/]', label: 'switch' },
     ],
     center: [
@@ -877,6 +950,8 @@ function renderStatusLine(model: DashboardModel): string {
       ? `${laneTitle(page.sourceLane)} / ${shortId(page.submissionId)}`
     : page.kind === 'governance'
       ? `${laneTitle(page.sourceLane)} / ${shortId(page.entityId)}`
+      : page.kind === 'suggestion'
+        ? `${laneTitle(page.sourceLane)} / ${shortId(page.suggestionId)}`
       : model.lane === 'now' && model.nowView === 'activity'
         ? `${laneTitle(model.lane)} Recent`
         : laneTitle(model.lane);
@@ -892,6 +967,8 @@ function renderStatusLine(model: DashboardModel): string {
       ? `Review page · ${shortId(page.submissionId)}`
     : page.kind === 'governance'
       ? `Governance page · ${shortId(page.entityId)}`
+    : page.kind === 'suggestion'
+      ? `Suggestion page · ${shortId(page.suggestionId)}`
       : currentSelectedItem(model)
         ? `${currentSelectedItem(model)?.label} · ${currentSelectedItem(model)?.primary}`
         : 'No selection';
@@ -994,8 +1071,9 @@ function buildPaletteItems(model: DashboardModel): CommandPaletteItem[] {
     { id: 'lane:plan', label: 'Open Plan lane', category: 'Navigate', shortcut: '2' },
     { id: 'lane:review', label: 'Open Review lane', category: 'Navigate', shortcut: '3' },
     { id: 'lane:settlement', label: 'Open Settlement lane', category: 'Navigate', shortcut: '4' },
-    { id: 'lane:campaigns', label: 'Open Campaigns lane', category: 'Navigate', shortcut: '5' },
-    { id: 'lane:graveyard', label: 'Open Graveyard lane', category: 'Navigate', shortcut: '6' },
+    { id: 'lane:suggestions', label: 'Open Suggestions lane', category: 'Navigate', shortcut: '5' },
+    { id: 'lane:campaigns', label: 'Open Campaigns lane', category: 'Navigate', shortcut: '6' },
+    { id: 'lane:graveyard', label: 'Open Graveyard lane', category: 'Navigate', shortcut: '7' },
     { id: 'refresh', label: 'Refresh snapshot', category: 'Global', shortcut: 'r' },
     ...(isLandingPage(model) && model.lane === 'now'
       ? [{
@@ -1009,7 +1087,8 @@ function buildPaletteItems(model: DashboardModel): CommandPaletteItem[] {
   ];
 
   if (isLandingPage(model)
-    && (reviewPageForItem(currentSelectedItem(model))
+    && (suggestionIdForItem(currentSelectedItem(model))
+      || reviewPageForItem(currentSelectedItem(model))
       || questIdForItem(currentSelectedItem(model))
       || governanceIdForItem(currentSelectedItem(model)))) {
     items.push({ id: 'open-page', label: 'Open selected item page', category: 'Inspect', shortcut: 'Enter' });
@@ -1021,6 +1100,10 @@ function buildPaletteItems(model: DashboardModel): CommandPaletteItem[] {
   const governance = selectedGovernanceArtifact(model);
   if (governance && !isLandingPage(model)) {
     items.push({ id: 'comment', label: 'Comment on this artifact', category: 'Action', shortcut: ';' });
+  }
+  const suggestion = selectedAiSuggestion(model);
+  if (suggestion && !isLandingPage(model)) {
+    items.push({ id: 'comment', label: 'Comment on this suggestion', category: 'Action', shortcut: ';' });
   }
   if (currentPage(model).kind === 'review') {
     items.push({ id: 'comment', label: 'Comment on this submission', category: 'Action', shortcut: ';' });
@@ -1231,6 +1314,18 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
       }
       case 'comment': {
         if (isLandingPage(model)) return [model, []];
+        const suggestion = selectedAiSuggestion(model);
+        if (suggestion) {
+          return [{
+            ...model,
+            mode: 'input',
+            inputState: {
+              label: `Comment on ${suggestion.id}:`,
+              value: '',
+              action: { kind: 'comment', targetId: suggestion.id },
+            },
+          }, []];
+        }
         const governance = selectedGovernanceArtifact(model);
         if (governance) {
           return [{
@@ -1309,6 +1404,8 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         return [switchLaneWithWatermark(resetToLanding(model), 'review', deps), []];
       case 'lane:settlement':
         return [switchLaneWithWatermark(resetToLanding(model), 'settlement', deps), []];
+      case 'lane:suggestions':
+        return [switchLaneWithWatermark(resetToLanding(model), 'suggestions', deps), []];
       case 'lane:campaigns':
         return [switchLaneWithWatermark(resetToLanding(model), 'campaigns', deps), []];
       case 'lane:graveyard':
@@ -2011,6 +2108,21 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
               snapshot: model.snapshot,
               page,
               artifact,
+              detail: model.pageDetail,
+              sourceItem: currentSelectedItem(model),
+              style,
+              width: w,
+              height: h,
+            });
+          }
+        } else if (model.snapshot && page.kind === 'suggestion') {
+          const suggestion = selectedAiSuggestion(model);
+          if (suggestion) {
+            content = suggestionPageView({
+              model,
+              snapshot: model.snapshot,
+              page,
+              suggestion,
               detail: model.pageDetail,
               sourceItem: currentSelectedItem(model),
               style,

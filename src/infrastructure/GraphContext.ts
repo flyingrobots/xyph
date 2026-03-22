@@ -60,12 +60,25 @@ import type {
   StoryNode,
   SubmissionNode,
   SuggestionNode,
+  AiSuggestionNode,
   CollapseProposalGovernanceDetail,
   AttestationGovernanceDetail,
   GovernanceArtifactNode,
 } from '../domain/models/dashboard.js';
 import { VALID_SUGGESTION_STATUSES } from '../domain/entities/Suggestion.js';
 import type { SuggestionStatus } from '../domain/entities/Suggestion.js';
+import {
+  VALID_AI_SUGGESTION_AUDIENCES,
+  VALID_AI_SUGGESTION_KINDS,
+  VALID_AI_SUGGESTION_ORIGINS,
+  VALID_AI_SUGGESTION_STATUSES,
+} from '../domain/entities/AiSuggestion.js';
+import type {
+  AiSuggestionAudience,
+  AiSuggestionKind,
+  AiSuggestionOrigin,
+  AiSuggestionStatus,
+} from '../domain/entities/AiSuggestion.js';
 import type { LayerScore } from '../domain/services/analysis/types.js';
 import type { RequirementKind, RequirementPriority } from '../domain/entities/Requirement.js';
 import { VALID_REQUIREMENT_KINDS, VALID_REQUIREMENT_PRIORITIES } from '../domain/entities/Requirement.js';
@@ -894,7 +907,75 @@ class GraphContextImpl implements GraphContext {
     // --- Build suggestions (M11 Phase 4) ---
     log('Building suggestion models…');
     const suggestions: SuggestionNode[] = [];
+    const aiSuggestions: AiSuggestionNode[] = [];
     for (const n of suggestionNodes) {
+      if (n.props['type'] === 'ai_suggestion') {
+        const kind = n.props['suggestion_kind'];
+        const title = n.props['title'];
+        const summary = n.props['summary'];
+        const status = n.props['status'];
+        const audience = n.props['audience'];
+        const origin = n.props['origin'];
+        const suggestedBy = n.props['suggested_by'];
+        const suggestedAt = n.props['suggested_at'];
+
+        if (
+          typeof kind !== 'string' ||
+          !VALID_AI_SUGGESTION_KINDS.has(kind) ||
+          typeof title !== 'string' ||
+          typeof summary !== 'string' ||
+          typeof status !== 'string' ||
+          !VALID_AI_SUGGESTION_STATUSES.has(status) ||
+          typeof audience !== 'string' ||
+          !VALID_AI_SUGGESTION_AUDIENCES.has(audience) ||
+          typeof origin !== 'string' ||
+          !VALID_AI_SUGGESTION_ORIGINS.has(origin) ||
+          typeof suggestedBy !== 'string' ||
+          typeof suggestedAt !== 'number'
+        ) {
+          continue;
+        }
+
+        const targetId = n.props['target_id'];
+        const requestedBy = n.props['requested_by'];
+        const why = n.props['why'];
+        const evidence = n.props['evidence'];
+        const nextAction = n.props['next_action'];
+        const relatedIdsRaw = n.props['related_ids'];
+
+        let relatedIds: string[] = [];
+        if (typeof relatedIdsRaw === 'string') {
+          try {
+            const parsed = JSON.parse(relatedIdsRaw) as unknown;
+            if (Array.isArray(parsed)) {
+              relatedIds = parsed.filter((entry): entry is string => typeof entry === 'string');
+            }
+          } catch {
+            relatedIds = [];
+          }
+        }
+
+        aiSuggestions.push({
+          id: n.id,
+          type: 'ai-suggestion',
+          kind: kind as AiSuggestionKind,
+          title,
+          summary,
+          status: status as AiSuggestionStatus,
+          audience: audience as AiSuggestionAudience,
+          origin: origin as AiSuggestionOrigin,
+          suggestedBy,
+          suggestedAt,
+          targetId: typeof targetId === 'string' ? targetId : undefined,
+          requestedBy: typeof requestedBy === 'string' ? requestedBy : undefined,
+          why: typeof why === 'string' ? why : undefined,
+          evidence: typeof evidence === 'string' ? evidence : undefined,
+          nextAction: typeof nextAction === 'string' ? nextAction : undefined,
+          relatedIds,
+        });
+        continue;
+      }
+
       if (n.props['type'] !== 'suggestion') continue;
       const testFile = n.props['test_file'];
       const targetId = n.props['target_id'];
@@ -1021,7 +1102,7 @@ class GraphContextImpl implements GraphContext {
     const snap: GraphSnapshot = {
       campaigns, quests, intents, scrolls, approvals,
       submissions, reviews, decisions,
-      stories, requirements, criteria, evidence, policies, suggestions,
+      stories, requirements, criteria, evidence, policies, suggestions, aiSuggestions,
       governanceArtifacts,
       asOf: Date.now(), graphMeta, sortedTaskIds, sortedCampaignIds,
       transitiveDownstream,

@@ -2,13 +2,14 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 
-export type ObserverWatermarkLane = 'now' | 'plan' | 'review' | 'settlement' | 'campaigns' | 'graveyard';
+export type ObserverWatermarkLane = 'now' | 'plan' | 'review' | 'settlement' | 'suggestions' | 'campaigns' | 'graveyard';
 
 export interface ObserverWatermarks {
   now: number;
   plan: number;
   review: number;
   settlement: number;
+  suggestions: number;
   campaigns: number;
   graveyard: number;
 }
@@ -41,7 +42,7 @@ interface PersistedObserverWatermarkState {
   scopes: Record<string, Partial<ObserverWatermarks> | PersistedScopeStateV2 | undefined>;
 }
 
-const LANE_KEYS: ObserverWatermarkLane[] = ['now', 'plan', 'review', 'settlement', 'campaigns', 'graveyard'];
+const LANE_KEYS: ObserverWatermarkLane[] = ['now', 'plan', 'review', 'settlement', 'suggestions', 'campaigns', 'graveyard'];
 
 export function emptyObserverWatermarks(): ObserverWatermarks {
   return {
@@ -49,6 +50,7 @@ export function emptyObserverWatermarks(): ObserverWatermarks {
     plan: 0,
     review: 0,
     settlement: 0,
+    suggestions: 0,
     campaigns: 0,
     graveyard: 0,
   };

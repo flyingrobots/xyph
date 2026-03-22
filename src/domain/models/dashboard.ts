@@ -9,6 +9,12 @@ import type { SubmissionStatus, ReviewVerdict, DecisionKind } from '../entities/
 import type { RequirementKind, RequirementPriority } from '../entities/Requirement.js';
 import type { EvidenceKind, EvidenceResult } from '../entities/Evidence.js';
 import type { SuggestionStatus } from '../entities/Suggestion.js';
+import type {
+  AiSuggestionAudience,
+  AiSuggestionKind,
+  AiSuggestionOrigin,
+  AiSuggestionStatus,
+} from '../entities/AiSuggestion.js';
 import type { LayerScore } from '../services/analysis/types.js';
 
 export type { ApprovalGateStatus };
@@ -200,6 +206,25 @@ export interface SuggestionNode {
   rationale?: string;
   resolvedBy?: string;
   resolvedAt?: number;
+}
+
+export interface AiSuggestionNode {
+  id: string;
+  type: 'ai-suggestion';
+  kind: AiSuggestionKind;
+  title: string;
+  summary: string;
+  status: AiSuggestionStatus;
+  audience: AiSuggestionAudience;
+  origin: AiSuggestionOrigin;
+  suggestedBy: string;
+  suggestedAt: number;
+  targetId?: string;
+  requestedBy?: string;
+  why?: string;
+  evidence?: string;
+  nextAction?: string;
+  relatedIds: string[];
 }
 
 export type NarrativeNodeType = 'spec' | 'adr' | 'note';
@@ -421,6 +446,7 @@ export interface GraphSnapshot {
   policies: PolicyNode[];
   // Auto-linking suggestions (M11 Phase 4)
   suggestions: SuggestionNode[];
+  aiSuggestions: AiSuggestionNode[];
   governanceArtifacts: GovernanceArtifactNode[];
   asOf: number;
   graphMeta?: GraphMeta;

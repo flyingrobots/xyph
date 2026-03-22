@@ -2,6 +2,7 @@ import { createNavigableTableState, navTableFocusNext, type NavigableTableState 
 import { SUBMISSION_STATUS_ORDER } from '../../domain/entities/Submission.js';
 import type { ObserverSeenItems, ObserverWatermarkLane, ObserverWatermarks } from './observer-watermarks.js';
 import type {
+  AiSuggestionNode,
   CampaignNode,
   ComparisonArtifactNode,
   GovernanceArtifactNode,
@@ -14,7 +15,7 @@ import type {
   DecisionNode,
 } from '../../domain/models/dashboard.js';
 
-export type CockpitLaneId = 'now' | 'plan' | 'review' | 'settlement' | 'campaigns' | 'graveyard';
+export type CockpitLaneId = 'now' | 'plan' | 'review' | 'settlement' | 'suggestions' | 'campaigns' | 'graveyard';
 export type NowViewMode = 'queue' | 'activity';
 
 export interface CockpitLane {
@@ -31,7 +32,7 @@ export type CockpitAttentionState = 'none' | 'review' | 'ready' | 'blocked';
 
 interface CockpitBaseItem {
   id: string;
-  kind: 'quest' | 'submission' | 'comparison-artifact' | 'collapse-proposal' | 'attestation' | 'campaign' | 'activity';
+  kind: 'quest' | 'submission' | 'comparison-artifact' | 'collapse-proposal' | 'attestation' | 'campaign' | 'activity' | 'ai-suggestion';
   label: string;
   primary: string;
   secondary: string;
@@ -93,6 +94,11 @@ export interface ActivityCockpitItem extends CockpitBaseItem {
   event: ActivityEvent;
 }
 
+export interface AiSuggestionCockpitItem extends CockpitBaseItem {
+  kind: 'ai-suggestion';
+  suggestion: AiSuggestionNode;
+}
+
 interface AttentionDetail {
   state: CockpitAttentionState;
   reason?: string;
@@ -105,9 +111,10 @@ export type CockpitItem =
   | CollapseCockpitItem
   | AttestationCockpitItem
   | CampaignCockpitItem
-  | ActivityCockpitItem;
+  | ActivityCockpitItem
+  | AiSuggestionCockpitItem;
 
-const LANE_ORDER: CockpitLaneId[] = ['now', 'plan', 'review', 'settlement', 'campaigns', 'graveyard'];
+const LANE_ORDER: CockpitLaneId[] = ['now', 'plan', 'review', 'settlement', 'suggestions', 'campaigns', 'graveyard'];
 
 const QUEST_STATUS_ORDER: Record<string, number> = {
   IN_PROGRESS: 0,
@@ -126,7 +133,7 @@ export function cockpitLaneOrder(): readonly CockpitLaneId[] {
 export function shortId(id: unknown): string {
   if (typeof id === 'string') {
     return id.replace(
-      /^(task:|submission:|comparison-artifact:|collapse-proposal:|attestation:|campaign:|milestone:|worldline:|intent:|patchset:)/,
+      /^(task:|submission:|comparison-artifact:|collapse-proposal:|attestation:|campaign:|milestone:|worldline:|intent:|patchset:|suggestion:)/,
       '',
     );
   }
@@ -402,6 +409,46 @@ function buildCampaignItem(campaign: CampaignNode, snapshot: GraphSnapshot): Cam
   };
 }
 
+function aiSuggestionAttention(suggestion: AiSuggestionNode): AttentionDetail {
+  if (suggestion.status === 'accepted' || suggestion.status === 'implemented' || suggestion.status === 'rejected') {
+    return { state: 'none' };
+  }
+  if (suggestion.audience === 'agent') {
+    return {
+      state: 'ready',
+      reason: 'AI suggestion is available for agent pickup',
+    };
+  }
+  return {
+    state: 'review',
+    reason: suggestion.requestedBy
+      ? 'AI suggestion is waiting on human judgment after an explicit request'
+      : 'AI suggestion is waiting on human judgment',
+  };
+}
+
+function buildAiSuggestionItem(suggestion: AiSuggestionNode): AiSuggestionCockpitItem {
+  const attention = aiSuggestionAttention(suggestion);
+  const secondaryParts = [
+    suggestion.targetId ? `target ${shortId(suggestion.targetId)}` : null,
+    suggestion.kind,
+    suggestion.origin === 'request' && suggestion.requestedBy ? `asked by ${shortPrincipal(suggestion.requestedBy)}` : null,
+  ].filter(Boolean);
+  return {
+    id: suggestion.id,
+    kind: 'ai-suggestion',
+    label: 'SUGGEST',
+    primary: suggestion.title,
+    secondary: secondaryParts.join(' · ') || 'AI advisory suggestion',
+    state: suggestion.status,
+    cue: shortPrincipal(suggestion.suggestedBy),
+    timestamp: suggestion.suggestedAt,
+    attentionState: attention.state,
+    ...(attention.reason ? { attentionReason: attention.reason } : {}),
+    suggestion,
+  };
+}
+
 function buildActivityItem(event: ActivityEvent, source?: Pick<CockpitBaseItem, 'attentionState' | 'attentionReason'>): ActivityCockpitItem {
   const refs = [event.targetId ? shortId(event.targetId) : null, event.relatedId ? shortId(event.relatedId) : null]
     .filter(Boolean)
@@ -445,6 +492,10 @@ function compareCampaignItems(a: CampaignCockpitItem, b: CampaignCockpitItem): n
   const byStatus = (QUEST_STATUS_ORDER[a.campaign.status] ?? 99) - (QUEST_STATUS_ORDER[b.campaign.status] ?? 99);
   if (byStatus !== 0) return byStatus;
   return a.id.localeCompare(b.id);
+}
+
+function compareAiSuggestionItems(a: AiSuggestionCockpitItem, b: AiSuggestionCockpitItem): number {
+  return (b.timestamp ?? 0) - (a.timestamp ?? 0) || a.id.localeCompare(b.id);
 }
 
 function buildQuestActivityEvents(quest: QuestNode): ActivityEvent[] {
@@ -604,6 +655,19 @@ function buildGovernanceActivityEvent(artifact: GovernanceArtifactNode): Activit
   }
 }
 
+function buildAiSuggestionActivityEvent(suggestion: AiSuggestionNode): ActivityEvent {
+  return {
+    id: `${suggestion.id}:${suggestion.suggestedAt}`,
+    label: 'SUGGEST',
+    state: suggestion.status,
+    summary: suggestion.title,
+    actor: suggestion.suggestedBy,
+    at: suggestion.suggestedAt,
+    targetId: suggestion.targetId,
+    relatedId: suggestion.id,
+  };
+}
+
 function buildActivityItems(snapshot: GraphSnapshot): CockpitItem[] {
   const items: ActivityCockpitItem[] = [];
   for (const quest of snapshot.quests) {
@@ -622,6 +686,10 @@ function buildActivityItems(snapshot: GraphSnapshot): CockpitItem[] {
   for (const artifact of snapshot.governanceArtifacts) {
     const source = buildGovernanceItem(artifact);
     items.push(buildActivityItem(buildGovernanceActivityEvent(artifact), source));
+  }
+  for (const suggestion of snapshot.aiSuggestions) {
+    const source = buildAiSuggestionItem(suggestion);
+    items.push(buildActivityItem(buildAiSuggestionActivityEvent(suggestion), source));
   }
   return items.sort(compareGovernanceItems);
 }
@@ -675,6 +743,15 @@ function buildOperationItems(snapshot: GraphSnapshot, agentId?: string): Cockpit
     }
   }
 
+  for (const suggestion of snapshot.aiSuggestions) {
+    if (suggestion.status !== 'suggested' && suggestion.status !== 'queued') continue;
+    const item = buildAiSuggestionItem(suggestion);
+    item.operationReason = suggestion.audience === 'agent'
+      ? 'AI suggestion queued for agent pickup'
+      : 'AI suggestion waiting for human triage';
+    items.push(item);
+  }
+
   return items.sort((a, b) => operationPriority(a, agentId) - operationPriority(b, agentId)
     || (b.timestamp ?? 0) - (a.timestamp ?? 0)
     || a.id.localeCompare(b.id));
@@ -695,6 +772,8 @@ function operationPriority(item: CockpitItem, agentId?: string): number {
       return 8;
     case 'attestation':
       return 9;
+    case 'ai-suggestion':
+      return item.suggestion.audience === 'agent' ? 8 : 9;
     case 'campaign':
       return 10;
     case 'activity':
@@ -741,6 +820,7 @@ export function cockpitLanes(snapshot: GraphSnapshot | null, agentId?: string, n
       { id: 'plan', title: 'Plan', description: 'Live quest surface', count: 0, freshCount: 0, attentionCount: 0, attentionTone: 'none' },
       { id: 'review', title: 'Review', description: 'Submission lanes', count: 0, freshCount: 0, attentionCount: 0, attentionTone: 'none' },
       { id: 'settlement', title: 'Settlement', description: 'Compare, attest, collapse', count: 0, freshCount: 0, attentionCount: 0, attentionTone: 'none' },
+      { id: 'suggestions', title: 'Suggestions', description: 'AI advisory queue', count: 0, freshCount: 0, attentionCount: 0, attentionTone: 'none' },
       { id: 'campaigns', title: 'Campaigns', description: 'Strategic containers', count: 0, freshCount: 0, attentionCount: 0, attentionTone: 'none' },
       { id: 'graveyard', title: 'Graveyard', description: 'Rejected and retired work', count: 0, freshCount: 0, attentionCount: 0, attentionTone: 'none' },
     ];
@@ -773,6 +853,15 @@ export function cockpitLanes(snapshot: GraphSnapshot | null, agentId?: string, n
       freshCount: 0,
       attentionCount: laneAttentionCount(snapshot, 'settlement', agentId, nowView),
       attentionTone: laneAttentionToneForLane(snapshot, 'settlement', agentId, nowView),
+    },
+    {
+      id: 'suggestions',
+      title: 'Suggestions',
+      description: 'AI advisory queue',
+      count: snapshot.aiSuggestions.length,
+      freshCount: 0,
+      attentionCount: snapshot.aiSuggestions.filter((suggestion) => aiSuggestionAttention(suggestion).state !== 'none').length,
+      attentionTone: laneAttentionTone(snapshot.aiSuggestions.map(buildAiSuggestionItem)),
     },
     { id: 'campaigns', title: 'Campaigns', description: 'Strategic containers', count: snapshot.campaigns.length, freshCount: 0, attentionCount: 0, attentionTone: 'none' },
     {
@@ -810,6 +899,10 @@ export function laneItems(snapshot: GraphSnapshot, lane: CockpitLaneId, agentId?
       return snapshot.campaigns
         .map((campaign) => buildCampaignItem(campaign, snapshot))
         .sort(compareCampaignItems);
+    case 'suggestions':
+      return snapshot.aiSuggestions
+        .map(buildAiSuggestionItem)
+        .sort(compareAiSuggestionItems);
     case 'graveyard':
       return snapshot.quests
         .filter((quest) => quest.status === 'GRAVEYARD')

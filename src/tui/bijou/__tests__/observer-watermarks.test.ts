@@ -22,7 +22,7 @@ describe('observer-watermarks', () => {
     expect(store.load(TEST_SCOPE)).toEqual(emptyObserverFreshnessState());
 
     store.save(TEST_SCOPE, {
-      watermarks: { now: 10, plan: 20, review: 30, settlement: 40, campaigns: 50, graveyard: 60 },
+      watermarks: { now: 10, plan: 20, review: 30, settlement: 40, suggestions: 45, campaigns: 50, graveyard: 60 },
       seenItems: { 'plan:quest:task:Q1': 99 },
     });
 
@@ -32,6 +32,7 @@ describe('observer-watermarks', () => {
         plan: 20,
         review: 30,
         settlement: 40,
+        suggestions: 45,
         campaigns: 50,
         graveyard: 60,
       },
@@ -48,7 +49,7 @@ describe('observer-watermarks', () => {
     expect(store.load(TEST_SCOPE)).toEqual(emptyObserverFreshnessState());
 
     store.save(TEST_SCOPE, {
-      watermarks: { now: 7, plan: 0, review: 0, settlement: 0, campaigns: 0, graveyard: 0 },
+      watermarks: { now: 7, plan: 0, review: 0, settlement: 0, suggestions: 0, campaigns: 0, graveyard: 0 },
       seenItems: {},
     });
 

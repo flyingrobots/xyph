@@ -75,7 +75,7 @@ describe('DashboardApp', () => {
     expect(loaded.showLanding).toBe(false);
   });
 
-  it('switches lanes with number keys 1-6', () => {
+  it('switches lanes with number keys 1-7', () => {
     const app = buildApp();
     const loaded = ready(app, makeSnapshot());
 
@@ -84,8 +84,9 @@ describe('DashboardApp', () => {
       ['2', 'plan'],
       ['3', 'review'],
       ['4', 'settlement'],
-      ['5', 'campaigns'],
-      ['6', 'graveyard'],
+      ['5', 'suggestions'],
+      ['6', 'campaigns'],
+      ['7', 'graveyard'],
     ];
 
     for (const [press, lane] of lanes) {
@@ -711,7 +712,7 @@ describe('DashboardApp', () => {
       ],
     }));
 
-    const [graveyard] = app.update(key('6'), loaded);
+    const [graveyard] = app.update(key('7'), loaded);
     expect(graveyard.lane).toBe('graveyard');
     expect(graveyard.table.rows).toHaveLength(1);
 
@@ -730,6 +731,47 @@ describe('DashboardApp', () => {
     expect(pagePlain).toContain('Comment on this quest');
   });
 
+  it('shows the Suggestions lane and opens a suggestion page from it', () => {
+    const app = buildApp();
+    const loaded = ready(app, makeSnapshot({
+      aiSuggestions: [{
+        id: 'suggestion:S1',
+        type: 'ai-suggestion',
+        kind: 'quest',
+        title: 'Create a traceability quest',
+        summary: 'This area would benefit from a dedicated quest for computed completion.',
+        status: 'suggested',
+        audience: 'human',
+        origin: 'spontaneous',
+        suggestedBy: 'agent.prime',
+        suggestedAt: 100,
+        targetId: 'task:Q1',
+        relatedIds: ['campaign:TRACE'],
+      }],
+      quests: [{ id: 'task:Q1', title: 'Quest One', status: 'READY', hours: 1 }],
+    }));
+
+    const [suggestions] = app.update(key('5'), loaded);
+    expect(suggestions.lane).toBe('suggestions');
+    expect(suggestions.table.rows).toHaveLength(1);
+
+    const lanePlain = strip(app.view(suggestions) as string);
+    expect(lanePlain).toContain('Suggestions');
+    expect(lanePlain).toContain('[AI]');
+    expect(lanePlain).toContain('Create a traceability quest');
+
+    const [page] = app.update(key('enter'), suggestions);
+    expect(page.pageStack).toEqual([
+      { kind: 'landing' },
+      { kind: 'suggestion', suggestionId: 'suggestion:S1', sourceLane: 'suggestions' },
+    ]);
+
+    const pagePlain = strip(app.view(page) as string);
+    expect(pagePlain).toContain('Landing / Suggestions / S1');
+    expect(pagePlain).toContain('Suggestions [AI]');
+    expect(pagePlain).toContain('Comment on this suggestion');
+  });
+
   it('opens a page-local comment input from a quest page', () => {
     const app = buildApp();
     const loaded = ready(app, makeSnapshot({
@@ -745,6 +787,33 @@ describe('DashboardApp', () => {
     expect(comment.inputState?.label).toContain('Comment on task:Q1:');
   });
 
+  it('opens a page-local comment input from a suggestion page', () => {
+    const app = buildApp();
+    const loaded = ready(app, makeSnapshot({
+      aiSuggestions: [{
+        id: 'suggestion:S1',
+        type: 'ai-suggestion',
+        kind: 'general',
+        title: 'Improve queue ranking',
+        summary: 'The queue should probably rank active blockers above generic backlog churn.',
+        status: 'suggested',
+        audience: 'either',
+        origin: 'spontaneous',
+        suggestedBy: 'agent.prime',
+        suggestedAt: 100,
+        relatedIds: [],
+      }],
+    }));
+
+    const [suggestions] = app.update(key('5'), loaded);
+    const [page] = app.update(key('enter'), suggestions);
+    const [comment] = app.update(key(';'), page);
+
+    expect(comment.mode).toBe('input');
+    expect(comment.inputState?.action).toEqual({ kind: 'comment', targetId: 'suggestion:S1' });
+    expect(comment.inputState?.label).toContain('Comment on suggestion:S1:');
+  });
+
   it('opens a page-local reopen confirmation for a graveyard quest page', () => {
     const app = buildApp();
     const loaded = ready(app, makeSnapshot({
@@ -756,7 +825,7 @@ describe('DashboardApp', () => {
       }],
     }));
 
-    const [graveyard] = app.update(key('6'), loaded);
+    const [graveyard] = app.update(key('7'), loaded);
     const [page] = app.update(key('enter'), graveyard);
     const [confirm] = app.update(key('o'), page);
 

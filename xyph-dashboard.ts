@@ -7,7 +7,7 @@
  *
  * Keys:
  *   [ / ]           — cycle cockpit lanes (prev / next)
- *   1-6             — jump to lane (Now, Plan, Review, Settlement, Campaigns, Graveyard)
+ *   1-7             — jump to lane (Now, Plan, Review, Settlement, Suggestions, Campaigns, Graveyard)
  *   Enter           — open the selected item page
  *   Esc/Backspace   — return from an item page to the landing cockpit
  *   v               — toggle Now lane between action queue and recent activity
@@ -18,7 +18,7 @@
  *   m               — toggle "My Stuff" drawer (quests, submissions, activity)
  *   Shift+S         — mark the current lane seen
  *   Mouse           — click lanes/rows, wheel-scroll panes, dismiss the quest tree
- *   Signals         — freshness dots clear on visit; Review/Settlement keep persistent attention badges until resolved
+ *   Signals         — freshness dots clear on visit; Review/Settlement keep persistent attention badges until resolved; Suggestions are marked with [AI]
  *   r               — refresh snapshot
  *   : or /          — command palette
  *   q               — quit

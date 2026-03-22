@@ -11,9 +11,119 @@ import type { Command } from 'commander';
 import type { CliContext } from '../context.js';
 import { createErrorHandler } from '../errorHandler.js';
 import { assertPrefix, assertNodeExists } from '../validators.js';
+import { RecordService } from '../../domain/services/RecordService.js';
+import {
+  VALID_AI_SUGGESTION_AUDIENCES,
+  VALID_AI_SUGGESTION_KINDS,
+  VALID_AI_SUGGESTION_STATUSES,
+  type AiSuggestionAudience,
+  type AiSuggestionKind,
+  type AiSuggestionStatus,
+} from '../../domain/entities/AiSuggestion.js';
 
 export function registerSuggestionCommands(program: Command, ctx: CliContext): void {
   const withErrorHandler = createErrorHandler(ctx);
+  const records = new RecordService(ctx.graphPort);
+
+  program
+    .command('suggest')
+    .description('Record an AI suggestion as a visible advisory artifact')
+    .requiredOption('--kind <kind>', 'quest | dependency | promotion | campaign | intent | governance | reopen | general')
+    .requiredOption('--title <text>', 'Short suggestion title')
+    .requiredOption('--summary <text>', 'What is being suggested and why it matters')
+    .option('--for <audience>', 'human | agent | either', 'either')
+    .option('--status <status>', 'suggested | queued | accepted | rejected | implemented', 'suggested')
+    .option('--target <id>', 'Primary target entity ID')
+    .option('--related <ids...>', 'Related entity IDs')
+    .option('--requested-by <principal>', 'Principal that explicitly requested the suggestion')
+    .option('--why <text>', 'Why the suggestion is worth considering')
+    .option('--evidence <text>', 'Supporting evidence for the suggestion')
+    .option('--next <text>', 'Recommended next action if the suggestion is accepted')
+    .option('--id <id>', 'Explicit suggestion ID (must use the suggestion: prefix)')
+    .option('--idempotency-key <key>', 'Stable idempotency key for repeatable suggestion emission')
+    .action(withErrorHandler(async (opts: {
+      kind: string;
+      title: string;
+      summary: string;
+      for: string;
+      status: string;
+      target?: string;
+      related?: string[];
+      requestedBy?: string;
+      why?: string;
+      evidence?: string;
+      next?: string;
+      id?: string;
+      idempotencyKey?: string;
+    }) => {
+      const kind = opts.kind.trim().toLowerCase();
+      const audience = opts.for.trim().toLowerCase();
+      const status = opts.status.trim().toLowerCase();
+      const title = opts.title.trim();
+      const summary = opts.summary.trim();
+
+      if (!VALID_AI_SUGGESTION_KINDS.has(kind)) {
+        throw new Error(`[INVALID_ARGS] --kind must be one of ${[...VALID_AI_SUGGESTION_KINDS].join(', ')}`);
+      }
+      if (!VALID_AI_SUGGESTION_AUDIENCES.has(audience)) {
+        throw new Error(`[INVALID_ARGS] --for must be one of ${[...VALID_AI_SUGGESTION_AUDIENCES].join(', ')}`);
+      }
+      if (!VALID_AI_SUGGESTION_STATUSES.has(status)) {
+        throw new Error(`[INVALID_ARGS] --status must be one of ${[...VALID_AI_SUGGESTION_STATUSES].join(', ')}`);
+      }
+      if (title.length < 4) {
+        throw new Error('[INVALID_ARGS] --title must be at least 4 characters');
+      }
+      if (summary.length < 8) {
+        throw new Error('[INVALID_ARGS] --summary must be at least 8 characters');
+      }
+      if (opts.id) {
+        assertPrefix(opts.id, 'suggestion:', 'Suggestion ID');
+      }
+
+      const result = await records.createAiSuggestion({
+        id: opts.id,
+        idempotencyKey: opts.idempotencyKey,
+        kind: kind as AiSuggestionKind,
+        title,
+        summary,
+        suggestedBy: ctx.agentId,
+        audience: audience as AiSuggestionAudience,
+        origin: opts.requestedBy ? 'request' : 'spontaneous',
+        status: status as AiSuggestionStatus,
+        targetId: opts.target,
+        relatedIds: opts.related ?? [],
+        requestedBy: opts.requestedBy,
+        why: opts.why,
+        evidence: opts.evidence,
+        nextAction: opts.next,
+      });
+
+      if (ctx.json) {
+        ctx.jsonOut({
+          success: true,
+          command: 'suggest',
+          data: {
+            id: result.id,
+            kind,
+            title,
+            summary,
+            audience,
+            origin: opts.requestedBy ? 'request' : 'spontaneous',
+            status,
+            targetId: opts.target ?? null,
+            relatedIds: opts.related ?? [],
+            requestedBy: opts.requestedBy ?? null,
+            patch: result.patch,
+            suggestedAt: result.suggestedAt,
+            contentOid: result.contentOid,
+          },
+        });
+        return;
+      }
+
+      ctx.ok(`[AI] Suggestion ${result.id} recorded. Patch: ${result.patch}`);
+    }));
 
   const suggestionCmd = program
     .command('suggestion')

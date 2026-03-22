@@ -614,13 +614,14 @@ cockpit demo capture is still pending.
 XYPH has an interactive BIJOU-powered TUI that provides a visual browser for
 your project and its XYPH artifacts. The current shell runs on BIJOU `3.1.0`
 and now treats the cockpit as the XYPH landing page instead of forcing every
-surface into one eternal inspector layout. The landing shell centers on six
+surface into one eternal inspector layout. The landing shell centers on seven
 lanes:
 
 - `Now` for cross-surface action
 - `Plan` for the live quest surface
 - `Review` for submissions
 - `Settlement` for compare/attest/collapse artifacts
+- `Suggestions` for visible advisory AI suggestions and recommendation work
 - `Campaigns` for strategic containers
 - `Graveyard` for rejected and retired work
 
@@ -631,26 +632,30 @@ the quick operator overview, not the full design contract.
 The left rail keeps those lanes visible, the center worklist stays scannable as
 a contained-list-style queue, and the right inspector keeps the currently
 selected record legible without dropping to raw JSON first. Press `Enter` on a
-selected quest, submission, or governance record to drill into a dedicated item
-page with a breadcrumb under the hero (`Landing / Plan / Q1`,
-`Landing / Review / REV-1`, `Landing / Graveyard / G1`, and so on), then use
-`Esc` or `Backspace` to return to the landing surface. Quest pages now expose
-their own action strip, so drill-in is no longer just a read surface: you can
-comment directly from the page, reopen graveyarded quests, and keep
-claim/promote/reject/review actions visible in the place where full context
-actually lives. `Review` items now open a dedicated review page too, with
-lifecycle/progress, shared blocker and missing-evidence judgments, next lawful
-actions, review/decision history, and page-local comment / approve /
-request-changes actions for the current tip patchset. `Settlement` artifacts
-now open their own governance page too, so compare / attestation / collapse
-records are no longer forced through quest pages or the landing inspector when
-you need their real progress, blockers, missing evidence, and next lawful
-actions. The cockpit is fully keyboard-driven, but it now also supports mouse
-clicks for lane/row selection and wheel scrolling in the main panes. `Plan`,
-`Campaigns`, `Graveyard`, and the `Now` activity stream use observer-local
-freshness markers from `~/.xyph/dashboard-state.json`, while `Review` and
-`Settlement` now keep a persistent action-needed badge until the underlying
-submission or governance artifact is actually resolved.
+selected quest, suggestion, submission, or governance record to drill into a
+dedicated item page with a breadcrumb under the hero (`Landing / Plan / Q1`,
+`Landing / Suggestions / S1`, `Landing / Review / REV-1`,
+`Landing / Graveyard / G1`, and so on), then use `Esc` or `Backspace` to
+return to the landing surface. Quest pages now expose their own action strip,
+so drill-in is no longer just a read surface: you can comment directly from the
+page, reopen graveyarded quests, and keep claim/promote/reject/review actions
+visible in the place where full context actually lives. `Suggestions` items now
+open a dedicated suggestion page too, with `[AI]` labeling, lifecycle/progress,
+AI transparency copy, graph context, and page-local commenting so unsolicited
+or requested agent suggestions have a real home in the product. `Review` items
+now open a dedicated review page too, with lifecycle/progress, shared blocker
+and missing-evidence judgments, next lawful actions, review/decision history,
+and page-local comment / approve / request-changes actions for the current tip
+patchset. `Settlement` artifacts now open their own governance page too, so
+compare / attestation / collapse records are no longer forced through quest
+pages or the landing inspector when you need their real progress, blockers,
+missing evidence, and next lawful actions. The cockpit is fully
+keyboard-driven, but it now also supports mouse clicks for lane/row selection
+and wheel scrolling in the main panes. `Plan`, `Suggestions`, `Campaigns`,
+`Graveyard`, and the `Now` activity stream use observer-local freshness
+markers from `~/.xyph/dashboard-state.json`, while `Review` and `Settlement`
+now keep a persistent action-needed badge until the underlying submission or
+governance artifact is actually resolved.
 
 ```bash
 XYPH_AGENT_ID=human.yourname ./xyph-dashboard.ts
@@ -658,13 +663,14 @@ XYPH_AGENT_ID=human.yourname ./xyph-dashboard.ts
 
 | Key | Context | Action |
 |---|---|---|
-| `1`-`6` | Global | Jump to Now / Plan / Review / Settlement / Campaigns / Graveyard |
+| `1`-`7` | Global | Jump to Now / Plan / Review / Settlement / Suggestions / Campaigns / Graveyard |
 | `[` / `]` | Global | Cycle lanes backward / forward |
 | `j` / `k` | Cockpit | Select next / previous row |
 | `g` / `G` | Cockpit | Jump to first / last row |
-| `Enter` | Landing page | Open the selected quest / review / governance page |
+| `Enter` | Landing page | Open the selected quest / suggestion / review / governance page |
 | `Esc` / `Backspace` | Item page | Return to the landing page |
 | `;` | Quest page | Comment on the open quest |
+| `;` | Suggestion page | Comment on the open AI suggestion |
 | `;` | Review page | Comment on the open submission |
 | `;` | Governance page | Comment on the open governance artifact |
 | `v` | Now lane | Toggle between the action queue and recent activity |
@@ -687,6 +693,29 @@ XYPH_AGENT_ID=human.yourname ./xyph-dashboard.ts
 | `PgDn` / `PgUp` | Landing / page | Page the worklist or the open item page |
 | `Shift+PgDn` / `Shift+PgUp` | Cockpit | Scroll the inspector |
 | `Esc` | Modal | Cancel / close |
+
+### AI Suggestions
+
+XYPH now has a first-class `Suggestions` lane and an explicit advisory CLI
+entry point. Agents can emit visible suggestions either in response to an
+explicit ask-AI request or spontaneously while working, as long as the idea is
+recorded as graph-visible advisory content instead of silently mutating truth.
+
+```bash
+npx tsx xyph-actuator.ts suggest \
+  --kind dependency \
+  --title "Recommend a dependency edge" \
+  --summary "This quest should probably depend on task:TRACE-001 before it moves to READY." \
+  --for either \
+  --target task:TRACE-002 \
+  --related task:TRACE-001 campaign:TRACE \
+  --why "The acceptance criteria rely on upstream trace output." \
+  --evidence "Recent review comments point at missing prerequisite work." \
+  --next "Open the suggestion page and either comment or convert it into planned work."
+```
+
+That command records a visible `suggestion:*` artifact with `[AI]`
+transparency. It does not bypass backlog, planning, review, or governance.
 
 ### XYPH CLI Reference
 
