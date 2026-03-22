@@ -36,7 +36,7 @@
     "zod": "^4.3.6"
   },
   "overrides": {
-    "flatted": "^3.4.1",
+    "flatted": "3.4.2",
     "minimatch": "^10.2.1",
     "tar": "7.5.11"
   },
