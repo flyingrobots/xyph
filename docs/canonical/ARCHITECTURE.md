@@ -107,11 +107,18 @@ services and shared projection models so:
 
 The first concrete implementation of this rule now exists:
 
+- the TUI `Review` lane now opens a dedicated review page for `submission:*`
+  items, using the shared submission/governance judgment model for lifecycle,
+  blockers, missing evidence, next lawful actions, and page-local review
+  actions
 - the TUI `Settlement` lane opens a dedicated governance page for
   `comparison-artifact:*`, `collapse-proposal:*`, and `attestation:*`
-- `xyph context` now emits a shared semantic packet for quest targets instead of
-  leaving blocker/evidence/next-action reasoning trapped inside human-only
+- `xyph context` now emits a shared semantic packet for quest targets instead
+  of leaving blocker/evidence/next-action reasoning trapped inside human-only
   presentation layers
+- `xyph briefing` and `xyph next` now carry compatible semantic subsets for
+  quest work and submission review candidates, so cold-start agent intake uses
+  the same field names and judgments the human review/governance pages use
 
 The product-design source of truth for these primitives lives in
 [`docs/XYPH_PRODUCT_DESIGN.md`](../XYPH_PRODUCT_DESIGN.md). This architecture

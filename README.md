@@ -632,21 +632,26 @@ contract.
 The left rail keeps those lanes visible, the center worklist stays scannable as
 a contained-list-style queue, and the right inspector keeps the currently
 selected record legible without dropping to raw JSON first. Press `Enter` on a
-selected quest-facing record to drill into a dedicated item page with a
-breadcrumb under the hero (`Landing / Plan / Q1`, `Landing / Graveyard / G1`,
-and so on), then use `Esc` or `Backspace` to return to the landing surface.
-Quest pages now expose their own action strip, so drill-in is no longer just a
-read surface: you can comment directly from the page, reopen graveyarded
-quests, and keep claim/promote/reject/review actions visible in the place where
-full context actually lives. `Settlement` artifacts now open their own
-governance page too, so compare / attestation / collapse records are no longer
-forced through quest pages or the landing inspector when you need their real
-progress, blockers, missing evidence, and next lawful actions. The cockpit is fully keyboard-driven, but it now
-also supports mouse clicks for lane/row selection and wheel scrolling in the
-main panes. `Plan`, `Campaigns`, `Graveyard`, and the `Now` activity stream use
-observer-local freshness markers from `~/.xyph/dashboard-state.json`, while
-`Review` and `Settlement` now keep a persistent action-needed badge until the
-underlying submission or governance artifact is actually resolved.
+selected quest, submission, or governance record to drill into a dedicated item
+page with a breadcrumb under the hero (`Landing / Plan / Q1`,
+`Landing / Review / REV-1`, `Landing / Graveyard / G1`, and so on), then use
+`Esc` or `Backspace` to return to the landing surface. Quest pages now expose
+their own action strip, so drill-in is no longer just a read surface: you can
+comment directly from the page, reopen graveyarded quests, and keep
+claim/promote/reject/review actions visible in the place where full context
+actually lives. `Review` items now open a dedicated review page too, with
+lifecycle/progress, shared blocker and missing-evidence judgments, next lawful
+actions, review/decision history, and page-local comment / approve /
+request-changes actions for the current tip patchset. `Settlement` artifacts
+now open their own governance page too, so compare / attestation / collapse
+records are no longer forced through quest pages or the landing inspector when
+you need their real progress, blockers, missing evidence, and next lawful
+actions. The cockpit is fully keyboard-driven, but it now also supports mouse
+clicks for lane/row selection and wheel scrolling in the main panes. `Plan`,
+`Campaigns`, `Graveyard`, and the `Now` activity stream use observer-local
+freshness markers from `~/.xyph/dashboard-state.json`, while `Review` and
+`Settlement` now keep a persistent action-needed badge until the underlying
+submission or governance artifact is actually resolved.
 
 ```bash
 XYPH_AGENT_ID=human.yourname ./xyph-dashboard.ts
@@ -658,9 +663,10 @@ XYPH_AGENT_ID=human.yourname ./xyph-dashboard.ts
 | `[` / `]` | Global | Cycle lanes backward / forward |
 | `j` / `k` | Cockpit | Select next / previous row |
 | `g` / `G` | Cockpit | Jump to first / last row |
-| `Enter` | Landing page | Open the selected item page |
+| `Enter` | Landing page | Open the selected quest / review / governance page |
 | `Esc` / `Backspace` | Item page | Return to the landing page |
 | `;` | Quest page | Comment on the open quest |
+| `;` | Review page | Comment on the open submission |
 | `;` | Governance page | Comment on the open governance artifact |
 | `v` | Now lane | Toggle between the action queue and recent activity |
 | `t` | Quest selection | Open the quest tree / lineage modal |
@@ -677,8 +683,8 @@ XYPH_AGENT_ID=human.yourname ./xyph-dashboard.ts
 | `p` | Contextual | Promote selected BACKLOG quest |
 | `D` | Contextual | Reject selected BACKLOG quest |
 | `o` | Contextual | Reopen selected GRAVEYARD quest |
-| `a` | Contextual | Approve selected submission |
-| `x` | Contextual | Request changes on selected submission |
+| `a` | Contextual / Review page | Approve selected submission or current tip patchset |
+| `x` | Contextual / Review page | Request changes on selected submission or current tip patchset |
 | `PgDn` / `PgUp` | Landing / page | Page the worklist or the open item page |
 | `Shift+PgDn` / `Shift+PgUp` | Cockpit | Scroll the inspector |
 | `Esc` | Modal | Cancel / close |

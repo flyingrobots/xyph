@@ -1,10 +1,13 @@
 import type {
   AttestationGovernanceDetail,
   ComparisonArtifactGovernanceDetail,
+  DecisionNode,
   CollapseProposalGovernanceDetail,
   EntityDetail,
   QuestDetail,
   QuestNode,
+  ReviewNode,
+  SubmissionNode,
 } from '../models/dashboard.js';
 import type { AgentActionCandidate, AgentDependencyContext } from './AgentRecommender.js';
 import type { ReadinessAssessment } from './ReadinessService.js';
@@ -64,6 +67,15 @@ export interface QuestWorkSemantics extends WorkSemantics {
   evidenceSummary: EvidenceSummary;
 }
 
+export interface SubmissionWorkSemantics extends WorkSemantics {
+  kind: 'submission';
+  progress: GovernanceProgress;
+  reviewCount: number;
+  approvalCount: number;
+  latestReviewVerdict: ReviewNode['verdict'] | null;
+  latestDecisionKind: DecisionNode['kind'] | null;
+}
+
 export interface GovernanceProgress {
   labels: string[];
   currentIndex: number;
@@ -96,6 +108,10 @@ function actionLabel(kind: string): string {
       return 'Revise submission';
     case 'review':
       return 'Review submission';
+    case 'approve':
+      return 'Approve submission';
+    case 'request-changes':
+      return 'Request changes';
     case 'merge':
       return 'Settle approved submission';
     case 'inspect':
@@ -323,6 +339,170 @@ function attestationProgress(targetExists: boolean): GovernanceProgress {
     labels,
     currentIndex: targetExists ? 1 : 0,
     currentLabel: labels[targetExists ? 1 : 0] ?? labels[0] ?? 'Target',
+  };
+}
+
+function latestReview(reviews: ReviewNode[]): ReviewNode | null {
+  return reviews
+    .slice()
+    .sort((a, b) => b.reviewedAt - a.reviewedAt || b.id.localeCompare(a.id))[0] ?? null;
+}
+
+function latestDecision(decisions: DecisionNode[]): DecisionNode | null {
+  return decisions
+    .slice()
+    .sort((a, b) => b.decidedAt - a.decidedAt || b.id.localeCompare(a.id))[0] ?? null;
+}
+
+function submissionProgress(submission: SubmissionNode): GovernanceProgress {
+  const labels = ['Submitted', 'Under review', 'Approved', 'Settled'];
+  let currentIndex = 0;
+  if (submission.status === 'OPEN' || submission.status === 'CHANGES_REQUESTED') currentIndex = 1;
+  if (submission.status === 'APPROVED') currentIndex = 2;
+  if (submission.status === 'MERGED' || submission.status === 'CLOSED') currentIndex = 3;
+  return {
+    labels,
+    currentIndex,
+    currentLabel: labels[currentIndex] ?? labels[0] ?? 'Submitted',
+  };
+}
+
+function principalType(principalId: string | undefined): ExpectedActor {
+  if (!principalId) return 'unknown';
+  if (principalId.startsWith('agent.')) return 'agent';
+  if (principalId.startsWith('human.')) return 'human';
+  return 'unknown';
+}
+
+export function buildSubmissionWorkSemantics(input: {
+  submission: SubmissionNode;
+  quest?: QuestNode;
+  reviews: ReviewNode[];
+  decisions: DecisionNode[];
+  principalId?: string;
+}): SubmissionWorkSemantics {
+  const { submission, reviews, decisions, principalId } = input;
+  const reviewer = principalId && principalId !== submission.submittedBy;
+  const latestReviewEntry = latestReview(reviews);
+  const latestDecisionEntry = latestDecision(decisions);
+
+  const blockingReasons = uniqueMessages([
+    submission.headsCount > 1
+      ? 'Submission currently exposes multiple visible heads and should be normalized before independent review.'
+      : '',
+    !submission.tipPatchsetId && (submission.status === 'OPEN' || submission.status === 'CHANGES_REQUESTED')
+      ? 'Submission has no current tip patchset, so a reviewer cannot act on the live candidate.'
+      : '',
+    submission.status === 'CHANGES_REQUESTED' && submission.submittedBy !== principalId
+      ? 'Review loop is waiting for the submitter to revise the current patchset.'
+      : '',
+    submission.status === 'OPEN' && principalId === submission.submittedBy
+      ? 'Independent review must come from a different principal than the submitter.'
+      : '',
+  ]);
+
+  const missingEvidence = uniqueMessages([
+    submission.status === 'OPEN'
+      ? 'An independent review verdict is still required on the current tip patchset.'
+      : '',
+    submission.status === 'CHANGES_REQUESTED'
+      ? 'A revised patchset is required before the review loop can continue.'
+      : '',
+    submission.status === 'APPROVED'
+      ? 'A settlement decision is still required on this approved submission.'
+      : '',
+  ]);
+
+  const nextLawfulActions: NextLawfulAction[] = [
+    {
+      kind: 'comment',
+      label: 'Comment on submission',
+      allowed: true,
+      reason: 'Capture review rationale directly on the submission record.',
+      blockedBy: [],
+      targetId: submission.id,
+    },
+  ];
+
+  if (submission.status === 'OPEN' || submission.status === 'CHANGES_REQUESTED') {
+    nextLawfulActions.push({
+      kind: 'approve',
+      label: actionLabel('approve'),
+      allowed: Boolean(submission.tipPatchsetId && reviewer),
+      reason: reviewer
+        ? 'Approve the current tip patchset after independent review.'
+        : 'Independent review must come from a different principal than the submitter.',
+      blockedBy: reviewer
+        ? (submission.tipPatchsetId ? [] : ['Submission has no current tip patchset to approve.'])
+        : ['Submitter cannot self-approve the current review loop.'],
+      targetId: submission.tipPatchsetId ?? submission.id,
+    });
+    nextLawfulActions.push({
+      kind: 'request-changes',
+      label: actionLabel('request-changes'),
+      allowed: Boolean(submission.tipPatchsetId && reviewer),
+      reason: reviewer
+        ? 'Request changes on the current tip patchset and keep the review loop open.'
+        : 'Independent review must come from a different principal than the submitter.',
+      blockedBy: reviewer
+        ? (submission.tipPatchsetId ? [] : ['Submission has no current tip patchset to review.'])
+        : ['Submitter cannot review their own submission.'],
+      targetId: submission.tipPatchsetId ?? submission.id,
+    });
+  }
+
+  if (submission.status === 'CHANGES_REQUESTED' && principalId === submission.submittedBy) {
+    nextLawfulActions.push({
+      kind: 'revise',
+      label: 'Revise submission',
+      allowed: false,
+      reason: 'Prepare a new patchset revision that addresses the requested changes.',
+      blockedBy: ['Revision is not wired into the dashboard page yet.'],
+      targetId: submission.id,
+    });
+  }
+
+  if (submission.status === 'APPROVED') {
+    nextLawfulActions.push({
+      kind: 'merge',
+      label: actionLabel('merge'),
+      allowed: false,
+      reason: 'The submission is independently approved and can move to settlement.',
+      blockedBy: ['Submission settlement is not wired into the review page yet.'],
+      targetId: submission.id,
+    });
+  }
+
+  let expectedActor: ExpectedActor = 'unknown';
+  if (submission.status === 'OPEN') {
+    expectedActor = reviewer ? principalType(principalId) : 'human';
+  } else if (submission.status === 'CHANGES_REQUESTED') {
+    expectedActor = principalId === submission.submittedBy ? principalType(principalId) : 'either';
+  } else if (submission.status === 'APPROVED') {
+    expectedActor = submission.submittedBy === principalId ? principalType(principalId) : 'either';
+  }
+
+  let attentionState: WorkAttentionState = 'none';
+  if (blockingReasons.length > 0 && !nextLawfulActions.some((action) => action.allowed)) {
+    attentionState = 'blocked';
+  } else if (submission.status === 'APPROVED') {
+    attentionState = 'ready';
+  } else if (submission.status === 'OPEN' || submission.status === 'CHANGES_REQUESTED') {
+    attentionState = 'review';
+  }
+
+  return {
+    kind: 'submission',
+    progress: submissionProgress(submission),
+    reviewCount: reviews.length,
+    approvalCount: submission.approvalCount,
+    latestReviewVerdict: latestReviewEntry?.verdict ?? null,
+    latestDecisionKind: latestDecisionEntry?.kind ?? null,
+    blockingReasons,
+    missingEvidence,
+    nextLawfulActions,
+    expectedActor,
+    attentionState,
   };
 }
 

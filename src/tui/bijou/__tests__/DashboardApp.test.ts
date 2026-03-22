@@ -364,6 +364,155 @@ describe('DashboardApp', () => {
     });
   });
 
+  it('opens a dedicated review page for submissions', () => {
+    const ctx = mockGraphContext({
+      quests: [{
+        id: 'task:REV-1',
+        title: 'Reviewable quest',
+        status: 'IN_PROGRESS',
+        hours: 3,
+      }],
+      submissions: [{
+        id: 'submission:REV-1',
+        questId: 'task:REV-1',
+        status: 'OPEN',
+        tipPatchsetId: 'patchset:REV-1',
+        headsCount: 1,
+        approvalCount: 0,
+        submittedBy: 'agent.other',
+        submittedAt: 100,
+      }],
+    });
+    (ctx.fetchEntityDetail as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'task:REV-1',
+      type: 'task',
+      props: { type: 'task' },
+      outgoing: [],
+      incoming: [],
+      questDetail: {
+        id: 'task:REV-1',
+        quest: {
+          id: 'task:REV-1',
+          title: 'Reviewable quest',
+          status: 'IN_PROGRESS',
+          hours: 3,
+        },
+        submission: {
+          id: 'submission:REV-1',
+          questId: 'task:REV-1',
+          status: 'OPEN',
+          tipPatchsetId: 'patchset:REV-1',
+          headsCount: 1,
+          approvalCount: 0,
+          submittedBy: 'agent.other',
+          submittedAt: 100,
+        },
+        reviews: [],
+        decisions: [],
+        stories: [],
+        requirements: [],
+        criteria: [],
+        evidence: [],
+        policies: [],
+        documents: [],
+        comments: [],
+        timeline: [],
+      },
+    });
+    const app = createDashboardApp({
+      ctx,
+      intake: mockIntakePort(),
+      graphPort: mockGraphPort(),
+      submissionPort: mockSubmissionPort(),
+      style: createPlainStylePort(),
+      agentId: 'agent.test',
+      logoText: 'XYPH',
+      observerWatermarkStore: createMemoryObserverWatermarkStore(),
+      observerWatermarkScope: TEST_SCOPE,
+    });
+    const loaded = ready(app, makeSnapshot({
+      quests: [{
+        id: 'task:REV-1',
+        title: 'Reviewable quest',
+        status: 'IN_PROGRESS',
+        hours: 3,
+      }],
+      submissions: [{
+        id: 'submission:REV-1',
+        questId: 'task:REV-1',
+        status: 'OPEN',
+        tipPatchsetId: 'patchset:REV-1',
+        headsCount: 1,
+        approvalCount: 0,
+        submittedBy: 'agent.other',
+        submittedAt: 100,
+      }],
+    }));
+
+    const [review] = app.update(key('3'), loaded);
+    const [opened] = app.update(key('enter'), review);
+    expect(opened.pageStack[opened.pageStack.length - 1]).toEqual({
+      kind: 'review',
+      submissionId: 'submission:REV-1',
+      questId: 'task:REV-1',
+      sourceLane: 'review',
+    });
+
+    const [detailLoaded] = app.update({
+      type: 'page-detail-loaded',
+      entityId: 'task:REV-1',
+      detail: {
+        id: 'task:REV-1',
+        type: 'task',
+        props: { type: 'task' },
+        outgoing: [],
+        incoming: [],
+        questDetail: {
+          id: 'task:REV-1',
+          quest: {
+            id: 'task:REV-1',
+            title: 'Reviewable quest',
+            status: 'IN_PROGRESS',
+            hours: 3,
+          },
+          submission: {
+            id: 'submission:REV-1',
+            questId: 'task:REV-1',
+            status: 'OPEN',
+            tipPatchsetId: 'patchset:REV-1',
+            headsCount: 1,
+            approvalCount: 0,
+            submittedBy: 'agent.other',
+            submittedAt: 100,
+          },
+          reviews: [],
+          decisions: [],
+          stories: [],
+          requirements: [],
+          criteria: [],
+          evidence: [],
+          policies: [],
+          documents: [],
+          comments: [],
+          timeline: [],
+        },
+      },
+      requestId: opened.pageRequestId,
+    }, opened);
+
+    const plain = strip(app.view(detailLoaded) as string);
+    expect(plain).toContain('Reviewable quest');
+    expect(plain).toContain('Comment on this submission');
+    expect(plain).toContain('Approve current tip patchset');
+
+    const [commenting] = app.update(key(';'), detailLoaded);
+    expect(commenting.mode).toBe('input');
+    expect(commenting.inputState?.action).toEqual({
+      kind: 'comment',
+      targetId: 'submission:REV-1',
+    });
+  });
+
   it('selects worklist rows by click and scrolls panes with the mouse wheel', () => {
     const app = buildApp();
     const loaded = widen(app, ready(app, makeSnapshot({

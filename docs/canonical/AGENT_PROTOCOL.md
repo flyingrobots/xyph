@@ -144,10 +144,11 @@ Preferred shared fields:
 Not every command must return every field, but commands that speak about the
 same target should prefer these names instead of command-local synonyms.
 
-`context` now ships the first concrete version of this packet for quest
-targets. That is the reference shape future `briefing`, `next`, and
-governance-target context packets should grow toward rather than inventing
-parallel names.
+`context` now ships the deepest concrete version of this packet for quest
+targets. `briefing` and `next` now also emit compatible semantic subsets for
+quest work and submission review candidates instead of inventing parallel
+names. That shared shape is the reference future governance-target packets
+should grow toward.
 
 ## 4. JSON Contracts
 
@@ -194,9 +195,11 @@ an action candidate reference.
 The runtime may also include `recentHandoffs` so agents can resume from their
 own recent closeout notes without hunting through raw quest history.
 
-Where possible, briefing entries should also expose enough shared semantics to
-answer the cold-start questions "what is true?", "what is blocked?", and "what
-needs me?" without another round-trip:
+`briefing` now exposes enough shared semantics to answer the cold-start
+questions "what is true?", "what is blocked?", and "what needs me?" without
+another round-trip. Quest assignments/frontier work and submission review queue
+entries now carry compatible semantic packets built from the shared domain
+services, including:
 
 - `attentionState`
 - `blockingReasons`
@@ -231,8 +234,10 @@ delivery. When a candidate needs additional operator input, it should still be
 surfaced with machine-readable blocking reasons instead of silently disappearing
 from the queue.
 
-When the candidate targets a quest or governance artifact, the payload should
-also prefer:
+`next` now carries the same semantic vocabulary on quest and submission
+candidates when that judgment already exists in the shared domain layer. When
+the candidate targets a quest or governance artifact, the payload should
+prefer:
 
 - `requirements`
 - `acceptanceCriteria`

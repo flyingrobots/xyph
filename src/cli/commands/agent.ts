@@ -20,7 +20,10 @@ import type {
 import { AgentBriefingService } from '../../domain/services/AgentBriefingService.js';
 import { AgentSubmissionService } from '../../domain/services/AgentSubmissionService.js';
 import type { ReadinessAssessment } from '../../domain/services/ReadinessService.js';
-import type { QuestWorkSemantics } from '../../domain/services/WorkSemanticsService.js';
+import type {
+  QuestWorkSemantics,
+  SubmissionWorkSemantics,
+} from '../../domain/services/WorkSemanticsService.js';
 import type { Diagnostic } from '../../domain/models/diagnostics.js';
 import type { RecommendationRequest } from '../../domain/models/recommendations.js';
 import type { EntityDetail } from '../../domain/models/dashboard.js';
@@ -261,14 +264,23 @@ function renderAgentContext(
 
 function renderBriefing(briefing: {
   identity: { agentId: string; principalType: string };
-  assignments: { quest: { id: string; title: string; status: string }; nextAction: AgentActionCandidate | null }[];
+  assignments: {
+    quest: { id: string; title: string; status: string };
+    nextAction: AgentActionCandidate | null;
+    semantics: QuestWorkSemantics;
+  }[];
   reviewQueue: {
     submissionId: string;
     questTitle: string;
     status: string;
     nextStep: { kind: string; targetId: string };
+    semantics: SubmissionWorkSemantics;
   }[];
-  frontier: { quest: { id: string; title: string; status: string }; nextAction: AgentActionCandidate | null }[];
+  frontier: {
+    quest: { id: string; title: string; status: string };
+    nextAction: AgentActionCandidate | null;
+    semantics: QuestWorkSemantics;
+  }[];
   recommendationQueue: RecommendationRequest[];
   recentHandoffs: { noteId: string; title: string; authoredAt: number; relatedIds: string[] }[];
   alerts: { severity: string; message: string }[];
@@ -288,6 +300,10 @@ function renderBriefing(briefing: {
       if (entry.nextAction) {
         lines.push(`      next: ${entry.nextAction.kind}`);
       }
+      lines.push(`      attention: ${entry.semantics.attentionState} · expected: ${entry.semantics.expectedActor}`);
+      if (entry.semantics.blockingReasons[0]) {
+        lines.push(`      blocked: ${entry.semantics.blockingReasons[0]}`);
+      }
     }
   }
 
@@ -299,6 +315,10 @@ function renderBriefing(briefing: {
     for (const entry of briefing.reviewQueue) {
       lines.push(`  - ${entry.submissionId} ${entry.questTitle} [${entry.status}]`);
       lines.push(`      next: ${entry.nextStep.kind} ${entry.nextStep.targetId}`);
+      lines.push(`      attention: ${entry.semantics.attentionState} · expected: ${entry.semantics.expectedActor}`);
+      if (entry.semantics.missingEvidence[0]) {
+        lines.push(`      missing: ${entry.semantics.missingEvidence[0]}`);
+      }
     }
   }
 
@@ -311,6 +331,10 @@ function renderBriefing(briefing: {
       lines.push(`  - ${entry.quest.id} ${entry.quest.title} [${entry.quest.status}]`);
       if (entry.nextAction) {
         lines.push(`      next: ${entry.nextAction.kind}`);
+      }
+      lines.push(`      attention: ${entry.semantics.attentionState} · expected: ${entry.semantics.expectedActor}`);
+      if (entry.semantics.blockingReasons[0]) {
+        lines.push(`      blocked: ${entry.semantics.blockingReasons[0]}`);
       }
     }
   }
@@ -369,6 +393,7 @@ function renderNext(candidates: {
   priority: string;
   reason: string;
   blockedBy: string[];
+  semantics?: QuestWorkSemantics | SubmissionWorkSemantics;
 }[]): string {
   const lines: string[] = [];
   lines.push(`Candidates (${candidates.length})`);
@@ -381,6 +406,9 @@ function renderNext(candidates: {
     lines.push(`  - ${candidate.priority} ${candidate.kind} ${candidate.targetId} [${candidate.source}]`);
     lines.push(`      ${candidate.questTitle}`);
     lines.push(`      ${candidate.reason}`);
+    if (candidate.semantics) {
+      lines.push(`      attention: ${candidate.semantics.attentionState} · expected: ${candidate.semantics.expectedActor}`);
+    }
     if (candidate.blockedBy.length > 0) {
       lines.push(`      blockedBy: ${candidate.blockedBy.join(' | ')}`);
     }

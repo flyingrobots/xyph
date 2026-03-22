@@ -46,6 +46,7 @@ import { buildMyStuffDrawerLines, renderMyStuffDrawer } from './views/my-stuff-d
 import { questTreeOverlay, questTreeOverlayBounds } from './views/quest-tree-modal.js';
 import { questPageView } from './views/quest-page-view.js';
 import { governancePageView } from './views/governance-page-view.js';
+import { reviewPageView } from './views/review-page-view.js';
 import {
   claimQuest,
   commentOnEntity,
@@ -108,13 +109,20 @@ export interface QuestPageRoute {
   sourceLane: CockpitLaneId;
 }
 
+export interface ReviewPageRoute {
+  kind: 'review';
+  submissionId: string;
+  questId: string;
+  sourceLane: CockpitLaneId;
+}
+
 export interface GovernancePageRoute {
   kind: 'governance';
   entityId: string;
   sourceLane: CockpitLaneId;
 }
 
-export type DashboardPageRoute = LandingPageRoute | QuestPageRoute | GovernancePageRoute;
+export type DashboardPageRoute = LandingPageRoute | QuestPageRoute | ReviewPageRoute | GovernancePageRoute;
 
 export interface DashboardModel {
   lane: CockpitLaneId;
@@ -396,6 +404,20 @@ function governanceIdForItem(item: CockpitItem | undefined): string | undefined 
   }
 }
 
+function reviewPageForItem(item: CockpitItem | undefined): { submissionId: string; questId: string } | undefined {
+  if (!item) return undefined;
+  switch (item.kind) {
+    case 'submission':
+      return { submissionId: item.submission.id, questId: item.submission.questId };
+    case 'activity':
+      return item.event.relatedId?.startsWith('submission:') && item.event.targetId?.startsWith('task:')
+        ? { submissionId: item.event.relatedId, questId: item.event.targetId }
+        : undefined;
+    default:
+      return undefined;
+  }
+}
+
 function questIdForItem(item: CockpitItem | undefined): string | undefined {
   if (!item) return undefined;
   switch (item.kind) {
@@ -419,6 +441,7 @@ function questIdForItem(item: CockpitItem | undefined): string | undefined {
 function activeQuestId(model: DashboardModel): string | undefined {
   const page = currentPage(model);
   if (page.kind === 'quest') return page.questId;
+  if (page.kind === 'review') return undefined;
   if (page.kind === 'governance') return undefined;
   return questIdForItem(currentSelectedItem(model));
 }
@@ -433,7 +456,14 @@ function selectedQuest(model: DashboardModel): QuestNode | undefined {
 }
 
 function selectedSubmission(model: DashboardModel): SubmissionNode | undefined {
-  if (currentPage(model).kind === 'quest' && model.pageDetail?.questDetail?.submission) {
+  const page = currentPage(model);
+  if (page.kind === 'review') {
+    if (model.pageDetail?.questDetail?.submission?.id === page.submissionId) {
+      return model.pageDetail.questDetail.submission;
+    }
+    return model.snapshot?.submissions.find((submission) => submission.id === page.submissionId);
+  }
+  if (page.kind === 'quest' && model.pageDetail?.questDetail?.submission) {
     return model.pageDetail.questDetail.submission;
   }
   const item = currentSelectedItem(model);
@@ -477,6 +507,8 @@ function pageEntityId(page: DashboardPageRoute): string | null {
       return null;
     case 'quest':
       return page.questId;
+    case 'review':
+      return page.questId;
     case 'governance':
       return page.entityId;
   }
@@ -496,6 +528,25 @@ function fetchPageDetail(requestId: number, entityId: string, deps: DashboardDep
       });
     }
   };
+}
+
+function openReviewPage(
+  model: DashboardModel,
+  submissionId: string,
+  questId: string,
+  sourceLane: CockpitLaneId,
+  deps: DashboardDeps,
+): [DashboardModel, Cmd<DashboardMsg>[]] {
+  const nextRequestId = model.pageRequestId + 1;
+  return [{
+    ...model,
+    pageStack: [...model.pageStack, { kind: 'review', submissionId, questId, sourceLane }],
+    pageScrollY: 0,
+    pageDetail: null,
+    pageLoading: true,
+    pageError: null,
+    pageRequestId: nextRequestId,
+  }, [fetchPageDetail(nextRequestId, questId, deps)]];
 }
 
 function openQuestPage(model: DashboardModel, questId: string, sourceLane: CockpitLaneId, deps: DashboardDeps): [DashboardModel, Cmd<DashboardMsg>[]] {
@@ -533,6 +584,8 @@ function openSelectedItemPage(model: DashboardModel, deps: DashboardDeps): [Dash
   const item = currentSelectedItem(model);
   const governanceId = governanceIdForItem(item);
   if (governanceId) return openGovernancePage(model, governanceId, model.lane, deps);
+  const reviewPage = reviewPageForItem(item);
+  if (reviewPage) return openReviewPage(model, reviewPage.submissionId, reviewPage.questId, model.lane, deps);
   const questId = questIdForItem(item);
   if (questId) return openQuestPage(model, questId, model.lane, deps);
   return [model, []];
@@ -714,6 +767,15 @@ function contextControls(model: DashboardModel): ControlHint[] {
       hints.push({ key: ';', label: 'comment' });
       return hints;
     }
+    if (currentPage(model).kind === 'review') {
+      hints.push({ key: ';', label: 'comment' });
+      const submission = selectedSubmission(model);
+      if (submission && (submission.status === 'OPEN' || submission.status === 'CHANGES_REQUESTED')) {
+        hints.push({ key: 'a', label: 'approve' });
+        hints.push({ key: 'x', label: 'changes' });
+      }
+      return hints;
+    }
     const quest = selectedQuest(model);
     if (quest) {
       hints.push({ key: ';', label: 'comment' });
@@ -736,25 +798,40 @@ function contextControls(model: DashboardModel): ControlHint[] {
   }
 
   const hints: ControlHint[] = [];
-  if (governanceIdForItem(currentSelectedItem(model)) || questIdForItem(currentSelectedItem(model))) {
+  const item = currentSelectedItem(model);
+  if (governanceIdForItem(item)
+    || reviewPageForItem(item)
+    || questIdForItem(item)) {
     hints.push({ key: 'Enter', label: 'open' });
   }
-  const quest = selectedQuest(model);
-  if (quest) {
-    if (quest.status === 'READY') {
-      hints.push({ key: 'c', label: 'claim' });
-    } else if (quest.status === 'BACKLOG') {
-      hints.push({ key: 'p', label: 'promote' });
-      hints.push({ key: 'D', label: 'reject' });
-    } else if (quest.status === 'GRAVEYARD') {
-      hints.push({ key: 'o', label: 'reopen' });
-    }
-    hints.push({ key: 't', label: 'tree' });
-  } else {
+  if (item?.kind === 'submission') {
     const submission = selectedSubmission(model);
     if (submission && (submission.status === 'OPEN' || submission.status === 'CHANGES_REQUESTED')) {
       hints.push({ key: 'a', label: 'approve' });
       hints.push({ key: 'x', label: 'changes' });
+    }
+  } else {
+    const quest = selectedQuest(model);
+    if (quest) {
+      if (quest.status === 'READY') {
+        hints.push({ key: 'c', label: 'claim' });
+      } else if (quest.status === 'BACKLOG') {
+        hints.push({ key: 'p', label: 'promote' });
+        hints.push({ key: 'D', label: 'reject' });
+      } else if (quest.status === 'GRAVEYARD') {
+        hints.push({ key: 'o', label: 'reopen' });
+      }
+      hints.push({ key: 't', label: 'tree' });
+    }
+  }
+  if (item?.kind !== 'submission') {
+    const quest = selectedQuest(model);
+    if (!quest) {
+      const submission = selectedSubmission(model);
+      if (submission && (submission.status === 'OPEN' || submission.status === 'CHANGES_REQUESTED')) {
+        hints.push({ key: 'a', label: 'approve' });
+        hints.push({ key: 'x', label: 'changes' });
+      }
     }
   }
   hints.push({ key: 'j/k', label: 'move' });
@@ -796,6 +873,8 @@ function renderStatusLine(model: DashboardModel): string {
   const page = currentPage(model);
   const laneLabel = page.kind === 'quest'
     ? `${laneTitle(page.sourceLane)} / ${shortId(page.questId)}`
+    : page.kind === 'review'
+      ? `${laneTitle(page.sourceLane)} / ${shortId(page.submissionId)}`
     : page.kind === 'governance'
       ? `${laneTitle(page.sourceLane)} / ${shortId(page.entityId)}`
       : model.lane === 'now' && model.nowView === 'activity'
@@ -809,6 +888,8 @@ function renderStatusLine(model: DashboardModel): string {
   ].join(' ');
   const center = page.kind === 'quest'
     ? `Quest page · ${shortId(page.questId)}`
+    : page.kind === 'review'
+      ? `Review page · ${shortId(page.submissionId)}`
     : page.kind === 'governance'
       ? `Governance page · ${shortId(page.entityId)}`
       : currentSelectedItem(model)
@@ -927,7 +1008,10 @@ function buildPaletteItems(model: DashboardModel): CommandPaletteItem[] {
     { id: 'toggle-drawer', label: 'Toggle My Stuff drawer', category: 'Global', shortcut: 'm' },
   ];
 
-  if (isLandingPage(model) && (questIdForItem(currentSelectedItem(model)) || governanceIdForItem(currentSelectedItem(model)))) {
+  if (isLandingPage(model)
+    && (reviewPageForItem(currentSelectedItem(model))
+      || questIdForItem(currentSelectedItem(model))
+      || governanceIdForItem(currentSelectedItem(model)))) {
     items.push({ id: 'open-page', label: 'Open selected item page', category: 'Inspect', shortcut: 'Enter' });
   }
   if (!isLandingPage(model)) {
@@ -937,6 +1021,9 @@ function buildPaletteItems(model: DashboardModel): CommandPaletteItem[] {
   const governance = selectedGovernanceArtifact(model);
   if (governance && !isLandingPage(model)) {
     items.push({ id: 'comment', label: 'Comment on this artifact', category: 'Action', shortcut: ';' });
+  }
+  if (currentPage(model).kind === 'review') {
+    items.push({ id: 'comment', label: 'Comment on this submission', category: 'Action', shortcut: ';' });
   }
 
   const quest = selectedQuest(model);
@@ -1153,6 +1240,19 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
               label: `Comment on ${governance.id}:`,
               value: '',
               action: { kind: 'comment', targetId: governance.id },
+            },
+          }, []];
+        }
+        if (currentPage(model).kind === 'review') {
+          const submission = selectedSubmission(model);
+          if (!submission) return [model, []];
+          return [{
+            ...model,
+            mode: 'input',
+            inputState: {
+              label: `Comment on ${submission.id}:`,
+              value: '',
+              action: { kind: 'comment', targetId: submission.id },
             },
           }, []];
         }
@@ -1878,6 +1978,24 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
               snapshot: model.snapshot,
               page,
               quest,
+              detail: model.pageDetail,
+              sourceItem: currentSelectedItem(model),
+              style,
+              width: w,
+              height: h,
+            });
+          }
+        } else if (model.snapshot && page.kind === 'review') {
+          const quest = model.pageDetail?.questDetail?.quest
+            ?? model.snapshot.quests.find((entry) => entry.id === page.questId);
+          const submission = selectedSubmission(model);
+          if (quest && submission) {
+            content = reviewPageView({
+              model,
+              snapshot: model.snapshot,
+              page,
+              quest,
+              submission,
               detail: model.pageDetail,
               sourceItem: currentSelectedItem(model),
               style,

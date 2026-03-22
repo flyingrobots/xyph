@@ -32,6 +32,12 @@ import {
   buildAgentDependencyContext,
   toAgentQuestRef,
 } from './AgentContextService.js';
+import {
+  buildQuestWorkSemantics,
+  buildSubmissionWorkSemantics,
+  type QuestWorkSemantics,
+  type SubmissionWorkSemantics,
+} from './WorkSemanticsService.js';
 
 interface QNode {
   id: string;
@@ -61,6 +67,7 @@ export interface AgentWorkSummary {
   quest: AgentQuestRef;
   dependency: AgentDependencyContext;
   nextAction: AgentActionCandidate | null;
+  semantics: QuestWorkSemantics;
 }
 
 export interface AgentReviewQueueEntry {
@@ -72,6 +79,7 @@ export interface AgentReviewQueueEntry {
   submittedAt: number;
   reason: string;
   nextStep: AgentSubmissionNextStep;
+  semantics: SubmissionWorkSemantics;
 }
 
 export interface AgentHandoffSummary {
@@ -98,6 +106,7 @@ export interface AgentNextCandidate extends AgentActionCandidate {
   questStatus: string;
   priority: QuestPriority;
   source: 'assignment' | 'frontier' | 'planning' | 'submission' | 'doctor';
+  semantics?: QuestWorkSemantics | SubmissionWorkSemantics;
 }
 
 export interface AgentNextResult {
@@ -231,6 +240,26 @@ export class AgentBriefingService {
       const dependency = buildAgentDependencyContext(snapshot, quest);
       const source = determineSource(quest, dependency, this.agentId);
       const recommendations = await this.recommender.recommendForQuest(quest, readiness, dependency);
+      const semantics = buildQuestWorkSemantics({
+        detail: {
+          id: quest.id,
+          quest,
+          reviews: [],
+          decisions: [],
+          stories: [],
+          requirements: [],
+          criteria: [],
+          evidence: [],
+          policies: [],
+          documents: [],
+          comments: [],
+          timeline: [],
+        },
+        readiness,
+        dependency,
+        recommendedActions: recommendations,
+        agentId: this.agentId,
+      });
 
       for (const candidate of recommendations) {
         candidates.push({
@@ -239,6 +268,7 @@ export class AgentBriefingService {
           questTitle: quest.title,
           questStatus: quest.status,
           source,
+          semantics,
         });
       }
     }
@@ -281,6 +311,26 @@ export class AgentBriefingService {
         quest: toAgentQuestRef(quest),
         dependency,
         nextAction: recommendations[0] ?? null,
+        semantics: buildQuestWorkSemantics({
+          detail: {
+            id: quest.id,
+            quest,
+            reviews: [],
+            decisions: [],
+            stories: [],
+            requirements: [],
+            criteria: [],
+            evidence: [],
+            policies: [],
+            documents: [],
+            comments: [],
+            timeline: [],
+          },
+          readiness,
+          dependency,
+          recommendedActions: recommendations,
+          agentId: this.agentId,
+        }),
       } satisfies AgentWorkSummary;
     }));
 
@@ -296,6 +346,10 @@ export class AgentBriefingService {
       )
       .map((submission) => {
         const quest = questById.get(submission.questId);
+        const reviews = submission.tipPatchsetId
+          ? snapshot.reviews.filter((entry) => entry.patchsetId === submission.tipPatchsetId)
+          : [];
+        const decisions = snapshot.decisions.filter((entry) => entry.submissionId === submission.id);
         return {
           submissionId: submission.id,
           questId: submission.questId,
@@ -305,6 +359,13 @@ export class AgentBriefingService {
           submittedAt: submission.submittedAt,
           reason: 'Open submission awaiting review.',
           nextStep: determineSubmissionNextStep(submission, this.agentId),
+          semantics: buildSubmissionWorkSemantics({
+            submission,
+            quest,
+            reviews,
+            decisions,
+            principalId: this.agentId,
+          }),
         } satisfies AgentReviewQueueEntry;
       });
 
@@ -341,7 +402,22 @@ export class AgentBriefingService {
           nextStep: determineSubmissionNextStep(submission, this.agentId),
         };
 
-        const candidate = this.toSubmissionCandidate(entry, quest?.priority ?? DEFAULT_QUEST_PRIORITY);
+        const reviews = submission.tipPatchsetId
+          ? snapshot.reviews.filter((review) => review.patchsetId === submission.tipPatchsetId)
+          : [];
+        const decisions = snapshot.decisions.filter((decision) => decision.submissionId === submission.id);
+        const semantics = buildSubmissionWorkSemantics({
+          submission,
+          quest,
+          reviews,
+          decisions,
+          principalId: this.agentId,
+        });
+        const candidate = this.toSubmissionCandidate(
+          entry,
+          quest?.priority ?? DEFAULT_QUEST_PRIORITY,
+          semantics,
+        );
         return candidate ? [candidate] : [];
       });
 
@@ -351,6 +427,7 @@ export class AgentBriefingService {
   private toSubmissionCandidate(
     entry: AgentSubmissionEntry,
     priority: QuestPriority,
+    semantics: SubmissionWorkSemantics,
   ): AgentNextCandidate | null {
     const base = {
       questTitle: entry.questTitle,
@@ -358,6 +435,7 @@ export class AgentBriefingService {
       source: 'submission' as const,
       requiresHumanApproval: false,
       priority,
+      semantics,
     };
 
     switch (entry.nextStep.kind) {
