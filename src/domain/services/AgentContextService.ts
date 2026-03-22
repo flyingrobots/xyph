@@ -18,6 +18,7 @@ import {
   type AgentDependencyContext,
   type AgentQuestRef,
 } from './AgentRecommender.js';
+import { buildQuestWorkSemantics, type QuestWorkSemantics } from './WorkSemanticsService.js';
 
 export interface AgentContextResult {
   detail: EntityDetail;
@@ -26,6 +27,7 @@ export interface AgentContextResult {
   recommendedActions: AgentActionCandidate[];
   recommendationRequests: RecommendationRequest[];
   diagnostics: Diagnostic[];
+  semantics: QuestWorkSemantics | null;
 }
 
 export function toAgentQuestRef(quest: QuestNode): AgentQuestRef {
@@ -120,6 +122,7 @@ export class AgentContextService {
         recommendedActions: [],
         recommendationRequests: [],
         diagnostics: [],
+        semantics: null,
       };
     }
 
@@ -160,6 +163,13 @@ export class AgentContextService {
         a.kind.localeCompare(b.kind)
       );
     const diagnostics = collectQuestDiagnostics(detail.questDetail, readiness);
+    const semantics = buildQuestWorkSemantics({
+      detail: detail.questDetail,
+      readiness,
+      dependency,
+      recommendedActions,
+      agentId: this.agentId,
+    });
 
     return {
       detail,
@@ -168,6 +178,7 @@ export class AgentContextService {
       recommendedActions,
       recommendationRequests,
       diagnostics,
+      semantics,
     };
   }
 

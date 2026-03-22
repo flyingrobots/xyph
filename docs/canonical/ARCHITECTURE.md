@@ -105,6 +105,14 @@ services and shared projection models so:
 - suggestion queues and future live feeds can route through the same lawful
   action model instead of inventing a second workflow layer
 
+The first concrete implementation of this rule now exists:
+
+- the TUI `Settlement` lane opens a dedicated governance page for
+  `comparison-artifact:*`, `collapse-proposal:*`, and `attestation:*`
+- `xyph context` now emits a shared semantic packet for quest targets instead of
+  leaving blocker/evidence/next-action reasoning trapped inside human-only
+  presentation layers
+
 The product-design source of truth for these primitives lives in
 [`docs/XYPH_PRODUCT_DESIGN.md`](../XYPH_PRODUCT_DESIGN.md). This architecture
 document records the implementation boundary: explicit graph truth plus shared

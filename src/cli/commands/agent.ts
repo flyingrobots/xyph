@@ -20,6 +20,7 @@ import type {
 import { AgentBriefingService } from '../../domain/services/AgentBriefingService.js';
 import { AgentSubmissionService } from '../../domain/services/AgentSubmissionService.js';
 import type { ReadinessAssessment } from '../../domain/services/ReadinessService.js';
+import type { QuestWorkSemantics } from '../../domain/services/WorkSemanticsService.js';
 import type { Diagnostic } from '../../domain/models/diagnostics.js';
 import type { RecommendationRequest } from '../../domain/models/recommendations.js';
 import type { EntityDetail } from '../../domain/models/dashboard.js';
@@ -134,6 +135,7 @@ function renderAgentContext(
   recommendedActions: AgentActionCandidate[],
   recommendationRequests: RecommendationRequest[],
   diagnostics: Diagnostic[],
+  semantics: QuestWorkSemantics | null,
 ): string {
   const lines: string[] = [];
   lines.push(`${detail.id}  [${detail.type}]`);
@@ -180,6 +182,36 @@ function renderAgentContext(
       lines.push(`  latest: ${detail.questDetail.submission.id} (${detail.questDetail.submission.status})`);
       lines.push(`  reviews: ${detail.questDetail.reviews.length}`);
       lines.push(`  decisions: ${detail.questDetail.decisions.length}`);
+    }
+
+    if (semantics) {
+      lines.push('');
+      lines.push('Shared Semantics');
+      lines.push(`  claimability: ${semantics.claimability}`);
+      lines.push(`  expectedActor: ${semantics.expectedActor}`);
+      lines.push(`  attention: ${semantics.attentionState}`);
+      lines.push(`  evidence: ${semantics.evidenceSummary.verdict}`);
+      lines.push(`  requirements: ${semantics.requirements.length}`);
+      lines.push(`  acceptanceCriteria: ${semantics.acceptanceCriteria.length}`);
+      if (semantics.blockingReasons.length > 0) {
+        lines.push('  blockingReasons:');
+        for (const reason of semantics.blockingReasons) {
+          lines.push(`    - ${reason}`);
+        }
+      }
+      if (semantics.missingEvidence.length > 0) {
+        lines.push('  missingEvidence:');
+        for (const item of semantics.missingEvidence.slice(0, 5)) {
+          lines.push(`    - ${item}`);
+        }
+      }
+      if (semantics.nextLawfulActions.length > 0) {
+        lines.push('  nextLawfulActions:');
+        for (const action of semantics.nextLawfulActions.slice(0, 5)) {
+          lines.push(`    - ${action.label} (${action.allowed ? 'allowed' : 'blocked'})`);
+          lines.push(`      ${action.reason}`);
+        }
+      }
     }
 
     lines.push(...renderDiagnosticsLines(diagnostics));
@@ -538,6 +570,7 @@ export function registerAgentCommands(program: Command, ctx: CliContext): void {
             agentContext: {
               readiness: result.readiness,
               dependency: result.dependency,
+              semantics: result.semantics,
               recommendedActions: result.recommendedActions,
               recommendationRequests: result.recommendationRequests,
               diagnostics: result.diagnostics,
@@ -554,6 +587,7 @@ export function registerAgentCommands(program: Command, ctx: CliContext): void {
         result.recommendedActions,
         result.recommendationRequests,
         result.diagnostics,
+        result.semantics,
       ));
     }));
 

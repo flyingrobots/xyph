@@ -244,6 +244,126 @@ describe('DashboardApp', () => {
     expect(prev.table.focusRow).toBe(0);
   });
 
+  it('opens a dedicated governance page for settlement artifacts', () => {
+    const ctx = mockGraphContext({
+      governanceArtifacts: [{
+        id: 'collapse-proposal:settle-1',
+        type: 'collapse-proposal',
+        recordedAt: 100,
+        recordedBy: 'human.reviewer',
+        comparisonArtifactId: 'comparison-artifact:cmp-1',
+        governance: {
+          kind: 'collapse-proposal',
+          freshness: 'fresh',
+          lifecycle: 'pending_attestation',
+          attestation: { total: 0, approvals: 0, rejections: 0, other: 0, state: 'unattested' },
+          series: { supersededByIds: [], latestInSeries: true },
+          execution: { dryRun: true, executable: true, executed: false, changed: true },
+          executionGate: {
+            comparisonArtifactId: 'comparison-artifact:cmp-1',
+            attestation: { total: 0, approvals: 0, rejections: 0, other: 0, state: 'unattested' },
+          },
+        },
+      }],
+    });
+    (ctx.fetchEntityDetail as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'collapse-proposal:settle-1',
+      type: 'collapse-proposal',
+      props: { type: 'collapse-proposal' },
+      outgoing: [],
+      incoming: [],
+      governanceDetail: {
+        kind: 'collapse-proposal',
+        freshness: 'fresh',
+        lifecycle: 'pending_attestation',
+        attestation: { total: 0, approvals: 0, rejections: 0, other: 0, state: 'unattested' },
+        series: { supersededByIds: [], latestInSeries: true },
+        execution: { dryRun: true, executable: true, executed: false, changed: true },
+        executionGate: {
+          comparisonArtifactId: 'comparison-artifact:cmp-1',
+          attestation: { total: 0, approvals: 0, rejections: 0, other: 0, state: 'unattested' },
+        },
+      },
+    });
+    const app = createDashboardApp({
+      ctx,
+      intake: mockIntakePort(),
+      graphPort: mockGraphPort(),
+      submissionPort: mockSubmissionPort(),
+      style: createPlainStylePort(),
+      agentId: 'agent.test',
+      logoText: 'XYPH',
+      observerWatermarkStore: createMemoryObserverWatermarkStore(),
+      observerWatermarkScope: TEST_SCOPE,
+    });
+    const loaded = ready(app, makeSnapshot({
+      governanceArtifacts: [{
+        id: 'collapse-proposal:settle-1',
+        type: 'collapse-proposal',
+        recordedAt: 100,
+        recordedBy: 'human.reviewer',
+        comparisonArtifactId: 'comparison-artifact:cmp-1',
+        governance: {
+          kind: 'collapse-proposal',
+          freshness: 'fresh',
+          lifecycle: 'pending_attestation',
+          attestation: { total: 0, approvals: 0, rejections: 0, other: 0, state: 'unattested' },
+          series: { supersededByIds: [], latestInSeries: true },
+          execution: { dryRun: true, executable: true, executed: false, changed: true },
+          executionGate: {
+            comparisonArtifactId: 'comparison-artifact:cmp-1',
+            attestation: { total: 0, approvals: 0, rejections: 0, other: 0, state: 'unattested' },
+          },
+        },
+      }],
+    }));
+
+    const [settlement] = app.update(key('4'), loaded);
+    const [opened] = app.update(key('enter'), settlement);
+    expect(opened.pageStack[opened.pageStack.length - 1]).toEqual({
+      kind: 'governance',
+      entityId: 'collapse-proposal:settle-1',
+      sourceLane: 'settlement',
+    });
+
+    const [detailLoaded] = app.update({
+      type: 'page-detail-loaded',
+      entityId: 'collapse-proposal:settle-1',
+      detail: {
+        id: 'collapse-proposal:settle-1',
+        type: 'collapse-proposal',
+        props: { type: 'collapse-proposal' },
+        outgoing: [],
+        incoming: [],
+        governanceDetail: {
+          kind: 'collapse-proposal',
+          freshness: 'fresh',
+          lifecycle: 'pending_attestation',
+          attestation: { total: 0, approvals: 0, rejections: 0, other: 0, state: 'unattested' },
+          series: { supersededByIds: [], latestInSeries: true },
+          execution: { dryRun: true, executable: true, executed: false, changed: true },
+          executionGate: {
+            comparisonArtifactId: 'comparison-artifact:cmp-1',
+            attestation: { total: 0, approvals: 0, rejections: 0, other: 0, state: 'unattested' },
+          },
+        },
+      },
+      requestId: opened.pageRequestId,
+    }, opened);
+
+    const plain = strip(app.view(detailLoaded) as string);
+    expect(plain).toContain('Collapse Proposal');
+    expect(plain).toContain('Comment on this governance artifact');
+    expect(plain).toContain('pending attestation');
+
+    const [commenting] = app.update(key(';'), detailLoaded);
+    expect(commenting.mode).toBe('input');
+    expect(commenting.inputState?.action).toEqual({
+      kind: 'comment',
+      targetId: 'collapse-proposal:settle-1',
+    });
+  });
+
   it('selects worklist rows by click and scrolls panes with the mouse wheel', () => {
     const app = buildApp();
     const loaded = widen(app, ready(app, makeSnapshot({

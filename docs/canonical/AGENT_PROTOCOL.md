@@ -144,6 +144,11 @@ Preferred shared fields:
 Not every command must return every field, but commands that speak about the
 same target should prefer these names instead of command-local synonyms.
 
+`context` now ships the first concrete version of this packet for quest
+targets. That is the reference shape future `briefing`, `next`, and
+governance-target context packets should grow toward rather than inventing
+parallel names.
+
 ## 4. JSON Contracts
 
 All `--json` commands use JSONL framing. Consumers must read records line by

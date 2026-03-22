@@ -29,7 +29,13 @@ import { EASINGS } from '@flyingrobots/bijou-tui';
 import { type TokenValue } from '@flyingrobots/bijou';
 import type { StylePort } from '../../ports/StylePort.js';
 import type { GraphContext } from '../../infrastructure/GraphContext.js';
-import type { EntityDetail, GraphSnapshot, QuestNode, SubmissionNode } from '../../domain/models/dashboard.js';
+import type {
+  EntityDetail,
+  GraphSnapshot,
+  GovernanceArtifactNode,
+  QuestNode,
+  SubmissionNode,
+} from '../../domain/models/dashboard.js';
 import type { IntakePort } from '../../ports/IntakePort.js';
 import type { GraphPort } from '../../ports/GraphPort.js';
 import type { SubmissionPort } from '../../ports/SubmissionPort.js';
@@ -39,6 +45,7 @@ import { confirmOverlay, inputOverlay } from './overlays.js';
 import { buildMyStuffDrawerLines, renderMyStuffDrawer } from './views/my-stuff-drawer.js';
 import { questTreeOverlay, questTreeOverlayBounds } from './views/quest-tree-modal.js';
 import { questPageView } from './views/quest-page-view.js';
+import { governancePageView } from './views/governance-page-view.js';
 import {
   claimQuest,
   commentOnEntity,
@@ -101,7 +108,13 @@ export interface QuestPageRoute {
   sourceLane: CockpitLaneId;
 }
 
-export type DashboardPageRoute = LandingPageRoute | QuestPageRoute;
+export interface GovernancePageRoute {
+  kind: 'governance';
+  entityId: string;
+  sourceLane: CockpitLaneId;
+}
+
+export type DashboardPageRoute = LandingPageRoute | QuestPageRoute | GovernancePageRoute;
 
 export interface DashboardModel {
   lane: CockpitLaneId;
@@ -162,8 +175,8 @@ export type DashboardMsg =
   | { type: 'remote-change' }
   | { type: 'drawer-frame'; value: number }
   | { type: 'scrollbar-visibility'; pane: 'worklist' | 'inspector' | 'page'; level: number; generation: number }
-  | { type: 'page-detail-loaded'; questId: string; detail: EntityDetail | null; requestId: number }
-  | { type: 'page-detail-error'; questId: string; error: string; requestId: number };
+  | { type: 'page-detail-loaded'; entityId: string; detail: EntityDetail | null; requestId: number }
+  | { type: 'page-detail-error'; entityId: string; error: string; requestId: number };
 
 type GlobalAction =
   | { type: 'jump-lane'; lane: CockpitLaneId }
@@ -361,6 +374,28 @@ function currentSelectedItem(model: DashboardModel): CockpitItem | undefined {
   return selectedLaneItem(model.snapshot, model.lane, model.table.focusRow, model.agentId, model.nowView);
 }
 
+function governancePrefixes(): readonly string[] {
+  return ['comparison-artifact:', 'collapse-proposal:', 'attestation:'];
+}
+
+function isGovernanceId(id: string | undefined): boolean {
+  return Boolean(id && governancePrefixes().some((prefix) => id.startsWith(prefix)));
+}
+
+function governanceIdForItem(item: CockpitItem | undefined): string | undefined {
+  if (!item) return undefined;
+  switch (item.kind) {
+    case 'comparison-artifact':
+    case 'collapse-proposal':
+    case 'attestation':
+      return item.id;
+    case 'activity':
+      return isGovernanceId(item.event.targetId) ? item.event.targetId : undefined;
+    default:
+      return undefined;
+  }
+}
+
 function questIdForItem(item: CockpitItem | undefined): string | undefined {
   if (!item) return undefined;
   switch (item.kind) {
@@ -384,6 +419,7 @@ function questIdForItem(item: CockpitItem | undefined): string | undefined {
 function activeQuestId(model: DashboardModel): string | undefined {
   const page = currentPage(model);
   if (page.kind === 'quest') return page.questId;
+  if (page.kind === 'governance') return undefined;
   return questIdForItem(currentSelectedItem(model));
 }
 
@@ -404,6 +440,19 @@ function selectedSubmission(model: DashboardModel): SubmissionNode | undefined {
   return item?.kind === 'submission' ? item.submission : undefined;
 }
 
+function activeGovernanceId(model: DashboardModel): string | undefined {
+  const page = currentPage(model);
+  if (page.kind === 'governance') return page.entityId;
+  if (!isLandingPage(model)) return undefined;
+  return governanceIdForItem(currentSelectedItem(model));
+}
+
+function selectedGovernanceArtifact(model: DashboardModel): GovernanceArtifactNode | undefined {
+  const governanceId = activeGovernanceId(model);
+  if (!governanceId) return undefined;
+  return model.snapshot?.governanceArtifacts.find((artifact) => artifact.id === governanceId);
+}
+
 function resetToLanding(model: DashboardModel): DashboardModel {
   return {
     ...model,
@@ -422,15 +471,26 @@ function updatePageScroll(model: DashboardModel, pageScrollY: number): Dashboard
   };
 }
 
-function fetchPageDetail(requestId: number, questId: string, deps: DashboardDeps): Cmd<DashboardMsg> {
+function pageEntityId(page: DashboardPageRoute): string | null {
+  switch (page.kind) {
+    case 'landing':
+      return null;
+    case 'quest':
+      return page.questId;
+    case 'governance':
+      return page.entityId;
+  }
+}
+
+function fetchPageDetail(requestId: number, entityId: string, deps: DashboardDeps): Cmd<DashboardMsg> {
   return async (emit) => {
     try {
-      const detail = await deps.ctx.fetchEntityDetail(questId);
-      emit({ type: 'page-detail-loaded', questId, detail, requestId });
+      const detail = await deps.ctx.fetchEntityDetail(entityId);
+      emit({ type: 'page-detail-loaded', entityId, detail, requestId });
     } catch (err: unknown) {
       emit({
         type: 'page-detail-error',
-        questId,
+        entityId,
         error: err instanceof Error ? err.message : String(err),
         requestId,
       });
@@ -451,11 +511,31 @@ function openQuestPage(model: DashboardModel, questId: string, sourceLane: Cockp
   }, [fetchPageDetail(nextRequestId, questId, deps)]];
 }
 
+function openGovernancePage(
+  model: DashboardModel,
+  entityId: string,
+  sourceLane: CockpitLaneId,
+  deps: DashboardDeps,
+): [DashboardModel, Cmd<DashboardMsg>[]] {
+  const nextRequestId = model.pageRequestId + 1;
+  return [{
+    ...model,
+    pageStack: [...model.pageStack, { kind: 'governance', entityId, sourceLane }],
+    pageScrollY: 0,
+    pageDetail: null,
+    pageLoading: true,
+    pageError: null,
+    pageRequestId: nextRequestId,
+  }, [fetchPageDetail(nextRequestId, entityId, deps)]];
+}
+
 function openSelectedItemPage(model: DashboardModel, deps: DashboardDeps): [DashboardModel, Cmd<DashboardMsg>[]] {
   const item = currentSelectedItem(model);
+  const governanceId = governanceIdForItem(item);
+  if (governanceId) return openGovernancePage(model, governanceId, model.lane, deps);
   const questId = questIdForItem(item);
-  if (!questId) return [model, []];
-  return openQuestPage(model, questId, model.lane, deps);
+  if (questId) return openQuestPage(model, questId, model.lane, deps);
+  return [model, []];
 }
 
 function popPage(model: DashboardModel, deps: DashboardDeps): [DashboardModel, Cmd<DashboardMsg>[]] {
@@ -473,6 +553,17 @@ function popPage(model: DashboardModel, deps: DashboardDeps): [DashboardModel, C
     }, []];
   }
   const nextRequestId = model.pageRequestId + 1;
+  const entityId = pageEntityId(nextPage);
+  if (!entityId) {
+    return [{
+      ...model,
+      pageStack,
+      pageScrollY: 0,
+      pageDetail: null,
+      pageLoading: false,
+      pageError: null,
+    }, []];
+  }
   return [{
     ...model,
     pageStack,
@@ -481,7 +572,7 @@ function popPage(model: DashboardModel, deps: DashboardDeps): [DashboardModel, C
     pageLoading: true,
     pageError: null,
     pageRequestId: nextRequestId,
-  }, [fetchPageDetail(nextRequestId, nextPage.questId, deps)]];
+  }, [fetchPageDetail(nextRequestId, entityId, deps)]];
 }
 
 function rebuildForLane(model: DashboardModel, lane: CockpitLaneId, snapshot = model.snapshot): DashboardModel {
@@ -618,6 +709,11 @@ function contextControls(model: DashboardModel): ControlHint[] {
       { key: 'Esc', label: 'back' },
       { key: 'PgUp/PgDn', label: 'page' },
     ];
+    const governance = selectedGovernanceArtifact(model);
+    if (governance) {
+      hints.push({ key: ';', label: 'comment' });
+      return hints;
+    }
     const quest = selectedQuest(model);
     if (quest) {
       hints.push({ key: ';', label: 'comment' });
@@ -640,7 +736,7 @@ function contextControls(model: DashboardModel): ControlHint[] {
   }
 
   const hints: ControlHint[] = [];
-  if (questIdForItem(currentSelectedItem(model))) {
+  if (governanceIdForItem(currentSelectedItem(model)) || questIdForItem(currentSelectedItem(model))) {
     hints.push({ key: 'Enter', label: 'open' });
   }
   const quest = selectedQuest(model);
@@ -700,9 +796,11 @@ function renderStatusLine(model: DashboardModel): string {
   const page = currentPage(model);
   const laneLabel = page.kind === 'quest'
     ? `${laneTitle(page.sourceLane)} / ${shortId(page.questId)}`
-    : model.lane === 'now' && model.nowView === 'activity'
-      ? `${laneTitle(model.lane)} Recent`
-      : laneTitle(model.lane);
+    : page.kind === 'governance'
+      ? `${laneTitle(page.sourceLane)} / ${shortId(page.entityId)}`
+      : model.lane === 'now' && model.nowView === 'activity'
+        ? `${laneTitle(model.lane)} Recent`
+        : laneTitle(model.lane);
   const left = [
     ` ${laneLabel}`,
     meta ? `· ${meta.tipSha}` : '',
@@ -711,9 +809,11 @@ function renderStatusLine(model: DashboardModel): string {
   ].join(' ');
   const center = page.kind === 'quest'
     ? `Quest page · ${shortId(page.questId)}`
-    : currentSelectedItem(model)
-      ? `${currentSelectedItem(model)?.label} · ${currentSelectedItem(model)?.primary}`
-      : 'No selection';
+    : page.kind === 'governance'
+      ? `Governance page · ${shortId(page.entityId)}`
+      : currentSelectedItem(model)
+        ? `${currentSelectedItem(model)?.label} · ${currentSelectedItem(model)?.primary}`
+        : 'No selection';
   return statusBar({
     left,
     center,
@@ -827,11 +927,16 @@ function buildPaletteItems(model: DashboardModel): CommandPaletteItem[] {
     { id: 'toggle-drawer', label: 'Toggle My Stuff drawer', category: 'Global', shortcut: 'm' },
   ];
 
-  if (isLandingPage(model) && questIdForItem(currentSelectedItem(model))) {
+  if (isLandingPage(model) && (questIdForItem(currentSelectedItem(model)) || governanceIdForItem(currentSelectedItem(model)))) {
     items.push({ id: 'open-page', label: 'Open selected item page', category: 'Inspect', shortcut: 'Enter' });
   }
   if (!isLandingPage(model)) {
     items.push({ id: 'back', label: 'Return to landing', category: 'Navigate', shortcut: 'Esc' });
+  }
+
+  const governance = selectedGovernanceArtifact(model);
+  if (governance && !isLandingPage(model)) {
+    items.push({ id: 'comment', label: 'Comment on this artifact', category: 'Action', shortcut: ';' });
   }
 
   const quest = selectedQuest(model);
@@ -1039,6 +1144,18 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
       }
       case 'comment': {
         if (isLandingPage(model)) return [model, []];
+        const governance = selectedGovernanceArtifact(model);
+        if (governance) {
+          return [{
+            ...model,
+            mode: 'input',
+            inputState: {
+              label: `Comment on ${governance.id}:`,
+              value: '',
+              action: { kind: 'comment', targetId: governance.id },
+            },
+          }, []];
+        }
         const quest = selectedQuest(model);
         if (!quest) return [model, []];
         return [{
@@ -1243,14 +1360,15 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         const clamped = clampDrawerScroll(updated, deps);
         const nextPage = currentPage(clamped);
         const cmds: Cmd<DashboardMsg>[] = pendingRefresh ? [fetchSnapshot(clamped.requestId)] : [];
-        if (nextPage.kind === 'quest') {
+        const entityId = pageEntityId(nextPage);
+        if (entityId) {
           const nextPageRequestId = clamped.pageRequestId + 1;
           return [{
             ...clamped,
             pageLoading: true,
             pageError: null,
             pageRequestId: nextPageRequestId,
-          }, [...cmds, fetchPageDetail(nextPageRequestId, nextPage.questId, deps)]];
+          }, [...cmds, fetchPageDetail(nextPageRequestId, entityId, deps)]];
         }
         return [clamped, cmds];
       }
@@ -1263,19 +1381,21 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
       if (msg.type === 'page-detail-loaded') {
         if (msg.requestId !== model.pageRequestId) return [model, []];
         const page = currentPage(model);
-        if (page.kind !== 'quest' || page.questId !== msg.questId) return [model, []];
+        const entityId = pageEntityId(page);
+        if (!entityId || entityId !== msg.entityId) return [model, []];
         return [{
           ...model,
           pageDetail: msg.detail,
           pageLoading: false,
-          pageError: msg.detail ? null : 'Quest detail is not available for this page.',
+          pageError: msg.detail ? null : 'Page detail is not available for this item.',
         }, []];
       }
 
       if (msg.type === 'page-detail-error') {
         if (msg.requestId !== model.pageRequestId) return [model, []];
         const page = currentPage(model);
-        if (page.kind !== 'quest' || page.questId !== msg.questId) return [model, []];
+        const entityId = pageEntityId(page);
+        if (!entityId || entityId !== msg.entityId) return [model, []];
         return [{
           ...model,
           pageLoading: false,
@@ -1748,26 +1868,39 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
 
       const viewRenderer = (w: number, h: number): string => {
         const page = currentPage(model);
-        let content = page.kind === 'quest' && model.snapshot
-          ? (() : string => {
-              const quest = model.pageDetail?.questDetail?.quest
-                ?? model.snapshot?.quests.find((entry) => entry.id === page.questId);
-              if (!quest || !model.snapshot) {
-                return cockpitView(model, style, w, h);
-              }
-              return questPageView({
-                model,
-                snapshot: model.snapshot,
-                page,
-                quest,
-                detail: model.pageDetail,
-                sourceItem: currentSelectedItem(model),
-                style,
-                width: w,
-                height: h,
-              });
-            })()
-          : cockpitView(model, style, w, h);
+        let content = cockpitView(model, style, w, h);
+        if (model.snapshot && page.kind === 'quest') {
+          const quest = model.pageDetail?.questDetail?.quest
+            ?? model.snapshot.quests.find((entry) => entry.id === page.questId);
+          if (quest) {
+            content = questPageView({
+              model,
+              snapshot: model.snapshot,
+              page,
+              quest,
+              detail: model.pageDetail,
+              sourceItem: currentSelectedItem(model),
+              style,
+              width: w,
+              height: h,
+            });
+          }
+        } else if (model.snapshot && page.kind === 'governance') {
+          const artifact = selectedGovernanceArtifact(model);
+          if (artifact) {
+            content = governancePageView({
+              model,
+              snapshot: model.snapshot,
+              page,
+              artifact,
+              detail: model.pageDetail,
+              sourceItem: currentSelectedItem(model),
+              style,
+              width: w,
+              height: h,
+            });
+          }
+        }
         if (model.mode === 'confirm' && model.confirmState) {
           content = confirmOverlay(content, model.confirmState.prompt, model.cols, h, style, model.confirmState.hint);
         }

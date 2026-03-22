@@ -638,7 +638,10 @@ and so on), then use `Esc` or `Backspace` to return to the landing surface.
 Quest pages now expose their own action strip, so drill-in is no longer just a
 read surface: you can comment directly from the page, reopen graveyarded
 quests, and keep claim/promote/reject/review actions visible in the place where
-full context actually lives. The cockpit is fully keyboard-driven, but it now
+full context actually lives. `Settlement` artifacts now open their own
+governance page too, so compare / attestation / collapse records are no longer
+forced through quest pages or the landing inspector when you need their real
+progress, blockers, missing evidence, and next lawful actions. The cockpit is fully keyboard-driven, but it now
 also supports mouse clicks for lane/row selection and wheel scrolling in the
 main panes. `Plan`, `Campaigns`, `Graveyard`, and the `Now` activity stream use
 observer-local freshness markers from `~/.xyph/dashboard-state.json`, while
@@ -658,6 +661,7 @@ XYPH_AGENT_ID=human.yourname ./xyph-dashboard.ts
 | `Enter` | Landing page | Open the selected item page |
 | `Esc` / `Backspace` | Item page | Return to the landing page |
 | `;` | Quest page | Comment on the open quest |
+| `;` | Governance page | Comment on the open governance artifact |
 | `v` | Now lane | Toggle between the action queue and recent activity |
 | `t` | Quest selection | Open the quest tree / lineage modal |
 | `r` | Global | Refresh snapshot |

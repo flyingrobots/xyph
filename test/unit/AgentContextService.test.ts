@@ -219,6 +219,15 @@ describe('AgentContextService', () => {
       blockedBy: [],
     });
     expect(result.recommendationRequests).toEqual([]);
+    expect(result.semantics).toMatchObject({
+      kind: 'quest',
+      claimability: 'claimable',
+      expectedActor: 'agent',
+      attentionState: 'ready',
+      evidenceSummary: {
+        verdict: 'untracked',
+      },
+    });
   });
 
   it('recommends ready for a PLANNED quest whose contract is already satisfied', async () => {
