@@ -273,6 +273,8 @@ describe('agent act command', () => {
         },
       ],
       diagnostics: [],
+      submissionContext: null,
+      governanceContext: null,
     });
 
     const ctx = makeCtx();
@@ -462,6 +464,7 @@ describe('agent act command', () => {
           comments: [],
           timeline: [],
         },
+        governanceDetail: null,
             agentContext: {
               readiness: {
                 valid: true,
@@ -478,6 +481,8 @@ describe('agent act command', () => {
                 topologicalIndex: 1,
                 transitiveDownstream: 0,
               },
+              submissionContext: null,
+              governanceContext: null,
               semantics: {
                 kind: 'quest',
                 claimability: 'claimable',
@@ -720,6 +725,277 @@ describe('agent act command', () => {
             },
           },
         ],
+      },
+    });
+  });
+
+  it('emits a JSON context packet for a submission target', async () => {
+    mocks.fetchContext.mockResolvedValue({
+      detail: {
+        id: 'submission:CTX-001',
+        type: 'submission',
+        props: { type: 'submission', quest_id: 'task:CTX-001', status: 'APPROVED' },
+        content: null,
+        contentOid: null,
+        outgoing: [],
+        incoming: [],
+      },
+      readiness: null,
+      dependency: null,
+      submissionContext: {
+        submission: {
+          id: 'submission:CTX-001',
+          questId: 'task:CTX-001',
+          status: 'APPROVED',
+          tipPatchsetId: 'patchset:CTX-001',
+          headsCount: 1,
+          approvalCount: 1,
+          submittedBy: 'agent.hal',
+          submittedAt: 1_700_000_000_000,
+        },
+        quest: {
+          id: 'task:CTX-001',
+          title: 'Submission quest',
+          status: 'IN_PROGRESS',
+          hours: 2,
+        },
+        reviews: [],
+        decisions: [],
+        focusPatchsetId: 'patchset:CTX-001',
+        nextStep: {
+          kind: 'merge',
+          targetId: 'submission:CTX-001',
+          reason: 'Submission is approved and ready for settlement.',
+          supportedByActionKernel: true,
+        },
+      },
+      governanceContext: null,
+      recommendedActions: [],
+      semantics: {
+        kind: 'submission',
+        progress: {
+          labels: ['Submitted', 'Under review', 'Approved', 'Settled'],
+          currentIndex: 2,
+          currentLabel: 'Approved',
+        },
+        reviewCount: 0,
+        approvalCount: 1,
+        latestReviewVerdict: null,
+        latestDecisionKind: null,
+        blockingReasons: [],
+        missingEvidence: ['A settlement decision is still required on this approved submission.'],
+        nextLawfulActions: [],
+        expectedActor: 'agent',
+        attentionState: 'ready',
+      },
+      recommendationRequests: [],
+      diagnostics: [],
+    });
+
+    const ctx = makeCtx();
+    const program = new Command();
+    registerAgentCommands(program, ctx);
+
+    await program.parseAsync(['context', 'submission:CTX-001'], { from: 'user' });
+
+    expect(ctx.jsonOut).toHaveBeenCalledWith({
+      success: true,
+      command: 'context',
+      diagnostics: [],
+      data: {
+        id: 'submission:CTX-001',
+        type: 'submission',
+        props: { type: 'submission', quest_id: 'task:CTX-001', status: 'APPROVED' },
+        content: null,
+        contentOid: null,
+        outgoing: [],
+        incoming: [],
+        questDetail: null,
+        governanceDetail: null,
+        agentContext: {
+          readiness: null,
+          dependency: null,
+          submissionContext: {
+            submission: {
+              id: 'submission:CTX-001',
+              questId: 'task:CTX-001',
+              status: 'APPROVED',
+              tipPatchsetId: 'patchset:CTX-001',
+              headsCount: 1,
+              approvalCount: 1,
+              submittedBy: 'agent.hal',
+              submittedAt: 1_700_000_000_000,
+            },
+            quest: {
+              id: 'task:CTX-001',
+              title: 'Submission quest',
+              status: 'IN_PROGRESS',
+              hours: 2,
+            },
+            reviews: [],
+            decisions: [],
+            focusPatchsetId: 'patchset:CTX-001',
+            nextStep: {
+              kind: 'merge',
+              targetId: 'submission:CTX-001',
+              reason: 'Submission is approved and ready for settlement.',
+              supportedByActionKernel: true,
+            },
+          },
+          governanceContext: null,
+          semantics: {
+            kind: 'submission',
+            progress: {
+              labels: ['Submitted', 'Under review', 'Approved', 'Settled'],
+              currentIndex: 2,
+              currentLabel: 'Approved',
+            },
+            reviewCount: 0,
+            approvalCount: 1,
+            latestReviewVerdict: null,
+            latestDecisionKind: null,
+            blockingReasons: [],
+            missingEvidence: ['A settlement decision is still required on this approved submission.'],
+            nextLawfulActions: [],
+            expectedActor: 'agent',
+            attentionState: 'ready',
+          },
+          recommendedActions: [],
+          recommendationRequests: [],
+          diagnostics: [],
+        },
+      },
+    });
+  });
+
+  it('emits a JSON context packet for a governance target', async () => {
+    mocks.fetchContext.mockResolvedValue({
+      detail: {
+        id: 'comparison-artifact:CTX-001',
+        type: 'comparison-artifact',
+        props: { type: 'comparison-artifact' },
+        content: null,
+        contentOid: null,
+        outgoing: [],
+        incoming: [],
+        governanceDetail: {
+          kind: 'comparison-artifact',
+          freshness: 'fresh',
+          attestation: {
+            total: 0,
+            approvals: 0,
+            rejections: 0,
+            other: 0,
+            state: 'unattested',
+          },
+          series: {
+            supersededByIds: [],
+            latestInSeries: true,
+          },
+          comparison: {},
+          settlement: {
+            proposalCount: 0,
+            executedCount: 0,
+          },
+        },
+      },
+      readiness: null,
+      dependency: null,
+      submissionContext: null,
+      governanceContext: {
+        artifactId: 'comparison-artifact:CTX-001',
+        artifactType: 'comparison-artifact',
+        recordedAt: 1_700_000_000_000,
+        recordedBy: 'agent.hal',
+        targetId: 'task:CTX-001',
+      },
+      recommendedActions: [],
+      semantics: {
+        kind: 'governance',
+        artifactKind: 'comparison-artifact',
+        progress: {
+          labels: ['Compared', 'Attested', 'Settlement planned', 'Settled'],
+          currentIndex: 0,
+          currentLabel: 'Compared',
+        },
+        blockingReasons: [],
+        missingEvidence: ['An approving attestation is required on the comparison artifact.'],
+        nextLawfulActions: [],
+        expectedActor: 'human',
+        attentionState: 'review',
+      },
+      recommendationRequests: [],
+      diagnostics: [],
+    });
+
+    const ctx = makeCtx();
+    const program = new Command();
+    registerAgentCommands(program, ctx);
+
+    await program.parseAsync(['context', 'comparison-artifact:CTX-001'], { from: 'user' });
+
+    expect(ctx.jsonOut).toHaveBeenCalledWith({
+      success: true,
+      command: 'context',
+      diagnostics: [],
+      data: {
+        id: 'comparison-artifact:CTX-001',
+        type: 'comparison-artifact',
+        props: { type: 'comparison-artifact' },
+        content: null,
+        contentOid: null,
+        outgoing: [],
+        incoming: [],
+        questDetail: null,
+        governanceDetail: {
+          kind: 'comparison-artifact',
+          freshness: 'fresh',
+          attestation: {
+            total: 0,
+            approvals: 0,
+            rejections: 0,
+            other: 0,
+            state: 'unattested',
+          },
+          series: {
+            supersededByIds: [],
+            latestInSeries: true,
+          },
+          comparison: {},
+          settlement: {
+            proposalCount: 0,
+            executedCount: 0,
+          },
+        },
+        agentContext: {
+          readiness: null,
+          dependency: null,
+          submissionContext: null,
+          governanceContext: {
+            artifactId: 'comparison-artifact:CTX-001',
+            artifactType: 'comparison-artifact',
+            recordedAt: 1_700_000_000_000,
+            recordedBy: 'agent.hal',
+            targetId: 'task:CTX-001',
+          },
+          semantics: {
+            kind: 'governance',
+            artifactKind: 'comparison-artifact',
+            progress: {
+              labels: ['Compared', 'Attested', 'Settlement planned', 'Settled'],
+              currentIndex: 0,
+              currentLabel: 'Compared',
+            },
+            blockingReasons: [],
+            missingEvidence: ['An approving attestation is required on the comparison artifact.'],
+            nextLawfulActions: [],
+            expectedActor: 'human',
+            attentionState: 'review',
+          },
+          recommendedActions: [],
+          recommendationRequests: [],
+          diagnostics: [],
+        },
       },
     });
   });

@@ -12,7 +12,11 @@ import {
   AgentActionService,
   type AgentActionOutcome,
 } from '../../domain/services/AgentActionService.js';
-import { AgentContextService } from '../../domain/services/AgentContextService.js';
+import {
+  AgentContextService,
+  type AgentGovernanceContext,
+  type AgentSubmissionContext,
+} from '../../domain/services/AgentContextService.js';
 import type {
   AgentActionCandidate,
   AgentDependencyContext,
@@ -21,6 +25,8 @@ import { AgentBriefingService } from '../../domain/services/AgentBriefingService
 import { AgentSubmissionService } from '../../domain/services/AgentSubmissionService.js';
 import type { ReadinessAssessment } from '../../domain/services/ReadinessService.js';
 import type {
+  AgentWorkSemantics,
+  GovernanceWorkSemantics,
   QuestWorkSemantics,
   SubmissionWorkSemantics,
 } from '../../domain/services/WorkSemanticsService.js';
@@ -129,16 +135,107 @@ function renderHumanOutcome(
       ctx.print(`  ${key}: ${JSON.stringify(details[key])}`);
     }
   }
+
+  if (outcome.semantics) {
+    ctx.print('');
+    for (const line of renderSharedSemantics(outcome.semantics)) {
+      ctx.print(line);
+    }
+  }
+}
+
+function renderSharedSemantics(semantics: AgentWorkSemantics): string[] {
+  const lines: string[] = [];
+  lines.push('Shared Semantics');
+  lines.push(`  expectedActor: ${semantics.expectedActor}`);
+  lines.push(`  attention: ${semantics.attentionState}`);
+
+  if (semantics.kind === 'quest') {
+    lines.push(`  claimability: ${semantics.claimability}`);
+    lines.push(`  evidence: ${semantics.evidenceSummary.verdict}`);
+    lines.push(`  requirements: ${semantics.requirements.length}`);
+    lines.push(`  acceptanceCriteria: ${semantics.acceptanceCriteria.length}`);
+  } else if (semantics.kind === 'submission') {
+    lines.push(`  progress: ${semantics.progress.currentLabel}`);
+    lines.push(`  reviews: ${semantics.reviewCount}`);
+    lines.push(`  approvals: ${semantics.approvalCount}`);
+    lines.push(`  latestReview: ${semantics.latestReviewVerdict ?? '—'}`);
+    lines.push(`  latestDecision: ${semantics.latestDecisionKind ?? '—'}`);
+  } else {
+    lines.push(`  artifactKind: ${semantics.artifactKind}`);
+    lines.push(`  progress: ${semantics.progress.currentLabel}`);
+  }
+
+  if (semantics.blockingReasons.length > 0) {
+    lines.push('  blockingReasons:');
+    for (const reason of semantics.blockingReasons) {
+      lines.push(`    - ${reason}`);
+    }
+  }
+  if (semantics.missingEvidence.length > 0) {
+    lines.push('  missingEvidence:');
+    for (const item of semantics.missingEvidence.slice(0, 5)) {
+      lines.push(`    - ${item}`);
+    }
+  }
+  if (semantics.nextLawfulActions.length > 0) {
+    lines.push('  nextLawfulActions:');
+    for (const action of semantics.nextLawfulActions.slice(0, 5)) {
+      lines.push(`    - ${action.label} (${action.allowed ? 'allowed' : 'blocked'})`);
+      lines.push(`      ${action.reason}`);
+    }
+  }
+
+  return lines;
+}
+
+function renderRecommendedActions(recommendedActions: AgentActionCandidate[]): string[] {
+  const lines: string[] = [];
+  lines.push('Recommended Actions');
+  if (recommendedActions.length === 0) {
+    lines.push('  none');
+    return lines;
+  }
+
+  for (const action of recommendedActions) {
+    const status = action.allowed ? 'allowed' : 'blocked';
+    lines.push(`  - ${action.kind} (${status})`);
+    lines.push(`      ${action.reason}`);
+    if (action.blockedBy.length > 0) {
+      lines.push(`      blockedBy: ${action.blockedBy.join(' | ')}`);
+    }
+  }
+  return lines;
+}
+
+function renderRecommendationRequests(recommendationRequests: RecommendationRequest[]): string[] {
+  const lines: string[] = [];
+  lines.push(`Recommendation Requests (${recommendationRequests.length})`);
+  if (recommendationRequests.length === 0) {
+    lines.push('  none');
+    return lines;
+  }
+
+  for (const request of recommendationRequests.slice(0, 5)) {
+    lines.push(`  - ${request.priority} ${request.category}`);
+    lines.push(`      ${request.summary}`);
+    if (request.blockedTransitions.length > 0) {
+      lines.push(`      blocks: ${request.blockedTransitions.join(', ')}`);
+    }
+  }
+  return lines;
 }
 
 function renderAgentContext(
   detail: EntityDetail,
   readiness: ReadinessAssessment | null,
   dependency: AgentDependencyContext | null,
+  submissionContext: AgentSubmissionContext | null,
+  governanceContext: AgentGovernanceContext | null,
   recommendedActions: AgentActionCandidate[],
   recommendationRequests: RecommendationRequest[],
   diagnostics: Diagnostic[],
-  semantics: QuestWorkSemantics | null,
+  semantics: AgentWorkSemantics | null,
 ): string {
   const lines: string[] = [];
   lines.push(`${detail.id}  [${detail.type}]`);
@@ -189,65 +286,58 @@ function renderAgentContext(
 
     if (semantics) {
       lines.push('');
-      lines.push('Shared Semantics');
-      lines.push(`  claimability: ${semantics.claimability}`);
-      lines.push(`  expectedActor: ${semantics.expectedActor}`);
-      lines.push(`  attention: ${semantics.attentionState}`);
-      lines.push(`  evidence: ${semantics.evidenceSummary.verdict}`);
-      lines.push(`  requirements: ${semantics.requirements.length}`);
-      lines.push(`  acceptanceCriteria: ${semantics.acceptanceCriteria.length}`);
-      if (semantics.blockingReasons.length > 0) {
-        lines.push('  blockingReasons:');
-        for (const reason of semantics.blockingReasons) {
-          lines.push(`    - ${reason}`);
-        }
-      }
-      if (semantics.missingEvidence.length > 0) {
-        lines.push('  missingEvidence:');
-        for (const item of semantics.missingEvidence.slice(0, 5)) {
-          lines.push(`    - ${item}`);
-        }
-      }
-      if (semantics.nextLawfulActions.length > 0) {
-        lines.push('  nextLawfulActions:');
-        for (const action of semantics.nextLawfulActions.slice(0, 5)) {
-          lines.push(`    - ${action.label} (${action.allowed ? 'allowed' : 'blocked'})`);
-          lines.push(`      ${action.reason}`);
-        }
-      }
+      lines.push(...renderSharedSemantics(semantics));
     }
 
     lines.push(...renderDiagnosticsLines(diagnostics));
 
     lines.push('');
-    lines.push(`Recommendation Requests (${recommendationRequests.length})`);
-    if (recommendationRequests.length === 0) {
-      lines.push('  none');
-    } else {
-      for (const request of recommendationRequests.slice(0, 5)) {
-        lines.push(`  - ${request.priority} ${request.category}`);
-        lines.push(`      ${request.summary}`);
-        if (request.blockedTransitions.length > 0) {
-          lines.push(`      blocks: ${request.blockedTransitions.join(', ')}`);
-        }
-      }
+    lines.push(...renderRecommendationRequests(recommendationRequests));
+
+    lines.push('');
+    lines.push(...renderRecommendedActions(recommendedActions));
+
+    return lines.join('\n');
+  }
+
+  if (submissionContext) {
+    const submission = submissionContext.submission;
+    lines.push(`${submission.id}  [${submission.status}]`);
+    lines.push(`quest: ${submissionContext.quest?.id ?? submission.questId}   submittedBy: ${submission.submittedBy}   approvals: ${submission.approvalCount}`);
+    lines.push(`tipPatchset: ${submission.tipPatchsetId ?? '—'}   focusPatchset: ${submissionContext.focusPatchsetId ?? '—'}`);
+
+    lines.push('');
+    lines.push('Submission Context');
+    lines.push(`  questTitle: ${submissionContext.quest?.title ?? submission.questId}`);
+    lines.push(`  reviews: ${submissionContext.reviews.length}`);
+    lines.push(`  decisions: ${submissionContext.decisions.length}`);
+    lines.push(`  nextStep: ${submissionContext.nextStep.kind} ${submissionContext.nextStep.targetId}`);
+    lines.push(`  submittedAt: ${new Date(submission.submittedAt).toISOString()}`);
+
+    if (semantics) {
+      lines.push('');
+      lines.push(...renderSharedSemantics(semantics));
     }
 
     lines.push('');
-    lines.push('Recommended Actions');
-    if (recommendedActions.length === 0) {
-      lines.push('  none');
-    } else {
-      for (const action of recommendedActions) {
-        const status = action.allowed ? 'allowed' : 'blocked';
-        lines.push(`  - ${action.kind} (${status})`);
-        lines.push(`      ${action.reason}`);
-        if (action.blockedBy.length > 0) {
-          lines.push(`      blockedBy: ${action.blockedBy.join(' | ')}`);
-        }
-      }
+    lines.push(...renderRecommendedActions(recommendedActions));
+    return lines.join('\n');
+  }
+
+  if (governanceContext) {
+    lines.push(`${governanceContext.artifactType}  [${governanceContext.artifactId}]`);
+    lines.push(`recordedBy: ${governanceContext.recordedBy ?? '—'}   recordedAt: ${governanceContext.recordedAt ? new Date(governanceContext.recordedAt).toISOString() : '—'}`);
+    if (governanceContext.targetId) {
+      lines.push(`target: ${governanceContext.targetId}`);
     }
 
+    if (semantics) {
+      lines.push('');
+      lines.push(...renderSharedSemantics(semantics));
+    }
+
+    lines.push('');
+    lines.push(...renderRecommendedActions(recommendedActions));
     return lines.join('\n');
   }
 
@@ -275,6 +365,12 @@ function renderBriefing(briefing: {
     status: string;
     nextStep: { kind: string; targetId: string };
     semantics: SubmissionWorkSemantics;
+  }[];
+  governanceQueue: {
+    artifactId: string;
+    artifactKind: string;
+    reason: string;
+    semantics: GovernanceWorkSemantics;
   }[];
   frontier: {
     quest: { id: string; title: string; status: string };
@@ -319,6 +415,18 @@ function renderBriefing(briefing: {
       if (entry.semantics.missingEvidence[0]) {
         lines.push(`      missing: ${entry.semantics.missingEvidence[0]}`);
       }
+    }
+  }
+
+  lines.push('');
+  lines.push(`Governance Queue (${briefing.governanceQueue.length})`);
+  if (briefing.governanceQueue.length === 0) {
+    lines.push('  none');
+  } else {
+    for (const entry of briefing.governanceQueue) {
+      lines.push(`  - ${entry.artifactId} [${entry.artifactKind}]`);
+      lines.push(`      ${entry.reason}`);
+      lines.push(`      attention: ${entry.semantics.attentionState} · progress: ${entry.semantics.progress.currentLabel}`);
     }
   }
 
@@ -393,7 +501,7 @@ function renderNext(candidates: {
   priority: string;
   reason: string;
   blockedBy: string[];
-  semantics?: QuestWorkSemantics | SubmissionWorkSemantics;
+  semantics?: AgentWorkSemantics;
 }[]): string {
   const lines: string[] = [];
   lines.push(`Candidates (${candidates.length})`);
@@ -595,9 +703,12 @@ export function registerAgentCommands(program: Command, ctx: CliContext): void {
             outgoing: result.detail.outgoing,
             incoming: result.detail.incoming,
             questDetail: result.detail.questDetail ?? null,
+            governanceDetail: result.detail.governanceDetail ?? null,
             agentContext: {
               readiness: result.readiness,
               dependency: result.dependency,
+              submissionContext: result.submissionContext ?? null,
+              governanceContext: result.governanceContext ?? null,
               semantics: result.semantics,
               recommendedActions: result.recommendedActions,
               recommendationRequests: result.recommendationRequests,
@@ -612,6 +723,8 @@ export function registerAgentCommands(program: Command, ctx: CliContext): void {
         result.detail,
         result.readiness,
         result.dependency,
+        result.submissionContext ?? null,
+        result.governanceContext ?? null,
         result.recommendedActions,
         result.recommendationRequests,
         result.diagnostics,
@@ -679,6 +792,7 @@ export function registerAgentCommands(program: Command, ctx: CliContext): void {
           renderHumanOutcome(ctx, outcome);
           return ctx.fail(`[PARTIAL FAILURE] ${reason}`);
         }
+        renderHumanOutcome(ctx, outcome);
         return ctx.fail(`[REJECTED] ${reason}`);
       }
 

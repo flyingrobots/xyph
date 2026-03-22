@@ -90,6 +90,11 @@ export interface GovernanceWorkSemantics extends WorkSemantics {
   progress: GovernanceProgress;
 }
 
+export type AgentWorkSemantics =
+  | QuestWorkSemantics
+  | SubmissionWorkSemantics
+  | GovernanceWorkSemantics;
+
 function uniqueMessages(values: string[]): string[] {
   return [...new Set(values.map((value) => value.trim()).filter((value) => value.length > 0))];
 }

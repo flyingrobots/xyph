@@ -713,6 +713,41 @@ All commands run via `npx tsx xyph-actuator.ts <command>`.
 | `generate-key`                                           | Generate an Ed25519 Guild Seal keypair                 |
 | `audit-sovereignty`                                      | Verify all quests have a Genealogy of Intent           |
 
+### Agent-native CLI
+
+XYPH also exposes an agent-native CLI compatibility layer for cold-start
+orientation, target work packets, and policy-bounded execution. The canonical
+contract for this surface lives in
+[docs/canonical/AGENT_PROTOCOL.md](docs/canonical/AGENT_PROTOCOL.md).
+
+The current runtime already supports a shared semantic vocabulary across
+`briefing`, `next`, `context`, and `act`, so agents do not have to reconstruct
+blockers and next steps from command-local prose. That packet now includes
+fields such as:
+
+- `requirements`
+- `acceptanceCriteria`
+- `evidenceSummary`
+- `blockingReasons`
+- `missingEvidence`
+- `nextLawfulActions`
+- `claimability`
+- `expectedActor`
+- `attentionState`
+
+Current highlights:
+
+- `xyph briefing --json` now includes a `governanceQueue` alongside quest and
+  submission intake, so agent cold-start sees governance attention work too.
+- `xyph next --json` can now surface governance-oriented `inspect` candidates
+  in addition to quest and submission workflow candidates.
+- `xyph context --json <id>` now emits typed work packets not only for
+  `task:*`, but also for `submission:*`, `patchset:*`,
+  `comparison-artifact:*`, `collapse-proposal:*`, and `attestation:*` targets.
+- `xyph act --json` now carries shared submission semantics on `review` /
+  `merge` refusal, dry-run, success, and partial-failure outcomes when XYPH can
+  derive them truthfully.
+
 ## How XYPH Works (Part II)
 
 ### The Digital Guild Model

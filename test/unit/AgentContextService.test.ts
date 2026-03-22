@@ -437,6 +437,197 @@ describe('AgentContextService', () => {
     expect(result?.recommendationRequests).toEqual([]);
   });
 
+  it('builds submission context for a submission target using shared submission semantics', async () => {
+    const snapshot = makeSnapshot({
+      quests: [
+        quest({
+          id: 'task:CTX-SUB',
+          title: 'Submission quest',
+          status: 'IN_PROGRESS',
+          hours: 2,
+        }),
+      ],
+      submissions: [
+        submission({
+          id: 'submission:CTX-SUB',
+          questId: 'task:CTX-SUB',
+          status: 'APPROVED',
+          submittedBy: 'agent.hal',
+          submittedAt: Date.UTC(2026, 2, 18, 3, 0, 0),
+          tipPatchsetId: 'patchset:CTX-SUB',
+          approvalCount: 1,
+        }),
+      ],
+      sortedTaskIds: ['task:CTX-SUB'],
+    });
+
+    const detail = {
+      id: 'submission:CTX-SUB',
+      type: 'submission',
+      props: {
+        type: 'submission',
+        quest_id: 'task:CTX-SUB',
+        status: 'APPROVED',
+      },
+      content: null,
+      contentOid: null,
+      outgoing: [],
+      incoming: [],
+    };
+
+    mocks.createGraphContext.mockReturnValue({
+      fetchSnapshot: vi.fn().mockResolvedValue(snapshot),
+      fetchEntityDetail: vi.fn().mockResolvedValue(detail),
+      filterSnapshot: vi.fn(),
+      invalidateCache: vi.fn(),
+      get graph() {
+        throw new Error('not used in test');
+      },
+    });
+
+    const service = new AgentContextService(
+      makeGraphPort(),
+      makeRoadmap(null),
+      'agent.hal',
+      makeDoctor(),
+    );
+
+    const result = await service.fetch('submission:CTX-SUB');
+
+    expect(result).not.toBeNull();
+    if (!result) {
+      throw new Error('expected result');
+    }
+    expect(result.submissionContext).toMatchObject({
+      submission: {
+        id: 'submission:CTX-SUB',
+        status: 'APPROVED',
+      },
+      quest: {
+        id: 'task:CTX-SUB',
+        title: 'Submission quest',
+      },
+      focusPatchsetId: 'patchset:CTX-SUB',
+      nextStep: {
+        kind: 'merge',
+        targetId: 'submission:CTX-SUB',
+      },
+    });
+    expect(result.semantics).toMatchObject({
+      kind: 'submission',
+      attentionState: 'ready',
+      expectedActor: 'agent',
+      missingEvidence: ['A settlement decision is still required on this approved submission.'],
+    });
+    expect(result.recommendedActions).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: 'merge',
+        targetId: 'submission:CTX-SUB',
+      }),
+      expect.objectContaining({
+        kind: 'comment',
+        targetId: 'submission:CTX-SUB',
+      }),
+    ]));
+  });
+
+  it('builds governance context for a governance artifact target using shared governance semantics', async () => {
+    const snapshot = makeSnapshot({
+      governanceArtifacts: [
+        {
+          id: 'comparison-artifact:CTX-GOV',
+          type: 'comparison-artifact',
+          recordedAt: Date.UTC(2026, 2, 18, 4, 0, 0),
+          recordedBy: 'agent.hal',
+          targetId: 'task:CTX-GOV',
+          governance: {
+            kind: 'comparison-artifact',
+            freshness: 'fresh',
+            attestation: {
+              total: 0,
+              approvals: 0,
+              rejections: 0,
+              other: 0,
+              state: 'unattested',
+            },
+            series: {
+              supersededByIds: [],
+              latestInSeries: true,
+            },
+            comparison: {
+              targetId: 'task:CTX-GOV',
+            },
+            settlement: {
+              proposalCount: 0,
+              executedCount: 0,
+            },
+          },
+        },
+      ],
+    });
+
+    const detail = {
+      id: 'comparison-artifact:CTX-GOV',
+      type: 'comparison-artifact',
+      props: {
+        type: 'comparison-artifact',
+      },
+      content: null,
+      contentOid: null,
+      outgoing: [],
+      incoming: [],
+      governanceDetail: snapshot.governanceArtifacts[0]?.governance,
+    };
+
+    mocks.createGraphContext.mockReturnValue({
+      fetchSnapshot: vi.fn().mockResolvedValue(snapshot),
+      fetchEntityDetail: vi.fn().mockResolvedValue(detail),
+      filterSnapshot: vi.fn(),
+      invalidateCache: vi.fn(),
+      get graph() {
+        throw new Error('not used in test');
+      },
+    });
+
+    const service = new AgentContextService(
+      makeGraphPort(),
+      makeRoadmap(null),
+      'agent.hal',
+      makeDoctor(),
+    );
+
+    const result = await service.fetch('comparison-artifact:CTX-GOV');
+
+    expect(result).not.toBeNull();
+    if (!result) {
+      throw new Error('expected result');
+    }
+    expect(result.governanceContext).toEqual({
+      artifactId: 'comparison-artifact:CTX-GOV',
+      artifactType: 'comparison-artifact',
+      recordedAt: Date.UTC(2026, 2, 18, 4, 0, 0),
+      recordedBy: 'agent.hal',
+      targetId: 'task:CTX-GOV',
+    });
+    expect(result.semantics).toMatchObject({
+      kind: 'governance',
+      artifactKind: 'comparison-artifact',
+      attentionState: 'review',
+      missingEvidence: ['An approving attestation is required on the comparison artifact.'],
+    });
+    expect(result.recommendedActions).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: 'inspect',
+        targetId: 'comparison-artifact:CTX-GOV',
+        allowed: true,
+      }),
+      expect.objectContaining({
+        kind: 'comment',
+        targetId: 'comparison-artifact:CTX-GOV',
+      }),
+    ]));
+  });
+
   it('includes relevant doctor prescriptions for the target quest context', async () => {
     const snapshot = makeSnapshot({
       quests: [

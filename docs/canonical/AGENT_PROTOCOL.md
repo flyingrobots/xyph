@@ -145,10 +145,11 @@ Not every command must return every field, but commands that speak about the
 same target should prefer these names instead of command-local synonyms.
 
 `context` now ships the deepest concrete version of this packet for quest
-targets. `briefing` and `next` now also emit compatible semantic subsets for
-quest work and submission review candidates instead of inventing parallel
-names. That shared shape is the reference future governance-target packets
-should grow toward.
+targets, submission or patchset targets, and governance artifacts such as
+`comparison-artifact:*`, `collapse-proposal:*`, and `attestation:*`.
+`briefing` and `next` now also emit compatible semantic subsets for quest work,
+submission review candidates, and governance attention work instead of
+inventing parallel names.
 
 ## 4. JSON Contracts
 
@@ -184,6 +185,7 @@ Terminal error record shape:
 - `identity`
 - `assignments`
 - `reviewQueue`
+- `governanceQueue`
 - `frontier`
 - `recommendationQueue`
 - `alerts`
@@ -197,9 +199,9 @@ own recent closeout notes without hunting through raw quest history.
 
 `briefing` now exposes enough shared semantics to answer the cold-start
 questions "what is true?", "what is blocked?", and "what needs me?" without
-another round-trip. Quest assignments/frontier work and submission review queue
-entries now carry compatible semantic packets built from the shared domain
-services, including:
+another round-trip. Quest assignments/frontier work, submission review queue
+entries, and governance queue entries now carry compatible semantic packets
+built from the shared domain services, including:
 
 - `attentionState`
 - `blockingReasons`
@@ -234,9 +236,10 @@ delivery. When a candidate needs additional operator input, it should still be
 surfaced with machine-readable blocking reasons instead of silently disappearing
 from the queue.
 
-`next` now carries the same semantic vocabulary on quest and submission
-candidates when that judgment already exists in the shared domain layer. When
-the candidate targets a quest or governance artifact, the payload should
+`next` now carries the same semantic vocabulary on quest, submission, and
+governance candidates when that judgment already exists in the shared domain
+layer. When the candidate targets a quest or governance artifact, the payload
+should
 prefer:
 
 - `requirements`
@@ -258,8 +261,9 @@ follow-on `context` calls without forcing extra graph archaeology.
 
 ### 4.3.1 `context --json`
 
-`context` remains the target-oriented work packet. For quest targets, the
-agent-specific payload must include:
+`context` remains the target-oriented work packet.
+
+For quest targets, the agent-specific payload must include:
 
 - `readiness`
 - `dependency`
@@ -274,6 +278,20 @@ agent-specific payload must include:
 - `nextLawfulActions`
 - `expectedActor`
 - `claimability`
+
+For submission or patchset targets, the payload must include:
+
+- `submissionContext`
+- submission-scoped shared semantics
+- recommended follow-on actions such as `review`, `merge`, `inspect`, or
+  `comment`
+
+For governance artifacts such as `comparison-artifact:*`,
+`collapse-proposal:*`, and `attestation:*`, the payload must include:
+
+- `governanceContext`
+- governance-scoped shared semantics
+- recommended follow-on actions such as `inspect` or `comment`
 
 Those fields are what make `context` a work packet instead of a fancy `show`
 command.
@@ -317,6 +335,12 @@ same terms the human governance pages will use:
 - `missingEvidence`
 - `nextLawfulActions`
 - `expectedActor`
+
+For submission-scoped actions such as `review` and `merge`, the action-kernel
+response should also carry the shared submission semantics packet when it can be
+derived truthfully. That keeps rejected, dry-run, success, and partial-failure
+outcomes aligned with `context`, `briefing`, and `next` instead of inventing a
+second refusal vocabulary.
 
 ### 4.5 `handoff --json`
 

@@ -1,7 +1,15 @@
 import { compareQuestPriority, DEFAULT_QUEST_PRIORITY, isExecutableQuestStatus } from '../entities/Quest.js';
 import type { Diagnostic } from '../models/diagnostics.js';
 import type { RecommendationRequest } from '../models/recommendations.js';
-import type { EntityDetail, GraphSnapshot, QuestNode } from '../models/dashboard.js';
+import type {
+  DecisionNode,
+  EntityDetail,
+  GovernanceArtifactNode,
+  GraphSnapshot,
+  QuestNode,
+  ReviewNode,
+  SubmissionNode,
+} from '../models/dashboard.js';
 import type { GraphPort } from '../../ports/GraphPort.js';
 import type { RoadmapQueryPort } from '../../ports/RoadmapPort.js';
 import { createGraphContext } from '../../infrastructure/GraphContext.js';
@@ -11,23 +19,51 @@ import { DoctorService } from './DoctorService.js';
 import { buildRecommendationRequests, findRelevantRecommendationRequests } from './RecommendationService.js';
 import { ReadinessService, type ReadinessAssessment } from './ReadinessService.js';
 import { AgentActionValidator } from './AgentActionService.js';
-import { determineSubmissionNextStep } from './AgentSubmissionService.js';
+import {
+  determineSubmissionNextStep,
+  type AgentSubmissionNextStep,
+} from './AgentSubmissionService.js';
 import {
   AgentRecommender,
   type AgentActionCandidate,
   type AgentDependencyContext,
   type AgentQuestRef,
 } from './AgentRecommender.js';
-import { buildQuestWorkSemantics, type QuestWorkSemantics } from './WorkSemanticsService.js';
+import {
+  buildGovernanceWorkSemantics,
+  buildQuestWorkSemantics,
+  buildSubmissionWorkSemantics,
+  type AgentWorkSemantics,
+  type GovernanceWorkSemantics,
+} from './WorkSemanticsService.js';
+
+export interface AgentSubmissionContext {
+  submission: SubmissionNode;
+  quest: QuestNode | null;
+  reviews: ReviewNode[];
+  decisions: DecisionNode[];
+  focusPatchsetId: string | null;
+  nextStep: AgentSubmissionNextStep;
+}
+
+export interface AgentGovernanceContext {
+  artifactId: string;
+  artifactType: string;
+  recordedAt: number | null;
+  recordedBy: string | null;
+  targetId: string | null;
+}
 
 export interface AgentContextResult {
   detail: EntityDetail;
   readiness: ReadinessAssessment | null;
   dependency: AgentDependencyContext | null;
+  submissionContext: AgentSubmissionContext | null;
+  governanceContext: AgentGovernanceContext | null;
   recommendedActions: AgentActionCandidate[];
   recommendationRequests: RecommendationRequest[];
   diagnostics: Diagnostic[];
-  semantics: QuestWorkSemantics | null;
+  semantics: AgentWorkSemantics | null;
 }
 
 export function toAgentQuestRef(quest: QuestNode): AgentQuestRef {
@@ -115,10 +151,57 @@ export class AgentContextService {
     }
 
     if (!detail.questDetail) {
+      const submissionContext = this.buildSubmissionContext(snapshot, id);
+      if (submissionContext) {
+        const semantics = buildSubmissionWorkSemantics({
+          submission: submissionContext.submission,
+          quest: submissionContext.quest ?? undefined,
+          reviews: submissionContext.reviews,
+          decisions: submissionContext.decisions,
+          principalId: this.agentId,
+        });
+        const submissionAction = this.toSubmissionCandidate(submissionContext.submission);
+
+        return {
+          detail,
+          readiness: null,
+          dependency: null,
+          submissionContext,
+          governanceContext: null,
+          recommendedActions: this.sortCandidates([
+            this.toCommentCandidate(submissionContext.submission.id, 'submission'),
+            ...(submissionAction
+              ? [submissionAction]
+              : []),
+          ]),
+          recommendationRequests: [],
+          diagnostics: [],
+          semantics,
+        };
+      }
+
+      const governanceContext = this.buildGovernanceContext(snapshot, detail);
+      const governanceSemantics = buildGovernanceWorkSemantics(detail);
+      if (governanceContext && governanceSemantics) {
+        return {
+          detail,
+          readiness: null,
+          dependency: null,
+          submissionContext: null,
+          governanceContext,
+          recommendedActions: this.sortCandidates(this.toGovernanceCandidates(detail, governanceSemantics)),
+          recommendationRequests: [],
+          diagnostics: [],
+          semantics: governanceSemantics,
+        };
+      }
+
       return {
         detail,
         readiness: null,
         dependency: null,
+        submissionContext: null,
+        governanceContext: null,
         recommendedActions: [],
         recommendationRequests: [],
         diagnostics: [],
@@ -175,6 +258,8 @@ export class AgentContextService {
       detail,
       readiness,
       dependency,
+      submissionContext: null,
+      governanceContext: null,
       recommendedActions,
       recommendationRequests,
       diagnostics,
@@ -182,8 +267,147 @@ export class AgentContextService {
     };
   }
 
+  private buildSubmissionContext(
+    snapshot: GraphSnapshot,
+    id: string,
+  ): AgentSubmissionContext | null {
+    const submission = id.startsWith('submission:')
+      ? snapshot.submissions.find((entry) => entry.id === id)
+      : id.startsWith('patchset:')
+        ? snapshot.submissions.find((entry) => entry.tipPatchsetId === id)
+        : undefined;
+    if (!submission) return null;
+
+    const focusPatchsetId = id.startsWith('patchset:')
+      ? id
+      : submission.tipPatchsetId ?? null;
+    const reviews = focusPatchsetId
+      ? snapshot.reviews.filter((entry) => entry.patchsetId === focusPatchsetId)
+      : [];
+    const decisions = snapshot.decisions.filter((entry) => entry.submissionId === submission.id);
+
+    return {
+      submission,
+      quest: snapshot.quests.find((entry) => entry.id === submission.questId) ?? null,
+      reviews,
+      decisions,
+      focusPatchsetId,
+      nextStep: determineSubmissionNextStep(submission, this.agentId),
+    };
+  }
+
+  private buildGovernanceContext(
+    snapshot: GraphSnapshot,
+    detail: EntityDetail,
+  ): AgentGovernanceContext | null {
+    if (!detail.governanceDetail) return null;
+
+    const artifact = snapshot.governanceArtifacts.find((entry) => entry.id === detail.id);
+    return {
+      artifactId: detail.id,
+      artifactType: artifact?.type ?? detail.type,
+      recordedAt: artifact?.recordedAt
+        ?? (typeof detail.props['recorded_at'] === 'number' ? detail.props['recorded_at'] : null),
+      recordedBy: artifact?.recordedBy
+        ?? (typeof detail.props['recorded_by'] === 'string' ? detail.props['recorded_by'] : null),
+      targetId: this.extractGovernanceTargetId(artifact, detail),
+    };
+  }
+
+  private extractGovernanceTargetId(
+    artifact: GovernanceArtifactNode | undefined,
+    detail: EntityDetail,
+  ): string | null {
+    if (artifact?.type === 'comparison-artifact') {
+      return artifact.targetId ?? null;
+    }
+    if (artifact?.type === 'collapse-proposal') {
+      return artifact.comparisonArtifactId ?? null;
+    }
+    if (artifact?.type === 'attestation') {
+      return artifact.targetId ?? null;
+    }
+
+    if (detail.governanceDetail?.kind === 'comparison-artifact') {
+      return detail.governanceDetail.comparison.targetId ?? null;
+    }
+    if (detail.governanceDetail?.kind === 'collapse-proposal') {
+      return detail.governanceDetail.executionGate.comparisonArtifactId ?? null;
+    }
+    if (detail.governanceDetail?.kind === 'attestation') {
+      return detail.governanceDetail.targetId ?? null;
+    }
+    return null;
+  }
+
+  private toCommentCandidate(targetId: string, subject: string): AgentActionCandidate {
+    return {
+      kind: 'comment',
+      targetId,
+      args: {},
+      priority: DEFAULT_QUEST_PRIORITY,
+      reason: `Capture rationale directly on the ${subject}.`,
+      confidence: 0.81,
+      requiresHumanApproval: false,
+      dryRunSummary: `Record a durable comment on the ${subject} after providing a message.`,
+      blockedBy: ['Provide message to execute the comment.'],
+      allowed: false,
+      underlyingCommand: `xyph act comment ${targetId}`,
+      sideEffects: [`create comment on ${targetId}`],
+      validationCode: 'requires-additional-input',
+    };
+  }
+
+  private toInspectCandidate(
+    targetId: string,
+    reason: string,
+  ): AgentActionCandidate {
+    return {
+      kind: 'inspect',
+      targetId,
+      args: {},
+      priority: DEFAULT_QUEST_PRIORITY,
+      reason,
+      confidence: 0.74,
+      requiresHumanApproval: false,
+      dryRunSummary: 'Inspect the work packet and graph context before taking follow-on action.',
+      blockedBy: [],
+      allowed: true,
+      underlyingCommand: `xyph context ${targetId}`,
+      sideEffects: [],
+      validationCode: null,
+    };
+  }
+
+  private toGovernanceCandidates(
+    detail: EntityDetail,
+    semantics: GovernanceWorkSemantics,
+  ): AgentActionCandidate[] {
+    const reason = semantics.blockingReasons[0]
+      ?? semantics.missingEvidence[0]
+      ?? semantics.nextLawfulActions[0]?.reason
+      ?? 'Inspect the governance artifact before deciding on follow-on action.';
+
+    return [
+      this.toInspectCandidate(detail.id, reason),
+      this.toCommentCandidate(detail.id, 'governance artifact'),
+    ];
+  }
+
+  private sortCandidates(candidates: AgentActionCandidate[]): AgentActionCandidate[] {
+    return candidates.sort((a, b) =>
+      compareQuestPriority(
+        (a.priority ?? DEFAULT_QUEST_PRIORITY) as typeof DEFAULT_QUEST_PRIORITY,
+        (b.priority ?? DEFAULT_QUEST_PRIORITY) as typeof DEFAULT_QUEST_PRIORITY,
+      ) ||
+      Number(b.allowed) - Number(a.allowed) ||
+      b.confidence - a.confidence ||
+      a.kind.localeCompare(b.kind)
+    );
+  }
+
   private toSubmissionCandidate(
-    submission: NonNullable<EntityDetail['questDetail']>['submission'],
+    submission: SubmissionNode | undefined,
   ): AgentActionCandidate | null {
     if (!submission) return null;
 

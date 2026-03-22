@@ -113,12 +113,17 @@ The first concrete implementation of this rule now exists:
   actions
 - the TUI `Settlement` lane opens a dedicated governance page for
   `comparison-artifact:*`, `collapse-proposal:*`, and `attestation:*`
-- `xyph context` now emits a shared semantic packet for quest targets instead
-  of leaving blocker/evidence/next-action reasoning trapped inside human-only
+- `xyph context` now emits shared semantic packets for quest targets,
+  submission or patchset targets, and governance artifacts instead of leaving
+  blocker/evidence/next-action reasoning trapped inside human-only
   presentation layers
 - `xyph briefing` and `xyph next` now carry compatible semantic subsets for
-  quest work and submission review candidates, so cold-start agent intake uses
-  the same field names and judgments the human review/governance pages use
+  quest work, submission review candidates, and governance attention work, so
+  cold-start agent intake uses the same field names and judgments the human
+  review/governance pages use
+- `xyph act` now carries shared submission semantics on review/merge outcomes
+  when that judgment can be derived honestly, so refusal and dry-run envelopes
+  stay consistent with the same review/governance model
 
 The product-design source of truth for these primitives lives in
 [`docs/XYPH_PRODUCT_DESIGN.md`](../XYPH_PRODUCT_DESIGN.md). This architecture
