@@ -753,6 +753,12 @@ Current highlights:
   `attest` / `collapse_preview` / `collapse_live` with explicit
   `human-only-action` envelopes instead of vague unsupported-action failures.
 
+Design rule: agents do not need an explicit queued "ask AI" request in order
+to notice and publish a worthwhile suggestion. Request-driven AI jobs are one
+auditable intake path; spontaneous agent-originated suggestions are also valid,
+as long as XYPH records them as visible advisory artifacts instead of silently
+mutating graph truth.
+
 ## How XYPH Works (Part II)
 
 ### The Digital Guild Model

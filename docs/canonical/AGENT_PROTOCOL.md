@@ -26,6 +26,10 @@ The goal is not "friendlier scripting." The goal is that an agent can:
 4. execute allowed routine work through XYPH itself,
 5. leave durable graph-native handoff state behind.
 
+That includes the ability to emit advisory suggestions when the agent notices a
+useful structural change while already working. Suggestion jobs are one intake
+path, not the only lawful way for an agent to propose work.
+
 The agent protocol is therefore a **policy-bounded operating interface**, not a
 second workflow model and not an informal wrapper around raw commands.
 
@@ -74,6 +78,14 @@ and observation/worldline coordinate.
    Review discussion should attach to `patchset:*` and `review:*` nodes so the
    quest issue-page projection can render change-specific threads without
    deferring to GitHub.
+
+7. **Suggestions may be spontaneous**
+   Agents may emit advisory suggestions opportunistically when they discover
+   likely useful quests, dependencies, promotions, reopen candidates, or
+   governance follow-ups during ordinary work. User-initiated "ask the AI"
+   requests should still become explicit queued jobs, but unsolicited agent
+   suggestions remain lawful as long as they are recorded as visible advisory
+   artifacts instead of hidden automation.
 
 ## 3. Command Set
 

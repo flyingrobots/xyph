@@ -174,6 +174,9 @@ Primary success condition:
 - can emit high-quality, explainable suggestions for quests, dependencies,
   promotions, and follow-up work without those suggestions being mistaken for
   settled graph truth
+- can emit those suggestions either opportunistically while already working or
+  in response to an explicit suggestion/job request, without needing a special
+  privileged mode
 
 ## Hills
 
@@ -246,6 +249,11 @@ artifact that can be:
 - picked up by another agent
 - accepted into the normal lifecycle
 - rejected or marked stale with recorded rationale
+
+This hill applies both to:
+
+- explicit ask-AI jobs or suggestion requests
+- spontaneous agent-originated suggestions discovered during ordinary work
 
 ## Product Principles
 
@@ -350,6 +358,17 @@ AI suggestions may recommend:
 But every suggestion must still be visibly advisory until a lawful human or
 agent action lowers it through the normal mutation path.
 
+Suggestion origin is intentionally broad. A suggestion may be created because:
+
+- a human explicitly asked for AI help
+- a queue/job requested AI analysis
+- an agent noticed a structural gap, likely dependency, candidate quest,
+  backlog promotion, or other worthwhile change while already doing normal work
+
+The product must not imply that agents may suggest only when a job was posted.
+Explicit jobs are one auditable request path, not the only lawful source of
+suggestions.
+
 ### 11. AI Must Be Explicitly Marked
 
 AI-generated or AI-assisted content must never masquerade as ordinary product
@@ -372,6 +391,12 @@ or intake into backlog, not as a secret privileged fast path.
 If XYPH lets a user "ask the AI" for help, that request must become an explicit
 job or suggestion artifact in the queue. It should be inspectable, targetable,
 and explainable, not a hidden side channel.
+
+This rule does **not** mean that all agent suggestions require an explicit job
+first. It means that user-initiated AI requests should become explicit jobs.
+Agents may still originate unsolicited suggestions while working, as long as
+those suggestions are recorded as visible advisory artifacts rather than hidden
+side effects.
 
 ### 14. Same Graph, Different Lenses
 
@@ -625,6 +650,8 @@ Agent-surface responsibilities:
 
 - orient a cold-start agent
 - expose available work and suggestion jobs
+- let agents originate suggestions when they discover useful changes during
+  ordinary work
 - expose allowed actions and blocking reasons
 - keep output structured and context-window efficient
 - preserve auditability and graph-native handoff
@@ -867,6 +894,12 @@ notice likely useful next actions before someone performs a lawful mutation.
 
 They are not implicit automation. They are explainable recommendations.
 
+They may be created either:
+
+- on demand from an explicit ask-AI job or suggestion request
+- opportunistically by an agent that notices a likely useful change while doing
+  other work
+
 ### Suggestion Families
 
 Initial high-value suggestion families include:
@@ -900,6 +933,10 @@ Examples:
 - a human-facing suggestion queue in the landing surface
 - an agent-facing recommendation queue in `briefing` / `next`
 - explicit ask-AI jobs that wait for agent pickup
+
+Spontaneous agent-originated suggestions should enter the same visible queue
+model as request-driven suggestions. The source differs; the governance model
+should not.
 
 ### States
 
@@ -942,6 +979,10 @@ Typical uses:
 The important product rule is that "ask the AI" creates a visible job and
 result trail. It is not a hidden side conversation.
 
+It is one suggestion source, not the exclusive one. Agents do not need an
+ask-AI job in order to emit a suggestion they discovered independently while
+working.
+
 ### Human Expectations
 
 A sponsor user looking at a suggestion should be able to tell:
@@ -960,6 +1001,12 @@ An agent consuming suggestion jobs should be able to tell:
 - the target entity or entities
 - the rationale and supporting evidence
 - whether this is merely advisory or already approved for execution
+
+An agent originating an unsolicited suggestion should also be able to:
+
+- publish it through the same visible artifact path
+- mark whether it is human-targeted, agent-targeted, or open pickup
+- attach the observations or evidence that led to the suggestion
 
 ## `[AI]` Transparency Component
 
