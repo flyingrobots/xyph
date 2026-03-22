@@ -14,7 +14,7 @@ import type {
   DecisionNode,
 } from '../../domain/models/dashboard.js';
 
-export type CockpitLaneId = 'now' | 'plan' | 'review' | 'settlement' | 'campaigns';
+export type CockpitLaneId = 'now' | 'plan' | 'review' | 'settlement' | 'campaigns' | 'graveyard';
 export type NowViewMode = 'queue' | 'activity';
 
 export interface CockpitLane {
@@ -107,7 +107,7 @@ export type CockpitItem =
   | CampaignCockpitItem
   | ActivityCockpitItem;
 
-const LANE_ORDER: CockpitLaneId[] = ['now', 'plan', 'review', 'settlement', 'campaigns'];
+const LANE_ORDER: CockpitLaneId[] = ['now', 'plan', 'review', 'settlement', 'campaigns', 'graveyard'];
 
 const QUEST_STATUS_ORDER: Record<string, number> = {
   IN_PROGRESS: 0,
@@ -176,6 +176,9 @@ function questTimestamp(quest: QuestNode): number | undefined {
 }
 
 function questCue(quest: QuestNode): string {
+  if (quest.status === 'GRAVEYARD' && quest.rejectedBy) {
+    return shortPrincipal(quest.rejectedBy);
+  }
   if (quest.assignedTo) return shortPrincipal(quest.assignedTo);
   return `${quest.hours}h`;
 }
@@ -275,12 +278,15 @@ function buildQuestItem(quest: QuestNode): QuestCockpitItem {
   const context = [quest.campaignId ? shortId(quest.campaignId) : null, quest.intentId ? shortId(quest.intentId) : null]
     .filter(Boolean)
     .join(' · ');
+  const secondary = quest.status === 'GRAVEYARD'
+    ? quest.rejectionRationale ?? (context || 'retired to graveyard')
+    : context || 'unplaced work';
   return {
     id: quest.id,
     kind: 'quest',
-    label: quest.status === 'BACKLOG' ? 'TRIAGE' : 'QUEST',
+    label: quest.status === 'GRAVEYARD' ? 'REJECTED' : quest.status === 'BACKLOG' ? 'TRIAGE' : 'QUEST',
     primary: `${shortId(quest.id)}  ${quest.title}`,
-    secondary: context || 'unplaced work',
+    secondary,
     state: quest.status,
     cue: questCue(quest),
     timestamp: questTimestamp(quest),
@@ -736,6 +742,7 @@ export function cockpitLanes(snapshot: GraphSnapshot | null, agentId?: string, n
       { id: 'review', title: 'Review', description: 'Submission lanes', count: 0, freshCount: 0, attentionCount: 0, attentionTone: 'none' },
       { id: 'settlement', title: 'Settlement', description: 'Compare, attest, collapse', count: 0, freshCount: 0, attentionCount: 0, attentionTone: 'none' },
       { id: 'campaigns', title: 'Campaigns', description: 'Strategic containers', count: 0, freshCount: 0, attentionCount: 0, attentionTone: 'none' },
+      { id: 'graveyard', title: 'Graveyard', description: 'Rejected and retired work', count: 0, freshCount: 0, attentionCount: 0, attentionTone: 'none' },
     ];
   }
   return [
@@ -768,6 +775,15 @@ export function cockpitLanes(snapshot: GraphSnapshot | null, agentId?: string, n
       attentionTone: laneAttentionToneForLane(snapshot, 'settlement', agentId, nowView),
     },
     { id: 'campaigns', title: 'Campaigns', description: 'Strategic containers', count: snapshot.campaigns.length, freshCount: 0, attentionCount: 0, attentionTone: 'none' },
+    {
+      id: 'graveyard',
+      title: 'Graveyard',
+      description: 'Rejected and retired work',
+      count: snapshot.quests.filter((quest) => quest.status === 'GRAVEYARD').length,
+      freshCount: 0,
+      attentionCount: 0,
+      attentionTone: 'none',
+    },
   ];
 }
 
@@ -794,6 +810,11 @@ export function laneItems(snapshot: GraphSnapshot, lane: CockpitLaneId, agentId?
       return snapshot.campaigns
         .map((campaign) => buildCampaignItem(campaign, snapshot))
         .sort(compareCampaignItems);
+    case 'graveyard':
+      return snapshot.quests
+        .filter((quest) => quest.status === 'GRAVEYARD')
+        .map(buildQuestItem)
+        .sort(compareQuestItems);
   }
 }
 

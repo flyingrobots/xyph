@@ -613,21 +613,27 @@ cockpit demo capture is still pending.
 
 XYPH has an interactive BIJOU-powered TUI that provides a visual browser for
 your project and its XYPH artifacts. The current shell runs on BIJOU `3.1.0`
-and has been rebuilt as a single AION-style cockpit instead of a stack of peer
-dashboards. The shell centers on five lanes:
+and now treats the cockpit as an AION landing page instead of forcing every
+surface into one eternal inspector layout. The landing shell centers on six
+lanes:
 
 - `Now` for cross-surface action
 - `Plan` for the live quest surface
 - `Review` for submissions
 - `Settlement` for compare/attest/collapse artifacts
 - `Campaigns` for strategic containers
+- `Graveyard` for rejected and retired work
 
 The left rail keeps those lanes visible, the center worklist stays scannable as
 a contained-list-style queue, and the right inspector keeps the currently
-selected record legible without dropping to raw JSON first. The cockpit is
-fully keyboard-driven, but it now also supports mouse clicks for lane/row
-selection and wheel scrolling in the main panes. `Plan`, `Campaigns`, and the
-`Now` activity stream use observer-local freshness markers from
+selected record legible without dropping to raw JSON first. Press `Enter` on a
+selected quest-facing record to drill into a dedicated item page with a
+breadcrumb under the hero (`Landing / Plan / Q1`, `Landing / Graveyard / G1`,
+and so on), then use `Esc` or `Backspace` to return to the landing surface.
+The cockpit is fully keyboard-driven, but it now also supports mouse clicks for
+lane/row selection and wheel scrolling in the main panes. `Plan`,
+`Campaigns`, `Graveyard`, and the `Now` activity stream use observer-local
+freshness markers from
 `~/.xyph/dashboard-state.json`, while `Review` and `Settlement` now keep a
 persistent action-needed badge until the underlying submission or governance
 artifact is actually resolved.
@@ -638,10 +644,12 @@ XYPH_AGENT_ID=human.yourname ./xyph-dashboard.ts
 
 | Key | Context | Action |
 |---|---|---|
-| `1`-`5` | Global | Jump to Now / Plan / Review / Settlement / Campaigns |
+| `1`-`6` | Global | Jump to Now / Plan / Review / Settlement / Campaigns / Graveyard |
 | `[` / `]` | Global | Cycle lanes backward / forward |
 | `j` / `k` | Cockpit | Select next / previous row |
 | `g` / `G` | Cockpit | Jump to first / last row |
+| `Enter` | Landing page | Open the selected item page |
+| `Esc` / `Backspace` | Item page | Return to the landing page |
 | `v` | Now lane | Toggle between the action queue and recent activity |
 | `t` | Quest selection | Open the quest tree / lineage modal |
 | `r` | Global | Refresh snapshot |
@@ -658,7 +666,7 @@ XYPH_AGENT_ID=human.yourname ./xyph-dashboard.ts
 | `D` | Contextual | Reject selected BACKLOG quest |
 | `a` | Contextual | Approve selected submission |
 | `x` | Contextual | Request changes on selected submission |
-| `PgDn` / `PgUp` | Cockpit | Page the worklist |
+| `PgDn` / `PgUp` | Landing / page | Page the worklist or the open item page |
 | `Shift+PgDn` / `Shift+PgUp` | Cockpit | Scroll the inspector |
 | `Esc` | Modal | Cancel / close |
 

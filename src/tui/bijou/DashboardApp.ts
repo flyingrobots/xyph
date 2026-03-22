@@ -29,7 +29,7 @@ import { EASINGS } from '@flyingrobots/bijou-tui';
 import { type TokenValue } from '@flyingrobots/bijou';
 import type { StylePort } from '../../ports/StylePort.js';
 import type { GraphContext } from '../../infrastructure/GraphContext.js';
-import type { GraphSnapshot, QuestNode, SubmissionNode } from '../../domain/models/dashboard.js';
+import type { EntityDetail, GraphSnapshot, QuestNode, SubmissionNode } from '../../domain/models/dashboard.js';
 import type { IntakePort } from '../../ports/IntakePort.js';
 import type { GraphPort } from '../../ports/GraphPort.js';
 import type { SubmissionPort } from '../../ports/SubmissionPort.js';
@@ -38,6 +38,7 @@ import { landingView } from './views/landing-view.js';
 import { confirmOverlay, inputOverlay } from './overlays.js';
 import { buildMyStuffDrawerLines, renderMyStuffDrawer } from './views/my-stuff-drawer.js';
 import { questTreeOverlay, questTreeOverlayBounds } from './views/quest-tree-modal.js';
+import { questPageView } from './views/quest-page-view.js';
 import { claimQuest, promoteQuest, rejectQuest, reviewSubmission, type WriteDeps } from './write-cmds.js';
 import {
   buildLaneTable,
@@ -47,6 +48,7 @@ import {
   laneLatestTimestamp,
   laneTitle,
   selectedLaneItem,
+  shortId,
   type NowViewMode,
   type CockpitItem,
   type CockpitLaneId,
@@ -79,13 +81,27 @@ export interface ScrollbarVisibilityState {
   generation: number;
 }
 
+export interface LandingPageRoute {
+  kind: 'landing';
+}
+
+export interface QuestPageRoute {
+  kind: 'quest';
+  questId: string;
+  sourceLane: CockpitLaneId;
+}
+
+export type DashboardPageRoute = LandingPageRoute | QuestPageRoute;
+
 export interface DashboardModel {
   lane: CockpitLaneId;
   nowView: NowViewMode;
+  pageStack: DashboardPageRoute[];
   laneState: Record<CockpitLaneId, LaneState>;
   scrollbars: {
     worklist: ScrollbarVisibilityState;
     inspector: ScrollbarVisibilityState;
+    page: ScrollbarVisibilityState;
   };
   table: NavigableTableState;
   inspectorOpen: boolean;
@@ -116,6 +132,11 @@ export interface DashboardModel {
   agentId?: string;
   observerWatermarks: ObserverWatermarks;
   observerSeenItems: ObserverSeenItems;
+  pageScrollY: number;
+  pageDetail: EntityDetail | null;
+  pageLoading: boolean;
+  pageError: string | null;
+  pageRequestId: number;
 }
 
 export type DashboardMsg =
@@ -130,7 +151,9 @@ export type DashboardMsg =
   | { type: 'dismiss-toast'; expiresAt: number }
   | { type: 'remote-change' }
   | { type: 'drawer-frame'; value: number }
-  | { type: 'scrollbar-visibility'; pane: 'worklist' | 'inspector'; level: number; generation: number };
+  | { type: 'scrollbar-visibility'; pane: 'worklist' | 'inspector' | 'page'; level: number; generation: number }
+  | { type: 'page-detail-loaded'; questId: string; detail: EntityDetail | null; requestId: number }
+  | { type: 'page-detail-error'; questId: string; error: string; requestId: number };
 
 type GlobalAction =
   | { type: 'jump-lane'; lane: CockpitLaneId }
@@ -143,6 +166,7 @@ type GlobalAction =
   | { type: 'toggle-inspector' };
 
 type ViewAction =
+  | { type: 'open-item-page' }
   | { type: 'select-next' }
   | { type: 'select-prev' }
   | { type: 'top' }
@@ -174,10 +198,19 @@ export interface DashboardDeps {
 const LANE_ORDER = [...cockpitLaneOrder()];
 const MAX_SCROLLBAR_VISIBILITY = 4;
 
+function currentPage(model: DashboardModel): DashboardPageRoute {
+  return model.pageStack[model.pageStack.length - 1] ?? { kind: 'landing' };
+}
+
+function isLandingPage(model: DashboardModel): boolean {
+  return currentPage(model).kind === 'landing';
+}
+
 function emptyScrollbars(): DashboardModel['scrollbars'] {
   return {
     worklist: { level: MAX_SCROLLBAR_VISIBILITY, generation: 1 },
     inspector: { level: 0, generation: 0 },
+    page: { level: 0, generation: 0 },
   };
 }
 
@@ -188,6 +221,7 @@ function emptyLaneState(): Record<CockpitLaneId, LaneState> {
     review: { focusRow: 0, inspectorScrollY: 0 },
     settlement: { focusRow: 0, inspectorScrollY: 0 },
     campaigns: { focusRow: 0, inspectorScrollY: 0 },
+    graveyard: { focusRow: 0, inspectorScrollY: 0 },
   };
 }
 
@@ -199,6 +233,7 @@ function buildGlobalKeys(): KeyMap<GlobalAction> {
       .bind('3', 'Review lane', { type: 'jump-lane', lane: 'review' })
       .bind('4', 'Settlement lane', { type: 'jump-lane', lane: 'settlement' })
       .bind('5', 'Campaigns lane', { type: 'jump-lane', lane: 'campaigns' })
+      .bind('6', 'Graveyard lane', { type: 'jump-lane', lane: 'graveyard' })
       .bind('[', 'Previous lane', { type: 'prev-lane' })
       .bind(']', 'Next lane', { type: 'next-lane' })
       .bind('r', 'Refresh snapshot', { type: 'refresh' })
@@ -212,6 +247,8 @@ function buildGlobalKeys(): KeyMap<GlobalAction> {
 function buildViewKeys(): KeyMap<ViewAction> {
   return createKeyMap<ViewAction>()
     .group('Cockpit', (group) => group
+      .bind('enter', 'Open selected item page', { type: 'open-item-page' })
+      .bind('return', 'Open selected item page', { type: 'open-item-page' })
       .bind('j', 'Next row', { type: 'select-next' })
       .bind('down', 'Next row', { type: 'select-next' })
       .bind('k', 'Previous row', { type: 'select-prev' })
@@ -249,7 +286,7 @@ function padVisible(text: string, width: number): string {
 }
 
 function fadeScrollbar(
-  pane: 'worklist' | 'inspector',
+  pane: 'worklist' | 'inspector' | 'page',
   generation: number,
 ): Cmd<DashboardMsg> {
   return animate<DashboardMsg>({
@@ -269,7 +306,7 @@ function fadeScrollbar(
 
 function wakeScrollbar(
   model: DashboardModel,
-  pane: 'worklist' | 'inspector',
+  pane: 'worklist' | 'inspector' | 'page',
 ): [DashboardModel, Cmd<DashboardMsg>[]] {
   const nextGeneration = model.scrollbars[pane].generation + 1;
   return [{
@@ -310,14 +347,127 @@ function currentSelectedItem(model: DashboardModel): CockpitItem | undefined {
   return selectedLaneItem(model.snapshot, model.lane, model.table.focusRow, model.agentId, model.nowView);
 }
 
+function questIdForItem(item: CockpitItem | undefined): string | undefined {
+  if (!item) return undefined;
+  switch (item.kind) {
+    case 'quest':
+      return item.quest.id;
+    case 'submission':
+      return item.submission.questId;
+    case 'activity':
+      return item.event.targetId?.startsWith('task:') ? item.event.targetId : undefined;
+    case 'comparison-artifact':
+      return item.artifact.targetId?.startsWith('task:') ? item.artifact.targetId : undefined;
+    case 'collapse-proposal':
+      return undefined;
+    case 'attestation':
+      return item.artifact.targetId?.startsWith('task:') ? item.artifact.targetId : undefined;
+    case 'campaign':
+      return undefined;
+  }
+}
+
+function activeQuestId(model: DashboardModel): string | undefined {
+  const page = currentPage(model);
+  if (page.kind === 'quest') return page.questId;
+  return questIdForItem(currentSelectedItem(model));
+}
+
 function selectedQuest(model: DashboardModel): QuestNode | undefined {
-  const item = currentSelectedItem(model);
-  return item?.kind === 'quest' ? item.quest : undefined;
+  const questId = activeQuestId(model);
+  if (!questId) return undefined;
+  if (model.pageDetail?.questDetail?.quest.id === questId) {
+    return model.pageDetail.questDetail.quest;
+  }
+  return model.snapshot?.quests.find((quest) => quest.id === questId);
 }
 
 function selectedSubmission(model: DashboardModel): SubmissionNode | undefined {
+  if (currentPage(model).kind === 'quest' && model.pageDetail?.questDetail?.submission) {
+    return model.pageDetail.questDetail.submission;
+  }
   const item = currentSelectedItem(model);
   return item?.kind === 'submission' ? item.submission : undefined;
+}
+
+function resetToLanding(model: DashboardModel): DashboardModel {
+  return {
+    ...model,
+    pageStack: [{ kind: 'landing' }],
+    pageScrollY: 0,
+    pageDetail: null,
+    pageLoading: false,
+    pageError: null,
+  };
+}
+
+function updatePageScroll(model: DashboardModel, pageScrollY: number): DashboardModel {
+  return {
+    ...model,
+    pageScrollY: Math.max(0, pageScrollY),
+  };
+}
+
+function fetchPageDetail(requestId: number, questId: string, deps: DashboardDeps): Cmd<DashboardMsg> {
+  return async (emit) => {
+    try {
+      const detail = await deps.ctx.fetchEntityDetail(questId);
+      emit({ type: 'page-detail-loaded', questId, detail, requestId });
+    } catch (err: unknown) {
+      emit({
+        type: 'page-detail-error',
+        questId,
+        error: err instanceof Error ? err.message : String(err),
+        requestId,
+      });
+    }
+  };
+}
+
+function openQuestPage(model: DashboardModel, questId: string, sourceLane: CockpitLaneId, deps: DashboardDeps): [DashboardModel, Cmd<DashboardMsg>[]] {
+  const nextRequestId = model.pageRequestId + 1;
+  return [{
+    ...model,
+    pageStack: [...model.pageStack, { kind: 'quest', questId, sourceLane }],
+    pageScrollY: 0,
+    pageDetail: null,
+    pageLoading: true,
+    pageError: null,
+    pageRequestId: nextRequestId,
+  }, [fetchPageDetail(nextRequestId, questId, deps)]];
+}
+
+function openSelectedItemPage(model: DashboardModel, deps: DashboardDeps): [DashboardModel, Cmd<DashboardMsg>[]] {
+  const item = currentSelectedItem(model);
+  const questId = questIdForItem(item);
+  if (!questId) return [model, []];
+  return openQuestPage(model, questId, model.lane, deps);
+}
+
+function popPage(model: DashboardModel, deps: DashboardDeps): [DashboardModel, Cmd<DashboardMsg>[]] {
+  if (model.pageStack.length <= 1) return [model, []];
+  const pageStack = model.pageStack.slice(0, -1);
+  const nextPage = pageStack[pageStack.length - 1] ?? { kind: 'landing' as const };
+  if (nextPage.kind === 'landing') {
+    return [{
+      ...model,
+      pageStack,
+      pageScrollY: 0,
+      pageDetail: null,
+      pageLoading: false,
+      pageError: null,
+    }, []];
+  }
+  const nextRequestId = model.pageRequestId + 1;
+  return [{
+    ...model,
+    pageStack,
+    pageScrollY: 0,
+    pageDetail: null,
+    pageLoading: true,
+    pageError: null,
+    pageRequestId: nextRequestId,
+  }, [fetchPageDetail(nextRequestId, nextPage.questId, deps)]];
 }
 
 function rebuildForLane(model: DashboardModel, lane: CockpitLaneId, snapshot = model.snapshot): DashboardModel {
@@ -449,7 +599,28 @@ function formatControlHints(entries: ControlHint[]): string {
 }
 
 function contextControls(model: DashboardModel): ControlHint[] {
+  if (!isLandingPage(model)) {
+    const hints: ControlHint[] = [
+      { key: 'Esc', label: 'back' },
+      { key: 'PgUp/PgDn', label: 'page' },
+    ];
+    const quest = selectedQuest(model);
+    if (quest) {
+      hints.push({ key: 't', label: 'tree' });
+      if (quest.status === 'READY') {
+        hints.push({ key: 'c', label: 'claim' });
+      } else if (quest.status === 'BACKLOG') {
+        hints.push({ key: 'p', label: 'promote' });
+        hints.push({ key: 'D', label: 'reject' });
+      }
+    }
+    return hints;
+  }
+
   const hints: ControlHint[] = [];
+  if (questIdForItem(currentSelectedItem(model))) {
+    hints.push({ key: 'Enter', label: 'open' });
+  }
   const quest = selectedQuest(model);
   if (quest) {
     if (quest.status === 'READY') {
@@ -480,15 +651,15 @@ function contextControls(model: DashboardModel): ControlHint[] {
   return hints;
 }
 
-function globalControls(): { left: ControlHint[]; center: ControlHint[] } {
+function globalControls(model: DashboardModel): { left: ControlHint[]; center: ControlHint[] } {
   return {
     left: [
-      { key: '1-5', label: 'lanes' },
+      { key: '1-6', label: 'lanes' },
       { key: '[/]', label: 'switch' },
     ],
     center: [
       { key: 'r', label: 'refresh' },
-      { key: 'i', label: 'inspector' },
+      ...(isLandingPage(model) ? [{ key: 'i', label: 'inspector' } satisfies ControlHint] : []),
       { key: 'm', label: 'drawer' },
       { key: ':', label: 'palette' },
       { key: '?', label: 'help' },
@@ -501,17 +672,24 @@ function pageRows(model: DashboardModel): number {
 }
 
 function renderStatusLine(model: DashboardModel): string {
-  const item = currentSelectedItem(model);
   const meta = model.snapshot?.graphMeta;
-  const laneLabel = model.lane === 'now' && model.nowView === 'activity'
-    ? `${laneTitle(model.lane)} Recent`
-    : laneTitle(model.lane);
+  const page = currentPage(model);
+  const laneLabel = page.kind === 'quest'
+    ? `${laneTitle(page.sourceLane)} / ${shortId(page.questId)}`
+    : model.lane === 'now' && model.nowView === 'activity'
+      ? `${laneTitle(model.lane)} Recent`
+      : laneTitle(model.lane);
   const left = [
     ` ${laneLabel}`,
     meta ? `· ${meta.tipSha}` : '',
     model.loading ? '· syncing' : '',
+    model.pageLoading ? '· page' : '',
   ].join(' ');
-  const center = item ? `${item.label} · ${item.primary}` : 'No selection';
+  const center = page.kind === 'quest'
+    ? `Quest page · ${shortId(page.questId)}`
+    : currentSelectedItem(model)
+      ? `${currentSelectedItem(model)?.label} · ${currentSelectedItem(model)?.primary}`
+      : 'No selection';
   return statusBar({
     left,
     center,
@@ -521,7 +699,7 @@ function renderStatusLine(model: DashboardModel): string {
 }
 
 function renderControlsLine(model: DashboardModel): string {
-  const controls = globalControls();
+  const controls = globalControls(model);
   return statusBar({
     left: formatControlHints(controls.left),
     center: formatControlHints(controls.center),
@@ -531,7 +709,7 @@ function renderControlsLine(model: DashboardModel): string {
 }
 
 function helpSections(model: DashboardModel): { title: string; entries: ControlHint[] }[] {
-  const controls = globalControls();
+  const controls = globalControls(model);
   return [
     { title: 'Current context', entries: contextControls(model) },
     { title: 'Global', entries: [...controls.left, ...controls.center, { key: 'q', label: 'quit' }] },
@@ -540,7 +718,7 @@ function helpSections(model: DashboardModel): { title: string; entries: ControlH
       entries: [
         { key: 'click lane', label: 'switch surface lane' },
         { key: 'click row', label: 'select worklist item' },
-        { key: 'wheel', label: 'scroll worklist, inspector, drawer, or quest tree' },
+        { key: 'wheel', label: 'scroll worklist, page, inspector, drawer, or quest tree' },
       ],
     },
   ].filter((section) => section.entries.length > 0);
@@ -612,8 +790,9 @@ function buildPaletteItems(model: DashboardModel): CommandPaletteItem[] {
     { id: 'lane:review', label: 'Open Review lane', category: 'Navigate', shortcut: '3' },
     { id: 'lane:settlement', label: 'Open Settlement lane', category: 'Navigate', shortcut: '4' },
     { id: 'lane:campaigns', label: 'Open Campaigns lane', category: 'Navigate', shortcut: '5' },
+    { id: 'lane:graveyard', label: 'Open Graveyard lane', category: 'Navigate', shortcut: '6' },
     { id: 'refresh', label: 'Refresh snapshot', category: 'Global', shortcut: 'r' },
-    ...(model.lane === 'now'
+    ...(isLandingPage(model) && model.lane === 'now'
       ? [{
           id: 'toggle-now-view',
           label: model.nowView === 'queue' ? 'Show recent activity in Now lane' : 'Show action queue in Now lane',
@@ -624,11 +803,19 @@ function buildPaletteItems(model: DashboardModel): CommandPaletteItem[] {
     { id: 'toggle-drawer', label: 'Toggle My Stuff drawer', category: 'Global', shortcut: 'm' },
   ];
 
+  if (isLandingPage(model) && questIdForItem(currentSelectedItem(model))) {
+    items.push({ id: 'open-page', label: 'Open selected item page', category: 'Inspect', shortcut: 'Enter' });
+  }
+  if (!isLandingPage(model)) {
+    items.push({ id: 'back', label: 'Return to landing', category: 'Navigate', shortcut: 'Esc' });
+  }
+
   const quest = selectedQuest(model);
   if (quest) {
     items.push({ id: 'quest-tree', label: 'Open selected quest tree', category: 'Inspect', shortcut: 't' });
   }
-  if (laneFreshCount(model.snapshot, model.lane, model.observerWatermarks, model.observerSeenItems, model.agentId, model.nowView) > 0) {
+  if (isLandingPage(model)
+    && laneFreshCount(model.snapshot, model.lane, model.observerWatermarks, model.observerSeenItems, model.agentId, model.nowView) > 0) {
     items.push({ id: 'mark-lane-seen', label: `Mark ${laneTitle(model.lane)} lane seen`, category: 'Freshness', shortcut: 'S' });
   }
   if (quest?.status === 'READY') {
@@ -841,15 +1028,21 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
   function dispatchPaletteAction(actionId: string, model: DashboardModel): [DashboardModel, Cmd<DashboardMsg>[]] {
     switch (actionId) {
       case 'lane:now':
-        return [switchLaneWithWatermark(model, 'now', deps), []];
+        return [switchLaneWithWatermark(resetToLanding(model), 'now', deps), []];
       case 'lane:plan':
-        return [switchLaneWithWatermark(model, 'plan', deps), []];
+        return [switchLaneWithWatermark(resetToLanding(model), 'plan', deps), []];
       case 'lane:review':
-        return [switchLaneWithWatermark(model, 'review', deps), []];
+        return [switchLaneWithWatermark(resetToLanding(model), 'review', deps), []];
       case 'lane:settlement':
-        return [switchLaneWithWatermark(model, 'settlement', deps), []];
+        return [switchLaneWithWatermark(resetToLanding(model), 'settlement', deps), []];
       case 'lane:campaigns':
-        return [switchLaneWithWatermark(model, 'campaigns', deps), []];
+        return [switchLaneWithWatermark(resetToLanding(model), 'campaigns', deps), []];
+      case 'lane:graveyard':
+        return [switchLaneWithWatermark(resetToLanding(model), 'graveyard', deps), []];
+      case 'open-page':
+        return openSelectedItemPage(model, deps);
+      case 'back':
+        return popPage(model, deps);
       case 'refresh': {
         const nextReqId = model.requestId + 1;
         return [{ ...model, loading: true, error: null, requestId: nextReqId }, [fetchSnapshot(nextReqId)]];
@@ -909,6 +1102,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
       const model: DashboardModel = {
         lane,
         nowView: 'queue',
+        pageStack: [{ kind: 'landing' }],
         laneState,
         scrollbars: emptyScrollbars(),
         table: createNavigableTableState({ columns: [], rows: [], height: Math.max(8, rows - 8) }),
@@ -940,6 +1134,11 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         agentId: deps.agentId,
         observerWatermarks: freshnessState.watermarks,
         observerSeenItems: freshnessState.seenItems,
+        pageScrollY: 0,
+        pageDetail: null,
+        pageLoading: false,
+        pageError: null,
+        pageRequestId: 0,
       };
       return [model, [
         fetchSnapshot(model.requestId),
@@ -980,12 +1179,47 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
           watching: true,
           requestId: pendingRefresh ? model.requestId + 1 : model.requestId,
         }, model.lane, msg.snapshot), deps);
-        return [clampDrawerScroll(updated, deps), pendingRefresh ? [fetchSnapshot(updated.requestId)] : []];
+        const clamped = clampDrawerScroll(updated, deps);
+        const nextPage = currentPage(clamped);
+        const cmds: Cmd<DashboardMsg>[] = pendingRefresh ? [fetchSnapshot(clamped.requestId)] : [];
+        if (nextPage.kind === 'quest') {
+          const nextPageRequestId = clamped.pageRequestId + 1;
+          return [{
+            ...clamped,
+            pageLoading: true,
+            pageError: null,
+            pageRequestId: nextPageRequestId,
+          }, [...cmds, fetchPageDetail(nextPageRequestId, nextPage.questId, deps)]];
+        }
+        return [clamped, cmds];
       }
 
       if (msg.type === 'snapshot-error') {
         if (msg.requestId !== model.requestId) return [model, []];
         return [{ ...model, error: msg.error, loading: false, showLanding: false }, []];
+      }
+
+      if (msg.type === 'page-detail-loaded') {
+        if (msg.requestId !== model.pageRequestId) return [model, []];
+        const page = currentPage(model);
+        if (page.kind !== 'quest' || page.questId !== msg.questId) return [model, []];
+        return [{
+          ...model,
+          pageDetail: msg.detail,
+          pageLoading: false,
+          pageError: msg.detail ? null : 'Quest detail is not available for this page.',
+        }, []];
+      }
+
+      if (msg.type === 'page-detail-error') {
+        if (msg.requestId !== model.pageRequestId) return [model, []];
+        const page = currentPage(model);
+        if (page.kind !== 'quest' || page.questId !== msg.questId) return [model, []];
+        return [{
+          ...model,
+          pageLoading: false,
+          pageError: msg.error,
+        }, []];
       }
 
       if (msg.type === 'remote-change') {
@@ -1103,6 +1337,15 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
 
         const contentHeight = Math.max(1, model.rows - 2);
         if (msg.row >= contentHeight) return [model, []];
+        if (!isLandingPage(model)) {
+          if (msg.action === 'scroll-down') {
+            return wakeScrollbar(updatePageScroll(model, model.pageScrollY + 3), 'page');
+          }
+          if (msg.action === 'scroll-up') {
+            return wakeScrollbar(updatePageScroll(model, model.pageScrollY - 3), 'page');
+          }
+          return [model, []];
+        }
         const interactionMap = describeCockpitInteractionMap(model, deps.style, model.cols, contentHeight);
         if (!interactionMap) return [model, []];
 
@@ -1275,31 +1518,39 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
           return [model, []];
         }
 
+        if (!isLandingPage(model)) {
+          if (msg.key === 'escape' || msg.key === 'backspace') {
+            return popPage(model, deps);
+          }
+        }
+
         const globalAction = globalKeys.handle(msg);
         if (globalAction) {
           switch (globalAction.type) {
             case 'jump-lane':
-              return wakeScrollbar(switchLaneWithWatermark(model, globalAction.lane, deps), 'worklist');
+              return wakeScrollbar(switchLaneWithWatermark(resetToLanding(model), globalAction.lane, deps), 'worklist');
             case 'next-lane': {
               const currentIndex = LANE_ORDER.indexOf(model.lane);
-              return wakeScrollbar(switchLaneWithWatermark(model, laneForIndex((currentIndex + 1) % LANE_ORDER.length), deps), 'worklist');
+              return wakeScrollbar(switchLaneWithWatermark(resetToLanding(model), laneForIndex((currentIndex + 1) % LANE_ORDER.length), deps), 'worklist');
             }
             case 'prev-lane': {
               const currentIndex = LANE_ORDER.indexOf(model.lane);
-              return wakeScrollbar(switchLaneWithWatermark(model, laneForIndex((currentIndex - 1 + LANE_ORDER.length) % LANE_ORDER.length), deps), 'worklist');
+              return wakeScrollbar(switchLaneWithWatermark(resetToLanding(model), laneForIndex((currentIndex - 1 + LANE_ORDER.length) % LANE_ORDER.length), deps), 'worklist');
             }
             case 'refresh': {
               const nextReqId = model.requestId + 1;
               return [{ ...model, loading: true, error: null, requestId: nextReqId }, [fetchSnapshot(nextReqId)]];
             }
             case 'toggle-now-view':
-              return model.lane === 'now'
+              return isLandingPage(model) && model.lane === 'now'
                 ? wakeScrollbar(toggleNowView(model, deps), 'worklist')
                 : [model, []];
             case 'toggle-help':
               return [{ ...model, showHelp: !model.showHelp, helpScrollY: 0 }, []];
             case 'toggle-inspector':
-              return model.inspectorOpen
+              return !isLandingPage(model)
+                ? [model, []]
+                : model.inspectorOpen
                 ? [{ ...model, inspectorOpen: false }, []]
                 : wakeScrollbar({ ...model, inspectorOpen: true }, 'inspector');
             case 'toggle-drawer':
@@ -1319,7 +1570,12 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         const viewAction = viewKeys.handle(msg);
         if (viewAction) {
           switch (viewAction.type) {
+            case 'open-item-page':
+              return isLandingPage(model) ? openSelectedItemPage(model, deps) : [model, []];
             case 'select-next': {
+              if (!isLandingPage(model)) {
+                return wakeScrollbar(updatePageScroll(model, model.pageScrollY + 1), 'page');
+              }
               const rows = model.table.rows.length;
               if (rows === 0) return [model, []];
               const nextRow = Math.min(rows - 1, model.table.focusRow + 1);
@@ -1330,6 +1586,9 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
               return wakeScrollbar(nextModel, 'worklist');
             }
             case 'select-prev': {
+              if (!isLandingPage(model)) {
+                return wakeScrollbar(updatePageScroll(model, model.pageScrollY - 1), 'page');
+              }
               const rows = model.table.rows.length;
               if (rows === 0) return [model, []];
               const nextRow = Math.max(0, model.table.focusRow - 1);
@@ -1340,6 +1599,9 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
               return wakeScrollbar(nextModel, 'worklist');
             }
             case 'top': {
+              if (!isLandingPage(model)) {
+                return wakeScrollbar(updatePageScroll(model, 0), 'page');
+              }
               const nextModel = visitSelectedItem(
                 rebuildForLane(updateInspectorScroll(updateFocus(model, 0), 0), model.lane),
                 deps,
@@ -1347,6 +1609,9 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
               return wakeScrollbar(nextModel, 'worklist');
             }
             case 'bottom': {
+              if (!isLandingPage(model)) {
+                return [model, []];
+              }
               const targetRow = Math.max(0, model.table.rows.length - 1);
               const nextModel = visitSelectedItem(
                 rebuildForLane(updateInspectorScroll(updateFocus(model, targetRow), 0), model.lane),
@@ -1355,6 +1620,9 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
               return wakeScrollbar(nextModel, 'worklist');
             }
             case 'page-down-list': {
+              if (!isLandingPage(model)) {
+                return wakeScrollbar(updatePageScroll(model, model.pageScrollY + Math.max(6, model.rows - 12)), 'page');
+              }
               const rows = model.table.rows.length;
               if (rows === 0) return [model, []];
               const nextRow = Math.min(rows - 1, model.table.focusRow + pageRows(model));
@@ -1365,6 +1633,9 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
               return wakeScrollbar(nextModel, 'worklist');
             }
             case 'page-up-list': {
+              if (!isLandingPage(model)) {
+                return wakeScrollbar(updatePageScroll(model, model.pageScrollY - Math.max(6, model.rows - 12)), 'page');
+              }
               const rows = model.table.rows.length;
               if (rows === 0) return [model, []];
               const nextRow = Math.max(0, model.table.focusRow - pageRows(model));
@@ -1375,15 +1646,19 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
               return wakeScrollbar(nextModel, 'worklist');
             }
             case 'page-down-inspector':
-              return wakeScrollbar(updateInspectorScroll(model, model.laneState[model.lane].inspectorScrollY + 10), 'inspector');
+              return isLandingPage(model)
+                ? wakeScrollbar(updateInspectorScroll(model, model.laneState[model.lane].inspectorScrollY + 10), 'inspector')
+                : [model, []];
             case 'page-up-inspector':
-              return wakeScrollbar(updateInspectorScroll(model, model.laneState[model.lane].inspectorScrollY - 10), 'inspector');
+              return isLandingPage(model)
+                ? wakeScrollbar(updateInspectorScroll(model, model.laneState[model.lane].inspectorScrollY - 10), 'inspector')
+                : [model, []];
             case 'toggle-quest-tree':
               return selectedQuest(model)
                 ? [{ ...model, mode: 'quest-tree', questTreeScrollY: 0 }, []]
                 : [model, []];
             case 'mark-lane-seen':
-              return [markLaneSeen(model, deps), []];
+              return isLandingPage(model) ? [markLaneSeen(model, deps), []] : [model, []];
             case 'claim':
             case 'promote':
             case 'reject':
@@ -1408,7 +1683,27 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
       const statusLine = renderStatusLine(model);
 
       const viewRenderer = (w: number, h: number): string => {
-        let content = cockpitView(model, style, w, h);
+        const page = currentPage(model);
+        let content = page.kind === 'quest' && model.snapshot
+          ? (() : string => {
+              const quest = model.pageDetail?.questDetail?.quest
+                ?? model.snapshot?.quests.find((entry) => entry.id === page.questId);
+              if (!quest || !model.snapshot) {
+                return cockpitView(model, style, w, h);
+              }
+              return questPageView({
+                model,
+                snapshot: model.snapshot,
+                page,
+                quest,
+                detail: model.pageDetail,
+                sourceItem: currentSelectedItem(model),
+                style,
+                width: w,
+                height: h,
+              });
+            })()
+          : cockpitView(model, style, w, h);
         if (model.mode === 'confirm' && model.confirmState) {
           content = confirmOverlay(content, model.confirmState.prompt, model.cols, h, style, model.confirmState.hint);
         }

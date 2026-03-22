@@ -75,7 +75,7 @@ describe('DashboardApp', () => {
     expect(loaded.showLanding).toBe(false);
   });
 
-  it('switches lanes with number keys 1-5', () => {
+  it('switches lanes with number keys 1-6', () => {
     const app = buildApp();
     const loaded = ready(app, makeSnapshot());
 
@@ -85,6 +85,7 @@ describe('DashboardApp', () => {
       ['3', 'review'],
       ['4', 'settlement'],
       ['5', 'campaigns'],
+      ['6', 'graveyard'],
     ];
 
     for (const [press, lane] of lanes) {
@@ -118,7 +119,7 @@ describe('DashboardApp', () => {
     expect(forward.lane).toBe('plan');
 
     const [backward] = app.update(key('['), loaded);
-    expect(backward.lane).toBe('campaigns');
+    expect(backward.lane).toBe('graveyard');
   });
 
   it('marks the current lane as seen when switching away from it', () => {
@@ -396,6 +397,64 @@ describe('DashboardApp', () => {
 
     const [closed] = app.update(key('t'), tree);
     expect(closed.mode).toBe('normal');
+  });
+
+  it('opens the selected quest as a page and returns to landing with escape', () => {
+    const app = buildApp();
+    const loaded = ready(app, makeSnapshot({
+      quests: [{ id: 'task:Q1', title: 'Quest One', status: 'READY', hours: 1 }],
+    }));
+
+    const [plan] = app.update(key('2'), loaded);
+    const [page] = app.update(key('enter'), plan);
+
+    expect(page.pageStack).toEqual([
+      { kind: 'landing' },
+      { kind: 'quest', questId: 'task:Q1', sourceLane: 'plan' },
+    ]);
+    expect(page.pageLoading).toBe(true);
+
+    const plain = strip(app.view(page) as string);
+    expect(plain).toContain('Landing / Plan / Q1');
+    expect(plain).toContain('Quest page · Q1');
+    expect(plain).toContain('Lifecycle');
+    expect(plain).not.toContain('Inspector');
+
+    const [back] = app.update(key('escape'), page);
+    expect(back.pageStack).toEqual([{ kind: 'landing' }]);
+    expect(back.lane).toBe('plan');
+  });
+
+  it('shows the Graveyard lane and opens a rejected quest page from it', () => {
+    const app = buildApp();
+    const loaded = ready(app, makeSnapshot({
+      quests: [
+        {
+          id: 'task:G1',
+          title: 'Rejected Quest',
+          status: 'GRAVEYARD',
+          hours: 1,
+          rejectedAt: 100,
+          rejectedBy: 'human.prime',
+          rejectionRationale: 'Superseded by the sovereign rewrite.',
+        },
+        { id: 'task:Q1', title: 'Quest One', status: 'READY', hours: 1 },
+      ],
+    }));
+
+    const [graveyard] = app.update(key('6'), loaded);
+    expect(graveyard.lane).toBe('graveyard');
+    expect(graveyard.table.rows).toHaveLength(1);
+
+    const lanePlain = strip(app.view(graveyard) as string);
+    expect(lanePlain).toContain('Graveyard');
+    expect(lanePlain).toContain('Rejected Quest');
+
+    const [page] = app.update(key('enter'), graveyard);
+    const pagePlain = strip(app.view(page) as string);
+    expect(pagePlain).toContain('Landing / Graveyard / G1');
+    expect(pagePlain).toContain('Quest retired to Graveyard.');
+    expect(pagePlain).toContain('Superseded by the sovereign rewrite.');
   });
 
   it('dismisses the quest tree modal on outside click and scrolls the drawer with the mouse wheel', () => {

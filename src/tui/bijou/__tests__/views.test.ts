@@ -20,14 +20,17 @@ function makeModel(snapshot: GraphSnapshot | null): DashboardModel {
     review: { focusRow: 0, inspectorScrollY: 0 },
     settlement: { focusRow: 0, inspectorScrollY: 0 },
     campaigns: { focusRow: 0, inspectorScrollY: 0 },
+    graveyard: { focusRow: 0, inspectorScrollY: 0 },
   };
   return {
     lane: 'now',
     nowView: 'queue',
+    pageStack: [{ kind: 'landing' }],
     laneState,
     scrollbars: {
       worklist: { level: 4, generation: 1 },
       inspector: { level: 4, generation: 1 },
+      page: { level: 0, generation: 0 },
     },
     table: buildLaneTable(snapshot, 'now', 20, 0, 'agent.test'),
     inspectorOpen: true,
@@ -58,6 +61,11 @@ function makeModel(snapshot: GraphSnapshot | null): DashboardModel {
     agentId: 'agent.test',
     observerWatermarks: emptyObserverWatermarks(),
     observerSeenItems: emptyObserverSeenItems(),
+    pageScrollY: 0,
+    pageDetail: null,
+    pageLoading: false,
+    pageError: null,
+    pageRequestId: 0,
   };
 }
 
@@ -196,6 +204,7 @@ describe('cockpitView', () => {
         review: 0,
         settlement: 0,
         campaigns: 0,
+        graveyard: 0,
       },
     };
 

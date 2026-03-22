@@ -65,6 +65,13 @@ interface WorklistRowSpan extends LineSpan {
   rowIndex: number;
 }
 
+export interface DashboardChromeOptions {
+  lane: DashboardModel['lane'];
+  agentId?: string;
+  nowView: DashboardModel['nowView'];
+  breadcrumbSegments: string[];
+}
+
 function padVisible(text: string, width: number): string {
   return text + ' '.repeat(Math.max(0, width - visibleLength(text)));
 }
@@ -108,7 +115,7 @@ function replaceVisibleCellFromRight(line: string, offsetFromRight: number, repl
   return replacement;
 }
 
-function buildVerticalScrollbarRail(
+export function buildVerticalScrollbarRail(
   style: StylePort,
   options: {
     height: number;
@@ -157,7 +164,7 @@ function buildVerticalScrollbarRail(
   });
 }
 
-function renderPaneHeader(options: {
+export function renderPaneHeader(options: {
   title: string;
   detail: string;
   width: number;
@@ -170,11 +177,11 @@ function renderPaneHeader(options: {
   });
 }
 
-function paneBodyHeight(totalHeight: number, header: string): number {
+export function paneBodyHeight(totalHeight: number, header: string): number {
   return Math.max(1, totalHeight - header.split('\n').length - 2);
 }
 
-function renderPaneCard(options: {
+export function renderPaneCard(options: {
   header: string;
   width: number;
   height: number;
@@ -209,7 +216,7 @@ function renderPaneCard(options: {
     .join('\n');
 }
 
-function laneAccent(style: StylePort, lane: DashboardModel['lane']): TokenValue {
+export function laneAccent(style: StylePort, lane: DashboardModel['lane']): TokenValue {
   switch (lane) {
     case 'now':
       return style.theme.ui.laneNow;
@@ -221,6 +228,8 @@ function laneAccent(style: StylePort, lane: DashboardModel['lane']): TokenValue 
       return style.theme.ui.laneSettlement;
     case 'campaigns':
       return style.theme.ui.laneCampaigns;
+    case 'graveyard':
+      return style.theme.ui.laneGraveyard;
   }
 }
 
@@ -228,7 +237,7 @@ function stateLabel(state: string): string {
   return state.replace(/_/g, ' ').toLowerCase();
 }
 
-function statusText(style: StylePort, state: string): string {
+export function statusText(style: StylePort, state: string): string {
   return style.styledStatus(state.toUpperCase(), stateLabel(state));
 }
 
@@ -375,7 +384,14 @@ function computeCockpitPaneLayout(
   width: number,
   height: number,
 ): CockpitPaneLayout {
-  const hero = renderHero(model, snapshot, style, width);
+  const hero = renderDashboardChrome({
+    lane: model.lane,
+    agentId: model.agentId,
+    nowView: model.nowView,
+    breadcrumbSegments: model.lane === 'now' && model.nowView === 'activity'
+      ? ['Landing', laneTitle(model.lane), 'Recent Activity']
+      : ['Landing', laneTitle(model.lane)],
+  }, snapshot, style, width);
   const heroHeight = hero.split('\n').length;
   const bodyY = heroHeight + 1;
   const bodyHeight = Math.max(1, height - heroHeight - 1);
@@ -614,8 +630,13 @@ function fitAlignedLine(
   return `${fallback.slice(0, Math.max(0, safeWidth - 1))}…`;
 }
 
-function renderHero(model: DashboardModel, snapshot: GraphSnapshot, style: StylePort, width: number): string {
-  const accentToken = laneAccent(style, model.lane);
+function renderHero(
+  options: DashboardChromeOptions,
+  snapshot: GraphSnapshot,
+  style: StylePort,
+  width: number,
+): string {
+  const accentToken = laneAccent(style, options.lane);
   const graphMeta = snapshot.graphMeta;
   const active = snapshot.quests.filter((quest) => quest.status === 'IN_PROGRESS').length;
   const ready = snapshot.quests.filter((quest) => quest.status === 'READY').length;
@@ -632,19 +653,19 @@ function renderHero(model: DashboardModel, snapshot: GraphSnapshot, style: Style
   const innerWidth = Math.max(12, width - 4);
   const leftVariants: AlignedVariant[] = [
     {
-      plain: `XYPH AION  ·  surface ${laneTitle(model.lane)}`,
+      plain: `XYPH AION  ·  surface ${laneTitle(options.lane)}`,
       rendered: [
         style.styled(style.theme.semantic.primary, 'XYPH AION'),
         style.styled(style.theme.semantic.muted, '·'),
-        style.styled(accentToken, `surface ${laneTitle(model.lane)}`),
+        style.styled(accentToken, `surface ${laneTitle(options.lane)}`),
       ].join('  '),
     },
     {
-      plain: `XYPH AION  ·  ${laneTitle(model.lane)}`,
+      plain: `XYPH AION  ·  ${laneTitle(options.lane)}`,
       rendered: [
         style.styled(style.theme.semantic.primary, 'XYPH AION'),
         style.styled(style.theme.semantic.muted, '·'),
-        style.styled(accentToken, laneTitle(model.lane)),
+        style.styled(accentToken, laneTitle(options.lane)),
       ].join('  '),
     },
     {
@@ -654,26 +675,26 @@ function renderHero(model: DashboardModel, snapshot: GraphSnapshot, style: Style
   ];
   const rightVariants: AlignedVariant[] = [
     {
-      plain: `observer ${model.agentId ?? 'agent.prime'}  ·  worldline live`,
+      plain: `observer ${options.agentId ?? 'agent.prime'}  ·  worldline live`,
       rendered: [
         style.styled(style.theme.semantic.muted, 'observer'),
-        style.styled(style.theme.semantic.primary, model.agentId ?? 'agent.prime'),
+        style.styled(style.theme.semantic.primary, options.agentId ?? 'agent.prime'),
         style.styled(style.theme.semantic.muted, '·'),
         style.styled(style.theme.semantic.muted, 'worldline'),
         style.styled(accentToken, 'live'),
       ].join(' '),
     },
     {
-      plain: `${model.agentId ?? 'agent.prime'}  ·  live`,
+      plain: `${options.agentId ?? 'agent.prime'}  ·  live`,
       rendered: [
-        style.styled(style.theme.semantic.primary, model.agentId ?? 'agent.prime'),
+        style.styled(style.theme.semantic.primary, options.agentId ?? 'agent.prime'),
         style.styled(style.theme.semantic.muted, '·'),
         style.styled(accentToken, 'live'),
       ].join(' '),
     },
     {
-      plain: model.agentId ?? 'agent.prime',
-      rendered: style.styled(style.theme.semantic.primary, model.agentId ?? 'agent.prime'),
+      plain: options.agentId ?? 'agent.prime',
+      rendered: style.styled(style.theme.semantic.primary, options.agentId ?? 'agent.prime'),
     },
   ];
   const heroLine = fitAlignedLine(leftVariants, rightVariants, innerWidth);
@@ -694,6 +715,42 @@ function renderHero(model: DashboardModel, snapshot: GraphSnapshot, style: Style
     padding: { left: 1, right: 1 },
     overflow: 'wrap',
   });
+}
+
+function renderBreadcrumbLine(
+  style: StylePort,
+  accentToken: TokenValue,
+  width: number,
+  segments: string[],
+): string {
+  const safeSegments = segments.filter((segment) => segment.trim().length > 0);
+  if (safeSegments.length === 0) return '';
+
+  const plain = safeSegments.join(' / ');
+  if (visibleLength(plain) > width) {
+    const fallback = plain.slice(0, Math.max(0, width - 1)) + '…';
+    return style.styled(style.theme.semantic.muted, fallback);
+  }
+
+  const rendered = safeSegments
+    .map((segment, index) => style.styled(
+      index === safeSegments.length - 1 ? accentToken : style.theme.semantic.muted,
+      segment,
+    ))
+    .join(style.styled(style.theme.semantic.muted, ' / '));
+  return padVisible(rendered, width);
+}
+
+export function renderDashboardChrome(
+  options: DashboardChromeOptions,
+  snapshot: GraphSnapshot,
+  style: StylePort,
+  width: number,
+): string {
+  const accentToken = laneAccent(style, options.lane);
+  const hero = renderHero(options, snapshot, style, width);
+  const breadcrumb = renderBreadcrumbLine(style, accentToken, width, options.breadcrumbSegments);
+  return breadcrumb ? [hero, breadcrumb].join('\n') : hero;
 }
 
 function buildLaneRailContent(

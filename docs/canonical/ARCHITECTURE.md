@@ -78,7 +78,7 @@ opened.
 - **`src/ports/`** — Boundary interfaces: `GraphPort`, `RoadmapPort`, `IntakePort`, `SubmissionPort`, `WorkspacePort`, `ControlPlanePort`.
 - **`src/infrastructure/adapters/`** — Concrete implementations backed by git-warp and git: `WarpGraphAdapter`, `WarpIntakeAdapter`, `WarpSubmissionAdapter`, `WarpRoadmapAdapter`, `GitWorkspaceAdapter`.
 - **`src/infrastructure/GraphContext.ts`** — Shared gateway to the WARP graph. Replaces the old dashboard adapter with `graph.query()` for typed node fetching, frontier-based cache invalidation, and typed dashboard projections including persisted governance artifacts for compare/collapse/attestation work.
-- **`src/tui/`** — TUI (bijou-tui v3.1): an AION-style cockpit built around one lane rail, one scannable worklist, one inspector surface, theme presets, and `StylePort`-based styling. The current shell projects `Now`, `Plan`, `Review`, `Settlement`, and `Campaigns` lanes over the same graph-backed snapshot truth.
+- **`src/tui/`** — TUI (bijou-tui v3.1): an AION-style landing cockpit plus drill-in item pages, built around one lane rail, one scannable worklist, one preview inspector, breadcrumbed item pages, theme presets, and `StylePort`-based styling. The current shell projects `Now`, `Plan`, `Review`, `Settlement`, `Campaigns`, and `Graveyard` lanes over the same graph-backed snapshot truth.
 - **`src/validation/`** — Cross-cutting concerns: cryptographic utilities, invariant enforcement.
 
 ## Canonical Control Plane

@@ -7,11 +7,13 @@
  *
  * Keys:
  *   [ / ]           — cycle cockpit lanes (prev / next)
- *   1-5             — jump to lane (Now, Plan, Review, Settlement, Campaigns)
+ *   1-6             — jump to lane (Now, Plan, Review, Settlement, Campaigns, Graveyard)
+ *   Enter           — open the selected item page
+ *   Esc/Backspace   — return from an item page to the landing cockpit
  *   v               — toggle Now lane between action queue and recent activity
  *   t               — open the selected quest tree / lineage modal
  *   i               — toggle inspector pane
- *   PgUp / PgDn     — page the worklist
+ *   PgUp / PgDn     — page the worklist or the open item page
  *   Shift+PgUp/PgDn — scroll the inspector
  *   m               — toggle "My Stuff" drawer (quests, submissions, activity)
  *   Shift+S         — mark the current lane seen

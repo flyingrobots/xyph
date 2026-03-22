@@ -73,6 +73,7 @@ function validateTheme(theme: XyphTheme): void {
       expect(theme.ui.laneReview).toBeDefined();
       expect(theme.ui.laneSettlement).toBeDefined();
       expect(theme.ui.laneCampaigns).toBeDefined();
+      expect(theme.ui.laneGraveyard).toBeDefined();
     });
 
     it('has gradient stops sorted by position', () => {

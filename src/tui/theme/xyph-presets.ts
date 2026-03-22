@@ -33,7 +33,8 @@ type XyphExtUi =
   | 'lanePlan'
   | 'laneReview'
   | 'laneSettlement'
-  | 'laneCampaigns';
+  | 'laneCampaigns'
+  | 'laneGraveyard';
 
 /** Union of bijou base + XYPH extension status keys. */
 export type XyphStatusKey = BaseStatusKey | XyphExtStatus;
@@ -149,6 +150,7 @@ export const XYPH_CYAN_MAGENTA_DARK: XyphTheme = extendTheme<XyphExtStatus, Xyph
       laneReview: tv('#ff00ff'),
       laneSettlement: tv('#22c55e'),
       laneCampaigns: tv('#8b5cf6'),
+      laneGraveyard: tv('#ef4444'),
     },
   },
 );
@@ -164,6 +166,7 @@ export const XYPH_TEAL_ORANGE_PINK_DARK: XyphTheme = extendTheme<XyphExtStatus, 
       laneReview: tv('#f20094'),
       laneSettlement: tv('#34d399'),
       laneCampaigns: tv('#8b5cf6'),
+      laneGraveyard: tv('#ef4444'),
     },
   },
 );
@@ -213,6 +216,7 @@ export const XYPH_CYAN_MAGENTA_LIGHT: XyphTheme = extendTheme<XyphExtStatus, Xyp
       laneReview: tv('#a21caf'),
       laneSettlement: tv('#059669'),
       laneCampaigns: tv('#6d28d9'),
+      laneGraveyard: tv('#b91c1c'),
     },
   },
 );
@@ -260,6 +264,7 @@ export const XYPH_TEAL_ORANGE_PINK_LIGHT: XyphTheme = extendTheme<XyphExtStatus,
       laneReview: tv('#be185d'),
       laneSettlement: tv('#059669'),
       laneCampaigns: tv('#6d28d9'),
+      laneGraveyard: tv('#b91c1c'),
     },
   },
 );
