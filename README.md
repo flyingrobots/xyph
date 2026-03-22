@@ -625,9 +625,8 @@ lanes:
 - `Graveyard` for rejected and retired work
 
 The current product and experience source of truth for this human surface now
-lives in [`docs/XYPH_PRODUCT_DESIGN.md`](docs/XYPH_PRODUCT_DESIGN.md). The
-README section below is the quick operator overview, not the full design
-contract.
+lives in [`design/README.md`](design/README.md). The README section below is
+the quick operator overview, not the full design contract.
 
 The left rail keeps those lanes visible, the center worklist stays scannable as
 a contained-list-style queue, and the right inspector keeps the currently

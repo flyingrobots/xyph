@@ -14,7 +14,7 @@ over that control plane while XYPH transitions away from workflow-first CLI
 thinking.
 
 The product-design source of truth for how the human and agent surfaces should
-fit together now lives in [`../XYPH_PRODUCT_DESIGN.md`](../XYPH_PRODUCT_DESIGN.md).
+fit together now lives in [`../../design/README.md`](../../design/README.md).
 This protocol document defines command and contract truth; the design document
 defines sponsor actors, hills, queue models, and workflow intent.
 
@@ -137,7 +137,7 @@ The agent-native layer should reuse the same semantic field names across
 `briefing`, `next`, `context`, `submissions`, and `act` wherever they apply.
 
 The product-design reason is in
-[`../XYPH_PRODUCT_DESIGN.md`](../XYPH_PRODUCT_DESIGN.md): agents should not
+[`../../design/README.md`](../../design/README.md): agents should not
 need shell archaeology to reconstruct the same work and governance judgments
 from different command outputs.
 

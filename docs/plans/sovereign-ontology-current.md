@@ -31,7 +31,7 @@ Human surface direction:
 - Web second
 - CLI trends toward `xyph api` plus bootstrap/debug/admin surfaces
 - BIJOU 3.1.0 is now the active TUI foundation, and the current shell is a XYPH landing cockpit with `Now`, `Plan`, `Review`, `Settlement`, `Campaigns`, and `Graveyard` lanes over one inspector-first operator surface plus drill-in item pages
-- the current product-design source of truth for that human surface now lives in [`docs/XYPH_PRODUCT_DESIGN.md`](../XYPH_PRODUCT_DESIGN.md), using IBM Design Thinking concepts such as sponsor users, hills, and playbacks to shape pages, capabilities, and attention flow
+- the current product-design source of truth for that human surface now lives in [`design/README.md`](../../design/README.md), using IBM Design Thinking concepts such as sponsor actors, hills, and playbacks to shape pages, capabilities, and attention flow
 
 ## Current Implementation Order
 

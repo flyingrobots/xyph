@@ -12,7 +12,7 @@
 > the current implementation.
 >
 > The canonical product-design source of truth for the app now lives in
-> [`docs/XYPH_PRODUCT_DESIGN.md`](docs/XYPH_PRODUCT_DESIGN.md). Use this file
+> [`design/README.md`](../design/README.md). Use this file
 > as historical context, implementation backlog, and still-useful UI ideas,
 > not as the primary statement of what the app is.
 
