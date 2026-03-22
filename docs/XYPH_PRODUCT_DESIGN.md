@@ -50,6 +50,7 @@ It exists so a human can:
 - understand what changed, who did it, and why it matters
 - see the live plan and its speculative alternatives honestly
 - inspect and govern review/attestation/settlement state
+- inspect AI-driven suggestions without confusing them for human or settled truth
 - take lawful action with full context
 - recover dead or rejected work without losing causal history
 
@@ -80,7 +81,8 @@ The human who opens XYPH to answer:
 Primary success condition:
 
 - can orient within seconds and move from awareness to action without dropping
-  to raw JSON or shell archaeology
+  to raw JSON or shell archaeology, including when the next thing to inspect is
+  an AI-generated suggestion rather than a human-authored artifact
 
 ### 2. The Governance Reviewer
 
@@ -110,7 +112,8 @@ claiming, commenting, promoting, rejecting, reopening, and reviewing work.
 Primary success condition:
 
 - can act directly from the right page with the right context, without needing
-  to memorize hidden CLI rituals
+  to memorize hidden CLI rituals, and can distinguish AI suggestions from
+  human-authored truth at a glance
 
 ## Hills
 
@@ -150,6 +153,18 @@ Rejected or retired work must remain explorable through Graveyard. The operator
 should be able to understand why it died, what it depended on, and whether it
 should be reopened.
 
+### Hill 5: Make AI Suggestions Transparent And Useful
+
+When XYPH shows AI-generated suggestions, the operator should be able to tell:
+
+- that the content is AI-driven
+- what kind of suggestion it is
+- who or what it is for
+- why XYPH thinks it is relevant
+- what lawful next actions are available
+
+without mistaking the suggestion for settled graph truth or a human decision.
+
 ## Product Principles
 
 ### 1. Landing For Triage, Pages For Judgment
@@ -161,6 +176,7 @@ Use the landing page for:
 - orientation
 - queue scanning
 - freshness and attention routing
+- suggestion scanning for human and agent pickup
 - quick preview
 
 Use drill-in pages for:
@@ -227,6 +243,31 @@ page rules:
 - freshness and hot-state cues
 - overflow and scroll treatment
 
+### 10. AI Suggestions Are Advisory, Not Sovereign
+
+AI-generated suggestions can propose structure, highlight likely next steps,
+and queue work for humans or agents to consume. They cannot silently become
+graph truth.
+
+AI suggestions may recommend:
+
+- dependency edges
+- new quests
+- quest shaping or splitting
+- backlog promotions
+- campaign or intent mappings
+- review or settlement follow-ups
+- graveyard reopen candidates
+
+But every suggestion must still be visibly advisory until a lawful human or
+agent action lowers it through the normal mutation path.
+
+### 11. AI Must Be Explicitly Marked
+
+AI-generated or AI-assisted content must never masquerade as ordinary product
+copy or settled graph truth. XYPH should use a dedicated `[AI]` component
+wherever AI presence needs to be recognized and explained.
+
 ## App Architecture
 
 ## Landing Page
@@ -255,6 +296,7 @@ Landing-page responsibilities:
 
 - orient the operator
 - show freshness and attention
+- surface AI suggestion jobs for human or agent pickup
 - support lightweight scanning
 - preview selected items
 - provide quick actions where appropriate
@@ -322,6 +364,16 @@ Purpose:
 - what it depended on
 - whether reopening is still lawful or sensible
 
+### Suggestion Page
+
+Purpose:
+
+- inspect one AI-generated suggestion in full context
+- understand who or what it targets
+- see the evidence, rationale, and explainability behind it
+- accept, reject, comment on, or queue the suggestion for agent pickup when
+  lawful
+
 ## Navigation Model
 
 Navigation rules:
@@ -348,6 +400,7 @@ Purpose:
 - immediate operational awareness
 - recent activity
 - cross-surface action queue
+- AI suggestion queue for human and agent pickup
 
 Must answer:
 
@@ -355,6 +408,7 @@ Must answer:
 - who changed it?
 - what is already in motion?
 - what should I look at next?
+- which suggestion jobs are waiting for judgment or pickup?
 
 ### Plan
 
@@ -430,6 +484,142 @@ Must answer:
 | Settlement page | govern settlement | inspect comparison, attest, preview collapse, execute collapse when lawful |
 | Campaign page | supervise strategic flow | inspect children, track activity, navigate to work |
 | Graveyard page | recover or understand dead work | inspect rationale, lineage, reopen when lawful |
+| Suggestion page | inspect and govern one AI suggestion | explain, accept, reject, comment, route to agent pickup |
+
+## AI Suggestions
+
+AI suggestions are graph-native advisory artifacts that help humans and agents
+notice likely useful next actions before someone performs a lawful mutation.
+
+They are not implicit automation. They are explainable recommendations.
+
+### Suggestion Families
+
+Initial high-value suggestion families include:
+
+- recommend a dependency edge
+- recommend a new quest from observed structure or repeated activity
+- recommend promoting a backlog item
+- recommend a campaign or intent association
+- recommend a review or settlement follow-up
+- recommend reopening a graveyarded item
+
+### Targeting
+
+Suggestions may target:
+
+- a human operator
+- a specific agent
+- any eligible agent queue consumer
+
+If a suggestion is agent-targeted, it should be visible in the XYPH human
+surface and also lower to a machine-consumable queue/job surface so agents can
+pick it up through the canonical control plane.
+
+### States
+
+Suggestions should move through a visible lifecycle such as:
+
+- `suggested`
+- `queued`
+- `claimed`
+- `accepted`
+- `rejected`
+- `stale`
+
+The exact storage model can evolve, but the human surface must make the state
+obvious.
+
+### Human Expectations
+
+A sponsor user looking at a suggestion should be able to tell:
+
+- what is being suggested
+- why it is being suggested
+- what evidence or heuristics support it
+- whether it is for a human or an agent
+- what happens if it is accepted
+
+### Agent Expectations
+
+An agent consuming suggestion jobs should be able to tell:
+
+- the suggestion type
+- the target entity or entities
+- the rationale and supporting evidence
+- whether this is merely advisory or already approved for execution
+
+## `[AI]` Transparency Component
+
+XYPH should define a dedicated `[AI]` component inspired by Carbon's AI label,
+adapted for a terminal and graph-native workflow.
+
+Purpose:
+
+- clearly mark AI-generated or AI-assisted content
+- provide a consistent visual anchor for AI presence
+- act as the trigger for explainability, not as the trigger for an AI action
+
+### Variants
+
+#### Broad `[AI]`
+
+Use when a whole area is AI-driven, such as:
+
+- a suggestion queue mode
+- a suggestion page
+- a whole section of recommendations
+
+#### Inline `[AI]`
+
+Use when a single row, card, field, or sentence is AI-driven.
+
+### Placement
+
+In terminal form, the default placement rules should be:
+
+- page or pane header: upper-right / trailing edge
+- worklist row with whole-row AI presence: far left before the row title
+- single field or sentence with AI presence: inline to the left of the text
+- grouped icon/action clusters: `[AI]` comes first and remains visually
+  distinct from action controls
+
+### Behavior
+
+`[AI]` is not decorative and not an action button for "generate" or
+"regenerate." It is the pathway to explainability.
+
+Activating `[AI]` should open an explainability popover or modal that explains:
+
+- overview of what the AI did
+- supporting details or signals used
+- artifacts/resources/provenance when available
+- additional actions such as accept, reject, or revert when the surrounding
+  workflow allows them
+
+### Visibility Levels
+
+Use focused `[AI]` labeling when:
+
+- the user needs to distinguish one AI instance from neighboring non-AI content
+- the user may act on one suggestion instance at a time
+
+Use broad `[AI]` labeling when:
+
+- the entire queue, section, or page is AI-driven
+- individual instance-level explainability is not the primary need
+
+Use both when:
+
+- a broad AI-generated section contains focused AI-generated rows or fields
+- users need both section-level and item-level explainability
+
+### Override And Revert
+
+If a user materially edits AI-suggested content, the AI presence styling should
+clear for the edited content and a distinct revert affordance may appear to
+restore the original suggestion. The `[AI]` marker should describe present AI
+content, not historical provenance only.
 
 ## Attention Model
 
@@ -472,6 +662,10 @@ UI expectations:
 - visible in recent activity and pages
 - not promoted into urgent badges
 
+AI suggestions can participate in this model, but the `[AI]` marker is separate
+from attention. A suggestion can be `[AI]` and also be fresh, hot, blocked, or
+historical.
+
 ## Stepper Use
 
 BIJOU stepper is appropriate for **bounded governance flows**, not for global
@@ -512,6 +706,8 @@ Requirements:
 - consistent modal and drawer treatment
 - scroll/overflow behavior that is explicit but not noisy
 - page-local action treatment that reads as intentional, not improvised
+- a stable `[AI]` component with broad and inline variants
+- consistent explainability modal/popover behavior for AI-marked content
 
 The rule is: BIJOU provides primitives; XYPH provides product meaning.
 
@@ -567,10 +763,12 @@ Every XYPH product slice should follow this loop:
 The next design-led product slices should follow this order:
 
 1. finish the landing-page vs drill-in-page split
-2. add dedicated page types for review and settlement artifacts
-3. tighten contextual action models on those pages
-4. deepen the recent-activity and attention-routing model
-5. refine the semantic token layer for XYPH on top of BIJOU
+2. add dedicated page types for review, settlement, and suggestion artifacts
+3. add AI suggestion queues for human and agent pickup
+4. add the `[AI]` transparency component and explainability flow
+5. tighten contextual action models on those pages
+6. deepen the recent-activity and attention-routing model
+7. refine the semantic token layer for XYPH on top of BIJOU
 
 This keeps XYPH from becoming a forever-dashboard and moves it toward a real
 operator application with destinations, context, and governed action.
