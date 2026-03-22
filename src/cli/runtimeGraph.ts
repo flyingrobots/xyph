@@ -67,7 +67,6 @@ function readGraphConfigLayer(filePath: string): GraphConfigLayer | null {
   if (!existsSync(filePath)) return null;
 
   const parsed = readJsonObject(filePath);
-  if (!parsed) return null;
 
   const graph = parsed['graph'];
   if (!isRecord(graph)) return null;
@@ -82,15 +81,25 @@ function readGraphConfigLayer(filePath: string): GraphConfigLayer | null {
   };
 }
 
-function readJsonObject(filePath: string): Record<string, unknown> | null {
-  try {
-    const raw = readFileSync(filePath, 'utf8').trim();
-    if (raw === '') return null;
-    const parsed: unknown = JSON.parse(raw);
-    return isRecord(parsed) ? parsed : null;
-  } catch {
-    return null;
+function readJsonObject(filePath: string): Record<string, unknown> {
+  const raw = readFileSync(filePath, 'utf8').trim();
+  if (raw === '') {
+    throw new Error(`Invalid XYPH config at ${filePath}: file is empty.`);
   }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Invalid XYPH config at ${filePath}: ${message}`);
+  }
+
+  if (!isRecord(parsed)) {
+    throw new Error(`Invalid XYPH config at ${filePath}: expected a top-level JSON object.`);
+  }
+
+  return parsed;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -106,6 +106,14 @@ describe('graph runtime resolution', () => {
     expect(resolved.origin).toBe(path.join(homePath, '.xyph', 'config'));
   });
 
+  it('fails loudly when local .xyph.json exists but is invalid JSON', () => {
+    fs.writeFileSync(path.join(workspacePath, '.xyph.json'), '{ not-json');
+
+    expect(() => resolveGraphRuntime({ cwd: workspacePath, homeDir: homePath })).toThrow(
+      /Invalid XYPH config at .*\.xyph\.json/i,
+    );
+  });
+
   it('requires graph.name when the current working directory is not inside a Git repo', () => {
     fs.mkdirSync(path.join(homePath, '.xyph'), { recursive: true });
     fs.writeFileSync(

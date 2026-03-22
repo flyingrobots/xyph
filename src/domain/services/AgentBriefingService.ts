@@ -269,46 +269,13 @@ export class AgentBriefingService {
     const snapshot = await this.fetchSnapshot();
     const doctorReport = await this.doctor.run();
     const recommendationQueue = buildRecommendationRequests(doctorReport);
-    const candidates: AgentNextCandidate[] = [];
-
-    for (const quest of snapshot.quests) {
-      if (quest.status === 'DONE' || quest.status === 'GRAVEYARD') continue;
-      const readiness = await this.readiness.assess(quest.id, { transition: false });
-      const dependency = buildAgentDependencyContext(snapshot, quest);
-      const source = determineSource(quest, dependency, this.agentId);
-      const recommendations = await this.recommender.recommendForQuest(quest, readiness, dependency);
-      const semantics = buildQuestWorkSemantics({
-        detail: {
-          id: quest.id,
-          quest,
-          reviews: [],
-          decisions: [],
-          stories: [],
-          requirements: [],
-          criteria: [],
-          evidence: [],
-          policies: [],
-          documents: [],
-          comments: [],
-          timeline: [],
-        },
-        readiness,
-        dependency,
-        recommendedActions: recommendations,
-        agentId: this.agentId,
-      });
-
-      for (const candidate of recommendations) {
-        candidates.push({
-          ...candidate,
-          priority: quest.priority ?? DEFAULT_QUEST_PRIORITY,
-          questTitle: quest.title,
-          questStatus: quest.status,
-          source,
-          semantics,
-        });
-      }
-    }
+    const candidates = (
+      await Promise.all(
+        snapshot.quests
+          .filter((quest) => quest.status !== 'DONE' && quest.status !== 'GRAVEYARD')
+          .map(async (quest) => this.buildQuestCandidates(quest, snapshot)),
+      )
+    ).flat();
 
     candidates.push(...this.buildSubmissionCandidates(snapshot));
     candidates.push(...this.buildGovernanceCandidates(snapshot));
@@ -374,6 +341,45 @@ export class AgentBriefingService {
 
     summaries.sort((a, b) => a.quest.id.localeCompare(b.quest.id));
     return summaries;
+  }
+
+  private async buildQuestCandidates(
+    quest: QuestNode,
+    snapshot: GraphSnapshot,
+  ): Promise<AgentNextCandidate[]> {
+    const readiness = await this.readiness.assess(quest.id, { transition: false });
+    const dependency = buildAgentDependencyContext(snapshot, quest);
+    const source = determineSource(quest, dependency, this.agentId);
+    const recommendations = await this.recommender.recommendForQuest(quest, readiness, dependency);
+    const semantics = buildQuestWorkSemantics({
+      detail: {
+        id: quest.id,
+        quest,
+        reviews: [],
+        decisions: [],
+        stories: [],
+        requirements: [],
+        criteria: [],
+        evidence: [],
+        policies: [],
+        documents: [],
+        comments: [],
+        timeline: [],
+      },
+      readiness,
+      dependency,
+      recommendedActions: recommendations,
+      agentId: this.agentId,
+    });
+
+    return recommendations.map((candidate) => ({
+      ...candidate,
+      priority: quest.priority ?? DEFAULT_QUEST_PRIORITY,
+      questTitle: quest.title,
+      questStatus: quest.status,
+      source,
+      semantics,
+    }));
   }
 
   private buildReviewQueue(snapshot: GraphSnapshot): AgentReviewQueueEntry[] {
