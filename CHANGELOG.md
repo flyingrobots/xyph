@@ -6,6 +6,7 @@ All notable changes to XYPH will be documented in this file.
 
 ### Changed
 
+- **TUI launch now has a first-class npm script** — `npm run tui` now launches `xyph-dashboard.ts`, so the interactive XYPH surface no longer depends on remembering the raw `npx tsx` entrypoint.
 - **Suggestions now have TUI subviews and an in-app Ask-AI composer** — the `Suggestions` lane now cycles through `Incoming`, `Queued`, `Adopted`, and `Dismissed` subviews with `v`, so advisory items are no longer one flat mixed queue. The cockpit also now exposes `n` as an in-app Ask-AI composer, letting operators queue ask-AI jobs directly from the TUI or an item page instead of dropping to the CLI.
 - **Suggestions now include explicit ask-AI jobs and agent pickup queues** — `ask-ai` is now a first-class AI suggestion kind, `xyph ask-ai` now queues explicit request artifacts for agent pickup, the `Suggestions` lane/page now distinguishes queued ask-AI jobs from ordinary advisory suggestions, and the agent surface now exposes those artifacts through `suggestionQueue` in `briefing`, suggestion candidates in `next`, and shared suggestion semantics in `context`.
 - **Security floor raised for `flatted`** — the dependency override now pins `flatted@3.4.2`, clearing the high-severity prototype-pollution advisory from the ESLint cache stack without changing XYPH runtime behavior.

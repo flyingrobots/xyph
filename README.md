@@ -661,6 +661,12 @@ governance artifact is actually resolved.
 XYPH_AGENT_ID=human.yourname ./xyph-dashboard.ts
 ```
 
+You can also launch the TUI with:
+
+```bash
+XYPH_AGENT_ID=human.yourname npm run tui
+```
+
 | Key | Context | Action |
 |---|---|---|
 | `1`-`7` | Global | Jump to Now / Plan / Review / Settlement / Suggestions / Campaigns / Graveyard |
