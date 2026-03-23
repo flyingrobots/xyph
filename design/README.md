@@ -98,6 +98,9 @@ Start here, then use the focused design documents below:
   remains the technical architecture source of truth.
 - [`/Users/james/git/xyph/docs/canonical/AGENT_PROTOCOL.md`](../docs/canonical/AGENT_PROTOCOL.md)
   remains the protocol and command-contract source of truth.
+- [`/Users/james/git/xyph/CONTRIBUTING.md`](../CONTRIBUTING.md)
+  codifies the milestone development loop, acceptance-test-as-spec rule, and
+  milestone closeout/backlog-reconciliation workflow.
 - [`docs/XYPH_PRODUCT_DESIGN.md`](../docs/XYPH_PRODUCT_DESIGN.md)
   is now a compatibility pointer to this directory so older references do not
   silently break.

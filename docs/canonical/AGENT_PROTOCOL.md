@@ -198,6 +198,7 @@ Terminal error record shape:
 - `assignments`
 - `reviewQueue`
 - `governanceQueue`
+- `suggestionQueue`
 - `frontier`
 - `recommendationQueue`
 - `alerts`
@@ -212,8 +213,8 @@ own recent closeout notes without hunting through raw quest history.
 `briefing` now exposes enough shared semantics to answer the cold-start
 questions "what is true?", "what is blocked?", and "what needs me?" without
 another round-trip. Quest assignments/frontier work, submission review queue
-entries, and governance queue entries now carry compatible semantic packets
-built from the shared domain services, including:
+entries, governance queue entries, and suggestion queue entries now carry
+compatible semantic packets built from the shared domain services, including:
 
 - `attentionState`
 - `blockingReasons`

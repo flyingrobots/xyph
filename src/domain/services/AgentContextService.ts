@@ -5,6 +5,7 @@ import type {
   RecommendationRequest,
 } from '../models/recommendations.js';
 import type {
+  AiSuggestionNode,
   DecisionNode,
   EntityDetail,
   GovernanceArtifactNode,
@@ -35,9 +36,11 @@ import {
 import {
   buildGovernanceWorkSemantics,
   buildQuestWorkSemantics,
+  buildSuggestionWorkSemantics,
   buildSubmissionWorkSemantics,
   type AgentWorkSemantics,
   type GovernanceWorkSemantics,
+  type SuggestionWorkSemantics,
 } from './WorkSemanticsService.js';
 
 export interface AgentSubmissionContext {
@@ -57,12 +60,18 @@ export interface AgentGovernanceContext {
   targetId: string | null;
 }
 
+export interface AgentSuggestionContext {
+  suggestion: AiSuggestionNode;
+  targetId: string | null;
+}
+
 export interface AgentContextResult {
   detail: EntityDetail;
   readiness: ReadinessAssessment | null;
   dependency: AgentDependencyContext | null;
   submissionContext: AgentSubmissionContext | null;
   governanceContext: AgentGovernanceContext | null;
+  suggestionContext: AgentSuggestionContext | null;
   recommendedActions: AgentActionCandidate[];
   recommendationRequests: RecommendationRequest[];
   diagnostics: Diagnostic[];
@@ -302,6 +311,50 @@ export function buildGovernanceActionCandidates(input: {
   return sortActionCandidates(candidates);
 }
 
+export function buildSuggestionActionCandidates(input: {
+  suggestionId: string;
+  semantics: SuggestionWorkSemantics;
+}): AgentActionCandidate[] {
+  const candidates: AgentActionCandidate[] = [{
+    kind: 'inspect',
+    targetId: input.suggestionId,
+    args: {},
+    priority: DEFAULT_QUEST_PRIORITY,
+    reason: input.semantics.nextLawfulActions[0]?.reason
+      ?? 'Inspect the AI suggestion before deciding what to do with it.',
+    confidence: 0.83,
+    requiresHumanApproval: false,
+    dryRunSummary: 'Inspect the suggestion context, provenance, and requested follow-up.',
+    blockedBy: [],
+    allowed: true,
+    underlyingCommand: `xyph context ${input.suggestionId}`,
+    sideEffects: [],
+    validationCode: null,
+  }];
+
+  if (input.semantics.suggestionKind === 'ask-ai'
+    && (input.semantics.audience === 'agent' || input.semantics.audience === 'either')
+    && input.semantics.attentionState !== 'none') {
+    candidates.push({
+      kind: 'suggest',
+      targetId: input.suggestionId,
+      args: {},
+      priority: 'P2',
+      reason: 'Respond to the queued ask-AI job with one or more visible advisory suggestions.',
+      confidence: 0.91,
+      requiresHumanApproval: false,
+      dryRunSummary: 'Use `xyph suggest` to publish advisory follow-up that answers the queued ask-AI request.',
+      blockedBy: [],
+      allowed: true,
+      underlyingCommand: `xyph suggest --kind general --related ${input.suggestionId}`,
+      sideEffects: [`record advisory follow-up linked to ${input.suggestionId}`],
+      validationCode: null,
+    });
+  }
+
+  return candidates;
+}
+
 export function buildGovernanceRecommendationRequests(input: {
   artifactId: string;
   targetId: string | null;
@@ -406,6 +459,7 @@ export class AgentContextService {
           dependency: null,
           submissionContext,
           governanceContext: null,
+          suggestionContext: null,
           recommendedActions: sortActionCandidates([
             this.toCommentCandidate(submissionContext.submission.id, 'submission'),
             ...(submissionAction
@@ -427,6 +481,7 @@ export class AgentContextService {
           dependency: null,
           submissionContext: null,
           governanceContext,
+          suggestionContext: null,
           recommendedActions: buildGovernanceActionCandidates({
             artifactId: detail.id,
             semantics: governanceSemantics,
@@ -441,12 +496,36 @@ export class AgentContextService {
         };
       }
 
+      const suggestionContext = this.buildSuggestionContext(snapshot, detail.id);
+      if (suggestionContext) {
+        const suggestionSemantics = buildSuggestionWorkSemantics(
+          suggestionContext.suggestion,
+          this.agentId,
+        );
+        return {
+          detail,
+          readiness: null,
+          dependency: null,
+          submissionContext: null,
+          governanceContext: null,
+          suggestionContext,
+          recommendedActions: buildSuggestionActionCandidates({
+            suggestionId: detail.id,
+            semantics: suggestionSemantics,
+          }),
+          recommendationRequests: [],
+          diagnostics: [],
+          semantics: suggestionSemantics,
+        };
+      }
+
       return {
         detail,
         readiness: null,
         dependency: null,
         submissionContext: null,
         governanceContext: null,
+        suggestionContext: null,
         recommendedActions: [],
         recommendationRequests: [],
         diagnostics: [],
@@ -489,6 +568,7 @@ export class AgentContextService {
       dependency,
       submissionContext: null,
       governanceContext: null,
+      suggestionContext: null,
       recommendedActions,
       recommendationRequests,
       diagnostics,
@@ -567,6 +647,18 @@ export class AgentContextService {
       return detail.governanceDetail.targetId ?? null;
     }
     return null;
+  }
+
+  private buildSuggestionContext(
+    snapshot: GraphSnapshot,
+    id: string,
+  ): AgentSuggestionContext | null {
+    const suggestion = snapshot.aiSuggestions.find((entry) => entry.id === id);
+    if (!suggestion) return null;
+    return {
+      suggestion,
+      targetId: suggestion.targetId ?? null,
+    };
   }
 
   private toCommentCandidate(targetId: string, subject: string): AgentActionCandidate {

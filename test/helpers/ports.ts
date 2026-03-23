@@ -36,10 +36,28 @@ export function mockIntakePort(): IntakePort {
 }
 
 export function mockGraphPort(): GraphPort {
+  const patch = {
+    addNode: vi.fn(),
+    removeNode: vi.fn(),
+    setProperty: vi.fn(),
+    addEdge: vi.fn(),
+    removeEdge: vi.fn(),
+    setEdgeProperty: vi.fn(),
+    clearContent: vi.fn(),
+    clearEdgeContent: vi.fn(),
+    attachContent: vi.fn().mockResolvedValue(undefined),
+    attachEdgeContent: vi.fn().mockResolvedValue(undefined),
+    commit: vi.fn().mockResolvedValue('sha-patch'),
+  };
   return {
     getGraph: vi.fn().mockResolvedValue({
       patch: vi.fn(),
+      createPatch: vi.fn().mockResolvedValue(patch),
+      getNodes: vi.fn().mockResolvedValue([]),
+      getEdges: vi.fn().mockResolvedValue([]),
+      hasNode: vi.fn().mockResolvedValue(true),
       getNodeProps: vi.fn().mockResolvedValue({ assigned_to: 'agent.test', status: 'READY' }),
+      getContentOid: vi.fn().mockResolvedValue('oid-content'),
     }),
     reset: vi.fn(),
   };

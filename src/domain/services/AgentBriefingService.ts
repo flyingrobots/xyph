@@ -36,14 +36,17 @@ import {
 import {
   buildGovernanceActionCandidates,
   buildAgentDependencyContext,
+  buildSuggestionActionCandidates,
   toAgentQuestRef,
 } from './AgentContextService.js';
 import {
   buildGovernanceWorkSemantics,
   buildQuestWorkSemantics,
+  buildSuggestionWorkSemantics,
   buildSubmissionWorkSemantics,
   type GovernanceWorkSemantics,
   type QuestWorkSemantics,
+  type SuggestionWorkSemantics,
   type SubmissionWorkSemantics,
 } from './WorkSemanticsService.js';
 
@@ -99,6 +102,17 @@ export interface AgentGovernanceQueueEntry {
   semantics: GovernanceWorkSemantics;
 }
 
+export interface AgentSuggestionQueueEntry {
+  suggestionId: string;
+  suggestionKind: string;
+  title: string;
+  suggestedBy: string;
+  suggestedAt: number;
+  requestedBy: string | null;
+  reason: string;
+  semantics: SuggestionWorkSemantics;
+}
+
 export interface AgentHandoffSummary {
   noteId: string;
   title: string;
@@ -111,6 +125,7 @@ export interface AgentBriefing {
   assignments: AgentWorkSummary[];
   reviewQueue: AgentReviewQueueEntry[];
   governanceQueue: AgentGovernanceQueueEntry[];
+  suggestionQueue: AgentSuggestionQueueEntry[];
   frontier: AgentWorkSummary[];
   recommendationQueue: RecommendationRequest[];
   recentHandoffs: AgentHandoffSummary[];
@@ -123,8 +138,8 @@ export interface AgentNextCandidate extends AgentActionCandidate {
   questTitle: string;
   questStatus: string;
   priority: QuestPriority;
-  source: 'assignment' | 'frontier' | 'planning' | 'submission' | 'governance' | 'doctor';
-  semantics?: QuestWorkSemantics | SubmissionWorkSemantics | GovernanceWorkSemantics;
+  source: 'assignment' | 'frontier' | 'planning' | 'submission' | 'governance' | 'suggestion' | 'doctor';
+  semantics?: QuestWorkSemantics | SubmissionWorkSemantics | GovernanceWorkSemantics | SuggestionWorkSemantics;
 }
 
 export interface AgentNextResult {
@@ -173,11 +188,13 @@ function sourcePriority(source: AgentNextCandidate['source']): number {
       return 2;
     case 'governance':
       return 3;
-    case 'frontier':
+    case 'suggestion':
       return 4;
+    case 'frontier':
+      return 5;
     case 'planning':
     default:
-      return 5;
+      return 6;
   }
 }
 
@@ -235,6 +252,7 @@ export class AgentBriefingService {
 
     const reviewQueue = this.buildReviewQueue(snapshot);
     const governanceQueue = this.buildGovernanceQueue(snapshot);
+    const suggestionQueue = this.buildSuggestionQueue(snapshot);
     const recentHandoffs = await this.buildRecentHandoffs();
     const doctorReport = await this.doctor.run();
     const recommendationQueue = buildRecommendationRequests(doctorReport);
@@ -244,6 +262,7 @@ export class AgentBriefingService {
       frontier,
       reviewQueue,
       governanceQueue,
+      suggestionQueue,
       recommendationQueue,
       diagnostics,
     );
@@ -256,6 +275,7 @@ export class AgentBriefingService {
       assignments,
       reviewQueue,
       governanceQueue,
+      suggestionQueue,
       frontier,
       recommendationQueue,
       recentHandoffs,
@@ -279,6 +299,7 @@ export class AgentBriefingService {
 
     candidates.push(...this.buildSubmissionCandidates(snapshot));
     candidates.push(...this.buildGovernanceCandidates(snapshot));
+    candidates.push(...this.buildSuggestionCandidates(snapshot));
     candidates.push(...this.buildDoctorCandidates(snapshot, recommendationQueue));
 
     candidates.sort((a, b) =>
@@ -445,6 +466,40 @@ export class AgentBriefingService {
     return queue;
   }
 
+  private buildSuggestionQueue(snapshot: GraphSnapshot): AgentSuggestionQueueEntry[] {
+    const queue = snapshot.aiSuggestions
+      .flatMap((suggestion) => {
+        const semantics = buildSuggestionWorkSemantics(suggestion, this.agentId);
+        if (semantics.attentionState === 'none') {
+          return [];
+        }
+        if (!(suggestion.audience === 'agent' || suggestion.audience === 'either')) {
+          return [];
+        }
+        return [{
+          suggestionId: suggestion.id,
+          suggestionKind: suggestion.kind,
+          title: suggestion.title,
+          suggestedBy: suggestion.suggestedBy,
+          suggestedAt: suggestion.suggestedAt,
+          requestedBy: suggestion.requestedBy ?? null,
+          reason: suggestion.kind === 'ask-ai'
+            ? 'Explicit ask-AI job is queued for an agent response.'
+            : semantics.nextLawfulActions[0]?.reason
+              ?? 'AI suggestion is available for agent pickup.',
+          semantics,
+        } satisfies AgentSuggestionQueueEntry];
+      });
+
+    queue.sort((a, b) =>
+      attentionPriority(a.semantics.attentionState) - attentionPriority(b.semantics.attentionState) ||
+      Number(b.suggestionKind === 'ask-ai') - Number(a.suggestionKind === 'ask-ai') ||
+      b.suggestedAt - a.suggestedAt ||
+      a.suggestionId.localeCompare(b.suggestionId)
+    );
+    return queue;
+  }
+
   private buildSubmissionCandidates(snapshot: GraphSnapshot): AgentNextCandidate[] {
     const questById = new Map(snapshot.quests.map((quest) => [quest.id, quest] as const));
     const terminalStatuses = new Set(['MERGED', 'CLOSED']);
@@ -507,6 +562,22 @@ export class AgentBriefingService {
         questTitle: `${entry.artifactKind} ${entry.artifactId}`,
         questStatus: entry.semantics.progress.currentLabel,
         source: 'governance' as const,
+        semantics: entry.semantics,
+      }))
+    );
+  }
+
+  private buildSuggestionCandidates(snapshot: GraphSnapshot): AgentNextCandidate[] {
+    return this.buildSuggestionQueue(snapshot).flatMap((entry) =>
+      buildSuggestionActionCandidates({
+        suggestionId: entry.suggestionId,
+        semantics: entry.semantics,
+      }).map((candidate) => ({
+        ...candidate,
+        priority: candidate.priority ?? (entry.suggestionKind === 'ask-ai' ? 'P2' : DEFAULT_QUEST_PRIORITY),
+        questTitle: entry.title,
+        questStatus: entry.semantics.progress.currentLabel,
+        source: 'suggestion' as const,
         semantics: entry.semantics,
       }))
     );
@@ -667,6 +738,7 @@ export class AgentBriefingService {
     frontier: AgentWorkSummary[],
     reviewQueue: AgentReviewQueueEntry[],
     governanceQueue: AgentGovernanceQueueEntry[],
+    suggestionQueue: AgentSuggestionQueueEntry[],
     recommendationQueue: RecommendationRequest[],
     diagnostics: Diagnostic[],
   ): AgentBriefingAlert[] {
@@ -710,6 +782,15 @@ export class AgentBriefingService {
         severity: 'info',
         message: `${governanceQueue.length} governance artifact(s) currently need judgment or inspection.`,
         relatedIds: governanceQueue.map((entry) => entry.artifactId),
+      });
+    }
+
+    if (suggestionQueue.length > 0) {
+      alerts.push({
+        code: 'suggestion-queue',
+        severity: 'info',
+        message: `${suggestionQueue.length} AI suggestion job(s) are currently waiting for agent pickup.`,
+        relatedIds: suggestionQueue.map((entry) => entry.suggestionId),
       });
     }
 

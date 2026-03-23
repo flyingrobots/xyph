@@ -21,6 +21,25 @@ import {
   type AiSuggestionStatus,
 } from '../../domain/entities/AiSuggestion.js';
 
+function aiSuggestionOrigin(opts: { kind: string; requestedBy?: string }): 'request' | 'spontaneous' {
+  if (opts.kind === 'ask-ai') return 'request';
+  return opts.requestedBy ? 'request' : 'spontaneous';
+}
+
+function aiSuggestionStatus(opts: { kind: string; status: string }): AiSuggestionStatus {
+  if (opts.kind === 'ask-ai' && opts.status === 'suggested') {
+    return 'queued';
+  }
+  return opts.status as AiSuggestionStatus;
+}
+
+function aiSuggestionAudience(opts: { kind: string; audience: string }): AiSuggestionAudience {
+  if (opts.kind === 'ask-ai' && opts.audience === 'either') {
+    return 'agent';
+  }
+  return opts.audience as AiSuggestionAudience;
+}
+
 export function registerSuggestionCommands(program: Command, ctx: CliContext): void {
   const withErrorHandler = createErrorHandler(ctx);
   const records = new RecordService(ctx.graphPort);
@@ -28,7 +47,7 @@ export function registerSuggestionCommands(program: Command, ctx: CliContext): v
   program
     .command('suggest')
     .description('Record an AI suggestion as a visible advisory artifact')
-    .requiredOption('--kind <kind>', 'quest | dependency | promotion | campaign | intent | governance | reopen | general')
+    .requiredOption('--kind <kind>', 'ask-ai | quest | dependency | promotion | campaign | intent | governance | reopen | general')
     .requiredOption('--title <text>', 'Short suggestion title')
     .requiredOption('--summary <text>', 'What is being suggested and why it matters')
     .option('--for <audience>', 'human | agent | either', 'either')
@@ -81,6 +100,19 @@ export function registerSuggestionCommands(program: Command, ctx: CliContext): v
         assertPrefix(opts.id, 'suggestion:', 'Suggestion ID');
       }
 
+      const resolvedAudience = aiSuggestionAudience({ kind, audience });
+      const resolvedStatus = aiSuggestionStatus({ kind, status });
+      const resolvedOrigin = aiSuggestionOrigin({ kind, requestedBy: opts.requestedBy });
+      const resolvedRequestedBy = kind === 'ask-ai'
+        ? (opts.requestedBy ?? ctx.agentId)
+        : opts.requestedBy;
+      if (kind === 'ask-ai' && resolvedAudience === 'human') {
+        throw new Error('[INVALID_ARGS] ask-ai jobs must target agent or either, never human-only');
+      }
+      const resolvedNextAction = kind === 'ask-ai'
+        ? (opts.next ?? 'An agent should inspect this ask-AI job and publish one or more visible advisory suggestions in response.')
+        : opts.next;
+
       const result = await records.createAiSuggestion({
         id: opts.id,
         idempotencyKey: opts.idempotencyKey,
@@ -88,15 +120,15 @@ export function registerSuggestionCommands(program: Command, ctx: CliContext): v
         title,
         summary,
         suggestedBy: ctx.agentId,
-        audience: audience as AiSuggestionAudience,
-        origin: opts.requestedBy ? 'request' : 'spontaneous',
-        status: status as AiSuggestionStatus,
+        audience: resolvedAudience,
+        origin: resolvedOrigin,
+        status: resolvedStatus,
         targetId: opts.target,
         relatedIds: opts.related ?? [],
-        requestedBy: opts.requestedBy,
+        requestedBy: resolvedRequestedBy,
         why: opts.why,
         evidence: opts.evidence,
-        nextAction: opts.next,
+        nextAction: resolvedNextAction,
       });
 
       if (ctx.json) {
@@ -108,12 +140,12 @@ export function registerSuggestionCommands(program: Command, ctx: CliContext): v
             kind,
             title,
             summary,
-            audience,
-            origin: opts.requestedBy ? 'request' : 'spontaneous',
-            status,
+            audience: resolvedAudience,
+            origin: resolvedOrigin,
+            status: resolvedStatus,
             targetId: opts.target ?? null,
             relatedIds: opts.related ?? [],
-            requestedBy: opts.requestedBy ?? null,
+            requestedBy: resolvedRequestedBy ?? null,
             patch: result.patch,
             suggestedAt: result.suggestedAt,
             contentOid: result.contentOid,
@@ -123,6 +155,97 @@ export function registerSuggestionCommands(program: Command, ctx: CliContext): v
       }
 
       ctx.ok(`[AI] Suggestion ${result.id} recorded. Patch: ${result.patch}`);
+    }));
+
+  program
+    .command('ask-ai')
+    .description('Queue an explicit ask-AI job for agent pickup')
+    .requiredOption('--title <text>', 'Short ask-AI job title')
+    .requiredOption('--summary <text>', 'What the agent should investigate, recommend, or explain')
+    .option('--target <id>', 'Primary target entity ID')
+    .option('--related <ids...>', 'Related entity IDs')
+    .option('--requested-by <principal>', 'Principal requesting the AI follow-up')
+    .option('--why <text>', 'Why the request matters right now')
+    .option('--evidence <text>', 'Supporting evidence or context for the request')
+    .option('--next <text>', 'Recommended response shape or next action')
+    .option('--for <audience>', 'agent | either', 'agent')
+    .option('--id <id>', 'Explicit suggestion ID (must use the suggestion: prefix)')
+    .option('--idempotency-key <key>', 'Stable idempotency key for repeatable ask-AI job creation')
+    .action(withErrorHandler(async (opts: {
+      title: string;
+      summary: string;
+      target?: string;
+      related?: string[];
+      requestedBy?: string;
+      why?: string;
+      evidence?: string;
+      next?: string;
+      for: string;
+      id?: string;
+      idempotencyKey?: string;
+    }) => {
+      const title = opts.title.trim();
+      const summary = opts.summary.trim();
+      const audience = opts.for.trim().toLowerCase();
+      if (!(audience === 'agent' || audience === 'either')) {
+        throw new Error('[INVALID_ARGS] --for must be either agent or either for ask-ai jobs');
+      }
+      if (title.length < 4) {
+        throw new Error('[INVALID_ARGS] --title must be at least 4 characters');
+      }
+      if (summary.length < 8) {
+        throw new Error('[INVALID_ARGS] --summary must be at least 8 characters');
+      }
+      if (opts.id) {
+        assertPrefix(opts.id, 'suggestion:', 'Suggestion ID');
+      }
+
+      const requestedBy = opts.requestedBy ?? ctx.agentId;
+      const nextAction = opts.next
+        ?? 'An agent should inspect this ask-AI job and publish one or more visible advisory suggestions in response.';
+
+      const result = await records.createAiSuggestion({
+        id: opts.id,
+        idempotencyKey: opts.idempotencyKey,
+        kind: 'ask-ai',
+        title,
+        summary,
+        suggestedBy: ctx.agentId,
+        audience: audience as AiSuggestionAudience,
+        origin: 'request',
+        status: 'queued',
+        targetId: opts.target,
+        relatedIds: opts.related ?? [],
+        requestedBy,
+        why: opts.why,
+        evidence: opts.evidence,
+        nextAction,
+      });
+
+      if (ctx.json) {
+        ctx.jsonOut({
+          success: true,
+          command: 'ask-ai',
+          data: {
+            id: result.id,
+            kind: 'ask-ai',
+            title,
+            summary,
+            audience,
+            origin: 'request',
+            status: 'queued',
+            targetId: opts.target ?? null,
+            relatedIds: opts.related ?? [],
+            requestedBy,
+            patch: result.patch,
+            suggestedAt: result.suggestedAt,
+            contentOid: result.contentOid,
+          },
+        });
+        return;
+      }
+
+      ctx.ok(`[AI] Ask-AI job ${result.id} queued. Patch: ${result.patch}`);
     }));
 
   const suggestionCmd = program

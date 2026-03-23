@@ -660,6 +660,92 @@ describe('AgentContextService', () => {
     ]));
   });
 
+  it('builds suggestion context for an explicit ask-ai job target', async () => {
+    const snapshot = makeSnapshot({
+      aiSuggestions: [
+        {
+          id: 'suggestion:CTX-AI',
+          type: 'ai-suggestion',
+          kind: 'ask-ai',
+          title: 'Recommend whether CTX-Q2 should be promoted',
+          summary: 'Inspect task:CTX-Q2 and emit one or more visible advisory suggestions.',
+          status: 'queued',
+          audience: 'agent',
+          origin: 'request',
+          suggestedBy: 'human.ada',
+          suggestedAt: 450,
+          targetId: 'task:CTX-Q2',
+          requestedBy: 'human.ada',
+          why: 'Planning needs a recommendation before triage.',
+          evidence: undefined,
+          nextAction: 'Publish advisory suggestions that answer this request.',
+          relatedIds: ['campaign:TRACE'],
+        },
+      ],
+    });
+
+    const detail = {
+      id: 'suggestion:CTX-AI',
+      type: 'ai_suggestion',
+      props: {
+        type: 'ai_suggestion',
+        suggestion_kind: 'ask-ai',
+        title: 'Recommend whether CTX-Q2 should be promoted',
+      },
+      content: null,
+      contentOid: null,
+      outgoing: [],
+      incoming: [],
+    };
+
+    mocks.createGraphContext.mockReturnValue({
+      fetchSnapshot: vi.fn().mockResolvedValue(snapshot),
+      fetchEntityDetail: vi.fn().mockResolvedValue(detail),
+      filterSnapshot: vi.fn(),
+      invalidateCache: vi.fn(),
+      get graph() {
+        throw new Error('not used in test');
+      },
+    });
+
+    const service = new AgentContextService(
+      makeGraphPort(),
+      makeRoadmap(null),
+      'agent.hal',
+      makeDoctor(),
+    );
+
+    const result = await service.fetch('suggestion:CTX-AI');
+    expect(result).not.toBeNull();
+    if (!result) {
+      throw new Error('expected result');
+    }
+    expect(result.suggestionContext).toMatchObject({
+      targetId: 'task:CTX-Q2',
+      suggestion: {
+        id: 'suggestion:CTX-AI',
+        kind: 'ask-ai',
+        requestedBy: 'human.ada',
+      },
+    });
+    expect(result.semantics).toMatchObject({
+      kind: 'suggestion',
+      suggestionKind: 'ask-ai',
+      attentionState: 'ready',
+      expectedActor: 'agent',
+    });
+    expect(result.recommendedActions).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: 'inspect',
+        targetId: 'suggestion:CTX-AI',
+      }),
+      expect.objectContaining({
+        kind: 'suggest',
+        targetId: 'suggestion:CTX-AI',
+      }),
+    ]));
+  });
+
   it('includes relevant doctor prescriptions for the target quest context', async () => {
     const snapshot = makeSnapshot({
       quests: [

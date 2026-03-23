@@ -1,4 +1,5 @@
 export type AiSuggestionKind =
+  | 'ask-ai'
   | 'quest'
   | 'dependency'
   | 'promotion'
@@ -9,6 +10,7 @@ export type AiSuggestionKind =
   | 'general';
 
 export const VALID_AI_SUGGESTION_KINDS: ReadonlySet<string> = new Set<AiSuggestionKind>([
+  'ask-ai',
   'quest',
   'dependency',
   'promotion',

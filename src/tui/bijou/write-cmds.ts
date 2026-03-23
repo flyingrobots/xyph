@@ -29,6 +29,13 @@ export interface WriteDeps {
   agentId: string;
 }
 
+export interface AskAiJobInput {
+  title: string;
+  summary: string;
+  targetId?: string;
+  relatedIds?: string[];
+}
+
 /**
  * Claim a quest via direct graph patch (OCP — Optimistic Claiming Protocol).
  * Sets status to IN_PROGRESS, assigned_to to agentId, claimed_at to now.
@@ -153,6 +160,47 @@ export function reviewSubmission(
       await deps.submissionPort.review({ patchsetId, reviewId, verdict, comment });
       const label = verdict === 'approve' ? 'Approved' : 'Changes requested';
       emit({ type: 'write-success', message: `${label} (${patchsetId})` });
+    } catch (err: unknown) {
+      emit({ type: 'write-error', message: err instanceof Error ? err.message : String(err) });
+    }
+  };
+}
+
+/**
+ * Queue an explicit ask-AI job as a visible graph-native suggestion artifact.
+ */
+export function queueAskAiJob(
+  deps: WriteDeps,
+  input: AskAiJobInput,
+): Cmd<DashboardMsg> {
+  return async (emit) => {
+    try {
+      const title = input.title.trim();
+      const summary = input.summary.trim();
+      if (!title) {
+        emit({ type: 'write-error', message: 'Ask-AI title is required' });
+        return;
+      }
+      if (!summary) {
+        emit({ type: 'write-error', message: 'Ask-AI summary is required' });
+        return;
+      }
+
+      const records = new RecordService(deps.graphPort);
+      const result = await records.createAiSuggestion({
+        kind: 'ask-ai',
+        title,
+        summary,
+        suggestedBy: deps.agentId,
+        requestedBy: deps.agentId,
+        audience: 'agent',
+        origin: 'request',
+        status: 'queued',
+        targetId: input.targetId,
+        relatedIds: input.relatedIds ?? [],
+        nextAction: 'An agent should inspect this ask-AI job and publish one or more visible advisory suggestions in response.',
+      });
+      emit({ type: 'write-success', message: `Queued ask-AI job ${result.id}` });
     } catch (err: unknown) {
       emit({ type: 'write-error', message: err instanceof Error ? err.message : String(err) });
     }

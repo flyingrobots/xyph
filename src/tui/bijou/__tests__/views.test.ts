@@ -26,6 +26,7 @@ function makeModel(snapshot: GraphSnapshot | null): DashboardModel {
   return {
     lane: 'now',
     nowView: 'queue',
+    suggestionsView: 'incoming',
     pageStack: [{ kind: 'landing' }],
     laneState,
     scrollbars: {

@@ -621,7 +621,7 @@ lanes:
 - `Plan` for the live quest surface
 - `Review` for submissions
 - `Settlement` for compare/attest/collapse artifacts
-- `Suggestions` for visible advisory AI suggestions and recommendation work
+- `Suggestions` for visible advisory AI suggestions and queued ask-AI jobs
 - `Campaigns` for strategic containers
 - `Graveyard` for rejected and retired work
 
@@ -642,7 +642,7 @@ page, reopen graveyarded quests, and keep claim/promote/reject/review actions
 visible in the place where full context actually lives. `Suggestions` items now
 open a dedicated suggestion page too, with `[AI]` labeling, lifecycle/progress,
 AI transparency copy, graph context, and page-local commenting so unsolicited
-or requested agent suggestions have a real home in the product. `Review` items
+agent suggestions and explicit ask-AI jobs have a real home in the product. `Review` items
 now open a dedicated review page too, with lifecycle/progress, shared blocker
 and missing-evidence judgments, next lawful actions, review/decision history,
 and page-local comment / approve / request-changes actions for the current tip
@@ -661,6 +661,12 @@ governance artifact is actually resolved.
 XYPH_AGENT_ID=human.yourname ./xyph-dashboard.ts
 ```
 
+You can also launch the TUI with:
+
+```bash
+XYPH_AGENT_ID=human.yourname npm run tui
+```
+
 | Key | Context | Action |
 |---|---|---|
 | `1`-`7` | Global | Jump to Now / Plan / Review / Settlement / Suggestions / Campaigns / Graveyard |
@@ -673,11 +679,12 @@ XYPH_AGENT_ID=human.yourname ./xyph-dashboard.ts
 | `;` | Suggestion page | Comment on the open AI suggestion |
 | `;` | Review page | Comment on the open submission |
 | `;` | Governance page | Comment on the open governance artifact |
-| `v` | Now lane | Toggle between the action queue and recent activity |
+| `v` | Now / Suggestions lane | Toggle `Now` between the action queue and recent activity, or cycle `Suggestions` through Incoming / Queued / Adopted / Dismissed |
 | `t` | Quest selection | Open the quest tree / lineage modal |
 | `r` | Global | Refresh snapshot |
 | `i` | Global | Toggle the inspector pane |
 | `m` | Global | Toggle the "My Stuff" drawer |
+| `n` | Global / page | Queue an Ask-AI job |
 | `Shift+S` | Fresh lane | Mark the current lane seen |
 | Mouse click | Cockpit | Click lane rail entries and worklist rows |
 | Mouse wheel | Cockpit | Scroll the worklist, inspector, quest tree, and drawer |
@@ -701,6 +708,17 @@ entry point. Agents can emit visible suggestions either in response to an
 explicit ask-AI request or spontaneously while working, as long as the idea is
 recorded as graph-visible advisory content instead of silently mutating truth.
 
+Inside the TUI, the `Suggestions` lane now has four subviews:
+
+- `Incoming` for newly suggested advisory items awaiting judgment
+- `Queued` for explicit ask-AI jobs waiting on agent pickup
+- `Adopted` for accepted or implemented suggestions
+- `Dismissed` for suggestions that were explicitly rejected
+
+Press `v` while the `Suggestions` lane is active to cycle those subviews. Press
+`n` anywhere in the cockpit or on an item page to open the Ask-AI composer and
+record a queued ask-AI job without bypassing the normal graph/governance loop.
+
 ```bash
 npx tsx xyph-actuator.ts suggest \
   --kind dependency \
@@ -716,6 +734,22 @@ npx tsx xyph-actuator.ts suggest \
 
 That command records a visible `suggestion:*` artifact with `[AI]`
 transparency. It does not bypass backlog, planning, review, or governance.
+
+You can also queue an explicit ask-AI job for agent pickup:
+
+```bash
+npx tsx xyph-actuator.ts ask-ai \
+  --title "Recommend backlog promotion" \
+  --summary "Inspect task:TRACE-002 and tell us whether it should move from BACKLOG to PLANNED next." \
+  --target task:TRACE-002 \
+  --related campaign:TRACE \
+  --why "Planning needs a visible recommendation before the next triage pass."
+```
+
+That records a queued `ask-ai` suggestion artifact. Agents can pick it up from
+`xyph briefing`, `xyph next`, or the `Suggestions` lane, then answer it by
+publishing one or more visible advisory suggestions instead of mutating plan
+truth directly.
 
 ### XYPH CLI Reference
 
@@ -767,12 +801,17 @@ Current highlights:
 
 - `xyph briefing --json` now includes a `governanceQueue` alongside quest and
   submission intake, so agent cold-start sees governance attention work too.
+- `xyph briefing --json` now also includes a `suggestionQueue`, making queued
+  ask-AI jobs and agent-targeted advisory suggestions visible at cold start.
 - `xyph next --json` can now surface governance-oriented follow-up candidates,
   including human-bound attestation or collapse progression work, instead of
   treating governance as inspect-only intake.
+- `xyph next --json` can now surface suggestion-oriented pickup candidates too,
+  including explicit ask-AI jobs routed to agents.
 - `xyph context --json <id>` now emits typed work packets not only for
   `task:*`, but also for `submission:*`, `patchset:*`,
-  `comparison-artifact:*`, `collapse-proposal:*`, and `attestation:*` targets,
+  `comparison-artifact:*`, `collapse-proposal:*`, `attestation:*`, and
+  `suggestion:*` targets,
   including recommendation requests when governance follow-up or missing
   evidence needs explicit routing.
 - `xyph act --json` now carries shared submission semantics on `review` /

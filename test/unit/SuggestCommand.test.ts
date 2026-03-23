@@ -107,4 +107,57 @@ describe('suggest command', () => {
       },
     });
   });
+
+  it('queues an explicit ask-ai job for agent pickup', async () => {
+    const ctx = makeCtx();
+    const program = new Command();
+    registerSuggestionCommands(program, ctx);
+
+    await program.parseAsync([
+      'ask-ai',
+      '--title', 'Recommend backlog promotion',
+      '--summary', 'Inspect task:Q2 and tell us whether it should move from BACKLOG to PLANNED next.',
+      '--target', 'task:Q2',
+      '--related', 'campaign:TRACE',
+      '--why', 'The queue is getting crowded and we need a recommendation before planning.',
+    ], { from: 'user' });
+
+    expect(createAiSuggestion).toHaveBeenCalledWith({
+      id: undefined,
+      idempotencyKey: undefined,
+      kind: 'ask-ai',
+      title: 'Recommend backlog promotion',
+      summary: 'Inspect task:Q2 and tell us whether it should move from BACKLOG to PLANNED next.',
+      suggestedBy: 'agent.trace',
+      audience: 'agent',
+      origin: 'request',
+      status: 'queued',
+      targetId: 'task:Q2',
+      relatedIds: ['campaign:TRACE'],
+      requestedBy: 'agent.trace',
+      why: 'The queue is getting crowded and we need a recommendation before planning.',
+      evidence: undefined,
+      nextAction: 'An agent should inspect this ask-AI job and publish one or more visible advisory suggestions in response.',
+    });
+
+    expect(ctx.jsonOut).toHaveBeenCalledWith({
+      success: true,
+      command: 'ask-ai',
+      data: {
+        id: 'suggestion:S1',
+        kind: 'ask-ai',
+        title: 'Recommend backlog promotion',
+        summary: 'Inspect task:Q2 and tell us whether it should move from BACKLOG to PLANNED next.',
+        audience: 'agent',
+        origin: 'request',
+        status: 'queued',
+        targetId: 'task:Q2',
+        relatedIds: ['campaign:TRACE'],
+        requestedBy: 'agent.trace',
+        patch: 'patch:suggest-1',
+        suggestedAt: 1_777_000_000_000,
+        contentOid: 'oid:suggest-1',
+      },
+    });
+  });
 });
