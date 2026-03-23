@@ -1085,6 +1085,20 @@ describe('DashboardApp', () => {
     expect(footer[1]).not.toContain('QUEST ·');
   });
 
+  it('packs the footer controls into a single context-first rail so ask ai stays visible', () => {
+    const app = buildApp({
+      quests: [{ id: 'task:Q1', title: 'Quest One', status: 'READY', hours: 1 }],
+    });
+    const loaded = widen(app, ready(app, makeSnapshot({
+      quests: [{ id: 'task:Q1', title: 'Quest One', status: 'READY', hours: 1 }],
+    })), 120, 36);
+
+    const footer = strip(app.view(loaded) as string).split('\n').at(-1) ?? '';
+    expect(footer).toContain('n ask ai');
+    expect(footer).toContain('r refresh');
+    expect(footer).not.toContain('? helpj/k');
+  });
+
   it('opens help as a modal with contextual controls instead of replacing the cockpit', () => {
     const app = buildApp({
       quests: [{ id: 'task:Q1', title: 'Quest One', status: 'READY', hours: 1 }],
@@ -1100,5 +1114,28 @@ describe('DashboardApp', () => {
     expect(plain).toContain('Current context');
     expect(plain).toContain('claim');
     expect(plain).toContain('Quest One');
+  });
+
+  it('accepts BIJOU named space keys in text input modals', () => {
+    const app = buildApp({
+      quests: [{ id: 'task:Q1', title: 'Quest One', status: 'READY', hours: 1 }],
+    });
+    const loaded = ready(app, makeSnapshot({
+      quests: [{ id: 'task:Q1', title: 'Quest One', status: 'READY', hours: 1 }],
+    }));
+
+    const [page] = app.update(key('enter'), loaded);
+    const [input] = app.update(key(';'), page);
+    expectWriteInput(input);
+
+    const [t1] = app.update(key('t'), input);
+    const [t2] = app.update(key('h'), t1);
+    const [t3] = app.update(key('i'), t2);
+    const [t4] = app.update(key('s'), t3);
+    const [t5] = app.update(key('space'), t4);
+    const [t6] = app.update(key('i'), t5);
+    const [t7] = app.update(key('s'), t6);
+
+    expect(expectWriteInput(t7).value).toBe('this is');
   });
 });

@@ -363,6 +363,13 @@ function padVisible(text: string, width: number): string {
   return text + ' '.repeat(Math.max(0, width - visibleLength(text)));
 }
 
+function typedInputChar(msg: KeyMsg): string | null {
+  if (msg.ctrl || msg.alt) return null;
+  if (msg.key === 'space') return ' ';
+  if (msg.key.length === 1) return msg.key;
+  return null;
+}
+
 function fadeScrollbar(
   pane: 'worklist' | 'inspector' | 'page',
   generation: number,
@@ -1107,9 +1114,11 @@ function renderStatusLine(model: DashboardModel): string {
 function renderControlsLine(model: DashboardModel): string {
   const controls = globalControls(model);
   return statusBar({
-    left: formatControlHints(controls.left),
-    center: formatControlHints(controls.center),
-    right: formatControlHints(contextControls(model)),
+    left: formatControlHints([
+      ...contextControls(model),
+      ...controls.center,
+      ...controls.left,
+    ]),
     width: model.cols,
   });
 }
@@ -2006,10 +2015,11 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
               inputState: { ...model.inputState, value: model.inputState.value.slice(0, -1) },
             }, []];
           }
-          if (msg.key.length === 1 && !msg.ctrl && !msg.alt) {
+          const typedChar = typedInputChar(msg);
+          if (typedChar !== null) {
             return [{
               ...model,
-              inputState: { ...model.inputState, value: model.inputState.value + msg.key },
+              inputState: { ...model.inputState, value: model.inputState.value + typedChar },
             }, []];
           }
           return [model, []];
@@ -2058,8 +2068,9 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
           if (msg.key === 'backspace' || msg.key === 'delete') {
             return [{ ...model, paletteState: cpFilter(model.paletteState, model.paletteState.query.slice(0, -1)) }, []];
           }
-          if (msg.key.length === 1 && !msg.ctrl && !msg.alt) {
-            return [{ ...model, paletteState: cpFilter(model.paletteState, model.paletteState.query + msg.key) }, []];
+          const typedChar = typedInputChar(msg);
+          if (typedChar !== null) {
+            return [{ ...model, paletteState: cpFilter(model.paletteState, model.paletteState.query + typedChar) }, []];
           }
           return [model, []];
         }
