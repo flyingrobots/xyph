@@ -77,6 +77,25 @@ A good playback should end with:
 - explicit next changes, not vague "polish later"
 - documentation updates when the product model changed
 
+## After A Milestone Closes
+
+The playback/retrospective output does not jump straight into the next design
+doc.
+
+After a milestone is merged, released, and tagged, XYPH resets in this order:
+
+1. reconcile the graph backlog
+2. add work discovered during the milestone
+3. add retrospective fallout
+4. add COOL IDEAS™ worth preserving
+5. decide whether the next cycle is a new milestone or a debt-reduction /
+   simplification cycle
+
+Only after that reconciliation should the next milestone design docs start.
+
+This keeps XYPH from treating milestone output as side-channel memory instead
+of graph-visible plan state.
+
 ## Design Rule
 
 If a slice cannot be demonstrated against a real graph-backed state and judged
