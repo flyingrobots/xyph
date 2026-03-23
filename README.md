@@ -673,11 +673,12 @@ XYPH_AGENT_ID=human.yourname ./xyph-dashboard.ts
 | `;` | Suggestion page | Comment on the open AI suggestion |
 | `;` | Review page | Comment on the open submission |
 | `;` | Governance page | Comment on the open governance artifact |
-| `v` | Now lane | Toggle between the action queue and recent activity |
+| `v` | Now / Suggestions lane | Toggle `Now` between the action queue and recent activity, or cycle `Suggestions` through Incoming / Queued / Adopted / Dismissed |
 | `t` | Quest selection | Open the quest tree / lineage modal |
 | `r` | Global | Refresh snapshot |
 | `i` | Global | Toggle the inspector pane |
 | `m` | Global | Toggle the "My Stuff" drawer |
+| `n` | Global / page | Queue an Ask-AI job |
 | `Shift+S` | Fresh lane | Mark the current lane seen |
 | Mouse click | Cockpit | Click lane rail entries and worklist rows |
 | Mouse wheel | Cockpit | Scroll the worklist, inspector, quest tree, and drawer |
@@ -700,6 +701,17 @@ XYPH now has a first-class `Suggestions` lane and an explicit advisory CLI
 entry point. Agents can emit visible suggestions either in response to an
 explicit ask-AI request or spontaneously while working, as long as the idea is
 recorded as graph-visible advisory content instead of silently mutating truth.
+
+Inside the TUI, the `Suggestions` lane now has four subviews:
+
+- `Incoming` for newly suggested advisory items awaiting judgment
+- `Queued` for explicit ask-AI jobs waiting on agent pickup
+- `Adopted` for accepted or implemented suggestions
+- `Dismissed` for suggestions that were explicitly rejected
+
+Press `v` while the `Suggestions` lane is active to cycle those subviews. Press
+`n` anywhere in the cockpit or on an item page to open the Ask-AI composer and
+record a queued ask-AI job without bypassing the normal graph/governance loop.
 
 ```bash
 npx tsx xyph-actuator.ts suggest \

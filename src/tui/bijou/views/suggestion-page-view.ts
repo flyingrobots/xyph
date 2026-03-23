@@ -5,7 +5,7 @@ import type { AiSuggestionNode, EntityDetail, GraphSnapshot } from '../../../dom
 import type { StylePort } from '../../../ports/StylePort.js';
 import type { DashboardModel, SuggestionPageRoute } from '../DashboardApp.js';
 import type { CockpitItem } from '../cockpit.js';
-import { laneTitle, shortId, shortPrincipal } from '../cockpit.js';
+import { laneTitle, shortId, shortPrincipal, suggestionsViewTitle, type SuggestionsViewMode } from '../cockpit.js';
 import {
   buildVerticalScrollbarRail,
   laneAccent,
@@ -134,6 +134,7 @@ function buildSuggestionPageContent(
   suggestion: AiSuggestionNode,
   detail: EntityDetail | null,
   page: SuggestionPageRoute,
+  suggestionsView: SuggestionsViewMode,
   sourceItem: CockpitItem | undefined,
   width: number,
   loading: boolean,
@@ -179,7 +180,14 @@ function buildSuggestionPageContent(
   lines.push('');
 
   pushSectionTitle(lines, style, 'Suggestion');
-  pushField(lines, 'Lane', laneTitle(page.sourceLane), width);
+  pushField(
+    lines,
+    'Lane',
+    page.sourceLane === 'suggestions'
+      ? `${laneTitle(page.sourceLane)} / ${suggestionsViewTitle(suggestionsView)}`
+      : laneTitle(page.sourceLane),
+    width,
+  );
   pushField(lines, 'Artifact', suggestion.kind === 'ask-ai' ? 'Ask-AI job' : 'AI suggestion', width, (value) => statusText(style, value));
   pushField(lines, 'Kind', suggestion.kind, width, (value) => statusText(style, value));
   pushField(lines, 'Audience', suggestion.audience, width, (value) => statusText(style, value));
@@ -270,7 +278,9 @@ export function suggestionPageView(args: SuggestionPageViewArgs): string {
     lane: page.sourceLane,
     agentId: model.agentId,
     nowView: model.nowView,
-    breadcrumbSegments: ['Landing', laneTitle(page.sourceLane), shortId(page.suggestionId)],
+    breadcrumbSegments: page.sourceLane === 'suggestions'
+      ? ['Landing', laneTitle(page.sourceLane), suggestionsViewTitle(model.suggestionsView), shortId(page.suggestionId)]
+      : ['Landing', laneTitle(page.sourceLane), shortId(page.suggestionId)],
   }, snapshot, style, width);
   const chromeHeight = chrome.split('\n').length;
   const bodyHeight = Math.max(1, height - chromeHeight - 1);
@@ -287,6 +297,7 @@ export function suggestionPageView(args: SuggestionPageViewArgs): string {
     suggestion,
     detail,
     page,
+    model.suggestionsView,
     sourceItem,
     contentWidth,
     model.pageLoading,

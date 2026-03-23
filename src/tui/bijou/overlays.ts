@@ -37,11 +37,12 @@ export function inputOverlay(
   cols: number,
   rows: number,
   style: StylePort,
+  customHint?: string,
 ): string {
   const inputW = Math.max(Math.min(cols - 10, 54), 24);
   const displayValue = value.length > inputW ? value.slice(value.length - inputW) : value;
   const body = `${label}\n${displayValue}\u2588`;
-  const hint = style.styled(style.theme.semantic.muted, 'Enter: submit  Esc: cancel');
+  const hint = style.styled(style.theme.semantic.muted, customHint ?? 'Enter: submit  Esc: cancel');
 
   const overlay = modal({
     body,

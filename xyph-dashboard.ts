@@ -10,15 +10,16 @@
  *   1-7             — jump to lane (Now, Plan, Review, Settlement, Suggestions, Campaigns, Graveyard)
  *   Enter           — open the selected item page
  *   Esc/Backspace   — return from an item page to the landing cockpit
- *   v               — toggle Now lane between action queue and recent activity
+ *   v               — toggle Now lane or cycle Suggestions subviews
  *   t               — open the selected quest tree / lineage modal
  *   i               — toggle inspector pane
  *   PgUp / PgDn     — page the worklist or the open item page
  *   Shift+PgUp/PgDn — scroll the inspector
  *   m               — toggle "My Stuff" drawer (quests, submissions, activity)
+ *   n               — queue an Ask-AI job
  *   Shift+S         — mark the current lane seen
  *   Mouse           — click lanes/rows, wheel-scroll panes, dismiss the quest tree
- *   Signals         — freshness dots clear on visit; Review/Settlement keep persistent attention badges until resolved; Suggestions are marked with [AI]
+ *   Signals         — freshness dots clear on visit; Review/Settlement keep persistent attention badges until resolved; Suggestions are marked with [AI] and split into Incoming / Queued / Adopted / Dismissed subviews
  *   r               — refresh snapshot
  *   : or /          — command palette
  *   q               — quit

@@ -17,6 +17,7 @@ import type {
 
 export type CockpitLaneId = 'now' | 'plan' | 'review' | 'settlement' | 'suggestions' | 'campaigns' | 'graveyard';
 export type NowViewMode = 'queue' | 'activity';
+export type SuggestionsViewMode = 'incoming' | 'queued' | 'adopted' | 'dismissed';
 
 export interface CockpitLane {
   id: CockpitLaneId;
@@ -115,6 +116,7 @@ export type CockpitItem =
   | AiSuggestionCockpitItem;
 
 const LANE_ORDER: CockpitLaneId[] = ['now', 'plan', 'review', 'settlement', 'suggestions', 'campaigns', 'graveyard'];
+const SUGGESTIONS_VIEW_ORDER: SuggestionsViewMode[] = ['incoming', 'queued', 'adopted', 'dismissed'];
 
 const QUEST_STATUS_ORDER: Record<string, number> = {
   IN_PROGRESS: 0,
@@ -128,6 +130,37 @@ const QUEST_STATUS_ORDER: Record<string, number> = {
 
 export function cockpitLaneOrder(): readonly CockpitLaneId[] {
   return LANE_ORDER;
+}
+
+export function nextSuggestionsViewMode(current: SuggestionsViewMode): SuggestionsViewMode {
+  const index = SUGGESTIONS_VIEW_ORDER.indexOf(current);
+  return SUGGESTIONS_VIEW_ORDER[(index + 1 + SUGGESTIONS_VIEW_ORDER.length) % SUGGESTIONS_VIEW_ORDER.length] ?? 'incoming';
+}
+
+export function suggestionsViewTitle(view: SuggestionsViewMode): string {
+  switch (view) {
+    case 'incoming':
+      return 'Incoming';
+    case 'queued':
+      return 'Queued';
+    case 'adopted':
+      return 'Adopted';
+    case 'dismissed':
+      return 'Dismissed';
+  }
+}
+
+export function suggestionsViewDescription(view: SuggestionsViewMode): string {
+  switch (view) {
+    case 'incoming':
+      return 'Unreviewed AI suggestions';
+    case 'queued':
+      return 'Queued ask-AI jobs and request-driven follow-ups';
+    case 'adopted':
+      return 'Accepted and implemented AI suggestions';
+    case 'dismissed':
+      return 'Rejected AI suggestions';
+  }
 }
 
 export function shortId(id: unknown): string {
@@ -509,6 +542,26 @@ function compareAiSuggestionItems(a: AiSuggestionCockpitItem, b: AiSuggestionCoc
   return (b.timestamp ?? 0) - (a.timestamp ?? 0) || a.id.localeCompare(b.id);
 }
 
+function suggestionMatchesView(suggestion: AiSuggestionNode, view: SuggestionsViewMode): boolean {
+  switch (view) {
+    case 'incoming':
+      return suggestion.status === 'suggested';
+    case 'queued':
+      return suggestion.status === 'queued';
+    case 'adopted':
+      return suggestion.status === 'accepted' || suggestion.status === 'implemented';
+    case 'dismissed':
+      return suggestion.status === 'rejected';
+  }
+}
+
+function buildSuggestionItems(snapshot: GraphSnapshot, view: SuggestionsViewMode): AiSuggestionCockpitItem[] {
+  return snapshot.aiSuggestions
+    .filter((suggestion) => suggestionMatchesView(suggestion, view))
+    .map(buildAiSuggestionItem)
+    .sort(compareAiSuggestionItems);
+}
+
 function buildQuestActivityEvents(quest: QuestNode): ActivityEvent[] {
   const summary = `${shortId(quest.id)}  ${quest.title}`;
   const events: ActivityEvent[] = [];
@@ -810,9 +863,10 @@ export function laneAttentionCount(
   lane: CockpitLaneId,
   agentId?: string,
   nowView: NowViewMode = 'queue',
+  suggestionsView: SuggestionsViewMode = 'incoming',
 ): number {
   if (!snapshot || (lane !== 'review' && lane !== 'settlement')) return 0;
-  return laneItems(snapshot, lane, agentId, nowView)
+  return laneItems(snapshot, lane, agentId, nowView, suggestionsView)
     .reduce((count, item) => count + itemAttentionWeight(item), 0);
 }
 
@@ -821,23 +875,30 @@ function laneAttentionToneForLane(
   lane: CockpitLaneId,
   agentId?: string,
   nowView: NowViewMode = 'queue',
+  suggestionsView: SuggestionsViewMode = 'incoming',
 ): CockpitLane['attentionTone'] {
   if (!snapshot || (lane !== 'review' && lane !== 'settlement')) return 'none';
-  return laneAttentionTone(laneItems(snapshot, lane, agentId, nowView));
+  return laneAttentionTone(laneItems(snapshot, lane, agentId, nowView, suggestionsView));
 }
 
-export function cockpitLanes(snapshot: GraphSnapshot | null, agentId?: string, nowView: NowViewMode = 'queue'): CockpitLane[] {
+export function cockpitLanes(
+  snapshot: GraphSnapshot | null,
+  agentId?: string,
+  nowView: NowViewMode = 'queue',
+  suggestionsView: SuggestionsViewMode = 'incoming',
+): CockpitLane[] {
   if (!snapshot) {
     return [
       { id: 'now', title: 'Now', description: nowView === 'activity' ? 'Recent changes and actors' : 'Cross-surface action queue', count: 0, freshCount: 0, attentionCount: 0, attentionTone: 'none' },
       { id: 'plan', title: 'Plan', description: 'Live quest surface', count: 0, freshCount: 0, attentionCount: 0, attentionTone: 'none' },
       { id: 'review', title: 'Review', description: 'Submission lanes', count: 0, freshCount: 0, attentionCount: 0, attentionTone: 'none' },
       { id: 'settlement', title: 'Settlement', description: 'Compare, attest, collapse', count: 0, freshCount: 0, attentionCount: 0, attentionTone: 'none' },
-      { id: 'suggestions', title: 'Suggestions', description: 'AI suggestions and ask-AI jobs', count: 0, freshCount: 0, attentionCount: 0, attentionTone: 'none' },
+      { id: 'suggestions', title: 'Suggestions', description: suggestionsViewDescription(suggestionsView), count: 0, freshCount: 0, attentionCount: 0, attentionTone: 'none' },
       { id: 'campaigns', title: 'Campaigns', description: 'Strategic containers', count: 0, freshCount: 0, attentionCount: 0, attentionTone: 'none' },
       { id: 'graveyard', title: 'Graveyard', description: 'Rejected and retired work', count: 0, freshCount: 0, attentionCount: 0, attentionTone: 'none' },
     ];
   }
+  const suggestionItems = buildSuggestionItems(snapshot, suggestionsView);
   return [
     {
       id: 'now',
@@ -855,8 +916,8 @@ export function cockpitLanes(snapshot: GraphSnapshot | null, agentId?: string, n
       description: 'Submission lanes',
       count: snapshot.submissions.length,
       freshCount: 0,
-      attentionCount: laneAttentionCount(snapshot, 'review', agentId, nowView),
-      attentionTone: laneAttentionToneForLane(snapshot, 'review', agentId, nowView),
+      attentionCount: laneAttentionCount(snapshot, 'review', agentId, nowView, suggestionsView),
+      attentionTone: laneAttentionToneForLane(snapshot, 'review', agentId, nowView, suggestionsView),
     },
     {
       id: 'settlement',
@@ -864,17 +925,17 @@ export function cockpitLanes(snapshot: GraphSnapshot | null, agentId?: string, n
       description: 'Compare, attest, collapse',
       count: snapshot.governanceArtifacts.length,
       freshCount: 0,
-      attentionCount: laneAttentionCount(snapshot, 'settlement', agentId, nowView),
-      attentionTone: laneAttentionToneForLane(snapshot, 'settlement', agentId, nowView),
+      attentionCount: laneAttentionCount(snapshot, 'settlement', agentId, nowView, suggestionsView),
+      attentionTone: laneAttentionToneForLane(snapshot, 'settlement', agentId, nowView, suggestionsView),
     },
     {
       id: 'suggestions',
       title: 'Suggestions',
-      description: 'AI suggestions and ask-AI jobs',
-      count: snapshot.aiSuggestions.length,
+      description: suggestionsViewDescription(suggestionsView),
+      count: suggestionItems.length,
       freshCount: 0,
-      attentionCount: snapshot.aiSuggestions.filter((suggestion) => aiSuggestionAttention(suggestion).state !== 'none').length,
-      attentionTone: laneAttentionTone(snapshot.aiSuggestions.map(buildAiSuggestionItem)),
+      attentionCount: suggestionItems.filter((item) => item.attentionState !== 'none').length,
+      attentionTone: laneAttentionTone(suggestionItems),
     },
     { id: 'campaigns', title: 'Campaigns', description: 'Strategic containers', count: snapshot.campaigns.length, freshCount: 0, attentionCount: 0, attentionTone: 'none' },
     {
@@ -889,7 +950,13 @@ export function cockpitLanes(snapshot: GraphSnapshot | null, agentId?: string, n
   ];
 }
 
-export function laneItems(snapshot: GraphSnapshot, lane: CockpitLaneId, agentId?: string, nowView: NowViewMode = 'queue'): CockpitItem[] {
+export function laneItems(
+  snapshot: GraphSnapshot,
+  lane: CockpitLaneId,
+  agentId?: string,
+  nowView: NowViewMode = 'queue',
+  suggestionsView: SuggestionsViewMode = 'incoming',
+): CockpitItem[] {
   switch (lane) {
     case 'now':
       return nowView === 'activity'
@@ -913,9 +980,7 @@ export function laneItems(snapshot: GraphSnapshot, lane: CockpitLaneId, agentId?
         .map((campaign) => buildCampaignItem(campaign, snapshot))
         .sort(compareCampaignItems);
     case 'suggestions':
-      return snapshot.aiSuggestions
-        .map(buildAiSuggestionItem)
-        .sort(compareAiSuggestionItems);
+      return buildSuggestionItems(snapshot, suggestionsView);
     case 'graveyard':
       return snapshot.quests
         .filter((quest) => quest.status === 'GRAVEYARD')
@@ -931,8 +996,9 @@ export function buildLaneTable(
   focusRow = 0,
   agentId?: string,
   nowView: NowViewMode = 'queue',
+  suggestionsView: SuggestionsViewMode = 'incoming',
 ): NavigableTableState {
-  const items = snapshot ? laneItems(snapshot, lane, agentId, nowView) : [];
+  const items = snapshot ? laneItems(snapshot, lane, agentId, nowView, suggestionsView) : [];
   let table = createNavigableTableState({
     columns: [
       { header: 'Kind', width: 11 },
@@ -957,9 +1023,10 @@ export function selectedLaneItem(
   focusRow: number,
   agentId?: string,
   nowView: NowViewMode = 'queue',
+  suggestionsView: SuggestionsViewMode = 'incoming',
 ): CockpitItem | undefined {
   if (!snapshot) return undefined;
-  return laneItems(snapshot, lane, agentId, nowView)[focusRow];
+  return laneItems(snapshot, lane, agentId, nowView, suggestionsView)[focusRow];
 }
 
 export function laneTitle(lane: CockpitLaneId): string {
@@ -1000,9 +1067,10 @@ export function laneFreshCount(
   seenItems: ObserverSeenItems = {},
   agentId?: string,
   nowView: NowViewMode = 'queue',
+  suggestionsView: SuggestionsViewMode = 'incoming',
 ): number {
   if (!snapshot) return 0;
-  return laneItems(snapshot, lane, agentId, nowView)
+  return laneItems(snapshot, lane, agentId, nowView, suggestionsView)
     .filter((item) => itemIsFresh(item, lane, watermarks, seenItems))
     .length;
 }
@@ -1012,9 +1080,10 @@ export function laneLatestTimestamp(
   lane: CockpitLaneId,
   agentId?: string,
   nowView: NowViewMode = 'queue',
+  suggestionsView: SuggestionsViewMode = 'incoming',
 ): number {
   if (!snapshot) return 0;
-  return laneItems(snapshot, lane, agentId, nowView)
+  return laneItems(snapshot, lane, agentId, nowView, suggestionsView)
     .reduce((latest, item) => Math.max(latest, item.timestamp ?? 0), 0);
 }
 
@@ -1024,9 +1093,10 @@ export function cockpitLanesWithFreshness(
   seenItems: ObserverSeenItems = {},
   agentId?: string,
   nowView: NowViewMode = 'queue',
+  suggestionsView: SuggestionsViewMode = 'incoming',
 ): CockpitLane[] {
-  return cockpitLanes(snapshot, agentId, nowView).map((lane) => ({
+  return cockpitLanes(snapshot, agentId, nowView, suggestionsView).map((lane) => ({
     ...lane,
-    freshCount: laneFreshCount(snapshot, lane.id, watermarks, seenItems, agentId, nowView),
+    freshCount: laneFreshCount(snapshot, lane.id, watermarks, seenItems, agentId, nowView, suggestionsView),
   }));
 }

@@ -48,6 +48,35 @@ function widen(app: App<DashboardModel, DashboardMsg>, model: DashboardModel, co
   return resized;
 }
 
+function expectWriteInput(
+  model: DashboardModel,
+): Extract<NonNullable<DashboardModel['inputState']>, { kind: 'write' }> {
+  expect(model.mode).toBe('input');
+  expect(model.inputState).not.toBeNull();
+  expect(model.inputState?.kind).toBe('write');
+  if (!model.inputState || model.inputState.kind !== 'write') {
+    throw new Error('Expected write input state');
+  }
+  return model.inputState;
+}
+
+function expectAskAiInput(
+  model: DashboardModel,
+  step: 'title' | 'summary',
+): Extract<NonNullable<DashboardModel['inputState']>, { kind: 'ask-ai'; step: 'title' | 'summary' }> {
+  expect(model.mode).toBe('input');
+  expect(model.inputState).not.toBeNull();
+  expect(model.inputState?.kind).toBe('ask-ai');
+  if (!model.inputState || model.inputState.kind !== 'ask-ai') {
+    throw new Error(`Expected ask-ai ${step} input state`);
+  }
+  expect(model.inputState.step).toBe(step);
+  if (model.inputState.step !== step) {
+    throw new Error(`Expected ask-ai ${step} input state`);
+  }
+  return model.inputState;
+}
+
 describe('DashboardApp', () => {
   beforeEach(() => {
     delete process.env['NO_COLOR'];
@@ -358,8 +387,8 @@ describe('DashboardApp', () => {
     expect(plain).toContain('pending attestation');
 
     const [commenting] = app.update(key(';'), detailLoaded);
-    expect(commenting.mode).toBe('input');
-    expect(commenting.inputState?.action).toEqual({
+    const inputState = expectWriteInput(commenting);
+    expect(inputState.action).toEqual({
       kind: 'comment',
       targetId: 'collapse-proposal:settle-1',
     });
@@ -507,8 +536,8 @@ describe('DashboardApp', () => {
     expect(plain).toContain('Approve current tip patchset');
 
     const [commenting] = app.update(key(';'), detailLoaded);
-    expect(commenting.mode).toBe('input');
-    expect(commenting.inputState?.action).toEqual({
+    const inputState = expectWriteInput(commenting);
+    expect(inputState.action).toEqual({
       kind: 'comment',
       targetId: 'submission:REV-1',
     });
@@ -596,12 +625,10 @@ describe('DashboardApp', () => {
     const [plan] = app.update(key('2'), loaded);
 
     const [promote] = app.update(key('p'), plan);
-    expect(promote.mode).toBe('input');
-    expect(promote.inputState?.action).toEqual({ kind: 'promote', questId: 'task:B1' });
+    expect(expectWriteInput(promote).action).toEqual({ kind: 'promote', questId: 'task:B1' });
 
     const [reject] = app.update(key('d', { shift: true }), plan);
-    expect(reject.mode).toBe('input');
-    expect(reject.inputState?.action).toEqual({ kind: 'reject', questId: 'task:B1' });
+    expect(expectWriteInput(reject).action).toEqual({ kind: 'reject', questId: 'task:B1' });
   });
 
   it('opens review input flows for an OPEN submission', () => {
@@ -623,12 +650,10 @@ describe('DashboardApp', () => {
     const [review] = app.update(key('3'), loaded);
 
     const [approve] = app.update(key('a'), review);
-    expect(approve.mode).toBe('input');
-    expect(approve.inputState?.action).toEqual({ kind: 'approve', patchsetId: 'patchset:P1' });
+    expect(expectWriteInput(approve).action).toEqual({ kind: 'approve', patchsetId: 'patchset:P1' });
 
     const [requestChanges] = app.update(key('x'), review);
-    expect(requestChanges.mode).toBe('input');
-    expect(requestChanges.inputState?.action).toEqual({ kind: 'request-changes', patchsetId: 'patchset:P1' });
+    expect(expectWriteInput(requestChanges).action).toEqual({ kind: 'request-changes', patchsetId: 'patchset:P1' });
   });
 
   it('toggles the drawer and opens the command palette', () => {
@@ -767,9 +792,114 @@ describe('DashboardApp', () => {
     ]);
 
     const pagePlain = strip(app.view(page) as string);
-    expect(pagePlain).toContain('Landing / Suggestions / S1');
+    expect(pagePlain).toContain('Landing / Suggestions / Incoming / S1');
     expect(pagePlain).toContain('Suggestions [AI]');
     expect(pagePlain).toContain('Comment on this suggestion');
+  });
+
+  it('cycles suggestion subviews with v on the Suggestions lane', () => {
+    const app = buildApp();
+    const loaded = ready(app, makeSnapshot({
+      aiSuggestions: [
+        {
+          id: 'suggestion:IN-1',
+          type: 'ai-suggestion',
+          kind: 'quest',
+          title: 'Incoming suggestion',
+          summary: 'Suggested quest.',
+          status: 'suggested',
+          audience: 'human',
+          origin: 'spontaneous',
+          suggestedBy: 'agent.prime',
+          suggestedAt: 300,
+          relatedIds: [],
+        },
+        {
+          id: 'suggestion:Q-1',
+          type: 'ai-suggestion',
+          kind: 'ask-ai',
+          title: 'Queued job',
+          summary: 'Please analyze the blockers.',
+          status: 'queued',
+          audience: 'agent',
+          origin: 'request',
+          suggestedBy: 'human.prime',
+          requestedBy: 'human.prime',
+          suggestedAt: 200,
+          relatedIds: [],
+        },
+        {
+          id: 'suggestion:A-1',
+          type: 'ai-suggestion',
+          kind: 'dependency',
+          title: 'Adopted suggestion',
+          summary: 'Adopt this dependency recommendation.',
+          status: 'accepted',
+          audience: 'human',
+          origin: 'spontaneous',
+          suggestedBy: 'agent.prime',
+          suggestedAt: 100,
+          relatedIds: [],
+        },
+        {
+          id: 'suggestion:D-1',
+          type: 'ai-suggestion',
+          kind: 'general',
+          title: 'Dismissed suggestion',
+          summary: 'Ignore this idea.',
+          status: 'rejected',
+          audience: 'human',
+          origin: 'spontaneous',
+          suggestedBy: 'agent.prime',
+          suggestedAt: 50,
+          relatedIds: [],
+        },
+      ],
+    }));
+
+    const [suggestions] = app.update(key('5'), loaded);
+    expect(suggestions.suggestionsView).toBe('incoming');
+    expect(strip(app.view(suggestions) as string)).toContain('Incoming');
+    expect(strip(app.view(suggestions) as string)).toContain('Incoming suggestion');
+
+    const [queued] = app.update(key('v'), suggestions);
+    expect(queued.suggestionsView).toBe('queued');
+    expect(strip(app.view(queued) as string)).toContain('Queued');
+    expect(strip(app.view(queued) as string)).toContain('Queued job');
+
+    const [adopted] = app.update(key('v'), queued);
+    expect(adopted.suggestionsView).toBe('adopted');
+    expect(strip(app.view(adopted) as string)).toContain('Adopted');
+    expect(strip(app.view(adopted) as string)).toContain('Adopted suggestion');
+
+    const [dismissed] = app.update(key('v'), adopted);
+    expect(dismissed.suggestionsView).toBe('dismissed');
+    expect(strip(app.view(dismissed) as string)).toContain('Dismissed');
+    expect(strip(app.view(dismissed) as string)).toContain('Dismissed suggestion');
+  });
+
+  it('opens the Ask-AI composer from the Suggestions lane and advances title to summary', () => {
+    const app = buildApp();
+    const loaded = ready(app, makeSnapshot({
+      quests: [{ id: 'task:Q1', title: 'Quest One', status: 'READY', hours: 1 }],
+    }));
+
+    const [suggestions] = app.update(key('5'), loaded);
+    const [titleStep] = app.update(key('n'), suggestions);
+    const titleInput = expectAskAiInput(titleStep, 'title');
+    expect(titleInput.contextLabel).toBeUndefined();
+    const titlePlain = strip(app.view(titleStep) as string);
+    expect(titlePlain).toContain('Queue Ask-AI job');
+    expect(titlePlain).toContain('Context: general');
+    expect(titlePlain).toContain('Title:');
+
+    const [typedTitle] = app.update(key('A'), titleStep);
+    const [summaryStep] = app.update(key('enter'), typedTitle);
+    const summaryInput = expectAskAiInput(summaryStep, 'summary');
+    expect(summaryInput.title).toBe('A');
+    const summaryPlain = strip(app.view(summaryStep) as string);
+    expect(summaryPlain).toContain('Queue Ask-AI job');
+    expect(summaryPlain).toContain('Summary:');
   });
 
   it('opens a page-local comment input from a quest page', () => {
@@ -782,9 +912,9 @@ describe('DashboardApp', () => {
     const [page] = app.update(key('enter'), plan);
     const [comment] = app.update(key(';'), page);
 
-    expect(comment.mode).toBe('input');
-    expect(comment.inputState?.action).toEqual({ kind: 'comment', targetId: 'task:Q1' });
-    expect(comment.inputState?.label).toContain('Comment on task:Q1:');
+    const inputState = expectWriteInput(comment);
+    expect(inputState.action).toEqual({ kind: 'comment', targetId: 'task:Q1' });
+    expect(inputState.label).toContain('Comment on task:Q1:');
   });
 
   it('opens a page-local comment input from a suggestion page', () => {
@@ -809,9 +939,9 @@ describe('DashboardApp', () => {
     const [page] = app.update(key('enter'), suggestions);
     const [comment] = app.update(key(';'), page);
 
-    expect(comment.mode).toBe('input');
-    expect(comment.inputState?.action).toEqual({ kind: 'comment', targetId: 'suggestion:S1' });
-    expect(comment.inputState?.label).toContain('Comment on suggestion:S1:');
+    const inputState = expectWriteInput(comment);
+    expect(inputState.action).toEqual({ kind: 'comment', targetId: 'suggestion:S1' });
+    expect(inputState.label).toContain('Comment on suggestion:S1:');
   });
 
   it('opens a page-local reopen confirmation for a graveyard quest page', () => {

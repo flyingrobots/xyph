@@ -12,6 +12,7 @@ import {
   selectedLaneItem,
   shortId,
   shortPrincipal,
+  suggestionsViewTitle,
   type CockpitItem,
 } from '../cockpit.js';
 import { formatAge, wrapWhitespaceText } from '../../view-helpers.js';
@@ -399,6 +400,8 @@ function computeCockpitPaneLayout(
     nowView: model.nowView,
     breadcrumbSegments: model.lane === 'now' && model.nowView === 'activity'
       ? ['Landing', laneTitle(model.lane), 'Recent Activity']
+      : model.lane === 'suggestions'
+        ? ['Landing', laneTitle(model.lane), suggestionsViewTitle(model.suggestionsView)]
       : ['Landing', laneTitle(model.lane)],
   }, snapshot, style, width);
   const heroHeight = hero.split('\n').length;
@@ -496,12 +499,14 @@ export function describeCockpitInteractionMap(
   }));
 
   const accentToken = laneAccent(style, model.lane);
-  const worklistItems = laneItems(snapshot, model.lane, model.agentId, model.nowView);
+  const worklistItems = laneItems(snapshot, model.lane, model.agentId, model.nowView, model.suggestionsView);
   const selected = worklistItems[model.table.focusRow];
   const worklistHeader = renderPaneHeader({
     title: style.styled(accentToken, laneTitle(model.lane)),
     detail: model.lane === 'now'
       ? style.styled(accentToken, model.nowView === 'activity' ? 'Recent Activity' : 'Action Queue')
+      : model.lane === 'suggestions'
+        ? `${renderAiLabel(style)} ${style.styled(accentToken, suggestionsViewTitle(model.suggestionsView))}${selected ? style.styled(style.theme.semantic.muted, ` · ${shortId(selected.id)}`) : ''}`
       : selected
         ? style.styled(accentToken, shortId(selected.id))
         : 'select an item to inspect',
@@ -774,7 +779,7 @@ function buildLaneRailContent(
 ): { lines: string[]; regions: ({ lane: DashboardModel['lane'] } & LineSpan)[] } {
   const lines: string[] = [];
   const regions: ({ lane: DashboardModel['lane'] } & LineSpan)[] = [];
-  const lanes = cockpitLanesWithFreshness(snapshot, model.observerWatermarks, model.observerSeenItems, model.agentId, model.nowView);
+  const lanes = cockpitLanesWithFreshness(snapshot, model.observerWatermarks, model.observerSeenItems, model.agentId, model.nowView, model.suggestionsView);
   for (const lane of lanes) {
     const selected = lane.id === model.lane;
     const accentToken = laneAccent(style, lane.id);
@@ -846,14 +851,14 @@ function renderLaneRail(model: DashboardModel, snapshot: GraphSnapshot, style: S
 
 function renderWorklistPane(model: DashboardModel, snapshot: GraphSnapshot, style: StylePort, width: number, height: number): string {
   const accentToken = laneAccent(style, model.lane);
-  const items = laneItems(snapshot, model.lane, model.agentId, model.nowView);
+  const items = laneItems(snapshot, model.lane, model.agentId, model.nowView, model.suggestionsView);
   const selected = items[model.table.focusRow];
   const header = renderPaneHeader({
     title: style.styled(accentToken, laneTitle(model.lane)),
     detail: model.lane === 'now'
       ? style.styled(accentToken, model.nowView === 'activity' ? 'Recent Activity' : 'Action Queue')
       : model.lane === 'suggestions'
-        ? `${renderAiLabel(style)} ${style.styled(accentToken, selected ? shortId(selected.id) : 'Advisory Queue')}`
+        ? `${renderAiLabel(style)} ${style.styled(accentToken, suggestionsViewTitle(model.suggestionsView))}${selected ? style.styled(style.theme.semantic.muted, ` · ${shortId(selected.id)}`) : ''}`
       : selected
         ? style.styled(accentToken, shortId(selected.id))
         : 'select an item to inspect',
@@ -1170,10 +1175,12 @@ function renderGovernanceDetail(style: StylePort, item: CockpitItem, width: numb
 
 function renderInspector(model: DashboardModel, snapshot: GraphSnapshot, style: StylePort, width: number, height: number): string {
   const accentToken = laneAccent(style, model.lane);
-  const item = selectedLaneItem(snapshot, model.lane, model.table.focusRow, model.agentId, model.nowView);
+  const item = selectedLaneItem(snapshot, model.lane, model.table.focusRow, model.agentId, model.nowView, model.suggestionsView);
   const header = renderPaneHeader({
     title: style.styled(accentToken, 'Inspector'),
-    detail: item ? style.styled(accentToken, item.secondary) : 'selection detail',
+    detail: model.lane === 'suggestions'
+      ? `${renderAiLabel(style)} ${style.styled(accentToken, suggestionsViewTitle(model.suggestionsView))}`
+      : item ? style.styled(accentToken, item.secondary) : 'selection detail',
     width,
     borderToken: accentToken,
   });

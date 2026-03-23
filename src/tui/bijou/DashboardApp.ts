@@ -53,9 +53,11 @@ import {
   claimQuest,
   commentOnEntity,
   promoteQuest,
+  queueAskAiJob,
   rejectQuest,
   reopenQuest,
   reviewSubmission,
+  type AskAiJobInput,
   type WriteDeps,
 } from './write-cmds.js';
 import {
@@ -65,11 +67,14 @@ import {
   laneFreshCount,
   laneLatestTimestamp,
   laneTitle,
+  nextSuggestionsViewMode,
   selectedLaneItem,
   shortId,
+  suggestionsViewTitle,
   type NowViewMode,
   type CockpitItem,
   type CockpitLaneId,
+  type SuggestionsViewMode,
 } from './cockpit.js';
 import {
   type ObserverSeenItems,
@@ -87,7 +92,8 @@ export type PendingWrite =
   | { kind: 'reopen'; questId: string }
   | { kind: 'comment'; targetId: string }
   | { kind: 'approve'; patchsetId: string }
-  | { kind: 'request-changes'; patchsetId: string };
+  | { kind: 'request-changes'; patchsetId: string }
+  | ({ kind: 'ask-ai' } & AskAiJobInput);
 
 export type ConfirmAction = PendingWrite | { kind: 'quit' };
 
@@ -140,6 +146,7 @@ export type DashboardPageRoute =
 export interface DashboardModel {
   lane: CockpitLaneId;
   nowView: NowViewMode;
+  suggestionsView: SuggestionsViewMode;
   pageStack: DashboardPageRoute[];
   laneState: Record<CockpitLaneId, LaneState>;
   scrollbars: {
@@ -163,7 +170,7 @@ export interface DashboardModel {
   pulsePhase: number;
   mode: 'normal' | 'confirm' | 'input' | 'palette' | 'quest-tree';
   confirmState: { prompt: string; action: ConfirmAction; hint?: string } | null;
-  inputState: { label: string; value: string; action: PendingWrite } | null;
+  inputState: DashboardInputState | null;
   paletteState: CommandPaletteState | null;
   questTreeScrollY: number;
   drawerScrollY: number;
@@ -204,7 +211,7 @@ type GlobalAction =
   | { type: 'next-lane' }
   | { type: 'prev-lane' }
   | { type: 'refresh' }
-  | { type: 'toggle-now-view' }
+  | { type: 'toggle-lane-view' }
   | { type: 'toggle-help' }
   | { type: 'toggle-drawer' }
   | { type: 'toggle-inspector' };
@@ -227,7 +234,27 @@ type ViewAction =
   | { type: 'reopen' }
   | { type: 'approve' }
   | { type: 'request-changes' }
-  | { type: 'mark-lane-seen' };
+  | { type: 'mark-lane-seen' }
+  | { type: 'ask-ai' };
+
+interface SingleInputState {
+  kind: 'write';
+  label: string;
+  value: string;
+  action: Exclude<PendingWrite, { kind: 'ask-ai' }>;
+}
+
+interface AskAiInputState {
+  kind: 'ask-ai';
+  step: 'title' | 'summary';
+  title: string;
+  value: string;
+  targetId?: string;
+  relatedIds: string[];
+  contextLabel?: string;
+}
+
+type DashboardInputState = SingleInputState | AskAiInputState;
 
 export interface DashboardDeps {
   ctx: GraphContext;
@@ -285,7 +312,7 @@ function buildGlobalKeys(): KeyMap<GlobalAction> {
       .bind('[', 'Previous lane', { type: 'prev-lane' })
       .bind(']', 'Next lane', { type: 'next-lane' })
       .bind('r', 'Refresh snapshot', { type: 'refresh' })
-      .bind('v', 'Toggle Now view', { type: 'toggle-now-view' })
+      .bind('v', 'Toggle lane view', { type: 'toggle-lane-view' })
       .bind('i', 'Toggle inspector', { type: 'toggle-inspector' })
       .bind('m', 'Toggle drawer', { type: 'toggle-drawer' })
       .bind('?', 'Toggle help', { type: 'toggle-help' }),
@@ -309,6 +336,7 @@ function buildViewKeys(): KeyMap<ViewAction> {
       .bind('shift+pageup', 'Scroll inspector up', { type: 'page-up-inspector' })
       .bind('t', 'Open quest tree', { type: 'toggle-quest-tree' })
       .bind(';', 'Comment on selected quest', { type: 'comment' })
+      .bind('n', 'Queue an Ask-AI job', { type: 'ask-ai' })
       .bind('c', 'Claim selected quest', { type: 'claim' })
       .bind('p', 'Promote selected backlog quest', { type: 'promote' })
       .bind('shift+d', 'Reject selected backlog quest', { type: 'reject' })
@@ -394,7 +422,7 @@ function scrollInspectorBy(model: DashboardModel, delta: number): [DashboardMode
 }
 
 function currentSelectedItem(model: DashboardModel): CockpitItem | undefined {
-  return selectedLaneItem(model.snapshot, model.lane, model.table.focusRow, model.agentId, model.nowView);
+  return selectedLaneItem(model.snapshot, model.lane, model.table.focusRow, model.agentId, model.nowView, model.suggestionsView);
 }
 
 function governancePrefixes(): readonly string[] {
@@ -697,7 +725,7 @@ function popPage(model: DashboardModel, deps: DashboardDeps): [DashboardModel, C
 
 function rebuildForLane(model: DashboardModel, lane: CockpitLaneId, snapshot = model.snapshot): DashboardModel {
   const memory = model.laneState[lane];
-  const table = buildLaneTable(snapshot, lane, Math.max(8, model.rows - 8), memory.focusRow, model.agentId, model.nowView);
+  const table = buildLaneTable(snapshot, lane, Math.max(8, model.rows - 8), memory.focusRow, model.agentId, model.nowView, model.suggestionsView);
   return {
     ...model,
     lane,
@@ -787,7 +815,7 @@ function markLaneSeen(model: DashboardModel, deps: DashboardDeps, lane = model.l
     model,
     deps,
     lane,
-    laneLatestTimestamp(model.snapshot, lane, model.agentId, model.nowView),
+    laneLatestTimestamp(model.snapshot, lane, model.agentId, model.nowView, model.suggestionsView),
   );
 }
 
@@ -814,6 +842,95 @@ function toggleNowView(model: DashboardModel, deps: DashboardDeps): DashboardMod
   }, 'now'), deps);
 }
 
+function toggleSuggestionsView(model: DashboardModel, deps: DashboardDeps): DashboardModel {
+  const nextView = nextSuggestionsViewMode(model.suggestionsView);
+  return visitSelectedItem(rebuildForLane(updateInspectorScroll({
+    ...model,
+    suggestionsView: nextView,
+  }, 0), 'suggestions'), deps);
+}
+
+interface AskAiContext {
+  targetId?: string;
+  relatedIds: string[];
+  contextLabel?: string;
+}
+
+function uniqueIds(values: (string | undefined)[]): string[] {
+  return [...new Set(values.filter((value): value is string => typeof value === 'string' && value.length > 0))];
+}
+
+function askAiContextForModel(model: DashboardModel): AskAiContext {
+  const page = currentPage(model);
+  switch (page.kind) {
+    case 'quest': {
+      const submission = selectedSubmission(model);
+      return {
+        targetId: page.questId,
+        relatedIds: uniqueIds([submission?.id]),
+        contextLabel: shortId(page.questId),
+      };
+    }
+    case 'review':
+      return {
+        targetId: page.submissionId,
+        relatedIds: uniqueIds([page.questId]),
+        contextLabel: shortId(page.submissionId),
+      };
+    case 'governance':
+      return {
+        targetId: page.entityId,
+        relatedIds: [],
+        contextLabel: shortId(page.entityId),
+      };
+    case 'suggestion':
+      return {
+        targetId: page.suggestionId,
+        relatedIds: [],
+        contextLabel: shortId(page.suggestionId),
+      };
+    case 'landing':
+      break;
+  }
+
+  const item = currentSelectedItem(model);
+  if (!item) return { relatedIds: [] };
+  switch (item.kind) {
+    case 'quest':
+      return { targetId: item.quest.id, relatedIds: uniqueIds([item.quest.submissionId]), contextLabel: shortId(item.quest.id) };
+    case 'submission':
+      return { targetId: item.submission.id, relatedIds: uniqueIds([item.submission.questId]), contextLabel: shortId(item.submission.id) };
+    case 'comparison-artifact':
+    case 'collapse-proposal':
+    case 'attestation':
+      return { targetId: item.id, relatedIds: [], contextLabel: shortId(item.id) };
+    case 'campaign':
+      return { targetId: item.campaign.id, relatedIds: [], contextLabel: shortId(item.campaign.id) };
+    case 'ai-suggestion':
+      return { targetId: item.suggestion.id, relatedIds: uniqueIds([item.suggestion.targetId, ...item.suggestion.relatedIds]), contextLabel: shortId(item.suggestion.id) };
+    case 'activity':
+      return {
+        targetId: item.event.targetId ?? item.event.relatedId,
+        relatedIds: uniqueIds([item.event.targetId, item.event.relatedId]),
+        contextLabel: shortId(item.event.targetId ?? item.event.relatedId ?? item.id),
+      };
+  }
+}
+
+function askAiInputLabel(state: AskAiInputState): string {
+  const contextLine = state.contextLabel ? `Context: ${state.contextLabel}` : 'Context: general';
+  if (state.step === 'title') {
+    return `Queue Ask-AI job\n${contextLine}\nTitle:`;
+  }
+  return `Queue Ask-AI job\n${contextLine}\nTitle: ${state.title}\nSummary:`;
+}
+
+function askAiInputHint(state: AskAiInputState): string {
+  return state.step === 'title'
+    ? 'Enter: next  Esc: cancel'
+    : 'Enter: queue  Esc: cancel';
+}
+
 interface ControlHint {
   key: string;
   label: string;
@@ -828,6 +945,7 @@ function contextControls(model: DashboardModel): ControlHint[] {
     const hints: ControlHint[] = [
       { key: 'Esc', label: 'back' },
       { key: 'PgUp/PgDn', label: 'page' },
+      { key: 'n', label: 'ask ai' },
     ];
     const suggestion = selectedAiSuggestion(model);
     if (suggestion) {
@@ -915,7 +1033,11 @@ function contextControls(model: DashboardModel): ControlHint[] {
   if (model.lane === 'now') {
     hints.push({ key: 'v', label: model.nowView === 'queue' ? 'recent' : 'queue' });
   }
-  if (laneFreshCount(model.snapshot, model.lane, model.observerWatermarks, model.observerSeenItems, model.agentId, model.nowView) > 0) {
+  if (model.lane === 'suggestions') {
+    hints.push({ key: 'v', label: nextSuggestionsViewMode(model.suggestionsView).toLowerCase() });
+  }
+  hints.push({ key: 'n', label: 'ask ai' });
+  if (laneFreshCount(model.snapshot, model.lane, model.observerWatermarks, model.observerSeenItems, model.agentId, model.nowView, model.suggestionsView) > 0) {
     hints.push({ key: 'Shift+S', label: 'lane seen' });
   }
   return hints;
@@ -950,10 +1072,12 @@ function renderStatusLine(model: DashboardModel): string {
       ? `${laneTitle(page.sourceLane)} / ${shortId(page.submissionId)}`
     : page.kind === 'governance'
       ? `${laneTitle(page.sourceLane)} / ${shortId(page.entityId)}`
-      : page.kind === 'suggestion'
-        ? `${laneTitle(page.sourceLane)} / ${shortId(page.suggestionId)}`
+    : page.kind === 'suggestion'
+        ? `${laneTitle(page.sourceLane)} / ${page.sourceLane === 'suggestions' ? `${suggestionsViewTitle(model.suggestionsView)} / ` : ''}${shortId(page.suggestionId)}`
       : model.lane === 'now' && model.nowView === 'activity'
         ? `${laneTitle(model.lane)} Recent`
+      : model.lane === 'suggestions'
+        ? `${laneTitle(model.lane)} ${suggestionsViewTitle(model.suggestionsView)}`
         : laneTitle(model.lane);
   const left = [
     ` ${laneLabel}`,
@@ -1077,13 +1201,22 @@ function buildPaletteItems(model: DashboardModel): CommandPaletteItem[] {
     { id: 'refresh', label: 'Refresh snapshot', category: 'Global', shortcut: 'r' },
     ...(isLandingPage(model) && model.lane === 'now'
       ? [{
-          id: 'toggle-now-view',
+          id: 'toggle-lane-view',
           label: model.nowView === 'queue' ? 'Show recent activity in Now lane' : 'Show action queue in Now lane',
           category: 'Global',
           shortcut: 'v',
         } satisfies CommandPaletteItem]
       : []),
+    ...(isLandingPage(model) && model.lane === 'suggestions'
+      ? [{
+          id: 'toggle-lane-view',
+          label: `Show ${suggestionsViewTitle(nextSuggestionsViewMode(model.suggestionsView)).toLowerCase()} suggestions`,
+          category: 'Global',
+          shortcut: 'v',
+        } satisfies CommandPaletteItem]
+      : []),
     { id: 'toggle-drawer', label: 'Toggle My Stuff drawer', category: 'Global', shortcut: 'm' },
+    { id: 'ask-ai', label: 'Queue Ask-AI job', category: 'Suggest', shortcut: 'n' },
   ];
 
   if (isLandingPage(model)
@@ -1117,7 +1250,7 @@ function buildPaletteItems(model: DashboardModel): CommandPaletteItem[] {
     }
   }
   if (isLandingPage(model)
-    && laneFreshCount(model.snapshot, model.lane, model.observerWatermarks, model.observerSeenItems, model.agentId, model.nowView) > 0) {
+    && laneFreshCount(model.snapshot, model.lane, model.observerWatermarks, model.observerSeenItems, model.agentId, model.nowView, model.suggestionsView) > 0) {
     items.push({ id: 'mark-lane-seen', label: `Mark ${laneTitle(model.lane)} lane seen`, category: 'Freshness', shortcut: 'S' });
   }
   if (quest?.status === 'READY') {
@@ -1269,6 +1402,8 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         return reviewSubmission(writeDeps, action.patchsetId, 'approve', inputValue ?? '');
       case 'request-changes':
         return reviewSubmission(writeDeps, action.patchsetId, 'request-changes', inputValue ?? '');
+      case 'ask-ai':
+        return queueAskAiJob(writeDeps, action);
     }
   }
 
@@ -1291,7 +1426,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         return [{
           ...model,
           mode: 'input',
-          inputState: { label: `Intent ID for ${quest.id}:`, value: '', action: { kind: 'promote', questId: quest.id } },
+          inputState: { kind: 'write', label: `Intent ID for ${quest.id}:`, value: '', action: { kind: 'promote', questId: quest.id } },
         }, []];
       }
       case 'reject': {
@@ -1300,7 +1435,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         return [{
           ...model,
           mode: 'input',
-          inputState: { label: `Rejection rationale for ${quest.id}:`, value: '', action: { kind: 'reject', questId: quest.id } },
+          inputState: { kind: 'write', label: `Rejection rationale for ${quest.id}:`, value: '', action: { kind: 'reject', questId: quest.id } },
         }, []];
       }
       case 'reopen': {
@@ -1320,6 +1455,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
             ...model,
             mode: 'input',
             inputState: {
+              kind: 'write',
               label: `Comment on ${suggestion.id}:`,
               value: '',
               action: { kind: 'comment', targetId: suggestion.id },
@@ -1332,6 +1468,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
             ...model,
             mode: 'input',
             inputState: {
+              kind: 'write',
               label: `Comment on ${governance.id}:`,
               value: '',
               action: { kind: 'comment', targetId: governance.id },
@@ -1345,6 +1482,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
             ...model,
             mode: 'input',
             inputState: {
+              kind: 'write',
               label: `Comment on ${submission.id}:`,
               value: '',
               action: { kind: 'comment', targetId: submission.id },
@@ -1357,9 +1495,26 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
           ...model,
           mode: 'input',
           inputState: {
+            kind: 'write',
             label: `Comment on ${quest.id}:`,
             value: '',
             action: { kind: 'comment', targetId: quest.id },
+          },
+        }, []];
+      }
+      case 'ask-ai': {
+        const context = askAiContextForModel(model);
+        return [{
+          ...model,
+          mode: 'input',
+          inputState: {
+            kind: 'ask-ai',
+            step: 'title',
+            title: '',
+            value: '',
+            targetId: context.targetId,
+            relatedIds: context.relatedIds,
+            contextLabel: context.contextLabel,
           },
         }, []];
       }
@@ -1370,6 +1525,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
           ...model,
           mode: 'input',
           inputState: {
+            kind: 'write',
             label: `Approval comment for ${submission.tipPatchsetId}:`,
             value: '',
             action: { kind: 'approve', patchsetId: submission.tipPatchsetId },
@@ -1383,6 +1539,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
           ...model,
           mode: 'input',
           inputState: {
+            kind: 'write',
             label: `Change request for ${submission.tipPatchsetId}:`,
             value: '',
             action: { kind: 'request-changes', patchsetId: submission.tipPatchsetId },
@@ -1418,8 +1575,12 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         const nextReqId = model.requestId + 1;
         return [{ ...model, loading: true, error: null, requestId: nextReqId }, [fetchSnapshot(nextReqId)]];
       }
-      case 'toggle-now-view':
-        return model.lane === 'now' ? wakeScrollbar(toggleNowView(model, deps), 'worklist') : [model, []];
+      case 'toggle-lane-view':
+        if (model.lane === 'now') return wakeScrollbar(toggleNowView(model, deps), 'worklist');
+        if (model.lane === 'suggestions') return wakeScrollbar(toggleSuggestionsView(model, deps), 'worklist');
+        return [model, []];
+      case 'ask-ai':
+        return promptForAction(model, { type: 'ask-ai' });
       case 'toggle-drawer':
         return toggleDrawer(model);
       case 'quest-tree':
@@ -1477,6 +1638,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
       const model: DashboardModel = {
         lane,
         nowView: 'queue',
+        suggestionsView: 'incoming',
         pageStack: [{ kind: 'landing' }],
         laneState,
         scrollbars: emptyScrollbars(),
@@ -1800,6 +1962,35 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
             return [{ ...model, mode: 'normal', inputState: null }, []];
           }
           if (msg.key === 'enter' || msg.key === 'return') {
+            if (model.inputState.kind === 'ask-ai') {
+              const value = model.inputState.value.trim();
+              if (value.length === 0) return [model, []];
+              if (model.inputState.step === 'title') {
+                return [{
+                  ...model,
+                  inputState: {
+                    ...model.inputState,
+                    step: 'summary',
+                    title: value,
+                    value: '',
+                  },
+                }, []];
+              }
+              const action: PendingWrite = {
+                kind: 'ask-ai',
+                title: model.inputState.title,
+                summary: value,
+                targetId: model.inputState.targetId,
+                relatedIds: model.inputState.relatedIds,
+              };
+              return [{
+                ...model,
+                mode: 'normal',
+                inputState: null,
+                writePending: true,
+              }, [executeWrite(action)]];
+            }
+
             const { action, value } = model.inputState;
             if (value.trim().length === 0) return [model, []];
             return [{
@@ -1919,10 +2110,11 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
               const nextReqId = model.requestId + 1;
               return [{ ...model, loading: true, error: null, requestId: nextReqId }, [fetchSnapshot(nextReqId)]];
             }
-            case 'toggle-now-view':
-              return isLandingPage(model) && model.lane === 'now'
-                ? wakeScrollbar(toggleNowView(model, deps), 'worklist')
-                : [model, []];
+            case 'toggle-lane-view':
+              if (!isLandingPage(model)) return [model, []];
+              if (model.lane === 'now') return wakeScrollbar(toggleNowView(model, deps), 'worklist');
+              if (model.lane === 'suggestions') return wakeScrollbar(toggleSuggestionsView(model, deps), 'worklist');
+              return [model, []];
             case 'toggle-help':
               return [{ ...model, showHelp: !model.showHelp, helpScrollY: 0 }, []];
             case 'toggle-inspector':
@@ -2037,6 +2229,8 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
                 : [model, []];
             case 'mark-lane-seen':
               return isLandingPage(model) ? [markLaneSeen(model, deps), []] : [model, []];
+            case 'ask-ai':
+              return promptForAction(model, viewAction);
             case 'comment':
               return !isLandingPage(model) ? promptForAction(model, viewAction) : [model, []];
             case 'claim':
@@ -2135,7 +2329,15 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
           content = confirmOverlay(content, model.confirmState.prompt, model.cols, h, style, model.confirmState.hint);
         }
         if (model.mode === 'input' && model.inputState) {
-          content = inputOverlay(content, model.inputState.label, model.inputState.value, model.cols, h, style);
+          content = inputOverlay(
+            content,
+            model.inputState.kind === 'ask-ai' ? askAiInputLabel(model.inputState) : model.inputState.label,
+            model.inputState.value,
+            model.cols,
+            h,
+            style,
+            model.inputState.kind === 'ask-ai' ? askAiInputHint(model.inputState) : undefined,
+          );
         }
         return content;
       };
