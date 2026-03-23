@@ -28,6 +28,7 @@ import type {
   AgentWorkSemantics,
   GovernanceWorkSemantics,
   QuestWorkSemantics,
+  SuggestionWorkSemantics,
   SubmissionWorkSemantics,
 } from '../../domain/services/WorkSemanticsService.js';
 import type { Diagnostic } from '../../domain/models/diagnostics.js';
@@ -161,6 +162,12 @@ function renderSharedSemantics(semantics: AgentWorkSemantics): string[] {
     lines.push(`  approvals: ${semantics.approvalCount}`);
     lines.push(`  latestReview: ${semantics.latestReviewVerdict ?? '—'}`);
     lines.push(`  latestDecision: ${semantics.latestDecisionKind ?? '—'}`);
+  } else if (semantics.kind === 'suggestion') {
+    lines.push(`  suggestionKind: ${semantics.suggestionKind}`);
+    lines.push(`  audience: ${semantics.audience}`);
+    lines.push(`  origin: ${semantics.origin}`);
+    lines.push(`  progress: ${semantics.progress.currentLabel}`);
+    lines.push(`  requestedBy: ${semantics.requestedBy ?? '—'}`);
   } else {
     lines.push(`  artifactKind: ${semantics.artifactKind}`);
     lines.push(`  progress: ${semantics.progress.currentLabel}`);
@@ -376,6 +383,14 @@ function renderBriefing(briefing: {
     reason: string;
     semantics: GovernanceWorkSemantics;
   }[];
+  suggestionQueue: {
+    suggestionId: string;
+    suggestionKind: string;
+    title: string;
+    requestedBy: string | null;
+    reason: string;
+    semantics: SuggestionWorkSemantics;
+  }[];
   frontier: {
     quest: { id: string; title: string; status: string };
     nextAction: AgentActionCandidate | null;
@@ -431,6 +446,24 @@ function renderBriefing(briefing: {
       lines.push(`  - ${entry.artifactId} [${entry.artifactKind}]`);
       lines.push(`      ${entry.reason}`);
       lines.push(`      attention: ${entry.semantics.attentionState} · progress: ${entry.semantics.progress.currentLabel}`);
+      if (entry.semantics.nextLawfulActions[0]) {
+        lines.push(`      next: ${entry.semantics.nextLawfulActions[0].label}`);
+      }
+    }
+  }
+
+  lines.push('');
+  lines.push(`Suggestion Queue (${briefing.suggestionQueue.length})`);
+  if (briefing.suggestionQueue.length === 0) {
+    lines.push('  none');
+  } else {
+    for (const entry of briefing.suggestionQueue) {
+      lines.push(`  - ${entry.suggestionId} [${entry.suggestionKind}] ${entry.title}`);
+      lines.push(`      ${entry.reason}`);
+      lines.push(`      attention: ${entry.semantics.attentionState} · expected: ${entry.semantics.expectedActor}`);
+      if (entry.requestedBy) {
+        lines.push(`      requestedBy: ${entry.requestedBy}`);
+      }
       if (entry.semantics.nextLawfulActions[0]) {
         lines.push(`      next: ${entry.semantics.nextLawfulActions[0].label}`);
       }

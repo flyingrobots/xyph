@@ -413,6 +413,12 @@ function aiSuggestionAttention(suggestion: AiSuggestionNode): AttentionDetail {
   if (suggestion.status === 'accepted' || suggestion.status === 'implemented' || suggestion.status === 'rejected') {
     return { state: 'none' };
   }
+  if (suggestion.kind === 'ask-ai' && (suggestion.audience === 'agent' || suggestion.audience === 'either')) {
+    return {
+      state: 'ready',
+      reason: 'Explicit ask-AI job is queued for an agent response',
+    };
+  }
   if (suggestion.audience === 'agent') {
     return {
       state: 'ready',
@@ -430,6 +436,7 @@ function aiSuggestionAttention(suggestion: AiSuggestionNode): AttentionDetail {
 function buildAiSuggestionItem(suggestion: AiSuggestionNode): AiSuggestionCockpitItem {
   const attention = aiSuggestionAttention(suggestion);
   const secondaryParts = [
+    suggestion.kind === 'ask-ai' ? 'queued ask-AI job' : null,
     suggestion.targetId ? `target ${shortId(suggestion.targetId)}` : null,
     suggestion.kind,
     suggestion.origin === 'request' && suggestion.requestedBy ? `asked by ${shortPrincipal(suggestion.requestedBy)}` : null,
@@ -437,11 +444,13 @@ function buildAiSuggestionItem(suggestion: AiSuggestionNode): AiSuggestionCockpi
   return {
     id: suggestion.id,
     kind: 'ai-suggestion',
-    label: 'SUGGEST',
+    label: suggestion.kind === 'ask-ai' ? 'ASK AI' : 'SUGGEST',
     primary: suggestion.title,
     secondary: secondaryParts.join(' · ') || 'AI advisory suggestion',
     state: suggestion.status,
-    cue: shortPrincipal(suggestion.suggestedBy),
+    cue: suggestion.kind === 'ask-ai' && suggestion.requestedBy
+      ? shortPrincipal(suggestion.requestedBy)
+      : shortPrincipal(suggestion.suggestedBy),
     timestamp: suggestion.suggestedAt,
     attentionState: attention.state,
     ...(attention.reason ? { attentionReason: attention.reason } : {}),
@@ -495,6 +504,8 @@ function compareCampaignItems(a: CampaignCockpitItem, b: CampaignCockpitItem): n
 }
 
 function compareAiSuggestionItems(a: AiSuggestionCockpitItem, b: AiSuggestionCockpitItem): number {
+  const byAskAi = Number(b.suggestion.kind === 'ask-ai') - Number(a.suggestion.kind === 'ask-ai');
+  if (byAskAi !== 0) return byAskAi;
   return (b.timestamp ?? 0) - (a.timestamp ?? 0) || a.id.localeCompare(b.id);
 }
 
@@ -658,7 +669,7 @@ function buildGovernanceActivityEvent(artifact: GovernanceArtifactNode): Activit
 function buildAiSuggestionActivityEvent(suggestion: AiSuggestionNode): ActivityEvent {
   return {
     id: `${suggestion.id}:${suggestion.suggestedAt}`,
-    label: 'SUGGEST',
+    label: suggestion.kind === 'ask-ai' ? 'ASK AI' : 'SUGGEST',
     state: suggestion.status,
     summary: suggestion.title,
     actor: suggestion.suggestedBy,
@@ -746,9 +757,11 @@ function buildOperationItems(snapshot: GraphSnapshot, agentId?: string): Cockpit
   for (const suggestion of snapshot.aiSuggestions) {
     if (suggestion.status !== 'suggested' && suggestion.status !== 'queued') continue;
     const item = buildAiSuggestionItem(suggestion);
-    item.operationReason = suggestion.audience === 'agent'
-      ? 'AI suggestion queued for agent pickup'
-      : 'AI suggestion waiting for human triage';
+    item.operationReason = suggestion.kind === 'ask-ai'
+      ? 'explicit ask-AI job queued for agent pickup'
+      : suggestion.audience === 'agent'
+        ? 'AI suggestion queued for agent pickup'
+        : 'AI suggestion waiting for human triage';
     items.push(item);
   }
 
@@ -820,7 +833,7 @@ export function cockpitLanes(snapshot: GraphSnapshot | null, agentId?: string, n
       { id: 'plan', title: 'Plan', description: 'Live quest surface', count: 0, freshCount: 0, attentionCount: 0, attentionTone: 'none' },
       { id: 'review', title: 'Review', description: 'Submission lanes', count: 0, freshCount: 0, attentionCount: 0, attentionTone: 'none' },
       { id: 'settlement', title: 'Settlement', description: 'Compare, attest, collapse', count: 0, freshCount: 0, attentionCount: 0, attentionTone: 'none' },
-      { id: 'suggestions', title: 'Suggestions', description: 'AI advisory queue', count: 0, freshCount: 0, attentionCount: 0, attentionTone: 'none' },
+      { id: 'suggestions', title: 'Suggestions', description: 'AI suggestions and ask-AI jobs', count: 0, freshCount: 0, attentionCount: 0, attentionTone: 'none' },
       { id: 'campaigns', title: 'Campaigns', description: 'Strategic containers', count: 0, freshCount: 0, attentionCount: 0, attentionTone: 'none' },
       { id: 'graveyard', title: 'Graveyard', description: 'Rejected and retired work', count: 0, freshCount: 0, attentionCount: 0, attentionTone: 'none' },
     ];
@@ -857,7 +870,7 @@ export function cockpitLanes(snapshot: GraphSnapshot | null, agentId?: string, n
     {
       id: 'suggestions',
       title: 'Suggestions',
-      description: 'AI advisory queue',
+      description: 'AI suggestions and ask-AI jobs',
       count: snapshot.aiSuggestions.length,
       freshCount: 0,
       attentionCount: snapshot.aiSuggestions.filter((suggestion) => aiSuggestionAttention(suggestion).state !== 'none').length,

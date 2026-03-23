@@ -1,4 +1,5 @@
 import type {
+  AiSuggestionNode,
   AttestationGovernanceDetail,
   ComparisonArtifactGovernanceDetail,
   DecisionNode,
@@ -9,6 +10,11 @@ import type {
   ReviewNode,
   SubmissionNode,
 } from '../models/dashboard.js';
+import type {
+  AiSuggestionAudience,
+  AiSuggestionKind,
+  AiSuggestionOrigin,
+} from '../entities/AiSuggestion.js';
 import type { AgentActionCandidate, AgentDependencyContext } from './AgentRecommender.js';
 import type { ReadinessAssessment } from './ReadinessService.js';
 
@@ -90,10 +96,20 @@ export interface GovernanceWorkSemantics extends WorkSemantics {
   progress: GovernanceProgress;
 }
 
+export interface SuggestionWorkSemantics extends WorkSemantics {
+  kind: 'suggestion';
+  suggestionKind: AiSuggestionKind;
+  audience: AiSuggestionAudience;
+  origin: AiSuggestionOrigin;
+  requestedBy: string | null;
+  progress: GovernanceProgress;
+}
+
 export type AgentWorkSemantics =
   | QuestWorkSemantics
   | SubmissionWorkSemantics
-  | GovernanceWorkSemantics;
+  | GovernanceWorkSemantics
+  | SuggestionWorkSemantics;
 
 function uniqueMessages(values: string[]): string[] {
   return [...new Set(values.map((value) => value.trim()).filter((value) => value.length > 0))];
@@ -121,6 +137,8 @@ function actionLabel(kind: string): string {
       return 'Settle approved submission';
     case 'inspect':
       return 'Inspect context';
+    case 'suggest':
+      return 'Publish advisory suggestion';
     default:
       return kind
         .split(/[-_]/g)
@@ -677,5 +695,113 @@ export function buildGovernanceWorkSemantics(detail: EntityDetail): GovernanceWo
     }],
     expectedActor: 'human',
     attentionState: blockingReasons.length > 0 ? 'blocked' : 'none',
+  };
+}
+
+function buildSuggestionProgress(suggestion: AiSuggestionNode): GovernanceProgress {
+  const finalLabel = suggestion.status === 'rejected' ? 'Rejected' : 'Implemented';
+  const labels = ['Suggested', 'Queued', 'Accepted', finalLabel];
+  let currentIndex = 0;
+  switch (suggestion.status) {
+    case 'queued':
+      currentIndex = 1;
+      break;
+    case 'accepted':
+      currentIndex = 2;
+      break;
+    case 'implemented':
+    case 'rejected':
+      currentIndex = 3;
+      break;
+    case 'suggested':
+    default:
+      currentIndex = 0;
+      break;
+  }
+  return {
+    labels,
+    currentIndex,
+    currentLabel: labels[currentIndex] ?? labels[0] ?? 'Suggested',
+  };
+}
+
+export function buildSuggestionWorkSemantics(
+  suggestion: AiSuggestionNode,
+  principalId: string,
+): SuggestionWorkSemantics {
+  const terminal = suggestion.status === 'accepted'
+    || suggestion.status === 'implemented'
+    || suggestion.status === 'rejected';
+  const expectedActor: ExpectedActor = terminal
+    ? 'system'
+    : suggestion.audience === 'either'
+      ? 'either'
+      : suggestion.audience;
+
+  const attentionState: WorkAttentionState = terminal
+    ? 'none'
+    : suggestion.audience === 'human'
+      ? 'review'
+      : 'ready';
+
+  const nextLawfulActions: NextLawfulAction[] = [
+    {
+      kind: 'inspect',
+      label: actionLabel('inspect'),
+      allowed: true,
+      reason: 'Inspect the suggestion context before responding or triaging it.',
+      blockedBy: [],
+      targetId: suggestion.id,
+    },
+    {
+      kind: 'comment',
+      label: actionLabel('comment'),
+      allowed: true,
+      reason: 'Capture rationale or follow-up detail directly on the suggestion artifact.',
+      blockedBy: [],
+      targetId: suggestion.id,
+    },
+  ];
+
+  if (!terminal && (
+    suggestion.kind === 'ask-ai' ||
+    suggestion.audience === 'agent' ||
+    suggestion.audience === 'either'
+  )) {
+    nextLawfulActions.push({
+      kind: 'suggest',
+      label: actionLabel('suggest'),
+      allowed: true,
+      reason: suggestion.kind === 'ask-ai'
+        ? 'Respond by publishing one or more visible advisory suggestions that answer this ask-AI job.'
+        : 'Publish a follow-up advisory suggestion if the current suggestion reveals additional useful next steps.',
+      blockedBy: [],
+      targetId: suggestion.id,
+    });
+  }
+
+  const missingEvidence = !suggestion.evidence && suggestion.kind === 'ask-ai'
+    ? ['No supporting evidence or context has been attached to this ask-AI job yet.']
+    : [];
+
+  const blockingReasons = !terminal
+    && suggestion.audience === 'agent'
+    && suggestion.origin === 'request'
+    && suggestion.requestedBy === principalId
+      ? ['You requested this ask-AI job yourself; another agent may still be the better responder.']
+      : [];
+
+  return {
+    kind: 'suggestion',
+    suggestionKind: suggestion.kind,
+    audience: suggestion.audience,
+    origin: suggestion.origin,
+    requestedBy: suggestion.requestedBy ?? null,
+    progress: buildSuggestionProgress(suggestion),
+    blockingReasons: uniqueMessages(blockingReasons),
+    missingEvidence: uniqueMessages(missingEvidence),
+    nextLawfulActions,
+    expectedActor,
+    attentionState,
   };
 }

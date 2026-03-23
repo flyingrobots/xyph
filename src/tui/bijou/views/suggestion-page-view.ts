@@ -180,6 +180,7 @@ function buildSuggestionPageContent(
 
   pushSectionTitle(lines, style, 'Suggestion');
   pushField(lines, 'Lane', laneTitle(page.sourceLane), width);
+  pushField(lines, 'Artifact', suggestion.kind === 'ask-ai' ? 'Ask-AI job' : 'AI suggestion', width, (value) => statusText(style, value));
   pushField(lines, 'Kind', suggestion.kind, width, (value) => statusText(style, value));
   pushField(lines, 'Audience', suggestion.audience, width, (value) => statusText(style, value));
   pushField(lines, 'Origin', suggestion.origin, width, (value) => statusText(style, value));
@@ -220,7 +221,9 @@ function buildSuggestionPageContent(
   pushSectionTitle(lines, style, 'AI Transparency');
   pushWrappedText(
     lines,
-    '[AI] marks advisory content produced by or with an agent. Accepting this suggestion does not skip the normal backlog, planning, review, or governance flow.',
+    suggestion.kind === 'ask-ai'
+      ? '[AI] marks an explicit ask-AI request queued for agent pickup. Any response still has to enter the graph as visible advisory suggestions and follow the same backlog, planning, review, and governance path as human-originated ideas.'
+      : '[AI] marks advisory content produced by or with an agent. Accepting this suggestion does not skip the normal backlog, planning, review, or governance flow.',
     width,
   );
   lines.push('');
@@ -272,7 +275,7 @@ export function suggestionPageView(args: SuggestionPageViewArgs): string {
   const chromeHeight = chrome.split('\n').length;
   const bodyHeight = Math.max(1, height - chromeHeight - 1);
   const header = renderPaneHeader({
-    title: style.styled(accent, `Suggestions ${renderAiLabel(style)}`),
+    title: style.styled(accent, `${suggestion.kind === 'ask-ai' ? 'Ask AI' : 'Suggestions'} ${renderAiLabel(style)}`),
     detail: style.styled(accent, shortId(page.suggestionId)),
     width,
     borderToken: accent,

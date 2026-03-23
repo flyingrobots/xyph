@@ -1067,6 +1067,7 @@ function renderAiSuggestionDetail(style: StylePort, suggestion: AiSuggestionNode
   lines.push(`${suggestion.id}  ${statusText(style, suggestion.status)}`);
   lines.push('');
   pushReasonBlock(lines, style, item, width);
+  pushField(lines, 'Artifact', suggestion.kind === 'ask-ai' ? 'Ask-AI job' : 'AI suggestion', { width });
   pushField(lines, 'Kind', suggestion.kind, { width });
   pushField(lines, 'Audience', suggestion.audience, { width });
   pushField(lines, 'Origin', suggestion.origin, { width });

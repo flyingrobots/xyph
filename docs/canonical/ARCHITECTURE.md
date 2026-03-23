@@ -102,8 +102,9 @@ services and shared projection models so:
 - a review page and a settlement page can explain the same blocker the same way
 - `briefing`, `next`, `context`, and `act` can use the same machine-readable
   names as the human pages
-- suggestion queues and future live feeds can route through the same lawful
-  action model instead of inventing a second workflow layer
+- queued ask-AI jobs, suggestion queues, and future live feeds can route
+  through the same lawful action model instead of inventing a second workflow
+  layer
 
 The first concrete implementation of this rule now exists:
 

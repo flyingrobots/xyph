@@ -251,6 +251,7 @@ describe('AgentBriefingService', () => {
     expect(briefing.frontier).toHaveLength(1);
     expect(briefing.frontier[0]?.quest.id).toBe('task:AGT-002');
     expect(briefing.recommendationQueue).toEqual([]);
+    expect(briefing.suggestionQueue).toEqual([]);
     expect(briefing.reviewQueue).toMatchObject([
       {
         submissionId: 'submission:AGT-001',
@@ -663,6 +664,79 @@ describe('AgentBriefingService', () => {
         source: 'governance',
         requiresHumanApproval: true,
         validationCode: 'human-only-action',
+      }),
+    ]));
+  });
+
+  it('surfaces queued ask-ai jobs in briefing and next', async () => {
+    const snapshot = makeSnapshot({
+      aiSuggestions: [
+        {
+          id: 'suggestion:ASK-001',
+          type: 'ai-suggestion',
+          kind: 'ask-ai',
+          title: 'Recommend whether Q2 should be promoted',
+          summary: 'Inspect task:Q2 and emit a visible recommendation about backlog promotion.',
+          status: 'queued',
+          audience: 'agent',
+          origin: 'request',
+          suggestedBy: 'human.ada',
+          suggestedAt: 300,
+          targetId: 'task:Q2',
+          requestedBy: 'human.ada',
+          why: 'Planning needs a recommendation before the next triage pass.',
+          evidence: undefined,
+          nextAction: 'Publish one or more visible advisory suggestions in response.',
+          relatedIds: ['campaign:TRACE'],
+        },
+      ],
+    });
+
+    mocks.createGraphContext.mockReturnValue({
+      fetchSnapshot: vi.fn().mockResolvedValue(snapshot),
+      fetchEntityDetail: vi.fn(),
+      filterSnapshot: vi.fn(),
+      invalidateCache: vi.fn(),
+      get graph() {
+        throw new Error('not used in test');
+      },
+    });
+
+    const service = new AgentBriefingService(
+      makeGraphWithHandoffs([]),
+      makeRoadmap([]),
+      'agent.hal',
+      makeDoctor(),
+    );
+
+    const briefing = await service.buildBriefing();
+    expect(briefing.suggestionQueue).toMatchObject([
+      {
+        suggestionId: 'suggestion:ASK-001',
+        suggestionKind: 'ask-ai',
+        requestedBy: 'human.ada',
+        semantics: {
+          kind: 'suggestion',
+          attentionState: 'ready',
+          expectedActor: 'agent',
+          suggestionKind: 'ask-ai',
+        },
+      },
+    ]);
+    expect(briefing.alerts.map((alert) => alert.code)).toContain('suggestion-queue');
+
+    const next = await service.next(3);
+    expect(next.candidates).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: 'suggest',
+        targetId: 'suggestion:ASK-001',
+        source: 'suggestion',
+        priority: 'P2',
+      }),
+      expect.objectContaining({
+        kind: 'inspect',
+        targetId: 'suggestion:ASK-001',
+        source: 'suggestion',
       }),
     ]));
   });
