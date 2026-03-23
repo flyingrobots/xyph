@@ -181,6 +181,29 @@ Minimum shared packet types:
 Across those packets, XYPH should reuse the same semantic fields wherever they
 apply.
 
+## Agent CLI Interaction Model
+
+The agent CLI should be designed with the same intentionality as the TUI.
+
+The equivalent model is:
+
+- `briefing` = landing page
+- `next` = prioritized action queue
+- `context <id>` = item page
+- `act` = lawful page-local action surface
+- `handoff` = closeout and durable session transfer
+
+That means the CLI should optimize for:
+
+- fast orientation
+- direct work selection
+- full-context drill-in
+- clear authority boundaries
+- durable closeout
+
+The machine-readable and human-readable modes should differ in format, not in
+semantic completeness.
+
 ### Graph Truth vs Derived Judgment
 
 The design should assume three layers:

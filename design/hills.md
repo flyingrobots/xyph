@@ -94,3 +94,13 @@ lifecycle as any other idea.
 This vertical comes after the earlier Hill 3 / Hill 6 work because governance
 pages and agent semantic packets are already strong enough to carry suggestions
 without turning them into a side-channel.
+
+## Next Vertical After Suggestions
+
+The next follow-on vertical should be **Agent CLI hardening**:
+
+- deepen **Hill 6** in implementation, not just doctrine
+- bring the human-readable CLI experience up to the same product standard as the
+  TUI
+- make `briefing`, `next`, `context`, `act`, and `handoff` feel like one
+  coherent operating interface

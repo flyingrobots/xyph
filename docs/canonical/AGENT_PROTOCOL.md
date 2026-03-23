@@ -33,6 +33,11 @@ path, not the only lawful way for an agent to propose work.
 The agent protocol is therefore a **policy-bounded operating interface**, not a
 second workflow model and not an informal wrapper around raw commands.
 
+The CLI should therefore be judged as a first-class product surface, not only
+as a transport for `--json` payloads. Its human-readable output should be
+designed with the same seriousness as the TUI while preserving the same graph
+truth.
+
 Load-bearing rule: **Observer profiles do not grant authority by existing.**
 The agent protocol may name observer-facing projections, but effective
 capability is still resolved from the principal, observer profile, policy pack,
@@ -104,6 +109,21 @@ and response contract.
 
 These commands should be understood as named projections or wrappers over the
 canonical control plane, not as the long-term center of the system's ontology.
+
+### 3.0 Interaction Model
+
+The agent-native CLI is the agent-side counterpart to the human landing/page
+model:
+
+- `briefing` is the landing surface for orientation
+- `next` is the prioritized queue for immediate action selection
+- `context <id>` is the full item page
+- `act` is the lawful action surface for the selected target
+- `handoff` is closeout and durable session transfer
+
+This model is not cosmetic. It means the CLI should let an agent move from
+orientation to selection to full context to action to handoff without command
+roulette or shell archaeology.
 
 Current runtime tranche:
 
