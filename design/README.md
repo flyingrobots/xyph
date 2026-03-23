@@ -91,8 +91,8 @@ Start here, then use the focused design documents below:
 - [Product Model](./product-model.md)
   Product principles, shared primitives, attention model, page model, and
   immediate design program.
-- [Milestones](./milestones/README.md)
-  Design-first notes for the next bounded milestone or debt-reduction cycle.
+- [Cycles](./cycles/README.md)
+  Design-first notes for the next bounded product or debt-reduction cycle.
 
 ## Relationship To Other Docs
 
@@ -118,8 +118,8 @@ Start here, then use the focused design documents below:
 - update [Product Model](./product-model.md) whenever page structure,
   attention semantics, AI suggestion rules, or human/agent interaction models
   materially change
-- add or update a note under [Milestones](./milestones/README.md) when a new
-  bounded milestone or debt cycle starts after backlog reconciliation
+- add or update a note under [Cycles](./cycles/README.md) when a new bounded
+  cycle starts after backlog reconciliation
 
 The rule is simple: if the product model changes, capture it here before the
 new design drifts into implementation folklore.

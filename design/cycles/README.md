@@ -1,4 +1,4 @@
-# Milestones
+# Cycles
 
 This directory holds the design-first notes for XYPH's next bounded slices of
 work.
@@ -12,9 +12,8 @@ defines enduring product truth:
 - playbacks
 - product model
 
-The files here are different. They describe the next concrete milestone or
-debt-reduction cycle after backlog reconciliation has already happened in the
-graph.
+The files here are different. They describe the next concrete cycle after
+backlog reconciliation has already happened in the graph.
 
 ## Why This Directory Exists
 
@@ -37,14 +36,14 @@ before code starts to accumulate around it.
 
 The graph is still the plan.
 
-Milestone notes do not replace the backlog, intent graph, or governed work
+Cycle notes do not replace the backlog, intent graph, or governed work
 artifacts. They are the design-side companion to the graph-visible plan state.
 
 The expected order is:
 
 1. reconcile the backlog in the graph
-2. choose the next bounded slice
-3. write or update the milestone note here
+2. choose the next bounded cycle
+3. write or update the cycle note here
 4. write the acceptance tests
 5. implement
 
@@ -53,7 +52,7 @@ as an active XYPH slice.
 
 ## What Belongs Here
 
-Good milestone notes are:
+Good cycle notes are:
 
 - bounded
 - outcome-driven
@@ -79,7 +78,7 @@ Those belong in the graph, the changelog, or retrospectives instead.
 
 ## How To Use This Directory
 
-- add a new note when a new bounded milestone or debt cycle starts
+- add a new note when a new bounded cycle starts
 - update an existing note if the design intent of the active cycle changes
 - keep the note short enough to guide work, but concrete enough to constrain it
 

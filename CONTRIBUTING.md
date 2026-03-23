@@ -83,20 +83,20 @@ Use that plan, plus the canonical docs in `docs/canonical/`, as the current dire
 
 If older workflow guidance in this file conflicts with the current redesign, the plan doc and canonical docs win.
 
-## Milestone Development Loop
+## Development Cycle Loop
 
-XYPH uses an explicit milestone loop inspired by IBM Design Thinking, but
+XYPH uses an explicit development-cycle loop inspired by IBM Design Thinking, but
 adapted to XYPH's actual invariants: hexagonal architecture, graph-as-plan,
 governance as a product surface, and provenance visibility.
 
-For milestone work, the default loop is:
+For bounded product or debt work, the default loop is:
 
 1. **Design docs first**
 2. **Acceptance tests as spec second**
 3. **Implementation third**
 4. **Retrospective**
 5. **Rewrite the root README to reflect reality**
-6. **Close the milestone**
+6. **Close the cycle**
 
 The slice is not done because code landed. It is done when:
 
@@ -114,38 +114,38 @@ XYPH follows a hard rule:
 
 There is no separate prose-spec layer between design and tests.
 
-For milestone-scale behavior:
+For cycle-scale behavior:
 
 - acceptance tests live under `test/acceptance/`
 - reusable fixtures live under `test/fixtures/`
-- shared assertions and helpers live under `test/support/`
+- lower-level unit and integration tests remain organized by architecture
 
 Until older tests are migrated, existing unit/integration tests elsewhere in
-`test/` remain valid. New milestone-level behavioral spec should follow the
-acceptance/fixtures/support structure.
+`test/` remain valid. New cycle-level behavioral spec should follow the
+acceptance hierarchy described in [`/Users/james/git/xyph/test/acceptance/README.md`](test/acceptance/README.md).
 
-### Milestone Closeout And Reset
+### Cycle Closeout And Reset
 
-Closing a milestone does **not** mean immediately starting the next design doc.
+Closing a cycle does **not** mean immediately starting the next design doc.
 
-After the milestone is merged, released, and tagged, the **first** move before
-writing the next milestone design docs is:
+After the cycle is merged, released when appropriate, and closed, the **first**
+move before writing the next cycle design docs is:
 
 1. reconcile the graph backlog
-2. add work discovered during the milestone
+2. add work discovered during the cycle
 3. add retrospective fallout
 4. add worthwhile COOL IDEAS™
 5. triage and reconcile the backlog against current reality
 
 That reconciliation step may produce:
 
-- the next major milestone
+- the next major outcome milestone
 - one or more smaller debt-reduction cycles
-- cleanup or simplification cycles between milestones
+- cleanup or simplification cycles between larger releases
 
-This is intentional. XYPH should not roll blindly from one milestone into the
-next while tech debt, product drift, or newly discovered work piles up off to
-the side.
+This is intentional. XYPH should not roll blindly from one cycle into the next
+while tech debt, product drift, or newly discovered work piles up off to the
+side.
 
 ### Development Standard
 
@@ -163,14 +163,14 @@ provenance boundaries, prefer explicit semantics over clever compression.
 
 ## Product Management Philosophy
 
-XYPH uses IBM Design Thinking style framing for milestone design:
+XYPH uses IBM Design Thinking style framing for cycle design:
 
 - sponsor actors
 - hills
 - playbacks
 - explicit invariants and non-goals
 
-Milestones should be grounded in operator and agent value, not backend vanity.
+Cycles should be grounded in operator and agent value, not backend vanity.
 
 Before promoting a new direction, ask:
 
@@ -180,7 +180,7 @@ Before promoting a new direction, ask:
 - does this preserve graph truth, governance, and provenance?
 
 If the answer is unclear, the work probably belongs in the backlog, not in the
-active milestone.
+active cycle.
 
 ## Project Planning
 
