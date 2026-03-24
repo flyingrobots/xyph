@@ -888,7 +888,7 @@ xyph-actuator.ts    # CLI for graph mutations (quest, intent, seal, ...)
 xyph-dashboard.ts  # Interactive TUI entry point
 ```
 
-## Milestones
+## Milestone Spine
 
 | # | Milestone | Status |
 |---|-----------|--------|
@@ -907,7 +907,18 @@ xyph-dashboard.ts  # Interactive TUI entry point
 | 12 | AGENT PROTOCOL — agent-native CLI and policy-bounded action kernel | ⬜ PLANNED |
 | — | ECOSYSTEM — MCP server, Web UI, IDE integration | ⬜ PLANNED |
 
-Milestone descriptions and inter-milestone dependencies are modeled in the WARP graph. Query via: `npx tsx xyph-actuator.ts status --view deps`
+This table is a high-level historical spine, not the active source of planning
+truth.
+
+Active status, dependencies, and accepted work live in the graph. Query that
+directly via:
+
+- `npx tsx xyph-actuator.ts status --view roadmap`
+- `npx tsx xyph-actuator.ts status --view deps`
+- `npx tsx xyph-actuator.ts status --view inbox`
+
+The current design and cycle framing lives under
+[`/Users/james/git/xyph/design/`](./design/README.md).
 
 ## Constitution
 

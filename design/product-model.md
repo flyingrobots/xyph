@@ -8,6 +8,19 @@ quietly drifting away from its own architecture or governance model.
 
 ## Product Principles
 
+### 0. One Product, Two Lenses
+
+XYPH is one product with two primary operating lenses:
+
+- human judgment and governance surfaces
+- agent-native command and protocol surfaces
+
+Those lenses should share semantics and diverge only in presentation,
+interaction style, and authority boundaries.
+
+If a concept exists only in one surface and cannot be expressed in the shared
+semantic model, it should be treated as suspect until proven necessary.
+
 ### 1. Landing For Triage, Pages For Judgment
 
 The cockpit is the landing page, not the whole app.
@@ -122,6 +135,30 @@ Humans and agents should consume the same graph truth through different lenses.
 The human landing cockpit and the agent-native CLI should disagree in format,
 not in reality.
 
+### 15. Agent-First Technical Seams, Human-First Judgment
+
+By default, XYPH should implement shared semantics and agent-native seams
+first, because they force ambiguity into the open quickly:
+
+- explicit inputs
+- explicit outputs
+- explicit lawful actions
+- explicit refusal reasons
+- explicit state transitions
+
+That default does **not** mean the product is agent-led in judgment.
+
+Human-facing design still governs:
+
+- what must be understandable
+- what must be explainable
+- what must remain reviewable and governable
+
+In short:
+
+- let humans define the judgment model
+- let agents force the model to become explicit
+
 ## Shared Primitive Model
 
 ### Work Primitives
@@ -181,6 +218,15 @@ Minimum shared packet types:
 Across those packets, XYPH should reuse the same semantic fields wherever they
 apply.
 
+### Alignment Rule
+
+No significant human-facing feature should be considered complete until the
+same underlying semantics exist in the agent surface, unless the cycle
+explicitly declares that feature human-only and explains why.
+
+Likewise, agent-native functionality should not invent hidden semantic fields
+that the human surface cannot inspect or explain.
+
 ## Agent CLI Interaction Model
 
 The agent CLI should be designed with the same intentionality as the TUI.
@@ -203,6 +249,17 @@ That means the CLI should optimize for:
 
 The machine-readable and human-readable modes should differ in format, not in
 semantic completeness.
+
+### Preferred Build Sequence
+
+For most cycles, the preferred order is:
+
+1. shared semantic model
+2. agent packet / CLI expression
+3. human page or TUI surface
+
+This keeps the TUI from becoming a place where missing ontology is papered over
+with local UI state.
 
 ### Graph Truth vs Derived Judgment
 

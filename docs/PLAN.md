@@ -1,5 +1,11 @@
 # XYPH Steering Plan: Honest Core -> Agent-Native -> Human-Friendly
 
+> **Status:** Strategic context, not the active planning surface.
+> The current product-design source of truth lives in
+> [`/Users/james/git/xyph/design/`](../design/README.md), and the active work
+> plan lives in the graph backlog and roadmap. Use this file for steering
+> context, not for the current bounded cycle.
+
 ## Summary
 
 XYPH should be steered through three checkpoints:

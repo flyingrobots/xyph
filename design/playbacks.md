@@ -12,6 +12,14 @@ The slice is not done because it compiles. It is done when the relevant sponsor
 actor can perform their job better and that improvement is legible in the app
 or CLI.
 
+Each substantial cycle should normally have:
+
+- one human playback
+- one agent playback
+
+Those are not redundant. The point is to verify that the same graph truth and
+governance model remain usable through both lenses.
+
 ## Human Playback Questions
 
 For human-surface slices, ask:
@@ -50,10 +58,14 @@ Every XYPH design slice should follow this loop.
 - identify where the current design violates the hills or product principles
 - decide whether the answer is a new page, a clearer action, a better cue, or
   less UI
+- decide whether the human and agent surfaces are still aligned, or whether one
+  of them is papering over missing shared semantics
 
 ### Make
 
 - land the smallest slice that changes the operator outcome
+- prefer shared semantic packets and agent-native seams first, then build the
+  human-facing page or TUI expression on top of them
 - verify it in the app or CLI, not only in code
 - capture the updated design truth in the design corpus when the product model
   changes
@@ -74,6 +86,8 @@ A good playback should end with:
 - a decision about whether the slice actually improved the relevant sponsor
   actor outcome
 - a decision about whether the slice preserved the design invariants
+- a decision about whether the human and agent lenses still agree about what is
+  true, what is allowed, and what should happen next
 - explicit next changes, not vague "polish later"
 - documentation updates when the product model changed
 
@@ -102,3 +116,6 @@ of graph-visible plan state.
 If a slice cannot be demonstrated against a real graph-backed state and judged
 through the sponsor-actor and hill model, it is not ready to be called a design
 success.
+
+If the slice only works cleanly from one lens, it is not finished design. It is
+at best a partial surface waiting for alignment.

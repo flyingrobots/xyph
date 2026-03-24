@@ -2,8 +2,9 @@
 
 > **Current state (2026-03-19):** This document is now partly historical.
 > XYPH runs on BIJOU 3.1.0, and the current shell is a single XYPH
-> landing cockpit rather than six peer dashboards. The live shell now has six
-> lanes (`Now`, `Plan`, `Review`, `Settlement`, `Campaigns`, `Graveyard`) over
+> landing cockpit rather than six peer dashboards. The live shell now has seven
+> lanes (`Now`, `Plan`, `Review`, `Settlement`, `Suggestions`, `Campaigns`,
+> `Graveyard`) over
 > one worklist and one inspector, plus breadcrumbed drill-in item pages opened
 > from the landing surface. Quest pages now expose page-local actions such as
 > comment, reopen, claim, promote, reject, and submission review affordances

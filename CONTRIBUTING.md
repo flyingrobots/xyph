@@ -40,6 +40,36 @@ In practice, that means:
 - keep AI advisory until it is explicitly adopted into governed work
 - keep UI and CLI behavior honest to the same graph truth
 
+## Human And Agent Design Rule
+
+XYPH has one product design corpus and two first-class operational lenses:
+
+- human-facing TUI/pages
+- agent-native CLI/protocol
+
+Design should be done equally from both perspectives. A cycle is not well
+designed if it only makes sense from one lens.
+
+Implementation should usually proceed in this order:
+
+1. define the shared semantic model
+2. make the agent-native CLI/protocol express it cleanly
+3. build the human-facing page or TUI flow on top of it
+
+Why:
+
+- agent-native surfaces expose missing building blocks quickly
+- human-facing surfaces tell us what must be understandable and governable
+
+So the working doctrine is:
+
+- **agent-first implementation**
+- **human-first judgment and explainability**
+
+Unless a cycle explicitly declares something human-only, a human-facing feature
+is not really done until the same underlying semantics exist in the agent
+surface too.
+
 ## Architectural Principles
 
 ### Hexagonal architecture
@@ -169,6 +199,12 @@ XYPH uses IBM Design Thinking style framing for cycle design:
 - hills
 - playbacks
 - explicit invariants and non-goals
+
+Apply that discipline to both humans and agents:
+
+- sponsor users for the human surface
+- sponsor actors for the agent surface
+- one shared semantic model underneath both
 
 Cycles should be grounded in operator and agent value, not backend vanity.
 
