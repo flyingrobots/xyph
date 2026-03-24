@@ -944,6 +944,89 @@ describe('DashboardApp', () => {
     expect(inputState.label).toContain('Comment on suggestion:S1:');
   });
 
+  it('opens adopt, dismiss, and supersede flows from a suggestion page', () => {
+    const app = buildApp();
+    const loaded = ready(app, makeSnapshot({
+      aiSuggestions: [{
+        id: 'suggestion:S1',
+        type: 'ai-suggestion',
+        kind: 'dependency',
+        title: 'Add a missing dependency edge',
+        summary: 'This suggestion should probably be adopted into governed work.',
+        status: 'suggested',
+        audience: 'human',
+        origin: 'spontaneous',
+        suggestedBy: 'agent.prime',
+        suggestedAt: 100,
+        relatedIds: [],
+      }],
+    }));
+
+    const [suggestions] = app.update(key('5'), loaded);
+    const [page] = app.update(key('enter'), suggestions);
+    const plain = strip(app.view(page) as string);
+    expect(plain).toContain('Adopt suggestion into governed work');
+    expect(plain).toContain('Dismiss suggestion with rationale');
+    expect(plain).toContain('Mark suggestion superseded by another artifact');
+
+    const [adopt] = app.update(key('a', { shift: true }), page);
+    const adoptInput = expectWriteInput(adopt);
+    expect(adoptInput.action).toEqual({ kind: 'adopt-suggestion', suggestionId: 'suggestion:S1' });
+    expect(adoptInput.allowEmpty).toBe(true);
+    expect(adoptInput.label).toContain('Adoption rationale');
+
+    const [dismiss] = app.update(key('d', { shift: true }), page);
+    const dismissInput = expectWriteInput(dismiss);
+    expect(dismissInput.action).toEqual({ kind: 'dismiss-suggestion', suggestionId: 'suggestion:S1' });
+    expect(dismissInput.label).toContain('Dismissal rationale');
+
+    const [supersede] = app.update(key('u'), page);
+    expect(supersede.mode).toBe('input');
+    expect(supersede.inputState?.kind).toBe('suggestion-supersede');
+    if (!supersede.inputState || supersede.inputState.kind !== 'suggestion-supersede') {
+      throw new Error('Expected suggestion supersede input state');
+    }
+    expect(supersede.inputState.step).toBe('replacement');
+    expect(strip(app.view(supersede) as string)).toContain('Replacement artifact ID');
+  });
+
+  it('opens the AI explainability modal from a suggestion page', () => {
+    const app = buildApp();
+    const loaded = ready(app, makeSnapshot({
+      aiSuggestions: [{
+        id: 'suggestion:S1',
+        type: 'ai-suggestion',
+        kind: 'general',
+        title: 'Improve queue ranking',
+        summary: 'This area should probably rank blockers above generic churn.',
+        why: 'The queue is noisy and humans are missing the truly hot work.',
+        evidence: 'Recent activity shows review-ready items buried under generic backlog traffic.',
+        nextAction: 'Adopt the idea as a governed proposal if the operator agrees.',
+        status: 'suggested',
+        audience: 'either',
+        origin: 'spontaneous',
+        suggestedBy: 'agent.prime',
+        suggestedAt: 100,
+        relatedIds: [],
+      }],
+    }));
+
+    const [suggestions] = app.update(key('5'), loaded);
+    const [page] = app.update(key('enter'), suggestions);
+    const [explain] = app.update(key('e'), page);
+    const [scrolled] = app.update(key('pagedown'), explain);
+    const [scrolledAgain] = app.update(key('pagedown'), scrolled);
+    const plain = strip(app.view(explain) as string);
+    const scrolledPlain = strip(app.view(scrolled) as string);
+    const scrolledAgainPlain = strip(app.view(scrolledAgain) as string);
+
+    expect(explain.mode).toBe('ai-explainability');
+    expect(plain).toContain('[AI] Explainability');
+    expect(plain).toContain('Spontaneous agent observation');
+    expect(scrolledPlain).toContain('Why it was suggested');
+    expect(scrolledAgainPlain).toContain('Governance rule');
+  });
+
   it('opens a page-local reopen confirmation for a graveyard quest page', () => {
     const app = buildApp();
     const loaded = ready(app, makeSnapshot({

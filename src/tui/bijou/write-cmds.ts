@@ -36,6 +36,12 @@ export interface AskAiJobInput {
   relatedIds?: string[];
 }
 
+export interface SuggestionSupersedeInput {
+  suggestionId: string;
+  supersededById: string;
+  rationale?: string;
+}
+
 /**
  * Claim a quest via direct graph patch (OCP — Optimistic Claiming Protocol).
  * Sets status to IN_PROGRESS, assigned_to to agentId, claimed_at to now.
@@ -201,6 +207,85 @@ export function queueAskAiJob(
         nextAction: 'An agent should inspect this ask-AI job and publish one or more visible advisory suggestions in response.',
       });
       emit({ type: 'write-success', message: `Queued ask-AI job ${result.id}` });
+    } catch (err: unknown) {
+      emit({ type: 'write-error', message: err instanceof Error ? err.message : String(err) });
+    }
+  };
+}
+
+/**
+ * Adopt an AI suggestion into governed work.
+ */
+export function adoptSuggestion(
+  deps: WriteDeps,
+  suggestionId: string,
+  rationale?: string,
+): Cmd<DashboardMsg> {
+  return async (emit) => {
+    try {
+      const records = new RecordService(deps.graphPort);
+      const result = await records.adoptAiSuggestion({
+        suggestionId,
+        resolvedBy: deps.agentId,
+        rationale: rationale?.trim() || undefined,
+      });
+      emit({ type: 'write-success', message: `Adopted ${result.suggestionId} into ${result.adoptedArtifactId}` });
+    } catch (err: unknown) {
+      emit({ type: 'write-error', message: err instanceof Error ? err.message : String(err) });
+    }
+  };
+}
+
+/**
+ * Dismiss an AI suggestion with visible rationale.
+ */
+export function dismissSuggestion(
+  deps: WriteDeps,
+  suggestionId: string,
+  rationale: string,
+): Cmd<DashboardMsg> {
+  return async (emit) => {
+    try {
+      const trimmed = rationale.trim();
+      if (!trimmed) {
+        emit({ type: 'write-error', message: 'Rationale is required to dismiss a suggestion' });
+        return;
+      }
+      const records = new RecordService(deps.graphPort);
+      const result = await records.dismissAiSuggestion({
+        suggestionId,
+        resolvedBy: deps.agentId,
+        rationale: trimmed,
+      });
+      emit({ type: 'write-success', message: `Dismissed ${result.suggestionId}` });
+    } catch (err: unknown) {
+      emit({ type: 'write-error', message: err instanceof Error ? err.message : String(err) });
+    }
+  };
+}
+
+/**
+ * Mark an AI suggestion superseded by another graph artifact.
+ */
+export function supersedeSuggestion(
+  deps: WriteDeps,
+  input: SuggestionSupersedeInput,
+): Cmd<DashboardMsg> {
+  return async (emit) => {
+    try {
+      const replacementId = input.supersededById.trim();
+      if (!replacementId) {
+        emit({ type: 'write-error', message: 'Replacement artifact ID is required to supersede a suggestion' });
+        return;
+      }
+      const records = new RecordService(deps.graphPort);
+      const result = await records.supersedeAiSuggestion({
+        suggestionId: input.suggestionId,
+        supersededById: replacementId,
+        resolvedBy: deps.agentId,
+        rationale: input.rationale?.trim() || undefined,
+      });
+      emit({ type: 'write-success', message: `Superseded ${result.suggestionId} via ${result.supersededById}` });
     } catch (err: unknown) {
       emit({ type: 'write-error', message: err instanceof Error ? err.message : String(err) });
     }

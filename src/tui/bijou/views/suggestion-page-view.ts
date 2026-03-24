@@ -6,6 +6,7 @@ import type { StylePort } from '../../../ports/StylePort.js';
 import type { DashboardModel, SuggestionPageRoute } from '../DashboardApp.js';
 import type { CockpitItem } from '../cockpit.js';
 import { laneTitle, shortId, shortPrincipal, suggestionsViewTitle, type SuggestionsViewMode } from '../cockpit.js';
+import { suggestionCanAdopt, suggestionCanDismiss, suggestionCanSupersede } from '../suggestion-actions.js';
 import {
   buildVerticalScrollbarRail,
   laneAccent,
@@ -108,7 +109,26 @@ function pageActions(style: StylePort): SuggestionPageAction[] {
   return [
     { key: 'Esc', label: 'Return to the landing cockpit', token: style.theme.semantic.muted },
     { key: ';', label: 'Comment on this suggestion', token: style.theme.semantic.info },
+    { key: 'e', label: 'Open AI explainability', token: style.theme.ui.aiLabel },
   ];
+}
+
+function suggestionLifecycleActions(style: StylePort, suggestion: AiSuggestionNode): SuggestionPageAction[] {
+  const actions: SuggestionPageAction[] = [];
+  if (suggestionCanAdopt(suggestion)) {
+    actions.push({ key: 'a', label: 'Adopt suggestion into governed work', token: style.theme.semantic.success });
+  }
+  if (suggestionCanDismiss(suggestion)) {
+    actions.push({
+      key: 'D',
+      label: suggestion.kind === 'ask-ai' ? 'Dismiss ask-AI job with rationale' : 'Dismiss suggestion with rationale',
+      token: style.theme.semantic.error,
+    });
+  }
+  if (suggestionCanSupersede(suggestion)) {
+    actions.push({ key: 'u', label: 'Mark suggestion superseded by another artifact', token: style.theme.semantic.warning });
+  }
+  return actions;
 }
 
 function progressIndex(suggestion: AiSuggestionNode): number {
@@ -168,6 +188,9 @@ function buildSuggestionPageContent(
 
   pushSectionTitle(lines, style, 'Actions');
   for (const action of pageActions(style)) {
+    pushAction(lines, style, action, width);
+  }
+  for (const action of suggestionLifecycleActions(style, suggestion)) {
     pushAction(lines, style, action, width);
   }
   lines.push('');
@@ -255,9 +278,7 @@ function buildSuggestionPageContent(
   pushSectionTitle(lines, style, 'AI Transparency');
   pushWrappedText(
     lines,
-    suggestion.kind === 'ask-ai'
-      ? '[AI] marks an explicit ask-AI request queued for agent pickup. Any response still has to enter the graph as visible advisory suggestions and follow the same backlog, planning, review, and governance path as human-originated ideas.'
-      : '[AI] marks advisory content produced by or with an agent. Accepting this suggestion does not skip the normal backlog, planning, review, or governance flow.',
+    'Press e to open the AI explainability view for this artifact.',
     width,
   );
   lines.push('');
@@ -295,6 +316,68 @@ export interface SuggestionPageViewArgs {
   style: StylePort;
   width: number;
   height: number;
+}
+
+export function buildSuggestionExplainabilityBody(
+  style: StylePort,
+  suggestion: AiSuggestionNode,
+  width: number,
+): string {
+  const lines: string[] = [];
+  const sourceMode = suggestion.kind === 'ask-ai'
+    ? 'Explicit ask-AI request'
+    : suggestion.origin === 'request'
+      ? 'Agent response to an explicit request'
+      : 'Spontaneous agent observation during ordinary work';
+
+  lines.push(style.styled(style.theme.ui.aiLabel, `[AI] Explainability · ${shortId(suggestion.id)}`));
+  lines.push('');
+  pushWrappedText(
+    lines,
+    suggestion.kind === 'ask-ai'
+      ? 'This artifact is an explicit Ask-AI job. It requests agent attention, but any response still has to enter the graph as visible advisory suggestions and go through the same governance path as human-created work.'
+      : 'This artifact is advisory content produced by or with an agent. It is visible, attributable, and governed. Accepting it does not bypass backlog, planning, review, or settlement rules.',
+    width,
+  );
+  lines.push('');
+  pushSectionTitle(lines, style, 'Explainability');
+  pushField(lines, 'Artifact', suggestion.kind === 'ask-ai' ? 'Ask-AI job' : 'AI suggestion', width, (value) => statusText(style, value));
+  pushField(lines, 'Kind', suggestion.kind, width, (value) => statusText(style, value));
+  pushField(lines, 'Source mode', sourceMode, width);
+  pushField(lines, 'Suggested by', shortPrincipal(suggestion.suggestedBy), width);
+  if (suggestion.requestedBy) {
+    pushField(lines, 'Requested by', shortPrincipal(suggestion.requestedBy), width);
+  }
+  pushField(lines, 'Audience', suggestion.audience, width, (value) => statusText(style, value));
+  pushField(lines, 'Origin', suggestion.origin, width, (value) => statusText(style, value));
+  pushField(lines, 'Target', suggestion.targetId ? shortId(suggestion.targetId) : '—', width);
+  if (suggestion.relatedIds.length > 0) {
+    pushField(lines, 'Related', suggestion.relatedIds.map(shortId).join(', '), width);
+  }
+  lines.push('');
+  if (suggestion.why) {
+    pushSectionTitle(lines, style, 'Why it was suggested');
+    pushWrappedText(lines, suggestion.why, width);
+    lines.push('');
+  }
+  if (suggestion.evidence) {
+    pushSectionTitle(lines, style, 'Evidence basis');
+    pushWrappedText(lines, suggestion.evidence, width);
+    lines.push('');
+  }
+  if (suggestion.nextAction) {
+    pushSectionTitle(lines, style, 'Expected next action');
+    pushWrappedText(lines, suggestion.nextAction, width);
+    lines.push('');
+  }
+  pushSectionTitle(lines, style, 'Governance rule');
+  pushWrappedText(
+    lines,
+    'Suggestions are advisory artifacts. They can recommend quests, dependencies, promotions, or governance follow-up, but adoption must create or advance visible graph-native work instead of skipping process.',
+    width,
+  );
+  while (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
+  return lines.join('\n');
 }
 
 export function suggestionPageView(args: SuggestionPageViewArgs): string {

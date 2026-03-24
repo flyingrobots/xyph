@@ -42,6 +42,7 @@ function makeModel(snapshot: GraphSnapshot | null): DashboardModel {
     showLanding: false,
     showHelp: false,
     helpScrollY: 0,
+    aiExplainabilityScrollY: 0,
     cols: 120,
     rows: 40,
     logoText: 'XYPH',
