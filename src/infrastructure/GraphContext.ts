@@ -68,6 +68,8 @@ import type {
 import { VALID_SUGGESTION_STATUSES } from '../domain/entities/Suggestion.js';
 import type { SuggestionStatus } from '../domain/entities/Suggestion.js';
 import {
+  type AiSuggestionAdoptionKind,
+  VALID_AI_SUGGESTION_ADOPTION_KINDS,
   VALID_AI_SUGGESTION_AUDIENCES,
   VALID_AI_SUGGESTION_KINDS,
   VALID_AI_SUGGESTION_ORIGINS,
@@ -949,6 +951,7 @@ class GraphContextImpl implements GraphContext {
         const resolutionKind = n.props['resolution_kind'];
         const resolutionRationale = n.props['resolution_rationale'];
         const adoptedArtifactId = n.props['adopted_artifact_id'];
+        const adoptedArtifactKind = n.props['adopted_artifact_kind'];
         const supersededById = n.props['superseded_by_id'];
 
         let relatedIds: string[] = [];
@@ -987,6 +990,9 @@ class GraphContextImpl implements GraphContext {
             : undefined,
           resolutionRationale: typeof resolutionRationale === 'string' ? resolutionRationale : undefined,
           adoptedArtifactId: typeof adoptedArtifactId === 'string' ? adoptedArtifactId : undefined,
+          adoptedArtifactKind: typeof adoptedArtifactKind === 'string' && VALID_AI_SUGGESTION_ADOPTION_KINDS.has(adoptedArtifactKind)
+            ? adoptedArtifactKind as AiSuggestionAdoptionKind
+            : undefined,
           supersededById: typeof supersededById === 'string' ? supersededById : undefined,
         });
         continue;

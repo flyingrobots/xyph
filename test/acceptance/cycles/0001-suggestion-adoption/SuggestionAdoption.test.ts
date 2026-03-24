@@ -52,7 +52,7 @@ describe('Cycle 0001: Suggestion Adoption and Explainability', () => {
     fs.rmSync(repoPath, { recursive: true, force: true });
   });
 
-  it('adopts an AI suggestion into a governed proposal artifact with visible provenance', async () => {
+  it('adopts a quest suggestion into a backlog quest with visible provenance', async () => {
     await records.createAiSuggestion({
       id: 'suggestion:AI-QUEST',
       kind: 'quest',
@@ -85,7 +85,7 @@ describe('Cycle 0001: Suggestion Adoption and Explainability', () => {
       command: 'suggestion accept',
       data: expect.objectContaining({
         suggestionId: 'suggestion:AI-QUEST',
-        adoptedArtifactKind: 'proposal',
+        adoptedArtifactKind: 'quest',
         targetId: 'task:TARGET',
         rationale: 'Worth triaging as governed work.',
       }),
@@ -99,13 +99,98 @@ describe('Cycle 0001: Suggestion Adoption and Explainability', () => {
       resolutionKind: 'adopted',
       resolutionRationale: 'Worth triaging as governed work.',
       targetId: 'task:TARGET',
+      adoptedArtifactKind: 'quest',
+    });
+    expect(suggestion?.adoptedArtifactId).toMatch(/^task:/);
+
+    const adoptedQuestId = suggestion?.adoptedArtifactId;
+    expect(adoptedQuestId).toBeDefined();
+    if (!adoptedQuestId) {
+      throw new Error('expected adopted artifact id');
+    }
+
+    const graph = await graphPort.getGraph();
+    const questProps = await graph.getNodeProps(adoptedQuestId);
+    expect(questProps).toMatchObject({
+      type: 'task',
+      title: 'Create a traceability quest',
+      status: 'BACKLOG',
+      hours: 0,
+      task_kind: 'delivery',
+    });
+    expect(typeof questProps?.['description']).toBe('string');
+    expect(String(questProps?.['description'])).toContain('Open a dedicated quest to cover missing traceability work.');
+
+    const detail = await graphCtx.fetchEntityDetail('suggestion:AI-QUEST');
+    expect(detail?.outgoing).toEqual(expect.arrayContaining([
+      { nodeId: adoptedQuestId, label: 'suggests' },
+    ]));
+
+    const rendered = renderSuggestionPage(snapshot, suggestion, detail, 'adopted');
+    expect(rendered).toContain('Suggestions [AI]');
+    expect(rendered).toContain('AI Transparency');
+    expect(rendered).toContain('Adopted as');
+    expect(rendered).toContain('quest');
+    expect(rendered).toContain(strip(adoptedQuestId.replace(/^task:/, '')));
+  });
+
+  it('adopts a non-quest AI suggestion into a governed proposal artifact when requested explicitly', async () => {
+    await records.createAiSuggestion({
+      id: 'suggestion:AI-DEP',
+      kind: 'dependency',
+      title: 'Narrow traceability dependency',
+      summary: 'Record a dependency follow-up instead of silently coupling the work.',
+      suggestedBy: 'agent.prime',
+      audience: 'human',
+      origin: 'spontaneous',
+      targetId: 'task:TARGET',
+      relatedIds: ['campaign:TRACE'],
+      why: 'The current quest needs an explicit dependency recommendation.',
+      evidence: 'Recent review activity found hidden ordering assumptions.',
+      nextAction: 'Adopt as governed work so a human can decide whether the dependency should become plan truth.',
+    });
+
+    const ctx = makeCliContext(graphPort, repoPath);
+    const program = new Command();
+    registerSuggestionCommands(program, ctx);
+
+    await program.parseAsync([
+      'suggestion',
+      'accept',
+      'suggestion:AI-DEP',
+      '--as',
+      'proposal',
+      '--rationale',
+      'Needs a governed dependency proposal first.',
+    ], { from: 'user' });
+
+    expect(ctx.jsonOut).toHaveBeenCalledWith(expect.objectContaining({
+      success: true,
+      command: 'suggestion accept',
+      data: expect.objectContaining({
+        suggestionId: 'suggestion:AI-DEP',
+        adoptedArtifactKind: 'proposal',
+        targetId: 'task:TARGET',
+        rationale: 'Needs a governed dependency proposal first.',
+      }),
+    }));
+
+    const graphCtx = createGraphContext(graphPort);
+    const snapshot = await graphCtx.fetchSnapshot();
+    const suggestion = snapshot.aiSuggestions.find((entry) => entry.id === 'suggestion:AI-DEP');
+    expect(suggestion).toMatchObject({
+      status: 'accepted',
+      resolutionKind: 'adopted',
+      resolutionRationale: 'Needs a governed dependency proposal first.',
+      targetId: 'task:TARGET',
+      adoptedArtifactKind: 'proposal',
     });
     expect(suggestion?.adoptedArtifactId).toMatch(/^proposal:/);
 
     const proposalId = suggestion?.adoptedArtifactId;
     expect(proposalId).toBeDefined();
     if (!proposalId) {
-      throw new Error('expected adopted artifact id');
+      throw new Error('expected adopted proposal id');
     }
 
     const graph = await graphPort.getGraph();
@@ -113,20 +198,19 @@ describe('Cycle 0001: Suggestion Adoption and Explainability', () => {
     expect(proposalProps).toMatchObject({
       type: 'proposal',
       proposal_kind: 'ai-suggestion-adoption',
-      subject_id: 'suggestion:AI-QUEST',
+      subject_id: 'suggestion:AI-DEP',
       target_id: 'task:TARGET',
       proposed_by: 'human.tester',
     });
 
-    const detail = await graphCtx.fetchEntityDetail('suggestion:AI-QUEST');
+    const detail = await graphCtx.fetchEntityDetail('suggestion:AI-DEP');
     expect(detail?.incoming).toEqual(expect.arrayContaining([
       { nodeId: proposalId, label: 'proposes' },
     ]));
 
     const rendered = renderSuggestionPage(snapshot, suggestion, detail, 'adopted');
-    expect(rendered).toContain('Suggestions [AI]');
-    expect(rendered).toContain('AI Transparency');
     expect(rendered).toContain('Adopted as');
+    expect(rendered).toContain('proposal');
     expect(rendered).toContain(strip(proposalId.replace(/^proposal:/, '')));
   });
 

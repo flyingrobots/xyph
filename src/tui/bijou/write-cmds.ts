@@ -14,6 +14,7 @@ import type { GraphPort } from '../../ports/GraphPort.js';
 import type { IntakePort } from '../../ports/IntakePort.js';
 import type { SubmissionPort } from '../../ports/SubmissionPort.js';
 import { RecordService } from '../../domain/services/RecordService.js';
+import type { AiSuggestionAdoptionKind } from '../../domain/entities/AiSuggestion.js';
 
 /** Generate a lexicographically-sortable unique ID (matches actuator pattern). */
 export function generateId(): string {
@@ -219,6 +220,7 @@ export function queueAskAiJob(
 export function adoptSuggestion(
   deps: WriteDeps,
   suggestionId: string,
+  adoptedArtifactKind: AiSuggestionAdoptionKind,
   rationale?: string,
 ): Cmd<DashboardMsg> {
   return async (emit) => {
@@ -227,9 +229,10 @@ export function adoptSuggestion(
       const result = await records.adoptAiSuggestion({
         suggestionId,
         resolvedBy: deps.agentId,
+        adoptedArtifactKind,
         rationale: rationale?.trim() || undefined,
       });
-      emit({ type: 'write-success', message: `Adopted ${result.suggestionId} into ${result.adoptedArtifactId}` });
+      emit({ type: 'write-success', message: `Adopted ${result.suggestionId} into ${result.adoptedArtifactKind} ${result.adoptedArtifactId}` });
     } catch (err: unknown) {
       emit({ type: 'write-error', message: err instanceof Error ? err.message : String(err) });
     }

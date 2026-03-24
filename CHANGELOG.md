@@ -6,6 +6,7 @@ All notable changes to XYPH will be documented in this file.
 
 ### Changed
 
+- **Suggestion adoption now chooses a real work shape** — accepting an AI suggestion no longer always lowers into a generic governed proposal. Quest-shaped suggestions now default into real backlog quests with visible provenance, while other suggestions can still be adopted as governed proposals, and `suggestion accept --as quest|proposal` plus the suggestion-page adoption flow now make that choice explicit.
 - **Suggestion pages now support real adoption flows and `[AI]` explainability** — AI suggestion pages no longer stop at passive inspection. Operators can now adopt a suggestion into governed work, dismiss it with rationale, or mark it superseded by another artifact directly from the page-local action model, and pressing `e` opens a dedicated `[AI]` explainability modal instead of relying only on static transparency prose.
 - **TUI launch now has a first-class npm script** — `npm run tui` now launches `xyph-dashboard.ts`, so the interactive XYPH surface no longer depends on remembering the raw `npx tsx` entrypoint.
 - **Suggestions now have TUI subviews and an in-app Ask-AI composer** — the `Suggestions` lane now cycles through `Incoming`, `Queued`, `Adopted`, and `Dismissed` subviews with `v`, so advisory items are no longer one flat mixed queue. The cockpit also now exposes `n` as an in-app Ask-AI composer, letting operators queue ask-AI jobs directly from the TUI or an item page instead of dropping to the CLI.

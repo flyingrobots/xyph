@@ -3,11 +3,14 @@ import type { GraphPort } from '../../ports/GraphPort.js';
 import type { CanonicalArtifactKind } from '../models/controlPlane.js';
 import { MutationKernelService } from './MutationKernelService.js';
 import type {
+  AiSuggestionAdoptionKind,
   AiSuggestionAudience,
   AiSuggestionKind,
   AiSuggestionOrigin,
   AiSuggestionStatus,
 } from '../entities/AiSuggestion.js';
+import { defaultAiSuggestionAdoptionKind } from '../entities/AiSuggestion.js';
+import { Quest, type QuestKind, DEFAULT_QUEST_PRIORITY } from '../entities/Quest.js';
 
 interface CreateCommentInput {
   id?: string;
@@ -77,6 +80,7 @@ interface CreateAiSuggestionInput {
 interface ResolveAiSuggestionInput {
   suggestionId: string;
   resolvedBy: string;
+  adoptedArtifactKind?: AiSuggestionAdoptionKind;
   rationale?: string;
   idempotencyKey?: string;
 }
@@ -119,6 +123,40 @@ function stableValue(payload: unknown): unknown {
 
 function stringifyDeterministicContent(payload: unknown): string {
   return JSON.stringify(stableValue(payload), null, 2);
+}
+
+function suggestionQuestKind(kind: AiSuggestionKind): QuestKind {
+  switch (kind) {
+    case 'dependency':
+    case 'promotion':
+    case 'reopen':
+      return 'maintenance';
+    case 'governance':
+      return 'ops';
+    default:
+      return 'delivery';
+  }
+}
+
+function buildSuggestionQuestDescription(input: {
+  summary: string;
+  why?: string;
+  evidence?: string;
+  nextAction?: string;
+}): string {
+  const sections = [
+    input.summary.trim(),
+    input.why?.trim() ? `Why\n${input.why.trim()}` : null,
+    input.evidence?.trim() ? `Evidence\n${input.evidence.trim()}` : null,
+    input.nextAction?.trim() ? `Suggested next action\n${input.nextAction.trim()}` : null,
+  ].filter((entry): entry is string => Boolean(entry && entry.trim().length > 0));
+  return sections.join('\n\n');
+}
+
+function questTitleFromSuggestion(title: string): string {
+  const trimmed = title.trim();
+  if (trimmed.length >= 5) return trimmed;
+  return `Quest ${trimmed}`.trim();
 }
 
 export class RecordService {
@@ -316,6 +354,7 @@ export class RecordService {
   public async adoptAiSuggestion(input: ResolveAiSuggestionInput): Promise<{
     suggestionId: string;
     adoptedArtifactId: string;
+    adoptedArtifactKind: AiSuggestionAdoptionKind;
     patch: string;
     resolvedAt: number;
   }> {
@@ -350,29 +389,68 @@ export class RecordService {
           }
         })()
       : [];
-
-    const proposal = await this.createProposal({
-      kind: 'ai-suggestion-adoption',
-      subjectId: input.suggestionId,
-      targetId,
-      payload: {
-        suggestionId: input.suggestionId,
-        suggestionKind: kind,
-        title,
-        summary,
-        why: why ?? null,
-        evidence: evidence ?? null,
-        nextAction: nextAction ?? null,
-        relatedIds,
-      },
-      rationale: input.rationale ?? `Adopt AI suggestion ${input.suggestionId} into governed work.`,
-      proposedBy: input.resolvedBy,
-      observerProfileId: 'observer:default',
-      policyPackVersion: 'policy:default',
-      idempotencyKey: input.idempotencyKey
-        ? `${input.idempotencyKey}:proposal`
-        : `suggestion-adopt:${input.suggestionId}`,
-    });
+    const adoptedArtifactKind = input.adoptedArtifactKind ?? defaultAiSuggestionAdoptionKind(kind as AiSuggestionKind);
+    let adoptedArtifactId: string;
+    if (adoptedArtifactKind === 'quest') {
+      const quest = new Quest({
+        id: deriveId(
+          'task:',
+          undefined,
+          input.idempotencyKey
+            ? `${input.idempotencyKey}:quest`
+            : `suggestion-adopt:${input.suggestionId}:quest`,
+        ),
+        title: questTitleFromSuggestion(title),
+        status: 'BACKLOG',
+        hours: 0,
+        priority: DEFAULT_QUEST_PRIORITY,
+        description: buildSuggestionQuestDescription({ summary, why, evidence, nextAction }),
+        taskKind: suggestionQuestKind(kind as AiSuggestionKind),
+        type: 'task',
+      });
+      const campaignId = relatedIds.find((entry) => entry.startsWith('campaign:'))
+        ?? (targetId?.startsWith('campaign:') ? targetId : undefined);
+      await graph.patch((p) => {
+        p.addNode(quest.id)
+          .setProperty(quest.id, 'status', quest.status)
+          .setProperty(quest.id, 'title', quest.title)
+          .setProperty(quest.id, 'hours', quest.hours)
+          .setProperty(quest.id, 'priority', quest.priority)
+          .setProperty(quest.id, 'task_kind', quest.taskKind)
+          .setProperty(quest.id, 'type', quest.type)
+          .setProperty(quest.id, 'description', quest.description ?? summary)
+          .addEdge(input.suggestionId, quest.id, 'suggests');
+        if (campaignId) {
+          p.addEdge(quest.id, campaignId, 'belongs-to');
+        }
+      });
+      adoptedArtifactId = quest.id;
+    } else {
+      const proposal = await this.createProposal({
+        kind: 'ai-suggestion-adoption',
+        subjectId: input.suggestionId,
+        targetId,
+        payload: {
+          suggestionId: input.suggestionId,
+          suggestionKind: kind,
+          title,
+          summary,
+          why: why ?? null,
+          evidence: evidence ?? null,
+          nextAction: nextAction ?? null,
+          relatedIds,
+          adoptedArtifactKind,
+        },
+        rationale: input.rationale ?? `Adopt AI suggestion ${input.suggestionId} into governed work.`,
+        proposedBy: input.resolvedBy,
+        observerProfileId: 'observer:default',
+        policyPackVersion: 'policy:default',
+        idempotencyKey: input.idempotencyKey
+          ? `${input.idempotencyKey}:proposal`
+          : `suggestion-adopt:${input.suggestionId}`,
+      });
+      adoptedArtifactId = proposal.id;
+    }
 
     const resolvedAt = Date.now();
     const patch = await graph.patch((p) => {
@@ -380,7 +458,8 @@ export class RecordService {
         .setProperty(input.suggestionId, 'resolved_by', input.resolvedBy)
         .setProperty(input.suggestionId, 'resolved_at', resolvedAt)
         .setProperty(input.suggestionId, 'resolution_kind', 'adopted')
-        .setProperty(input.suggestionId, 'adopted_artifact_id', proposal.id);
+        .setProperty(input.suggestionId, 'adopted_artifact_id', adoptedArtifactId)
+        .setProperty(input.suggestionId, 'adopted_artifact_kind', adoptedArtifactKind);
       if (input.rationale?.trim()) {
         p.setProperty(input.suggestionId, 'resolution_rationale', input.rationale.trim());
       }
@@ -388,7 +467,8 @@ export class RecordService {
 
     return {
       suggestionId: input.suggestionId,
-      adoptedArtifactId: proposal.id,
+      adoptedArtifactId,
+      adoptedArtifactKind,
       patch,
       resolvedAt,
     };

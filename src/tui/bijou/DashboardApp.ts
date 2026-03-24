@@ -91,6 +91,11 @@ import {
 } from './observer-watermarks.js';
 import { wrapWhitespaceText } from '../view-helpers.js';
 import { suggestionCanAdopt, suggestionCanDismiss, suggestionCanSupersede } from './suggestion-actions.js';
+import {
+  VALID_AI_SUGGESTION_ADOPTION_KINDS,
+  defaultAiSuggestionAdoptionKind,
+  type AiSuggestionAdoptionKind,
+} from '../../domain/entities/AiSuggestion.js';
 
 export type PendingWrite =
   | { kind: 'claim'; questId: string }
@@ -98,7 +103,7 @@ export type PendingWrite =
   | { kind: 'reject'; questId: string }
   | { kind: 'reopen'; questId: string }
   | { kind: 'comment'; targetId: string }
-  | { kind: 'adopt-suggestion'; suggestionId: string; rationale?: string }
+  | { kind: 'adopt-suggestion'; suggestionId: string; adoptedArtifactKind: AiSuggestionAdoptionKind; rationale?: string }
   | { kind: 'dismiss-suggestion'; suggestionId: string; rationale?: string }
   | { kind: 'supersede-suggestion'; suggestionId: string; supersededById: string; rationale?: string }
   | { kind: 'approve'; patchsetId: string }
@@ -276,7 +281,19 @@ interface SuggestionSupersedeInputState {
   value: string;
 }
 
-type DashboardInputState = SingleInputState | AskAiInputState | SuggestionSupersedeInputState;
+interface SuggestionAdoptInputState {
+  kind: 'suggestion-adopt';
+  step: 'kind' | 'rationale';
+  suggestionId: string;
+  adoptedArtifactKind: AiSuggestionAdoptionKind;
+  value: string;
+}
+
+type DashboardInputState =
+  | SingleInputState
+  | AskAiInputState
+  | SuggestionSupersedeInputState
+  | SuggestionAdoptInputState;
 
 export interface DashboardDeps {
   ctx: GraphContext;
@@ -976,6 +993,19 @@ function suggestionSupersedeInputHint(state: SuggestionSupersedeInputState): str
     : 'Enter: supersede  Esc: cancel';
 }
 
+function suggestionAdoptInputLabel(state: SuggestionAdoptInputState): string {
+  if (state.step === 'kind') {
+    return `Adopt ${state.suggestionId}\nAdopt as (quest | proposal):`;
+  }
+  return `Adopt ${state.suggestionId}\nAdopt as: ${state.adoptedArtifactKind}\nRationale (optional):`;
+}
+
+function suggestionAdoptInputHint(state: SuggestionAdoptInputState): string {
+  return state.step === 'kind'
+    ? 'Enter: next  Esc: cancel'
+    : 'Enter: adopt  Esc: cancel';
+}
+
 interface ControlHint {
   key: string;
   label: string;
@@ -1527,7 +1557,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
       case 'comment':
         return commentOnEntity(writeDeps, action.targetId, inputValue ?? '');
       case 'adopt-suggestion':
-        return adoptSuggestion(writeDeps, action.suggestionId, action.rationale ?? inputValue);
+        return adoptSuggestion(writeDeps, action.suggestionId, action.adoptedArtifactKind, action.rationale ?? inputValue);
       case 'dismiss-suggestion':
         return dismissSuggestion(writeDeps, action.suggestionId, action.rationale ?? inputValue ?? '');
       case 'supersede-suggestion':
@@ -1666,15 +1696,16 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
       case 'approve': {
         const suggestion = selectedAiSuggestion(model);
         if (suggestion && suggestionCanAdopt(suggestion)) {
+          const adoptedArtifactKind = defaultAiSuggestionAdoptionKind(suggestion.kind);
           return [{
             ...model,
             mode: 'input',
             inputState: {
-              kind: 'write',
-              label: `Adoption rationale for ${suggestion.id} (optional):`,
-              value: '',
-              allowEmpty: true,
-              action: { kind: 'adopt-suggestion', suggestionId: suggestion.id },
+              kind: 'suggestion-adopt',
+              step: 'kind',
+              suggestionId: suggestion.id,
+              adoptedArtifactKind,
+              value: adoptedArtifactKind,
             },
           }, []];
         }
@@ -2161,6 +2192,34 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
             return [{ ...model, mode: 'normal', inputState: null }, []];
           }
           if (msg.key === 'enter' || msg.key === 'return') {
+            if (model.inputState.kind === 'suggestion-adopt') {
+              const value = model.inputState.value.trim().toLowerCase();
+              if (model.inputState.step === 'kind') {
+                if (!VALID_AI_SUGGESTION_ADOPTION_KINDS.has(value)) {
+                  return [model, []];
+                }
+                return [{
+                  ...model,
+                  inputState: {
+                    ...model.inputState,
+                    step: 'rationale',
+                    adoptedArtifactKind: value as AiSuggestionAdoptionKind,
+                    value: '',
+                  },
+                }, []];
+              }
+              return [{
+                ...model,
+                mode: 'normal',
+                inputState: null,
+                writePending: true,
+              }, [executeWrite({
+                kind: 'adopt-suggestion',
+                suggestionId: model.inputState.suggestionId,
+                adoptedArtifactKind: model.inputState.adoptedArtifactKind,
+                rationale: value || undefined,
+              })]];
+            }
             if (model.inputState.kind === 'suggestion-supersede') {
               const value = model.inputState.value.trim();
               if (model.inputState.step === 'replacement') {
@@ -2582,6 +2641,8 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
             content,
             model.inputState.kind === 'ask-ai'
               ? askAiInputLabel(model.inputState)
+              : model.inputState.kind === 'suggestion-adopt'
+                ? suggestionAdoptInputLabel(model.inputState)
               : model.inputState.kind === 'suggestion-supersede'
                 ? suggestionSupersedeInputLabel(model.inputState)
                 : model.inputState.label,
@@ -2591,6 +2652,8 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
             style,
             model.inputState.kind === 'ask-ai'
               ? askAiInputHint(model.inputState)
+              : model.inputState.kind === 'suggestion-adopt'
+                ? suggestionAdoptInputHint(model.inputState)
               : model.inputState.kind === 'suggestion-supersede'
                 ? suggestionSupersedeInputHint(model.inputState)
                 : undefined,

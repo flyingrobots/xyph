@@ -116,7 +116,7 @@ function pageActions(style: StylePort): SuggestionPageAction[] {
 function suggestionLifecycleActions(style: StylePort, suggestion: AiSuggestionNode): SuggestionPageAction[] {
   const actions: SuggestionPageAction[] = [];
   if (suggestionCanAdopt(suggestion)) {
-    actions.push({ key: 'a', label: 'Adopt suggestion into governed work', token: style.theme.semantic.success });
+    actions.push({ key: 'a', label: 'Adopt suggestion into quest or proposal', token: style.theme.semantic.success });
   }
   if (suggestionCanDismiss(suggestion)) {
     actions.push({
@@ -264,7 +264,10 @@ function buildSuggestionPageContent(
       pushField(lines, 'Resolved', `${formatAge(suggestion.resolvedAt)} ago`, width);
     }
     if (suggestion.adoptedArtifactId) {
-      pushField(lines, 'Adopted as', shortId(suggestion.adoptedArtifactId), width);
+      const adoptedAs = suggestion.adoptedArtifactKind
+        ? `${suggestion.adoptedArtifactKind} ${shortId(suggestion.adoptedArtifactId)}`
+        : shortId(suggestion.adoptedArtifactId);
+      pushField(lines, 'Adopted as', adoptedAs, width, (value) => statusText(style, value));
     }
     if (suggestion.supersededById) {
       pushField(lines, 'Superseded by', shortId(suggestion.supersededById), width);

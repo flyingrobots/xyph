@@ -13,12 +13,15 @@ import { createErrorHandler } from '../errorHandler.js';
 import { assertPrefix, assertNodeExists } from '../validators.js';
 import { RecordService } from '../../domain/services/RecordService.js';
 import {
+  VALID_AI_SUGGESTION_ADOPTION_KINDS,
   VALID_AI_SUGGESTION_AUDIENCES,
   VALID_AI_SUGGESTION_KINDS,
   VALID_AI_SUGGESTION_STATUSES,
   type AiSuggestionAudience,
+  type AiSuggestionAdoptionKind,
   type AiSuggestionKind,
   type AiSuggestionStatus,
+  defaultAiSuggestionAdoptionKind,
 } from '../../domain/entities/AiSuggestion.js';
 
 function aiSuggestionOrigin(opts: { kind: string; requestedBy?: string }): 'request' | 'spontaneous' {
@@ -256,8 +259,9 @@ export function registerSuggestionCommands(program: Command, ctx: CliContext): v
   suggestionCmd
     .command('accept <id>')
     .description('Accept a suggestion')
+    .option('--as <kind>', 'proposal | quest')
     .option('--rationale <text>', 'Why this suggestion is correct')
-    .action(withErrorHandler(async (id: string, opts: { rationale?: string }) => {
+    .action(withErrorHandler(async (id: string, opts: { as?: string; rationale?: string }) => {
       assertPrefix(id, 'suggestion:', 'Suggestion ID');
 
       const graph = await ctx.graphPort.getGraph();
@@ -268,9 +272,19 @@ export function registerSuggestionCommands(program: Command, ctx: CliContext): v
       if (!props) throw new Error(`[NOT_FOUND] Suggestion ${id} has no properties`);
 
       if (props['type'] === 'ai_suggestion') {
+        const suggestionKind = typeof props['suggestion_kind'] === 'string'
+          ? props['suggestion_kind'] as AiSuggestionKind
+          : 'general';
+        const adoptedArtifactKindRaw = opts.as?.trim().toLowerCase();
+        if (adoptedArtifactKindRaw && !VALID_AI_SUGGESTION_ADOPTION_KINDS.has(adoptedArtifactKindRaw)) {
+          throw new Error(`[INVALID_ARGS] --as must be one of ${[...VALID_AI_SUGGESTION_ADOPTION_KINDS].join(', ')}`);
+        }
+        const adoptedArtifactKind = (adoptedArtifactKindRaw as AiSuggestionAdoptionKind | undefined)
+          ?? defaultAiSuggestionAdoptionKind(suggestionKind);
         const result = await records.adoptAiSuggestion({
           suggestionId: id,
           resolvedBy: ctx.agentId,
+          adoptedArtifactKind,
           rationale: opts.rationale,
         });
 
@@ -283,7 +297,7 @@ export function registerSuggestionCommands(program: Command, ctx: CliContext): v
             data: {
               suggestionId: id,
               adoptedArtifactId: result.adoptedArtifactId,
-              adoptedArtifactKind: 'proposal',
+              adoptedArtifactKind: result.adoptedArtifactKind,
               targetId,
               rationale: opts.rationale ?? null,
               patch: result.patch,
@@ -292,7 +306,7 @@ export function registerSuggestionCommands(program: Command, ctx: CliContext): v
           return;
         }
 
-        ctx.ok(`[OK] Adopted ${id} into governed work via ${result.adoptedArtifactId}. Patch: ${result.patch.slice(0, 7)}`);
+        ctx.ok(`[OK] Adopted ${id} into ${result.adoptedArtifactKind} ${result.adoptedArtifactId}. Patch: ${result.patch.slice(0, 7)}`);
         return;
       }
 

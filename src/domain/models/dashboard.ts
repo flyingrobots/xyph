@@ -10,6 +10,7 @@ import type { RequirementKind, RequirementPriority } from '../entities/Requireme
 import type { EvidenceKind, EvidenceResult } from '../entities/Evidence.js';
 import type { SuggestionStatus } from '../entities/Suggestion.js';
 import type {
+  AiSuggestionAdoptionKind,
   AiSuggestionAudience,
   AiSuggestionKind,
   AiSuggestionOrigin,
@@ -231,6 +232,7 @@ export interface AiSuggestionNode {
   resolutionKind?: AiSuggestionResolutionKind;
   resolutionRationale?: string;
   adoptedArtifactId?: string;
+  adoptedArtifactKind?: AiSuggestionAdoptionKind;
   supersededById?: string;
 }
 

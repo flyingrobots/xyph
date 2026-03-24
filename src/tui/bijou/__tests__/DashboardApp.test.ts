@@ -965,15 +965,29 @@ describe('DashboardApp', () => {
     const [suggestions] = app.update(key('5'), loaded);
     const [page] = app.update(key('enter'), suggestions);
     const plain = strip(app.view(page) as string);
-    expect(plain).toContain('Adopt suggestion into governed work');
+    expect(plain).toContain('Adopt suggestion into quest or proposal');
     expect(plain).toContain('Dismiss suggestion with rationale');
     expect(plain).toContain('Mark suggestion superseded by another artifact');
 
     const [adopt] = app.update(key('a', { shift: true }), page);
-    const adoptInput = expectWriteInput(adopt);
-    expect(adoptInput.action).toEqual({ kind: 'adopt-suggestion', suggestionId: 'suggestion:S1' });
-    expect(adoptInput.allowEmpty).toBe(true);
-    expect(adoptInput.label).toContain('Adoption rationale');
+    expect(adopt.mode).toBe('input');
+    expect(adopt.inputState?.kind).toBe('suggestion-adopt');
+    if (!adopt.inputState || adopt.inputState.kind !== 'suggestion-adopt') {
+      throw new Error('Expected suggestion adopt input state');
+    }
+    expect(adopt.inputState.step).toBe('kind');
+    expect(adopt.inputState.adoptedArtifactKind).toBe('proposal');
+    expect(strip(app.view(adopt) as string)).toContain('Adopt as (quest | proposal)');
+
+    const [adoptRationale] = app.update(key('enter'), adopt);
+    expect(adoptRationale.mode).toBe('input');
+    expect(adoptRationale.inputState?.kind).toBe('suggestion-adopt');
+    if (!adoptRationale.inputState || adoptRationale.inputState.kind !== 'suggestion-adopt') {
+      throw new Error('Expected suggestion adopt rationale state');
+    }
+    expect(adoptRationale.inputState.step).toBe('rationale');
+    expect(adoptRationale.inputState.adoptedArtifactKind).toBe('proposal');
+    expect(strip(app.view(adoptRationale) as string)).toContain('Rationale (optional)');
 
     const [dismiss] = app.update(key('d', { shift: true }), page);
     const dismissInput = expectWriteInput(dismiss);

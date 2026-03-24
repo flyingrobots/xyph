@@ -69,7 +69,7 @@ This cycle must preserve:
 
 In scope:
 
-- adopt a suggestion into governed work
+- adopt a suggestion into an explicit governed work shape such as a quest or proposal
 - dismiss a suggestion with rationale
 - mark a suggestion as superseded when a better suggestion or adopted artifact
   replaces it
@@ -92,8 +92,8 @@ Out of scope:
 Before implementation is considered done, executable tests should pin these
 behaviors:
 
-1. A suggestion can be adopted into a graph-native artifact without bypassing
-   the normal lifecycle.
+1. A suggestion can be adopted into an explicit graph-native work shape without
+   bypassing the normal lifecycle.
 2. Adoption records visible provenance from `suggestion:*` to the adopted
    artifact.
 3. A suggestion can be dismissed with recorded rationale and remains explorable
