@@ -13,6 +13,7 @@ import type {
   AiSuggestionAudience,
   AiSuggestionKind,
   AiSuggestionOrigin,
+  AiSuggestionResolutionKind,
   AiSuggestionStatus,
 } from '../entities/AiSuggestion.js';
 import type { LayerScore } from '../services/analysis/types.js';
@@ -225,6 +226,12 @@ export interface AiSuggestionNode {
   evidence?: string;
   nextAction?: string;
   relatedIds: string[];
+  resolvedBy?: string;
+  resolvedAt?: number;
+  resolutionKind?: AiSuggestionResolutionKind;
+  resolutionRationale?: string;
+  adoptedArtifactId?: string;
+  supersededById?: string;
 }
 
 export type NarrativeNodeType = 'spec' | 'adr' | 'note';

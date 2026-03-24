@@ -250,12 +250,12 @@ export function registerSuggestionCommands(program: Command, ctx: CliContext): v
 
   const suggestionCmd = program
     .command('suggestion')
-    .description('Manage auto-linking suggestions');
+    .description('Manage suggestion artifacts');
 
-  // --- suggestion accept: materialize a suggestion into linked evidence + edge ---
+  // --- suggestion accept: adopt AI suggestions into governed work, or accept legacy auto-link suggestions ---
   suggestionCmd
     .command('accept <id>')
-    .description('Accept a suggestion — materializes linked evidence + verifies/implements edge')
+    .description('Accept a suggestion')
     .option('--rationale <text>', 'Why this suggestion is correct')
     .action(withErrorHandler(async (id: string, opts: { rationale?: string }) => {
       assertPrefix(id, 'suggestion:', 'Suggestion ID');
@@ -266,6 +266,35 @@ export function registerSuggestionCommands(program: Command, ctx: CliContext): v
 
       const props = await graph.getNodeProps(id);
       if (!props) throw new Error(`[NOT_FOUND] Suggestion ${id} has no properties`);
+
+      if (props['type'] === 'ai_suggestion') {
+        const result = await records.adoptAiSuggestion({
+          suggestionId: id,
+          resolvedBy: ctx.agentId,
+          rationale: opts.rationale,
+        });
+
+        const targetId = typeof props['target_id'] === 'string' ? props['target_id'] : null;
+
+        if (ctx.json) {
+          ctx.jsonOut({
+            success: true,
+            command: 'suggestion accept',
+            data: {
+              suggestionId: id,
+              adoptedArtifactId: result.adoptedArtifactId,
+              adoptedArtifactKind: 'proposal',
+              targetId,
+              rationale: opts.rationale ?? null,
+              patch: result.patch,
+            },
+          });
+          return;
+        }
+
+        ctx.ok(`[OK] Adopted ${id} into governed work via ${result.adoptedArtifactId}. Patch: ${result.patch.slice(0, 7)}`);
+        return;
+      }
 
       const status = props['status'];
       if (status !== 'PENDING') {
@@ -321,6 +350,72 @@ export function registerSuggestionCommands(program: Command, ctx: CliContext): v
       }
 
       ctx.ok(`[OK] Accepted ${id} → created linked ${evidenceId} ${edgeType} ${targetId}. Patch: ${sha.slice(0, 7)}`);
+    }));
+
+  // --- suggestion dismiss: reject an AI suggestion with visible rationale ---
+  suggestionCmd
+    .command('dismiss <id>')
+    .description('Dismiss an AI suggestion with recorded rationale')
+    .requiredOption('--rationale <text>', 'Why this suggestion should not be adopted')
+    .action(withErrorHandler(async (id: string, opts: { rationale: string }) => {
+      assertPrefix(id, 'suggestion:', 'Suggestion ID');
+
+      const result = await records.dismissAiSuggestion({
+        suggestionId: id,
+        resolvedBy: ctx.agentId,
+        rationale: opts.rationale,
+      });
+
+      if (ctx.json) {
+        ctx.jsonOut({
+          success: true,
+          command: 'suggestion dismiss',
+          data: {
+            suggestionId: id,
+            status: 'rejected',
+            resolutionKind: 'dismissed',
+            rationale: opts.rationale,
+            patch: result.patch,
+          },
+        });
+        return;
+      }
+
+      ctx.ok(`[OK] Dismissed ${id}. Patch: ${result.patch.slice(0, 7)}`);
+    }));
+
+  suggestionCmd
+    .command('supersede <id>')
+    .description('Mark an AI suggestion superseded by a newer artifact')
+    .requiredOption('--by <id>', 'Replacement suggestion or artifact ID')
+    .option('--rationale <text>', 'Why the replacement supersedes this suggestion')
+    .action(withErrorHandler(async (id: string, opts: { by: string; rationale?: string }) => {
+      assertPrefix(id, 'suggestion:', 'Suggestion ID');
+
+      const result = await records.supersedeAiSuggestion({
+        suggestionId: id,
+        supersededById: opts.by,
+        resolvedBy: ctx.agentId,
+        rationale: opts.rationale,
+      });
+
+      if (ctx.json) {
+        ctx.jsonOut({
+          success: true,
+          command: 'suggestion supersede',
+          data: {
+            suggestionId: id,
+            status: 'rejected',
+            resolutionKind: 'superseded',
+            supersededById: result.supersededById,
+            rationale: opts.rationale ?? null,
+            patch: result.patch,
+          },
+        });
+        return;
+      }
+
+      ctx.ok(`[OK] Marked ${id} superseded by ${result.supersededById}. Patch: ${result.patch.slice(0, 7)}`);
     }));
 
   // --- suggestion reject: mark suggestion as REJECTED ---

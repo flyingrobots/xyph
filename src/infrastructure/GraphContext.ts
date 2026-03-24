@@ -71,12 +71,14 @@ import {
   VALID_AI_SUGGESTION_AUDIENCES,
   VALID_AI_SUGGESTION_KINDS,
   VALID_AI_SUGGESTION_ORIGINS,
+  VALID_AI_SUGGESTION_RESOLUTION_KINDS,
   VALID_AI_SUGGESTION_STATUSES,
 } from '../domain/entities/AiSuggestion.js';
 import type {
   AiSuggestionAudience,
   AiSuggestionKind,
   AiSuggestionOrigin,
+  AiSuggestionResolutionKind,
   AiSuggestionStatus,
 } from '../domain/entities/AiSuggestion.js';
 import type { LayerScore } from '../domain/services/analysis/types.js';
@@ -942,6 +944,12 @@ class GraphContextImpl implements GraphContext {
         const evidence = n.props['evidence'];
         const nextAction = n.props['next_action'];
         const relatedIdsRaw = n.props['related_ids'];
+        const resolvedBy = n.props['resolved_by'];
+        const resolvedAt = n.props['resolved_at'];
+        const resolutionKind = n.props['resolution_kind'];
+        const resolutionRationale = n.props['resolution_rationale'];
+        const adoptedArtifactId = n.props['adopted_artifact_id'];
+        const supersededById = n.props['superseded_by_id'];
 
         let relatedIds: string[] = [];
         if (typeof relatedIdsRaw === 'string') {
@@ -972,6 +980,14 @@ class GraphContextImpl implements GraphContext {
           evidence: typeof evidence === 'string' ? evidence : undefined,
           nextAction: typeof nextAction === 'string' ? nextAction : undefined,
           relatedIds,
+          resolvedBy: typeof resolvedBy === 'string' ? resolvedBy : undefined,
+          resolvedAt: typeof resolvedAt === 'number' ? resolvedAt : undefined,
+          resolutionKind: typeof resolutionKind === 'string' && VALID_AI_SUGGESTION_RESOLUTION_KINDS.has(resolutionKind)
+            ? resolutionKind as AiSuggestionResolutionKind
+            : undefined,
+          resolutionRationale: typeof resolutionRationale === 'string' ? resolutionRationale : undefined,
+          adoptedArtifactId: typeof adoptedArtifactId === 'string' ? adoptedArtifactId : undefined,
+          supersededById: typeof supersededById === 'string' ? supersededById : undefined,
         });
         continue;
       }

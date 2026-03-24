@@ -74,6 +74,21 @@ interface CreateAiSuggestionInput {
   idempotencyKey?: string;
 }
 
+interface ResolveAiSuggestionInput {
+  suggestionId: string;
+  resolvedBy: string;
+  rationale?: string;
+  idempotencyKey?: string;
+}
+
+interface DismissAiSuggestionInput extends ResolveAiSuggestionInput {
+  rationale: string;
+}
+
+interface SupersedeAiSuggestionInput extends ResolveAiSuggestionInput {
+  supersededById: string;
+}
+
 function deriveId(prefix: string, explicitId: string | undefined, idempotencyKey: string | undefined): string {
   if (explicitId) return explicitId;
   if (idempotencyKey) {
@@ -295,6 +310,158 @@ export class RecordService {
       patch: result.patch,
       suggestedAt,
       contentOid: await graph.getContentOid(id),
+    };
+  }
+
+  public async adoptAiSuggestion(input: ResolveAiSuggestionInput): Promise<{
+    suggestionId: string;
+    adoptedArtifactId: string;
+    patch: string;
+    resolvedAt: number;
+  }> {
+    const graph = await this.graphPort.getGraph();
+    const props = await graph.getNodeProps(input.suggestionId);
+    if (!props || props['type'] !== 'ai_suggestion') {
+      throw new Error(`[NOT_FOUND] AI suggestion ${input.suggestionId} not found in the graph`);
+    }
+
+    const status = props['status'];
+    if (status === 'accepted' || status === 'implemented' || status === 'rejected') {
+      throw new Error(`[INVALID_STATE] AI suggestion ${input.suggestionId} is ${String(status)}, not adoptable`);
+    }
+
+    const targetId = typeof props['target_id'] === 'string' ? props['target_id'] : undefined;
+    const title = typeof props['title'] === 'string' ? props['title'] : input.suggestionId;
+    const summary = typeof props['summary'] === 'string' ? props['summary'] : '';
+    const kind = typeof props['suggestion_kind'] === 'string' ? props['suggestion_kind'] : 'general';
+    const why = typeof props['why'] === 'string' ? props['why'] : undefined;
+    const evidence = typeof props['evidence'] === 'string' ? props['evidence'] : undefined;
+    const nextAction = typeof props['next_action'] === 'string' ? props['next_action'] : undefined;
+    const relatedIdsRaw = typeof props['related_ids'] === 'string' ? props['related_ids'] : undefined;
+    const relatedIds = relatedIdsRaw
+      ? (() : string[] => {
+          try {
+            const parsed = JSON.parse(relatedIdsRaw) as unknown;
+            return Array.isArray(parsed)
+              ? parsed.filter((entry): entry is string => typeof entry === 'string')
+              : [];
+          } catch {
+            return [];
+          }
+        })()
+      : [];
+
+    const proposal = await this.createProposal({
+      kind: 'ai-suggestion-adoption',
+      subjectId: input.suggestionId,
+      targetId,
+      payload: {
+        suggestionId: input.suggestionId,
+        suggestionKind: kind,
+        title,
+        summary,
+        why: why ?? null,
+        evidence: evidence ?? null,
+        nextAction: nextAction ?? null,
+        relatedIds,
+      },
+      rationale: input.rationale ?? `Adopt AI suggestion ${input.suggestionId} into governed work.`,
+      proposedBy: input.resolvedBy,
+      observerProfileId: 'observer:default',
+      policyPackVersion: 'policy:default',
+      idempotencyKey: input.idempotencyKey
+        ? `${input.idempotencyKey}:proposal`
+        : `suggestion-adopt:${input.suggestionId}`,
+    });
+
+    const resolvedAt = Date.now();
+    const patch = await graph.patch((p) => {
+      p.setProperty(input.suggestionId, 'status', 'accepted')
+        .setProperty(input.suggestionId, 'resolved_by', input.resolvedBy)
+        .setProperty(input.suggestionId, 'resolved_at', resolvedAt)
+        .setProperty(input.suggestionId, 'resolution_kind', 'adopted')
+        .setProperty(input.suggestionId, 'adopted_artifact_id', proposal.id);
+      if (input.rationale?.trim()) {
+        p.setProperty(input.suggestionId, 'resolution_rationale', input.rationale.trim());
+      }
+    });
+
+    return {
+      suggestionId: input.suggestionId,
+      adoptedArtifactId: proposal.id,
+      patch,
+      resolvedAt,
+    };
+  }
+
+  public async dismissAiSuggestion(input: DismissAiSuggestionInput): Promise<{
+    suggestionId: string;
+    patch: string;
+    resolvedAt: number;
+  }> {
+    const graph = await this.graphPort.getGraph();
+    const props = await graph.getNodeProps(input.suggestionId);
+    if (!props || props['type'] !== 'ai_suggestion') {
+      throw new Error(`[NOT_FOUND] AI suggestion ${input.suggestionId} not found in the graph`);
+    }
+    const status = props['status'];
+    if (status === 'accepted' || status === 'implemented' || status === 'rejected') {
+      throw new Error(`[INVALID_STATE] AI suggestion ${input.suggestionId} is ${String(status)}, not dismissible`);
+    }
+
+    const resolvedAt = Date.now();
+    const patch = await graph.patch((p) => {
+      p.setProperty(input.suggestionId, 'status', 'rejected')
+        .setProperty(input.suggestionId, 'resolved_by', input.resolvedBy)
+        .setProperty(input.suggestionId, 'resolved_at', resolvedAt)
+        .setProperty(input.suggestionId, 'resolution_kind', 'dismissed')
+        .setProperty(input.suggestionId, 'resolution_rationale', input.rationale.trim());
+    });
+
+    return {
+      suggestionId: input.suggestionId,
+      patch,
+      resolvedAt,
+    };
+  }
+
+  public async supersedeAiSuggestion(input: SupersedeAiSuggestionInput): Promise<{
+    suggestionId: string;
+    supersededById: string;
+    patch: string;
+    resolvedAt: number;
+  }> {
+    const graph = await this.graphPort.getGraph();
+    const props = await graph.getNodeProps(input.suggestionId);
+    if (!props || props['type'] !== 'ai_suggestion') {
+      throw new Error(`[NOT_FOUND] AI suggestion ${input.suggestionId} not found in the graph`);
+    }
+    if (!await graph.hasNode(input.supersededById)) {
+      throw new Error(`[NOT_FOUND] Replacement artifact ${input.supersededById} not found in the graph`);
+    }
+    const status = props['status'];
+    if (status === 'accepted' || status === 'implemented' || status === 'rejected') {
+      throw new Error(`[INVALID_STATE] AI suggestion ${input.suggestionId} is ${String(status)}, not supersedable`);
+    }
+
+    const resolvedAt = Date.now();
+    const patch = await graph.patch((p) => {
+      p.setProperty(input.suggestionId, 'status', 'rejected')
+        .setProperty(input.suggestionId, 'resolved_by', input.resolvedBy)
+        .setProperty(input.suggestionId, 'resolved_at', resolvedAt)
+        .setProperty(input.suggestionId, 'resolution_kind', 'superseded')
+        .setProperty(input.suggestionId, 'superseded_by_id', input.supersededById)
+        .addEdge(input.supersededById, input.suggestionId, 'supersedes');
+      if (input.rationale?.trim()) {
+        p.setProperty(input.suggestionId, 'resolution_rationale', input.rationale.trim());
+      }
+    });
+
+    return {
+      suggestionId: input.suggestionId,
+      supersededById: input.supersededById,
+      patch,
+      resolvedAt,
     };
   }
 

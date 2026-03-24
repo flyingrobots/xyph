@@ -126,7 +126,10 @@ function progressIndex(suggestion: AiSuggestionNode): number {
 }
 
 function progressLabels(suggestion: AiSuggestionNode): string[] {
-  return ['Suggested', 'Queued', 'Accepted', suggestion.status === 'rejected' ? 'Rejected' : 'Implemented'];
+  if (suggestion.status === 'rejected') {
+    return ['Suggested', 'Queued', 'Accepted', suggestion.resolutionKind === 'superseded' ? 'Superseded' : 'Dismissed'];
+  }
+  return ['Suggested', 'Queued', 'Accepted', 'Implemented'];
 }
 
 function buildSuggestionPageContent(
@@ -223,6 +226,29 @@ function buildSuggestionPageContent(
   if (suggestion.nextAction) {
     pushSectionTitle(lines, style, 'Suggested Next Action');
     pushWrappedText(lines, suggestion.nextAction, width);
+    lines.push('');
+  }
+
+  if (suggestion.resolutionKind || suggestion.adoptedArtifactId || suggestion.supersededById) {
+    pushSectionTitle(lines, style, 'Resolution');
+    if (suggestion.resolutionKind) {
+      pushField(lines, 'Outcome', suggestion.resolutionKind, width, (value) => statusText(style, value));
+    }
+    if (suggestion.resolvedBy) {
+      pushField(lines, 'Resolved by', shortPrincipal(suggestion.resolvedBy), width);
+    }
+    if (typeof suggestion.resolvedAt === 'number') {
+      pushField(lines, 'Resolved', `${formatAge(suggestion.resolvedAt)} ago`, width);
+    }
+    if (suggestion.adoptedArtifactId) {
+      pushField(lines, 'Adopted as', shortId(suggestion.adoptedArtifactId), width);
+    }
+    if (suggestion.supersededById) {
+      pushField(lines, 'Superseded by', shortId(suggestion.supersededById), width);
+    }
+    if (suggestion.resolutionRationale) {
+      pushField(lines, 'Rationale', suggestion.resolutionRationale, width);
+    }
     lines.push('');
   }
 

@@ -50,3 +50,11 @@ export const VALID_AI_SUGGESTION_ORIGINS: ReadonlySet<string> = new Set<AiSugges
   'spontaneous',
   'request',
 ]);
+
+export type AiSuggestionResolutionKind = 'adopted' | 'dismissed' | 'superseded';
+
+export const VALID_AI_SUGGESTION_RESOLUTION_KINDS: ReadonlySet<string> = new Set<AiSuggestionResolutionKind>([
+  'adopted',
+  'dismissed',
+  'superseded',
+]);
