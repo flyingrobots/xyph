@@ -508,8 +508,8 @@ loop appear to be:
 1. governed interactive case handling for shape-changing matters
 2. multi-brief preparation before human judgment
 3. worldline-backed option sets instead of prose-only alternatives
-4. explicit human decisions with decision classes
-5. policy-bounded application jobs after decisions
+4. explicit human decisions with orthogonal impact, risk, and authority classification
+5. policy-bounded linked follow-on work after decisions, compiled into existing primitives by default
 6. boring invalidation logic for stale briefs and stale decisions
 7. better linkage from decisions back into frontier and readiness changes
 

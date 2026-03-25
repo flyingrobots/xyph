@@ -217,6 +217,8 @@ Design rule:
 
 XYPH should expose these as explicit product concepts:
 
+- **Case**
+- **Brief**
 - **Review item**
 - **Comparison artifact**
 - **Attestation**
@@ -374,7 +376,7 @@ The rule is: BIJOU provides primitives; XYPH provides product meaning.
 The next design-led product slices should follow this order:
 
 1. finish the landing-page vs drill-in-page split
-2. add dedicated page types for review, settlement, and suggestion artifacts
+2. add dedicated page types for review, settlement, suggestion, and case artifacts
 3. keep the human and agent surfaces aligned to the same primitive model
 4. add AI suggestion queues for human and agent pickup
 5. add the `[AI]` transparency component and explainability flow
