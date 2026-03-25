@@ -162,7 +162,7 @@ In short:
 ### 16. XYPH Must Embody The Product Loop It Claims To Govern
 
 XYPH's value is not only that it shows project state. It should embody the
-governed loop by which project shape evolves:
+governed loop by which **project shape** evolves:
 
 - observation
 - suggestion
@@ -172,6 +172,10 @@ governed loop by which project shape evolves:
 - application
 - verification
 - reconciliation
+
+This is not the universal loop for every routine work item. It is the
+shape-governance loop for matters that materially alter frontier, sequencing,
+policy, risk, or doctrine.
 
 If a feature cannot be placed in that loop, it is at risk of becoming drift.
 If the loop still depends on side-channel memory or hidden automation, the

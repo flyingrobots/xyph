@@ -23,6 +23,31 @@ The strongest value proposition XYPH appears to offer is not "a better TUI" or
 If XYPH succeeds at that, it stops being only a project browser and becomes the
 operating system for project evolution.
 
+## Scope
+
+This is the loop for **shape-changing decisions**, not for every unit of work.
+
+Routine execution already has its own primary loop:
+
+- quests
+- submissions
+- review
+- settlement
+
+The product loop in this document sits above that execution flow. It governs
+matters that materially change:
+
+- project shape
+- frontier and task availability
+- sequencing
+- dependency structure
+- policy posture
+- operational risk
+- doctrine
+
+If every small routine action is forced through this loop, XYPH becomes a
+bureaucracy machine instead of a governed operating system.
+
 ## Core Thesis
 
 XYPH should model and enforce a project loop like this:
@@ -36,8 +61,11 @@ XYPH should model and enforce a project loop like this:
 7. **Verify**
 8. **Reconcile**
 
-These are not merely UI states. They are product states with graph-native
+These are not merely UI states. They are loop phases with graph-native
 artifacts, policy boundaries, and surface-specific responsibilities.
+
+They should **not** all become equally visible user-facing states. Some are
+ingress or transition moments rather than permanent workflow buckets.
 
 ## IBM Design Thinking Frame
 
@@ -60,7 +88,7 @@ That means:
 In other words, this loop is not outside the design method. It is the larger
 product pattern the design method is trying to sharpen.
 
-## The Loop
+## The Shape-Governance Loop
 
 ### 1. Observe
 
@@ -82,6 +110,8 @@ This may be observed by:
 The important rule is that observation should be anchored in graph truth rather
 than hidden side-channel intuition.
 
+Observation is usually an ingress moment, not a long-lived workflow state.
+
 ### 2. Suggest
 
 An observation becomes an advisory artifact.
@@ -95,6 +125,8 @@ This may be:
 
 Suggestions are advisory, not sovereign. Their job is to surface possible
 structure, not to change the plan silently.
+
+Suggestion is also usually ingress, not a durable end-state.
 
 ### 3. Elevate
 
@@ -112,8 +144,11 @@ happen because:
 This implies a distinction between:
 
 - `suggestion`
-- `triage-candidate`
-- `triage-session`
+- a derived notion of candidate-ness
+- an opened governed case
+
+Elevation should usually be modeled as a threshold crossing or transition, not
+as a grand visible cathedral of its own.
 
 ### 4. Prepare Judgment
 
@@ -130,12 +165,23 @@ This is where agents are especially strong:
 
 Crucially, this is not yet the decision.
 
-Prepared judgment should likely be expressed through artifacts like:
+Prepared judgment should be expressed through a small set of durable artifacts:
 
-- `triage-prep-job`
-- `triage-brief`
-- `triage-support`
-- `triage-dissent`
+- `case`
+- `brief`
+- optional dissent or alternative brief
+
+The UX should prefer `case` as the human-facing term even if an internal
+implementation name such as `triage-session` survives behind the scenes.
+
+For serious shape-changing matters, options should not stop at prose. They
+should ideally be backed by:
+
+- worldlines
+- braids
+- structured graph deltas
+
+That lets humans judge visible future shapes instead of persuasive text blobs.
 
 This is also where XYPH may require multiple perspectives before a case is
 considered ready for human judgment.
@@ -160,6 +206,15 @@ Typical outcomes may include:
 
 The decision itself must be durable, attributable, and rationalized.
 
+Decisions should also carry an explicit class or autonomy level such as:
+
+- informational
+- reversible low-risk
+- shape-changing
+- policy-changing
+
+That class should influence required preparation, authority, and follow-up.
+
 ### 6. Apply
 
 After judgment, the chosen course can be enacted.
@@ -172,6 +227,9 @@ Depending on policy, application may be:
 
 This step must remain separate from judgment. The human decision and the
 execution that follows it should not collapse into one opaque action.
+
+A decision record that emits no follow-up work, frontier delta, or explicit
+"no action" outcome is incomplete.
 
 ### 7. Verify
 
@@ -201,6 +259,32 @@ Every meaningful cycle should feed back into the evolving project shape:
 
 This is why cycle closeout and backlog reconciliation are part of the product
 model, not external process fluff.
+
+## Minimal Durable Spine
+
+The loop should start with the smallest durable artifact model that can support
+governed project shaping:
+
+- `case`
+- `brief`
+- `decision`
+- `application-job`
+
+A minimal end-to-end spine looks like this:
+
+```text
+suggestion or observation
+  -> case
+  -> brief(s) + option worldlines
+  -> human decision
+  -> application job
+  -> submission/review/settlement
+  -> evidence
+  -> reconcile
+```
+
+This is enough to prove the loop without turning every inference into a stored
+artifact.
 
 ## Human And Agent Roles In The Loop
 
@@ -232,7 +316,7 @@ Agents are strongest at:
 The human and agent roles are different, but they should be working on the same
 case file, not parallel realities.
 
-## Emerging Product Primitives
+## Durable Vs Derived State
 
 The current XYPH model already has:
 
@@ -243,20 +327,25 @@ The current XYPH model already has:
 - settlement artifacts
 - graveyard
 
-This larger loop suggests additional primitives that XYPH may need:
+The larger loop suggests a distinction between what should be stored durably
+and what should remain a derived judgment until proven necessary.
+
+### Keep first-class
+
+- `case`
+- `brief`
+- `decision`
+- `application-job`
+
+### Keep derived until proven otherwise
 
 - `triage-candidate`
-- `triage-session`
-- `triage-prep-job`
-- `triage-brief`
-- `triage-decision`
-- `triage-application-job`
 - `quorum-state`
 - `judgment-readiness`
 - `staleness-reason`
 
-These should only be introduced if they sharpen the product loop rather than
-add bureaucracy.
+Derived projections should only become durable artifacts if they unlock policy,
+queue work, or provenance that cannot be expressed honestly another way.
 
 ## Staleness And Observer Geometry
 
@@ -274,6 +363,16 @@ XYPH should eventually model staleness as distance from the observation and
 context a judgment was based on, not merely "age in days."
 
 That makes this an observer-geometry problem, not only a timestamp problem.
+
+Version one should still stay boring:
+
+- if the subject changed, mark stale
+- if referenced evidence changed, mark stale
+- if dependencies changed, mark stale
+- if policy changed, mark stale
+- if support or dissent changed materially, mark stale
+
+Dirty-bit invalidation comes first. Fancy distance metrics can come later.
 
 ## Human Hills For This Loop
 
@@ -350,12 +449,29 @@ may have landed without actually improving the product.
 Based on current design and implementation, the biggest missing pieces in the
 loop appear to be:
 
-1. governed interactive triage
-2. multi-brief preparation before judgment
-3. explicit human triage decisions
-4. policy-bounded application jobs after decisions
-5. scoped staleness / observer-distance for briefs and decisions
-6. better linkage from decisions back into frontier and readiness changes
+1. governed interactive case handling for shape-changing matters
+2. multi-brief preparation before human judgment
+3. worldline-backed option sets instead of prose-only alternatives
+4. explicit human decisions with decision classes
+5. policy-bounded application jobs after decisions
+6. boring invalidation logic for stale briefs and stale decisions
+7. better linkage from decisions back into frontier and readiness changes
+
+## Visible UX Guidance
+
+The internal loop can remain eight-phased without exposing eight equal
+workflow states to users.
+
+Human-facing UX should usually collapse into something closer to:
+
+1. ingress
+2. case preparation
+3. judgment
+4. application
+5. closeout
+
+This keeps the ontology sharp without forcing every operator to swim through
+the full internal protocol vocabulary.
 
 ## Design Rule
 
@@ -364,3 +480,6 @@ at risk of becoming product drift.
 
 If XYPH can explain it, but the loop step still happens through side-channel
 chat, ad hoc memory, or invisible automation, the product is still incomplete.
+
+IBM Design Thinking vocabulary belongs in the design method, not in the runtime
+ontology.
