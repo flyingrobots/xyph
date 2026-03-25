@@ -159,6 +159,24 @@ In short:
 - let humans define the judgment model
 - let agents force the model to become explicit
 
+### 16. XYPH Must Embody The Product Loop It Claims To Govern
+
+XYPH's value is not only that it shows project state. It should embody the
+governed loop by which project shape evolves:
+
+- observation
+- suggestion
+- elevation
+- judgment preparation
+- decision
+- application
+- verification
+- reconciliation
+
+If a feature cannot be placed in that loop, it is at risk of becoming drift.
+If the loop still depends on side-channel memory or hidden automation, the
+product remains incomplete even if the UI feels polished.
+
 ## Shared Primitive Model
 
 ### Work Primitives

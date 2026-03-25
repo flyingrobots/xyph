@@ -133,6 +133,9 @@ Start here, then use the focused design documents below:
 - [Product Model](./product-model.md)
   Product principles, shared primitives, attention model, page model, and
   immediate design program.
+- [Product Loop](./product-loop.md)
+  The larger governed project-shaping loop XYPH is meant to embody, including
+  how humans and agents participate differently in the same evolving process.
 - [Cycles](./cycles/README.md)
   Design-first notes for the next bounded product or debt-reduction cycle.
 - [Alignment Sweep — 2026-03](./alignment-sweep-2026-03.md)
