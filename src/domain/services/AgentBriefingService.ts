@@ -34,16 +34,21 @@ import {
   type AgentQuestRef,
 } from './AgentRecommender.js';
 import {
+  buildCaseActionCandidates,
+  buildCaseContext,
   buildGovernanceActionCandidates,
   buildAgentDependencyContext,
   buildSuggestionActionCandidates,
   toAgentQuestRef,
+  type AgentCaseContext,
 } from './AgentContextService.js';
 import {
+  buildCaseWorkSemantics,
   buildGovernanceWorkSemantics,
   buildQuestWorkSemantics,
   buildSuggestionWorkSemantics,
   buildSubmissionWorkSemantics,
+  type CaseWorkSemantics,
   type GovernanceWorkSemantics,
   type QuestWorkSemantics,
   type SuggestionWorkSemantics,
@@ -113,6 +118,19 @@ export interface AgentSuggestionQueueEntry {
   semantics: SuggestionWorkSemantics;
 }
 
+export interface AgentCaseQueueEntry {
+  caseId: string;
+  question: string;
+  status: string;
+  impact: string;
+  risk: string;
+  authority: string;
+  subjectIds: string[];
+  openedFromIds: string[];
+  reason: string;
+  semantics: CaseWorkSemantics;
+}
+
 export interface AgentHandoffSummary {
   noteId: string;
   title: string;
@@ -126,6 +144,7 @@ export interface AgentBriefing {
   reviewQueue: AgentReviewQueueEntry[];
   governanceQueue: AgentGovernanceQueueEntry[];
   suggestionQueue: AgentSuggestionQueueEntry[];
+  caseQueue: AgentCaseQueueEntry[];
   frontier: AgentWorkSummary[];
   recommendationQueue: RecommendationRequest[];
   recentHandoffs: AgentHandoffSummary[];
@@ -138,8 +157,8 @@ export interface AgentNextCandidate extends AgentActionCandidate {
   questTitle: string;
   questStatus: string;
   priority: QuestPriority;
-  source: 'assignment' | 'frontier' | 'planning' | 'submission' | 'governance' | 'suggestion' | 'doctor';
-  semantics?: QuestWorkSemantics | SubmissionWorkSemantics | GovernanceWorkSemantics | SuggestionWorkSemantics;
+  source: 'assignment' | 'frontier' | 'planning' | 'submission' | 'governance' | 'suggestion' | 'case' | 'doctor';
+  semantics?: QuestWorkSemantics | SubmissionWorkSemantics | GovernanceWorkSemantics | SuggestionWorkSemantics | CaseWorkSemantics;
 }
 
 export interface AgentNextResult {
@@ -169,10 +188,12 @@ function kindPriority(kind: string): number {
       return 3;
     case 'packet':
       return 4;
-    case 'revise':
+    case 'brief':
       return 5;
-    case 'inspect':
+    case 'revise':
       return 6;
+    case 'inspect':
+      return 7;
     default:
       return 9;
   }
@@ -190,11 +211,13 @@ function sourcePriority(source: AgentNextCandidate['source']): number {
       return 3;
     case 'suggestion':
       return 4;
-    case 'frontier':
+    case 'case':
       return 5;
+    case 'frontier':
+      return 6;
     case 'planning':
     default:
-      return 6;
+      return 7;
   }
 }
 
@@ -253,6 +276,7 @@ export class AgentBriefingService {
     const reviewQueue = this.buildReviewQueue(snapshot);
     const governanceQueue = this.buildGovernanceQueue(snapshot);
     const suggestionQueue = this.buildSuggestionQueue(snapshot);
+    const caseQueue = await this.buildCaseQueue();
     const recentHandoffs = await this.buildRecentHandoffs();
     const doctorReport = await this.doctor.run();
     const recommendationQueue = buildRecommendationRequests(doctorReport);
@@ -263,6 +287,7 @@ export class AgentBriefingService {
       reviewQueue,
       governanceQueue,
       suggestionQueue,
+      caseQueue,
       recommendationQueue,
       diagnostics,
     );
@@ -276,6 +301,7 @@ export class AgentBriefingService {
       reviewQueue,
       governanceQueue,
       suggestionQueue,
+      caseQueue,
       frontier,
       recommendationQueue,
       recentHandoffs,
@@ -300,6 +326,7 @@ export class AgentBriefingService {
     candidates.push(...this.buildSubmissionCandidates(snapshot));
     candidates.push(...this.buildGovernanceCandidates(snapshot));
     candidates.push(...this.buildSuggestionCandidates(snapshot));
+    candidates.push(...(await this.buildCaseCandidates()));
     candidates.push(...this.buildDoctorCandidates(snapshot, recommendationQueue));
 
     candidates.sort((a, b) =>
@@ -500,6 +527,55 @@ export class AgentBriefingService {
     return queue;
   }
 
+  private async buildCaseQueue(): Promise<AgentCaseQueueEntry[]> {
+    const graph = await this.graphPort.getGraph();
+    const caseNodes = await graph.query()
+      .match('case:*')
+      .select(['id', 'props'])
+      .run()
+      .then(extractNodes);
+    const graphCtx = createGraphContext(this.graphPort);
+
+    const queue = (await Promise.all(caseNodes.map(async (node) => {
+      if (node.props['type'] !== 'case') return null;
+      const detail = await graphCtx.fetchEntityDetail(node.id);
+      if (!detail) return null;
+      const caseContext = buildCaseContext(detail);
+      if (!caseContext) return null;
+      const semantics = buildCaseWorkSemantics({
+        caseId: caseContext.caseId,
+        question: caseContext.question,
+        status: caseContext.status,
+        impact: caseContext.impact,
+        risk: caseContext.risk,
+        authority: caseContext.authority,
+        briefCount: caseContext.briefIds.length,
+      });
+      if (semantics.attentionState === 'none') return null;
+      return {
+        caseId: caseContext.caseId,
+        question: caseContext.question,
+        status: caseContext.status,
+        impact: caseContext.impact,
+        risk: caseContext.risk,
+        authority: caseContext.authority,
+        subjectIds: caseContext.subjectIds,
+        openedFromIds: caseContext.openedFromIds,
+        reason: semantics.nextLawfulActions[0]?.reason
+          ?? semantics.blockingReasons[0]
+          ?? semantics.missingEvidence[0]
+          ?? 'Governed case is available for briefing and judgment preparation.',
+        semantics,
+      } satisfies AgentCaseQueueEntry;
+    }))).filter((entry): entry is AgentCaseQueueEntry => entry !== null);
+
+    queue.sort((a, b) =>
+      attentionPriority(a.semantics.attentionState) - attentionPriority(b.semantics.attentionState) ||
+      a.caseId.localeCompare(b.caseId)
+    );
+    return queue;
+  }
+
   private buildSubmissionCandidates(snapshot: GraphSnapshot): AgentNextCandidate[] {
     const questById = new Map(snapshot.quests.map((quest) => [quest.id, quest] as const));
     const terminalStatuses = new Set(['MERGED', 'CLOSED']);
@@ -580,6 +656,35 @@ export class AgentBriefingService {
         source: 'suggestion' as const,
         semantics: entry.semantics,
       }))
+    );
+  }
+
+  private async buildCaseCandidates(): Promise<AgentNextCandidate[]> {
+    const queue = await this.buildCaseQueue();
+    return queue.flatMap((entry) =>
+      buildCaseActionCandidates({
+        caseContext: {
+          caseId: entry.caseId,
+          question: entry.question,
+          status: entry.status,
+          impact: entry.impact,
+          risk: entry.risk,
+          authority: entry.authority,
+          subjectIds: entry.subjectIds,
+          openedFromIds: entry.openedFromIds,
+          briefIds: [],
+        } satisfies AgentCaseContext,
+        semantics: entry.semantics,
+      })
+        .filter((candidate) => candidate.kind === 'brief')
+        .map((candidate) => ({
+          ...candidate,
+          priority: candidate.priority ?? (entry.impact === 'policy' || entry.impact === 'doctrine' ? 'P1' : 'P2'),
+          questTitle: entry.question,
+          questStatus: entry.status,
+          source: 'case' as const,
+          semantics: entry.semantics,
+        }))
     );
   }
 
@@ -739,6 +844,7 @@ export class AgentBriefingService {
     reviewQueue: AgentReviewQueueEntry[],
     governanceQueue: AgentGovernanceQueueEntry[],
     suggestionQueue: AgentSuggestionQueueEntry[],
+    caseQueue: AgentCaseQueueEntry[],
     recommendationQueue: RecommendationRequest[],
     diagnostics: Diagnostic[],
   ): AgentBriefingAlert[] {
@@ -794,6 +900,15 @@ export class AgentBriefingService {
       });
     }
 
+    if (caseQueue.length > 0) {
+      alerts.push({
+        code: 'case-queue',
+        severity: 'info',
+        message: `${caseQueue.length} governed case(s) are waiting for briefing or judgment preparation.`,
+        relatedIds: caseQueue.map((entry) => entry.caseId),
+      });
+    }
+
     const blockingRecommendations = recommendationQueue.filter((request) =>
       request.priority === 'P0' && (
         request.category === 'structural-blocker' || request.materializable
@@ -812,7 +927,7 @@ export class AgentBriefingService {
       });
     }
 
-    if (assignments.length === 0 && frontier.length === 0) {
+    if (assignments.length === 0 && frontier.length === 0 && caseQueue.length === 0) {
       alerts.push({
         code: 'no-active-work',
         severity: 'info',

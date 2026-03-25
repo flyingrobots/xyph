@@ -254,6 +254,34 @@ function makeQuestDetail(
   };
 }
 
+function makeCaseDetail(overrides?: {
+  props?: Record<string, unknown>;
+  outgoing?: EntityDetail['outgoing'];
+  incoming?: EntityDetail['incoming'];
+}): EntityDetail {
+  return {
+    id: 'case:TRACE-1',
+    type: 'case',
+    props: {
+      title: 'Traceability case',
+      question: 'Should traceability become its own governed quest?',
+      status: 'open',
+      impact: 'frontier',
+      risk: 'reversible-high',
+      authority: 'human-decide-agent-apply',
+      ...overrides?.props,
+    },
+    outgoing: overrides?.outgoing ?? [
+      { nodeId: 'task:TARGET', label: 'concerns' },
+      { nodeId: 'suggestion:AI-TRACE', label: 'opened-from' },
+    ],
+    incoming: overrides?.incoming ?? [
+      { nodeId: 'brief:TRACE-ALT', label: 'briefs' },
+    ],
+    questDetail: null,
+  };
+}
+
 function makeDoctorReport(overrides?: Partial<Record<string, unknown>>) {
   return {
     status: 'ok',
@@ -602,6 +630,45 @@ describe('AgentActionService', () => {
       },
     });
     expect(typeof outcome.normalizedArgs['noteId']).toBe('string');
+  });
+
+  it('includes case-linked brief details during dry-run brief preparation', async () => {
+    const graph = {
+      hasNode: vi.fn(async (id: string) => ['task:TARGET', 'suggestion:AI-TRACE'].includes(id)),
+    };
+    mocks.fetchEntityDetail.mockResolvedValue(makeCaseDetail());
+
+    const service = new AgentActionService(
+      makeGraphPort(graph),
+      makeRoadmap(makeQuest()),
+      'agent.hal',
+    );
+
+    const outcome = await service.execute({
+      kind: 'brief',
+      targetId: 'case:TRACE-1',
+      dryRun: true,
+      args: {
+        title: 'Recommendation: split the traceability work',
+        message: 'Create a dedicated governed quest so the traceability work has explicit scope and evidence expectations.',
+        rationale: 'The current umbrella quest keeps mixing delivery and traceability hardening.',
+        relatedIds: ['suggestion:AI-TRACE'],
+      },
+    });
+
+    expect(outcome).toMatchObject({
+      kind: 'brief',
+      targetId: 'case:TRACE-1',
+      allowed: true,
+      result: 'dry-run',
+      details: {
+        caseId: 'case:TRACE-1',
+        briefKind: 'recommendation',
+        subjectIds: ['task:TARGET'],
+        relatedIds: ['task:TARGET', 'suggestion:AI-TRACE'],
+      },
+    });
+    expect(typeof outcome.details?.['briefId']).toBe('string');
   });
 
   it('writes graph-native handoff notes with attached content and document links', async () => {

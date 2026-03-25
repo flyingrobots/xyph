@@ -13,7 +13,7 @@ import {
   type RequirementKind,
   type RequirementPriority,
 } from '../entities/Requirement.js';
-import type { GraphSnapshot } from '../models/dashboard.js';
+import type { EntityDetail, GraphSnapshot } from '../models/dashboard.js';
 import type { RecommendationRequest } from '../models/recommendations.js';
 import { IntakeService } from './IntakeService.js';
 import { ReadinessService } from './ReadinessService.js';
@@ -41,12 +41,13 @@ import { WarpSubmissionAdapter } from '../../infrastructure/adapters/WarpSubmiss
 import { GitWorkspaceAdapter } from '../../infrastructure/adapters/GitWorkspaceAdapter.js';
 import type { ReviewVerdict } from '../entities/Submission.js';
 import {
+  buildCaseWorkSemantics,
   buildSubmissionWorkSemantics,
   type AgentWorkSemantics,
 } from './WorkSemanticsService.js';
 
 export const ROUTINE_AGENT_ACTION_KINDS = [
-  'claim', 'shape', 'packet', 'ready', 'comment', 'submit', 'review', 'handoff', 'seal', 'merge',
+  'claim', 'shape', 'packet', 'ready', 'comment', 'brief', 'submit', 'review', 'handoff', 'seal', 'merge',
 ] as const;
 
 export const HUMAN_ONLY_AGENT_ACTION_KINDS = [
@@ -137,6 +138,18 @@ interface CommentAction {
   generatedId: boolean;
 }
 
+interface BriefAction {
+  kind: 'brief';
+  targetId: string;
+  briefId: string;
+  briefKind: 'recommendation';
+  title: string;
+  message: string;
+  rationale: string;
+  subjectIds: string[];
+  relatedIds: string[];
+}
+
 interface SubmitAction {
   kind: 'submit';
   targetId: string;
@@ -193,6 +206,7 @@ type SupportedNormalizedAction =
   | PacketAction
   | ReadyAction
   | CommentAction
+  | BriefAction
   | SubmitAction
   | ReviewAction
   | HandoffAction
@@ -285,6 +299,38 @@ function normalizeStringArray(value: unknown): string[] {
     return trimmed.length > 0 ? [trimmed] : [];
   }
   return [];
+}
+
+function extractCaseQuestion(detail: EntityDetail): string {
+  if (typeof detail.props['question'] === 'string') return detail.props['question'];
+  if (typeof detail.props['decision_question'] === 'string') return detail.props['decision_question'];
+  if (typeof detail.props['title'] === 'string') return detail.props['title'];
+  return detail.id;
+}
+
+function extractCaseSubjectIds(detail: EntityDetail): string[] {
+  return detail.outgoing
+    .filter((edge) => edge.label === 'concerns')
+    .map((edge) => edge.nodeId)
+    .sort((a, b) => a.localeCompare(b));
+}
+
+function extractCaseBriefIds(detail: EntityDetail): string[] {
+  return detail.incoming
+    .filter((edge) => edge.label === 'briefs')
+    .map((edge) => edge.nodeId)
+    .sort((a, b) => a.localeCompare(b));
+}
+
+function buildBriefActionDetails(action: BriefAction): Record<string, unknown> {
+  return {
+    caseId: action.targetId,
+    briefId: action.briefId,
+    briefKind: action.briefKind,
+    title: action.title,
+    subjectIds: action.subjectIds,
+    relatedIds: action.relatedIds,
+  };
 }
 
 export class AgentActionValidator {
@@ -396,6 +442,8 @@ export class AgentActionValidator {
         return this.validateReady(request);
       case 'comment':
         return this.validateComment(request);
+      case 'brief':
+        return this.validateBrief(request);
       case 'submit':
         return this.validateSubmit(request);
       case 'review':
@@ -800,6 +848,124 @@ export class AgentActionValidator {
         ...(replyTo ? [`replies-to -> ${replyTo}`] : []),
         'attach content blob',
       ],
+    );
+  }
+
+  private async validateBrief(request: AgentActionRequest): Promise<ValidatedAssessment> {
+    if (!request.targetId.startsWith('case:')) {
+      return failAssessment(request, 'invalid-target', [
+        `brief requires a case:* target, got '${request.targetId}'`,
+      ]);
+    }
+
+    const title = typeof request.args['title'] === 'string' && request.args['title'].trim().length > 0
+      ? request.args['title'].trim()
+      : '';
+    if (title.length < 5) {
+      return failAssessment(request, 'invalid-args', [
+        'brief requires a title of at least 5 characters',
+      ]);
+    }
+
+    const message = typeof request.args['message'] === 'string'
+      ? request.args['message'].trim()
+      : '';
+    if (message.length < 10) {
+      return failAssessment(request, 'invalid-args', [
+        'brief requires a message of at least 10 characters',
+      ]);
+    }
+
+    const rationale = typeof request.args['rationale'] === 'string'
+      ? request.args['rationale'].trim()
+      : '';
+    if (rationale.length < 5) {
+      return failAssessment(request, 'invalid-args', [
+        'brief requires a rationale of at least 5 characters',
+      ]);
+    }
+
+    const graphCtx = createGraphContext(this.graphPort);
+    const detail = await graphCtx.fetchEntityDetail(request.targetId);
+    if (!detail || detail.type !== 'case') {
+      return failAssessment(request, 'not-found', [
+        `Target ${request.targetId} not found as a governed case in the graph`,
+      ]);
+    }
+
+    const graph = await this.graphPort.getGraph();
+    const subjectIds = extractCaseSubjectIds(detail);
+    const relatedIds = [...new Set([
+      ...subjectIds,
+      ...normalizeStringArray(request.args['relatedIds']),
+    ])];
+    for (const relatedId of relatedIds) {
+      if (!await graph.hasNode(relatedId)) {
+        const briefId = autoId('brief:');
+        return failAssessment(request, 'not-found', [
+          `Related target ${relatedId} not found in the graph`,
+        ], {
+          normalizedArgs: {
+            briefId,
+            briefKind: 'recommendation',
+            title,
+            message,
+            rationale,
+            subjectIds,
+            relatedIds,
+          },
+          underlyingCommand: `xyph act brief ${request.targetId}`,
+          sideEffects: [
+            'create brief node',
+            `briefs -> ${request.targetId}`,
+            ...relatedIds.map((id) => `documents -> ${id}`),
+            'attach content blob',
+          ],
+        });
+      }
+    }
+
+    const semantics = buildCaseWorkSemantics({
+      caseId: request.targetId,
+      question: extractCaseQuestion(detail),
+      status: typeof detail.props['status'] === 'string' ? detail.props['status'] : 'open',
+      impact: typeof detail.props['impact'] === 'string' ? detail.props['impact'] : 'local',
+      risk: typeof detail.props['risk'] === 'string' ? detail.props['risk'] : 'reversible-low',
+      authority: typeof detail.props['authority'] === 'string' ? detail.props['authority'] : 'human-only',
+      briefCount: extractCaseBriefIds(detail).length,
+    });
+
+    const briefId = autoId('brief:');
+    return successAssessment(
+      request,
+      {
+        kind: 'brief',
+        targetId: request.targetId,
+        briefId,
+        briefKind: 'recommendation',
+        title,
+        message,
+        rationale,
+        subjectIds,
+        relatedIds,
+      },
+      {
+        briefId,
+        briefKind: 'recommendation',
+        title,
+        message,
+        rationale,
+        subjectIds,
+        relatedIds,
+      },
+      `xyph act brief ${request.targetId}`,
+      [
+        `create ${briefId}`,
+        `briefs -> ${request.targetId}`,
+        ...relatedIds.map((id) => `documents -> ${id}`),
+        'attach content blob',
+      ],
+      semantics,
     );
   }
 
@@ -1419,11 +1585,14 @@ export class AgentActionService {
     }
 
     if (assessment.dryRun) {
+      const details = assessment.normalizedAction?.kind === 'brief'
+        ? buildBriefActionDetails(assessment.normalizedAction)
+        : null;
       return {
         ...assessment,
         result: 'dry-run',
         patch: null,
-        details: null,
+        details,
       };
     }
 
@@ -1455,6 +1624,8 @@ export class AgentActionService {
           return await this.executeReady(assessment, normalized);
         case 'comment':
           return await this.executeComment(assessment, normalized);
+        case 'brief':
+          return await this.executeBrief(assessment, normalized);
         case 'submit':
           return await this.executeSubmit(assessment, normalized);
         case 'review':
@@ -1691,6 +1862,42 @@ export class AgentActionService {
         on: action.targetId,
         replyTo: action.replyTo ?? null,
         generatedId: action.generatedId,
+        authoredBy: this.agentId,
+        authoredAt: now,
+        contentOid: contentOid ?? null,
+      },
+    };
+  }
+
+  private async executeBrief(
+    assessment: ValidatedAssessment,
+    action: BriefAction,
+  ): Promise<AgentActionOutcome> {
+    const graph = await this.graphPort.getGraph();
+    const patch = await createPatchSession(graph);
+    const now = Date.now();
+    patch
+      .addNode(action.briefId)
+      .setProperty(action.briefId, 'type', 'brief')
+      .setProperty(action.briefId, 'brief_kind', action.briefKind)
+      .setProperty(action.briefId, 'title', action.title)
+      .setProperty(action.briefId, 'rationale', action.rationale)
+      .setProperty(action.briefId, 'authored_by', this.agentId)
+      .setProperty(action.briefId, 'authored_at', now)
+      .addEdge(action.briefId, action.targetId, 'briefs');
+    for (const relatedId of action.relatedIds) {
+      patch.addEdge(action.briefId, relatedId, 'documents');
+    }
+    await patch.attachContent(action.briefId, action.message);
+    const sha = await patch.commit();
+    const contentOid = await graph.getContentOid(action.briefId) ?? undefined;
+
+    return {
+      ...assessment,
+      result: 'success',
+      patch: sha,
+      details: {
+        ...buildBriefActionDetails(action),
         authoredBy: this.agentId,
         authoredAt: now,
         contentOid: contentOid ?? null,
