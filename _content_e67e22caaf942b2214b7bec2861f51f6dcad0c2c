@@ -1,0 +1,18 @@
+{
+  "audience": "human",
+  "evidence": "Observed directly via XYPH CLI: briefing accepted human.james and returned principalType=human instead of refusing or requiring an explicit override.",
+  "kind": "quest",
+  "nextAction": "Open the suggestion page, review the rationale, and if you agree adopt it into governed work instead of bypassing the suggestion flow.",
+  "origin": "spontaneous",
+  "relatedIds": [
+    "task:agent-cli-hardening",
+    "task:agent-cli-identity-gate"
+  ],
+  "requestedBy": null,
+  "status": "suggested",
+  "suggestedBy": "agent.prime",
+  "summary": "Agent-native operational commands like briefing, next, act, and handoff should default to agent.* identities. The current runtime accepts human.* identities on these surfaces, which blurs the human/agent boundary and makes the control plane less trustworthy.",
+  "targetId": null,
+  "title": "Enforce agent identity on agent-native CLI commands",
+  "why": "We just demonstrated that a human identity can run agent-native briefing. This should probably become an explicit policy boundary instead of an accidental shared surface."
+}
