@@ -120,3 +120,4 @@ around it.
 1. [Suggestion Adoption and Explainability](./0001-suggestion-adoption.md)
 2. [Agent CLI Hardening](./0002-agent-cli-hardening.md)
 3. [Case-Driven Governance](./0003-case-driven-governance.md)
+4. [git-warp Substrate Alignment](./0004-substrate-alignment.md)

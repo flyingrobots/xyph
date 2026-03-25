@@ -138,6 +138,10 @@ Start here, then use the focused design documents below:
 - [Product Model](./product-model.md)
   Product principles, shared primitives, attention model, page model, and
   immediate design program.
+- [Substrate Alignment](./substrate-alignment.md)
+  The desired git-warp / XYPH boundary, current gaps, and the staged
+  alignment program for moving worldline/observer/working-set behavior down
+  into the substrate.
 - [Product Loop](./product-loop.md)
   The larger governed project-shaping loop XYPH is meant to embody, including
   how humans and agents participate differently in the same evolving process.

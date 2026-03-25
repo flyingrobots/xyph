@@ -141,6 +141,10 @@ must pin the agent path first.
   attempting richer observer-geometry scoring.
 - Keep the first slice boring and inspectable in JSON before making it pretty
   anywhere else.
+- The first slice proved the product semantics. Further generalization should
+  now follow the substrate-alignment work in
+  [0004: git-warp Substrate Alignment](./0004-substrate-alignment.md) instead
+  of pushing more worldline/observer mechanics up into XYPH.
 
 ## Playback Questions
 

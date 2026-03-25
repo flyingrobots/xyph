@@ -135,6 +135,20 @@ Humans and agents should consume the same graph truth through different lenses.
 The human landing cockpit and the agent-native CLI should disagree in format,
 not in reality.
 
+### 14a. Observer-First Reads, Intent-First Writes
+
+XYPH should not treat the graph as raw mutable storage and then reconstruct its
+own pseudo-database above it.
+
+Reads should prefer substrate-native worldline and observer semantics. Writes
+should lower through substrate-native intent, working-set, tick, and
+transfer/collapse semantics before XYPH adds policy and governance meaning.
+
+The goal is:
+
+- git-warp owns speculative graph evolution
+- XYPH owns lawful product interpretation of that evolution
+
 ### 15. Agent-First Technical Seams, Human-First Judgment
 
 By default, XYPH should implement shared semantics and agent-native seams
@@ -236,6 +250,22 @@ Pages and queues should surface these shared judgments:
 - `expectedActor`
 - `claimability`
 - `attentionState`
+
+### Substrate Primitives
+
+These should belong to git-warp and be consumed by XYPH rather than rebuilt in
+application code:
+
+- **WorldLine**
+- **Observer**
+- **Working Set**
+- **Intent**
+- **Tick**
+- **Tick receipt / BTR**
+- **Transfer / collapse primitive**
+
+XYPH should layer policy, governance, and human/agent product semantics on top
+of those substrate facts.
 
 ### Agent-Native Primitives
 
