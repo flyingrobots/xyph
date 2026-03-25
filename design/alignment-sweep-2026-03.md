@@ -35,21 +35,22 @@ These remain active sources of truth:
 - [`/Users/james/git/xyph/docs/canonical/`](../docs/canonical)
 - graph-backed roadmap, inbox, and dependencies via `xyph-actuator.ts status`
 
-### Historical Or Secondary
+### Removed Or Demoted
 
-These documents are still useful, but they are not active planning truth:
+This sweep concluded that several older planning documents no longer earned
+their place in the active repo surface:
 
-- [`/Users/james/git/xyph/TASKS.md`](../TASKS.md)
-- [`/Users/james/git/xyph/docs/PLAN.md`](../docs/PLAN.md)
-- [`/Users/james/git/xyph/docs/TUI-plan.md`](../docs/TUI-plan.md)
+- `TASKS.md` was removed entirely
+- `docs/PLAN.md` was removed entirely
+- `docs/TUI-plan.md` was removed entirely
 - the milestone spine in [`/Users/james/git/xyph/README.md`](../README.md)
+  remains, but only as historical context rather than active planning truth
 
 ### Sweep Decision
 
 The repo should treat the unified design corpus plus the graph backlog as the
-living source of product intent. Legacy planning docs may remain for context,
-but they should point back to the current sources rather than competing with
-them.
+living source of product intent. Competing planning docs should be removed once
+they no longer help more than they confuse.
 
 ## Backlog Sweep
 

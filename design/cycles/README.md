@@ -50,6 +50,22 @@ The expected order is:
 If a cycle is not anchored to graph-visible work, it is not ready to be treated
 as an active XYPH slice.
 
+## Cycle Closeout Gate
+
+Cycle notes are not complete when the implementation ships. A cycle closes only
+after behavior, docs, backlog, and graveyard have been reconciled.
+
+At minimum, closeout should answer:
+
+1. did the acceptance tests land and pass?
+2. do the README and design corpus still describe the current product honestly?
+3. which backlog items were added, superseded, or rejected?
+4. did any graveyarded work deserve reopening under the current doctrine?
+5. what is the next cycle, and why?
+
+This should be a lightweight gate, not process theater. The point is simply to
+keep the graph, the corpus, and the product from drifting apart again.
+
 ## What Belongs Here
 
 Good cycle notes are:

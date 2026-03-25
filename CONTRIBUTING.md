@@ -177,6 +177,40 @@ This is intentional. XYPH should not roll blindly from one cycle into the next
 while tech debt, product drift, or newly discovered work piles up off to the
 side.
 
+### Required Closeout Checklist
+
+For any meaningful cycle that is intended to merge to `main`, closeout should be
+treated as a required gate, not optional cleanup.
+
+Before calling the cycle closed, verify:
+
+1. **Behavior landed**
+   - acceptance tests for the cycle exist and pass
+   - implementation still matches the active cycle note
+
+2. **Docs reconciled**
+   - the root README reflects current user-facing reality when the surface changed
+   - the design corpus reflects any product-model or doctrine change
+   - stale planning docs have been updated, demoted, or deleted
+
+3. **Backlog reconciled**
+   - work discovered during the cycle has been added
+   - retrospective fallout has been added
+   - preserved COOL IDEAS™ have been added
+   - backlog items that no longer fit the product have been rejected or superseded
+
+4. **Graveyard reviewed**
+   - explicitly check whether any graveyarded work should be reopened under the
+     current doctrine
+   - if nothing should reopen, record that outcome anyway
+
+5. **Next cycle chosen intentionally**
+   - decide whether the next cycle is a new product cycle or a debt-reduction /
+     simplification cycle
+
+The closeout question is not "did the code land?" It is "did behavior, docs,
+backlog, and graveyard all reconcile to the same product truth?"
+
 ### Development Standard
 
 When in doubt:
