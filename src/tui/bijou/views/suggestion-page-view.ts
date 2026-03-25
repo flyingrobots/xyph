@@ -105,12 +105,20 @@ function pushReasonBlock(lines: string[], style: StylePort, item: CockpitItem | 
   }
 }
 
-function pageActions(style: StylePort): SuggestionPageAction[] {
-  return [
+function pageActions(style: StylePort, suggestion: AiSuggestionNode, detail: EntityDetail | null): SuggestionPageAction[] {
+  const actions: SuggestionPageAction[] = [
     { key: 'Esc', label: 'Return to the landing cockpit', token: style.theme.semantic.muted },
     { key: ';', label: 'Comment on this suggestion', token: style.theme.semantic.info },
     { key: 'e', label: 'Open AI explainability', token: style.theme.ui.aiLabel },
   ];
+  const hasLinkedCase = Boolean(
+    suggestion.linkedCaseId
+    || detail?.incoming?.some((entry) => entry.label === 'opened-from' && entry.nodeId.startsWith('case:')),
+  );
+  if (hasLinkedCase) {
+    actions.push({ key: 'Enter', label: 'Open linked governed case', token: style.theme.semantic.primary });
+  }
+  return actions;
 }
 
 function suggestionLifecycleActions(style: StylePort, suggestion: AiSuggestionNode): SuggestionPageAction[] {
@@ -187,7 +195,7 @@ function buildSuggestionPageContent(
   }
 
   pushSectionTitle(lines, style, 'Actions');
-  for (const action of pageActions(style)) {
+  for (const action of pageActions(style, suggestion, detail)) {
     pushAction(lines, style, action, width);
   }
   for (const action of suggestionLifecycleActions(style, suggestion)) {
@@ -222,6 +230,15 @@ function buildSuggestionPageContent(
   pushField(lines, 'Actor', shortPrincipal(suggestion.suggestedBy), width);
   pushField(lines, 'When', `${formatAge(suggestion.suggestedAt)} ago`, width);
   pushField(lines, 'Target', suggestion.targetId ? shortId(suggestion.targetId) : '—', width);
+  if (suggestion.linkedCaseId) {
+    pushField(
+      lines,
+      'Case',
+      suggestion.linkedCaseStatus ? `${shortId(suggestion.linkedCaseId)} · ${suggestion.linkedCaseStatus}` : shortId(suggestion.linkedCaseId),
+      width,
+      (value) => statusText(style, value),
+    );
+  }
   if (suggestion.requestedBy) {
     pushField(lines, 'Requested by', shortPrincipal(suggestion.requestedBy), width);
   }

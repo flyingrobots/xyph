@@ -234,6 +234,8 @@ export interface AiSuggestionNode {
   adoptedArtifactId?: string;
   adoptedArtifactKind?: AiSuggestionAdoptionKind;
   supersededById?: string;
+  linkedCaseId?: string;
+  linkedCaseStatus?: string;
 }
 
 export type NarrativeNodeType = 'spec' | 'adr' | 'note';

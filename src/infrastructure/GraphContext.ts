@@ -373,6 +373,7 @@ class GraphContextImpl implements GraphContext {
       patchsetNodes, reviewNodes, decisionNodes,
       storyNodes, requirementNodes, criterionNodes, evidenceNodes, policyNodes,
       suggestionNodes,
+      caseNodes,
       comparisonArtifactNodes, collapseProposalNodes, attestationNodes,
     ] = await Promise.all([
       graph.query().match('task:*').select(['id', 'props']).run().then(extractNodes),
@@ -391,6 +392,7 @@ class GraphContextImpl implements GraphContext {
       graph.query().match('evidence:*').select(['id', 'props']).run().then(extractNodes),
       graph.query().match('policy:*').select(['id', 'props']).run().then(extractNodes),
       graph.query().match('suggestion:*').select(['id', 'props']).run().then(extractNodes),
+      graph.query().match('case:*').select(['id', 'props']).run().then(extractNodes),
       graph.query().match('comparison-artifact:*').select(['id', 'props']).run().then(extractNodes),
       graph.query().match('collapse-proposal:*').select(['id', 'props']).run().then(extractNodes),
       graph.query().match('attestation:*').select(['id', 'props']).run().then(extractNodes),
@@ -413,6 +415,7 @@ class GraphContextImpl implements GraphContext {
       ...requirementNodes.map((n) => n.id),
       ...evidenceNodes.map((n) => n.id),
       ...policyNodes.map((n) => n.id),
+      ...caseNodes.map((n) => n.id),
     ];
     const neighborsCache = await batchNeighbors(graph, neighborsNeeded);
 
@@ -918,6 +921,16 @@ class GraphContextImpl implements GraphContext {
     log('Building suggestion models…');
     const suggestions: SuggestionNode[] = [];
     const aiSuggestions: AiSuggestionNode[] = [];
+    const suggestionCaseLinks = new Map<string, { caseId: string; caseStatus?: string }>();
+    for (const n of caseNodes) {
+      if (n.props['type'] !== 'case') continue;
+      const caseStatus = typeof n.props['status'] === 'string' ? n.props['status'] : undefined;
+      const neighbors = neighborsCache.get(n.id) ?? [];
+      for (const nb of neighbors) {
+        if (nb.label !== 'opened-from' || !nb.nodeId.startsWith('suggestion:')) continue;
+        suggestionCaseLinks.set(nb.nodeId, { caseId: n.id, caseStatus });
+      }
+    }
     for (const n of suggestionNodes) {
       if (n.props['type'] === 'ai_suggestion') {
         const kind = n.props['suggestion_kind'];
@@ -1000,6 +1013,8 @@ class GraphContextImpl implements GraphContext {
             ? adoptedArtifactKind as AiSuggestionAdoptionKind
             : undefined,
           supersededById: typeof supersededById === 'string' ? supersededById : undefined,
+          linkedCaseId: suggestionCaseLinks.get(n.id)?.caseId,
+          linkedCaseStatus: suggestionCaseLinks.get(n.id)?.caseStatus,
         });
         continue;
       }

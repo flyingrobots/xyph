@@ -217,6 +217,99 @@ describe('cockpitView', () => {
     expect(plain).not.toContain('● QUEST');
   });
 
+  it('explains empty suggestion subviews and points to the other suggestion buckets', () => {
+    const snapshot = makeSnapshot({
+      aiSuggestions: [
+        {
+          id: 'suggestion:ADOPTED-1',
+          type: 'ai-suggestion',
+          kind: 'quest',
+          title: 'Adopted governed suggestion',
+          summary: 'Already adopted.',
+          status: 'accepted',
+          audience: 'human',
+          origin: 'spontaneous',
+          suggestedBy: 'agent.oracle',
+          suggestedAt: 120,
+          relatedIds: [],
+        },
+        {
+          id: 'suggestion:DISMISSED-1',
+          type: 'ai-suggestion',
+          kind: 'dependency',
+          title: 'Dismissed suggestion',
+          summary: 'Already dismissed.',
+          status: 'rejected',
+          audience: 'human',
+          origin: 'spontaneous',
+          suggestedBy: 'agent.oracle',
+          suggestedAt: 110,
+          relatedIds: [],
+        },
+      ],
+    });
+    const model = {
+      ...makeModel(snapshot),
+      lane: 'suggestions' as const,
+      suggestionsView: 'incoming' as const,
+      table: buildLaneTable(snapshot, 'suggestions', 20, 0, 'agent.test', 'queue', 'incoming'),
+    };
+
+    const plain = strip(cockpitView(model, style, 120, 30));
+
+    expect(plain).toContain('No items in incoming.');
+    expect(plain).toContain('Incoming 0 · Queued 0 · Adopted 1 · Dismissed 1');
+    expect(plain).toContain('Press v to cycle suggestion views.');
+  });
+
+  it('surfaces linked cases and biases current-observer suggestions first', () => {
+    const snapshot = makeSnapshot({
+      aiSuggestions: [
+        {
+          id: 'suggestion:OTHER-1',
+          type: 'ai-suggestion',
+          kind: 'quest',
+          title: 'Someone else suggested this first',
+          summary: 'A different suggestion.',
+          status: 'suggested',
+          audience: 'human',
+          origin: 'spontaneous',
+          suggestedBy: 'agent.other',
+          suggestedAt: 100,
+          relatedIds: [],
+        },
+        {
+          id: 'suggestion:MINE-1',
+          type: 'ai-suggestion',
+          kind: 'quest',
+          title: 'My suggestion has a governed case',
+          summary: 'This one should sort first.',
+          status: 'suggested',
+          audience: 'human',
+          origin: 'spontaneous',
+          suggestedBy: 'agent.test',
+          suggestedAt: 90,
+          relatedIds: [],
+          linkedCaseId: 'case:TRACE-1',
+          linkedCaseStatus: 'ready-for-judgment',
+        },
+      ],
+    });
+    const model = {
+      ...makeModel(snapshot),
+      lane: 'suggestions' as const,
+      suggestionsView: 'incoming' as const,
+      table: buildLaneTable(snapshot, 'suggestions', 20, 0, 'agent.test', 'queue', 'incoming'),
+    };
+
+    const plain = strip(cockpitView(model, style, 120, 30));
+
+    expect(plain).toContain('case TRACE-1');
+    expect(plain.indexOf('My suggestion has a governed case')).toBeLessThan(
+      plain.indexOf('Someone else suggested this first'),
+    );
+  });
+
   it('renders settlement detail for a selected governance artifact', () => {
     const snapshot = makeSnapshot({
       governanceArtifacts: [{
@@ -454,5 +547,31 @@ describe('renderMyStuffDrawer', () => {
     expect(plain).toContain('wrap cleanly across multiple lines');
     expect(plain).toContain('Recent Activity');
     expect(plain).toContain('recorded comparison task:Q1');
+  });
+
+  it('shows active suggestions for the current observer, including linked cases', () => {
+    const snap = makeSnapshot({
+      aiSuggestions: [
+        {
+          id: 'suggestion:TRACE-1',
+          type: 'ai-suggestion',
+          kind: 'quest',
+          title: 'Promote traceability follow-up',
+          summary: 'Track this suggestion in my drawer.',
+          status: 'suggested',
+          audience: 'human',
+          origin: 'spontaneous',
+          suggestedBy: 'agent.test',
+          suggestedAt: 100,
+          relatedIds: [],
+          linkedCaseId: 'case:TRACE-1',
+        },
+      ],
+    });
+
+    const plain = strip(renderMyStuffDrawer(snap, style, 'agent.test', 60, 24));
+    expect(plain).toContain('My Suggestions');
+    expect(plain).toContain('Promote traceability follow-up');
+    expect(plain).toContain('case TRACE-1');
   });
 });
