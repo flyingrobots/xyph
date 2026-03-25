@@ -181,6 +181,16 @@ If a feature cannot be placed in that loop, it is at risk of becoming drift.
 If the loop still depends on side-channel memory or hidden automation, the
 product remains incomplete even if the UI feels polished.
 
+Shape-governance cases should classify matters through orthogonal axes instead
+of mixed enums:
+
+- impact
+- risk
+- authority
+
+And where possible, decisions should compile into existing work primitives with
+causal linkage rather than inventing new execution nouns by default.
+
 ## Shared Primitive Model
 
 ### Work Primitives

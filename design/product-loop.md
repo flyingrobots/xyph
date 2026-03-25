@@ -107,8 +107,17 @@ This may be observed by:
 - an agent
 - or a derived XYPH analysis surface
 
-The important rule is that observation should be anchored in graph truth rather
-than hidden side-channel intuition.
+Important signals may begin off-graph:
+
+- customer pain
+- incident chatter
+- human intuition
+- weak pattern detection
+- partial external context
+
+The rule is not that the graph already knows. The rule is that nothing governs
+until the observation is reified into graph-backed form with provenance and
+uncertainty attached.
 
 Observation is usually an ingress moment, not a long-lived workflow state.
 
@@ -150,6 +159,10 @@ This implies a distinction between:
 Elevation should usually be modeled as a threshold crossing or transition, not
 as a grand visible cathedral of its own.
 
+Multiple suggestions about the same subject and question should preferably
+converge on one case or an explicitly related cluster. Otherwise the system
+starts generating administrative shrapnel instead of governed attention.
+
 ### 4. Prepare Judgment
 
 Once elevated, the system should gather enough context for lawful judgment.
@@ -171,20 +184,31 @@ Prepared judgment should be expressed through a small set of durable artifacts:
 - `brief`
 - optional dissent or alternative brief
 
+Every case should have a minimal spine:
+
+- a decision question
+- subject refs
+- impact scope
+- referenced options
+- referenced evidence and provenance
+- current governing status
+
 The UX should prefer `case` as the human-facing term even if an internal
 implementation name such as `triage-session` survives behind the scenes.
 
-For serious shape-changing matters, options should not stop at prose. They
-should ideally be backed by:
+Option structure should be progressive:
 
-- worldlines
-- braids
-- structured graph deltas
+- low stakes: prose plus explicit predicted delta
+- medium stakes: structured graph delta
+- high stakes: worldline
+- co-present or composable alternatives: braid
 
-That lets humans judge visible future shapes instead of persuasive text blobs.
+That lets humans judge visible future shapes instead of persuasive text blobs
+without forcing worldlines into every trivial matter.
 
 This is also where XYPH may require multiple perspectives before a case is
-considered ready for human judgment.
+considered ready for human judgment. For high-impact matters, readiness should
+care about perspective diversity, not only raw agent count.
 
 ### 5. Decide
 
@@ -206,14 +230,15 @@ Typical outcomes may include:
 
 The decision itself must be durable, attributable, and rationalized.
 
-Decisions should also carry an explicit class or autonomy level such as:
+Decision classification should use orthogonal axes rather than one overloaded
+enum:
 
-- informational
-- reversible low-risk
-- shape-changing
-- policy-changing
+- `impact`: `local | frontier | policy | doctrine`
+- `risk`: `reversible-low | reversible-high | hard-to-reverse`
+- `authority`: `human-only | human-decide-agent-apply | policy-delegated`
 
-That class should influence required preparation, authority, and follow-up.
+Preparation depth, approver rules, and application bounds should be a function
+of those axes.
 
 ### 6. Apply
 
@@ -231,6 +256,12 @@ execution that follows it should not collapse into one opaque action.
 A decision record that emits no follow-up work, frontier delta, or explicit
 "no action" outcome is incomplete.
 
+The default should be to compile decisions into existing work primitives such
+as quests, campaigns, submissions, and settlement flow with explicit causal
+links, for example `causedByDecision` or `fulfillsDecision`. A separate
+execution artifact should only appear if existing work units genuinely cannot
+carry the semantics.
+
 ### 7. Verify
 
 Application is not the same as success.
@@ -244,6 +275,15 @@ The result must be verified against:
 - graph and governance health
 
 This is where XYPH closes the loop between project shaping and project truth.
+
+Verification should culminate in a decision receipt that says:
+
+- what option was chosen
+- expected frontier, readiness, or risk delta
+- actual delta
+- evidence refs
+- variance or surprises
+- whether the decision stands, is stale, or was superseded
 
 ### 8. Reconcile
 
@@ -265,10 +305,11 @@ model, not external process fluff.
 The loop should start with the smallest durable artifact model that can support
 governed project shaping:
 
+- reified observation when needed
 - `case`
 - `brief`
 - `decision`
-- `application-job`
+- linked follow-on work
 
 A minimal end-to-end spine looks like this:
 
@@ -277,9 +318,10 @@ suggestion or observation
   -> case
   -> brief(s) + option worldlines
   -> human decision
-  -> application job
+  -> linked quest(s) or other lawful follow-on work
   -> submission/review/settlement
   -> evidence
+  -> decision receipt
   -> reconcile
 ```
 
@@ -332,10 +374,11 @@ and what should remain a derived judgment until proven necessary.
 
 ### Keep first-class
 
+- reified observation when needed
 - `case`
 - `brief`
 - `decision`
-- `application-job`
+- decision-linked follow-on work using existing primitives when possible
 
 ### Keep derived until proven otherwise
 
@@ -373,6 +416,19 @@ Version one should still stay boring:
 - if support or dissent changed materially, mark stale
 
 Dirty-bit invalidation comes first. Fancy distance metrics can come later.
+
+## Non-Linear Transitions
+
+This is a loop, not a conveyor belt.
+
+Important transitions include:
+
+- request-more-evidence returns to preparation
+- verify-failed can reopen the case
+- a later case or decision can supersede an earlier one
+- reconcile can emit a new case instead of only closing the old one
+- changed policy or changed subject context can invalidate pending briefs
+- changed evidence can move a case back out of judgment-ready state
 
 ## Human Hills For This Loop
 
@@ -472,6 +528,9 @@ Human-facing UX should usually collapse into something closer to:
 
 This keeps the ontology sharp without forcing every operator to swim through
 the full internal protocol vocabulary.
+
+The default should be to express this inside existing pages, drill-ins, and
+overlays before adding a dedicated new cockpit lane.
 
 ## Design Rule
 
