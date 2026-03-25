@@ -20,6 +20,53 @@ Each substantial cycle should normally have:
 Those are not redundant. The point is to verify that the same graph truth and
 governance model remain usable through both lenses.
 
+Playbacks should be treated as a formal gate in the cycle, not as optional
+cleanup after implementation.
+
+## What A Playback Measures
+
+Playbacks are where XYPH measures progress against the declared hills through
+the perspectives of the relevant sponsor actors.
+
+They are not primarily measuring "semantic" versus "surface" progress. Those
+are useful checkpoints during implementation, but the playback question is more
+important:
+
+- did this cycle improve the intended hill?
+- for which sponsor actor?
+- under what real graph-backed scenario?
+
+That means every substantial playback should be grounded in:
+
+- the cycle's sponsor actors
+- the cycle's hill or hills
+- one or more real graph-backed cases or transcripts
+
+The output should say whether the cycle materially improved the target outcome,
+not just whether the implementation exists.
+
+## Relationship To Checkpoints
+
+XYPH cycles usually move through four checkpoints:
+
+1. doctrine
+2. spec
+3. semantic
+4. surface
+
+Playbacks fit on top of those checkpoints rather than replacing them.
+
+- the **semantic checkpoint** should usually be tested first through an agent
+  playback, because that is where missing building blocks and hidden ambiguity
+  show up earliest
+- the **surface checkpoint** should usually be tested through a human playback,
+  because that is where judgment, orientation, and explainability either become
+  legible or fail
+
+The same cycle can have both semantic and surface progress while still failing
+the playback if it did not actually move the hill for the sponsor actors it was
+meant to help.
+
 ## Human Playback Questions
 
 For human-surface slices, ask:
@@ -85,6 +132,7 @@ A good playback should end with:
 
 - a decision about whether the slice actually improved the relevant sponsor
   actor outcome
+- a statement of which hill was tested and whether it moved materially
 - a decision about whether the slice preserved the design invariants
 - a decision about whether the human and agent lenses still agree about what is
   true, what is allowed, and what should happen next

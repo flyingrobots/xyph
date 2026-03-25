@@ -115,6 +115,11 @@ The constraint on that default is equally important:
 - if the agent surface and human surface diverge semantically, the product is
   drifting
 
+Cycles usually move through doctrine, spec, semantic, and surface checkpoints.
+Those checkpoints are useful internally, but the slice is judged through formal
+playbacks tied to sponsor actors and hills, not just by whether a checkpoint
+exists.
+
 ## Design Corpus
 
 Start here, then use the focused design documents below:

@@ -134,6 +134,29 @@ The slice is not done because code landed. It is done when:
 - the behavior is captured in executable tests
 - the docs reflect what is now true
 
+### Cycle Checkpoints
+
+Each meaningful cycle should normally move through four checkpoints:
+
+1. **Doctrine checkpoint**
+   - cycle note and design corpus are aligned
+   - the shared semantic model is explicit enough to build against
+
+2. **Spec checkpoint**
+   - acceptance tests exist and fail for the right reasons
+   - the red spec expresses the behavior we actually want
+
+3. **Semantic checkpoint**
+   - the shared packet / control-plane semantics go green
+   - the agent-native CLI or protocol can express the slice honestly
+
+4. **Surface checkpoint**
+   - the human-facing page, TUI flow, or narrative surface catches up
+   - the same underlying semantics are legible through the human lens
+
+These are not four separate milestones. They are the normal sequence for
+turning design intent into a working XYPH slice.
+
 ### Tests Are The Spec
 
 XYPH follows a hard rule:
@@ -153,6 +176,22 @@ For cycle-scale behavior:
 Until older tests are migrated, existing unit/integration tests elsewhere in
 `test/` remain valid. New cycle-level behavioral spec should follow the
 acceptance hierarchy described in [`/Users/james/git/xyph/test/acceptance/README.md`](test/acceptance/README.md).
+
+### Red And Green Discipline
+
+Local red while iterating is acceptable and expected.
+
+That is especially true immediately after design, because the first useful step
+is often to write failing tests that define the slice.
+
+The rule is:
+
+- **local red is fine while iterating**
+- **pushed work must be green**
+
+In other words, red can exist as a local checkpoint in the middle of a cycle,
+but shared branch state should be brought back to passing before push and before
+submission for review or merge.
 
 ### Cycle Closeout And Reset
 
@@ -251,6 +290,32 @@ Before promoting a new direction, ask:
 
 If the answer is unclear, the work probably belongs in the backlog, not in the
 active cycle.
+
+### Formal Playbacks
+
+Playbacks are not optional demo theater. They are a required way to judge
+whether a cycle actually moved the relevant hill for the relevant sponsor
+actors.
+
+Each substantial cycle should normally include:
+
+- at least one **human playback**
+- at least one **agent playback**
+
+Those playbacks should be organized around the sponsor actors and hills named in
+the cycle note, not around a generic UI checklist.
+
+The point is to answer questions like:
+
+- did this cycle materially improve the hill it claimed to improve?
+- can the human sponsor actor do their job better now?
+- can the agent sponsor actor do its job better now?
+- do the human and agent surfaces still agree about what is true, what is
+  allowed, and what should happen next?
+
+Playbacks are where the sponsor perspectives and hills become operational.
+They are how XYPH checks product truth instead of merely shipping implementation
+momentum.
 
 ## Project Planning
 

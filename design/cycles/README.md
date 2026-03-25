@@ -27,6 +27,7 @@ Each note in this directory should capture:
 - the hill or outcome being improved
 - the invariants that must not be violated
 - the acceptance-test plan that will become executable spec
+- the playback plan that will judge whether the hill actually moved
 - the explicit non-goals for the cycle
 
 The purpose is not ceremony. The purpose is to keep the next slice legible
@@ -46,6 +47,17 @@ The expected order is:
 3. write or update the cycle note here
 4. write the acceptance tests
 5. implement
+
+During implementation, the normal internal checkpoints are:
+
+1. doctrine checkpoint
+2. spec checkpoint
+3. semantic checkpoint
+4. surface checkpoint
+
+Those checkpoints help the work land in the right order. The playback then asks
+the more important question: did the cycle improve the intended hill for the
+intended sponsor actors?
 
 If a cycle is not anchored to graph-visible work, it is not ready to be treated
 as an active XYPH slice.
@@ -74,6 +86,7 @@ Good cycle notes are:
 - outcome-driven
 - explicit about scope and non-goals
 - grounded in sponsor actors
+- explicit about which hill is being moved and how the playback will test it
 - clear about how the slice will be judged done
 
 Good examples:
