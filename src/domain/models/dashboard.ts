@@ -305,6 +305,54 @@ export interface QuestDetail {
   timeline: QuestTimelineEntry[];
 }
 
+export interface CaseNode {
+  id: string;
+  title: string;
+  question: string;
+  status: string;
+  impact: string;
+  risk: string;
+  authority: string;
+  openedBy?: string;
+  openedAt?: number;
+  reason?: string;
+}
+
+export interface CaseBriefNode {
+  id: string;
+  briefKind: string;
+  title: string;
+  rationale?: string;
+  authoredBy: string;
+  authoredAt: number;
+  body?: string;
+  contentOid?: string;
+  relatedIds: string[];
+}
+
+export interface CaseDecisionNode {
+  id: string;
+  decision: string;
+  rationale: string;
+  decidedBy: string;
+  decidedAt: number;
+  followOnArtifactId?: string;
+  followOnArtifactKind?: string;
+  expectedDelta?: string;
+  actualDelta?: string;
+}
+
+export interface CaseDetail {
+  id: string;
+  caseNode: CaseNode;
+  subjectIds: string[];
+  openedFromIds: string[];
+  briefs: CaseBriefNode[];
+  decisions: CaseDecisionNode[];
+  documents: NarrativeNode[];
+  comments: CommentNode[];
+}
+
 export interface EntityEdgeRef {
   nodeId: string;
   label: string;
@@ -428,6 +476,7 @@ export interface EntityDetail {
   outgoing: EntityEdgeRef[];
   incoming: EntityEdgeRef[];
   questDetail?: QuestDetail;
+  caseDetail?: CaseDetail;
   governanceDetail?: GovernanceDetail;
 }
 

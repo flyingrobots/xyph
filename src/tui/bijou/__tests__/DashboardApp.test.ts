@@ -1041,6 +1041,146 @@ describe('DashboardApp', () => {
     expect(scrolledAgainPlain).toContain('Governance rule');
   });
 
+  it('opens a linked case page from a suggestion page and starts a human decision flow', () => {
+    const ctx = mockGraphContext({
+      aiSuggestions: [{
+        id: 'suggestion:AI-TRACE',
+        type: 'ai-suggestion',
+        kind: 'quest',
+        title: 'Split traceability into its own governed quest',
+        summary: 'This suggestion already has a governed case attached to it.',
+        status: 'suggested',
+        audience: 'human',
+        origin: 'spontaneous',
+        suggestedBy: 'agent.oracle',
+        suggestedAt: 100,
+        relatedIds: ['task:TARGET'],
+      }],
+    });
+
+    const app = createDashboardApp({
+      ctx,
+      intake: mockIntakePort(),
+      graphPort: mockGraphPort(),
+      submissionPort: mockSubmissionPort(),
+      style: createPlainStylePort(),
+      agentId: 'agent.test',
+      logoText: 'XYPH',
+      observerWatermarkStore: createMemoryObserverWatermarkStore(),
+      observerWatermarkScope: TEST_SCOPE,
+    });
+
+    const loaded = ready(app, makeSnapshot({
+      aiSuggestions: [{
+        id: 'suggestion:AI-TRACE',
+        type: 'ai-suggestion',
+        kind: 'quest',
+        title: 'Split traceability into its own governed quest',
+        summary: 'This suggestion already has a governed case attached to it.',
+        status: 'suggested',
+        audience: 'human',
+        origin: 'spontaneous',
+        suggestedBy: 'agent.oracle',
+        suggestedAt: 100,
+        relatedIds: ['task:TARGET'],
+      }],
+    }));
+
+    const [suggestions] = app.update(key('5'), loaded);
+    const [suggestionPage] = app.update(key('enter'), suggestions);
+    const [suggestionDetailLoaded] = app.update({
+      type: 'page-detail-loaded',
+      entityId: 'suggestion:AI-TRACE',
+      detail: {
+        id: 'suggestion:AI-TRACE',
+        type: 'ai_suggestion',
+        props: { type: 'ai_suggestion' },
+        outgoing: [],
+        incoming: [{ nodeId: 'case:TRACE-1', label: 'opened-from' }],
+      },
+      requestId: suggestionPage.pageRequestId,
+    }, suggestionPage);
+
+    const [casePage] = app.update(key('enter'), suggestionDetailLoaded);
+    expect(casePage.pageStack[casePage.pageStack.length - 1]).toEqual({
+      kind: 'case',
+      caseId: 'case:TRACE-1',
+      sourceLane: 'suggestions',
+    });
+
+    const [caseDetailLoaded] = app.update({
+      type: 'page-detail-loaded',
+      entityId: 'case:TRACE-1',
+      detail: {
+        id: 'case:TRACE-1',
+        type: 'case',
+        props: {
+          type: 'case',
+          title: 'Should traceability become its own governed quest?',
+          question: 'Should traceability become its own governed quest?',
+          status: 'ready-for-judgment',
+          impact: 'frontier',
+          risk: 'reversible-high',
+          authority: 'human-decide-agent-apply',
+        },
+        outgoing: [
+          { nodeId: 'task:TARGET', label: 'concerns' },
+          { nodeId: 'suggestion:AI-TRACE', label: 'opened-from' },
+        ],
+        incoming: [
+          { nodeId: 'brief:TRACE-REC', label: 'briefs' },
+        ],
+        caseDetail: {
+          id: 'case:TRACE-1',
+          caseNode: {
+            id: 'case:TRACE-1',
+            title: 'Should traceability become its own governed quest?',
+            question: 'Should traceability become its own governed quest?',
+            status: 'ready-for-judgment',
+            impact: 'frontier',
+            risk: 'reversible-high',
+            authority: 'human-decide-agent-apply',
+            openedBy: 'human.james',
+            openedAt: 90,
+            reason: 'Repeated review fallout keeps surfacing the same shape question.',
+          },
+          subjectIds: ['task:TARGET'],
+          openedFromIds: ['suggestion:AI-TRACE'],
+          briefs: [{
+            id: 'brief:TRACE-REC',
+            briefKind: 'recommendation',
+            title: 'Recommendation: split the traceability work',
+            rationale: 'The traceability work needs a clearer governed scope.',
+            authoredBy: 'agent.oracle',
+            authoredAt: 95,
+            body: 'Create a separate governed quest with explicit evidence expectations.',
+            relatedIds: ['task:TARGET', 'suggestion:AI-TRACE'],
+          }],
+          decisions: [],
+          documents: [],
+          comments: [],
+        },
+      },
+      requestId: casePage.pageRequestId,
+    }, casePage);
+
+    const wideCasePage = widen(app, caseDetailLoaded, 140, 60);
+    const plain = strip(app.view(wideCasePage) as string);
+    expect(plain).toContain('Governed Case');
+    expect(plain).toContain('Should traceability become its own governed quest?');
+    expect(plain).toContain('Recommendation: split the traceability work');
+    expect(plain).toContain('Decide this case');
+
+    const [decision] = app.update(key('d'), wideCasePage);
+    expect(decision.mode).toBe('input');
+    expect(decision.inputState?.kind).toBe('case-decision');
+    if (!decision.inputState || decision.inputState.kind !== 'case-decision') {
+      throw new Error('Expected case-decision input state');
+    }
+    expect(decision.inputState.step).toBe('outcome');
+    expect(strip(app.view(decision) as string)).toContain('Decision (adopt | reject | defer | request-evidence)');
+  });
+
   it('opens a page-local reopen confirmation for a graveyard quest page', () => {
     const app = buildApp();
     const loaded = ready(app, makeSnapshot({

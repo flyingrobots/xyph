@@ -93,6 +93,19 @@ interface SupersedeAiSuggestionInput extends ResolveAiSuggestionInput {
   supersededById: string;
 }
 
+type CaseDecisionKind = 'adopt' | 'reject' | 'defer' | 'request-evidence';
+type CaseFollowOnKind = 'quest' | 'proposal' | 'none';
+
+interface CreateCaseDecisionInput {
+  id?: string;
+  caseId: string;
+  decision: CaseDecisionKind;
+  decidedBy: string;
+  rationale: string;
+  followOnKind?: CaseFollowOnKind;
+  idempotencyKey?: string;
+}
+
 function deriveId(prefix: string, explicitId: string | undefined, idempotencyKey: string | undefined): string {
   if (explicitId) return explicitId;
   if (idempotencyKey) {
@@ -157,6 +170,20 @@ function questTitleFromSuggestion(title: string): string {
   const trimmed = title.trim();
   if (trimmed.length >= 5) return trimmed;
   return `Quest ${trimmed}`.trim();
+}
+
+function caseDecisionExpectedDelta(
+  decision: CaseDecisionKind,
+  followOnKind: CaseFollowOnKind,
+): string {
+  if (decision === 'adopt') {
+    if (followOnKind === 'quest') return 'Create backlog quest';
+    if (followOnKind === 'proposal') return 'Create governed proposal';
+    return 'Record adoption without linked follow-on work';
+  }
+  if (decision === 'reject') return 'Reject the case outcome with no linked follow-on work';
+  if (decision === 'defer') return 'Defer the case without changing the current frontier';
+  return 'Return the case to preparation for more evidence';
 }
 
 export class RecordService {
@@ -348,6 +375,140 @@ export class RecordService {
       patch: result.patch,
       suggestedAt,
       contentOid: await graph.getContentOid(id),
+    };
+  }
+
+  public async createCaseDecision(input: CreateCaseDecisionInput): Promise<{
+    decisionId: string;
+    caseId: string;
+    decision: CaseDecisionKind;
+    followOnArtifactId?: string;
+    followOnArtifactKind?: Exclude<CaseFollowOnKind, 'none'>;
+    patch: string;
+    decidedAt: number;
+  }> {
+    const graph = await this.graphPort.getGraph();
+    const caseProps = await graph.getNodeProps(input.caseId);
+    if (!caseProps || caseProps['type'] !== 'case') {
+      throw new Error(`[NOT_FOUND] Case ${input.caseId} not found in the graph`);
+    }
+
+    const trimmedRationale = input.rationale.trim();
+    if (trimmedRationale.length === 0) {
+      throw new Error('[INVALID_INPUT] Rationale is required for a case decision');
+    }
+
+    const followOnKind: CaseFollowOnKind = input.decision === 'adopt'
+      ? (input.followOnKind ?? 'quest')
+      : 'none';
+    const decisionId = deriveId('decision:', input.id, input.idempotencyKey);
+    const decidedAt = Date.now();
+    const title = typeof caseProps['title'] === 'string'
+      ? caseProps['title']
+      : typeof caseProps['question'] === 'string'
+        ? caseProps['question']
+        : input.caseId;
+    const question = typeof caseProps['question'] === 'string'
+      ? caseProps['question']
+      : typeof caseProps['decision_question'] === 'string'
+        ? caseProps['decision_question']
+        : title;
+    const concernEdges = (await graph.neighbors(input.caseId, 'outgoing'))
+      .filter((edge) => edge.label === 'concerns');
+    const subjectIds = concernEdges.map((edge) => edge.nodeId);
+    const primarySubjectId = subjectIds[0];
+
+    let followOnArtifactId: string | undefined;
+    let followOnArtifactKind: Exclude<CaseFollowOnKind, 'none'> | undefined;
+    if (input.decision === 'adopt' && followOnKind === 'quest') {
+      const quest = new Quest({
+        id: deriveId(
+          'task:',
+          undefined,
+          input.idempotencyKey ? `${input.idempotencyKey}:quest` : `case-decision:${input.caseId}:quest`,
+        ),
+        title: questTitleFromSuggestion(title),
+        status: 'BACKLOG',
+        hours: 0,
+        priority: DEFAULT_QUEST_PRIORITY,
+        description: [question.trim(), '', `Decision rationale\n${trimmedRationale}`].join('\n').trim(),
+        taskKind: 'delivery',
+        type: 'task',
+      });
+      await graph.patch((p) => {
+        p.addNode(quest.id)
+          .setProperty(quest.id, 'status', quest.status)
+          .setProperty(quest.id, 'title', quest.title)
+          .setProperty(quest.id, 'hours', quest.hours)
+          .setProperty(quest.id, 'priority', quest.priority)
+          .setProperty(quest.id, 'task_kind', quest.taskKind)
+          .setProperty(quest.id, 'type', quest.type)
+          .setProperty(quest.id, 'description', quest.description ?? question);
+        if (primarySubjectId?.startsWith('campaign:')) {
+          p.addEdge(quest.id, primarySubjectId, 'belongs-to');
+        }
+      });
+      followOnArtifactId = quest.id;
+      followOnArtifactKind = 'quest';
+    } else if (input.decision === 'adopt' && followOnKind === 'proposal') {
+      const proposal = await this.createProposal({
+        kind: 'case-decision-follow-on',
+        subjectId: input.caseId,
+        targetId: primarySubjectId,
+        payload: {
+          caseId: input.caseId,
+          decision: input.decision,
+          question,
+          subjectIds,
+        },
+        rationale: trimmedRationale,
+        proposedBy: input.decidedBy,
+        observerProfileId: 'observer:default',
+        policyPackVersion: 'policy:default',
+        idempotencyKey: input.idempotencyKey
+          ? `${input.idempotencyKey}:proposal`
+          : `case-decision:${input.caseId}:proposal`,
+      });
+      followOnArtifactId = proposal.id;
+      followOnArtifactKind = 'proposal';
+    }
+
+    const expectedDelta = caseDecisionExpectedDelta(input.decision, followOnKind);
+    const patch = await graph.patch((p) => {
+      p.addNode(decisionId)
+        .setProperty(decisionId, 'type', 'decision')
+        .setProperty(decisionId, 'kind', input.decision)
+        .setProperty(decisionId, 'decision_scope', 'case')
+        .setProperty(decisionId, 'case_id', input.caseId)
+        .setProperty(decisionId, 'decided_by', input.decidedBy)
+        .setProperty(decisionId, 'decided_at', decidedAt)
+        .setProperty(decisionId, 'rationale', trimmedRationale)
+        .setProperty(decisionId, 'expected_delta', expectedDelta)
+        .addEdge(decisionId, input.caseId, 'decides')
+        .setProperty(
+          input.caseId,
+          'status',
+          input.decision === 'request-evidence'
+            ? 'gathering-briefs'
+            : input.decision === 'defer'
+              ? 'deferred'
+              : 'decided',
+        );
+      if (followOnArtifactId && followOnArtifactKind) {
+        p.setProperty(decisionId, 'follow_on_artifact_id', followOnArtifactId)
+          .setProperty(decisionId, 'follow_on_artifact_kind', followOnArtifactKind)
+          .addEdge(decisionId, followOnArtifactId, 'causes');
+      }
+    });
+
+    return {
+      decisionId,
+      caseId: input.caseId,
+      decision: input.decision,
+      ...(followOnArtifactId ? { followOnArtifactId } : {}),
+      ...(followOnArtifactKind ? { followOnArtifactKind } : {}),
+      patch,
+      decidedAt,
     };
   }
 

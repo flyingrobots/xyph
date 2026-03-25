@@ -105,6 +105,12 @@ import {
   XYPH_OPERATIONAL_COMPARISON_SCOPE_VERSION,
 } from '../domain/services/GovernanceArtifacts.js';
 import { DEFAULT_WORLDLINE_ID, toSubstrateWorkingSetId } from '../domain/models/controlPlane.js';
+import type {
+  CaseBriefNode,
+  CaseDecisionNode,
+  CaseDetail,
+  CaseNode,
+} from '../domain/models/dashboard.js';
 
 // ---------------------------------------------------------------------------
 // Validation sets
@@ -1557,6 +1563,11 @@ class GraphContextImpl implements GraphContext {
       questDetail = await this.buildQuestDetail(graph, snapshot, id) ?? undefined;
     }
 
+    let caseDetail: CaseDetail | undefined;
+    if (type === 'case') {
+      caseDetail = await this.buildCaseDetail(graph, id, props, outgoing, incoming) ?? undefined;
+    }
+
     return {
       id,
       type,
@@ -1566,6 +1577,7 @@ class GraphContextImpl implements GraphContext {
       outgoing,
       incoming,
       questDetail,
+      caseDetail,
       governanceDetail: await this.buildGovernanceDetail(graph, type, props, content, outgoing, incoming),
     };
   }
@@ -1662,6 +1674,139 @@ class GraphContextImpl implements GraphContext {
       documents,
       comments,
       timeline,
+    };
+  }
+
+  private async buildCaseDetail(
+    graph: WarpGraph,
+    caseId: string,
+    props: Record<string, unknown>,
+    outgoing: EntityDetail['outgoing'],
+    incoming: EntityDetail['incoming'],
+  ): Promise<CaseDetail | null> {
+    const question = typeof props['question'] === 'string'
+      ? props['question']
+      : typeof props['decision_question'] === 'string'
+        ? props['decision_question']
+        : typeof props['title'] === 'string'
+          ? props['title']
+          : caseId;
+    const caseNode: CaseNode = {
+      id: caseId,
+      title: typeof props['title'] === 'string' ? props['title'] : question,
+      question,
+      status: typeof props['status'] === 'string' ? props['status'] : 'open',
+      impact: typeof props['impact'] === 'string' ? props['impact'] : 'local',
+      risk: typeof props['risk'] === 'string' ? props['risk'] : 'reversible-low',
+      authority: typeof props['authority'] === 'string' ? props['authority'] : 'human-only',
+      ...(typeof props['opened_by'] === 'string' ? { openedBy: props['opened_by'] } : {}),
+      ...(typeof props['opened_at'] === 'number' ? { openedAt: props['opened_at'] } : {}),
+      ...(typeof props['reason'] === 'string' ? { reason: props['reason'] } : {}),
+    };
+
+    const subjectIds = outgoing
+      .filter((edge) => edge.label === 'concerns')
+      .map((edge) => edge.nodeId)
+      .sort((left, right) => left.localeCompare(right));
+    const openedFromIds = outgoing
+      .filter((edge) => edge.label === 'opened-from')
+      .map((edge) => edge.nodeId)
+      .sort((left, right) => left.localeCompare(right));
+    const briefIds = incoming
+      .filter((edge) => edge.label === 'briefs')
+      .map((edge) => edge.nodeId)
+      .sort((left, right) => left.localeCompare(right));
+    const decisionIds = incoming
+      .filter((edge) => edge.label === 'decides')
+      .map((edge) => edge.nodeId)
+      .sort((left, right) => left.localeCompare(right));
+
+    const briefs = (await Promise.all(briefIds.map(async (briefId): Promise<CaseBriefNode | null> => {
+      const [briefProps, rawContent, contentOid, briefOutgoingRaw] = await Promise.all([
+        graph.getNodeProps(briefId),
+        graph.getContent(briefId),
+        graph.getContentOid(briefId),
+        graph.neighbors(briefId, 'outgoing'),
+      ]);
+      if (!briefProps || briefProps['type'] !== 'brief') return null;
+      const title = typeof briefProps['title'] === 'string' ? briefProps['title'] : briefId;
+      const authoredBy = typeof briefProps['authored_by'] === 'string' ? briefProps['authored_by'] : 'unknown';
+      const authoredAt = typeof briefProps['authored_at'] === 'number' ? briefProps['authored_at'] : 0;
+      const relatedIds = toNeighborEntries(briefOutgoingRaw)
+        .filter((edge) => edge.label === 'documents' && edge.nodeId !== caseId)
+        .map((edge) => edge.nodeId)
+        .sort((left, right) => left.localeCompare(right));
+      return {
+        id: briefId,
+        briefKind: typeof briefProps['brief_kind'] === 'string' ? briefProps['brief_kind'] : 'recommendation',
+        title,
+        ...(typeof briefProps['rationale'] === 'string' ? { rationale: briefProps['rationale'] } : {}),
+        authoredBy,
+        authoredAt,
+        ...(decodeNodeContent(rawContent) ? { body: decodeNodeContent(rawContent) } : {}),
+        ...(contentOid ? { contentOid } : {}),
+        relatedIds,
+      };
+    }))).filter((entry): entry is CaseBriefNode => Boolean(entry));
+
+    const decisions = (await Promise.all(decisionIds.map(async (decisionId): Promise<CaseDecisionNode | null> => {
+      const decisionProps = await graph.getNodeProps(decisionId);
+      if (!decisionProps || decisionProps['type'] !== 'decision') return null;
+      const decision = typeof decisionProps['kind'] === 'string' ? decisionProps['kind'] : undefined;
+      const rationale = typeof decisionProps['rationale'] === 'string' ? decisionProps['rationale'] : undefined;
+      const decidedBy = typeof decisionProps['decided_by'] === 'string' ? decisionProps['decided_by'] : undefined;
+      const decidedAt = typeof decisionProps['decided_at'] === 'number' ? decisionProps['decided_at'] : undefined;
+      if (!decision || !rationale || !decidedBy || decidedAt === undefined) return null;
+      const followOnArtifactId = typeof decisionProps['follow_on_artifact_id'] === 'string'
+        ? decisionProps['follow_on_artifact_id']
+        : undefined;
+      const followOnArtifactKind = typeof decisionProps['follow_on_artifact_kind'] === 'string'
+        ? decisionProps['follow_on_artifact_kind']
+        : undefined;
+      let actualDelta: string | undefined;
+      if (followOnArtifactId && await graph.hasNode(followOnArtifactId)) {
+        actualDelta = `Created ${followOnArtifactKind ?? 'artifact'} ${followOnArtifactId}`;
+      } else if (decision === 'reject') {
+        actualDelta = 'No follow-on work created.';
+      } else if (decision === 'defer') {
+        actualDelta = 'Decision deferred without linked follow-on work.';
+      } else if (decision === 'request-evidence') {
+        actualDelta = 'Returned to preparation for more evidence.';
+      }
+      return {
+        id: decisionId,
+        decision,
+        rationale,
+        decidedBy,
+        decidedAt,
+        ...(followOnArtifactId ? { followOnArtifactId } : {}),
+        ...(followOnArtifactKind ? { followOnArtifactKind } : {}),
+        ...(typeof decisionProps['expected_delta'] === 'string'
+          ? { expectedDelta: decisionProps['expected_delta'] }
+          : {}),
+        ...(actualDelta ? { actualDelta } : {}),
+      };
+    }))).filter((entry): entry is CaseDecisionNode => Boolean(entry))
+      .sort((left, right) => right.decidedAt - left.decidedAt || left.id.localeCompare(right.id));
+
+    const relevantIds = new Set<string>([
+      caseId,
+      ...subjectIds,
+      ...briefs.flatMap((brief) => brief.relatedIds),
+      ...decisions.map((decision) => decision.id),
+      ...decisions.map((decision) => decision.followOnArtifactId).filter((entry): entry is string => typeof entry === 'string'),
+    ]);
+    const { documents, comments } = await this.loadNarrativeForTargets(graph, relevantIds);
+
+    return {
+      id: caseId,
+      caseNode,
+      subjectIds,
+      openedFromIds,
+      briefs: briefs.sort((left, right) => right.authoredAt - left.authoredAt || left.id.localeCompare(right.id)),
+      decisions,
+      documents,
+      comments,
     };
   }
 

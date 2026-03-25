@@ -43,6 +43,13 @@ export interface SuggestionSupersedeInput {
   rationale?: string;
 }
 
+export interface CaseDecisionInput {
+  caseId: string;
+  decision: 'adopt' | 'reject' | 'defer' | 'request-evidence';
+  rationale: string;
+  followOnKind?: 'quest' | 'proposal' | 'none';
+}
+
 /**
  * Claim a quest via direct graph patch (OCP — Optimistic Claiming Protocol).
  * Sets status to IN_PROGRESS, assigned_to to agentId, claimed_at to now.
@@ -208,6 +215,38 @@ export function queueAskAiJob(
         nextAction: 'An agent should inspect this ask-AI job and publish one or more visible advisory suggestions in response.',
       });
       emit({ type: 'write-success', message: `Queued ask-AI job ${result.id}` });
+    } catch (err: unknown) {
+      emit({ type: 'write-error', message: err instanceof Error ? err.message : String(err) });
+    }
+  };
+}
+
+/**
+ * Record a human case decision and compile linked follow-on work using existing primitives.
+ */
+export function decideCase(
+  deps: WriteDeps,
+  input: CaseDecisionInput,
+): Cmd<DashboardMsg> {
+  return async (emit) => {
+    try {
+      const trimmed = input.rationale.trim();
+      if (!trimmed) {
+        emit({ type: 'write-error', message: 'Rationale is required for a case decision' });
+        return;
+      }
+      const records = new RecordService(deps.graphPort);
+      const result = await records.createCaseDecision({
+        caseId: input.caseId,
+        decision: input.decision,
+        decidedBy: deps.agentId,
+        rationale: trimmed,
+        followOnKind: input.followOnKind,
+      });
+      const followOn = result.followOnArtifactId
+        ? ` → ${result.followOnArtifactKind} ${result.followOnArtifactId}`
+        : '';
+      emit({ type: 'write-success', message: `Decided ${result.caseId} as ${result.decision}${followOn}` });
     } catch (err: unknown) {
       emit({ type: 'write-error', message: err instanceof Error ? err.message : String(err) });
     }
