@@ -17,3 +17,4 @@ docs/work/
 docs/assets/work-dag*.svg
 # Local scratch task notes (not part of XYPH's planning model)
 TASKS.md
+audit_reports/*
