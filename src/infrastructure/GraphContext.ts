@@ -176,6 +176,20 @@ interface QNode {
   props: Record<string, unknown>;
 }
 
+type NarrativeDocumentType = 'spec' | 'adr' | 'note';
+
+function isNarrativeDocumentType(rawType: unknown): rawType is NarrativeDocumentType {
+  return rawType === 'spec' || rawType === 'adr' || rawType === 'note';
+}
+
+function isNarrativeDocumentId(id: string): boolean {
+  return id.startsWith('spec:') || id.startsWith('adr:') || id.startsWith('note:');
+}
+
+function isNarrativeDocumentIdForType(id: string, type: NarrativeDocumentType): boolean {
+  return id.startsWith(`${type}:`);
+}
+
 function extractNodes(result: QueryResultV1 | AggregateResult): QNode[] {
   if (!('nodes' in result)) return [];
   return result.nodes.filter(
@@ -2383,23 +2397,30 @@ class GraphContextImpl implements GraphContext {
     graph: WarpGraph,
     targetIds: Set<string>,
   ): Promise<{ documents: NarrativeNode[]; comments: CommentNode[] }> {
-    const [specNodes, adrNodes, noteNodes, commentNodes] = await Promise.all([
-      graph.query().match('spec:*').select(['id', 'props']).run().then(extractNodes),
-      graph.query().match('adr:*').select(['id', 'props']).run().then(extractNodes),
-      graph.query().match('note:*').select(['id', 'props']).run().then(extractNodes),
-      graph.query().match('comment:*').select(['id', 'props']).run().then(extractNodes),
-    ]);
-
-    const narrativeQNodes = [...specNodes, ...adrNodes, ...noteNodes, ...commentNodes];
-    if (narrativeQNodes.length === 0) {
+    if (targetIds.size === 0) {
       return { documents: [], comments: [] };
     }
 
-    const neighbors = await batchNeighbors(graph, narrativeQNodes.map((entry) => entry.id));
+    const seedResults = await Promise.all(
+      [...targetIds].map(async (targetId) => [targetId, toNeighborEntries(await graph.neighbors(targetId, 'incoming'))] as const),
+    );
+
+    const seedDocumentIds = new Set<string>();
+    const seedCommentIds = new Set<string>();
+    for (const [, incoming] of seedResults) {
+      for (const edge of incoming) {
+        if (edge.label === 'documents' && isNarrativeDocumentId(edge.nodeId)) {
+          seedDocumentIds.add(edge.nodeId);
+        }
+        if (edge.label === 'comments-on' && edge.nodeId.startsWith('comment:')) {
+          seedCommentIds.add(edge.nodeId);
+        }
+      }
+    }
 
     const docsById = new Map<string, {
       id: string;
-      type: 'spec' | 'adr' | 'note';
+      type: NarrativeDocumentType;
       title: string;
       authoredBy: string;
       authoredAt: number;
@@ -2415,13 +2436,26 @@ class GraphContextImpl implements GraphContext {
       replyToId?: string;
     }>();
 
-    for (const node of [...specNodes, ...adrNodes, ...noteNodes]) {
-      const rawType = node.props['type'];
-      const title = node.props['title'];
-      const authoredBy = node.props['authored_by'];
-      const authoredAt = node.props['authored_at'];
+    const docQueue = [...seedDocumentIds];
+    const scannedDocIds = new Set<string>();
+    while (docQueue.length > 0) {
+      const docId = docQueue.shift();
+      if (!docId || scannedDocIds.has(docId)) continue;
+      scannedDocIds.add(docId);
+
+      const [props, rawOutgoing, rawIncoming] = await Promise.all([
+        graph.getNodeProps(docId),
+        graph.neighbors(docId, 'outgoing'),
+        graph.neighbors(docId, 'incoming'),
+      ]);
+      if (!props) continue;
+
+      const rawType = props['type'];
+      const title = props['title'];
+      const authoredBy = props['authored_by'];
+      const authoredAt = props['authored_at'];
       if (
-        (rawType !== 'spec' && rawType !== 'adr' && rawType !== 'note') ||
+        !isNarrativeDocumentType(rawType) ||
         typeof title !== 'string' ||
         typeof authoredBy !== 'string' ||
         typeof authoredAt !== 'number'
@@ -2429,43 +2463,80 @@ class GraphContextImpl implements GraphContext {
         continue;
       }
 
+      const outgoing = toNeighborEntries(rawOutgoing);
+      const incoming = toNeighborEntries(rawIncoming);
       const targetRefs: string[] = [];
       let supersedesId: string | undefined;
-      for (const edge of neighbors.get(node.id) ?? []) {
+
+      for (const edge of outgoing) {
         if (edge.label === 'documents') targetRefs.push(edge.nodeId);
-        if (edge.label === 'supersedes' && edge.nodeId.startsWith(`${rawType}:`)) {
+        if (edge.label === 'supersedes' && isNarrativeDocumentIdForType(edge.nodeId, rawType)) {
           supersedesId = edge.nodeId;
+          if (!scannedDocIds.has(edge.nodeId)) docQueue.push(edge.nodeId);
+        }
+      }
+      for (const edge of incoming) {
+        if (
+          edge.label === 'supersedes' &&
+          isNarrativeDocumentIdForType(edge.nodeId, rawType) &&
+          !scannedDocIds.has(edge.nodeId)
+        ) {
+          docQueue.push(edge.nodeId);
         }
       }
 
-      docsById.set(node.id, {
-        id: node.id,
+      docsById.set(docId, {
+        id: docId,
         type: rawType,
         title,
         authoredBy,
         authoredAt,
-        noteKind: rawType === 'note' && typeof node.props['note_kind'] === 'string'
-          ? node.props['note_kind']
+        noteKind: rawType === 'note' && typeof props['note_kind'] === 'string'
+          ? props['note_kind']
           : undefined,
         targetIds: targetRefs,
         supersedesId,
       });
     }
 
-    for (const node of commentNodes) {
-      const authoredBy = node.props['authored_by'];
-      const authoredAt = node.props['authored_at'];
+    const commentQueue = [...seedCommentIds];
+    const scannedCommentIds = new Set<string>();
+    while (commentQueue.length > 0) {
+      const commentId = commentQueue.shift();
+      if (!commentId || scannedCommentIds.has(commentId)) continue;
+      scannedCommentIds.add(commentId);
+
+      const [props, rawOutgoing, rawIncoming] = await Promise.all([
+        graph.getNodeProps(commentId),
+        graph.neighbors(commentId, 'outgoing'),
+        graph.neighbors(commentId, 'incoming'),
+      ]);
+      if (!props) continue;
+
+      const authoredBy = props['authored_by'];
+      const authoredAt = props['authored_at'];
       if (typeof authoredBy !== 'string' || typeof authoredAt !== 'number') continue;
 
+      const outgoing = toNeighborEntries(rawOutgoing);
+      const incoming = toNeighborEntries(rawIncoming);
       let targetId: string | undefined;
       let replyToId: string | undefined;
-      for (const edge of neighbors.get(node.id) ?? []) {
+
+      for (const edge of outgoing) {
         if (edge.label === 'comments-on') targetId = edge.nodeId;
-        if (edge.label === 'replies-to' && edge.nodeId.startsWith('comment:')) replyToId = edge.nodeId;
+        if (edge.label === 'replies-to' && edge.nodeId.startsWith('comment:')) {
+          replyToId = edge.nodeId;
+          if (!scannedCommentIds.has(edge.nodeId)) commentQueue.push(edge.nodeId);
+        }
+      }
+      for (const edge of incoming) {
+        if (edge.label === 'replies-to' && edge.nodeId.startsWith('comment:') && !scannedCommentIds.has(edge.nodeId)) {
+          commentQueue.push(edge.nodeId);
+        }
       }
 
-      commentsById.set(node.id, {
-        id: node.id,
+      commentsById.set(commentId, {
+        id: commentId,
         authoredBy,
         authoredAt,
         targetId,

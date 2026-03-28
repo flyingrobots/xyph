@@ -299,6 +299,33 @@ describe('GraphContext entity detail integration', () => {
     }
   });
 
+  it('does not scan whole narrative families when building task entity detail', { timeout: 30_000 }, async () => {
+    const graph = await graphPort.getGraph();
+    const ctx = createGraphContext(graphPort);
+    const seenPatterns: string[] = [];
+    const originalQuery = graph.query.bind(graph);
+    const querySpy = vi.spyOn(graph, 'query').mockImplementation(((...args: unknown[]) => {
+      const builder = originalQuery(...(args as [])) as { match: (pattern: string) => unknown };
+      const originalMatch = builder.match.bind(builder);
+      builder.match = ((pattern: string) => {
+        seenPatterns.push(pattern);
+        return originalMatch(pattern);
+      }) as typeof builder.match;
+      return builder;
+    }) as typeof graph.query);
+
+    try {
+      const detail = await ctx.fetchEntityDetail('task:SHOW-001');
+      expect(detail?.questDetail?.quest.id).toBe('task:SHOW-001');
+      expect(seenPatterns).not.toContain('spec:*');
+      expect(seenPatterns).not.toContain('adr:*');
+      expect(seenPatterns).not.toContain('note:*');
+      expect(seenPatterns).not.toContain('comment:*');
+    } finally {
+      querySpy.mockRestore();
+    }
+  });
+
   it('does not count the submitter as an independent approver in snapshot submission status', { timeout: 30_000 }, async () => {
     const graph = await graphPort.getGraph();
 
