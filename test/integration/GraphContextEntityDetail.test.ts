@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -283,6 +283,20 @@ describe('GraphContext entity detail integration', () => {
       title: 'Reply to comment:SHOW-3',
       relatedId: 'review:SHOW',
     });
+  });
+
+  it('builds task entity detail without routing through fetchSnapshot', { timeout: 30_000 }, async () => {
+    const ctx = createGraphContext(graphPort);
+    const snapshotSpy = vi.spyOn(ctx, 'fetchSnapshot');
+
+    try {
+      const detail = await ctx.fetchEntityDetail('task:SHOW-001');
+      expect(detail).not.toBeNull();
+      expect(detail?.questDetail?.quest.id).toBe('task:SHOW-001');
+      expect(snapshotSpy).not.toHaveBeenCalled();
+    } finally {
+      snapshotSpy.mockRestore();
+    }
   });
 
   it('does not count the submitter as an independent approver in snapshot submission status', { timeout: 30_000 }, async () => {

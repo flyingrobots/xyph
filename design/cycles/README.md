@@ -121,3 +121,4 @@ around it.
 2. [Agent CLI Hardening](./0002-agent-cli-hardening.md)
 3. [Case-Driven Governance](./0003-case-driven-governance.md)
 4. [git-warp Substrate Alignment](./0004-substrate-alignment.md)
+5. [Quest Detail Read Boundary](./0005-quest-detail-read-boundary.md)

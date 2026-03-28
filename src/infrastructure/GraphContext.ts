@@ -1574,8 +1574,7 @@ class GraphContextImpl implements GraphContext {
 
     let questDetail: QuestDetail | undefined;
     if (id.startsWith('task:')) {
-      const snapshot = await this.fetchSnapshot();
-      questDetail = await this.buildQuestDetail(graph, snapshot, id) ?? undefined;
+      questDetail = await this.buildQuestDetailFromGraph(graph, id, props, outgoing, incoming) ?? undefined;
     }
 
     let caseDetail: CaseDetail | undefined;
@@ -1608,45 +1607,72 @@ class GraphContextImpl implements GraphContext {
     return entries.map(([w, t]) => `${w}:${t}`).join(',');
   }
 
-  private async buildQuestDetail(
+  private async buildQuestDetailFromGraph(
     graph: WarpGraph,
-    snapshot: GraphSnapshot,
     questId: string,
+    props: Record<string, unknown>,
+    outgoing: EntityDetail['outgoing'],
+    _incoming: EntityDetail['incoming'],
   ): Promise<QuestDetail | null> {
-    const quest = snapshot.quests.find((entry) => entry.id === questId);
+    const quest = this.buildQuestNodeFromEntity(questId, props, outgoing);
     if (!quest) return null;
 
-    const campaign = quest.campaignId
-      ? snapshot.campaigns.find((entry) => entry.id === quest.campaignId)
-      : undefined;
-    const intent = quest.intentId
-      ? snapshot.intents.find((entry) => entry.id === quest.intentId)
-      : undefined;
-    const scroll = quest.scrollId
-      ? snapshot.scrolls.find((entry) => entry.id === quest.scrollId)
-      : undefined;
-    const submission = quest.submissionId
-      ? snapshot.submissions.find((entry) => entry.id === quest.submissionId)
-      : undefined;
+    const [campaign, intent, scroll, submissionBundle, traceability] = await Promise.all([
+      quest.campaignId ? this.loadCampaignNode(graph, quest.campaignId) : Promise.resolve(undefined),
+      quest.intentId ? this.loadIntentNode(graph, quest.intentId) : Promise.resolve(undefined),
+      this.loadScrollForQuest(graph, quest.id),
+      this.loadSubmissionBundleForQuest(graph, quest.id),
+      this.loadTraceabilityForQuest(graph, quest.id, quest.campaignId),
+    ]);
 
-    const requirements = snapshot.requirements.filter((entry) => entry.taskIds.includes(quest.id));
-    const requirementIdSet = new Set(requirements.map((entry) => entry.id));
-    const criteria = snapshot.criteria.filter((entry) => entry.requirementId !== undefined && requirementIdSet.has(entry.requirementId));
-    const criterionIdSet = new Set(criteria.map((entry) => entry.id));
-    const evidence = snapshot.evidence.filter((entry) => entry.criterionId !== undefined && criterionIdSet.has(entry.criterionId));
-    const storyIds = new Set(requirements.map((entry) => entry.storyId).filter((entry): entry is string => typeof entry === 'string'));
-    const stories = snapshot.stories.filter((entry) => storyIds.has(entry.id));
-    const policies = snapshot.policies.filter((entry) => entry.campaignId === quest.campaignId);
+    const submission = submissionBundle.submission;
+    const reviews = submissionBundle.reviews;
+    const decisions = submissionBundle.decisions;
+    const patchsetIds = submissionBundle.patchsetIds;
+    const {
+      stories,
+      requirements,
+      criteria,
+      evidence,
+      policies,
+    } = traceability;
 
-    const patchsetIds = submission
-      ? await this.findPatchsetIdsForSubmission(graph, submission.id)
-      : new Set<string>();
-    const reviews = snapshot.reviews.filter((entry) => patchsetIds.has(entry.patchsetId));
+    if (scroll) quest.scrollId = scroll.id;
+    if (submission) quest.submissionId = submission.id;
+
+    const appliedPolicy = quest.campaignId
+      ? policies.find((entry) => entry.campaignId === quest.campaignId)
+      : undefined;
+    quest.computedCompletion = computeCompletionSummary(
+      requirements.map((requirement) => ({
+        id: requirement.id,
+        criterionIds: requirement.criterionIds,
+      })),
+      criteria.map((criterion) => ({
+        id: criterion.id,
+        evidence: criterion.evidenceIds
+          .map((evidenceId) => evidence.find((entry) => entry.id === evidenceId))
+          .filter((entry): entry is EvidenceNode => Boolean(entry))
+          .map((entry) => ({
+            id: entry.id,
+            result: entry.result,
+            producedAt: entry.producedAt,
+          })),
+      })),
+      {
+        policy: appliedPolicy
+          ? {
+              id: appliedPolicy.id,
+              coverageThreshold: appliedPolicy.coverageThreshold,
+              requireAllCriteria: appliedPolicy.requireAllCriteria,
+              requireEvidence: appliedPolicy.requireEvidence,
+            }
+          : undefined,
+        manualComplete: quest.status === 'DONE',
+      },
+    );
+
     const reviewIds = new Set(reviews.map((entry) => entry.id));
-    const decisions = submission
-      ? snapshot.decisions.filter((entry) => entry.submissionId === submission.id)
-      : [];
-
     const relevantIds = new Set<string>([
       quest.id,
       ...requirements.map((entry) => entry.id),
@@ -1690,6 +1716,534 @@ class GraphContextImpl implements GraphContext {
       comments,
       timeline,
     };
+  }
+
+  private buildQuestNodeFromEntity(
+    id: string,
+    props: Record<string, unknown>,
+    outgoing: EntityDetail['outgoing'],
+  ): QuestNode | null {
+    if (props['type'] !== 'task') return null;
+
+    const title = props['title'];
+    const rawStatusRaw = props['status'];
+    const hours = props['hours'];
+    if (typeof title !== 'string' || typeof rawStatusRaw !== 'string') return null;
+    const rawStatus = normalizeQuestStatus(rawStatusRaw);
+    if (!VALID_QUEST_STATUSES.has(rawStatus)) return null;
+
+    let campaignId: string | undefined;
+    let intentId: string | undefined;
+    const dependsOnIds: string[] = [];
+    for (const edge of outgoing) {
+      if (edge.label === 'belongs-to' && edge.nodeId.startsWith('campaign:')) campaignId = edge.nodeId;
+      if (edge.label === 'authorized-by' && edge.nodeId.startsWith('intent:')) intentId = edge.nodeId;
+      if (edge.label === 'depends-on' && edge.nodeId.startsWith('task:')) dependsOnIds.push(edge.nodeId);
+    }
+
+    return {
+      id,
+      title,
+      status: rawStatus as QuestStatus,
+      hours: typeof hours === 'number' && Number.isFinite(hours) && hours >= 0 ? hours : 0,
+      priority: normalizeQuestPriority(props['priority']),
+      description: typeof props['description'] === 'string' ? props['description'] : undefined,
+      taskKind: normalizeQuestKind(props['task_kind']),
+      campaignId,
+      intentId,
+      assignedTo: typeof props['assigned_to'] === 'string' ? props['assigned_to'] : undefined,
+      readyBy: typeof props['ready_by'] === 'string' ? props['ready_by'] : undefined,
+      readyAt: typeof props['ready_at'] === 'number' ? props['ready_at'] : undefined,
+      completedAt: typeof props['completed_at'] === 'number' ? props['completed_at'] : undefined,
+      suggestedBy: typeof props['suggested_by'] === 'string' ? props['suggested_by'] : undefined,
+      suggestedAt: typeof props['suggested_at'] === 'number' ? props['suggested_at'] : undefined,
+      rejectedBy: typeof props['rejected_by'] === 'string' ? props['rejected_by'] : undefined,
+      rejectedAt: typeof props['rejected_at'] === 'number' ? props['rejected_at'] : undefined,
+      rejectionRationale: typeof props['rejection_rationale'] === 'string' ? props['rejection_rationale'] : undefined,
+      reopenedBy: typeof props['reopened_by'] === 'string' ? props['reopened_by'] : undefined,
+      reopenedAt: typeof props['reopened_at'] === 'number' ? props['reopened_at'] : undefined,
+      dependsOn: dependsOnIds.length > 0 ? dependsOnIds : undefined,
+    };
+  }
+
+  private async loadCampaignNode(
+    graph: WarpGraph,
+    campaignId: string,
+  ): Promise<CampaignNode | undefined> {
+    const [props, outgoingRaw, incomingRaw] = await Promise.all([
+      graph.getNodeProps(campaignId),
+      graph.neighbors(campaignId, 'outgoing'),
+      graph.neighbors(campaignId, 'incoming'),
+    ]);
+    if (!props || props['type'] !== 'campaign') return undefined;
+    const title = props['title'];
+    if (typeof title !== 'string') return undefined;
+
+    const description = props['description'];
+    const rawStatus = props['status'];
+    let status: CampaignStatus = typeof rawStatus === 'string' && VALID_CAMPAIGN_STATUSES.has(rawStatus)
+      ? rawStatus as CampaignStatus
+      : 'UNKNOWN';
+
+    const outgoing = toNeighborEntries(outgoingRaw);
+    const dependsOnIds = outgoing
+      .filter((edge) =>
+        edge.label === 'depends-on' &&
+        (edge.nodeId.startsWith('campaign:') || edge.nodeId.startsWith('milestone:')))
+      .map((edge) => edge.nodeId);
+
+    const memberTaskIds = toNeighborEntries(incomingRaw)
+      .filter((edge) => edge.label === 'belongs-to' && edge.nodeId.startsWith('task:'))
+      .map((edge) => edge.nodeId);
+    if (memberTaskIds.length > 0) {
+      const members = (await Promise.all(memberTaskIds.map(async (taskId) => {
+        const taskProps = await graph.getNodeProps(taskId);
+        if (!taskProps || typeof taskProps['status'] !== 'string') return null;
+        const normalized = normalizeQuestStatus(taskProps['status']);
+        if (!VALID_QUEST_STATUSES.has(normalized)) return null;
+        return {
+          id: taskId,
+          title: taskId,
+          status: normalized as QuestStatus,
+          hours: 0,
+        } satisfies QuestNode;
+      }))).filter((entry): entry is QuestNode => Boolean(entry));
+      if (members.length > 0) {
+        status = deriveCampaignStatusFromQuests(members);
+      }
+    }
+
+    return {
+      id: campaignId,
+      title,
+      status,
+      description: typeof description === 'string' ? description : undefined,
+      dependsOn: dependsOnIds.length > 0 ? dependsOnIds : undefined,
+    };
+  }
+
+  private async loadIntentNode(
+    graph: WarpGraph,
+    intentId: string,
+  ): Promise<IntentNode | undefined> {
+    const props = await graph.getNodeProps(intentId);
+    if (!props || props['type'] !== 'intent') return undefined;
+    const title = props['title'];
+    const requestedBy = props['requested_by'];
+    const createdAt = props['created_at'];
+    if (typeof title !== 'string' || typeof requestedBy !== 'string' || typeof createdAt !== 'number') {
+      return undefined;
+    }
+    return {
+      id: intentId,
+      title,
+      requestedBy,
+      createdAt,
+      description: typeof props['description'] === 'string' ? props['description'] : undefined,
+    };
+  }
+
+  private async loadScrollForQuest(
+    graph: WarpGraph,
+    questId: string,
+  ): Promise<ScrollNode | undefined> {
+    const incoming = toNeighborEntries(await graph.neighbors(questId, 'incoming'));
+    const scrollIds = incoming
+      .filter((edge) => edge.label === 'fulfills' && edge.nodeId.startsWith('artifact:'))
+      .map((edge) => edge.nodeId);
+    if (scrollIds.length === 0) return undefined;
+
+    const scrolls = (await Promise.all(scrollIds.map(async (scrollId) => {
+      const props = await graph.getNodeProps(scrollId);
+      if (!props || props['type'] !== 'scroll') return null;
+      const artifactHash = props['artifact_hash'];
+      const sealedBy = props['sealed_by'];
+      const sealedAt = props['sealed_at'];
+      if (typeof artifactHash !== 'string' || typeof sealedBy !== 'string' || typeof sealedAt !== 'number') {
+        return null;
+      }
+      return {
+        id: scrollId,
+        questId,
+        artifactHash,
+        sealedBy,
+        sealedAt,
+        hasSeal: 'guild_seal_sig' in props,
+      } satisfies ScrollNode;
+    }))).filter((entry): entry is ScrollNode => Boolean(entry));
+
+    return scrolls.sort((left, right) => right.sealedAt - left.sealedAt || left.id.localeCompare(right.id))[0];
+  }
+
+  private async loadSubmissionBundleForQuest(
+    graph: WarpGraph,
+    questId: string,
+  ): Promise<{ submission?: SubmissionNode; reviews: ReviewNode[]; decisions: DecisionNode[]; patchsetIds: Set<string> }> {
+    const incoming = toNeighborEntries(await graph.neighbors(questId, 'incoming'));
+    const submissionIds = incoming
+      .filter((edge) => edge.label === 'submits' && edge.nodeId.startsWith('submission:'))
+      .map((edge) => edge.nodeId);
+    if (submissionIds.length === 0) {
+      return { reviews: [], decisions: [], patchsetIds: new Set<string>() };
+    }
+
+    const candidates = (await Promise.all(submissionIds.map(async (submissionId): Promise<{
+      submission: SubmissionNode;
+      reviews: ReviewNode[];
+      decisions: DecisionNode[];
+      patchsetIds: Set<string>;
+    } | null> => {
+      const props = await graph.getNodeProps(submissionId);
+      if (!props || props['type'] !== 'submission') return null;
+      const submittedBy = props['submitted_by'];
+      const submittedAt = props['submitted_at'];
+      if (typeof submittedBy !== 'string' || typeof submittedAt !== 'number') return null;
+
+      const patchsetIds = await this.findPatchsetIdsForSubmission(graph, submissionId);
+      const patchsetRefs: PatchsetRef[] = [];
+      const reviewsByPatchset = new Map<string, ReviewRef[]>();
+      const reviews: ReviewNode[] = [];
+
+      for (const patchsetId of patchsetIds) {
+        const [patchsetProps, patchsetOutgoingRaw, patchsetIncomingRaw] = await Promise.all([
+          graph.getNodeProps(patchsetId),
+          graph.neighbors(patchsetId, 'outgoing'),
+          graph.neighbors(patchsetId, 'incoming'),
+        ]);
+        if (!patchsetProps) continue;
+        const authoredAt = patchsetProps['authored_at'];
+        if (typeof authoredAt !== 'number') continue;
+
+        let supersedesId: string | undefined;
+        for (const edge of toNeighborEntries(patchsetOutgoingRaw)) {
+          if (edge.label === 'supersedes') {
+            supersedesId = edge.nodeId;
+            break;
+          }
+        }
+        patchsetRefs.push({ id: patchsetId, authoredAt, supersedesId });
+
+        const patchsetReviews: ReviewRef[] = [];
+        const reviewIds = toNeighborEntries(patchsetIncomingRaw)
+          .filter((edge) => edge.label === 'reviews' && edge.nodeId.startsWith('review:'))
+          .map((edge) => edge.nodeId);
+        for (const reviewId of reviewIds) {
+          const reviewProps = await graph.getNodeProps(reviewId);
+          if (!reviewProps) continue;
+          const verdict = reviewProps['verdict'];
+          const comment = reviewProps['comment'];
+          const reviewedBy = reviewProps['reviewed_by'];
+          const reviewedAt = reviewProps['reviewed_at'];
+          const validVerdicts = ['approve', 'request-changes', 'comment'] as const;
+          if (
+            typeof verdict !== 'string' ||
+            !validVerdicts.includes(verdict as typeof validVerdicts[number]) ||
+            typeof comment !== 'string' ||
+            typeof reviewedBy !== 'string' ||
+            typeof reviewedAt !== 'number'
+          ) {
+            continue;
+          }
+          patchsetReviews.push({ id: reviewId, verdict: verdict as ReviewVerdict, reviewedBy, reviewedAt });
+          reviews.push({
+            id: reviewId,
+            patchsetId,
+            verdict: verdict as ReviewVerdict,
+            comment,
+            reviewedBy,
+            reviewedAt,
+          });
+        }
+        reviewsByPatchset.set(patchsetId, patchsetReviews);
+      }
+
+      const decisionIds = toNeighborEntries(await graph.neighbors(submissionId, 'incoming'))
+        .filter((edge) => edge.label === 'decides' && edge.nodeId.startsWith('decision:'))
+        .map((edge) => edge.nodeId);
+      const decisionProps: DecisionProps[] = [];
+      const decisions: DecisionNode[] = [];
+      for (const decisionId of decisionIds) {
+        const decisionNodeProps = await graph.getNodeProps(decisionId);
+        if (!decisionNodeProps || decisionNodeProps['type'] !== 'decision') continue;
+        const kind = decisionNodeProps['kind'];
+        const decidedBy = decisionNodeProps['decided_by'];
+        const decidedAt = decisionNodeProps['decided_at'];
+        const rationale = decisionNodeProps['rationale'];
+        if (
+          typeof kind !== 'string' ||
+          (kind !== 'merge' && kind !== 'close') ||
+          typeof decidedBy !== 'string' ||
+          typeof decidedAt !== 'number' ||
+          typeof rationale !== 'string'
+        ) {
+          continue;
+        }
+        const mergeCommit = decisionNodeProps['merge_commit'];
+        const decision = {
+          id: decisionId,
+          submissionId,
+          kind: kind as DecisionKind,
+          decidedBy,
+          decidedAt,
+          rationale,
+          mergeCommit: typeof mergeCommit === 'string' ? mergeCommit : undefined,
+        } satisfies DecisionNode;
+        decisions.push(decision);
+        decisionProps.push(decision);
+      }
+
+      const { tip, headsCount } = computeTipPatchset(patchsetRefs);
+      const effectiveVerdicts = tip
+        ? computeEffectiveVerdicts(reviewsByPatchset.get(tip.id) ?? [])
+        : new Map<string, ReviewVerdict>();
+      const independentVerdicts = filterIndependentVerdicts(effectiveVerdicts, submittedBy);
+      let approvalCount = 0;
+      for (const verdict of independentVerdicts.values()) {
+        if (verdict === 'approve') approvalCount++;
+      }
+
+      return {
+        submission: {
+          id: submissionId,
+          questId,
+          status: computeStatus({ decisions: decisionProps, effectiveVerdicts: independentVerdicts }),
+          tipPatchsetId: tip?.id,
+          headsCount,
+          approvalCount,
+          submittedBy,
+          submittedAt,
+        } satisfies SubmissionNode,
+        reviews,
+        decisions,
+        patchsetIds,
+      };
+    }))).filter((entry): entry is {
+      submission: SubmissionNode;
+      reviews: ReviewNode[];
+      decisions: DecisionNode[];
+      patchsetIds: Set<string>;
+    } => entry !== null);
+
+    const chosen = candidates.sort((left, right) =>
+      right.submission.submittedAt - left.submission.submittedAt ||
+      left.submission.id.localeCompare(right.submission.id))[0];
+    if (!chosen) {
+      return { reviews: [], decisions: [], patchsetIds: new Set<string>() };
+    }
+    return chosen;
+  }
+
+  private async loadTraceabilityForQuest(
+    graph: WarpGraph,
+    questId: string,
+    campaignId?: string,
+  ): Promise<{
+    stories: StoryNode[];
+    requirements: RequirementNode[];
+    criteria: CriterionNode[];
+    evidence: EvidenceNode[];
+    policies: PolicyNode[];
+  }> {
+    const questOutgoing = toNeighborEntries(await graph.neighbors(questId, 'outgoing'));
+    const requirementIds = questOutgoing
+      .filter((edge) => edge.label === 'implements' && edge.nodeId.startsWith('req:'))
+      .map((edge) => edge.nodeId);
+
+    const requirements: RequirementNode[] = [];
+    const storyIds = new Set<string>();
+    const criterionIds = new Set<string>();
+    for (const requirementId of requirementIds) {
+      const [requirementProps, outgoingRaw, incomingRaw] = await Promise.all([
+        graph.getNodeProps(requirementId),
+        graph.neighbors(requirementId, 'outgoing'),
+        graph.neighbors(requirementId, 'incoming'),
+      ]);
+      if (!requirementProps || requirementProps['type'] !== 'requirement') continue;
+      const description = requirementProps['description'];
+      const kind = requirementProps['kind'];
+      const priority = requirementProps['priority'];
+      if (
+        typeof description !== 'string' ||
+        typeof kind !== 'string' || !VALID_REQUIREMENT_KINDS.has(kind as RequirementKind) ||
+        typeof priority !== 'string' || !VALID_REQUIREMENT_PRIORITIES.has(priority as RequirementPriority)
+      ) {
+        continue;
+      }
+
+      const outgoing = toNeighborEntries(outgoingRaw);
+      const incoming = toNeighborEntries(incomingRaw);
+      const taskIds = incoming
+        .filter((edge) => edge.label === 'implements' && edge.nodeId.startsWith('task:'))
+        .map((edge) => edge.nodeId)
+        .sort((left, right) => left.localeCompare(right));
+      const criterionIdList = outgoing
+        .filter((edge) => edge.label === 'has-criterion' && edge.nodeId.startsWith('criterion:'))
+        .map((edge) => edge.nodeId)
+        .sort((left, right) => left.localeCompare(right));
+      for (const criterionId of criterionIdList) criterionIds.add(criterionId);
+
+      const storyId = incoming.find((edge) => edge.label === 'decomposes-to' && edge.nodeId.startsWith('story:'))?.nodeId;
+      if (storyId) storyIds.add(storyId);
+
+      requirements.push({
+        id: requirementId,
+        description,
+        kind: kind as RequirementKind,
+        priority: priority as RequirementPriority,
+        storyId,
+        taskIds,
+        criterionIds: criterionIdList,
+      });
+    }
+
+    const stories = (await Promise.all([...storyIds].map(async (storyId): Promise<StoryNode | null> => {
+      const [storyProps, incomingRaw] = await Promise.all([
+        graph.getNodeProps(storyId),
+        graph.neighbors(storyId, 'incoming'),
+      ]);
+      if (!storyProps || storyProps['type'] !== 'story') return null;
+      const title = storyProps['title'];
+      const persona = storyProps['persona'];
+      const goal = storyProps['goal'];
+      const benefit = storyProps['benefit'];
+      const createdBy = storyProps['created_by'];
+      const createdAt = storyProps['created_at'];
+      if (
+        typeof title !== 'string' ||
+        typeof persona !== 'string' ||
+        typeof goal !== 'string' ||
+        typeof benefit !== 'string' ||
+        typeof createdBy !== 'string' ||
+        typeof createdAt !== 'number'
+      ) {
+        return null;
+      }
+      const intentId = toNeighborEntries(incomingRaw)
+        .find((edge) => edge.label === 'decomposes-to' && edge.nodeId.startsWith('intent:'))?.nodeId;
+      return {
+        id: storyId,
+        title,
+        persona,
+        goal,
+        benefit,
+        intentId,
+        createdBy,
+        createdAt,
+      } satisfies StoryNode;
+    }))).filter((entry): entry is StoryNode => entry !== null)
+      .sort((left, right) => left.id.localeCompare(right.id));
+
+    const criteria: CriterionNode[] = [];
+    const evidenceIds = new Set<string>();
+    for (const criterionId of criterionIds) {
+      const [criterionProps, incomingRaw] = await Promise.all([
+        graph.getNodeProps(criterionId),
+        graph.neighbors(criterionId, 'incoming'),
+      ]);
+      if (!criterionProps || criterionProps['type'] !== 'criterion') continue;
+      const description = criterionProps['description'];
+      const verifiable = criterionProps['verifiable'];
+      if (typeof description !== 'string' || typeof verifiable !== 'boolean') continue;
+      const incoming = toNeighborEntries(incomingRaw);
+      const requirementId = incoming.find((edge) => edge.label === 'has-criterion' && edge.nodeId.startsWith('req:'))?.nodeId;
+      const linkedEvidenceIds = incoming
+        .filter((edge) => edge.label === 'verifies' && edge.nodeId.startsWith('evidence:'))
+        .map((edge) => edge.nodeId)
+        .sort((left, right) => left.localeCompare(right));
+      for (const evidenceId of linkedEvidenceIds) evidenceIds.add(evidenceId);
+      criteria.push({
+        id: criterionId,
+        description,
+        verifiable,
+        requirementId,
+        evidenceIds: linkedEvidenceIds,
+      });
+    }
+
+    const evidence = (await Promise.all([...evidenceIds].map(async (evidenceId): Promise<EvidenceNode | null> => {
+      const [evidenceProps, outgoingRaw] = await Promise.all([
+        graph.getNodeProps(evidenceId),
+        graph.neighbors(evidenceId, 'outgoing'),
+      ]);
+      if (!evidenceProps || evidenceProps['type'] !== 'evidence') return null;
+      const kind = evidenceProps['kind'];
+      const result = evidenceProps['result'];
+      const producedAt = evidenceProps['produced_at'];
+      const producedBy = evidenceProps['produced_by'];
+      if (
+        typeof kind !== 'string' || !VALID_EVIDENCE_KINDS.has(kind as EvidenceKind) ||
+        typeof result !== 'string' || !VALID_EVIDENCE_RESULTS.has(result as EvidenceResult) ||
+        typeof producedAt !== 'number' ||
+        typeof producedBy !== 'string'
+      ) {
+        return null;
+      }
+      const outgoing = toNeighborEntries(outgoingRaw);
+      const criterionId = outgoing.find((edge) => edge.label === 'verifies' && edge.nodeId.startsWith('criterion:'))?.nodeId;
+      const requirementId = outgoing.find((edge) => edge.label === 'implements' && edge.nodeId.startsWith('req:'))?.nodeId;
+      return {
+        id: evidenceId,
+        kind: kind as EvidenceKind,
+        result: result as EvidenceResult,
+        producedAt,
+        producedBy,
+        criterionId,
+        requirementId,
+        artifactHash: typeof evidenceProps['artifact_hash'] === 'string' ? evidenceProps['artifact_hash'] : undefined,
+        sourceFile: typeof evidenceProps['source_file'] === 'string' ? evidenceProps['source_file'] : undefined,
+      } satisfies EvidenceNode;
+    }))).filter((entry): entry is EvidenceNode => entry !== null)
+      .sort((left, right) => left.id.localeCompare(right.id));
+
+    const policies = campaignId
+      ? await this.loadPoliciesForCampaign(graph, campaignId)
+      : [];
+
+    return { stories, requirements, criteria, evidence, policies };
+  }
+
+  private async loadPoliciesForCampaign(
+    graph: WarpGraph,
+    campaignId: string,
+  ): Promise<PolicyNode[]> {
+    const incoming = toNeighborEntries(await graph.neighbors(campaignId, 'incoming'));
+    const policyIds = incoming
+      .filter((edge) => edge.label === 'governs' && edge.nodeId.startsWith('policy:'))
+      .map((edge) => edge.nodeId)
+      .sort((left, right) => left.localeCompare(right));
+    const policies = await Promise.all(policyIds.map(async (policyId): Promise<PolicyNode | null> => {
+      const props = await graph.getNodeProps(policyId);
+      if (!props || props['type'] !== 'policy') return null;
+      const coverageThresholdRaw = props['coverage_threshold'];
+      const requireAllCriteriaRaw = props['require_all_criteria'];
+      const requireEvidenceRaw = props['require_evidence'];
+      const allowManualSealRaw = props['allow_manual_seal'];
+      const coverageThreshold = (
+        typeof coverageThresholdRaw === 'number' &&
+        Number.isFinite(coverageThresholdRaw) &&
+        coverageThresholdRaw >= 0 &&
+        coverageThresholdRaw <= 1
+      )
+        ? coverageThresholdRaw
+        : DEFAULT_POLICY_COVERAGE_THRESHOLD;
+
+      return {
+        id: policyId,
+        campaignId,
+        coverageThreshold,
+        requireAllCriteria: typeof requireAllCriteriaRaw === 'boolean'
+          ? requireAllCriteriaRaw
+          : DEFAULT_POLICY_REQUIRE_ALL_CRITERIA,
+        requireEvidence: typeof requireEvidenceRaw === 'boolean'
+          ? requireEvidenceRaw
+          : DEFAULT_POLICY_REQUIRE_EVIDENCE,
+        allowManualSeal: typeof allowManualSealRaw === 'boolean'
+          ? allowManualSealRaw
+          : DEFAULT_POLICY_ALLOW_MANUAL_SEAL,
+      } satisfies PolicyNode;
+    }));
+
+    return policies.filter((entry): entry is PolicyNode => entry !== null);
   }
 
   private async buildCaseDetail(
