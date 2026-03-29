@@ -15,8 +15,6 @@ function snapshotProfileForDashboardView(view: string): GraphSnapshotProfile {
       return 'audit';
     case 'suggestions':
       return 'analysis';
-    case 'all':
-      return 'full';
     default:
       return 'operational';
   }
@@ -355,7 +353,20 @@ export function registerDashboardCommands(program: Command, ctx: CliContext): vo
           if (ctx.json) {
             ctx.jsonOut({
               success: true, command: 'status', diagnostics,
-              data: { ...snapshot, view, health },
+              data: view === 'all'
+                ? {
+                  view,
+                  health,
+                  campaigns: snapshot.campaigns,
+                  intents: snapshot.intents,
+                  quests: snapshot.quests,
+                  scrolls: snapshot.scrolls,
+                  approvals: snapshot.approvals,
+                  submissions: snapshot.submissions,
+                  reviews: snapshot.reviews,
+                  decisions: snapshot.decisions,
+                }
+                : { ...snapshot, view, health },
             });
             return;
           }

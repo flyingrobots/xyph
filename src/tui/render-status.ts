@@ -217,7 +217,7 @@ export function renderLineage(snapshot: GraphSnapshot, style: StylePort): string
 }
 
 /**
- * Renders all nodes in separate tables — the All Nodes view.
+ * Renders the broad workflow census used by dashboard --view all.
  */
 export function renderAll(snapshot: GraphSnapshot, style: StylePort): string {
   const lines: string[] = [];
@@ -229,15 +229,9 @@ export function renderAll(snapshot: GraphSnapshot, style: StylePort): string {
     snapshot.approvals.length +
     snapshot.submissions.length +
     snapshot.reviews.length +
-    snapshot.decisions.length +
-    snapshot.stories.length +
-    snapshot.requirements.length +
-    snapshot.criteria.length +
-    snapshot.evidence.length +
-    snapshot.policies.length +
-    snapshot.suggestions.length;
+    snapshot.decisions.length;
 
-  lines.push(snapshotHeader(style, 'All XYPH Nodes', `${total} node(s) total`, 'success'));
+  lines.push(snapshotHeader(style, 'Workflow Census', `${total} workflow node(s)`, 'success'));
 
   if (snapshot.campaigns.length > 0) {
     lines.push('');
@@ -348,6 +342,97 @@ export function renderAll(snapshot: GraphSnapshot, style: StylePort): string {
         { header: 'Trigger' },
         { header: 'Approver' },
         { header: 'Requester' },
+      ],
+      rows,
+      headerToken: style.theme.ui.tableHeader,
+      borderToken: style.theme.border.primary,
+    }));
+  }
+
+  if (snapshot.submissions.length > 0) {
+    lines.push('');
+    lines.push(separator({ label: 'Submissions', borderToken: style.theme.border.secondary }));
+    const rows = snapshot.submissions.map((submission) => [
+      style.styled(style.theme.semantic.muted, submission.id),
+      submission.questId,
+      badge(submission.status, { variant: statusVariant(submission.status) }),
+      String(submission.approvalCount),
+      String(submission.headsCount),
+      submission.submittedBy,
+    ]);
+    lines.push(table({
+      columns: [
+        { header: 'ID' },
+        { header: 'Quest' },
+        { header: 'Status' },
+        { header: 'Approvals' },
+        { header: 'Heads' },
+        { header: 'Submitted By' },
+      ],
+      rows,
+      headerToken: style.theme.ui.tableHeader,
+      borderToken: style.theme.border.primary,
+    }));
+  }
+
+  if (snapshot.reviews.length > 0) {
+    lines.push('');
+    lines.push(separator({ label: 'Reviews', borderToken: style.theme.border.secondary }));
+    const rows = snapshot.reviews.map((review) => [
+      style.styled(style.theme.semantic.muted, review.id),
+      review.patchsetId,
+      badge(
+        review.verdict === 'approve'
+          ? 'APPROVED'
+          : review.verdict === 'request-changes'
+            ? 'CHANGES_REQUESTED'
+            : 'PENDING',
+        {
+          variant: statusVariant(
+            review.verdict === 'approve'
+              ? 'APPROVED'
+              : review.verdict === 'request-changes'
+                ? 'CHANGES_REQUESTED'
+                : 'PENDING',
+          ),
+        },
+      ),
+      review.reviewedBy,
+      sliceDate(review.reviewedAt),
+    ]);
+    lines.push(table({
+      columns: [
+        { header: 'ID' },
+        { header: 'Patchset' },
+        { header: 'Verdict' },
+        { header: 'Reviewed By' },
+        { header: 'Reviewed' },
+      ],
+      rows,
+      headerToken: style.theme.ui.tableHeader,
+      borderToken: style.theme.border.primary,
+    }));
+  }
+
+  if (snapshot.decisions.length > 0) {
+    lines.push('');
+    lines.push(separator({ label: 'Decisions', borderToken: style.theme.border.secondary }));
+    const rows = snapshot.decisions.map((decision) => [
+      style.styled(style.theme.semantic.muted, decision.id),
+      decision.submissionId,
+      badge(decision.kind === 'merge' ? 'MERGED' : 'CLOSED', {
+        variant: statusVariant(decision.kind === 'merge' ? 'MERGED' : 'CLOSED'),
+      }),
+      decision.decidedBy,
+      sliceDate(decision.decidedAt),
+    ]);
+    lines.push(table({
+      columns: [
+        { header: 'ID' },
+        { header: 'Submission' },
+        { header: 'Kind' },
+        { header: 'Decided By' },
+        { header: 'Decided' },
       ],
       rows,
       headerToken: style.theme.ui.tableHeader,
