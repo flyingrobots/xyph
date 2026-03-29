@@ -669,6 +669,7 @@ describe('ControlPlaneService', () => {
     mocks.queryAggregate.mockImplementation(async (pattern?: string) => {
       const counts: Record<string, number> = {
         'campaign:*': 1,
+        'milestone:*': 2,
         'task:*': 2,
         'intent:*': 3,
         'approval:*': 4,
@@ -870,6 +871,7 @@ describe('ControlPlaneService', () => {
       data: expect.objectContaining({
         projection: 'graph.summary',
         counts: expect.objectContaining({
+          campaigns: 3,
           approvals: 4,
           quests: 2,
           suggestions: 14,
@@ -918,6 +920,7 @@ describe('ControlPlaneService', () => {
         projection: 'worldline.summary',
         at: { tick: 10 },
         counts: expect.objectContaining({
+          campaigns: 3,
           approvals: 4,
           quests: 2,
         }),
@@ -3048,6 +3051,7 @@ describe('ControlPlaneService', () => {
       data: expect.objectContaining({
         at: { tick: 42 },
         counts: expect.objectContaining({
+          campaigns: 3,
           approvals: 4,
           quests: 2,
         }),

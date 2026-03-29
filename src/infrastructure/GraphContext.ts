@@ -383,7 +383,7 @@ class GraphContextImpl implements GraphContext {
     const includeStoryModels = includeFullTraceability || includeAuditTraceability;
     const includePolicyModels = includeFullTraceability || includeAuditTraceability;
     const includeCompletionRollups = includeAuditTraceability;
-    const includeCaseNodes = profile === 'full' || profile === 'operational';
+    const includeCaseNodes = profile === 'full' || profile === 'operational' || profile === 'analysis';
     const includeGovernanceArtifacts = profile === 'full';
 
     // --- Lifecycle: open → sync → materialize ---
@@ -2238,7 +2238,12 @@ class GraphContextImpl implements GraphContext {
     let intentId: string | undefined;
     const dependsOnIds: string[] = [];
     for (const edge of outgoing) {
-      if (edge.label === 'belongs-to' && edge.nodeId.startsWith('campaign:')) campaignId = edge.nodeId;
+      if (
+        edge.label === 'belongs-to' &&
+        (edge.nodeId.startsWith('campaign:') || edge.nodeId.startsWith('milestone:'))
+      ) {
+        campaignId = edge.nodeId;
+      }
       if (edge.label === 'authorized-by' && edge.nodeId.startsWith('intent:')) intentId = edge.nodeId;
       if (edge.label === 'depends-on' && edge.nodeId.startsWith('task:')) dependsOnIds.push(edge.nodeId);
     }
@@ -2277,7 +2282,7 @@ class GraphContextImpl implements GraphContext {
       graph.neighbors(campaignId, 'outgoing'),
       graph.neighbors(campaignId, 'incoming'),
     ]);
-    if (!props || props['type'] !== 'campaign') return undefined;
+    if (!props || (props['type'] !== 'campaign' && props['type'] !== 'milestone')) return undefined;
     const title = props['title'];
     if (typeof title !== 'string') return undefined;
 
@@ -2645,7 +2650,7 @@ class GraphContextImpl implements GraphContext {
       if (!criterionProps || criterionProps['type'] !== 'criterion') continue;
       const description = criterionProps['description'];
       const verifiable = criterionProps['verifiable'];
-      if (typeof description !== 'string' || typeof verifiable !== 'boolean') continue;
+      if (typeof description !== 'string') continue;
       const incoming = toNeighborEntries(incomingRaw);
       const requirementId = incoming.find((edge) => edge.label === 'has-criterion' && edge.nodeId.startsWith('req:'))?.nodeId;
       const linkedEvidenceIds = incoming
@@ -2656,7 +2661,7 @@ class GraphContextImpl implements GraphContext {
       criteria.push({
         id: criterionId,
         description,
-        verifiable,
+        verifiable: typeof verifiable === 'boolean' ? verifiable : true,
         requirementId,
         evidenceIds: linkedEvidenceIds,
       });
@@ -2924,17 +2929,18 @@ class GraphContextImpl implements GraphContext {
       replyToId?: string;
     }>();
 
-    const docQueue = [...seedDocumentIds];
-    const scannedDocIds = new Set<string>();
-    while (docQueue.length > 0) {
-      const docId = docQueue.shift();
-      if (!docId || scannedDocIds.has(docId)) continue;
-      scannedDocIds.add(docId);
+    const reachableDocIds = await this.collectTraversalNodeIds(
+      graph,
+      seedDocumentIds,
+      'supersedes',
+      isNarrativeDocumentId,
+    );
+    for (const docId of reachableDocIds) {
+      if (!isNarrativeDocumentId(docId)) continue;
 
-      const [props, rawOutgoing, rawIncoming] = await Promise.all([
+      const [props, rawOutgoing] = await Promise.all([
         graph.getNodeProps(docId),
         graph.neighbors(docId, 'outgoing'),
-        graph.neighbors(docId, 'incoming'),
       ]);
       if (!props) continue;
 
@@ -2952,7 +2958,6 @@ class GraphContextImpl implements GraphContext {
       }
 
       const outgoing = toNeighborEntries(rawOutgoing);
-      const incoming = toNeighborEntries(rawIncoming);
       const targetRefs: string[] = [];
       let supersedesId: string | undefined;
 
@@ -2960,16 +2965,6 @@ class GraphContextImpl implements GraphContext {
         if (edge.label === 'documents') targetRefs.push(edge.nodeId);
         if (edge.label === 'supersedes' && isNarrativeDocumentIdForType(edge.nodeId, rawType)) {
           supersedesId = edge.nodeId;
-          if (!scannedDocIds.has(edge.nodeId)) docQueue.push(edge.nodeId);
-        }
-      }
-      for (const edge of incoming) {
-        if (
-          edge.label === 'supersedes' &&
-          isNarrativeDocumentIdForType(edge.nodeId, rawType) &&
-          !scannedDocIds.has(edge.nodeId)
-        ) {
-          docQueue.push(edge.nodeId);
         }
       }
 
@@ -2987,17 +2982,18 @@ class GraphContextImpl implements GraphContext {
       });
     }
 
-    const commentQueue = [...seedCommentIds];
-    const scannedCommentIds = new Set<string>();
-    while (commentQueue.length > 0) {
-      const commentId = commentQueue.shift();
-      if (!commentId || scannedCommentIds.has(commentId)) continue;
-      scannedCommentIds.add(commentId);
+    const reachableCommentIds = await this.collectTraversalNodeIds(
+      graph,
+      seedCommentIds,
+      'replies-to',
+      (id): id is string => id.startsWith('comment:'),
+    );
+    for (const commentId of reachableCommentIds) {
+      if (!commentId.startsWith('comment:')) continue;
 
-      const [props, rawOutgoing, rawIncoming] = await Promise.all([
+      const [props, rawOutgoing] = await Promise.all([
         graph.getNodeProps(commentId),
         graph.neighbors(commentId, 'outgoing'),
-        graph.neighbors(commentId, 'incoming'),
       ]);
       if (!props) continue;
 
@@ -3006,7 +3002,6 @@ class GraphContextImpl implements GraphContext {
       if (typeof authoredBy !== 'string' || typeof authoredAt !== 'number') continue;
 
       const outgoing = toNeighborEntries(rawOutgoing);
-      const incoming = toNeighborEntries(rawIncoming);
       let targetId: string | undefined;
       let replyToId: string | undefined;
 
@@ -3014,12 +3009,6 @@ class GraphContextImpl implements GraphContext {
         if (edge.label === 'comments-on') targetId = edge.nodeId;
         if (edge.label === 'replies-to' && edge.nodeId.startsWith('comment:')) {
           replyToId = edge.nodeId;
-          if (!scannedCommentIds.has(edge.nodeId)) commentQueue.push(edge.nodeId);
-        }
-      }
-      for (const edge of incoming) {
-        if (edge.label === 'replies-to' && edge.nodeId.startsWith('comment:') && !scannedCommentIds.has(edge.nodeId)) {
-          commentQueue.push(edge.nodeId);
         }
       }
 
@@ -3097,6 +3086,27 @@ class GraphContextImpl implements GraphContext {
     comments.sort((a, b) => a.authoredAt - b.authoredAt || a.id.localeCompare(b.id));
 
     return { documents, comments };
+  }
+
+  private async collectTraversalNodeIds(
+    graph: GraphContextGraph,
+    seedIds: Set<string>,
+    labelFilter: string,
+    includeId: (id: string) => boolean,
+  ): Promise<Set<string>> {
+    const collected = new Set<string>();
+    await Promise.all(
+      [...seedIds].map(async (seedId) => {
+        const visited = await graph.traverse.bfs(seedId, {
+          dir: 'both',
+          labelFilter,
+        });
+        for (const id of visited) {
+          if (includeId(id)) collected.add(id);
+        }
+      }),
+    );
+    return collected;
   }
 
   private expandDocumentIdsForTargets(

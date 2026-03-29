@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Quest } from '../../src/domain/entities/Quest.js';
+import type { GraphSnapshot } from '../../src/domain/models/dashboard.js';
 import type { GraphPort } from '../../src/ports/GraphPort.js';
 import type { RoadmapQueryPort } from '../../src/ports/RoadmapPort.js';
 import { makeSnapshot, campaign, intent, quest, submission } from '../helpers/snapshot.js';

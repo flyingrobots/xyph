@@ -81,6 +81,85 @@ describe('GraphContext read path', () => {
     expect(materialize).not.toHaveBeenCalled();
   });
 
+  it('uses graph.traverse.bfs() to expand narrative documents and replies for quest detail reads', async () => {
+    const bfs = vi.fn(async (start: string) => {
+      if (start === 'note:N-2') return ['note:N-2', 'note:N-1'];
+      if (start === 'comment:C-1') return ['comment:C-1', 'comment:C-2'];
+      return [start];
+    });
+
+    const graph: GraphContextGraph = {
+      writerId: 'writer.test',
+      syncCoverage: vi.fn(async () => undefined),
+      materialize: vi.fn(async () => null),
+      hasNode: vi.fn(async (id: string) => id === 'task:T-1'),
+      getNodeProps: vi.fn(async (id: string) => {
+        switch (id) {
+          case 'task:T-1':
+            return { type: 'task', title: 'Quest', status: 'READY', hours: 1 };
+          case 'note:N-1':
+            return { type: 'note', title: 'Draft', authored_by: 'human', authored_at: 1 };
+          case 'note:N-2':
+            return { type: 'note', title: 'Draft', authored_by: 'human', authored_at: 2 };
+          case 'comment:C-1':
+            return { type: 'comment', authored_by: 'human', authored_at: 3 };
+          case 'comment:C-2':
+            return { type: 'comment', authored_by: 'agent', authored_at: 4 };
+          default:
+            return null;
+        }
+      }),
+      neighbors: vi.fn(async (id: string, direction?: 'outgoing' | 'incoming' | 'both') => {
+        if (id === 'task:T-1' && direction === 'incoming') {
+          return [
+            { nodeId: 'note:N-2', label: 'documents' },
+            { nodeId: 'comment:C-1', label: 'comments-on' },
+          ];
+        }
+        if (id === 'note:N-1') return [];
+        if (id === 'note:N-2') {
+          return direction === 'incoming'
+            ? []
+            : [
+              { nodeId: 'task:T-1', label: 'documents' },
+              { nodeId: 'note:N-1', label: 'supersedes' },
+            ];
+        }
+        if (id === 'comment:C-1') {
+          return direction === 'incoming'
+            ? [{ nodeId: 'comment:C-2', label: 'replies-to' }]
+            : [{ nodeId: 'task:T-1', label: 'comments-on' }];
+        }
+        if (id === 'comment:C-2') {
+          return direction === 'incoming'
+            ? []
+            : [{ nodeId: 'comment:C-1', label: 'replies-to' }];
+        }
+        return [];
+      }),
+      getContent: vi.fn(async (id: string) => `body:${id}`),
+      getContentOid: vi.fn(async (id: string) => `oid:${id}`),
+      getStateSnapshot: vi.fn(async () => ({
+        observedFrontier: new Map([['writer.test', 1]]),
+      })),
+      getFrontier: vi.fn(async () => new Map([['writer.test', 'abcdef1234567']])),
+      query: vi.fn(() => makeQueryBuilder()),
+      traverse: {
+        topologicalSort: vi.fn(async () => ({ sorted: [] })),
+        bfs,
+      },
+      compareCoordinates: vi.fn(),
+    };
+
+    const ctx = createGraphContextFromGraph(graph, { syncCoverage: false });
+    const detail = await ctx.fetchEntityDetail('task:T-1');
+
+    expect(detail?.questDetail?.documents.map((entry) => entry.id)).toEqual(['note:N-1', 'note:N-2']);
+    expect(detail?.questDetail?.comments.map((entry) => entry.id)).toEqual(['comment:C-1', 'comment:C-2']);
+    expect(bfs).toHaveBeenCalledWith('note:N-2', { dir: 'both', labelFilter: 'supersedes' });
+    expect(bfs).toHaveBeenCalledWith('comment:C-1', { dir: 'both', labelFilter: 'replies-to' });
+  });
+
   it('uses the operational snapshot profile without scanning traceability families and still links AI suggestion cases', async () => {
     const queriedPatterns: string[] = [];
     const queryNodes = new Map<string, { id: string; props: Record<string, unknown> }[]>([
@@ -216,6 +295,13 @@ describe('GraphContext read path', () => {
           suggested_at: 1,
         },
       }]],
+      ['case:*', [{
+        id: 'case:C-1',
+        props: {
+          type: 'case',
+          status: 'OPEN',
+        },
+      }]],
     ]);
 
     const graph: GraphContextGraph = {
@@ -247,6 +333,9 @@ describe('GraphContext read path', () => {
         if (id === 'evidence:E-1') {
           return [{ nodeId: 'criterion:C-1', label: 'verifies' }];
         }
+        if (id === 'case:C-1') {
+          return [{ nodeId: 'suggestion:S-1', label: 'opened-from' }];
+        }
         return [];
       }),
       getNodeProps: vi.fn(async () => null),
@@ -269,6 +358,7 @@ describe('GraphContext read path', () => {
     expect(queriedPatterns).toContain('criterion:*');
     expect(queriedPatterns).toContain('evidence:*');
     expect(queriedPatterns).toContain('suggestion:*');
+    expect(queriedPatterns).toContain('case:*');
     expect(snapshot.stories).toEqual([]);
     expect(snapshot.policies).toEqual([]);
     expect(snapshot.requirements).toEqual([
@@ -296,6 +386,86 @@ describe('GraphContext read path', () => {
         id: 'suggestion:S-1',
         targetId: 'criterion:C-1',
         status: 'PENDING',
+      }),
+    ]);
+    expect(snapshot.aiSuggestions).toEqual([]);
+  });
+
+  it('preserves AI suggestion case links in the analysis snapshot profile', async () => {
+    const queriedPatterns: string[] = [];
+    const queryNodes = new Map<string, { id: string; props: Record<string, unknown> }[]>([
+      ['suggestion:*', [{
+        id: 'suggestion:AI-1',
+        props: {
+          type: 'ai_suggestion',
+          suggestion_kind: 'quest',
+          title: 'Trace the gap',
+          summary: 'Route suggestion review through governed cases.',
+          status: 'suggested',
+          audience: 'human',
+          origin: 'request',
+          suggested_by: 'agent:test',
+          suggested_at: 1,
+          target_id: 'criterion:C-1',
+        },
+      }]],
+      ['case:*', [{
+        id: 'case:C-1',
+        props: {
+          type: 'case',
+          status: 'OPEN',
+        },
+      }]],
+    ]);
+
+    const graph: GraphContextGraph = {
+      writerId: 'writer.test',
+      syncCoverage: vi.fn(async () => undefined),
+      materialize: vi.fn(async () => null),
+      getStateSnapshot: vi.fn(async () => ({
+        observedFrontier: new Map([['writer.test', 1]]),
+      })),
+      getFrontier: vi.fn(async () => new Map([['writer.test', 'abcdef1234567']])),
+      query: vi.fn(() => {
+        let pattern = '';
+        return {
+          match(value: string) {
+            pattern = value;
+            queriedPatterns.push(value);
+            return this;
+          },
+          select() {
+            return this;
+          },
+          run: vi.fn(async () => ({ nodes: queryNodes.get(pattern) ?? [] })),
+        };
+      }),
+      neighbors: vi.fn(async (id: string) => {
+        if (id === 'case:C-1') {
+          return [{ nodeId: 'suggestion:AI-1', label: 'opened-from' }];
+        }
+        return [];
+      }),
+      getNodeProps: vi.fn(async () => null),
+      getContent: vi.fn(async () => null),
+      getContentOid: vi.fn(async () => null),
+      hasNode: vi.fn(async () => false),
+      traverse: {
+        topologicalSort: vi.fn(async () => ({ sorted: [] })),
+        bfs: vi.fn(async () => []),
+      },
+      compareCoordinates: vi.fn(),
+    };
+
+    const ctx = createGraphContextFromGraph(graph, { syncCoverage: false });
+    const snapshot = await ctx.fetchSnapshot(undefined, { profile: 'analysis' });
+
+    expect(queriedPatterns).toContain('case:*');
+    expect(snapshot.aiSuggestions).toEqual([
+      expect.objectContaining({
+        id: 'suggestion:AI-1',
+        linkedCaseId: 'case:C-1',
+        linkedCaseStatus: 'OPEN',
       }),
     ]);
   });

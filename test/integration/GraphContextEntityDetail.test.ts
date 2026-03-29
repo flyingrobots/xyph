@@ -373,4 +373,68 @@ describe('GraphContext entity detail integration', () => {
       submittedBy: 'agent.submitter',
     });
   });
+
+  it('preserves milestone parents and defaults missing criterion verifiable to true', { timeout: 30_000 }, async () => {
+    const graph = await graphPort.getGraph();
+
+    await graph.patch((p) => {
+      p.addNode('intent:MILESTONE')
+        .setProperty('intent:MILESTONE', 'title', 'Milestone detail test')
+        .setProperty('intent:MILESTONE', 'requested_by', 'human.test')
+        .setProperty('intent:MILESTONE', 'created_at', 1_700_200_000_000)
+        .setProperty('intent:MILESTONE', 'type', 'intent');
+
+      p.addNode('milestone:SHOW')
+        .setProperty('milestone:SHOW', 'title', 'Milestone parent')
+        .setProperty('milestone:SHOW', 'status', 'IN_PROGRESS')
+        .setProperty('milestone:SHOW', 'type', 'milestone');
+
+      p.addNode('task:SHOW-MILESTONE')
+        .setProperty('task:SHOW-MILESTONE', 'title', 'Build milestone quest detail projection')
+        .setProperty('task:SHOW-MILESTONE', 'status', 'READY')
+        .setProperty('task:SHOW-MILESTONE', 'hours', 2)
+        .setProperty('task:SHOW-MILESTONE', 'type', 'task');
+
+      p.addEdge('task:SHOW-MILESTONE', 'intent:MILESTONE', 'authorized-by');
+      p.addEdge('task:SHOW-MILESTONE', 'milestone:SHOW', 'belongs-to');
+
+      p.addNode('req:SHOW-MILESTONE')
+        .setProperty('req:SHOW-MILESTONE', 'description', 'Milestone-backed quests keep traceability detail')
+        .setProperty('req:SHOW-MILESTONE', 'kind', 'functional')
+        .setProperty('req:SHOW-MILESTONE', 'priority', 'must')
+        .setProperty('req:SHOW-MILESTONE', 'type', 'requirement');
+      p.addEdge('task:SHOW-MILESTONE', 'req:SHOW-MILESTONE', 'implements');
+
+      p.addNode('criterion:SHOW-MILESTONE')
+        .setProperty('criterion:SHOW-MILESTONE', 'description', 'Missing verifiable defaults to true')
+        .setProperty('criterion:SHOW-MILESTONE', 'type', 'criterion');
+      p.addEdge('req:SHOW-MILESTONE', 'criterion:SHOW-MILESTONE', 'has-criterion');
+    });
+
+    const ctx = createGraphContext(graphPort);
+    const detail = await ctx.fetchEntityDetail('task:SHOW-MILESTONE');
+
+    expect(detail?.questDetail).toBeDefined();
+    expect(detail?.outgoing).toEqual(expect.arrayContaining([
+      { nodeId: 'milestone:SHOW', label: 'belongs-to' },
+    ]));
+
+    const questDetail = detail?.questDetail;
+    if (!questDetail) {
+      throw new Error('quest detail should be present for task:SHOW-MILESTONE');
+    }
+
+    expect(questDetail.quest.campaignId).toBe('milestone:SHOW');
+    expect(questDetail.campaign).toMatchObject({
+      id: 'milestone:SHOW',
+      title: 'Milestone parent',
+    });
+    expect(questDetail.criteria).toEqual([
+      expect.objectContaining({
+        id: 'criterion:SHOW-MILESTONE',
+        verifiable: true,
+        requirementId: 'req:SHOW-MILESTONE',
+      }),
+    ]);
+  });
 });

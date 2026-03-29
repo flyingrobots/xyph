@@ -749,6 +749,7 @@ export class ControlPlaneService implements ControlPlanePort {
       this.readGraphMeta(graph),
       Promise.all([
         this.countNodeFamily(graph, 'campaign:*'),
+        this.countNodeFamily(graph, 'milestone:*'),
         this.countNodeFamily(graph, 'task:*'),
         this.countNodeFamily(graph, 'intent:*'),
         this.countNodeFamily(graph, 'approval:*'),
@@ -767,6 +768,7 @@ export class ControlPlaneService implements ControlPlanePort {
 
     const [
       campaigns,
+      milestones,
       quests,
       intents,
       approvals,
@@ -785,7 +787,7 @@ export class ControlPlaneService implements ControlPlanePort {
     return {
       asOf: Date.now(),
       counts: {
-        campaigns,
+        campaigns: campaigns + milestones,
         quests,
         intents,
         approvals,
