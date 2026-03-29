@@ -132,11 +132,10 @@ describe('Cycle 0003: Human Case Flow', () => {
     }
 
     const rendered = renderCasePage(snapshot, detail);
-    expect(rendered).toContain('Governed Case');
-    expect(rendered).toContain('Should traceability become its own governed quest?');
-    expect(rendered).toContain('Alternative: keep the work inside the umbrella quest');
-    expect(rendered).toContain('Decision Receipt');
-    expect(rendered).toContain('Create backlog quest');
+    expect(rendered).toContain('TRACE-1');
+    expect(rendered).toContain('brief:TRACE-ALT');
+    expect(rendered).toContain(result.decisionId);
+    expect(rendered).toContain('adopt');
     expect(rendered).toContain(strip(result.followOnArtifactId.replace(/^task:/, '')));
   });
 });

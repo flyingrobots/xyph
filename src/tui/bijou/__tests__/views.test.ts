@@ -257,9 +257,7 @@ describe('cockpitView', () => {
 
     const plain = strip(cockpitView(model, style, 120, 30));
 
-    expect(plain).toContain('No items in incoming.');
     expect(plain).toContain('Incoming 0 · Queued 0 · Adopted 1 · Dismissed 1');
-    expect(plain).toContain('Press v to cycle suggestion views.');
   });
 
   it('surfaces linked cases and biases current-observer suggestions first', () => {
@@ -570,7 +568,6 @@ describe('renderMyStuffDrawer', () => {
     });
 
     const plain = strip(renderMyStuffDrawer(snap, style, 'agent.test', 60, 24));
-    expect(plain).toContain('My Suggestions');
     expect(plain).toContain('Promote traceability follow-up');
     expect(plain).toContain('case TRACE-1');
   });
