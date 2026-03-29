@@ -10,7 +10,7 @@ import { VALID_TASK_KINDS, type QuestKind } from '../../domain/entities/Quest.js
 async function fetchWizardSnapshot(ctx: CliContext): Promise<GraphSnapshot> {
   const { createGraphContext } = await import('../../infrastructure/GraphContext.js');
   const gctx = createGraphContext(ctx.graphPort);
-  return gctx.fetchSnapshot();
+  return gctx.fetchSnapshot(undefined, { profile: 'operational' });
 }
 
 export function registerWizardCommands(program: Command, ctx: CliContext): void {
