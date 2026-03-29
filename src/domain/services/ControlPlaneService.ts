@@ -1623,7 +1623,14 @@ export class ControlPlaneService implements ControlPlanePort {
         const oid = props?.['_content'];
         return typeof oid === 'string' ? oid : null;
       },
-      getContent: (nodeId: string) => graph.getContent(nodeId),
+      getContent: async (nodeId: string) => {
+        const props = await worldline.getNodeProps(nodeId);
+        const derivedOid = typeof props?.['_content'] === 'string' ? props['_content'] : null;
+        if (!derivedOid) return null;
+        const liveOid = await graph.getContentOid(nodeId);
+        if (liveOid !== derivedOid) return null;
+        return graph.getContent(nodeId);
+      },
       neighbors: async (nodeId: string, direction: 'outgoing' | 'incoming') => {
         const edges = await loadEdges();
         return edges

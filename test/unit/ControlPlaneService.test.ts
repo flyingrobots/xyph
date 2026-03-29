@@ -530,7 +530,7 @@ vi.mock('../../src/infrastructure/GraphContext.js', () => ({
     },
     fetchEntityDetail: async (id: string) => {
       await opts?.materializeGraph?.(graph);
-      return mocks.fetchEntityDetail(id);
+      return mocks.fetchEntityDetail(id, graph);
     },
     graph: {
       getStateSnapshot: graph.getStateSnapshot,
@@ -692,6 +692,8 @@ describe('ControlPlaneService', () => {
       query: vi.fn(() => makeQueryBuilder()),
       hasNode: vi.fn(async () => true),
       getNodeProps: mocks.getNodeProps,
+      getContentOid: vi.fn(async () => null),
+      getContent: vi.fn(async () => null),
       getEdges: vi.fn(async () => []),
       traverse: {
         topologicalSort: vi.fn(async (ids: string | string[]) => ({
@@ -3627,6 +3629,59 @@ describe('ControlPlaneService', () => {
         worldlineId: 'worldline:review-auth',
       }),
     }));
+  });
+
+  it('reads derived-worldline entity content from the derived worldline instead of live tip content', async () => {
+    const worldlineGetNodeProps = vi.fn(async (id: string) => id === 'note:ONE'
+      ? { type: 'note', title: 'Historical note', _content: 'oid:derived' }
+      : null);
+    const worldline = {
+      query: vi.fn(() => makeQueryBuilder()),
+      hasNode: vi.fn(async () => true),
+      getNodeProps: worldlineGetNodeProps,
+      getEdges: vi.fn(async () => []),
+      traverse: {
+        topologicalSort: vi.fn(async () => ({ sorted: [], hasCycle: false })),
+        bfs: vi.fn(async () => []),
+      },
+    };
+
+    const liveGraph = {
+      ...(await mocks.openIsolatedGraph()),
+      getContentOid: vi.fn(async () => 'oid:live-tip'),
+      getContent: vi.fn(async () => new TextEncoder().encode('live tip body')),
+      worldline: vi.fn(async () => worldline),
+    };
+    mocks.openIsolatedGraph.mockResolvedValue(liveGraph);
+
+    const service = new ControlPlaneService({
+      getGraph: mocks.getGraph,
+      openIsolatedGraph: mocks.openIsolatedGraph,
+      reset: vi.fn(),
+    }, 'agent.prime');
+
+    const derived = await (service as unknown as {
+      createDerivedWorldlineGraphContext: (
+        capability: { worldlineId: string },
+        selector: { kind: 'tip' },
+      ) => Promise<{
+        graph: {
+          getContentOid(nodeId: string): Promise<string | null>;
+          getContent(nodeId: string): Promise<Uint8Array | null>;
+        };
+      }>;
+    }).createDerivedWorldlineGraphContext(
+      { worldlineId: 'worldline:review-auth' },
+      { kind: 'tip' },
+    );
+
+    const contentOid = await derived.graph.getContentOid('note:ONE');
+    const content = await derived.graph.getContent('note:ONE');
+
+    expect(worldlineGetNodeProps).toHaveBeenCalledWith('note:ONE');
+    expect(contentOid).toBe('oid:derived');
+    expect(content).toBeNull();
+    expect(liveGraph.getContent).not.toHaveBeenCalled();
   });
 
   it('supports tick-based diffing and returns newly observed patch shas', async () => {

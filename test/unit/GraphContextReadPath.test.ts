@@ -473,4 +473,68 @@ describe('GraphContext read path', () => {
       }),
     }));
   });
+
+  it('tracks cached frontiers per profile so stale full snapshots do not survive newer operational reads', async () => {
+    let currentTick = 1;
+
+    const graph = {
+      writerId: 'writer.test',
+      syncCoverage: vi.fn(async () => undefined),
+      materialize: vi.fn(async () => null),
+      getStateSnapshot: vi.fn(async () => ({
+        observedFrontier: new Map([['writer.test', currentTick]]),
+      })),
+      getFrontier: vi.fn(async () => new Map([['writer.test', `frontier-${currentTick}`]])),
+      query: vi.fn(() => {
+        let pattern = '';
+        return {
+          match(value: string) {
+            pattern = value;
+            return this;
+          },
+          select() {
+            return this;
+          },
+          run: vi.fn(async () => {
+            if (pattern === 'task:*') {
+              return {
+                nodes: [{
+                  id: 'task:T-1',
+                  props: {
+                    type: 'task',
+                    title: `Quest v${currentTick}`,
+                    status: 'READY',
+                    hours: 1,
+                  },
+                }],
+              };
+            }
+            return { nodes: [] };
+          }),
+        };
+      }),
+      neighbors: vi.fn(async () => []),
+      getNodeProps: vi.fn(async () => null),
+      getContent: vi.fn(async () => null),
+      getContentOid: vi.fn(async () => null),
+      hasNode: vi.fn(async () => false),
+      traverse: {
+        topologicalSort: vi.fn(async () => ({ sorted: [] })),
+        bfs: vi.fn(async () => []),
+      },
+      compareCoordinates: vi.fn(),
+    } as unknown as WarpGraph;
+
+    const ctx = createGraphContextFromGraph(graph, { syncCoverage: false });
+
+    const fullAtTick1 = await ctx.fetchSnapshot(undefined, { profile: 'full' });
+    expect(fullAtTick1.quests[0]?.title).toBe('Quest v1');
+
+    currentTick = 2;
+    const operationalAtTick2 = await ctx.fetchSnapshot(undefined, { profile: 'operational' });
+    expect(operationalAtTick2.quests[0]?.title).toBe('Quest v2');
+
+    const fullAtTick2 = await ctx.fetchSnapshot(undefined, { profile: 'full' });
+    expect(fullAtTick2.quests[0]?.title).toBe('Quest v2');
+  });
 });

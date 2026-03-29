@@ -297,7 +297,7 @@ function deriveCampaignStatusFromQuests(quests: QuestNode[]): CampaignStatus {
 
 class GraphContextImpl implements GraphContext {
   private cachedSnapshots = new Map<GraphSnapshotProfile, GraphSnapshot>();
-  private cachedFrontierKey: string | null = null;
+  private cachedFrontierKeys = new Map<GraphSnapshotProfile, string>();
   private _graph: WarpGraph | null = null;
 
   constructor(
@@ -316,7 +316,7 @@ class GraphContextImpl implements GraphContext {
 
   invalidateCache(): void {
     this.cachedSnapshots.clear();
-    this.cachedFrontierKey = null;
+    this.cachedFrontierKeys.clear();
   }
 
   filterSnapshot(
@@ -381,7 +381,7 @@ class GraphContextImpl implements GraphContext {
     const cachedSnapshot = this.cachedSnapshots.get(profile);
     if (cachedSnapshot !== undefined) {
       const currentKey = this.frontierKeyFromState(await graph.getStateSnapshot());
-      if (currentKey === this.cachedFrontierKey) {
+      if (currentKey === this.cachedFrontierKeys.get(profile)) {
         log('No changes detected — using cached snapshot');
         return cachedSnapshot;
       }
@@ -1625,7 +1625,7 @@ class GraphContextImpl implements GraphContext {
       transitiveDownstream,
     };
     this.cachedSnapshots.set(profile, snap);
-    this.cachedFrontierKey = this.frontierKeyFromState(state);
+    this.cachedFrontierKeys.set(profile, this.frontierKeyFromState(state));
     return snap;
   }
 
