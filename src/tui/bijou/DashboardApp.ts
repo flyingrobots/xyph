@@ -1005,6 +1005,12 @@ function askAiContextForModel(model: DashboardModel): AskAiContext {
         relatedIds: [],
         contextLabel: shortId(page.suggestionId),
       };
+    case 'case':
+      return {
+        targetId: page.caseId,
+        relatedIds: [],
+        contextLabel: shortId(page.caseId),
+      };
     case 'landing':
       break;
   }
@@ -1051,7 +1057,7 @@ function suggestionSupersedeInputLabel(state: SuggestionSupersedeInputState): st
   if (state.step === 'replacement') {
     return `Supersede ${state.suggestionId}\nReplacement artifact ID:`;
   }
-  return `Supersede ${state.suggestionId}\nReplacement: ${state.replacementId}\nRationale (optional):`;
+  return `Supersede ${state.suggestionId}\nReplacement: ${state.replacementId}\nRationale:`;
 }
 
 function suggestionSupersedeInputHint(state: SuggestionSupersedeInputState): string {
@@ -1064,7 +1070,7 @@ function suggestionAdoptInputLabel(state: SuggestionAdoptInputState): string {
   if (state.step === 'kind') {
     return `Adopt ${state.suggestionId}\nAdopt as (quest | proposal):`;
   }
-  return `Adopt ${state.suggestionId}\nAdopt as: ${state.adoptedArtifactKind}\nRationale (optional):`;
+  return `Adopt ${state.suggestionId}\nAdopt as: ${state.adoptedArtifactKind}\nRationale:`;
 }
 
 function suggestionAdoptInputHint(state: SuggestionAdoptInputState): string {

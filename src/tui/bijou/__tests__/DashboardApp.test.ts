@@ -987,7 +987,7 @@ describe('DashboardApp', () => {
     }
     expect(adoptRationale.inputState.step).toBe('rationale');
     expect(adoptRationale.inputState.adoptedArtifactKind).toBe('proposal');
-    expect(strip(app.view(adoptRationale) as string)).toContain('Rationale (optional)');
+    expect(strip(app.view(adoptRationale) as string)).toContain('Rationale:');
 
     const [dismiss] = app.update(key('d', { shift: true }), page);
     const dismissInput = expectWriteInput(dismiss);
@@ -1179,6 +1179,11 @@ describe('DashboardApp', () => {
     }
     expect(decision.inputState.step).toBe('outcome');
     expect(strip(app.view(decision) as string)).toContain('Decision (adopt | reject | defer | request-evidence)');
+
+    const [askAi] = app.update(key('n'), wideCasePage);
+    const askAiInput = expectAskAiInput(askAi, 'title');
+    expect(askAiInput.targetId).toBe('case:TRACE-1');
+    expect(askAiInput.contextLabel).toBe('TRACE-1');
   });
 
   it('opens a page-local reopen confirmation for a graveyard quest page', () => {

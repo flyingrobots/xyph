@@ -281,11 +281,15 @@ export function registerSuggestionCommands(program: Command, ctx: CliContext): v
         }
         const adoptedArtifactKind = (adoptedArtifactKindRaw as AiSuggestionAdoptionKind | undefined)
           ?? defaultAiSuggestionAdoptionKind(suggestionKind);
+        const rationale = opts.rationale?.trim() ?? '';
+        if (!rationale) {
+          throw new Error('[INVALID_ARGS] --rationale must be non-empty');
+        }
         const result = await records.adoptAiSuggestion({
           suggestionId: id,
           resolvedBy: ctx.agentId,
           adoptedArtifactKind,
-          rationale: opts.rationale,
+          rationale,
         });
 
         const targetId = typeof props['target_id'] === 'string' ? props['target_id'] : null;
@@ -299,7 +303,7 @@ export function registerSuggestionCommands(program: Command, ctx: CliContext): v
               adoptedArtifactId: result.adoptedArtifactId,
               adoptedArtifactKind: result.adoptedArtifactKind,
               targetId,
-              rationale: opts.rationale ?? null,
+              rationale,
               patch: result.patch,
             },
           });
@@ -402,15 +406,19 @@ export function registerSuggestionCommands(program: Command, ctx: CliContext): v
     .command('supersede <id>')
     .description('Mark an AI suggestion superseded by a newer artifact')
     .requiredOption('--by <id>', 'Replacement suggestion or artifact ID')
-    .option('--rationale <text>', 'Why the replacement supersedes this suggestion')
-    .action(withErrorHandler(async (id: string, opts: { by: string; rationale?: string }) => {
+    .requiredOption('--rationale <text>', 'Why the replacement supersedes this suggestion')
+    .action(withErrorHandler(async (id: string, opts: { by: string; rationale: string }) => {
       assertPrefix(id, 'suggestion:', 'Suggestion ID');
+      const rationale = opts.rationale.trim();
+      if (!rationale) {
+        throw new Error('[INVALID_ARGS] --rationale must be non-empty');
+      }
 
       const result = await records.supersedeAiSuggestion({
         suggestionId: id,
         supersededById: opts.by,
         resolvedBy: ctx.agentId,
-        rationale: opts.rationale,
+        rationale,
       });
 
       if (ctx.json) {
@@ -422,7 +430,7 @@ export function registerSuggestionCommands(program: Command, ctx: CliContext): v
             status: 'rejected',
             resolutionKind: 'superseded',
             supersededById: result.supersededById,
-            rationale: opts.rationale ?? null,
+            rationale,
             patch: result.patch,
           },
         });

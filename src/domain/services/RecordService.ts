@@ -529,6 +529,10 @@ export class RecordService {
     if (status === 'accepted' || status === 'implemented' || status === 'rejected') {
       throw new Error(`[INVALID_STATE] AI suggestion ${input.suggestionId} is ${String(status)}, not adoptable`);
     }
+    const trimmedRationale = input.rationale?.trim() ?? '';
+    if (!trimmedRationale) {
+      throw new Error('[INVALID_INPUT] Rationale is required to adopt an AI suggestion');
+    }
 
     const targetId = typeof props['target_id'] === 'string' ? props['target_id'] : undefined;
     const title = typeof props['title'] === 'string' ? props['title'] : input.suggestionId;
@@ -602,7 +606,7 @@ export class RecordService {
           relatedIds,
           adoptedArtifactKind,
         },
-        rationale: input.rationale ?? `Adopt AI suggestion ${input.suggestionId} into governed work.`,
+        rationale: trimmedRationale,
         proposedBy: input.resolvedBy,
         observerProfileId: 'observer:default',
         policyPackVersion: 'policy:default',
@@ -621,9 +625,7 @@ export class RecordService {
         .setProperty(input.suggestionId, 'resolution_kind', 'adopted')
         .setProperty(input.suggestionId, 'adopted_artifact_id', adoptedArtifactId)
         .setProperty(input.suggestionId, 'adopted_artifact_kind', adoptedArtifactKind);
-      if (input.rationale?.trim()) {
-        p.setProperty(input.suggestionId, 'resolution_rationale', input.rationale.trim());
-      }
+      p.setProperty(input.suggestionId, 'resolution_rationale', trimmedRationale);
     });
 
     return {
@@ -649,6 +651,10 @@ export class RecordService {
     if (status === 'accepted' || status === 'implemented' || status === 'rejected') {
       throw new Error(`[INVALID_STATE] AI suggestion ${input.suggestionId} is ${String(status)}, not dismissible`);
     }
+    const trimmedRationale = input.rationale.trim();
+    if (trimmedRationale.length === 0) {
+      throw new Error('[INVALID_INPUT] Rationale is required to dismiss an AI suggestion');
+    }
 
     const resolvedAt = Date.now();
     const patch = await graph.patch((p) => {
@@ -656,7 +662,7 @@ export class RecordService {
         .setProperty(input.suggestionId, 'resolved_by', input.resolvedBy)
         .setProperty(input.suggestionId, 'resolved_at', resolvedAt)
         .setProperty(input.suggestionId, 'resolution_kind', 'dismissed')
-        .setProperty(input.suggestionId, 'resolution_rationale', input.rationale.trim());
+        .setProperty(input.suggestionId, 'resolution_rationale', trimmedRationale);
     });
 
     return {
@@ -684,6 +690,10 @@ export class RecordService {
     if (status === 'accepted' || status === 'implemented' || status === 'rejected') {
       throw new Error(`[INVALID_STATE] AI suggestion ${input.suggestionId} is ${String(status)}, not supersedable`);
     }
+    const trimmedRationale = input.rationale?.trim() ?? '';
+    if (!trimmedRationale) {
+      throw new Error('[INVALID_INPUT] Rationale is required to supersede an AI suggestion');
+    }
 
     const resolvedAt = Date.now();
     const patch = await graph.patch((p) => {
@@ -692,10 +702,8 @@ export class RecordService {
         .setProperty(input.suggestionId, 'resolved_at', resolvedAt)
         .setProperty(input.suggestionId, 'resolution_kind', 'superseded')
         .setProperty(input.suggestionId, 'superseded_by_id', input.supersededById)
+        .setProperty(input.suggestionId, 'resolution_rationale', trimmedRationale)
         .addEdge(input.supersededById, input.suggestionId, 'supersedes');
-      if (input.rationale?.trim()) {
-        p.setProperty(input.suggestionId, 'resolution_rationale', input.rationale.trim());
-      }
     });
 
     return {

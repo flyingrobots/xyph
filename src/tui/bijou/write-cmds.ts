@@ -264,12 +264,17 @@ export function adoptSuggestion(
 ): Cmd<DashboardMsg> {
   return async (emit) => {
     try {
+      const trimmedRationale = rationale?.trim() ?? '';
+      if (!trimmedRationale) {
+        emit({ type: 'write-error', message: 'Rationale is required to adopt a suggestion' });
+        return;
+      }
       const records = new RecordService(deps.graphPort);
       const result = await records.adoptAiSuggestion({
         suggestionId,
         resolvedBy: deps.agentId,
         adoptedArtifactKind,
-        rationale: rationale?.trim() || undefined,
+        rationale: trimmedRationale,
       });
       emit({ type: 'write-success', message: `Adopted ${result.suggestionId} into ${result.adoptedArtifactKind} ${result.adoptedArtifactId}` });
     } catch (err: unknown) {
@@ -316,8 +321,13 @@ export function supersedeSuggestion(
   return async (emit) => {
     try {
       const replacementId = input.supersededById.trim();
+      const trimmedRationale = input.rationale?.trim() ?? '';
       if (!replacementId) {
         emit({ type: 'write-error', message: 'Replacement artifact ID is required to supersede a suggestion' });
+        return;
+      }
+      if (!trimmedRationale) {
+        emit({ type: 'write-error', message: 'Rationale is required to supersede a suggestion' });
         return;
       }
       const records = new RecordService(deps.graphPort);
@@ -325,7 +335,7 @@ export function supersedeSuggestion(
         suggestionId: input.suggestionId,
         supersededById: replacementId,
         resolvedBy: deps.agentId,
-        rationale: input.rationale?.trim() || undefined,
+        rationale: trimmedRationale,
       });
       emit({ type: 'write-success', message: `Superseded ${result.suggestionId} via ${result.supersededById}` });
     } catch (err: unknown) {
