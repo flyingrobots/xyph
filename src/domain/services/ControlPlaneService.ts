@@ -151,9 +151,27 @@ interface WorkingSetProjectionContext {
 }
 
 interface DerivedWorldlineGraphContext {
+  graph: WarpGraph;
   graphCtx: ReturnType<typeof createGraphContextFromGraph>;
   frontierDigest: string;
   backing: ObservationCoordinateBacking;
+}
+
+interface SummaryCounts {
+  campaigns: number;
+  quests: number;
+  intents: number;
+  approvals: number;
+  scrolls: number;
+  submissions: number;
+  reviews: number;
+  decisions: number;
+  stories: number;
+  requirements: number;
+  criteria: number;
+  evidence: number;
+  policies: number;
+  suggestions: number;
 }
 
 interface RedactionRecord {
@@ -693,6 +711,95 @@ export class ControlPlaneService implements ControlPlanePort {
     return await isolated.call(this.graphPort);
   }
 
+  private async openLiveSummaryGraph(): Promise<WarpGraph> {
+    const graph = await this.graphPort.getGraph();
+    await graph.syncCoverage();
+    return graph;
+  }
+
+  private async readGraphMeta(graph: WarpGraph): Promise<GraphMeta> {
+    const [state, frontier] = await Promise.all([
+      graph.getStateSnapshot(),
+      graph.getFrontier(),
+    ]);
+    const maxTick = state ? Math.max(0, ...state.observedFrontier.values()) : 0;
+    const myTick = state ? (state.observedFrontier.get(graph.writerId) ?? 0) : 0;
+    const writerCount = state ? state.observedFrontier.size : 0;
+    const tipSha = frontier.get(graph.writerId)?.slice(0, 7) ?? 'unknown';
+    return { maxTick, myTick, writerCount, tipSha };
+  }
+
+  private async countNodeFamily(graph: WarpGraph, pattern: string): Promise<number> {
+    const result = await graph.query().match(pattern).aggregate({ count: true }).run();
+    return 'count' in result && typeof result.count === 'number'
+      ? result.count
+      : 0;
+  }
+
+  private async readSummaryProjection(graph: WarpGraph): Promise<{
+    asOf: number;
+    counts: SummaryCounts;
+    graphMeta: GraphMeta;
+  }> {
+    const [graphMeta, counts] = await Promise.all([
+      this.readGraphMeta(graph),
+      Promise.all([
+        this.countNodeFamily(graph, 'campaign:*'),
+        this.countNodeFamily(graph, 'task:*'),
+        this.countNodeFamily(graph, 'intent:*'),
+        this.countNodeFamily(graph, 'approval:*'),
+        this.countNodeFamily(graph, 'artifact:*'),
+        this.countNodeFamily(graph, 'submission:*'),
+        this.countNodeFamily(graph, 'review:*'),
+        this.countNodeFamily(graph, 'decision:*'),
+        this.countNodeFamily(graph, 'story:*'),
+        this.countNodeFamily(graph, 'req:*'),
+        this.countNodeFamily(graph, 'criterion:*'),
+        this.countNodeFamily(graph, 'evidence:*'),
+        this.countNodeFamily(graph, 'policy:*'),
+        this.countNodeFamily(graph, 'suggestion:*'),
+      ]),
+    ]);
+
+    const [
+      campaigns,
+      quests,
+      intents,
+      approvals,
+      scrolls,
+      submissions,
+      reviews,
+      decisions,
+      stories,
+      requirements,
+      criteria,
+      evidence,
+      policies,
+      suggestions,
+    ] = counts;
+
+    return {
+      asOf: Date.now(),
+      counts: {
+        campaigns,
+        quests,
+        intents,
+        approvals,
+        scrolls,
+        submissions,
+        reviews,
+        decisions,
+        stories,
+        requirements,
+        criteria,
+        evidence,
+        policies,
+        suggestions,
+      },
+      graphMeta,
+    };
+  }
+
   private maybeRedactEntityDetail(
     detail: EntityDetail,
     capability: EffectiveCapabilityGrant,
@@ -763,42 +870,28 @@ export class ControlPlaneService implements ControlPlanePort {
         const derived = capability.worldlineId === DEFAULT_WORLDLINE_ID
           ? null
           : await this.createDerivedWorldlineGraphContext(capability, selector);
-        const graphCtx = derived?.graphCtx ?? (
+        const graph = derived?.graph ?? (
           selector.kind === 'tip'
-            ? createGraphContext(this.graphPort)
-            : createGraphContextFromGraph(await this.openObservationGraph(selector), { syncCoverage: false })
+            ? await this.openLiveSummaryGraph()
+            : await this.openObservationGraph(selector)
         );
-        const snapshot = await graphCtx.fetchSnapshot();
+        const summary = await this.readSummaryProjection(graph);
         return {
           data: {
             projection,
             at: selector.kind === 'tip' ? 'tip' : { tick: selector.tick },
-            asOf: snapshot.asOf,
-            counts: {
-              campaigns: snapshot.campaigns.length,
-              quests: snapshot.quests.length,
-              intents: snapshot.intents.length,
-              scrolls: snapshot.scrolls.length,
-              submissions: snapshot.submissions.length,
-              reviews: snapshot.reviews.length,
-              decisions: snapshot.decisions.length,
-              stories: snapshot.stories.length,
-              requirements: snapshot.requirements.length,
-              criteria: snapshot.criteria.length,
-              evidence: snapshot.evidence.length,
-              policies: snapshot.policies.length,
-              suggestions: snapshot.suggestions.length,
-            },
-            graphMeta: snapshot.graphMeta ?? null,
+            asOf: summary.asOf,
+            counts: summary.counts,
+            graphMeta: summary.graphMeta,
           },
           diagnostics: [],
           observation: await this.buildObservationCoordinate(
             request,
             capability,
-            snapshot.asOf,
-            snapshot.graphMeta ?? null,
+            summary.asOf,
+            summary.graphMeta,
             false,
-            graphCtx.graph,
+            graph,
             derived?.frontierDigest,
             derived?.backing,
           ),
@@ -1549,6 +1642,7 @@ export class ControlPlaneService implements ControlPlanePort {
     } as unknown as WarpGraph;
 
     return {
+      graph: derivedGraph,
       frontierDigest,
       backing,
       graphCtx: createGraphContextFromGraph(derivedGraph, { syncCoverage: false }),

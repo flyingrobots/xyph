@@ -44,6 +44,7 @@ const mocks = vi.hoisted(() => ({
   compareCoordinates: vi.fn(),
   planCoordinateTransfer: vi.fn(),
   queryRun: vi.fn(),
+  queryAggregate: vi.fn(),
   getFrontier: vi.fn(),
   getStateSnapshot: vi.fn(),
   getGraph: vi.fn(),
@@ -186,6 +187,20 @@ function makeWorkingSetDescriptor(
     materialization: {
       cacheAuthority: 'derived' as const,
     },
+  };
+}
+
+function makeQueryBuilder(pattern?: string) {
+  return {
+    match: vi.fn((nextPattern: string | string[]) => makeQueryBuilder(
+      Array.isArray(nextPattern) ? nextPattern.join('|') : nextPattern,
+    )),
+    select: vi.fn(() => ({
+      run: () => mocks.queryRun(),
+    })),
+    aggregate: vi.fn(() => ({
+      run: () => mocks.queryAggregate(pattern),
+    })),
   };
 }
 
@@ -651,14 +666,30 @@ describe('ControlPlaneService', () => {
       }),
     );
     mocks.queryRun.mockResolvedValue({ nodes: [] });
+    mocks.queryAggregate.mockImplementation(async (pattern?: string) => {
+      const counts: Record<string, number> = {
+        'campaign:*': 1,
+        'task:*': 2,
+        'intent:*': 3,
+        'approval:*': 4,
+        'artifact:*': 5,
+        'submission:*': 6,
+        'review:*': 7,
+        'decision:*': 8,
+        'story:*': 9,
+        'req:*': 10,
+        'criterion:*': 11,
+        'evidence:*': 12,
+        'policy:*': 13,
+        'suggestion:*': 14,
+      };
+      return {
+        stateHash: `state:${pattern ?? 'unknown'}`,
+        count: counts[pattern ?? ''] ?? 0,
+      };
+    });
     const makeWorldline = () => ({
-      query: vi.fn(() => ({
-        match: vi.fn(() => ({
-          select: vi.fn(() => ({
-            run: mocks.queryRun,
-          })),
-        })),
-      })),
+      query: vi.fn(() => makeQueryBuilder()),
       hasNode: vi.fn(async () => true),
       getNodeProps: mocks.getNodeProps,
       getEdges: vi.fn(async () => []),
@@ -678,13 +709,7 @@ describe('ControlPlaneService', () => {
       getNodeProps: mocks.getNodeProps,
       syncCoverage: vi.fn(async () => null),
       materialize: vi.fn(async () => null),
-      query: vi.fn(() => ({
-        match: vi.fn(() => ({
-          select: vi.fn(() => ({
-            run: mocks.queryRun,
-          })),
-        })),
-      })),
+      query: vi.fn(() => makeQueryBuilder()),
       patchesFor: vi.fn(async () => ['patch:1', 'patch:2']),
       createWorkingSet: mocks.createWorkingSet,
       createStrand: mocks.createWorkingSet,
@@ -709,6 +734,7 @@ describe('ControlPlaneService', () => {
       getNodeProps: mocks.getNodeProps,
       syncCoverage: vi.fn(async () => null),
       materialize: vi.fn(async () => null),
+      query: vi.fn(() => makeQueryBuilder()),
       patchesFor: vi.fn(async () => ['patch:1']),
       materializeWorkingSet: mocks.materializeWorkingSet,
       materializeStrand: mocks.materializeWorkingSet,
@@ -833,6 +859,7 @@ describe('ControlPlaneService', () => {
       event: 'start',
       cmd: 'observe',
     }));
+    expect(mocks.fetchSnapshot).not.toHaveBeenCalled();
     expect(result).toEqual(expect.objectContaining({
       v: CONTROL_PLANE_VERSION,
       id: 'req-1',
@@ -840,6 +867,11 @@ describe('ControlPlaneService', () => {
       cmd: 'observe',
       data: expect.objectContaining({
         projection: 'graph.summary',
+        counts: expect.objectContaining({
+          approvals: 4,
+          quests: 2,
+          suggestions: 14,
+        }),
       }),
       observation: expect.objectContaining({
         worldlineId: 'worldline:live',
@@ -877,11 +909,16 @@ describe('ControlPlaneService', () => {
 
     expect(mocks.openIsolatedGraph).toHaveBeenCalledTimes(1);
     expect(mocks.materializeWorkingSet).toHaveBeenCalledWith('wl_review-auth', { ceiling: 10 });
+    expect(mocks.fetchSnapshot).not.toHaveBeenCalled();
     expect(result).toEqual(expect.objectContaining({
       ok: true,
       data: expect.objectContaining({
         projection: 'worldline.summary',
         at: { tick: 10 },
+        counts: expect.objectContaining({
+          approvals: 4,
+          quests: 2,
+        }),
       }),
       observation: expect.objectContaining({
         worldlineId: 'worldline:review-auth',
@@ -2986,28 +3023,6 @@ describe('ControlPlaneService', () => {
   });
 
   it('supports observe at=tick for low-level projections via an isolated historical graph', async () => {
-    mocks.fetchSnapshot.mockResolvedValueOnce({
-      campaigns: [],
-      quests: [],
-      intents: [],
-      scrolls: [],
-      approvals: [],
-      submissions: [],
-      reviews: [],
-      decisions: [],
-      stories: [],
-      requirements: [],
-      criteria: [],
-      evidence: [],
-      policies: [],
-      suggestions: [],
-      asOf: 99,
-      graphMeta: { maxTick: 99, myTick: 42, writerCount: 2, tipSha: 'deadbee' },
-      sortedTaskIds: [],
-      sortedCampaignIds: [],
-      transitiveDownstream: new Map(),
-    });
-
     const service = new ControlPlaneService({
       getGraph: mocks.getGraph,
       openIsolatedGraph: mocks.openIsolatedGraph,
@@ -3025,10 +3040,15 @@ describe('ControlPlaneService', () => {
     });
 
     expect(mocks.openIsolatedGraph).toHaveBeenCalledTimes(1);
+    expect(mocks.fetchSnapshot).not.toHaveBeenCalled();
     expect(result).toEqual(expect.objectContaining({
       ok: true,
       data: expect.objectContaining({
         at: { tick: 42 },
+        counts: expect.objectContaining({
+          approvals: 4,
+          quests: 2,
+        }),
       }),
       observation: expect.objectContaining({
         frontierDigest: expect.any(String),
