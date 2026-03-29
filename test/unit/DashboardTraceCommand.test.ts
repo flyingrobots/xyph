@@ -159,6 +159,8 @@ describe('dashboard trace view JSON', () => {
 
     await program.parseAsync(['status', '--view', 'trace'], { from: 'user' });
 
+    expect(fetchSnapshot).toHaveBeenCalledWith(undefined, { profile: 'full' });
+
     expect(ctx.jsonOut).toHaveBeenCalledWith({
       success: true,
       command: 'status',
@@ -270,6 +272,8 @@ describe('dashboard trace view JSON', () => {
 
     await program.parseAsync(['status', '--view', 'trace'], { from: 'user' });
 
+    expect(fetchSnapshot).toHaveBeenCalledWith(undefined, { profile: 'full' });
+
     expect(ctx.jsonOut).toHaveBeenCalledWith(expect.objectContaining({
       success: true,
       command: 'status',
@@ -306,5 +310,23 @@ describe('dashboard trace view JSON', () => {
         campaignDiscrepancies: [],
       }),
     }));
+  });
+
+  it('uses the operational snapshot profile for roadmap-style status views', async () => {
+    const snapshot = makeSnapshot({
+      quests: [],
+      campaigns: [],
+    });
+
+    fetchSnapshot.mockResolvedValue(snapshot);
+    filterSnapshot.mockReturnValue(snapshot);
+
+    const ctx = makeCtx();
+    const program = new Command();
+    registerDashboardCommands(program, ctx);
+
+    await program.parseAsync(['status', '--view', 'roadmap'], { from: 'user' });
+
+    expect(fetchSnapshot).toHaveBeenCalledWith(undefined, { profile: 'operational' });
   });
 });

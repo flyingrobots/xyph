@@ -84,7 +84,7 @@ export class AgentSubmissionService {
 
   public async list(limit = 10): Promise<AgentSubmissionQueues> {
     const graphCtx = createGraphContext(this.graphPort);
-    const snapshot = await graphCtx.fetchSnapshot();
+    const snapshot = await graphCtx.fetchSnapshot(undefined, { profile: 'operational' });
     const activeSubmissions = snapshot.submissions.filter((entry) => !isTerminalSubmission(entry.status));
 
     const entries = activeSubmissions

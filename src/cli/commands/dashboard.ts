@@ -7,6 +7,18 @@ import { isExecutableQuestStatus } from '../../domain/entities/Quest.js';
 import { summarizeDoctorReport } from '../../domain/services/DiagnosticService.js';
 import { DoctorService } from '../../domain/services/DoctorService.js';
 import { WarpRoadmapAdapter } from '../../infrastructure/adapters/WarpRoadmapAdapter.js';
+import type { GraphSnapshotProfile } from '../../infrastructure/GraphContext.js';
+
+function snapshotProfileForDashboardView(view: string): GraphSnapshotProfile {
+  switch (view) {
+    case 'trace':
+    case 'suggestions':
+    case 'all':
+      return 'full';
+    default:
+      return 'operational';
+  }
+}
 
 export function registerDashboardCommands(program: Command, ctx: CliContext): void {
   const withErrorHandler = createErrorHandler(ctx);
@@ -91,7 +103,10 @@ export function registerDashboardCommands(program: Command, ctx: CliContext): vo
 
       const { createGraphContext } = await import('../../infrastructure/GraphContext.js');
       const graphCtx = createGraphContext(ctx.graphPort);
-      const raw = await graphCtx.fetchSnapshot();
+      const raw = await graphCtx.fetchSnapshot(
+        undefined,
+        { profile: snapshotProfileForDashboardView(view) },
+      );
       const snapshot = graphCtx.filterSnapshot(raw, { includeGraveyard: opts.includeGraveyard ?? false });
       const doctorReport = await new DoctorService(
         ctx.graphPort,
