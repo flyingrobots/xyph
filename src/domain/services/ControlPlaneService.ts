@@ -35,7 +35,11 @@ import {
 } from '../models/controlPlane.js';
 import type { Diagnostic } from '../models/diagnostics.js';
 import type { EntityDetail } from '../models/dashboard.js';
-import { createGraphContext, createGraphContextFromGraph } from '../../infrastructure/GraphContext.js';
+import {
+  createGraphContext,
+  createGraphContextFromGraph,
+  type GraphContextGraph,
+} from '../../infrastructure/GraphContext.js';
 import { WarpRoadmapAdapter } from '../../infrastructure/adapters/WarpRoadmapAdapter.js';
 import { AgentBriefingService } from './AgentBriefingService.js';
 import { AgentContextService } from './AgentContextService.js';
@@ -151,7 +155,7 @@ interface WorkingSetProjectionContext {
 }
 
 interface DerivedWorldlineGraphContext {
-  graph: WarpGraph;
+  graph: GraphContextGraph;
   graphCtx: ReturnType<typeof createGraphContextFromGraph>;
   frontierDigest: string;
   backing: ObservationCoordinateBacking;
@@ -717,7 +721,7 @@ export class ControlPlaneService implements ControlPlanePort {
     return graph;
   }
 
-  private async readGraphMeta(graph: WarpGraph): Promise<GraphMeta> {
+  private async readGraphMeta(graph: GraphContextGraph): Promise<GraphMeta> {
     const [state, frontier] = await Promise.all([
       graph.getStateSnapshot(),
       graph.getFrontier(),
@@ -729,14 +733,14 @@ export class ControlPlaneService implements ControlPlanePort {
     return { maxTick, myTick, writerCount, tipSha };
   }
 
-  private async countNodeFamily(graph: WarpGraph, pattern: string): Promise<number> {
+  private async countNodeFamily(graph: GraphContextGraph, pattern: string): Promise<number> {
     const result = await graph.query().match(pattern).aggregate({ count: true }).run();
     return 'count' in result && typeof result.count === 'number'
       ? result.count
       : 0;
   }
 
-  private async readSummaryProjection(graph: WarpGraph): Promise<{
+  private async readSummaryProjection(graph: GraphContextGraph): Promise<{
     asOf: number;
     counts: SummaryCounts;
     graphMeta: GraphMeta;
@@ -1609,7 +1613,7 @@ export class ControlPlaneService implements ControlPlanePort {
       return cachedEdges;
     };
 
-    const derivedGraph = {
+    const derivedGraph: GraphContextGraph = {
       writerId: graph.writerId,
       query: () => worldline.query(),
       hasNode: (nodeId: string) => worldline.hasNode(nodeId),
@@ -1617,6 +1621,9 @@ export class ControlPlaneService implements ControlPlanePort {
       getStateSnapshot: async () => ({
         observedFrontier: derivedState.observedFrontier,
       }),
+      // git-warp does not currently expose historical per-writer tip SHAs for
+      // strand/worldline projections, so the derived adapter can only pair the
+      // projected observed frontier with the live frontier SHA map here.
       getFrontier: () => graph.getFrontier(),
       getContentOid: async (nodeId: string) => {
         const props = await worldline.getNodeProps(nodeId);
@@ -1631,22 +1638,28 @@ export class ControlPlaneService implements ControlPlanePort {
         if (liveOid !== derivedOid) return null;
         return graph.getContent(nodeId);
       },
-      neighbors: async (nodeId: string, direction: 'outgoing' | 'incoming') => {
+      neighbors: async (
+        nodeId: string,
+        direction: 'outgoing' | 'incoming' | 'both' = 'outgoing',
+      ) => {
         const edges = await loadEdges();
-        return edges
-          .filter((edge) => (
-            direction === 'outgoing'
-              ? edge.from === nodeId
-              : edge.to === nodeId
-          ))
-          .map((edge) => ({
-            label: edge.label,
-            nodeId: direction === 'outgoing' ? edge.to : edge.from,
-          }));
+        return edges.flatMap((edge) => {
+          if (direction === 'outgoing' && edge.from === nodeId) {
+            return [{ label: edge.label, nodeId: edge.to }];
+          }
+          if (direction === 'incoming' && edge.to === nodeId) {
+            return [{ label: edge.label, nodeId: edge.from }];
+          }
+          if (direction === 'both') {
+            if (edge.from === nodeId) return [{ label: edge.label, nodeId: edge.to }];
+            if (edge.to === nodeId) return [{ label: edge.label, nodeId: edge.from }];
+          }
+          return [];
+        });
       },
       traverse: worldline.traverse,
       compareCoordinates: graph.compareCoordinates.bind(graph),
-    } as unknown as WarpGraph;
+    };
 
     return {
       graph: derivedGraph,
@@ -3631,7 +3644,7 @@ export class ControlPlaneService implements ControlPlanePort {
     observedAt: number,
     graphMeta: GraphMeta | null,
     onlyMeta = false,
-    graphOverride?: WarpGraph,
+    graphOverride?: GraphContextGraph,
     frontierDigestOverride?: string,
     backingOverride?: ObservationCoordinateBacking,
   ): Promise<ObservationCoordinate> {
@@ -3639,8 +3652,8 @@ export class ControlPlaneService implements ControlPlanePort {
     if (!frontierDigest) {
       const graph = graphOverride ?? await this.graphPort.getGraph();
       const state = await graph.getStateSnapshot();
-      frontierDigest = state
-        ? frontierDigestFromObservedFrontier(state.observedFrontier)
+        frontierDigest = state
+        ? frontierDigestFromObservedFrontier(new Map(state.observedFrontier))
         : digest(
           [...(await graph.getFrontier()).entries()].sort(([a], [b]) => a.localeCompare(b)),
         );

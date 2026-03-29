@@ -1,11 +1,13 @@
-import type { WarpCore as WarpGraph } from '@git-stunts/git-warp';
 import type { QueryResultV1, AggregateResult } from '@git-stunts/git-warp';
 import type { GraphPort } from '../../ports/GraphPort.js';
 import type { RoadmapQueryPort } from '../../ports/RoadmapPort.js';
 import type { QuestPriority } from '../entities/Quest.js';
 import type { Diagnostic } from '../models/diagnostics.js';
 import type { GraphMeta, GraphSnapshot } from '../models/dashboard.js';
-import { createGraphContext } from '../../infrastructure/GraphContext.js';
+import {
+  createGraphContext,
+  type GraphContextGraph,
+} from '../../infrastructure/GraphContext.js';
 import { toNeighborEntries, type NeighborEntry } from '../../infrastructure/helpers/isNeighborEntry.js';
 import {
   compareQuestPriority,
@@ -155,7 +157,7 @@ function extractNodes(result: QueryResultV1 | AggregateResult): QNode[] {
 }
 
 async function batchNeighbors(
-  graph: WarpGraph,
+  graph: GraphContextGraph,
   ids: string[],
   direction: 'outgoing' | 'incoming' = 'outgoing',
 ): Promise<Map<string, NeighborEntry[]>> {
@@ -172,7 +174,7 @@ async function batchNeighbors(
 }
 
 async function queryNodeFamily(
-  graph: WarpGraph,
+  graph: GraphContextGraph,
   prefix: string,
 ): Promise<QNode[]> {
   return graph.query().match(prefix).select(['id', 'props']).run().then(extractNodes);

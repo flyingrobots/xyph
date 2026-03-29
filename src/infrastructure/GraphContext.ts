@@ -134,7 +134,7 @@ const VALID_APPROVAL_TRIGGERS: ReadonlySet<string> = new Set<ApprovalGateTrigger
 
 export interface GraphContext {
   /** The underlying WARP graph. Available after the first read call. */
-  readonly graph: WarpGraph;
+  readonly graph: GraphContextGraph;
 
   /** Build a snapshot from the current graph state (sync → query → traversal). */
   fetchSnapshot(
@@ -154,6 +154,29 @@ export interface GraphContext {
 
 export type GraphSnapshotProfile = 'full' | 'operational' | 'analysis' | 'audit';
 
+export interface GraphContextState {
+  readonly observedFrontier: ReadonlyMap<string, number>;
+}
+
+export interface GraphContextGraph {
+  readonly writerId: WarpGraph['writerId'];
+  readonly query: WarpGraph['query'];
+  readonly hasNode: WarpGraph['hasNode'];
+  readonly getNodeProps: WarpGraph['getNodeProps'];
+  readonly getStateSnapshot: () => Promise<GraphContextState | null>;
+  readonly getFrontier: () => Promise<ReadonlyMap<string, string>>;
+  readonly getContentOid: WarpGraph['getContentOid'];
+  readonly getContent: WarpGraph['getContent'];
+  readonly neighbors: (
+    nodeId: string,
+    direction?: 'outgoing' | 'incoming' | 'both',
+    edgeLabel?: string,
+  ) => Promise<{ nodeId: string; label: string }[]>;
+  readonly traverse: WarpGraph['traverse'];
+  readonly compareCoordinates: WarpGraph['compareCoordinates'];
+  readonly syncCoverage?: WarpGraph['syncCoverage'];
+}
+
 export interface FetchSnapshotOptions {
   profile?: GraphSnapshotProfile;
 }
@@ -163,7 +186,7 @@ export function createGraphContext(graphPort: GraphPort): GraphContext {
 }
 
 export function createGraphContextFromGraph(
-  graph: WarpGraph,
+  graph: GraphContextGraph,
   opts?: {
     syncCoverage?: boolean;
   },
@@ -205,7 +228,7 @@ function extractNodes(result: QueryResultV1 | AggregateResult): QNode[] {
 }
 
 async function batchNeighbors(
-  graph: WarpGraph,
+  graph: GraphContextGraph,
   ids: string[],
 ): Promise<Map<string, NeighborEntry[]>> {
   const map = new Map<string, NeighborEntry[]>();
@@ -298,16 +321,16 @@ function deriveCampaignStatusFromQuests(quests: QuestNode[]): CampaignStatus {
 class GraphContextImpl implements GraphContext {
   private cachedSnapshots = new Map<GraphSnapshotProfile, GraphSnapshot>();
   private cachedFrontierKeys = new Map<GraphSnapshotProfile, string>();
-  private _graph: WarpGraph | null = null;
+  private _graph: GraphContextGraph | null = null;
 
   constructor(
-    private readonly graphProvider: () => Promise<WarpGraph>,
+    private readonly graphProvider: () => Promise<GraphContextGraph>,
     private readonly readOptions: {
       syncCoverage?: boolean;
     } = {},
   ) {}
 
-  get graph(): WarpGraph {
+  get graph(): GraphContextGraph {
     if (!this._graph) {
       throw new Error('Graph not yet initialized — call fetchSnapshot() first');
     }
@@ -370,6 +393,9 @@ class GraphContextImpl implements GraphContext {
 
     // Dashboard polling: discover external writers' patches before querying
     if (this.readOptions.syncCoverage !== false) {
+      if (!graph.syncCoverage) {
+        throw new Error('GraphContext requires syncCoverage() unless syncCoverage is explicitly disabled');
+      }
       log('Syncing coverage…');
       await graph.syncCoverage();
       await yieldEventLoop();
@@ -1630,7 +1656,7 @@ class GraphContextImpl implements GraphContext {
   }
 
   private async queryNodesByPrefix(
-    graph: WarpGraph,
+    graph: GraphContextGraph,
     prefix: 'comparison-artifact' | 'collapse-proposal' | 'attestation',
   ): Promise<QNode[]> {
     const result = await graph.query().match(`${prefix}:*`).select(['id', 'props']).run();
@@ -1638,7 +1664,7 @@ class GraphContextImpl implements GraphContext {
   }
 
   private async summarizeAttestations(
-    graph: WarpGraph,
+    graph: GraphContextGraph,
     attestationIds: string[],
   ): Promise<GovernanceAttestationSummary> {
     const attestationEntries = (await Promise.all(
@@ -1681,7 +1707,7 @@ class GraphContextImpl implements GraphContext {
   }
 
   private async computeComparisonArtifactFreshness(
-    graph: WarpGraph,
+    graph: GraphContextGraph,
     props: Record<string, unknown>,
     payload: Record<string, unknown> | null,
   ): Promise<'fresh' | 'stale' | 'unknown'> {
@@ -1746,7 +1772,7 @@ class GraphContextImpl implements GraphContext {
   }
 
   private async computeCollapseProposalFreshness(
-    graph: WarpGraph,
+    graph: GraphContextGraph,
     props: Record<string, unknown>,
   ): Promise<'fresh' | 'stale' | 'unknown'> {
     const comparisonArtifactDigest = asString(props['comparison_artifact_digest']);
@@ -1793,7 +1819,7 @@ class GraphContextImpl implements GraphContext {
   }
 
   private async buildGovernanceDetail(
-    graph: WarpGraph,
+    graph: GraphContextGraph,
     type: string,
     props: Record<string, unknown>,
     content: string | undefined,
@@ -1943,7 +1969,7 @@ class GraphContextImpl implements GraphContext {
   }
 
   private async buildGovernanceArtifacts(
-    graph: WarpGraph,
+    graph: GraphContextGraph,
     nodes: QNode[],
   ): Promise<GovernanceArtifactNode[]> {
     const artifacts = (await Promise.all(nodes.map(async (node) => {
@@ -2018,6 +2044,9 @@ class GraphContextImpl implements GraphContext {
     this._graph = graph;
 
     if (this.readOptions.syncCoverage !== false) {
+      if (!graph.syncCoverage) {
+        throw new Error('GraphContext requires syncCoverage() unless syncCoverage is explicitly disabled');
+      }
       await graph.syncCoverage();
     }
 
@@ -2074,14 +2103,14 @@ class GraphContextImpl implements GraphContext {
   // -------------------------------------------------------------------------
 
   /** Deterministic string key from the graph's observed frontier (writer:tick pairs). */
-  private frontierKeyFromState(state: { observedFrontier: Map<string, number> } | null): string {
+  private frontierKeyFromState(state: GraphContextState | null): string {
     if (!state) return '';
     const entries = [...state.observedFrontier.entries()].sort(([a], [b]) => a.localeCompare(b));
     return entries.map(([w, t]) => `${w}:${t}`).join(',');
   }
 
   private async buildQuestDetailFromGraph(
-    graph: WarpGraph,
+    graph: GraphContextGraph,
     questId: string,
     props: Record<string, unknown>,
     outgoing: EntityDetail['outgoing'],
@@ -2240,7 +2269,7 @@ class GraphContextImpl implements GraphContext {
   }
 
   private async loadCampaignNode(
-    graph: WarpGraph,
+    graph: GraphContextGraph,
     campaignId: string,
   ): Promise<CampaignNode | undefined> {
     const [props, outgoingRaw, incomingRaw] = await Promise.all([
@@ -2296,7 +2325,7 @@ class GraphContextImpl implements GraphContext {
   }
 
   private async loadIntentNode(
-    graph: WarpGraph,
+    graph: GraphContextGraph,
     intentId: string,
   ): Promise<IntentNode | undefined> {
     const props = await graph.getNodeProps(intentId);
@@ -2317,7 +2346,7 @@ class GraphContextImpl implements GraphContext {
   }
 
   private async loadScrollForQuest(
-    graph: WarpGraph,
+    graph: GraphContextGraph,
     questId: string,
   ): Promise<ScrollNode | undefined> {
     const incoming = toNeighborEntries(await graph.neighbors(questId, 'incoming'));
@@ -2349,7 +2378,7 @@ class GraphContextImpl implements GraphContext {
   }
 
   private async loadSubmissionBundleForQuest(
-    graph: WarpGraph,
+    graph: GraphContextGraph,
     questId: string,
   ): Promise<{ submission?: SubmissionNode; reviews: ReviewNode[]; decisions: DecisionNode[]; patchsetIds: Set<string> }> {
     const incoming = toNeighborEntries(await graph.neighbors(questId, 'incoming'));
@@ -2507,7 +2536,7 @@ class GraphContextImpl implements GraphContext {
   }
 
   private async loadTraceabilityForQuest(
-    graph: WarpGraph,
+    graph: GraphContextGraph,
     questId: string,
     campaignId?: string,
   ): Promise<{
@@ -2676,7 +2705,7 @@ class GraphContextImpl implements GraphContext {
   }
 
   private async loadPoliciesForCampaign(
-    graph: WarpGraph,
+    graph: GraphContextGraph,
     campaignId: string,
   ): Promise<PolicyNode[]> {
     const incoming = toNeighborEntries(await graph.neighbors(campaignId, 'incoming'));
@@ -2720,7 +2749,7 @@ class GraphContextImpl implements GraphContext {
   }
 
   private async buildCaseDetail(
-    graph: WarpGraph,
+    graph: GraphContextGraph,
     caseId: string,
     props: Record<string, unknown>,
     outgoing: EntityDetail['outgoing'],
@@ -2853,7 +2882,7 @@ class GraphContextImpl implements GraphContext {
   }
 
   private async loadNarrativeForTargets(
-    graph: WarpGraph,
+    graph: GraphContextGraph,
     targetIds: Set<string>,
   ): Promise<{ documents: NarrativeNode[]; comments: CommentNode[] }> {
     if (targetIds.size === 0) {
@@ -3151,7 +3180,7 @@ class GraphContextImpl implements GraphContext {
   }
 
   private async loadContentMap(
-    graph: WarpGraph,
+    graph: GraphContextGraph,
     ids: string[],
   ): Promise<Map<string, { body?: string; contentOid?: string }>> {
     const results = await Promise.all(ids.map(async (id) => {
@@ -3169,7 +3198,7 @@ class GraphContextImpl implements GraphContext {
   }
 
   private async findPatchsetIdsForSubmission(
-    graph: WarpGraph,
+    graph: GraphContextGraph,
     submissionId: string,
   ): Promise<Set<string>> {
     const incoming = toNeighborEntries(await graph.neighbors(submissionId, 'incoming'));

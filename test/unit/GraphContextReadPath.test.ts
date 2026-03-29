@@ -1,6 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
-import { createGraphContextFromGraph } from '../../src/infrastructure/GraphContext.js';
-import type { WarpCore as WarpGraph } from '@git-stunts/git-warp';
+import {
+  createGraphContextFromGraph,
+  type GraphContextGraph,
+} from '../../src/infrastructure/GraphContext.js';
 
 function makeQueryBuilder(nodes: { id: string; props: Record<string, unknown> }[] = []) {
   return {
@@ -17,7 +19,7 @@ function makeQueryBuilder(nodes: { id: string; props: Record<string, unknown> }[
 describe('GraphContext read path', () => {
   it('does not call materialize() when building a live snapshot', async () => {
     const materialize = vi.fn(async () => null);
-    const graph = {
+    const graph: GraphContextGraph = {
       writerId: 'writer.test',
       syncCoverage: vi.fn(async () => undefined),
       materialize,
@@ -36,7 +38,7 @@ describe('GraphContext read path', () => {
         bfs: vi.fn(async () => []),
       },
       compareCoordinates: vi.fn(),
-    } as unknown as WarpGraph;
+    };
 
     const ctx = createGraphContextFromGraph(graph, { syncCoverage: false });
     const snapshot = await ctx.fetchSnapshot();
@@ -48,7 +50,7 @@ describe('GraphContext read path', () => {
 
   it('does not call materialize() before a targeted entity detail read', async () => {
     const materialize = vi.fn(async () => null);
-    const graph = {
+    const graph: GraphContextGraph = {
       writerId: 'writer.test',
       syncCoverage: vi.fn(async () => undefined),
       materialize,
@@ -69,7 +71,7 @@ describe('GraphContext read path', () => {
         bfs: vi.fn(async () => []),
       },
       compareCoordinates: vi.fn(),
-    } as unknown as WarpGraph;
+    };
 
     const ctx = createGraphContextFromGraph(graph, { syncCoverage: false });
     const detail = await ctx.fetchEntityDetail('misc:ONE');
@@ -106,7 +108,7 @@ describe('GraphContext read path', () => {
       }]],
     ]);
 
-    const graph = {
+    const graph: GraphContextGraph = {
       writerId: 'writer.test',
       syncCoverage: vi.fn(async () => undefined),
       materialize: vi.fn(async () => null),
@@ -143,7 +145,7 @@ describe('GraphContext read path', () => {
         bfs: vi.fn(async () => []),
       },
       compareCoordinates: vi.fn(),
-    } as unknown as WarpGraph;
+    };
 
     const ctx = createGraphContextFromGraph(graph, { syncCoverage: false });
     const snapshot = await ctx.fetchSnapshot(undefined, { profile: 'operational' });
@@ -216,7 +218,7 @@ describe('GraphContext read path', () => {
       }]],
     ]);
 
-    const graph = {
+    const graph: GraphContextGraph = {
       writerId: 'writer.test',
       syncCoverage: vi.fn(async () => undefined),
       materialize: vi.fn(async () => null),
@@ -256,7 +258,7 @@ describe('GraphContext read path', () => {
         bfs: vi.fn(async () => []),
       },
       compareCoordinates: vi.fn(),
-    } as unknown as WarpGraph;
+    };
 
     const ctx = createGraphContextFromGraph(graph, { syncCoverage: false });
     const snapshot = await ctx.fetchSnapshot(undefined, { profile: 'analysis' });
@@ -393,7 +395,7 @@ describe('GraphContext read path', () => {
       }]],
     ]);
 
-    const graph = {
+    const graph: GraphContextGraph = {
       writerId: 'writer.test',
       syncCoverage: vi.fn(async () => undefined),
       materialize: vi.fn(async () => null),
@@ -448,7 +450,7 @@ describe('GraphContext read path', () => {
         bfs: vi.fn(async () => []),
       },
       compareCoordinates: vi.fn(),
-    } as unknown as WarpGraph;
+    };
 
     const ctx = createGraphContextFromGraph(graph, { syncCoverage: false });
     const snapshot = await ctx.fetchSnapshot(undefined, { profile: 'audit' });
@@ -477,7 +479,7 @@ describe('GraphContext read path', () => {
   it('tracks cached frontiers per profile so stale full snapshots do not survive newer operational reads', async () => {
     let currentTick = 1;
 
-    const graph = {
+    const graph: GraphContextGraph = {
       writerId: 'writer.test',
       syncCoverage: vi.fn(async () => undefined),
       materialize: vi.fn(async () => null),
@@ -523,7 +525,7 @@ describe('GraphContext read path', () => {
         bfs: vi.fn(async () => []),
       },
       compareCoordinates: vi.fn(),
-    } as unknown as WarpGraph;
+    };
 
     const ctx = createGraphContextFromGraph(graph, { syncCoverage: false });
 
