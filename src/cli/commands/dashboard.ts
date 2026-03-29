@@ -12,7 +12,9 @@ import type { GraphSnapshotProfile } from '../../infrastructure/GraphContext.js'
 function snapshotProfileForDashboardView(view: string): GraphSnapshotProfile {
   switch (view) {
     case 'trace':
+      return 'audit';
     case 'suggestions':
+      return 'analysis';
     case 'all':
       return 'full';
     default:

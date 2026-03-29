@@ -159,7 +159,7 @@ describe('dashboard trace view JSON', () => {
 
     await program.parseAsync(['status', '--view', 'trace'], { from: 'user' });
 
-    expect(fetchSnapshot).toHaveBeenCalledWith(undefined, { profile: 'full' });
+    expect(fetchSnapshot).toHaveBeenCalledWith(undefined, { profile: 'audit' });
 
     expect(ctx.jsonOut).toHaveBeenCalledWith({
       success: true,
@@ -272,7 +272,7 @@ describe('dashboard trace view JSON', () => {
 
     await program.parseAsync(['status', '--view', 'trace'], { from: 'user' });
 
-    expect(fetchSnapshot).toHaveBeenCalledWith(undefined, { profile: 'full' });
+    expect(fetchSnapshot).toHaveBeenCalledWith(undefined, { profile: 'audit' });
 
     expect(ctx.jsonOut).toHaveBeenCalledWith(expect.objectContaining({
       success: true,
@@ -328,5 +328,64 @@ describe('dashboard trace view JSON', () => {
     await program.parseAsync(['status', '--view', 'roadmap'], { from: 'user' });
 
     expect(fetchSnapshot).toHaveBeenCalledWith(undefined, { profile: 'operational' });
+  });
+
+  it('uses the analysis snapshot profile for suggestions status views', async () => {
+    const snapshot = makeSnapshot({
+      suggestions: [{
+        id: 'suggestion:1',
+        testFile: 'tests/traceability/suggestion.test.ts',
+        targetId: 'criterion:ONE',
+        targetType: 'criterion',
+        confidence: 0.92,
+        layers: [],
+        status: 'PENDING',
+        rationale: 'Suggestions only need legacy suggestion records.',
+        suggestedBy: 'agent.test',
+        suggestedAt: 1_700_000_000_000,
+      }],
+    });
+
+    fetchSnapshot.mockResolvedValue(snapshot);
+    filterSnapshot.mockReturnValue(snapshot);
+
+    const ctx = makeCtx();
+    const program = new Command();
+    registerDashboardCommands(program, ctx);
+
+    await program.parseAsync(['status', '--view', 'suggestions'], { from: 'user' });
+
+    expect(fetchSnapshot).toHaveBeenCalledWith(undefined, { profile: 'analysis' });
+    expect(ctx.jsonOut).toHaveBeenCalledWith({
+      success: true,
+      command: 'status',
+      diagnostics: [],
+      data: {
+        view: 'suggestions',
+        health: {
+          status: 'ok',
+          blocking: false,
+          summary: {
+            issueCount: 0,
+            blockingIssueCount: 0,
+            errorCount: 0,
+            warningCount: 0,
+            danglingEdges: 0,
+            orphanNodes: 0,
+            readinessGaps: 0,
+            sovereigntyViolations: 0,
+            governedCompletionGaps: 0,
+            topRemediationBuckets: [],
+          },
+        },
+        suggestions: snapshot.suggestions,
+        summary: {
+          total: 1,
+          pending: 1,
+          accepted: 0,
+          rejected: 0,
+        },
+      },
+    });
   });
 });
