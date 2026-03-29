@@ -661,8 +661,8 @@ export class AgentBriefingService {
 
   private async buildCaseCandidates(graphCtx: GraphContext): Promise<AgentNextCandidate[]> {
     const queue = await this.buildCaseQueue(graphCtx);
-    return queue.flatMap((entry) =>
-      buildCaseActionCandidates({
+    return queue.flatMap((entry) => {
+      const candidates = buildCaseActionCandidates({
         caseContext: {
           caseId: entry.caseId,
           question: entry.question,
@@ -675,17 +675,19 @@ export class AgentBriefingService {
           briefIds: [],
         } satisfies AgentCaseContext,
         semantics: entry.semantics,
-      })
-        .filter((candidate) => candidate.kind === 'brief')
-        .map((candidate) => ({
-          ...candidate,
-          priority: candidate.priority ?? (entry.impact === 'policy' || entry.impact === 'doctrine' ? 'P1' : 'P2'),
-          questTitle: entry.question,
-          questStatus: entry.status,
-          source: 'case' as const,
-          semantics: entry.semantics,
-        }))
-    );
+      });
+      const visibleCandidates = candidates.some((candidate) => candidate.kind === 'brief')
+        ? candidates.filter((candidate) => candidate.kind === 'brief')
+        : candidates.filter((candidate) => candidate.kind === 'inspect');
+      return visibleCandidates.map((candidate) => ({
+        ...candidate,
+        priority: candidate.priority ?? (entry.impact === 'policy' || entry.impact === 'doctrine' ? 'P1' : 'P2'),
+        questTitle: entry.question,
+        questStatus: entry.status,
+        source: 'case' as const,
+        semantics: entry.semantics,
+      }));
+    });
   }
 
   private toGovernanceDetail(artifact: GraphSnapshot['governanceArtifacts'][number]): EntityDetail {

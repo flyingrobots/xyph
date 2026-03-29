@@ -766,6 +766,53 @@ describe('AgentBriefingService', () => {
     ]);
   });
 
+  it('keeps an inspect fallback for cases that are ready for judgment', async () => {
+    const snapshot = makeSnapshot();
+    const fetchEntityDetail = vi.fn(async () => ({
+      id: 'case:C2',
+      type: 'case',
+      props: {
+        type: 'case',
+        question: 'Should the collapse plan be approved?',
+        status: 'ready-for-judgment',
+        impact: 'policy',
+        risk: 'reversible-low',
+        authority: 'human-only',
+      },
+      outgoing: [
+        { nodeId: 'comparison-artifact:C2', label: 'concerns' },
+      ],
+      incoming: [],
+    }));
+    mocks.createGraphContext.mockReturnValue(makeGraphContextDouble(snapshot, {
+      caseNodes: [{
+        id: 'case:C2',
+        props: { type: 'case', status: 'ready-for-judgment' },
+      }],
+      fetchEntityDetail,
+    }));
+
+    const service = new AgentBriefingService(
+      makeGraphWithHandoffs([]),
+      makeRoadmap([]),
+      'agent.hal',
+      makeDoctor(),
+    );
+
+    const next = await service.next(3);
+
+    expect(next.candidates).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: 'inspect',
+        targetId: 'case:C2',
+        source: 'case',
+        questTitle: 'Should the collapse plan be approved?',
+        questStatus: 'ready-for-judgment',
+        priority: 'P1',
+      }),
+    ]));
+  });
+
   it('omits CHANGES_REQUESTED submissions from the briefing review queue', async () => {
     const snapshot = makeSnapshot({
       quests: [
