@@ -297,4 +297,180 @@ describe('GraphContext read path', () => {
       }),
     ]);
   });
+
+  it('uses the audit snapshot profile without scanning cases or governance artifacts while preserving governed completion', async () => {
+    const queriedPatterns: string[] = [];
+    const queryNodes = new Map<string, { id: string; props: Record<string, unknown> }[]>([
+      ['task:*', [{
+        id: 'task:T-1',
+        props: {
+          type: 'task',
+          title: 'Audit quest',
+          status: 'BACKLOG',
+          hours: 3,
+        },
+      }]],
+      ['campaign:*', [{
+        id: 'campaign:C-1',
+        props: {
+          type: 'campaign',
+          title: 'Audit campaign',
+          status: 'BACKLOG',
+        },
+      }]],
+      ['intent:*', [{
+        id: 'intent:I-1',
+        props: {
+          type: 'intent',
+          title: 'Audit intent',
+          requested_by: 'human:test',
+          created_at: 1,
+        },
+      }]],
+      ['story:*', [{
+        id: 'story:S-1',
+        props: {
+          type: 'story',
+          title: 'As an auditor',
+          persona: 'auditor',
+          goal: 'diagnose graph health',
+          benefit: 'the graph stays honest',
+          created_by: 'human:test',
+          created_at: 1,
+        },
+      }]],
+      ['req:*', [{
+        id: 'req:R-1',
+        props: {
+          type: 'requirement',
+          description: 'System preserves governed completion data',
+          kind: 'functional',
+          priority: 'must',
+        },
+      }]],
+      ['criterion:*', [{
+        id: 'criterion:C-1',
+        props: {
+          type: 'criterion',
+          description: 'Criterion has evidence',
+          verifiable: true,
+        },
+      }]],
+      ['evidence:*', [{
+        id: 'evidence:E-1',
+        props: {
+          type: 'evidence',
+          kind: 'test',
+          result: 'pass',
+          produced_at: 1,
+          produced_by: 'agent:test',
+          source_file: 'test/unit/DoctorService.test.ts',
+        },
+      }]],
+      ['policy:*', [{
+        id: 'policy:P-1',
+        props: {
+          type: 'policy',
+          coverage_threshold: 1,
+          require_all_criteria: true,
+          require_evidence: true,
+          allow_manual_seal: false,
+        },
+      }]],
+      ['suggestion:*', [{
+        id: 'suggestion:S-1',
+        props: {
+          type: 'suggestion',
+          test_file: 'test/unit/DoctorService.test.ts',
+          target_id: 'criterion:C-1',
+          target_type: 'criterion',
+          confidence: 0.7,
+          layers: '[]',
+          status: 'PENDING',
+          suggested_by: 'agent:test',
+          suggested_at: 1,
+        },
+      }]],
+    ]);
+
+    const graph = {
+      writerId: 'writer.test',
+      syncCoverage: vi.fn(async () => undefined),
+      materialize: vi.fn(async () => null),
+      getStateSnapshot: vi.fn(async () => ({
+        observedFrontier: new Map([['writer.test', 1]]),
+      })),
+      getFrontier: vi.fn(async () => new Map([['writer.test', 'abcdef1234567']])),
+      query: vi.fn(() => {
+        let pattern = '';
+        return {
+          match(value: string) {
+            pattern = value;
+            queriedPatterns.push(value);
+            return this;
+          },
+          select() {
+            return this;
+          },
+          run: vi.fn(async () => ({ nodes: queryNodes.get(pattern) ?? [] })),
+        };
+      }),
+      neighbors: vi.fn(async (id: string) => {
+        if (id === 'task:T-1') {
+          return [
+            { nodeId: 'campaign:C-1', label: 'belongs-to' },
+            { nodeId: 'req:R-1', label: 'implements' },
+          ];
+        }
+        if (id === 'intent:I-1') {
+          return [{ nodeId: 'story:S-1', label: 'decomposes-to' }];
+        }
+        if (id === 'story:S-1') {
+          return [{ nodeId: 'req:R-1', label: 'decomposes-to' }];
+        }
+        if (id === 'req:R-1') {
+          return [{ nodeId: 'criterion:C-1', label: 'has-criterion' }];
+        }
+        if (id === 'evidence:E-1') {
+          return [{ nodeId: 'criterion:C-1', label: 'verifies' }];
+        }
+        if (id === 'policy:P-1') {
+          return [{ nodeId: 'campaign:C-1', label: 'governs' }];
+        }
+        return [];
+      }),
+      getNodeProps: vi.fn(async () => null),
+      getContent: vi.fn(async () => null),
+      getContentOid: vi.fn(async () => null),
+      hasNode: vi.fn(async () => false),
+      traverse: {
+        topologicalSort: vi.fn(async () => ({ sorted: [] })),
+        bfs: vi.fn(async () => []),
+      },
+      compareCoordinates: vi.fn(),
+    } as unknown as WarpGraph;
+
+    const ctx = createGraphContextFromGraph(graph, { syncCoverage: false });
+    const snapshot = await ctx.fetchSnapshot(undefined, { profile: 'audit' });
+
+    expect(queriedPatterns).toContain('story:*');
+    expect(queriedPatterns).toContain('req:*');
+    expect(queriedPatterns).toContain('criterion:*');
+    expect(queriedPatterns).toContain('evidence:*');
+    expect(queriedPatterns).toContain('policy:*');
+    expect(queriedPatterns).toContain('suggestion:*');
+    expect(queriedPatterns).not.toContain('case:*');
+    expect(queriedPatterns).not.toContain('comparison-artifact:*');
+    expect(queriedPatterns).not.toContain('collapse-proposal:*');
+    expect(queriedPatterns).not.toContain('attestation:*');
+    expect(snapshot.governanceArtifacts).toEqual([]);
+    expect(snapshot.aiSuggestions).toEqual([]);
+    expect(snapshot.quests[0]).toEqual(expect.objectContaining({
+      id: 'task:T-1',
+      computedCompletion: expect.objectContaining({
+        policyId: 'policy:P-1',
+        complete: true,
+      }),
+    }));
+  });
 });

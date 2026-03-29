@@ -204,7 +204,7 @@ export class DoctorService {
     const graphCtx = createGraphContext(this.graphPort);
     const snapshot = await graphCtx.fetchSnapshot((message) => {
       onProgress({ stage: 'snapshot', message });
-    });
+    }, { profile: 'audit' });
     const graph = graphCtx.graph;
 
     onProgress({

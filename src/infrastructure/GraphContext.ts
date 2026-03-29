@@ -152,7 +152,7 @@ export interface GraphContext {
   invalidateCache(): void;
 }
 
-export type GraphSnapshotProfile = 'full' | 'operational' | 'analysis';
+export type GraphSnapshotProfile = 'full' | 'operational' | 'analysis' | 'audit';
 
 export interface FetchSnapshotOptions {
   profile?: GraphSnapshotProfile;
@@ -351,11 +351,17 @@ class GraphContextImpl implements GraphContext {
     const log: (msg: string) => void = onProgress ?? function noop(): void { /* no-op */ };
     const profile: GraphSnapshotProfile = options.profile ?? 'full';
     const includeFullTraceability = profile === 'full';
+    const includeAuditTraceability = profile === 'audit';
     const includeAnalysisTraceability = profile === 'analysis';
-    const includeRequirementModels = includeFullTraceability || includeAnalysisTraceability;
-    const includeCriterionModels = includeFullTraceability || includeAnalysisTraceability;
-    const includeEvidenceModels = includeFullTraceability || includeAnalysisTraceability;
-    const includeLegacySuggestions = includeFullTraceability || includeAnalysisTraceability;
+    const includeRequirementModels = includeFullTraceability || includeAnalysisTraceability || includeAuditTraceability;
+    const includeCriterionModels = includeFullTraceability || includeAnalysisTraceability || includeAuditTraceability;
+    const includeEvidenceModels = includeFullTraceability || includeAnalysisTraceability || includeAuditTraceability;
+    const includeLegacySuggestions = includeFullTraceability || includeAnalysisTraceability || includeAuditTraceability;
+    const includeStoryModels = includeFullTraceability || includeAuditTraceability;
+    const includePolicyModels = includeFullTraceability || includeAuditTraceability;
+    const includeCompletionRollups = includeAuditTraceability;
+    const includeCaseNodes = profile === 'full' || profile === 'operational';
+    const includeGovernanceArtifacts = profile === 'full';
 
     // --- Lifecycle: open → sync → materialize ---
     log('Opening project graph…');
@@ -402,7 +408,7 @@ class GraphContextImpl implements GraphContext {
       graph.query().match('patchset:*').select(['id', 'props']).run().then(extractNodes),
       graph.query().match('review:*').select(['id', 'props']).run().then(extractNodes),
       graph.query().match('decision:*').select(['id', 'props']).run().then(extractNodes),
-      includeFullTraceability
+      includeStoryModels
         ? graph.query().match('story:*').select(['id', 'props']).run().then(extractNodes)
         : Promise.resolve([]),
       includeRequirementModels
@@ -414,14 +420,22 @@ class GraphContextImpl implements GraphContext {
       includeEvidenceModels
         ? graph.query().match('evidence:*').select(['id', 'props']).run().then(extractNodes)
         : Promise.resolve([]),
-      includeFullTraceability
+      includePolicyModels
         ? graph.query().match('policy:*').select(['id', 'props']).run().then(extractNodes)
         : Promise.resolve([]),
       graph.query().match('suggestion:*').select(['id', 'props']).run().then(extractNodes),
-      graph.query().match('case:*').select(['id', 'props']).run().then(extractNodes),
-      graph.query().match('comparison-artifact:*').select(['id', 'props']).run().then(extractNodes),
-      graph.query().match('collapse-proposal:*').select(['id', 'props']).run().then(extractNodes),
-      graph.query().match('attestation:*').select(['id', 'props']).run().then(extractNodes),
+      includeCaseNodes
+        ? graph.query().match('case:*').select(['id', 'props']).run().then(extractNodes)
+        : Promise.resolve([]),
+      includeGovernanceArtifacts
+        ? graph.query().match('comparison-artifact:*').select(['id', 'props']).run().then(extractNodes)
+        : Promise.resolve([]),
+      includeGovernanceArtifacts
+        ? graph.query().match('collapse-proposal:*').select(['id', 'props']).run().then(extractNodes)
+        : Promise.resolve([]),
+      includeGovernanceArtifacts
+        ? graph.query().match('attestation:*').select(['id', 'props']).run().then(extractNodes)
+        : Promise.resolve([]),
     ]);
 
     await yieldEventLoop();
@@ -437,10 +451,10 @@ class GraphContextImpl implements GraphContext {
       ...patchsetNodes.map((n) => n.id),
       ...reviewNodes.map((n) => n.id),
       ...decisionNodes.map((n) => n.id),
-      ...(includeFullTraceability ? storyNodes.map((n) => n.id) : []),
+      ...(includeStoryModels ? storyNodes.map((n) => n.id) : []),
       ...(includeRequirementModels ? requirementNodes.map((n) => n.id) : []),
       ...(includeEvidenceModels ? evidenceNodes.map((n) => n.id) : []),
-      ...(includeFullTraceability ? policyNodes.map((n) => n.id) : []),
+      ...(includePolicyModels ? policyNodes.map((n) => n.id) : []),
       ...caseNodes.map((n) => n.id),
     ];
     const neighborsCache = await batchNeighbors(graph, neighborsNeeded);
@@ -1070,6 +1084,310 @@ class GraphContextImpl implements GraphContext {
       }
     }
 
+    if (includeAuditTraceability) {
+      log('Building traceability models…');
+
+      for (const n of storyNodes) {
+        if (n.props['type'] !== 'story') continue;
+        const title = n.props['title'];
+        const persona = n.props['persona'];
+        const goal = n.props['goal'];
+        const benefit = n.props['benefit'];
+        const createdBy = n.props['created_by'];
+        const createdAt = n.props['created_at'];
+
+        if (typeof title !== 'string' || typeof persona !== 'string' ||
+            typeof goal !== 'string' || typeof benefit !== 'string' ||
+            typeof createdBy !== 'string' || typeof createdAt !== 'number') continue;
+
+        stories.push({
+          id: n.id, title, persona, goal, benefit, createdBy, createdAt,
+        });
+      }
+
+      const intentNeighbors = await batchNeighbors(graph, intentNodes.map((n) => n.id));
+      for (const intent of intentNodes) {
+        const neighbors = intentNeighbors.get(intent.id) ?? [];
+        for (const nb of neighbors) {
+          if (nb.label === 'decomposes-to' && nb.nodeId.startsWith('story:')) {
+            const story = stories.find((s) => s.id === nb.nodeId);
+            if (story) story.intentId = intent.id;
+          }
+        }
+      }
+
+      for (const n of requirementNodes) {
+        if (n.props['type'] !== 'requirement') continue;
+        const description = n.props['description'];
+        const kind = n.props['kind'];
+        const priority = n.props['priority'];
+
+        if (typeof description !== 'string' ||
+            typeof kind !== 'string' || !VALID_REQUIREMENT_KINDS.has(kind) ||
+            typeof priority !== 'string' || !VALID_REQUIREMENT_PRIORITIES.has(priority)) continue;
+
+        const neighbors = neighborsCache.get(n.id) ?? [];
+        const criterionIds: string[] = [];
+        for (const nb of neighbors) {
+          if (nb.label === 'has-criterion' && nb.nodeId.startsWith('criterion:')) {
+            criterionIds.push(nb.nodeId);
+          }
+        }
+
+        requirements.push({
+          id: n.id,
+          description,
+          kind: kind as RequirementKind,
+          priority: priority as RequirementPriority,
+          taskIds: [],
+          criterionIds,
+        });
+      }
+
+      for (const story of stories) {
+        const neighbors = neighborsCache.get(story.id) ?? [];
+        for (const nb of neighbors) {
+          if (nb.label === 'decomposes-to' && nb.nodeId.startsWith('req:')) {
+            const req = requirements.find((r) => r.id === nb.nodeId);
+            if (req) req.storyId = story.id;
+          }
+        }
+      }
+
+      for (const task of taskNodes) {
+        const neighbors = neighborsCache.get(task.id) ?? [];
+        for (const nb of neighbors) {
+          if (nb.label === 'implements' && nb.nodeId.startsWith('req:')) {
+            const req = requirements.find((r) => r.id === nb.nodeId);
+            if (req) req.taskIds.push(task.id);
+          }
+        }
+      }
+
+      for (const n of evidenceNodes) {
+        if (n.props['type'] !== 'evidence') continue;
+        const kind = n.props['kind'];
+        const result = n.props['result'];
+        const producedAt = n.props['produced_at'];
+        const producedBy = n.props['produced_by'];
+        const artifactHash = n.props['artifact_hash'];
+
+        if (typeof kind !== 'string' || !VALID_EVIDENCE_KINDS.has(kind) ||
+            typeof result !== 'string' || !VALID_EVIDENCE_RESULTS.has(result) ||
+            typeof producedAt !== 'number' || typeof producedBy !== 'string') continue;
+
+        const neighbors = neighborsCache.get(n.id) ?? [];
+        let criterionId: string | undefined;
+        let requirementId: string | undefined;
+        for (const nb of neighbors) {
+          if (nb.label === 'verifies' && nb.nodeId.startsWith('criterion:')) {
+            criterionId = nb.nodeId;
+          } else if (nb.label === 'implements' && nb.nodeId.startsWith('req:')) {
+            requirementId = nb.nodeId;
+          }
+        }
+
+        const sourceFile = n.props['source_file'];
+        evidence.push({
+          id: n.id,
+          kind: kind as EvidenceKind,
+          result: result as EvidenceResult,
+          producedAt,
+          producedBy,
+          criterionId,
+          requirementId,
+          artifactHash: typeof artifactHash === 'string' ? artifactHash : undefined,
+          sourceFile: typeof sourceFile === 'string' ? sourceFile : undefined,
+        });
+      }
+
+      const evidenceByCriterion = new Map<string, string[]>();
+      for (const e of evidence) {
+        if (e.criterionId) {
+          const arr = evidenceByCriterion.get(e.criterionId) ?? [];
+          arr.push(e.id);
+          evidenceByCriterion.set(e.criterionId, arr);
+        }
+      }
+
+      for (const n of criterionNodes) {
+        if (n.props['type'] !== 'criterion') continue;
+        const description = n.props['description'];
+        const verifiable = n.props['verifiable'];
+
+        if (typeof description !== 'string') continue;
+
+        criteria.push({
+          id: n.id,
+          description,
+          verifiable: typeof verifiable === 'boolean' ? verifiable : true,
+          evidenceIds: evidenceByCriterion.get(n.id) ?? [],
+        });
+      }
+
+      const criterionByReq = new Map<string, string[]>();
+      for (const req of requirements) {
+        for (const cId of req.criterionIds) {
+          const arr = criterionByReq.get(cId) ?? [];
+          arr.push(req.id);
+          criterionByReq.set(cId, arr);
+        }
+      }
+      for (const c of criteria) {
+        const reqIds = criterionByReq.get(c.id);
+        if (reqIds && reqIds.length > 0) {
+          c.requirementId = reqIds[0];
+        }
+      }
+
+      for (const n of policyNodes) {
+        if (n.props['type'] !== 'policy') continue;
+
+        const neighbors = neighborsCache.get(n.id) ?? [];
+        let campaignId: string | undefined;
+        for (const nb of neighbors) {
+          if (nb.label === 'governs' && (nb.nodeId.startsWith('campaign:') || nb.nodeId.startsWith('milestone:'))) {
+            campaignId = nb.nodeId;
+            break;
+          }
+        }
+
+        const coverageThresholdRaw = n.props['coverage_threshold'];
+        const requireAllCriteriaRaw = n.props['require_all_criteria'];
+        const requireEvidenceRaw = n.props['require_evidence'];
+        const allowManualSealRaw = n.props['allow_manual_seal'];
+
+        const coverageThreshold = (
+          typeof coverageThresholdRaw === 'number' &&
+          Number.isFinite(coverageThresholdRaw) &&
+          coverageThresholdRaw >= 0 &&
+          coverageThresholdRaw <= 1
+        )
+          ? coverageThresholdRaw
+          : DEFAULT_POLICY_COVERAGE_THRESHOLD;
+
+        policies.push({
+          id: n.id,
+          campaignId,
+          coverageThreshold,
+          requireAllCriteria: typeof requireAllCriteriaRaw === 'boolean'
+            ? requireAllCriteriaRaw
+            : DEFAULT_POLICY_REQUIRE_ALL_CRITERIA,
+          requireEvidence: typeof requireEvidenceRaw === 'boolean'
+            ? requireEvidenceRaw
+            : DEFAULT_POLICY_REQUIRE_EVIDENCE,
+          allowManualSeal: typeof allowManualSealRaw === 'boolean'
+            ? allowManualSealRaw
+            : DEFAULT_POLICY_ALLOW_MANUAL_SEAL,
+        });
+      }
+    }
+
+    if (includeCompletionRollups) {
+      const policyByCampaignId = new Map<string, PolicyNode>();
+      for (const policy of policies) {
+        if (!policy.campaignId || policyByCampaignId.has(policy.campaignId)) continue;
+        policyByCampaignId.set(policy.campaignId, policy);
+      }
+
+      const requirementsByQuestId = new Map<string, RequirementNode[]>();
+      for (const requirement of requirements) {
+        for (const taskId of requirement.taskIds) {
+          const linked = requirementsByQuestId.get(taskId) ?? [];
+          linked.push(requirement);
+          requirementsByQuestId.set(taskId, linked);
+        }
+      }
+      const criteriaByRequirementId = new Map<string, CriterionNode[]>();
+      for (const criterion of criteria) {
+        if (!criterion.requirementId) continue;
+        const linked = criteriaByRequirementId.get(criterion.requirementId) ?? [];
+        linked.push(criterion);
+        criteriaByRequirementId.set(criterion.requirementId, linked);
+      }
+
+      for (const quest of quests) {
+        const questRequirements = requirementsByQuestId.get(quest.id) ?? [];
+        const questCriteria = questRequirements.flatMap((requirement) => criteriaByRequirementId.get(requirement.id) ?? []);
+        const appliedPolicy = quest.campaignId ? policyByCampaignId.get(quest.campaignId) : undefined;
+        quest.computedCompletion = computeCompletionSummary(
+          questRequirements.map((requirement) => ({
+            id: requirement.id,
+            criterionIds: requirement.criterionIds,
+          })),
+          questCriteria.map((criterion) => ({
+            id: criterion.id,
+            evidence: criterion.evidenceIds
+              .map((evidenceId) => evidence.find((entry) => entry.id === evidenceId))
+              .filter((entry): entry is EvidenceNode => Boolean(entry))
+              .map((entry) => ({
+                id: entry.id,
+                result: entry.result,
+                producedAt: entry.producedAt,
+              })),
+          })),
+          {
+            policy: appliedPolicy
+              ? {
+                  id: appliedPolicy.id,
+                  coverageThreshold: appliedPolicy.coverageThreshold,
+                  requireAllCriteria: appliedPolicy.requireAllCriteria,
+                  requireEvidence: appliedPolicy.requireEvidence,
+                }
+              : undefined,
+            manualComplete: quest.status === 'DONE',
+          },
+        );
+      }
+
+      const questsByCampaignId = new Map<string, QuestNode[]>();
+      for (const quest of quests) {
+        if (!quest.campaignId) continue;
+        const members = questsByCampaignId.get(quest.campaignId) ?? [];
+        members.push(quest);
+        questsByCampaignId.set(quest.campaignId, members);
+      }
+      for (const campaign of campaigns) {
+        const memberQuests = questsByCampaignId.get(campaign.id);
+        if (memberQuests && memberQuests.length > 0) {
+          campaign.status = deriveCampaignStatusFromQuests(memberQuests);
+        }
+
+        const questIds = new Set((memberQuests ?? []).map((quest) => quest.id));
+        const campaignRequirements = requirements.filter((requirement) => requirement.taskIds.some((taskId) => questIds.has(taskId)));
+        const campaignCriteria = campaignRequirements.flatMap((requirement) => criteriaByRequirementId.get(requirement.id) ?? []);
+        const appliedPolicy = policyByCampaignId.get(campaign.id);
+        campaign.computedCompletion = computeCompletionSummary(
+          campaignRequirements.map((requirement) => ({
+            id: requirement.id,
+            criterionIds: requirement.criterionIds,
+          })),
+          campaignCriteria.map((criterion) => ({
+            id: criterion.id,
+            evidence: criterion.evidenceIds
+              .map((evidenceId) => evidence.find((entry) => entry.id === evidenceId))
+              .filter((entry): entry is EvidenceNode => Boolean(entry))
+              .map((entry) => ({
+                id: entry.id,
+                result: entry.result,
+                producedAt: entry.producedAt,
+              })),
+          })),
+          {
+            policy: appliedPolicy
+              ? {
+                  id: appliedPolicy.id,
+                  coverageThreshold: appliedPolicy.coverageThreshold,
+                  requireAllCriteria: appliedPolicy.requireAllCriteria,
+                  requireEvidence: appliedPolicy.requireEvidence,
+                }
+              : undefined,
+            manualComplete: campaign.status === 'DONE',
+          },
+        );
+      }
+    }
+
     // --- Build suggestions (M11 Phase 4) ---
     log('Building suggestion models…');
     const suggestions: SuggestionNode[] = [];
@@ -1289,11 +1607,13 @@ class GraphContextImpl implements GraphContext {
       if (count > 0) transitiveDownstream.set(taskId, count);
     }
 
-    const governanceArtifacts = await this.buildGovernanceArtifacts(graph, [
-      ...comparisonArtifactNodes,
-      ...collapseProposalNodes,
-      ...attestationNodes,
-    ]);
+    const governanceArtifacts = includeGovernanceArtifacts
+      ? await this.buildGovernanceArtifacts(graph, [
+          ...comparisonArtifactNodes,
+          ...collapseProposalNodes,
+          ...attestationNodes,
+        ])
+      : [];
 
     log(`Snapshot ready — ${quests.length} quests, ${campaigns.length} campaigns`);
     const snap: GraphSnapshot = {
