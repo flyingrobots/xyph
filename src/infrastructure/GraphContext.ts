@@ -133,10 +133,10 @@ const VALID_APPROVAL_TRIGGERS: ReadonlySet<string> = new Set<ApprovalGateTrigger
 // ---------------------------------------------------------------------------
 
 export interface GraphContext {
-  /** The underlying WARP graph. Available after first fetchSnapshot() call. */
+  /** The underlying WARP graph. Available after the first read call. */
   readonly graph: WarpGraph;
 
-  /** Build a snapshot from the current graph state (sync → materialize → query). */
+  /** Build a snapshot from the current graph state (sync → query → traversal). */
   fetchSnapshot(onProgress?: (msg: string) => void): Promise<GraphSnapshot>;
 
   /** Build a detailed projection for a single graph entity. */
@@ -156,9 +156,7 @@ export function createGraphContext(graphPort: GraphPort): GraphContext {
 export function createGraphContextFromGraph(
   graph: WarpGraph,
   opts?: {
-    ceiling?: number | null;
     syncCoverage?: boolean;
-    materializeGraph?: (graph: WarpGraph) => Promise<void>;
   },
 ): GraphContext {
   return new GraphContextImpl(
@@ -295,10 +293,8 @@ class GraphContextImpl implements GraphContext {
 
   constructor(
     private readonly graphProvider: () => Promise<WarpGraph>,
-    private readonly materialization: {
-      ceiling?: number | null;
+    private readonly readOptions: {
       syncCoverage?: boolean;
-      materializeGraph?: (graph: WarpGraph) => Promise<void>;
     } = {},
   ) {}
 
@@ -312,16 +308,6 @@ class GraphContextImpl implements GraphContext {
   invalidateCache(): void {
     this.cachedSnapshot = null;
     this.cachedFrontierKey = null;
-  }
-
-  private async materializeGraph(graph: WarpGraph): Promise<void> {
-    if (this.materialization.materializeGraph) {
-      await this.materialization.materializeGraph(graph);
-      return;
-    }
-    await graph.materialize({
-      ...(this.materialization.ceiling === undefined ? {} : { ceiling: this.materialization.ceiling }),
-    });
   }
 
   filterSnapshot(
@@ -358,7 +344,7 @@ class GraphContextImpl implements GraphContext {
     this._graph = graph;
 
     // Dashboard polling: discover external writers' patches before querying
-    if (this.materialization.syncCoverage !== false) {
+    if (this.readOptions.syncCoverage !== false) {
       log('Syncing coverage…');
       await graph.syncCoverage();
       await yieldEventLoop();
@@ -367,17 +353,13 @@ class GraphContextImpl implements GraphContext {
     // Cache check: compare frontier key to detect both in-process writes
     // (via graph.patch()) and external writes (discovered by syncCoverage).
     // hasFrontierChanged() only detects external patches, missing same-instance mutations.
-    if (this.cachedSnapshot !== null && !this.materialization.materializeGraph) {
+    if (this.cachedSnapshot !== null) {
       const currentKey = this.frontierKeyFromState(await graph.getStateSnapshot());
       if (currentKey === this.cachedFrontierKey) {
         log('No changes detected — using cached snapshot');
         return this.cachedSnapshot;
       }
     }
-
-    log('Materializing graph…');
-    await this.materializeGraph(graph);
-    await yieldEventLoop();
 
     // --- Query each node type in parallel ---
     log('Querying graph…');
@@ -1557,10 +1539,9 @@ class GraphContextImpl implements GraphContext {
     const graph = await this.graphProvider();
     this._graph = graph;
 
-    if (this.materialization.syncCoverage !== false) {
+    if (this.readOptions.syncCoverage !== false) {
       await graph.syncCoverage();
     }
-    await this.materializeGraph(graph);
 
     if (!await graph.hasNode(id)) {
       return null;

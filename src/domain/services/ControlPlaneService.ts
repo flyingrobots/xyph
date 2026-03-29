@@ -766,10 +766,7 @@ export class ControlPlaneService implements ControlPlanePort {
         const graphCtx = derived?.graphCtx ?? (
           selector.kind === 'tip'
             ? createGraphContext(this.graphPort)
-            : createGraphContextFromGraph(
-              await this.openObservationGraph(selector),
-              { ceiling: selector.tick, syncCoverage: false },
-            )
+            : createGraphContextFromGraph(await this.openObservationGraph(selector), { syncCoverage: false })
         );
         const snapshot = await graphCtx.fetchSnapshot();
         return {
@@ -849,10 +846,7 @@ export class ControlPlaneService implements ControlPlanePort {
         const graphCtx = derived?.graphCtx ?? (
           selector.kind === 'tip'
             ? createGraphContext(this.graphPort)
-            : createGraphContextFromGraph(
-              await this.openObservationGraph(selector),
-              { ceiling: selector.tick, syncCoverage: false },
-            )
+            : createGraphContextFromGraph(await this.openObservationGraph(selector), { syncCoverage: false })
         );
         const targetId = this.requireString(request.args['targetId'], 'observe targetId');
         const detail = await graphCtx.fetchEntityDetail(targetId);
@@ -1557,12 +1551,7 @@ export class ControlPlaneService implements ControlPlanePort {
     return {
       frontierDigest,
       backing,
-      graphCtx: createGraphContextFromGraph(derivedGraph, {
-        syncCoverage: false,
-        materializeGraph: async (workingGraph) => {
-          void workingGraph;
-        },
-      }),
+      graphCtx: createGraphContextFromGraph(derivedGraph, { syncCoverage: false }),
     };
   }
 

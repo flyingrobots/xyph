@@ -125,3 +125,4 @@ around it.
 6. [README Onboarding Reset](./0006-readme-onboarding-reset.md)
 7. [Quest Detail Narrative Read Boundary](./0007-quest-detail-narrative-read-boundary.md)
 8. [git-warp v15 Surface Migration](./0008-git-warp-v15-surface-migration.md)
+9. [Snapshot Read Honesty](./0009-snapshot-read-honesty.md)

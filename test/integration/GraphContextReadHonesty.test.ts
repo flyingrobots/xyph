@@ -98,18 +98,37 @@ describe('GraphContext read-path honesty and campaign derivation', () => {
     const checkpointSpy = vi.spyOn(graph, 'createCheckpoint');
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const ctx = createGraphContext(graphPort);
+    const progress: string[] = [];
 
     try {
-      const snapshot = await ctx.fetchSnapshot();
+      const snapshot = await ctx.fetchSnapshot((message) => {
+        progress.push(message);
+      });
       expect(snapshot.graphMeta).toBeDefined();
       expect(snapshot.graphMeta?.maxTick).toBeGreaterThan(0);
       expect(snapshot.graphMeta?.writerCount).toBeGreaterThan(0);
       expect(snapshot.graphMeta?.tipSha).toBeTruthy();
+      expect(progress).not.toContain('Materializing graph…');
       expect(checkpointSpy).not.toHaveBeenCalled();
       expect(warnSpy).not.toHaveBeenCalled();
     } finally {
       checkpointSpy.mockRestore();
       warnSpy.mockRestore();
+    }
+  });
+
+  it('fetchEntityDetail does not materialize before targeted live reads', async () => {
+    const graph = await graphPort.getGraph();
+    const materializeSpy = vi.spyOn(graph, 'materialize');
+    const ctx = createGraphContext(graphPort);
+
+    try {
+      const detail = await ctx.fetchEntityDetail('task:T-BACKLOG-1');
+      expect(detail?.id).toBe('task:T-BACKLOG-1');
+      expect(detail?.type).toBe('task');
+      expect(materializeSpy).not.toHaveBeenCalled();
+    } finally {
+      materializeSpy.mockRestore();
     }
   });
 
