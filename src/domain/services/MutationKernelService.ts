@@ -231,7 +231,7 @@ export class MutationKernelService {
     const graph = await this.graphPort.getGraph();
     let sha: string;
     if (opts?.workingSetId) {
-      sha = await graph.patchWorkingSet(opts.workingSetId, async (patch) => {
+      sha = await graph.patchStrand(opts.workingSetId, async (patch) => {
         await this.applyOps(patch, plan.ops);
       });
     } else {
@@ -262,7 +262,7 @@ export class MutationKernelService {
       return { nodes, edges };
     }
 
-    const state = await graph.materializeWorkingSet(workingSetId);
+    const state = await graph.materializeStrand(workingSetId);
     const projection = projectStateV5(state);
     return {
       nodes: projection.nodes,

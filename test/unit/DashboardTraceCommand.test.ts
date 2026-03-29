@@ -159,6 +159,8 @@ describe('dashboard trace view JSON', () => {
 
     await program.parseAsync(['status', '--view', 'trace'], { from: 'user' });
 
+    expect(fetchSnapshot).toHaveBeenCalledWith(undefined, { profile: 'audit' });
+
     expect(ctx.jsonOut).toHaveBeenCalledWith({
       success: true,
       command: 'status',
@@ -270,6 +272,8 @@ describe('dashboard trace view JSON', () => {
 
     await program.parseAsync(['status', '--view', 'trace'], { from: 'user' });
 
+    expect(fetchSnapshot).toHaveBeenCalledWith(undefined, { profile: 'audit' });
+
     expect(ctx.jsonOut).toHaveBeenCalledWith(expect.objectContaining({
       success: true,
       command: 'status',
@@ -306,5 +310,187 @@ describe('dashboard trace view JSON', () => {
         campaignDiscrepancies: [],
       }),
     }));
+  });
+
+  it('uses the operational snapshot profile for roadmap-style status views', async () => {
+    const snapshot = makeSnapshot({
+      quests: [],
+      campaigns: [],
+    });
+
+    fetchSnapshot.mockResolvedValue(snapshot);
+    filterSnapshot.mockReturnValue(snapshot);
+
+    const ctx = makeCtx();
+    const program = new Command();
+    registerDashboardCommands(program, ctx);
+
+    await program.parseAsync(['status', '--view', 'roadmap'], { from: 'user' });
+
+    expect(fetchSnapshot).toHaveBeenCalledWith(undefined, { profile: 'operational' });
+  });
+
+  it('uses the operational snapshot profile and bounded workflow payload for all status views', async () => {
+    const snapshot = makeSnapshot({
+      campaigns: [{ id: 'campaign:ALL', title: 'All campaign', status: 'IN_PROGRESS' }],
+      intents: [{
+        id: 'intent:ALL',
+        title: 'All intent',
+        requestedBy: 'human.test',
+        createdAt: 1_700_000_000_000,
+      }],
+      quests: [{ id: 'task:ALL', title: 'All quest', status: 'READY', hours: 2 }],
+      scrolls: [{
+        id: 'artifact:ALL',
+        questId: 'task:ALL',
+        artifactHash: 'hash:all',
+        sealedBy: 'agent.test',
+        sealedAt: 1_700_000_000_001,
+        hasSeal: true,
+      }],
+      approvals: [{
+        id: 'approval:ALL',
+        status: 'PENDING',
+        trigger: 'CRITICAL_PATH_CHANGE',
+        approver: 'human.ada',
+        requestedBy: 'agent.test',
+      }],
+      submissions: [{
+        id: 'submission:ALL',
+        questId: 'task:ALL',
+        status: 'OPEN',
+        headsCount: 1,
+        approvalCount: 0,
+        submittedBy: 'agent.test',
+        submittedAt: 1_700_000_000_002,
+      }],
+      reviews: [{
+        id: 'review:ALL',
+        patchsetId: 'patchset:ALL',
+        verdict: 'approve',
+        comment: 'Looks good',
+        reviewedBy: 'human.ada',
+        reviewedAt: 1_700_000_000_003,
+      }],
+      decisions: [{
+        id: 'decision:ALL',
+        submissionId: 'submission:ALL',
+        kind: 'merge',
+        decidedBy: 'human.ada',
+        rationale: 'Ship it',
+        decidedAt: 1_700_000_000_004,
+      }],
+      stories: [{
+        id: 'story:OUT-OF-BOUNDS',
+        title: 'Trace-only story',
+        persona: 'Maintainer',
+        goal: 'Stay out of all',
+        benefit: 'Keep all bounded',
+        createdBy: 'human.test',
+        createdAt: 1_700_000_000_005,
+      }],
+    });
+
+    fetchSnapshot.mockResolvedValue(snapshot);
+    filterSnapshot.mockReturnValue(snapshot);
+
+    const ctx = makeCtx();
+    const program = new Command();
+    registerDashboardCommands(program, ctx);
+
+    await program.parseAsync(['status', '--view', 'all'], { from: 'user' });
+
+    expect(fetchSnapshot).toHaveBeenCalledWith(undefined, { profile: 'operational' });
+    expect(ctx.jsonOut).toHaveBeenCalledWith({
+      success: true,
+      command: 'status',
+      diagnostics: [],
+      data: {
+        view: 'all',
+        health: {
+          status: 'ok',
+          blocking: false,
+          summary: {
+            issueCount: 0,
+            blockingIssueCount: 0,
+            errorCount: 0,
+            warningCount: 0,
+            danglingEdges: 0,
+            orphanNodes: 0,
+            readinessGaps: 0,
+            sovereigntyViolations: 0,
+            governedCompletionGaps: 0,
+            topRemediationBuckets: [],
+          },
+        },
+        campaigns: snapshot.campaigns,
+        intents: snapshot.intents,
+        quests: snapshot.quests,
+        scrolls: snapshot.scrolls,
+        approvals: snapshot.approvals,
+        submissions: snapshot.submissions,
+        reviews: snapshot.reviews,
+        decisions: snapshot.decisions,
+      },
+    });
+  });
+
+  it('uses the analysis snapshot profile for suggestions status views', async () => {
+    const snapshot = makeSnapshot({
+      suggestions: [{
+        id: 'suggestion:1',
+        testFile: 'tests/traceability/suggestion.test.ts',
+        targetId: 'criterion:ONE',
+        targetType: 'criterion',
+        confidence: 0.92,
+        layers: [],
+        status: 'PENDING',
+        rationale: 'Suggestions only need legacy suggestion records.',
+        suggestedBy: 'agent.test',
+        suggestedAt: 1_700_000_000_000,
+      }],
+    });
+
+    fetchSnapshot.mockResolvedValue(snapshot);
+    filterSnapshot.mockReturnValue(snapshot);
+
+    const ctx = makeCtx();
+    const program = new Command();
+    registerDashboardCommands(program, ctx);
+
+    await program.parseAsync(['status', '--view', 'suggestions'], { from: 'user' });
+
+    expect(fetchSnapshot).toHaveBeenCalledWith(undefined, { profile: 'analysis' });
+    expect(ctx.jsonOut).toHaveBeenCalledWith({
+      success: true,
+      command: 'status',
+      diagnostics: [],
+      data: {
+        view: 'suggestions',
+        health: {
+          status: 'ok',
+          blocking: false,
+          summary: {
+            issueCount: 0,
+            blockingIssueCount: 0,
+            errorCount: 0,
+            warningCount: 0,
+            danglingEdges: 0,
+            orphanNodes: 0,
+            readinessGaps: 0,
+            sovereigntyViolations: 0,
+            governedCompletionGaps: 0,
+            topRemediationBuckets: [],
+          },
+        },
+        suggestions: snapshot.suggestions,
+        summary: {
+          total: 1,
+          pending: 1,
+          accepted: 0,
+          rejected: 0,
+        },
+      },
+    });
   });
 });

@@ -944,6 +944,316 @@ describe('DashboardApp', () => {
     expect(inputState.label).toContain('Comment on suggestion:S1:');
   });
 
+  it('opens adopt, dismiss, and supersede flows from a suggestion page', () => {
+    const app = buildApp();
+    const loaded = ready(app, makeSnapshot({
+      aiSuggestions: [{
+        id: 'suggestion:S1',
+        type: 'ai-suggestion',
+        kind: 'dependency',
+        title: 'Add a missing dependency edge',
+        summary: 'This suggestion should probably be adopted into governed work.',
+        status: 'suggested',
+        audience: 'human',
+        origin: 'spontaneous',
+        suggestedBy: 'agent.prime',
+        suggestedAt: 100,
+        relatedIds: [],
+      }],
+    }));
+
+    const [suggestions] = app.update(key('5'), loaded);
+    const [page] = app.update(key('enter'), suggestions);
+    const plain = strip(app.view(page) as string);
+    expect(plain).toContain('Adopt suggestion into quest or proposal');
+    expect(plain).toContain('Dismiss suggestion with rationale');
+    expect(plain).toContain('Mark suggestion superseded by another artifact');
+
+    const [adopt] = app.update(key('a', { shift: true }), page);
+    expect(adopt.mode).toBe('input');
+    expect(adopt.inputState?.kind).toBe('suggestion-adopt');
+    if (!adopt.inputState || adopt.inputState.kind !== 'suggestion-adopt') {
+      throw new Error('Expected suggestion adopt input state');
+    }
+    expect(adopt.inputState.step).toBe('kind');
+    expect(adopt.inputState.adoptedArtifactKind).toBe('proposal');
+    expect(strip(app.view(adopt) as string)).toContain('Adopt as (quest | proposal)');
+
+    const [adoptRationale] = app.update(key('enter'), adopt);
+    expect(adoptRationale.mode).toBe('input');
+    expect(adoptRationale.inputState?.kind).toBe('suggestion-adopt');
+    if (!adoptRationale.inputState || adoptRationale.inputState.kind !== 'suggestion-adopt') {
+      throw new Error('Expected suggestion adopt rationale state');
+    }
+    expect(adoptRationale.inputState.step).toBe('rationale');
+    expect(adoptRationale.inputState.adoptedArtifactKind).toBe('proposal');
+    expect(strip(app.view(adoptRationale) as string)).toContain('Rationale:');
+
+    const [dismiss] = app.update(key('d', { shift: true }), page);
+    const dismissInput = expectWriteInput(dismiss);
+    expect(dismissInput.action).toEqual({ kind: 'dismiss-suggestion', suggestionId: 'suggestion:S1' });
+    expect(dismissInput.label).toContain('Dismissal rationale');
+
+    const [supersede] = app.update(key('u'), page);
+    expect(supersede.mode).toBe('input');
+    expect(supersede.inputState?.kind).toBe('suggestion-supersede');
+    if (!supersede.inputState || supersede.inputState.kind !== 'suggestion-supersede') {
+      throw new Error('Expected suggestion supersede input state');
+    }
+    expect(supersede.inputState.step).toBe('replacement');
+    expect(strip(app.view(supersede) as string)).toContain('Replacement artifact ID');
+  });
+
+  it('does not submit suggestion adoption without a rationale', () => {
+    const app = buildApp();
+    const loaded = ready(app, makeSnapshot({
+      aiSuggestions: [{
+        id: 'suggestion:S1',
+        type: 'ai-suggestion',
+        kind: 'quest',
+        title: 'Promote the suggestion',
+        summary: 'Adopt this into a real quest.',
+        status: 'suggested',
+        audience: 'human',
+        origin: 'request',
+        suggestedBy: 'agent.prime',
+        suggestedAt: 100,
+        relatedIds: [],
+      }],
+    }));
+
+    const [suggestions] = app.update(key('5'), loaded);
+    const [page] = app.update(key('enter'), suggestions);
+    const [adopt] = app.update(key('a', { shift: true }), page);
+    const [rationaleStep] = app.update(key('enter'), adopt);
+    const [blocked, cmds] = app.update(key('enter'), rationaleStep);
+
+    expect(blocked.mode).toBe('input');
+    expect(blocked.writePending).toBe(false);
+    expect(blocked.inputState).toMatchObject({
+      kind: 'suggestion-adopt',
+      step: 'rationale',
+    });
+    expect(cmds).toEqual([]);
+  });
+
+  it('does not submit suggestion supersession without a rationale', () => {
+    const app = buildApp();
+    const loaded = ready(app, makeSnapshot({
+      aiSuggestions: [{
+        id: 'suggestion:S1',
+        type: 'ai-suggestion',
+        kind: 'general',
+        title: 'Supersede the suggestion',
+        summary: 'Route this through the real artifact instead.',
+        status: 'suggested',
+        audience: 'human',
+        origin: 'request',
+        suggestedBy: 'agent.prime',
+        suggestedAt: 100,
+        relatedIds: [],
+      }],
+    }));
+
+    const [suggestions] = app.update(key('5'), loaded);
+    const [page] = app.update(key('enter'), suggestions);
+    const [supersede] = app.update(key('u'), page);
+    const [typedReplacement] = app.update(key('t'), supersede);
+    const [rationaleStep] = app.update(key('enter'), typedReplacement);
+    const [blocked, cmds] = app.update(key('enter'), rationaleStep);
+
+    expect(blocked.mode).toBe('input');
+    expect(blocked.writePending).toBe(false);
+    expect(blocked.inputState).toMatchObject({
+      kind: 'suggestion-supersede',
+      step: 'rationale',
+      replacementId: 't',
+    });
+    expect(cmds).toEqual([]);
+  });
+
+  it('opens the AI explainability modal from a suggestion page', () => {
+    const app = buildApp();
+    const loaded = ready(app, makeSnapshot({
+      aiSuggestions: [{
+        id: 'suggestion:S1',
+        type: 'ai-suggestion',
+        kind: 'general',
+        title: 'Improve queue ranking',
+        summary: 'This area should probably rank blockers above generic churn.',
+        why: 'The queue is noisy and humans are missing the truly hot work.',
+        evidence: 'Recent activity shows review-ready items buried under generic backlog traffic.',
+        nextAction: 'Adopt the idea as a governed proposal if the operator agrees.',
+        status: 'suggested',
+        audience: 'either',
+        origin: 'spontaneous',
+        suggestedBy: 'agent.prime',
+        suggestedAt: 100,
+        relatedIds: [],
+      }],
+    }));
+
+    const [suggestions] = app.update(key('5'), loaded);
+    const [page] = app.update(key('enter'), suggestions);
+    const [explain] = app.update(key('e'), page);
+    const [scrolled] = app.update(key('pagedown'), explain);
+    const [scrolledAgain] = app.update(key('pagedown'), scrolled);
+    const plain = strip(app.view(explain) as string);
+    const scrolledPlain = strip(app.view(scrolled) as string);
+    const scrolledAgainPlain = strip(app.view(scrolledAgain) as string);
+
+    expect(explain.mode).toBe('ai-explainability');
+    expect(plain).toContain('[AI] Explainability');
+    expect(plain).toContain('Spontaneous agent observation');
+    expect(scrolledPlain).toContain('Why it was suggested');
+    expect(scrolledAgainPlain).toContain('Governance rule');
+  });
+
+  it('opens a linked case page from a suggestion page and starts a human decision flow', () => {
+    const ctx = mockGraphContext({
+      aiSuggestions: [{
+        id: 'suggestion:AI-TRACE',
+        type: 'ai-suggestion',
+        kind: 'quest',
+        title: 'Split traceability into its own governed quest',
+        summary: 'This suggestion already has a governed case attached to it.',
+        status: 'suggested',
+        audience: 'human',
+        origin: 'spontaneous',
+        suggestedBy: 'agent.oracle',
+        suggestedAt: 100,
+        relatedIds: ['task:TARGET'],
+      }],
+    });
+
+    const app = createDashboardApp({
+      ctx,
+      intake: mockIntakePort(),
+      graphPort: mockGraphPort(),
+      submissionPort: mockSubmissionPort(),
+      style: createPlainStylePort(),
+      agentId: 'agent.test',
+      logoText: 'XYPH',
+      observerWatermarkStore: createMemoryObserverWatermarkStore(),
+      observerWatermarkScope: TEST_SCOPE,
+    });
+
+    const loaded = ready(app, makeSnapshot({
+      aiSuggestions: [{
+        id: 'suggestion:AI-TRACE',
+        type: 'ai-suggestion',
+        kind: 'quest',
+        title: 'Split traceability into its own governed quest',
+        summary: 'This suggestion already has a governed case attached to it.',
+        status: 'suggested',
+        audience: 'human',
+        origin: 'spontaneous',
+        suggestedBy: 'agent.oracle',
+        suggestedAt: 100,
+        relatedIds: ['task:TARGET'],
+      }],
+    }));
+
+    const [suggestions] = app.update(key('5'), loaded);
+    const [suggestionPage] = app.update(key('enter'), suggestions);
+    const [suggestionDetailLoaded] = app.update({
+      type: 'page-detail-loaded',
+      entityId: 'suggestion:AI-TRACE',
+      detail: {
+        id: 'suggestion:AI-TRACE',
+        type: 'ai_suggestion',
+        props: { type: 'ai_suggestion' },
+        outgoing: [],
+        incoming: [{ nodeId: 'case:TRACE-1', label: 'opened-from' }],
+      },
+      requestId: suggestionPage.pageRequestId,
+    }, suggestionPage);
+
+    const [casePage] = app.update(key('enter'), suggestionDetailLoaded);
+    expect(casePage.pageStack[casePage.pageStack.length - 1]).toEqual({
+      kind: 'case',
+      caseId: 'case:TRACE-1',
+      sourceLane: 'suggestions',
+    });
+
+    const [caseDetailLoaded] = app.update({
+      type: 'page-detail-loaded',
+      entityId: 'case:TRACE-1',
+      detail: {
+        id: 'case:TRACE-1',
+        type: 'case',
+        props: {
+          type: 'case',
+          title: 'Should traceability become its own governed quest?',
+          question: 'Should traceability become its own governed quest?',
+          status: 'ready-for-judgment',
+          impact: 'frontier',
+          risk: 'reversible-high',
+          authority: 'human-decide-agent-apply',
+        },
+        outgoing: [
+          { nodeId: 'task:TARGET', label: 'concerns' },
+          { nodeId: 'suggestion:AI-TRACE', label: 'opened-from' },
+        ],
+        incoming: [
+          { nodeId: 'brief:TRACE-REC', label: 'briefs' },
+        ],
+        caseDetail: {
+          id: 'case:TRACE-1',
+          caseNode: {
+            id: 'case:TRACE-1',
+            title: 'Should traceability become its own governed quest?',
+            question: 'Should traceability become its own governed quest?',
+            status: 'ready-for-judgment',
+            impact: 'frontier',
+            risk: 'reversible-high',
+            authority: 'human-decide-agent-apply',
+            openedBy: 'human.james',
+            openedAt: 90,
+            reason: 'Repeated review fallout keeps surfacing the same shape question.',
+          },
+          subjectIds: ['task:TARGET'],
+          openedFromIds: ['suggestion:AI-TRACE'],
+          briefs: [{
+            id: 'brief:TRACE-REC',
+            briefKind: 'recommendation',
+            title: 'Recommendation: split the traceability work',
+            rationale: 'The traceability work needs a clearer governed scope.',
+            authoredBy: 'agent.oracle',
+            authoredAt: 95,
+            body: 'Create a separate governed quest with explicit evidence expectations.',
+            relatedIds: ['task:TARGET', 'suggestion:AI-TRACE'],
+          }],
+          decisions: [],
+          documents: [],
+          comments: [],
+        },
+      },
+      requestId: casePage.pageRequestId,
+    }, casePage);
+
+    const wideCasePage = widen(app, caseDetailLoaded, 140, 60);
+    const plain = strip(app.view(wideCasePage) as string);
+    expect(plain).toContain('Governed Case');
+    expect(plain).toContain('Should traceability become its own governed quest?');
+    expect(plain).toContain('Recommendation: split the traceability work');
+    expect(plain).toContain('Decide this case');
+
+    const [decision] = app.update(key('d'), wideCasePage);
+    expect(decision.mode).toBe('input');
+    expect(decision.inputState?.kind).toBe('case-decision');
+    if (!decision.inputState || decision.inputState.kind !== 'case-decision') {
+      throw new Error('Expected case-decision input state');
+    }
+    expect(decision.inputState.step).toBe('outcome');
+    expect(strip(app.view(decision) as string)).toContain('Decision (adopt | reject | defer | request-evidence)');
+
+    const [askAi] = app.update(key('n'), wideCasePage);
+    const askAiInput = expectAskAiInput(askAi, 'title');
+    expect(askAiInput.targetId).toBe('case:TRACE-1');
+    expect(askAiInput.contextLabel).toBe('TRACE-1');
+  });
+
   it('opens a page-local reopen confirmation for a graveyard quest page', () => {
     const app = buildApp();
     const loaded = ready(app, makeSnapshot({

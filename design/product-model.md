@@ -8,6 +8,19 @@ quietly drifting away from its own architecture or governance model.
 
 ## Product Principles
 
+### 0. One Product, Two Lenses
+
+XYPH is one product with two primary operating lenses:
+
+- human judgment and governance surfaces
+- agent-native command and protocol surfaces
+
+Those lenses should share semantics and diverge only in presentation,
+interaction style, and authority boundaries.
+
+If a concept exists only in one surface and cannot be expressed in the shared
+semantic model, it should be treated as suspect until proven necessary.
+
 ### 1. Landing For Triage, Pages For Judgment
 
 The cockpit is the landing page, not the whole app.
@@ -122,6 +135,76 @@ Humans and agents should consume the same graph truth through different lenses.
 The human landing cockpit and the agent-native CLI should disagree in format,
 not in reality.
 
+### 14a. Observer-First Reads, Intent-First Writes
+
+XYPH should not treat the graph as raw mutable storage and then reconstruct its
+own pseudo-database above it.
+
+Reads should prefer substrate-native worldline and observer semantics. Writes
+should lower through substrate-native intent, working-set, tick, and
+transfer/collapse semantics before XYPH adds policy and governance meaning.
+
+The goal is:
+
+- git-warp owns speculative graph evolution
+- XYPH owns lawful product interpretation of that evolution
+
+### 15. Agent-First Technical Seams, Human-First Judgment
+
+By default, XYPH should implement shared semantics and agent-native seams
+first, because they force ambiguity into the open quickly:
+
+- explicit inputs
+- explicit outputs
+- explicit lawful actions
+- explicit refusal reasons
+- explicit state transitions
+
+That default does **not** mean the product is agent-led in judgment.
+
+Human-facing design still governs:
+
+- what must be understandable
+- what must be explainable
+- what must remain reviewable and governable
+
+In short:
+
+- let humans define the judgment model
+- let agents force the model to become explicit
+
+### 16. XYPH Must Embody The Product Loop It Claims To Govern
+
+XYPH's value is not only that it shows project state. It should embody the
+governed loop by which **project shape** evolves:
+
+- observation
+- suggestion
+- elevation
+- judgment preparation
+- decision
+- application
+- verification
+- reconciliation
+
+This is not the universal loop for every routine work item. It is the
+shape-governance loop for matters that materially alter frontier, sequencing,
+policy, risk, or doctrine.
+
+If a feature cannot be placed in that loop, it is at risk of becoming drift.
+If the loop still depends on side-channel memory or hidden automation, the
+product remains incomplete even if the UI feels polished.
+
+Shape-governance cases should classify matters through orthogonal axes instead
+of mixed enums:
+
+- impact
+- risk
+- authority
+
+And where possible, decisions should compile into existing work primitives with
+causal linkage rather than inventing new execution nouns by default.
+
 ## Shared Primitive Model
 
 ### Work Primitives
@@ -148,6 +231,8 @@ Design rule:
 
 XYPH should expose these as explicit product concepts:
 
+- **Case**
+- **Brief**
 - **Review item**
 - **Comparison artifact**
 - **Attestation**
@@ -166,6 +251,22 @@ Pages and queues should surface these shared judgments:
 - `claimability`
 - `attentionState`
 
+### Substrate Primitives
+
+These should belong to git-warp and be consumed by XYPH rather than rebuilt in
+application code:
+
+- **WorldLine**
+- **Observer**
+- **Working Set**
+- **Intent**
+- **Tick**
+- **Tick receipt / BTR**
+- **Transfer / collapse primitive**
+
+XYPH should layer policy, governance, and human/agent product semantics on top
+of those substrate facts.
+
 ### Agent-Native Primitives
 
 The agent-native layer should speak in packets, not prose blobs.
@@ -180,6 +281,49 @@ Minimum shared packet types:
 
 Across those packets, XYPH should reuse the same semantic fields wherever they
 apply.
+
+### Alignment Rule
+
+No significant human-facing feature should be considered complete until the
+same underlying semantics exist in the agent surface, unless the cycle
+explicitly declares that feature human-only and explains why.
+
+Likewise, agent-native functionality should not invent hidden semantic fields
+that the human surface cannot inspect or explain.
+
+## Agent CLI Interaction Model
+
+The agent CLI should be designed with the same intentionality as the TUI.
+
+The equivalent model is:
+
+- `briefing` = landing page
+- `next` = prioritized action queue
+- `context <id>` = item page
+- `act` = lawful page-local action surface
+- `handoff` = closeout and durable session transfer
+
+That means the CLI should optimize for:
+
+- fast orientation
+- direct work selection
+- full-context drill-in
+- clear authority boundaries
+- durable closeout
+
+The machine-readable and human-readable modes should differ in format, not in
+semantic completeness.
+
+### Preferred Build Sequence
+
+For most cycles, the preferred order is:
+
+1. shared semantic model
+2. agent packet / CLI expression
+3. human page or TUI surface
+
+This keeps the TUI from becoming a place where missing ontology is papered over
+with local UI state.
 
 ### Graph Truth vs Derived Judgment
 
@@ -262,7 +406,7 @@ The rule is: BIJOU provides primitives; XYPH provides product meaning.
 The next design-led product slices should follow this order:
 
 1. finish the landing-page vs drill-in-page split
-2. add dedicated page types for review, settlement, and suggestion artifacts
+2. add dedicated page types for review, settlement, suggestion, and case artifacts
 3. keep the human and agent surfaces aligned to the same primitive model
 4. add AI suggestion queues for human and agent pickup
 5. add the `[AI]` transparency component and explainability flow

@@ -14,6 +14,7 @@ import type { GraphPort } from '../../ports/GraphPort.js';
 import type { IntakePort } from '../../ports/IntakePort.js';
 import type { SubmissionPort } from '../../ports/SubmissionPort.js';
 import { RecordService } from '../../domain/services/RecordService.js';
+import type { AiSuggestionAdoptionKind } from '../../domain/entities/AiSuggestion.js';
 
 /** Generate a lexicographically-sortable unique ID (matches actuator pattern). */
 export function generateId(): string {
@@ -34,6 +35,19 @@ export interface AskAiJobInput {
   summary: string;
   targetId?: string;
   relatedIds?: string[];
+}
+
+export interface SuggestionSupersedeInput {
+  suggestionId: string;
+  supersededById: string;
+  rationale?: string;
+}
+
+export interface CaseDecisionInput {
+  caseId: string;
+  decision: 'adopt' | 'reject' | 'defer' | 'request-evidence';
+  rationale: string;
+  followOnKind?: 'quest' | 'proposal' | 'none';
 }
 
 /**
@@ -201,6 +215,129 @@ export function queueAskAiJob(
         nextAction: 'An agent should inspect this ask-AI job and publish one or more visible advisory suggestions in response.',
       });
       emit({ type: 'write-success', message: `Queued ask-AI job ${result.id}` });
+    } catch (err: unknown) {
+      emit({ type: 'write-error', message: err instanceof Error ? err.message : String(err) });
+    }
+  };
+}
+
+/**
+ * Record a human case decision and compile linked follow-on work using existing primitives.
+ */
+export function decideCase(
+  deps: WriteDeps,
+  input: CaseDecisionInput,
+): Cmd<DashboardMsg> {
+  return async (emit) => {
+    try {
+      const trimmed = input.rationale.trim();
+      if (!trimmed) {
+        emit({ type: 'write-error', message: 'Rationale is required for a case decision' });
+        return;
+      }
+      const records = new RecordService(deps.graphPort);
+      const result = await records.createCaseDecision({
+        caseId: input.caseId,
+        decision: input.decision,
+        decidedBy: deps.agentId,
+        rationale: trimmed,
+        followOnKind: input.followOnKind,
+      });
+      const followOn = result.followOnArtifactId
+        ? ` → ${result.followOnArtifactKind} ${result.followOnArtifactId}`
+        : '';
+      emit({ type: 'write-success', message: `Decided ${result.caseId} as ${result.decision}${followOn}` });
+    } catch (err: unknown) {
+      emit({ type: 'write-error', message: err instanceof Error ? err.message : String(err) });
+    }
+  };
+}
+
+/**
+ * Adopt an AI suggestion into governed work.
+ */
+export function adoptSuggestion(
+  deps: WriteDeps,
+  suggestionId: string,
+  adoptedArtifactKind: AiSuggestionAdoptionKind,
+  rationale?: string,
+): Cmd<DashboardMsg> {
+  return async (emit) => {
+    try {
+      const trimmedRationale = rationale?.trim() ?? '';
+      if (!trimmedRationale) {
+        emit({ type: 'write-error', message: 'Rationale is required to adopt a suggestion' });
+        return;
+      }
+      const records = new RecordService(deps.graphPort);
+      const result = await records.adoptAiSuggestion({
+        suggestionId,
+        resolvedBy: deps.agentId,
+        adoptedArtifactKind,
+        rationale: trimmedRationale,
+      });
+      emit({ type: 'write-success', message: `Adopted ${result.suggestionId} into ${result.adoptedArtifactKind} ${result.adoptedArtifactId}` });
+    } catch (err: unknown) {
+      emit({ type: 'write-error', message: err instanceof Error ? err.message : String(err) });
+    }
+  };
+}
+
+/**
+ * Dismiss an AI suggestion with visible rationale.
+ */
+export function dismissSuggestion(
+  deps: WriteDeps,
+  suggestionId: string,
+  rationale: string,
+): Cmd<DashboardMsg> {
+  return async (emit) => {
+    try {
+      const trimmed = rationale.trim();
+      if (!trimmed) {
+        emit({ type: 'write-error', message: 'Rationale is required to dismiss a suggestion' });
+        return;
+      }
+      const records = new RecordService(deps.graphPort);
+      const result = await records.dismissAiSuggestion({
+        suggestionId,
+        resolvedBy: deps.agentId,
+        rationale: trimmed,
+      });
+      emit({ type: 'write-success', message: `Dismissed ${result.suggestionId}` });
+    } catch (err: unknown) {
+      emit({ type: 'write-error', message: err instanceof Error ? err.message : String(err) });
+    }
+  };
+}
+
+/**
+ * Mark an AI suggestion superseded by another graph artifact.
+ */
+export function supersedeSuggestion(
+  deps: WriteDeps,
+  input: SuggestionSupersedeInput,
+): Cmd<DashboardMsg> {
+  return async (emit) => {
+    try {
+      const replacementId = input.supersededById.trim();
+      const trimmedRationale = input.rationale?.trim() ?? '';
+      if (!replacementId) {
+        emit({ type: 'write-error', message: 'Replacement artifact ID is required to supersede a suggestion' });
+        return;
+      }
+      if (!trimmedRationale) {
+        emit({ type: 'write-error', message: 'Rationale is required to supersede a suggestion' });
+        return;
+      }
+      const records = new RecordService(deps.graphPort);
+      const result = await records.supersedeAiSuggestion({
+        suggestionId: input.suggestionId,
+        supersededById: replacementId,
+        resolvedBy: deps.agentId,
+        rationale: trimmedRationale,
+      });
+      emit({ type: 'write-success', message: `Superseded ${result.suggestionId} via ${result.supersededById}` });
     } catch (err: unknown) {
       emit({ type: 'write-error', message: err instanceof Error ? err.message : String(err) });
     }

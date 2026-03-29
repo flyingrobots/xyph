@@ -11,7 +11,7 @@
  *  #4  QueryResultV1.nodes[i].id and .props are optional even when select(['id','props']) was called
  */
 
-import type WarpGraph from '@git-stunts/git-warp';
+import type { WarpCore as WarpGraph } from '@git-stunts/git-warp';
 import type { QueryResultV1, AggregateResult } from '@git-stunts/git-warp';
 import {
   normalizeQuestPriority,
@@ -68,15 +68,19 @@ import type {
 import { VALID_SUGGESTION_STATUSES } from '../domain/entities/Suggestion.js';
 import type { SuggestionStatus } from '../domain/entities/Suggestion.js';
 import {
+  type AiSuggestionAdoptionKind,
+  VALID_AI_SUGGESTION_ADOPTION_KINDS,
   VALID_AI_SUGGESTION_AUDIENCES,
   VALID_AI_SUGGESTION_KINDS,
   VALID_AI_SUGGESTION_ORIGINS,
+  VALID_AI_SUGGESTION_RESOLUTION_KINDS,
   VALID_AI_SUGGESTION_STATUSES,
 } from '../domain/entities/AiSuggestion.js';
 import type {
   AiSuggestionAudience,
   AiSuggestionKind,
   AiSuggestionOrigin,
+  AiSuggestionResolutionKind,
   AiSuggestionStatus,
 } from '../domain/entities/AiSuggestion.js';
 import type { LayerScore } from '../domain/services/analysis/types.js';
@@ -101,6 +105,12 @@ import {
   XYPH_OPERATIONAL_COMPARISON_SCOPE_VERSION,
 } from '../domain/services/GovernanceArtifacts.js';
 import { DEFAULT_WORLDLINE_ID, toSubstrateWorkingSetId } from '../domain/models/controlPlane.js';
+import type {
+  CaseBriefNode,
+  CaseDecisionNode,
+  CaseDetail,
+  CaseNode,
+} from '../domain/models/dashboard.js';
 
 // ---------------------------------------------------------------------------
 // Validation sets
@@ -123,11 +133,14 @@ const VALID_APPROVAL_TRIGGERS: ReadonlySet<string> = new Set<ApprovalGateTrigger
 // ---------------------------------------------------------------------------
 
 export interface GraphContext {
-  /** The underlying WARP graph. Available after first fetchSnapshot() call. */
-  readonly graph: WarpGraph;
+  /** The underlying WARP graph. Available after the first read call. */
+  readonly graph: GraphContextGraph;
 
-  /** Build a snapshot from the current graph state (sync → materialize → query). */
-  fetchSnapshot(onProgress?: (msg: string) => void): Promise<GraphSnapshot>;
+  /** Build a snapshot from the current graph state (sync → query → traversal). */
+  fetchSnapshot(
+    onProgress?: (msg: string) => void,
+    options?: FetchSnapshotOptions,
+  ): Promise<GraphSnapshot>;
 
   /** Build a detailed projection for a single graph entity. */
   fetchEntityDetail(id: string): Promise<EntityDetail | null>;
@@ -139,16 +152,43 @@ export interface GraphContext {
   invalidateCache(): void;
 }
 
+export type GraphSnapshotProfile = 'full' | 'operational' | 'analysis' | 'audit';
+
+export interface GraphContextState {
+  readonly observedFrontier: ReadonlyMap<string, number>;
+}
+
+export interface GraphContextGraph {
+  readonly writerId: WarpGraph['writerId'];
+  readonly query: WarpGraph['query'];
+  readonly hasNode: WarpGraph['hasNode'];
+  readonly getNodeProps: WarpGraph['getNodeProps'];
+  readonly getStateSnapshot: () => Promise<GraphContextState | null>;
+  readonly getFrontier: () => Promise<ReadonlyMap<string, string>>;
+  readonly getContentOid: WarpGraph['getContentOid'];
+  readonly getContent: WarpGraph['getContent'];
+  readonly neighbors: (
+    nodeId: string,
+    direction?: 'outgoing' | 'incoming' | 'both',
+    edgeLabel?: string,
+  ) => Promise<{ nodeId: string; label: string }[]>;
+  readonly traverse: WarpGraph['traverse'];
+  readonly compareCoordinates: WarpGraph['compareCoordinates'];
+  readonly syncCoverage?: WarpGraph['syncCoverage'];
+}
+
+export interface FetchSnapshotOptions {
+  profile?: GraphSnapshotProfile;
+}
+
 export function createGraphContext(graphPort: GraphPort): GraphContext {
   return new GraphContextImpl(() => graphPort.getGraph());
 }
 
 export function createGraphContextFromGraph(
-  graph: WarpGraph,
+  graph: GraphContextGraph,
   opts?: {
-    ceiling?: number | null;
     syncCoverage?: boolean;
-    materializeGraph?: (graph: WarpGraph) => Promise<void>;
   },
 ): GraphContext {
   return new GraphContextImpl(
@@ -166,6 +206,20 @@ interface QNode {
   props: Record<string, unknown>;
 }
 
+type NarrativeDocumentType = 'spec' | 'adr' | 'note';
+
+function isNarrativeDocumentType(rawType: unknown): rawType is NarrativeDocumentType {
+  return rawType === 'spec' || rawType === 'adr' || rawType === 'note';
+}
+
+function isNarrativeDocumentId(id: string): boolean {
+  return id.startsWith('spec:') || id.startsWith('adr:') || id.startsWith('note:');
+}
+
+function isNarrativeDocumentIdForType(id: string, type: NarrativeDocumentType): boolean {
+  return id.startsWith(`${type}:`);
+}
+
 function extractNodes(result: QueryResultV1 | AggregateResult): QNode[] {
   if (!('nodes' in result)) return [];
   return result.nodes.filter(
@@ -174,7 +228,7 @@ function extractNodes(result: QueryResultV1 | AggregateResult): QNode[] {
 }
 
 async function batchNeighbors(
-  graph: WarpGraph,
+  graph: GraphContextGraph,
   ids: string[],
 ): Promise<Map<string, NeighborEntry[]>> {
   const map = new Map<string, NeighborEntry[]>();
@@ -233,21 +287,21 @@ function extractAttestationState(summary: GovernanceAttestationSummary): Governa
 function buildComparisonSelector(
   worldlineId: string,
   selector: ObservationSelector,
-): { kind: 'live'; ceiling?: number } | { kind: 'working_set'; workingSetId: string; ceiling?: number } | null {
+): { kind: 'live'; ceiling?: number } | { kind: 'strand'; strandId: string; ceiling?: number } | null {
   if (worldlineId === DEFAULT_WORLDLINE_ID) {
     return selector.kind === 'tick'
       ? { kind: 'live', ceiling: selector.tick }
       : { kind: 'live' };
   }
 
-  const workingSetId = toSubstrateWorkingSetId(worldlineId);
-  if (!workingSetId) {
+  const strandId = toSubstrateWorkingSetId(worldlineId);
+  if (!strandId) {
     return null;
   }
 
   return selector.kind === 'tick'
-    ? { kind: 'working_set', workingSetId, ceiling: selector.tick }
-    : { kind: 'working_set', workingSetId };
+    ? { kind: 'strand', strandId, ceiling: selector.tick }
+    : { kind: 'strand', strandId };
 }
 
 function deriveCampaignStatusFromQuests(quests: QuestNode[]): CampaignStatus {
@@ -265,20 +319,18 @@ function deriveCampaignStatusFromQuests(quests: QuestNode[]): CampaignStatus {
 // ---------------------------------------------------------------------------
 
 class GraphContextImpl implements GraphContext {
-  private cachedSnapshot: GraphSnapshot | null = null;
-  private cachedFrontierKey: string | null = null;
-  private _graph: WarpGraph | null = null;
+  private cachedSnapshots = new Map<GraphSnapshotProfile, GraphSnapshot>();
+  private cachedFrontierKeys = new Map<GraphSnapshotProfile, string>();
+  private _graph: GraphContextGraph | null = null;
 
   constructor(
-    private readonly graphProvider: () => Promise<WarpGraph>,
-    private readonly materialization: {
-      ceiling?: number | null;
+    private readonly graphProvider: () => Promise<GraphContextGraph>,
+    private readonly readOptions: {
       syncCoverage?: boolean;
-      materializeGraph?: (graph: WarpGraph) => Promise<void>;
     } = {},
   ) {}
 
-  get graph(): WarpGraph {
+  get graph(): GraphContextGraph {
     if (!this._graph) {
       throw new Error('Graph not yet initialized — call fetchSnapshot() first');
     }
@@ -286,18 +338,8 @@ class GraphContextImpl implements GraphContext {
   }
 
   invalidateCache(): void {
-    this.cachedSnapshot = null;
-    this.cachedFrontierKey = null;
-  }
-
-  private async materializeGraph(graph: WarpGraph): Promise<void> {
-    if (this.materialization.materializeGraph) {
-      await this.materialization.materializeGraph(graph);
-      return;
-    }
-    await graph.materialize({
-      ...(this.materialization.ceiling === undefined ? {} : { ceiling: this.materialization.ceiling }),
-    });
+    this.cachedSnapshots.clear();
+    this.cachedFrontierKeys.clear();
   }
 
   filterSnapshot(
@@ -325,8 +367,24 @@ class GraphContextImpl implements GraphContext {
     };
   }
 
-  async fetchSnapshot(onProgress?: (msg: string) => void): Promise<GraphSnapshot> {
+  async fetchSnapshot(
+    onProgress?: (msg: string) => void,
+    options: FetchSnapshotOptions = {},
+  ): Promise<GraphSnapshot> {
     const log: (msg: string) => void = onProgress ?? function noop(): void { /* no-op */ };
+    const profile: GraphSnapshotProfile = options.profile ?? 'full';
+    const includeFullTraceability = profile === 'full';
+    const includeAuditTraceability = profile === 'audit';
+    const includeAnalysisTraceability = profile === 'analysis';
+    const includeRequirementModels = includeFullTraceability || includeAnalysisTraceability || includeAuditTraceability;
+    const includeCriterionModels = includeFullTraceability || includeAnalysisTraceability || includeAuditTraceability;
+    const includeEvidenceModels = includeFullTraceability || includeAnalysisTraceability || includeAuditTraceability;
+    const includeLegacySuggestions = includeFullTraceability || includeAnalysisTraceability || includeAuditTraceability;
+    const includeStoryModels = includeFullTraceability || includeAuditTraceability;
+    const includePolicyModels = includeFullTraceability || includeAuditTraceability;
+    const includeCompletionRollups = includeAuditTraceability;
+    const includeCaseNodes = profile === 'full' || profile === 'operational' || profile === 'analysis';
+    const includeGovernanceArtifacts = profile === 'full';
 
     // --- Lifecycle: open → sync → materialize ---
     log('Opening project graph…');
@@ -334,7 +392,10 @@ class GraphContextImpl implements GraphContext {
     this._graph = graph;
 
     // Dashboard polling: discover external writers' patches before querying
-    if (this.materialization.syncCoverage !== false) {
+    if (this.readOptions.syncCoverage !== false) {
+      if (!graph.syncCoverage) {
+        throw new Error('GraphContext requires syncCoverage() unless syncCoverage is explicitly disabled');
+      }
       log('Syncing coverage…');
       await graph.syncCoverage();
       await yieldEventLoop();
@@ -343,17 +404,14 @@ class GraphContextImpl implements GraphContext {
     // Cache check: compare frontier key to detect both in-process writes
     // (via graph.patch()) and external writes (discovered by syncCoverage).
     // hasFrontierChanged() only detects external patches, missing same-instance mutations.
-    if (this.cachedSnapshot !== null && !this.materialization.materializeGraph) {
+    const cachedSnapshot = this.cachedSnapshots.get(profile);
+    if (cachedSnapshot !== undefined) {
       const currentKey = this.frontierKeyFromState(await graph.getStateSnapshot());
-      if (currentKey === this.cachedFrontierKey) {
+      if (currentKey === this.cachedFrontierKeys.get(profile)) {
         log('No changes detected — using cached snapshot');
-        return this.cachedSnapshot;
+        return cachedSnapshot;
       }
     }
-
-    log('Materializing graph…');
-    await this.materializeGraph(graph);
-    await yieldEventLoop();
 
     // --- Query each node type in parallel ---
     log('Querying graph…');
@@ -363,6 +421,7 @@ class GraphContextImpl implements GraphContext {
       patchsetNodes, reviewNodes, decisionNodes,
       storyNodes, requirementNodes, criterionNodes, evidenceNodes, policyNodes,
       suggestionNodes,
+      caseNodes,
       comparisonArtifactNodes, collapseProposalNodes, attestationNodes,
     ] = await Promise.all([
       graph.query().match('task:*').select(['id', 'props']).run().then(extractNodes),
@@ -375,15 +434,34 @@ class GraphContextImpl implements GraphContext {
       graph.query().match('patchset:*').select(['id', 'props']).run().then(extractNodes),
       graph.query().match('review:*').select(['id', 'props']).run().then(extractNodes),
       graph.query().match('decision:*').select(['id', 'props']).run().then(extractNodes),
-      graph.query().match('story:*').select(['id', 'props']).run().then(extractNodes),
-      graph.query().match('req:*').select(['id', 'props']).run().then(extractNodes),
-      graph.query().match('criterion:*').select(['id', 'props']).run().then(extractNodes),
-      graph.query().match('evidence:*').select(['id', 'props']).run().then(extractNodes),
-      graph.query().match('policy:*').select(['id', 'props']).run().then(extractNodes),
+      includeStoryModels
+        ? graph.query().match('story:*').select(['id', 'props']).run().then(extractNodes)
+        : Promise.resolve([]),
+      includeRequirementModels
+        ? graph.query().match('req:*').select(['id', 'props']).run().then(extractNodes)
+        : Promise.resolve([]),
+      includeCriterionModels
+        ? graph.query().match('criterion:*').select(['id', 'props']).run().then(extractNodes)
+        : Promise.resolve([]),
+      includeEvidenceModels
+        ? graph.query().match('evidence:*').select(['id', 'props']).run().then(extractNodes)
+        : Promise.resolve([]),
+      includePolicyModels
+        ? graph.query().match('policy:*').select(['id', 'props']).run().then(extractNodes)
+        : Promise.resolve([]),
       graph.query().match('suggestion:*').select(['id', 'props']).run().then(extractNodes),
-      graph.query().match('comparison-artifact:*').select(['id', 'props']).run().then(extractNodes),
-      graph.query().match('collapse-proposal:*').select(['id', 'props']).run().then(extractNodes),
-      graph.query().match('attestation:*').select(['id', 'props']).run().then(extractNodes),
+      includeCaseNodes
+        ? graph.query().match('case:*').select(['id', 'props']).run().then(extractNodes)
+        : Promise.resolve([]),
+      includeGovernanceArtifacts
+        ? graph.query().match('comparison-artifact:*').select(['id', 'props']).run().then(extractNodes)
+        : Promise.resolve([]),
+      includeGovernanceArtifacts
+        ? graph.query().match('collapse-proposal:*').select(['id', 'props']).run().then(extractNodes)
+        : Promise.resolve([]),
+      includeGovernanceArtifacts
+        ? graph.query().match('attestation:*').select(['id', 'props']).run().then(extractNodes)
+        : Promise.resolve([]),
     ]);
 
     await yieldEventLoop();
@@ -399,10 +477,11 @@ class GraphContextImpl implements GraphContext {
       ...patchsetNodes.map((n) => n.id),
       ...reviewNodes.map((n) => n.id),
       ...decisionNodes.map((n) => n.id),
-      ...storyNodes.map((n) => n.id),
-      ...requirementNodes.map((n) => n.id),
-      ...evidenceNodes.map((n) => n.id),
-      ...policyNodes.map((n) => n.id),
+      ...(includeStoryModels ? storyNodes.map((n) => n.id) : []),
+      ...(includeRequirementModels ? requirementNodes.map((n) => n.id) : []),
+      ...(includeEvidenceModels ? evidenceNodes.map((n) => n.id) : []),
+      ...(includePolicyModels ? policyNodes.map((n) => n.id) : []),
+      ...caseNodes.map((n) => n.id),
     ];
     const neighborsCache = await batchNeighbors(graph, neighborsNeeded);
 
@@ -578,336 +657,777 @@ class GraphContextImpl implements GraphContext {
     }
 
     // --- Build traceability nodes (stories, requirements, criteria, evidence, policies) ---
-    log('Building traceability models…');
-
-    // Build reverse lookup: intent → stories via decomposes-to edges on intent nodes
-    // and story → requirements via decomposes-to edges on story nodes
-    // We look at the outgoing edges of story nodes and evidence nodes
-
-    // Build stories
     const stories: StoryNode[] = [];
-    for (const n of storyNodes) {
-      if (n.props['type'] !== 'story') continue;
-      const title = n.props['title'];
-      const persona = n.props['persona'];
-      const goal = n.props['goal'];
-      const benefit = n.props['benefit'];
-      const createdBy = n.props['created_by'];
-      const createdAt = n.props['created_at'];
-
-      if (typeof title !== 'string' || typeof persona !== 'string' ||
-          typeof goal !== 'string' || typeof benefit !== 'string' ||
-          typeof createdBy !== 'string' || typeof createdAt !== 'number') continue;
-
-      stories.push({
-        id: n.id, title, persona, goal, benefit, createdBy, createdAt,
-      });
-    }
-
-    // Resolve intent→story decomposes-to edges (intent outgoing → story)
-    // We need to check intent neighbors, but intents aren't in neighborsNeeded.
-    // Instead, check story node neighbors for incoming decomposes-to.
-    // Since we have story outgoing neighbors, we need to find which intent
-    // points to a story. The edge is intent→story (outgoing from intent).
-    // We'll batch-fetch intent neighbors too.
-    const intentNeighbors = await batchNeighbors(graph, intentNodes.map((n) => n.id));
-    for (const intent of intentNodes) {
-      const neighbors = intentNeighbors.get(intent.id) ?? [];
-      for (const nb of neighbors) {
-        if (nb.label === 'decomposes-to' && nb.nodeId.startsWith('story:')) {
-          const story = stories.find((s) => s.id === nb.nodeId);
-          if (story) story.intentId = intent.id;
-        }
-      }
-    }
-
-    // Build requirements
     const requirements: RequirementNode[] = [];
-    for (const n of requirementNodes) {
-      if (n.props['type'] !== 'requirement') continue;
-      const description = n.props['description'];
-      const kind = n.props['kind'];
-      const priority = n.props['priority'];
-
-      if (typeof description !== 'string' ||
-          typeof kind !== 'string' || !VALID_REQUIREMENT_KINDS.has(kind) ||
-          typeof priority !== 'string' || !VALID_REQUIREMENT_PRIORITIES.has(priority)) continue;
-
-      // Resolve has-criterion edges (req→criterion, outgoing from req)
-      const neighbors = neighborsCache.get(n.id) ?? [];
-      const criterionIds: string[] = [];
-      for (const nb of neighbors) {
-        if (nb.label === 'has-criterion' && nb.nodeId.startsWith('criterion:')) {
-          criterionIds.push(nb.nodeId);
-        }
-      }
-
-      requirements.push({
-        id: n.id,
-        description,
-        kind: kind as RequirementKind,
-        priority: priority as RequirementPriority,
-        taskIds: [],
-        criterionIds,
-      });
-    }
-
-    // Resolve story→req decomposes-to edges (story outgoing → req)
-    for (const story of stories) {
-      const neighbors = neighborsCache.get(story.id) ?? [];
-      for (const nb of neighbors) {
-        if (nb.label === 'decomposes-to' && nb.nodeId.startsWith('req:')) {
-          const req = requirements.find((r) => r.id === nb.nodeId);
-          if (req) req.storyId = story.id;
-        }
-      }
-    }
-
-    // Resolve task→req implements edges (task outgoing → req, reverse lookup)
-    for (const task of taskNodes) {
-      const neighbors = neighborsCache.get(task.id) ?? [];
-      for (const nb of neighbors) {
-        if (nb.label === 'implements' && nb.nodeId.startsWith('req:')) {
-          const req = requirements.find((r) => r.id === nb.nodeId);
-          if (req) req.taskIds.push(task.id);
-        }
-      }
-    }
-
-    // Build evidence (need to resolve verifies edges)
     const evidence: EvidenceNode[] = [];
-    for (const n of evidenceNodes) {
-      if (n.props['type'] !== 'evidence') continue;
-      const kind = n.props['kind'];
-      const result = n.props['result'];
-      const producedAt = n.props['produced_at'];
-      const producedBy = n.props['produced_by'];
-      const artifactHash = n.props['artifact_hash'];
-
-      if (typeof kind !== 'string' || !VALID_EVIDENCE_KINDS.has(kind) ||
-          typeof result !== 'string' || !VALID_EVIDENCE_RESULTS.has(result) ||
-          typeof producedAt !== 'number' || typeof producedBy !== 'string') continue;
-
-      // Resolve outgoing edges (verifies→criterion, implements→requirement)
-      const neighbors = neighborsCache.get(n.id) ?? [];
-      let criterionId: string | undefined;
-      let requirementId: string | undefined;
-      for (const nb of neighbors) {
-        if (nb.label === 'verifies' && nb.nodeId.startsWith('criterion:')) {
-          criterionId = nb.nodeId;
-        } else if (nb.label === 'implements' && nb.nodeId.startsWith('req:')) {
-          requirementId = nb.nodeId;
-        }
-      }
-
-      const sourceFile = n.props['source_file'];
-      evidence.push({
-        id: n.id,
-        kind: kind as EvidenceKind,
-        result: result as EvidenceResult,
-        producedAt,
-        producedBy,
-        criterionId,
-        requirementId,
-        artifactHash: typeof artifactHash === 'string' ? artifactHash : undefined,
-        sourceFile: typeof sourceFile === 'string' ? sourceFile : undefined,
-      });
-    }
-
-    // Build criteria (resolve reverse verifies edges for evidenceIds)
-    const evidenceByCriterion = new Map<string, string[]>();
-    for (const e of evidence) {
-      if (e.criterionId) {
-        const arr = evidenceByCriterion.get(e.criterionId) ?? [];
-        arr.push(e.id);
-        evidenceByCriterion.set(e.criterionId, arr);
-      }
-    }
-
     const criteria: CriterionNode[] = [];
-    for (const n of criterionNodes) {
-      if (n.props['type'] !== 'criterion') continue;
-      const description = n.props['description'];
-      const verifiable = n.props['verifiable'];
-
-      if (typeof description !== 'string') continue;
-
-      criteria.push({
-        id: n.id,
-        description,
-        verifiable: typeof verifiable === 'boolean' ? verifiable : true,
-        evidenceIds: evidenceByCriterion.get(n.id) ?? [],
-      });
-    }
-
-    // Resolve criterion→requirement reverse lookup (req→criterion has-criterion edge)
-    const criterionByReq = new Map<string, string[]>();
-    for (const req of requirements) {
-      for (const cId of req.criterionIds) {
-        const arr = criterionByReq.get(cId) ?? [];
-        arr.push(req.id);
-        criterionByReq.set(cId, arr);
-      }
-    }
-    for (const c of criteria) {
-      const reqIds = criterionByReq.get(c.id);
-      if (reqIds && reqIds.length > 0) {
-        c.requirementId = reqIds[0];
-      }
-    }
-
-    // Build policies (resolve governs edges)
     const policies: PolicyNode[] = [];
-    for (const n of policyNodes) {
-      if (n.props['type'] !== 'policy') continue;
+    if (includeFullTraceability) {
+      log('Building traceability models…');
 
-      const neighbors = neighborsCache.get(n.id) ?? [];
-      let campaignId: string | undefined;
-      for (const nb of neighbors) {
-        if (nb.label === 'governs' && (nb.nodeId.startsWith('campaign:') || nb.nodeId.startsWith('milestone:'))) {
-          campaignId = nb.nodeId;
-          break;
+      for (const n of storyNodes) {
+        if (n.props['type'] !== 'story') continue;
+        const title = n.props['title'];
+        const persona = n.props['persona'];
+        const goal = n.props['goal'];
+        const benefit = n.props['benefit'];
+        const createdBy = n.props['created_by'];
+        const createdAt = n.props['created_at'];
+
+        if (typeof title !== 'string' || typeof persona !== 'string' ||
+            typeof goal !== 'string' || typeof benefit !== 'string' ||
+            typeof createdBy !== 'string' || typeof createdAt !== 'number') continue;
+
+        stories.push({
+          id: n.id, title, persona, goal, benefit, createdBy, createdAt,
+        });
+      }
+
+      const intentNeighbors = await batchNeighbors(graph, intentNodes.map((n) => n.id));
+      for (const intent of intentNodes) {
+        const neighbors = intentNeighbors.get(intent.id) ?? [];
+        for (const nb of neighbors) {
+          if (nb.label === 'decomposes-to' && nb.nodeId.startsWith('story:')) {
+            const story = stories.find((s) => s.id === nb.nodeId);
+            if (story) story.intentId = intent.id;
+          }
         }
       }
 
-      const coverageThresholdRaw = n.props['coverage_threshold'];
-      const requireAllCriteriaRaw = n.props['require_all_criteria'];
-      const requireEvidenceRaw = n.props['require_evidence'];
-      const allowManualSealRaw = n.props['allow_manual_seal'];
+      for (const n of requirementNodes) {
+        if (n.props['type'] !== 'requirement') continue;
+        const description = n.props['description'];
+        const kind = n.props['kind'];
+        const priority = n.props['priority'];
 
-      const coverageThreshold = (
-        typeof coverageThresholdRaw === 'number' &&
-        Number.isFinite(coverageThresholdRaw) &&
-        coverageThresholdRaw >= 0 &&
-        coverageThresholdRaw <= 1
-      )
-        ? coverageThresholdRaw
-        : DEFAULT_POLICY_COVERAGE_THRESHOLD;
+        if (typeof description !== 'string' ||
+            typeof kind !== 'string' || !VALID_REQUIREMENT_KINDS.has(kind) ||
+            typeof priority !== 'string' || !VALID_REQUIREMENT_PRIORITIES.has(priority)) continue;
 
-      policies.push({
-        id: n.id,
-        campaignId,
-        coverageThreshold,
-        requireAllCriteria: typeof requireAllCriteriaRaw === 'boolean'
-          ? requireAllCriteriaRaw
-          : DEFAULT_POLICY_REQUIRE_ALL_CRITERIA,
-        requireEvidence: typeof requireEvidenceRaw === 'boolean'
-          ? requireEvidenceRaw
-          : DEFAULT_POLICY_REQUIRE_EVIDENCE,
-        allowManualSeal: typeof allowManualSealRaw === 'boolean'
-          ? allowManualSealRaw
-          : DEFAULT_POLICY_ALLOW_MANUAL_SEAL,
-      });
-    }
+        const neighbors = neighborsCache.get(n.id) ?? [];
+        const criterionIds: string[] = [];
+        for (const nb of neighbors) {
+          if (nb.label === 'has-criterion' && nb.nodeId.startsWith('criterion:')) {
+            criterionIds.push(nb.nodeId);
+          }
+        }
 
-    // --- Compute traceability rollups for quests and campaigns ---
-    const policyByCampaignId = new Map<string, PolicyNode>();
-    for (const policy of policies) {
-      if (!policy.campaignId || policyByCampaignId.has(policy.campaignId)) continue;
-      policyByCampaignId.set(policy.campaignId, policy);
-    }
-
-    const requirementsByQuestId = new Map<string, RequirementNode[]>();
-    for (const requirement of requirements) {
-      for (const taskId of requirement.taskIds) {
-        const linked = requirementsByQuestId.get(taskId) ?? [];
-        linked.push(requirement);
-        requirementsByQuestId.set(taskId, linked);
-      }
-    }
-    const criteriaByRequirementId = new Map<string, CriterionNode[]>();
-    for (const criterion of criteria) {
-      if (!criterion.requirementId) continue;
-      const linked = criteriaByRequirementId.get(criterion.requirementId) ?? [];
-      linked.push(criterion);
-      criteriaByRequirementId.set(criterion.requirementId, linked);
-    }
-
-    for (const quest of quests) {
-      const questRequirements = requirementsByQuestId.get(quest.id) ?? [];
-      const questCriteria = questRequirements.flatMap((requirement) => criteriaByRequirementId.get(requirement.id) ?? []);
-      const appliedPolicy = quest.campaignId ? policyByCampaignId.get(quest.campaignId) : undefined;
-      quest.computedCompletion = computeCompletionSummary(
-        questRequirements.map((requirement) => ({
-          id: requirement.id,
-          criterionIds: requirement.criterionIds,
-        })),
-        questCriteria.map((criterion) => ({
-          id: criterion.id,
-          evidence: criterion.evidenceIds
-            .map((evidenceId) => evidence.find((entry) => entry.id === evidenceId))
-            .filter((entry): entry is EvidenceNode => Boolean(entry))
-            .map((entry) => ({
-              id: entry.id,
-              result: entry.result,
-              producedAt: entry.producedAt,
-            })),
-        })),
-        {
-          policy: appliedPolicy
-            ? {
-                id: appliedPolicy.id,
-                coverageThreshold: appliedPolicy.coverageThreshold,
-                requireAllCriteria: appliedPolicy.requireAllCriteria,
-                requireEvidence: appliedPolicy.requireEvidence,
-              }
-            : undefined,
-          manualComplete: quest.status === 'DONE',
-        },
-      );
-    }
-
-    const questsByCampaignId = new Map<string, QuestNode[]>();
-    for (const quest of quests) {
-      if (!quest.campaignId) continue;
-      const members = questsByCampaignId.get(quest.campaignId) ?? [];
-      members.push(quest);
-      questsByCampaignId.set(quest.campaignId, members);
-    }
-    for (const campaign of campaigns) {
-      const memberQuests = questsByCampaignId.get(campaign.id);
-      if (memberQuests && memberQuests.length > 0) {
-        campaign.status = deriveCampaignStatusFromQuests(memberQuests);
+        requirements.push({
+          id: n.id,
+          description,
+          kind: kind as RequirementKind,
+          priority: priority as RequirementPriority,
+          taskIds: [],
+          criterionIds,
+        });
       }
 
-      const questIds = new Set((memberQuests ?? []).map((quest) => quest.id));
-      const campaignRequirements = requirements.filter((requirement) => requirement.taskIds.some((taskId) => questIds.has(taskId)));
-      const campaignCriteria = campaignRequirements.flatMap((requirement) => criteriaByRequirementId.get(requirement.id) ?? []);
-      const appliedPolicy = policyByCampaignId.get(campaign.id);
-      campaign.computedCompletion = computeCompletionSummary(
-        campaignRequirements.map((requirement) => ({
-          id: requirement.id,
-          criterionIds: requirement.criterionIds,
-        })),
-        campaignCriteria.map((criterion) => ({
-          id: criterion.id,
-          evidence: criterion.evidenceIds
-            .map((evidenceId) => evidence.find((entry) => entry.id === evidenceId))
-            .filter((entry): entry is EvidenceNode => Boolean(entry))
-            .map((entry) => ({
-              id: entry.id,
-              result: entry.result,
-              producedAt: entry.producedAt,
-            })),
-        })),
-        {
-          policy: appliedPolicy
-            ? {
-                id: appliedPolicy.id,
-                coverageThreshold: appliedPolicy.coverageThreshold,
-                requireAllCriteria: appliedPolicy.requireAllCriteria,
-                requireEvidence: appliedPolicy.requireEvidence,
-              }
-            : undefined,
-          manualComplete: campaign.status === 'DONE',
-        },
-      );
+      for (const story of stories) {
+        const neighbors = neighborsCache.get(story.id) ?? [];
+        for (const nb of neighbors) {
+          if (nb.label === 'decomposes-to' && nb.nodeId.startsWith('req:')) {
+            const req = requirements.find((r) => r.id === nb.nodeId);
+            if (req) req.storyId = story.id;
+          }
+        }
+      }
+
+      for (const task of taskNodes) {
+        const neighbors = neighborsCache.get(task.id) ?? [];
+        for (const nb of neighbors) {
+          if (nb.label === 'implements' && nb.nodeId.startsWith('req:')) {
+            const req = requirements.find((r) => r.id === nb.nodeId);
+            if (req) req.taskIds.push(task.id);
+          }
+        }
+      }
+
+      for (const n of evidenceNodes) {
+        if (n.props['type'] !== 'evidence') continue;
+        const kind = n.props['kind'];
+        const result = n.props['result'];
+        const producedAt = n.props['produced_at'];
+        const producedBy = n.props['produced_by'];
+        const artifactHash = n.props['artifact_hash'];
+
+        if (typeof kind !== 'string' || !VALID_EVIDENCE_KINDS.has(kind) ||
+            typeof result !== 'string' || !VALID_EVIDENCE_RESULTS.has(result) ||
+            typeof producedAt !== 'number' || typeof producedBy !== 'string') continue;
+
+        const neighbors = neighborsCache.get(n.id) ?? [];
+        let criterionId: string | undefined;
+        let requirementId: string | undefined;
+        for (const nb of neighbors) {
+          if (nb.label === 'verifies' && nb.nodeId.startsWith('criterion:')) {
+            criterionId = nb.nodeId;
+          } else if (nb.label === 'implements' && nb.nodeId.startsWith('req:')) {
+            requirementId = nb.nodeId;
+          }
+        }
+
+        const sourceFile = n.props['source_file'];
+        evidence.push({
+          id: n.id,
+          kind: kind as EvidenceKind,
+          result: result as EvidenceResult,
+          producedAt,
+          producedBy,
+          criterionId,
+          requirementId,
+          artifactHash: typeof artifactHash === 'string' ? artifactHash : undefined,
+          sourceFile: typeof sourceFile === 'string' ? sourceFile : undefined,
+        });
+      }
+
+      const evidenceByCriterion = new Map<string, string[]>();
+      for (const e of evidence) {
+        if (e.criterionId) {
+          const arr = evidenceByCriterion.get(e.criterionId) ?? [];
+          arr.push(e.id);
+          evidenceByCriterion.set(e.criterionId, arr);
+        }
+      }
+
+      for (const n of criterionNodes) {
+        if (n.props['type'] !== 'criterion') continue;
+        const description = n.props['description'];
+        const verifiable = n.props['verifiable'];
+
+        if (typeof description !== 'string') continue;
+
+        criteria.push({
+          id: n.id,
+          description,
+          verifiable: typeof verifiable === 'boolean' ? verifiable : true,
+          evidenceIds: evidenceByCriterion.get(n.id) ?? [],
+        });
+      }
+
+      const criterionByReq = new Map<string, string[]>();
+      for (const req of requirements) {
+        for (const cId of req.criterionIds) {
+          const arr = criterionByReq.get(cId) ?? [];
+          arr.push(req.id);
+          criterionByReq.set(cId, arr);
+        }
+      }
+      for (const c of criteria) {
+        const reqIds = criterionByReq.get(c.id);
+        if (reqIds && reqIds.length > 0) {
+          c.requirementId = reqIds[0];
+        }
+      }
+
+      for (const n of policyNodes) {
+        if (n.props['type'] !== 'policy') continue;
+
+        const neighbors = neighborsCache.get(n.id) ?? [];
+        let campaignId: string | undefined;
+        for (const nb of neighbors) {
+          if (nb.label === 'governs' && (nb.nodeId.startsWith('campaign:') || nb.nodeId.startsWith('milestone:'))) {
+            campaignId = nb.nodeId;
+            break;
+          }
+        }
+
+        const coverageThresholdRaw = n.props['coverage_threshold'];
+        const requireAllCriteriaRaw = n.props['require_all_criteria'];
+        const requireEvidenceRaw = n.props['require_evidence'];
+        const allowManualSealRaw = n.props['allow_manual_seal'];
+
+        const coverageThreshold = (
+          typeof coverageThresholdRaw === 'number' &&
+          Number.isFinite(coverageThresholdRaw) &&
+          coverageThresholdRaw >= 0 &&
+          coverageThresholdRaw <= 1
+        )
+          ? coverageThresholdRaw
+          : DEFAULT_POLICY_COVERAGE_THRESHOLD;
+
+        policies.push({
+          id: n.id,
+          campaignId,
+          coverageThreshold,
+          requireAllCriteria: typeof requireAllCriteriaRaw === 'boolean'
+            ? requireAllCriteriaRaw
+            : DEFAULT_POLICY_REQUIRE_ALL_CRITERIA,
+          requireEvidence: typeof requireEvidenceRaw === 'boolean'
+            ? requireEvidenceRaw
+            : DEFAULT_POLICY_REQUIRE_EVIDENCE,
+          allowManualSeal: typeof allowManualSealRaw === 'boolean'
+            ? allowManualSealRaw
+            : DEFAULT_POLICY_ALLOW_MANUAL_SEAL,
+        });
+      }
+
+      const policyByCampaignId = new Map<string, PolicyNode>();
+      for (const policy of policies) {
+        if (!policy.campaignId || policyByCampaignId.has(policy.campaignId)) continue;
+        policyByCampaignId.set(policy.campaignId, policy);
+      }
+
+      const requirementsByQuestId = new Map<string, RequirementNode[]>();
+      for (const requirement of requirements) {
+        for (const taskId of requirement.taskIds) {
+          const linked = requirementsByQuestId.get(taskId) ?? [];
+          linked.push(requirement);
+          requirementsByQuestId.set(taskId, linked);
+        }
+      }
+      const criteriaByRequirementId = new Map<string, CriterionNode[]>();
+      for (const criterion of criteria) {
+        if (!criterion.requirementId) continue;
+        const linked = criteriaByRequirementId.get(criterion.requirementId) ?? [];
+        linked.push(criterion);
+        criteriaByRequirementId.set(criterion.requirementId, linked);
+      }
+
+      for (const quest of quests) {
+        const questRequirements = requirementsByQuestId.get(quest.id) ?? [];
+        const questCriteria = questRequirements.flatMap((requirement) => criteriaByRequirementId.get(requirement.id) ?? []);
+        const appliedPolicy = quest.campaignId ? policyByCampaignId.get(quest.campaignId) : undefined;
+        quest.computedCompletion = computeCompletionSummary(
+          questRequirements.map((requirement) => ({
+            id: requirement.id,
+            criterionIds: requirement.criterionIds,
+          })),
+          questCriteria.map((criterion) => ({
+            id: criterion.id,
+            evidence: criterion.evidenceIds
+              .map((evidenceId) => evidence.find((entry) => entry.id === evidenceId))
+              .filter((entry): entry is EvidenceNode => Boolean(entry))
+              .map((entry) => ({
+                id: entry.id,
+                result: entry.result,
+                producedAt: entry.producedAt,
+              })),
+          })),
+          {
+            policy: appliedPolicy
+              ? {
+                  id: appliedPolicy.id,
+                  coverageThreshold: appliedPolicy.coverageThreshold,
+                  requireAllCriteria: appliedPolicy.requireAllCriteria,
+                  requireEvidence: appliedPolicy.requireEvidence,
+                }
+              : undefined,
+            manualComplete: quest.status === 'DONE',
+          },
+        );
+      }
+
+      const questsByCampaignId = new Map<string, QuestNode[]>();
+      for (const quest of quests) {
+        if (!quest.campaignId) continue;
+        const members = questsByCampaignId.get(quest.campaignId) ?? [];
+        members.push(quest);
+        questsByCampaignId.set(quest.campaignId, members);
+      }
+      for (const campaign of campaigns) {
+        const memberQuests = questsByCampaignId.get(campaign.id);
+        if (memberQuests && memberQuests.length > 0) {
+          campaign.status = deriveCampaignStatusFromQuests(memberQuests);
+        }
+
+        const questIds = new Set((memberQuests ?? []).map((quest) => quest.id));
+        const campaignRequirements = requirements.filter((requirement) => requirement.taskIds.some((taskId) => questIds.has(taskId)));
+        const campaignCriteria = campaignRequirements.flatMap((requirement) => criteriaByRequirementId.get(requirement.id) ?? []);
+        const appliedPolicy = policyByCampaignId.get(campaign.id);
+        campaign.computedCompletion = computeCompletionSummary(
+          campaignRequirements.map((requirement) => ({
+            id: requirement.id,
+            criterionIds: requirement.criterionIds,
+          })),
+          campaignCriteria.map((criterion) => ({
+            id: criterion.id,
+            evidence: criterion.evidenceIds
+              .map((evidenceId) => evidence.find((entry) => entry.id === evidenceId))
+              .filter((entry): entry is EvidenceNode => Boolean(entry))
+              .map((entry) => ({
+                id: entry.id,
+                result: entry.result,
+                producedAt: entry.producedAt,
+              })),
+          })),
+          {
+            policy: appliedPolicy
+              ? {
+                  id: appliedPolicy.id,
+                  coverageThreshold: appliedPolicy.coverageThreshold,
+                  requireAllCriteria: appliedPolicy.requireAllCriteria,
+                  requireEvidence: appliedPolicy.requireEvidence,
+                }
+              : undefined,
+            manualComplete: campaign.status === 'DONE',
+          },
+        );
+      }
+    } else if (includeAnalysisTraceability) {
+      log('Building traceability models…');
+
+      for (const n of requirementNodes) {
+        if (n.props['type'] !== 'requirement') continue;
+        const description = n.props['description'];
+        const kind = n.props['kind'];
+        const priority = n.props['priority'];
+
+        if (typeof description !== 'string' ||
+            typeof kind !== 'string' || !VALID_REQUIREMENT_KINDS.has(kind) ||
+            typeof priority !== 'string' || !VALID_REQUIREMENT_PRIORITIES.has(priority)) continue;
+
+        const neighbors = neighborsCache.get(n.id) ?? [];
+        const criterionIds: string[] = [];
+        for (const nb of neighbors) {
+          if (nb.label === 'has-criterion' && nb.nodeId.startsWith('criterion:')) {
+            criterionIds.push(nb.nodeId);
+          }
+        }
+
+        requirements.push({
+          id: n.id,
+          description,
+          kind: kind as RequirementKind,
+          priority: priority as RequirementPriority,
+          taskIds: [],
+          criterionIds,
+        });
+      }
+
+      for (const task of taskNodes) {
+        const neighbors = neighborsCache.get(task.id) ?? [];
+        for (const nb of neighbors) {
+          if (nb.label === 'implements' && nb.nodeId.startsWith('req:')) {
+            const req = requirements.find((r) => r.id === nb.nodeId);
+            if (req) req.taskIds.push(task.id);
+          }
+        }
+      }
+
+      for (const n of evidenceNodes) {
+        if (n.props['type'] !== 'evidence') continue;
+        const kind = n.props['kind'];
+        const result = n.props['result'];
+        const producedAt = n.props['produced_at'];
+        const producedBy = n.props['produced_by'];
+        const artifactHash = n.props['artifact_hash'];
+
+        if (typeof kind !== 'string' || !VALID_EVIDENCE_KINDS.has(kind) ||
+            typeof result !== 'string' || !VALID_EVIDENCE_RESULTS.has(result) ||
+            typeof producedAt !== 'number' || typeof producedBy !== 'string') continue;
+
+        const neighbors = neighborsCache.get(n.id) ?? [];
+        let criterionId: string | undefined;
+        let requirementId: string | undefined;
+        for (const nb of neighbors) {
+          if (nb.label === 'verifies' && nb.nodeId.startsWith('criterion:')) {
+            criterionId = nb.nodeId;
+          } else if (nb.label === 'implements' && nb.nodeId.startsWith('req:')) {
+            requirementId = nb.nodeId;
+          }
+        }
+
+        const sourceFile = n.props['source_file'];
+        evidence.push({
+          id: n.id,
+          kind: kind as EvidenceKind,
+          result: result as EvidenceResult,
+          producedAt,
+          producedBy,
+          criterionId,
+          requirementId,
+          artifactHash: typeof artifactHash === 'string' ? artifactHash : undefined,
+          sourceFile: typeof sourceFile === 'string' ? sourceFile : undefined,
+        });
+      }
+
+      const evidenceByCriterion = new Map<string, string[]>();
+      for (const e of evidence) {
+        if (e.criterionId) {
+          const arr = evidenceByCriterion.get(e.criterionId) ?? [];
+          arr.push(e.id);
+          evidenceByCriterion.set(e.criterionId, arr);
+        }
+      }
+
+      for (const n of criterionNodes) {
+        if (n.props['type'] !== 'criterion') continue;
+        const description = n.props['description'];
+        const verifiable = n.props['verifiable'];
+
+        if (typeof description !== 'string') continue;
+
+        criteria.push({
+          id: n.id,
+          description,
+          verifiable: typeof verifiable === 'boolean' ? verifiable : true,
+          evidenceIds: evidenceByCriterion.get(n.id) ?? [],
+        });
+      }
+
+      const criterionByReq = new Map<string, string[]>();
+      for (const req of requirements) {
+        for (const cId of req.criterionIds) {
+          const arr = criterionByReq.get(cId) ?? [];
+          arr.push(req.id);
+          criterionByReq.set(cId, arr);
+        }
+      }
+      for (const c of criteria) {
+        const reqIds = criterionByReq.get(c.id);
+        if (reqIds && reqIds.length > 0) {
+          c.requirementId = reqIds[0];
+        }
+      }
+    } else {
+      const questsByCampaignId = new Map<string, QuestNode[]>();
+      for (const quest of quests) {
+        if (!quest.campaignId) continue;
+        const members = questsByCampaignId.get(quest.campaignId) ?? [];
+        members.push(quest);
+        questsByCampaignId.set(quest.campaignId, members);
+      }
+      for (const campaign of campaigns) {
+        const memberQuests = questsByCampaignId.get(campaign.id);
+        if (memberQuests && memberQuests.length > 0) {
+          campaign.status = deriveCampaignStatusFromQuests(memberQuests);
+        }
+      }
+    }
+
+    if (includeAnalysisTraceability) {
+      const questsByCampaignId = new Map<string, QuestNode[]>();
+      for (const quest of quests) {
+        if (!quest.campaignId) continue;
+        const members = questsByCampaignId.get(quest.campaignId) ?? [];
+        members.push(quest);
+        questsByCampaignId.set(quest.campaignId, members);
+      }
+      for (const campaign of campaigns) {
+        const memberQuests = questsByCampaignId.get(campaign.id);
+        if (memberQuests && memberQuests.length > 0) {
+          campaign.status = deriveCampaignStatusFromQuests(memberQuests);
+        }
+      }
+    }
+
+    if (includeAuditTraceability) {
+      log('Building traceability models…');
+
+      for (const n of storyNodes) {
+        if (n.props['type'] !== 'story') continue;
+        const title = n.props['title'];
+        const persona = n.props['persona'];
+        const goal = n.props['goal'];
+        const benefit = n.props['benefit'];
+        const createdBy = n.props['created_by'];
+        const createdAt = n.props['created_at'];
+
+        if (typeof title !== 'string' || typeof persona !== 'string' ||
+            typeof goal !== 'string' || typeof benefit !== 'string' ||
+            typeof createdBy !== 'string' || typeof createdAt !== 'number') continue;
+
+        stories.push({
+          id: n.id, title, persona, goal, benefit, createdBy, createdAt,
+        });
+      }
+
+      const intentNeighbors = await batchNeighbors(graph, intentNodes.map((n) => n.id));
+      for (const intent of intentNodes) {
+        const neighbors = intentNeighbors.get(intent.id) ?? [];
+        for (const nb of neighbors) {
+          if (nb.label === 'decomposes-to' && nb.nodeId.startsWith('story:')) {
+            const story = stories.find((s) => s.id === nb.nodeId);
+            if (story) story.intentId = intent.id;
+          }
+        }
+      }
+
+      for (const n of requirementNodes) {
+        if (n.props['type'] !== 'requirement') continue;
+        const description = n.props['description'];
+        const kind = n.props['kind'];
+        const priority = n.props['priority'];
+
+        if (typeof description !== 'string' ||
+            typeof kind !== 'string' || !VALID_REQUIREMENT_KINDS.has(kind) ||
+            typeof priority !== 'string' || !VALID_REQUIREMENT_PRIORITIES.has(priority)) continue;
+
+        const neighbors = neighborsCache.get(n.id) ?? [];
+        const criterionIds: string[] = [];
+        for (const nb of neighbors) {
+          if (nb.label === 'has-criterion' && nb.nodeId.startsWith('criterion:')) {
+            criterionIds.push(nb.nodeId);
+          }
+        }
+
+        requirements.push({
+          id: n.id,
+          description,
+          kind: kind as RequirementKind,
+          priority: priority as RequirementPriority,
+          taskIds: [],
+          criterionIds,
+        });
+      }
+
+      for (const story of stories) {
+        const neighbors = neighborsCache.get(story.id) ?? [];
+        for (const nb of neighbors) {
+          if (nb.label === 'decomposes-to' && nb.nodeId.startsWith('req:')) {
+            const req = requirements.find((r) => r.id === nb.nodeId);
+            if (req) req.storyId = story.id;
+          }
+        }
+      }
+
+      for (const task of taskNodes) {
+        const neighbors = neighborsCache.get(task.id) ?? [];
+        for (const nb of neighbors) {
+          if (nb.label === 'implements' && nb.nodeId.startsWith('req:')) {
+            const req = requirements.find((r) => r.id === nb.nodeId);
+            if (req) req.taskIds.push(task.id);
+          }
+        }
+      }
+
+      for (const n of evidenceNodes) {
+        if (n.props['type'] !== 'evidence') continue;
+        const kind = n.props['kind'];
+        const result = n.props['result'];
+        const producedAt = n.props['produced_at'];
+        const producedBy = n.props['produced_by'];
+        const artifactHash = n.props['artifact_hash'];
+
+        if (typeof kind !== 'string' || !VALID_EVIDENCE_KINDS.has(kind) ||
+            typeof result !== 'string' || !VALID_EVIDENCE_RESULTS.has(result) ||
+            typeof producedAt !== 'number' || typeof producedBy !== 'string') continue;
+
+        const neighbors = neighborsCache.get(n.id) ?? [];
+        let criterionId: string | undefined;
+        let requirementId: string | undefined;
+        for (const nb of neighbors) {
+          if (nb.label === 'verifies' && nb.nodeId.startsWith('criterion:')) {
+            criterionId = nb.nodeId;
+          } else if (nb.label === 'implements' && nb.nodeId.startsWith('req:')) {
+            requirementId = nb.nodeId;
+          }
+        }
+
+        const sourceFile = n.props['source_file'];
+        evidence.push({
+          id: n.id,
+          kind: kind as EvidenceKind,
+          result: result as EvidenceResult,
+          producedAt,
+          producedBy,
+          criterionId,
+          requirementId,
+          artifactHash: typeof artifactHash === 'string' ? artifactHash : undefined,
+          sourceFile: typeof sourceFile === 'string' ? sourceFile : undefined,
+        });
+      }
+
+      const evidenceByCriterion = new Map<string, string[]>();
+      for (const e of evidence) {
+        if (e.criterionId) {
+          const arr = evidenceByCriterion.get(e.criterionId) ?? [];
+          arr.push(e.id);
+          evidenceByCriterion.set(e.criterionId, arr);
+        }
+      }
+
+      for (const n of criterionNodes) {
+        if (n.props['type'] !== 'criterion') continue;
+        const description = n.props['description'];
+        const verifiable = n.props['verifiable'];
+
+        if (typeof description !== 'string') continue;
+
+        criteria.push({
+          id: n.id,
+          description,
+          verifiable: typeof verifiable === 'boolean' ? verifiable : true,
+          evidenceIds: evidenceByCriterion.get(n.id) ?? [],
+        });
+      }
+
+      const criterionByReq = new Map<string, string[]>();
+      for (const req of requirements) {
+        for (const cId of req.criterionIds) {
+          const arr = criterionByReq.get(cId) ?? [];
+          arr.push(req.id);
+          criterionByReq.set(cId, arr);
+        }
+      }
+      for (const c of criteria) {
+        const reqIds = criterionByReq.get(c.id);
+        if (reqIds && reqIds.length > 0) {
+          c.requirementId = reqIds[0];
+        }
+      }
+
+      for (const n of policyNodes) {
+        if (n.props['type'] !== 'policy') continue;
+
+        const neighbors = neighborsCache.get(n.id) ?? [];
+        let campaignId: string | undefined;
+        for (const nb of neighbors) {
+          if (nb.label === 'governs' && (nb.nodeId.startsWith('campaign:') || nb.nodeId.startsWith('milestone:'))) {
+            campaignId = nb.nodeId;
+            break;
+          }
+        }
+
+        const coverageThresholdRaw = n.props['coverage_threshold'];
+        const requireAllCriteriaRaw = n.props['require_all_criteria'];
+        const requireEvidenceRaw = n.props['require_evidence'];
+        const allowManualSealRaw = n.props['allow_manual_seal'];
+
+        const coverageThreshold = (
+          typeof coverageThresholdRaw === 'number' &&
+          Number.isFinite(coverageThresholdRaw) &&
+          coverageThresholdRaw >= 0 &&
+          coverageThresholdRaw <= 1
+        )
+          ? coverageThresholdRaw
+          : DEFAULT_POLICY_COVERAGE_THRESHOLD;
+
+        policies.push({
+          id: n.id,
+          campaignId,
+          coverageThreshold,
+          requireAllCriteria: typeof requireAllCriteriaRaw === 'boolean'
+            ? requireAllCriteriaRaw
+            : DEFAULT_POLICY_REQUIRE_ALL_CRITERIA,
+          requireEvidence: typeof requireEvidenceRaw === 'boolean'
+            ? requireEvidenceRaw
+            : DEFAULT_POLICY_REQUIRE_EVIDENCE,
+          allowManualSeal: typeof allowManualSealRaw === 'boolean'
+            ? allowManualSealRaw
+            : DEFAULT_POLICY_ALLOW_MANUAL_SEAL,
+        });
+      }
+    }
+
+    if (includeCompletionRollups) {
+      const policyByCampaignId = new Map<string, PolicyNode>();
+      for (const policy of policies) {
+        if (!policy.campaignId || policyByCampaignId.has(policy.campaignId)) continue;
+        policyByCampaignId.set(policy.campaignId, policy);
+      }
+
+      const requirementsByQuestId = new Map<string, RequirementNode[]>();
+      for (const requirement of requirements) {
+        for (const taskId of requirement.taskIds) {
+          const linked = requirementsByQuestId.get(taskId) ?? [];
+          linked.push(requirement);
+          requirementsByQuestId.set(taskId, linked);
+        }
+      }
+      const criteriaByRequirementId = new Map<string, CriterionNode[]>();
+      for (const criterion of criteria) {
+        if (!criterion.requirementId) continue;
+        const linked = criteriaByRequirementId.get(criterion.requirementId) ?? [];
+        linked.push(criterion);
+        criteriaByRequirementId.set(criterion.requirementId, linked);
+      }
+
+      for (const quest of quests) {
+        const questRequirements = requirementsByQuestId.get(quest.id) ?? [];
+        const questCriteria = questRequirements.flatMap((requirement) => criteriaByRequirementId.get(requirement.id) ?? []);
+        const appliedPolicy = quest.campaignId ? policyByCampaignId.get(quest.campaignId) : undefined;
+        quest.computedCompletion = computeCompletionSummary(
+          questRequirements.map((requirement) => ({
+            id: requirement.id,
+            criterionIds: requirement.criterionIds,
+          })),
+          questCriteria.map((criterion) => ({
+            id: criterion.id,
+            evidence: criterion.evidenceIds
+              .map((evidenceId) => evidence.find((entry) => entry.id === evidenceId))
+              .filter((entry): entry is EvidenceNode => Boolean(entry))
+              .map((entry) => ({
+                id: entry.id,
+                result: entry.result,
+                producedAt: entry.producedAt,
+              })),
+          })),
+          {
+            policy: appliedPolicy
+              ? {
+                  id: appliedPolicy.id,
+                  coverageThreshold: appliedPolicy.coverageThreshold,
+                  requireAllCriteria: appliedPolicy.requireAllCriteria,
+                  requireEvidence: appliedPolicy.requireEvidence,
+                }
+              : undefined,
+            manualComplete: quest.status === 'DONE',
+          },
+        );
+      }
+
+      const questsByCampaignId = new Map<string, QuestNode[]>();
+      for (const quest of quests) {
+        if (!quest.campaignId) continue;
+        const members = questsByCampaignId.get(quest.campaignId) ?? [];
+        members.push(quest);
+        questsByCampaignId.set(quest.campaignId, members);
+      }
+      for (const campaign of campaigns) {
+        const memberQuests = questsByCampaignId.get(campaign.id);
+        if (memberQuests && memberQuests.length > 0) {
+          campaign.status = deriveCampaignStatusFromQuests(memberQuests);
+        }
+
+        const questIds = new Set((memberQuests ?? []).map((quest) => quest.id));
+        const campaignRequirements = requirements.filter((requirement) => requirement.taskIds.some((taskId) => questIds.has(taskId)));
+        const campaignCriteria = campaignRequirements.flatMap((requirement) => criteriaByRequirementId.get(requirement.id) ?? []);
+        const appliedPolicy = policyByCampaignId.get(campaign.id);
+        campaign.computedCompletion = computeCompletionSummary(
+          campaignRequirements.map((requirement) => ({
+            id: requirement.id,
+            criterionIds: requirement.criterionIds,
+          })),
+          campaignCriteria.map((criterion) => ({
+            id: criterion.id,
+            evidence: criterion.evidenceIds
+              .map((evidenceId) => evidence.find((entry) => entry.id === evidenceId))
+              .filter((entry): entry is EvidenceNode => Boolean(entry))
+              .map((entry) => ({
+                id: entry.id,
+                result: entry.result,
+                producedAt: entry.producedAt,
+              })),
+          })),
+          {
+            policy: appliedPolicy
+              ? {
+                  id: appliedPolicy.id,
+                  coverageThreshold: appliedPolicy.coverageThreshold,
+                  requireAllCriteria: appliedPolicy.requireAllCriteria,
+                  requireEvidence: appliedPolicy.requireEvidence,
+                }
+              : undefined,
+            manualComplete: campaign.status === 'DONE',
+          },
+        );
+      }
     }
 
     // --- Build suggestions (M11 Phase 4) ---
     log('Building suggestion models…');
     const suggestions: SuggestionNode[] = [];
     const aiSuggestions: AiSuggestionNode[] = [];
+    const suggestionCaseLinks = new Map<string, { caseId: string; caseStatus?: string }>();
+    for (const n of caseNodes) {
+      if (n.props['type'] !== 'case') continue;
+      const caseStatus = typeof n.props['status'] === 'string' ? n.props['status'] : undefined;
+      const neighbors = neighborsCache.get(n.id) ?? [];
+      for (const nb of neighbors) {
+        if (nb.label !== 'opened-from' || !nb.nodeId.startsWith('suggestion:')) continue;
+        suggestionCaseLinks.set(nb.nodeId, { caseId: n.id, caseStatus });
+      }
+    }
     for (const n of suggestionNodes) {
       if (n.props['type'] === 'ai_suggestion') {
         const kind = n.props['suggestion_kind'];
@@ -942,6 +1462,13 @@ class GraphContextImpl implements GraphContext {
         const evidence = n.props['evidence'];
         const nextAction = n.props['next_action'];
         const relatedIdsRaw = n.props['related_ids'];
+        const resolvedBy = n.props['resolved_by'];
+        const resolvedAt = n.props['resolved_at'];
+        const resolutionKind = n.props['resolution_kind'];
+        const resolutionRationale = n.props['resolution_rationale'];
+        const adoptedArtifactId = n.props['adopted_artifact_id'];
+        const adoptedArtifactKind = n.props['adopted_artifact_kind'];
+        const supersededById = n.props['superseded_by_id'];
 
         let relatedIds: string[] = [];
         if (typeof relatedIdsRaw === 'string') {
@@ -972,11 +1499,25 @@ class GraphContextImpl implements GraphContext {
           evidence: typeof evidence === 'string' ? evidence : undefined,
           nextAction: typeof nextAction === 'string' ? nextAction : undefined,
           relatedIds,
+          resolvedBy: typeof resolvedBy === 'string' ? resolvedBy : undefined,
+          resolvedAt: typeof resolvedAt === 'number' ? resolvedAt : undefined,
+          resolutionKind: typeof resolutionKind === 'string' && VALID_AI_SUGGESTION_RESOLUTION_KINDS.has(resolutionKind)
+            ? resolutionKind as AiSuggestionResolutionKind
+            : undefined,
+          resolutionRationale: typeof resolutionRationale === 'string' ? resolutionRationale : undefined,
+          adoptedArtifactId: typeof adoptedArtifactId === 'string' ? adoptedArtifactId : undefined,
+          adoptedArtifactKind: typeof adoptedArtifactKind === 'string' && VALID_AI_SUGGESTION_ADOPTION_KINDS.has(adoptedArtifactKind)
+            ? adoptedArtifactKind as AiSuggestionAdoptionKind
+            : undefined,
+          supersededById: typeof supersededById === 'string' ? supersededById : undefined,
+          linkedCaseId: suggestionCaseLinks.get(n.id)?.caseId,
+          linkedCaseStatus: suggestionCaseLinks.get(n.id)?.caseStatus,
         });
         continue;
       }
 
       if (n.props['type'] !== 'suggestion') continue;
+      if (!includeLegacySuggestions) continue;
       const testFile = n.props['test_file'];
       const targetId = n.props['target_id'];
       const targetType = n.props['target_type'];
@@ -1092,11 +1633,13 @@ class GraphContextImpl implements GraphContext {
       if (count > 0) transitiveDownstream.set(taskId, count);
     }
 
-    const governanceArtifacts = await this.buildGovernanceArtifacts(graph, [
-      ...comparisonArtifactNodes,
-      ...collapseProposalNodes,
-      ...attestationNodes,
-    ]);
+    const governanceArtifacts = includeGovernanceArtifacts
+      ? await this.buildGovernanceArtifacts(graph, [
+          ...comparisonArtifactNodes,
+          ...collapseProposalNodes,
+          ...attestationNodes,
+        ])
+      : [];
 
     log(`Snapshot ready — ${quests.length} quests, ${campaigns.length} campaigns`);
     const snap: GraphSnapshot = {
@@ -1107,13 +1650,13 @@ class GraphContextImpl implements GraphContext {
       asOf: Date.now(), graphMeta, sortedTaskIds, sortedCampaignIds,
       transitiveDownstream,
     };
-    this.cachedSnapshot = snap;
-    this.cachedFrontierKey = this.frontierKeyFromState(state);
+    this.cachedSnapshots.set(profile, snap);
+    this.cachedFrontierKeys.set(profile, this.frontierKeyFromState(state));
     return snap;
   }
 
   private async queryNodesByPrefix(
-    graph: WarpGraph,
+    graph: GraphContextGraph,
     prefix: 'comparison-artifact' | 'collapse-proposal' | 'attestation',
   ): Promise<QNode[]> {
     const result = await graph.query().match(`${prefix}:*`).select(['id', 'props']).run();
@@ -1121,7 +1664,7 @@ class GraphContextImpl implements GraphContext {
   }
 
   private async summarizeAttestations(
-    graph: WarpGraph,
+    graph: GraphContextGraph,
     attestationIds: string[],
   ): Promise<GovernanceAttestationSummary> {
     const attestationEntries = (await Promise.all(
@@ -1164,7 +1707,7 @@ class GraphContextImpl implements GraphContext {
   }
 
   private async computeComparisonArtifactFreshness(
-    graph: WarpGraph,
+    graph: GraphContextGraph,
     props: Record<string, unknown>,
     payload: Record<string, unknown> | null,
   ): Promise<'fresh' | 'stale' | 'unknown'> {
@@ -1229,7 +1772,7 @@ class GraphContextImpl implements GraphContext {
   }
 
   private async computeCollapseProposalFreshness(
-    graph: WarpGraph,
+    graph: GraphContextGraph,
     props: Record<string, unknown>,
   ): Promise<'fresh' | 'stale' | 'unknown'> {
     const comparisonArtifactDigest = asString(props['comparison_artifact_digest']);
@@ -1276,7 +1819,7 @@ class GraphContextImpl implements GraphContext {
   }
 
   private async buildGovernanceDetail(
-    graph: WarpGraph,
+    graph: GraphContextGraph,
     type: string,
     props: Record<string, unknown>,
     content: string | undefined,
@@ -1426,7 +1969,7 @@ class GraphContextImpl implements GraphContext {
   }
 
   private async buildGovernanceArtifacts(
-    graph: WarpGraph,
+    graph: GraphContextGraph,
     nodes: QNode[],
   ): Promise<GovernanceArtifactNode[]> {
     const artifacts = (await Promise.all(nodes.map(async (node) => {
@@ -1500,10 +2043,12 @@ class GraphContextImpl implements GraphContext {
     const graph = await this.graphProvider();
     this._graph = graph;
 
-    if (this.materialization.syncCoverage !== false) {
+    if (this.readOptions.syncCoverage !== false) {
+      if (!graph.syncCoverage) {
+        throw new Error('GraphContext requires syncCoverage() unless syncCoverage is explicitly disabled');
+      }
       await graph.syncCoverage();
     }
-    await this.materializeGraph(graph);
 
     if (!await graph.hasNode(id)) {
       return null;
@@ -1531,8 +2076,12 @@ class GraphContextImpl implements GraphContext {
 
     let questDetail: QuestDetail | undefined;
     if (id.startsWith('task:')) {
-      const snapshot = await this.fetchSnapshot();
-      questDetail = await this.buildQuestDetail(graph, snapshot, id) ?? undefined;
+      questDetail = await this.buildQuestDetailFromGraph(graph, id, props, outgoing, incoming) ?? undefined;
+    }
+
+    let caseDetail: CaseDetail | undefined;
+    if (type === 'case') {
+      caseDetail = await this.buildCaseDetail(graph, id, props, outgoing, incoming) ?? undefined;
     }
 
     return {
@@ -1544,6 +2093,7 @@ class GraphContextImpl implements GraphContext {
       outgoing,
       incoming,
       questDetail,
+      caseDetail,
       governanceDetail: await this.buildGovernanceDetail(graph, type, props, content, outgoing, incoming),
     };
   }
@@ -1553,51 +2103,78 @@ class GraphContextImpl implements GraphContext {
   // -------------------------------------------------------------------------
 
   /** Deterministic string key from the graph's observed frontier (writer:tick pairs). */
-  private frontierKeyFromState(state: { observedFrontier: Map<string, number> } | null): string {
+  private frontierKeyFromState(state: GraphContextState | null): string {
     if (!state) return '';
     const entries = [...state.observedFrontier.entries()].sort(([a], [b]) => a.localeCompare(b));
     return entries.map(([w, t]) => `${w}:${t}`).join(',');
   }
 
-  private async buildQuestDetail(
-    graph: WarpGraph,
-    snapshot: GraphSnapshot,
+  private async buildQuestDetailFromGraph(
+    graph: GraphContextGraph,
     questId: string,
+    props: Record<string, unknown>,
+    outgoing: EntityDetail['outgoing'],
+    _incoming: EntityDetail['incoming'],
   ): Promise<QuestDetail | null> {
-    const quest = snapshot.quests.find((entry) => entry.id === questId);
+    const quest = this.buildQuestNodeFromEntity(questId, props, outgoing);
     if (!quest) return null;
 
-    const campaign = quest.campaignId
-      ? snapshot.campaigns.find((entry) => entry.id === quest.campaignId)
-      : undefined;
-    const intent = quest.intentId
-      ? snapshot.intents.find((entry) => entry.id === quest.intentId)
-      : undefined;
-    const scroll = quest.scrollId
-      ? snapshot.scrolls.find((entry) => entry.id === quest.scrollId)
-      : undefined;
-    const submission = quest.submissionId
-      ? snapshot.submissions.find((entry) => entry.id === quest.submissionId)
-      : undefined;
+    const [campaign, intent, scroll, submissionBundle, traceability] = await Promise.all([
+      quest.campaignId ? this.loadCampaignNode(graph, quest.campaignId) : Promise.resolve(undefined),
+      quest.intentId ? this.loadIntentNode(graph, quest.intentId) : Promise.resolve(undefined),
+      this.loadScrollForQuest(graph, quest.id),
+      this.loadSubmissionBundleForQuest(graph, quest.id),
+      this.loadTraceabilityForQuest(graph, quest.id, quest.campaignId),
+    ]);
 
-    const requirements = snapshot.requirements.filter((entry) => entry.taskIds.includes(quest.id));
-    const requirementIdSet = new Set(requirements.map((entry) => entry.id));
-    const criteria = snapshot.criteria.filter((entry) => entry.requirementId !== undefined && requirementIdSet.has(entry.requirementId));
-    const criterionIdSet = new Set(criteria.map((entry) => entry.id));
-    const evidence = snapshot.evidence.filter((entry) => entry.criterionId !== undefined && criterionIdSet.has(entry.criterionId));
-    const storyIds = new Set(requirements.map((entry) => entry.storyId).filter((entry): entry is string => typeof entry === 'string'));
-    const stories = snapshot.stories.filter((entry) => storyIds.has(entry.id));
-    const policies = snapshot.policies.filter((entry) => entry.campaignId === quest.campaignId);
+    const submission = submissionBundle.submission;
+    const reviews = submissionBundle.reviews;
+    const decisions = submissionBundle.decisions;
+    const patchsetIds = submissionBundle.patchsetIds;
+    const {
+      stories,
+      requirements,
+      criteria,
+      evidence,
+      policies,
+    } = traceability;
 
-    const patchsetIds = submission
-      ? await this.findPatchsetIdsForSubmission(graph, submission.id)
-      : new Set<string>();
-    const reviews = snapshot.reviews.filter((entry) => patchsetIds.has(entry.patchsetId));
+    if (scroll) quest.scrollId = scroll.id;
+    if (submission) quest.submissionId = submission.id;
+
+    const appliedPolicy = quest.campaignId
+      ? policies.find((entry) => entry.campaignId === quest.campaignId)
+      : undefined;
+    quest.computedCompletion = computeCompletionSummary(
+      requirements.map((requirement) => ({
+        id: requirement.id,
+        criterionIds: requirement.criterionIds,
+      })),
+      criteria.map((criterion) => ({
+        id: criterion.id,
+        evidence: criterion.evidenceIds
+          .map((evidenceId) => evidence.find((entry) => entry.id === evidenceId))
+          .filter((entry): entry is EvidenceNode => Boolean(entry))
+          .map((entry) => ({
+            id: entry.id,
+            result: entry.result,
+            producedAt: entry.producedAt,
+          })),
+      })),
+      {
+        policy: appliedPolicy
+          ? {
+              id: appliedPolicy.id,
+              coverageThreshold: appliedPolicy.coverageThreshold,
+              requireAllCriteria: appliedPolicy.requireAllCriteria,
+              requireEvidence: appliedPolicy.requireEvidence,
+            }
+          : undefined,
+        manualComplete: quest.status === 'DONE',
+      },
+    );
+
     const reviewIds = new Set(reviews.map((entry) => entry.id));
-    const decisions = submission
-      ? snapshot.decisions.filter((entry) => entry.submissionId === submission.id)
-      : [];
-
     const relevantIds = new Set<string>([
       quest.id,
       ...requirements.map((entry) => entry.id),
@@ -1643,27 +2220,700 @@ class GraphContextImpl implements GraphContext {
     };
   }
 
+  private buildQuestNodeFromEntity(
+    id: string,
+    props: Record<string, unknown>,
+    outgoing: EntityDetail['outgoing'],
+  ): QuestNode | null {
+    if (props['type'] !== 'task') return null;
+
+    const title = props['title'];
+    const rawStatusRaw = props['status'];
+    const hours = props['hours'];
+    if (typeof title !== 'string' || typeof rawStatusRaw !== 'string') return null;
+    const rawStatus = normalizeQuestStatus(rawStatusRaw);
+    if (!VALID_QUEST_STATUSES.has(rawStatus)) return null;
+
+    let campaignId: string | undefined;
+    let intentId: string | undefined;
+    const dependsOnIds: string[] = [];
+    for (const edge of outgoing) {
+      if (
+        edge.label === 'belongs-to' &&
+        (edge.nodeId.startsWith('campaign:') || edge.nodeId.startsWith('milestone:'))
+      ) {
+        campaignId = edge.nodeId;
+      }
+      if (edge.label === 'authorized-by' && edge.nodeId.startsWith('intent:')) intentId = edge.nodeId;
+      if (edge.label === 'depends-on' && edge.nodeId.startsWith('task:')) dependsOnIds.push(edge.nodeId);
+    }
+
+    return {
+      id,
+      title,
+      status: rawStatus as QuestStatus,
+      hours: typeof hours === 'number' && Number.isFinite(hours) && hours >= 0 ? hours : 0,
+      priority: normalizeQuestPriority(props['priority']),
+      description: typeof props['description'] === 'string' ? props['description'] : undefined,
+      taskKind: normalizeQuestKind(props['task_kind']),
+      campaignId,
+      intentId,
+      assignedTo: typeof props['assigned_to'] === 'string' ? props['assigned_to'] : undefined,
+      readyBy: typeof props['ready_by'] === 'string' ? props['ready_by'] : undefined,
+      readyAt: typeof props['ready_at'] === 'number' ? props['ready_at'] : undefined,
+      completedAt: typeof props['completed_at'] === 'number' ? props['completed_at'] : undefined,
+      suggestedBy: typeof props['suggested_by'] === 'string' ? props['suggested_by'] : undefined,
+      suggestedAt: typeof props['suggested_at'] === 'number' ? props['suggested_at'] : undefined,
+      rejectedBy: typeof props['rejected_by'] === 'string' ? props['rejected_by'] : undefined,
+      rejectedAt: typeof props['rejected_at'] === 'number' ? props['rejected_at'] : undefined,
+      rejectionRationale: typeof props['rejection_rationale'] === 'string' ? props['rejection_rationale'] : undefined,
+      reopenedBy: typeof props['reopened_by'] === 'string' ? props['reopened_by'] : undefined,
+      reopenedAt: typeof props['reopened_at'] === 'number' ? props['reopened_at'] : undefined,
+      dependsOn: dependsOnIds.length > 0 ? dependsOnIds : undefined,
+    };
+  }
+
+  private async loadCampaignNode(
+    graph: GraphContextGraph,
+    campaignId: string,
+  ): Promise<CampaignNode | undefined> {
+    const [props, outgoingRaw, incomingRaw] = await Promise.all([
+      graph.getNodeProps(campaignId),
+      graph.neighbors(campaignId, 'outgoing'),
+      graph.neighbors(campaignId, 'incoming'),
+    ]);
+    if (!props || (props['type'] !== 'campaign' && props['type'] !== 'milestone')) return undefined;
+    const title = props['title'];
+    if (typeof title !== 'string') return undefined;
+
+    const description = props['description'];
+    const rawStatus = props['status'];
+    let status: CampaignStatus = typeof rawStatus === 'string' && VALID_CAMPAIGN_STATUSES.has(rawStatus)
+      ? rawStatus as CampaignStatus
+      : 'UNKNOWN';
+
+    const outgoing = toNeighborEntries(outgoingRaw);
+    const dependsOnIds = outgoing
+      .filter((edge) =>
+        edge.label === 'depends-on' &&
+        (edge.nodeId.startsWith('campaign:') || edge.nodeId.startsWith('milestone:')))
+      .map((edge) => edge.nodeId);
+
+    const memberTaskIds = toNeighborEntries(incomingRaw)
+      .filter((edge) => edge.label === 'belongs-to' && edge.nodeId.startsWith('task:'))
+      .map((edge) => edge.nodeId);
+    if (memberTaskIds.length > 0) {
+      const members = (await Promise.all(memberTaskIds.map(async (taskId) => {
+        const taskProps = await graph.getNodeProps(taskId);
+        if (!taskProps || typeof taskProps['status'] !== 'string') return null;
+        const normalized = normalizeQuestStatus(taskProps['status']);
+        if (!VALID_QUEST_STATUSES.has(normalized)) return null;
+        return {
+          id: taskId,
+          title: taskId,
+          status: normalized as QuestStatus,
+          hours: 0,
+        } satisfies QuestNode;
+      }))).filter((entry): entry is QuestNode => Boolean(entry));
+      if (members.length > 0) {
+        status = deriveCampaignStatusFromQuests(members);
+      }
+    }
+
+    return {
+      id: campaignId,
+      title,
+      status,
+      description: typeof description === 'string' ? description : undefined,
+      dependsOn: dependsOnIds.length > 0 ? dependsOnIds : undefined,
+    };
+  }
+
+  private async loadIntentNode(
+    graph: GraphContextGraph,
+    intentId: string,
+  ): Promise<IntentNode | undefined> {
+    const props = await graph.getNodeProps(intentId);
+    if (!props || props['type'] !== 'intent') return undefined;
+    const title = props['title'];
+    const requestedBy = props['requested_by'];
+    const createdAt = props['created_at'];
+    if (typeof title !== 'string' || typeof requestedBy !== 'string' || typeof createdAt !== 'number') {
+      return undefined;
+    }
+    return {
+      id: intentId,
+      title,
+      requestedBy,
+      createdAt,
+      description: typeof props['description'] === 'string' ? props['description'] : undefined,
+    };
+  }
+
+  private async loadScrollForQuest(
+    graph: GraphContextGraph,
+    questId: string,
+  ): Promise<ScrollNode | undefined> {
+    const incoming = toNeighborEntries(await graph.neighbors(questId, 'incoming'));
+    const scrollIds = incoming
+      .filter((edge) => edge.label === 'fulfills' && edge.nodeId.startsWith('artifact:'))
+      .map((edge) => edge.nodeId);
+    if (scrollIds.length === 0) return undefined;
+
+    const scrolls = (await Promise.all(scrollIds.map(async (scrollId) => {
+      const props = await graph.getNodeProps(scrollId);
+      if (!props || props['type'] !== 'scroll') return null;
+      const artifactHash = props['artifact_hash'];
+      const sealedBy = props['sealed_by'];
+      const sealedAt = props['sealed_at'];
+      if (typeof artifactHash !== 'string' || typeof sealedBy !== 'string' || typeof sealedAt !== 'number') {
+        return null;
+      }
+      return {
+        id: scrollId,
+        questId,
+        artifactHash,
+        sealedBy,
+        sealedAt,
+        hasSeal: 'guild_seal_sig' in props,
+      } satisfies ScrollNode;
+    }))).filter((entry): entry is ScrollNode => Boolean(entry));
+
+    return scrolls.sort((left, right) => right.sealedAt - left.sealedAt || left.id.localeCompare(right.id))[0];
+  }
+
+  private async loadSubmissionBundleForQuest(
+    graph: GraphContextGraph,
+    questId: string,
+  ): Promise<{ submission?: SubmissionNode; reviews: ReviewNode[]; decisions: DecisionNode[]; patchsetIds: Set<string> }> {
+    const incoming = toNeighborEntries(await graph.neighbors(questId, 'incoming'));
+    const submissionIds = incoming
+      .filter((edge) => edge.label === 'submits' && edge.nodeId.startsWith('submission:'))
+      .map((edge) => edge.nodeId);
+    if (submissionIds.length === 0) {
+      return { reviews: [], decisions: [], patchsetIds: new Set<string>() };
+    }
+
+    const candidates = (await Promise.all(submissionIds.map(async (submissionId): Promise<{
+      submission: SubmissionNode;
+      reviews: ReviewNode[];
+      decisions: DecisionNode[];
+      patchsetIds: Set<string>;
+    } | null> => {
+      const props = await graph.getNodeProps(submissionId);
+      if (!props || props['type'] !== 'submission') return null;
+      const submittedBy = props['submitted_by'];
+      const submittedAt = props['submitted_at'];
+      if (typeof submittedBy !== 'string' || typeof submittedAt !== 'number') return null;
+
+      const patchsetIds = await this.findPatchsetIdsForSubmission(graph, submissionId);
+      const patchsetRefs: PatchsetRef[] = [];
+      const reviewsByPatchset = new Map<string, ReviewRef[]>();
+      const reviews: ReviewNode[] = [];
+
+      for (const patchsetId of patchsetIds) {
+        const [patchsetProps, patchsetOutgoingRaw, patchsetIncomingRaw] = await Promise.all([
+          graph.getNodeProps(patchsetId),
+          graph.neighbors(patchsetId, 'outgoing'),
+          graph.neighbors(patchsetId, 'incoming'),
+        ]);
+        if (!patchsetProps) continue;
+        const authoredAt = patchsetProps['authored_at'];
+        if (typeof authoredAt !== 'number') continue;
+
+        let supersedesId: string | undefined;
+        for (const edge of toNeighborEntries(patchsetOutgoingRaw)) {
+          if (edge.label === 'supersedes') {
+            supersedesId = edge.nodeId;
+            break;
+          }
+        }
+        patchsetRefs.push({ id: patchsetId, authoredAt, supersedesId });
+
+        const patchsetReviews: ReviewRef[] = [];
+        const reviewIds = toNeighborEntries(patchsetIncomingRaw)
+          .filter((edge) => edge.label === 'reviews' && edge.nodeId.startsWith('review:'))
+          .map((edge) => edge.nodeId);
+        for (const reviewId of reviewIds) {
+          const reviewProps = await graph.getNodeProps(reviewId);
+          if (!reviewProps) continue;
+          const verdict = reviewProps['verdict'];
+          const comment = reviewProps['comment'];
+          const reviewedBy = reviewProps['reviewed_by'];
+          const reviewedAt = reviewProps['reviewed_at'];
+          const validVerdicts = ['approve', 'request-changes', 'comment'] as const;
+          if (
+            typeof verdict !== 'string' ||
+            !validVerdicts.includes(verdict as typeof validVerdicts[number]) ||
+            typeof comment !== 'string' ||
+            typeof reviewedBy !== 'string' ||
+            typeof reviewedAt !== 'number'
+          ) {
+            continue;
+          }
+          patchsetReviews.push({ id: reviewId, verdict: verdict as ReviewVerdict, reviewedBy, reviewedAt });
+          reviews.push({
+            id: reviewId,
+            patchsetId,
+            verdict: verdict as ReviewVerdict,
+            comment,
+            reviewedBy,
+            reviewedAt,
+          });
+        }
+        reviewsByPatchset.set(patchsetId, patchsetReviews);
+      }
+
+      const decisionIds = toNeighborEntries(await graph.neighbors(submissionId, 'incoming'))
+        .filter((edge) => edge.label === 'decides' && edge.nodeId.startsWith('decision:'))
+        .map((edge) => edge.nodeId);
+      const decisionProps: DecisionProps[] = [];
+      const decisions: DecisionNode[] = [];
+      for (const decisionId of decisionIds) {
+        const decisionNodeProps = await graph.getNodeProps(decisionId);
+        if (!decisionNodeProps || decisionNodeProps['type'] !== 'decision') continue;
+        const kind = decisionNodeProps['kind'];
+        const decidedBy = decisionNodeProps['decided_by'];
+        const decidedAt = decisionNodeProps['decided_at'];
+        const rationale = decisionNodeProps['rationale'];
+        if (
+          typeof kind !== 'string' ||
+          (kind !== 'merge' && kind !== 'close') ||
+          typeof decidedBy !== 'string' ||
+          typeof decidedAt !== 'number' ||
+          typeof rationale !== 'string'
+        ) {
+          continue;
+        }
+        const mergeCommit = decisionNodeProps['merge_commit'];
+        const decision = {
+          id: decisionId,
+          submissionId,
+          kind: kind as DecisionKind,
+          decidedBy,
+          decidedAt,
+          rationale,
+          mergeCommit: typeof mergeCommit === 'string' ? mergeCommit : undefined,
+        } satisfies DecisionNode;
+        decisions.push(decision);
+        decisionProps.push(decision);
+      }
+
+      const { tip, headsCount } = computeTipPatchset(patchsetRefs);
+      const effectiveVerdicts = tip
+        ? computeEffectiveVerdicts(reviewsByPatchset.get(tip.id) ?? [])
+        : new Map<string, ReviewVerdict>();
+      const independentVerdicts = filterIndependentVerdicts(effectiveVerdicts, submittedBy);
+      let approvalCount = 0;
+      for (const verdict of independentVerdicts.values()) {
+        if (verdict === 'approve') approvalCount++;
+      }
+
+      return {
+        submission: {
+          id: submissionId,
+          questId,
+          status: computeStatus({ decisions: decisionProps, effectiveVerdicts: independentVerdicts }),
+          tipPatchsetId: tip?.id,
+          headsCount,
+          approvalCount,
+          submittedBy,
+          submittedAt,
+        } satisfies SubmissionNode,
+        reviews,
+        decisions,
+        patchsetIds,
+      };
+    }))).filter((entry): entry is {
+      submission: SubmissionNode;
+      reviews: ReviewNode[];
+      decisions: DecisionNode[];
+      patchsetIds: Set<string>;
+    } => entry !== null);
+
+    const chosen = candidates.sort((left, right) =>
+      right.submission.submittedAt - left.submission.submittedAt ||
+      left.submission.id.localeCompare(right.submission.id))[0];
+    if (!chosen) {
+      return { reviews: [], decisions: [], patchsetIds: new Set<string>() };
+    }
+    return chosen;
+  }
+
+  private async loadTraceabilityForQuest(
+    graph: GraphContextGraph,
+    questId: string,
+    campaignId?: string,
+  ): Promise<{
+    stories: StoryNode[];
+    requirements: RequirementNode[];
+    criteria: CriterionNode[];
+    evidence: EvidenceNode[];
+    policies: PolicyNode[];
+  }> {
+    const questOutgoing = toNeighborEntries(await graph.neighbors(questId, 'outgoing'));
+    const requirementIds = questOutgoing
+      .filter((edge) => edge.label === 'implements' && edge.nodeId.startsWith('req:'))
+      .map((edge) => edge.nodeId);
+
+    const requirements: RequirementNode[] = [];
+    const storyIds = new Set<string>();
+    const criterionIds = new Set<string>();
+    for (const requirementId of requirementIds) {
+      const [requirementProps, outgoingRaw, incomingRaw] = await Promise.all([
+        graph.getNodeProps(requirementId),
+        graph.neighbors(requirementId, 'outgoing'),
+        graph.neighbors(requirementId, 'incoming'),
+      ]);
+      if (!requirementProps || requirementProps['type'] !== 'requirement') continue;
+      const description = requirementProps['description'];
+      const kind = requirementProps['kind'];
+      const priority = requirementProps['priority'];
+      if (
+        typeof description !== 'string' ||
+        typeof kind !== 'string' || !VALID_REQUIREMENT_KINDS.has(kind as RequirementKind) ||
+        typeof priority !== 'string' || !VALID_REQUIREMENT_PRIORITIES.has(priority as RequirementPriority)
+      ) {
+        continue;
+      }
+
+      const outgoing = toNeighborEntries(outgoingRaw);
+      const incoming = toNeighborEntries(incomingRaw);
+      const taskIds = incoming
+        .filter((edge) => edge.label === 'implements' && edge.nodeId.startsWith('task:'))
+        .map((edge) => edge.nodeId)
+        .sort((left, right) => left.localeCompare(right));
+      const criterionIdList = outgoing
+        .filter((edge) => edge.label === 'has-criterion' && edge.nodeId.startsWith('criterion:'))
+        .map((edge) => edge.nodeId)
+        .sort((left, right) => left.localeCompare(right));
+      for (const criterionId of criterionIdList) criterionIds.add(criterionId);
+
+      const storyId = incoming.find((edge) => edge.label === 'decomposes-to' && edge.nodeId.startsWith('story:'))?.nodeId;
+      if (storyId) storyIds.add(storyId);
+
+      requirements.push({
+        id: requirementId,
+        description,
+        kind: kind as RequirementKind,
+        priority: priority as RequirementPriority,
+        storyId,
+        taskIds,
+        criterionIds: criterionIdList,
+      });
+    }
+
+    const stories = (await Promise.all([...storyIds].map(async (storyId): Promise<StoryNode | null> => {
+      const [storyProps, incomingRaw] = await Promise.all([
+        graph.getNodeProps(storyId),
+        graph.neighbors(storyId, 'incoming'),
+      ]);
+      if (!storyProps || storyProps['type'] !== 'story') return null;
+      const title = storyProps['title'];
+      const persona = storyProps['persona'];
+      const goal = storyProps['goal'];
+      const benefit = storyProps['benefit'];
+      const createdBy = storyProps['created_by'];
+      const createdAt = storyProps['created_at'];
+      if (
+        typeof title !== 'string' ||
+        typeof persona !== 'string' ||
+        typeof goal !== 'string' ||
+        typeof benefit !== 'string' ||
+        typeof createdBy !== 'string' ||
+        typeof createdAt !== 'number'
+      ) {
+        return null;
+      }
+      const intentId = toNeighborEntries(incomingRaw)
+        .find((edge) => edge.label === 'decomposes-to' && edge.nodeId.startsWith('intent:'))?.nodeId;
+      return {
+        id: storyId,
+        title,
+        persona,
+        goal,
+        benefit,
+        intentId,
+        createdBy,
+        createdAt,
+      } satisfies StoryNode;
+    }))).filter((entry): entry is StoryNode => entry !== null)
+      .sort((left, right) => left.id.localeCompare(right.id));
+
+    const criteria: CriterionNode[] = [];
+    const evidenceIds = new Set<string>();
+    for (const criterionId of criterionIds) {
+      const [criterionProps, incomingRaw] = await Promise.all([
+        graph.getNodeProps(criterionId),
+        graph.neighbors(criterionId, 'incoming'),
+      ]);
+      if (!criterionProps || criterionProps['type'] !== 'criterion') continue;
+      const description = criterionProps['description'];
+      const verifiable = criterionProps['verifiable'];
+      if (typeof description !== 'string') continue;
+      const incoming = toNeighborEntries(incomingRaw);
+      const requirementId = incoming.find((edge) => edge.label === 'has-criterion' && edge.nodeId.startsWith('req:'))?.nodeId;
+      const linkedEvidenceIds = incoming
+        .filter((edge) => edge.label === 'verifies' && edge.nodeId.startsWith('evidence:'))
+        .map((edge) => edge.nodeId)
+        .sort((left, right) => left.localeCompare(right));
+      for (const evidenceId of linkedEvidenceIds) evidenceIds.add(evidenceId);
+      criteria.push({
+        id: criterionId,
+        description,
+        verifiable: typeof verifiable === 'boolean' ? verifiable : true,
+        requirementId,
+        evidenceIds: linkedEvidenceIds,
+      });
+    }
+
+    const evidence = (await Promise.all([...evidenceIds].map(async (evidenceId): Promise<EvidenceNode | null> => {
+      const [evidenceProps, outgoingRaw] = await Promise.all([
+        graph.getNodeProps(evidenceId),
+        graph.neighbors(evidenceId, 'outgoing'),
+      ]);
+      if (!evidenceProps || evidenceProps['type'] !== 'evidence') return null;
+      const kind = evidenceProps['kind'];
+      const result = evidenceProps['result'];
+      const producedAt = evidenceProps['produced_at'];
+      const producedBy = evidenceProps['produced_by'];
+      if (
+        typeof kind !== 'string' || !VALID_EVIDENCE_KINDS.has(kind as EvidenceKind) ||
+        typeof result !== 'string' || !VALID_EVIDENCE_RESULTS.has(result as EvidenceResult) ||
+        typeof producedAt !== 'number' ||
+        typeof producedBy !== 'string'
+      ) {
+        return null;
+      }
+      const outgoing = toNeighborEntries(outgoingRaw);
+      const criterionId = outgoing.find((edge) => edge.label === 'verifies' && edge.nodeId.startsWith('criterion:'))?.nodeId;
+      const requirementId = outgoing.find((edge) => edge.label === 'implements' && edge.nodeId.startsWith('req:'))?.nodeId;
+      return {
+        id: evidenceId,
+        kind: kind as EvidenceKind,
+        result: result as EvidenceResult,
+        producedAt,
+        producedBy,
+        criterionId,
+        requirementId,
+        artifactHash: typeof evidenceProps['artifact_hash'] === 'string' ? evidenceProps['artifact_hash'] : undefined,
+        sourceFile: typeof evidenceProps['source_file'] === 'string' ? evidenceProps['source_file'] : undefined,
+      } satisfies EvidenceNode;
+    }))).filter((entry): entry is EvidenceNode => entry !== null)
+      .sort((left, right) => left.id.localeCompare(right.id));
+
+    const policies = campaignId
+      ? await this.loadPoliciesForCampaign(graph, campaignId)
+      : [];
+
+    return { stories, requirements, criteria, evidence, policies };
+  }
+
+  private async loadPoliciesForCampaign(
+    graph: GraphContextGraph,
+    campaignId: string,
+  ): Promise<PolicyNode[]> {
+    const incoming = toNeighborEntries(await graph.neighbors(campaignId, 'incoming'));
+    const policyIds = incoming
+      .filter((edge) => edge.label === 'governs' && edge.nodeId.startsWith('policy:'))
+      .map((edge) => edge.nodeId)
+      .sort((left, right) => left.localeCompare(right));
+    const policies = await Promise.all(policyIds.map(async (policyId): Promise<PolicyNode | null> => {
+      const props = await graph.getNodeProps(policyId);
+      if (!props || props['type'] !== 'policy') return null;
+      const coverageThresholdRaw = props['coverage_threshold'];
+      const requireAllCriteriaRaw = props['require_all_criteria'];
+      const requireEvidenceRaw = props['require_evidence'];
+      const allowManualSealRaw = props['allow_manual_seal'];
+      const coverageThreshold = (
+        typeof coverageThresholdRaw === 'number' &&
+        Number.isFinite(coverageThresholdRaw) &&
+        coverageThresholdRaw >= 0 &&
+        coverageThresholdRaw <= 1
+      )
+        ? coverageThresholdRaw
+        : DEFAULT_POLICY_COVERAGE_THRESHOLD;
+
+      return {
+        id: policyId,
+        campaignId,
+        coverageThreshold,
+        requireAllCriteria: typeof requireAllCriteriaRaw === 'boolean'
+          ? requireAllCriteriaRaw
+          : DEFAULT_POLICY_REQUIRE_ALL_CRITERIA,
+        requireEvidence: typeof requireEvidenceRaw === 'boolean'
+          ? requireEvidenceRaw
+          : DEFAULT_POLICY_REQUIRE_EVIDENCE,
+        allowManualSeal: typeof allowManualSealRaw === 'boolean'
+          ? allowManualSealRaw
+          : DEFAULT_POLICY_ALLOW_MANUAL_SEAL,
+      } satisfies PolicyNode;
+    }));
+
+    return policies.filter((entry): entry is PolicyNode => entry !== null);
+  }
+
+  private async buildCaseDetail(
+    graph: GraphContextGraph,
+    caseId: string,
+    props: Record<string, unknown>,
+    outgoing: EntityDetail['outgoing'],
+    incoming: EntityDetail['incoming'],
+  ): Promise<CaseDetail | null> {
+    const question = typeof props['question'] === 'string'
+      ? props['question']
+      : typeof props['decision_question'] === 'string'
+        ? props['decision_question']
+        : typeof props['title'] === 'string'
+          ? props['title']
+          : caseId;
+    const caseNode: CaseNode = {
+      id: caseId,
+      title: typeof props['title'] === 'string' ? props['title'] : question,
+      question,
+      status: typeof props['status'] === 'string' ? props['status'] : 'open',
+      impact: typeof props['impact'] === 'string' ? props['impact'] : 'local',
+      risk: typeof props['risk'] === 'string' ? props['risk'] : 'reversible-low',
+      authority: typeof props['authority'] === 'string' ? props['authority'] : 'human-only',
+      ...(typeof props['opened_by'] === 'string' ? { openedBy: props['opened_by'] } : {}),
+      ...(typeof props['opened_at'] === 'number' ? { openedAt: props['opened_at'] } : {}),
+      ...(typeof props['reason'] === 'string' ? { reason: props['reason'] } : {}),
+    };
+
+    const subjectIds = outgoing
+      .filter((edge) => edge.label === 'concerns')
+      .map((edge) => edge.nodeId)
+      .sort((left, right) => left.localeCompare(right));
+    const openedFromIds = outgoing
+      .filter((edge) => edge.label === 'opened-from')
+      .map((edge) => edge.nodeId)
+      .sort((left, right) => left.localeCompare(right));
+    const briefIds = incoming
+      .filter((edge) => edge.label === 'briefs')
+      .map((edge) => edge.nodeId)
+      .sort((left, right) => left.localeCompare(right));
+    const decisionIds = incoming
+      .filter((edge) => edge.label === 'decides')
+      .map((edge) => edge.nodeId)
+      .sort((left, right) => left.localeCompare(right));
+
+    const briefs = (await Promise.all(briefIds.map(async (briefId): Promise<CaseBriefNode | null> => {
+      const [briefProps, rawContent, contentOid, briefOutgoingRaw] = await Promise.all([
+        graph.getNodeProps(briefId),
+        graph.getContent(briefId),
+        graph.getContentOid(briefId),
+        graph.neighbors(briefId, 'outgoing'),
+      ]);
+      if (!briefProps || briefProps['type'] !== 'brief') return null;
+      const title = typeof briefProps['title'] === 'string' ? briefProps['title'] : briefId;
+      const authoredBy = typeof briefProps['authored_by'] === 'string' ? briefProps['authored_by'] : 'unknown';
+      const authoredAt = typeof briefProps['authored_at'] === 'number' ? briefProps['authored_at'] : 0;
+      const relatedIds = toNeighborEntries(briefOutgoingRaw)
+        .filter((edge) => edge.label === 'documents' && edge.nodeId !== caseId)
+        .map((edge) => edge.nodeId)
+        .sort((left, right) => left.localeCompare(right));
+      return {
+        id: briefId,
+        briefKind: typeof briefProps['brief_kind'] === 'string' ? briefProps['brief_kind'] : 'recommendation',
+        title,
+        ...(typeof briefProps['rationale'] === 'string' ? { rationale: briefProps['rationale'] } : {}),
+        authoredBy,
+        authoredAt,
+        ...(decodeNodeContent(rawContent) ? { body: decodeNodeContent(rawContent) } : {}),
+        ...(contentOid ? { contentOid } : {}),
+        relatedIds,
+      };
+    }))).filter((entry): entry is CaseBriefNode => Boolean(entry));
+
+    const decisions = (await Promise.all(decisionIds.map(async (decisionId): Promise<CaseDecisionNode | null> => {
+      const decisionProps = await graph.getNodeProps(decisionId);
+      if (!decisionProps || decisionProps['type'] !== 'decision') return null;
+      const decision = typeof decisionProps['kind'] === 'string' ? decisionProps['kind'] : undefined;
+      const rationale = typeof decisionProps['rationale'] === 'string' ? decisionProps['rationale'] : undefined;
+      const decidedBy = typeof decisionProps['decided_by'] === 'string' ? decisionProps['decided_by'] : undefined;
+      const decidedAt = typeof decisionProps['decided_at'] === 'number' ? decisionProps['decided_at'] : undefined;
+      if (!decision || !rationale || !decidedBy || decidedAt === undefined) return null;
+      const followOnArtifactId = typeof decisionProps['follow_on_artifact_id'] === 'string'
+        ? decisionProps['follow_on_artifact_id']
+        : undefined;
+      const followOnArtifactKind = typeof decisionProps['follow_on_artifact_kind'] === 'string'
+        ? decisionProps['follow_on_artifact_kind']
+        : undefined;
+      let actualDelta: string | undefined;
+      if (followOnArtifactId && await graph.hasNode(followOnArtifactId)) {
+        actualDelta = `Created ${followOnArtifactKind ?? 'artifact'} ${followOnArtifactId}`;
+      } else if (decision === 'reject') {
+        actualDelta = 'No follow-on work created.';
+      } else if (decision === 'defer') {
+        actualDelta = 'Decision deferred without linked follow-on work.';
+      } else if (decision === 'request-evidence') {
+        actualDelta = 'Returned to preparation for more evidence.';
+      }
+      return {
+        id: decisionId,
+        decision,
+        rationale,
+        decidedBy,
+        decidedAt,
+        ...(followOnArtifactId ? { followOnArtifactId } : {}),
+        ...(followOnArtifactKind ? { followOnArtifactKind } : {}),
+        ...(typeof decisionProps['expected_delta'] === 'string'
+          ? { expectedDelta: decisionProps['expected_delta'] }
+          : {}),
+        ...(actualDelta ? { actualDelta } : {}),
+      };
+    }))).filter((entry): entry is CaseDecisionNode => Boolean(entry))
+      .sort((left, right) => right.decidedAt - left.decidedAt || left.id.localeCompare(right.id));
+
+    const relevantIds = new Set<string>([
+      caseId,
+      ...subjectIds,
+      ...briefs.flatMap((brief) => brief.relatedIds),
+      ...decisions.map((decision) => decision.id),
+      ...decisions.map((decision) => decision.followOnArtifactId).filter((entry): entry is string => typeof entry === 'string'),
+    ]);
+    const { documents, comments } = await this.loadNarrativeForTargets(graph, relevantIds);
+
+    return {
+      id: caseId,
+      caseNode,
+      subjectIds,
+      openedFromIds,
+      briefs: briefs.sort((left, right) => right.authoredAt - left.authoredAt || left.id.localeCompare(right.id)),
+      decisions,
+      documents,
+      comments,
+    };
+  }
+
   private async loadNarrativeForTargets(
-    graph: WarpGraph,
+    graph: GraphContextGraph,
     targetIds: Set<string>,
   ): Promise<{ documents: NarrativeNode[]; comments: CommentNode[] }> {
-    const [specNodes, adrNodes, noteNodes, commentNodes] = await Promise.all([
-      graph.query().match('spec:*').select(['id', 'props']).run().then(extractNodes),
-      graph.query().match('adr:*').select(['id', 'props']).run().then(extractNodes),
-      graph.query().match('note:*').select(['id', 'props']).run().then(extractNodes),
-      graph.query().match('comment:*').select(['id', 'props']).run().then(extractNodes),
-    ]);
-
-    const narrativeQNodes = [...specNodes, ...adrNodes, ...noteNodes, ...commentNodes];
-    if (narrativeQNodes.length === 0) {
+    if (targetIds.size === 0) {
       return { documents: [], comments: [] };
     }
 
-    const neighbors = await batchNeighbors(graph, narrativeQNodes.map((entry) => entry.id));
+    const seedResults = await Promise.all(
+      [...targetIds].map(async (targetId) => [targetId, toNeighborEntries(await graph.neighbors(targetId, 'incoming'))] as const),
+    );
+
+    const seedDocumentIds = new Set<string>();
+    const seedCommentIds = new Set<string>();
+    for (const [, incoming] of seedResults) {
+      for (const edge of incoming) {
+        if (edge.label === 'documents' && isNarrativeDocumentId(edge.nodeId)) {
+          seedDocumentIds.add(edge.nodeId);
+        }
+        if (edge.label === 'comments-on' && edge.nodeId.startsWith('comment:')) {
+          seedCommentIds.add(edge.nodeId);
+        }
+      }
+    }
 
     const docsById = new Map<string, {
       id: string;
-      type: 'spec' | 'adr' | 'note';
+      type: NarrativeDocumentType;
       title: string;
       authoredBy: string;
       authoredAt: number;
@@ -1679,13 +2929,27 @@ class GraphContextImpl implements GraphContext {
       replyToId?: string;
     }>();
 
-    for (const node of [...specNodes, ...adrNodes, ...noteNodes]) {
-      const rawType = node.props['type'];
-      const title = node.props['title'];
-      const authoredBy = node.props['authored_by'];
-      const authoredAt = node.props['authored_at'];
+    const reachableDocIds = await this.collectTraversalNodeIds(
+      graph,
+      seedDocumentIds,
+      'supersedes',
+      isNarrativeDocumentId,
+    );
+    for (const docId of reachableDocIds) {
+      if (!isNarrativeDocumentId(docId)) continue;
+
+      const [props, rawOutgoing] = await Promise.all([
+        graph.getNodeProps(docId),
+        graph.neighbors(docId, 'outgoing'),
+      ]);
+      if (!props) continue;
+
+      const rawType = props['type'];
+      const title = props['title'];
+      const authoredBy = props['authored_by'];
+      const authoredAt = props['authored_at'];
       if (
-        (rawType !== 'spec' && rawType !== 'adr' && rawType !== 'note') ||
+        !isNarrativeDocumentType(rawType) ||
         typeof title !== 'string' ||
         typeof authoredBy !== 'string' ||
         typeof authoredAt !== 'number'
@@ -1693,43 +2957,63 @@ class GraphContextImpl implements GraphContext {
         continue;
       }
 
+      const outgoing = toNeighborEntries(rawOutgoing);
       const targetRefs: string[] = [];
       let supersedesId: string | undefined;
-      for (const edge of neighbors.get(node.id) ?? []) {
+
+      for (const edge of outgoing) {
         if (edge.label === 'documents') targetRefs.push(edge.nodeId);
-        if (edge.label === 'supersedes' && edge.nodeId.startsWith(`${rawType}:`)) {
+        if (edge.label === 'supersedes' && isNarrativeDocumentIdForType(edge.nodeId, rawType)) {
           supersedesId = edge.nodeId;
         }
       }
 
-      docsById.set(node.id, {
-        id: node.id,
+      docsById.set(docId, {
+        id: docId,
         type: rawType,
         title,
         authoredBy,
         authoredAt,
-        noteKind: rawType === 'note' && typeof node.props['note_kind'] === 'string'
-          ? node.props['note_kind']
+        noteKind: rawType === 'note' && typeof props['note_kind'] === 'string'
+          ? props['note_kind']
           : undefined,
         targetIds: targetRefs,
         supersedesId,
       });
     }
 
-    for (const node of commentNodes) {
-      const authoredBy = node.props['authored_by'];
-      const authoredAt = node.props['authored_at'];
+    const reachableCommentIds = await this.collectTraversalNodeIds(
+      graph,
+      seedCommentIds,
+      'replies-to',
+      (id): id is string => id.startsWith('comment:'),
+    );
+    for (const commentId of reachableCommentIds) {
+      if (!commentId.startsWith('comment:')) continue;
+
+      const [props, rawOutgoing] = await Promise.all([
+        graph.getNodeProps(commentId),
+        graph.neighbors(commentId, 'outgoing'),
+      ]);
+      if (!props) continue;
+
+      const authoredBy = props['authored_by'];
+      const authoredAt = props['authored_at'];
       if (typeof authoredBy !== 'string' || typeof authoredAt !== 'number') continue;
 
+      const outgoing = toNeighborEntries(rawOutgoing);
       let targetId: string | undefined;
       let replyToId: string | undefined;
-      for (const edge of neighbors.get(node.id) ?? []) {
+
+      for (const edge of outgoing) {
         if (edge.label === 'comments-on') targetId = edge.nodeId;
-        if (edge.label === 'replies-to' && edge.nodeId.startsWith('comment:')) replyToId = edge.nodeId;
+        if (edge.label === 'replies-to' && edge.nodeId.startsWith('comment:')) {
+          replyToId = edge.nodeId;
+        }
       }
 
-      commentsById.set(node.id, {
-        id: node.id,
+      commentsById.set(commentId, {
+        id: commentId,
         authoredBy,
         authoredAt,
         targetId,
@@ -1802,6 +3086,27 @@ class GraphContextImpl implements GraphContext {
     comments.sort((a, b) => a.authoredAt - b.authoredAt || a.id.localeCompare(b.id));
 
     return { documents, comments };
+  }
+
+  private async collectTraversalNodeIds(
+    graph: GraphContextGraph,
+    seedIds: Set<string>,
+    labelFilter: string,
+    includeId: (id: string) => boolean,
+  ): Promise<Set<string>> {
+    const collected = new Set<string>();
+    await Promise.all(
+      [...seedIds].map(async (seedId) => {
+        const visited = await graph.traverse.bfs(seedId, {
+          dir: 'both',
+          labelFilter,
+        });
+        for (const id of visited) {
+          if (includeId(id)) collected.add(id);
+        }
+      }),
+    );
+    return collected;
   }
 
   private expandDocumentIdsForTargets(
@@ -1885,7 +3190,7 @@ class GraphContextImpl implements GraphContext {
   }
 
   private async loadContentMap(
-    graph: WarpGraph,
+    graph: GraphContextGraph,
     ids: string[],
   ): Promise<Map<string, { body?: string; contentOid?: string }>> {
     const results = await Promise.all(ids.map(async (id) => {
@@ -1903,7 +3208,7 @@ class GraphContextImpl implements GraphContext {
   }
 
   private async findPatchsetIdsForSubmission(
-    graph: WarpGraph,
+    graph: GraphContextGraph,
     submissionId: string,
   ): Promise<Set<string>> {
     const incoming = toNeighborEntries(await graph.neighbors(submissionId, 'incoming'));

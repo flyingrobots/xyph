@@ -40,6 +40,36 @@ In practice, that means:
 - keep AI advisory until it is explicitly adopted into governed work
 - keep UI and CLI behavior honest to the same graph truth
 
+## Human And Agent Design Rule
+
+XYPH has one product design corpus and two first-class operational lenses:
+
+- human-facing TUI/pages
+- agent-native CLI/protocol
+
+Design should be done equally from both perspectives. A cycle is not well
+designed if it only makes sense from one lens.
+
+Implementation should usually proceed in this order:
+
+1. define the shared semantic model
+2. make the agent-native CLI/protocol express it cleanly
+3. build the human-facing page or TUI flow on top of it
+
+Why:
+
+- agent-native surfaces expose missing building blocks quickly
+- human-facing surfaces tell us what must be understandable and governable
+
+So the working doctrine is:
+
+- **agent-first implementation**
+- **human-first judgment and explainability**
+
+Unless a cycle explicitly declares something human-only, a human-facing feature
+is not really done until the same underlying semantics exist in the agent
+surface too.
+
 ## Architectural Principles
 
 ### Hexagonal architecture
@@ -83,26 +113,49 @@ Use that plan, plus the canonical docs in `docs/canonical/`, as the current dire
 
 If older workflow guidance in this file conflicts with the current redesign, the plan doc and canonical docs win.
 
-## Milestone Development Loop
+## Development Cycle Loop
 
-XYPH uses an explicit milestone loop inspired by IBM Design Thinking, but
+XYPH uses an explicit development-cycle loop inspired by IBM Design Thinking, but
 adapted to XYPH's actual invariants: hexagonal architecture, graph-as-plan,
 governance as a product surface, and provenance visibility.
 
-For milestone work, the default loop is:
+For bounded product or debt work, the default loop is:
 
 1. **Design docs first**
 2. **Acceptance tests as spec second**
 3. **Implementation third**
 4. **Retrospective**
 5. **Rewrite the root README to reflect reality**
-6. **Close the milestone**
+6. **Close the cycle**
 
 The slice is not done because code landed. It is done when:
 
 - the relevant human or agent sponsor actor can do their job better
 - the behavior is captured in executable tests
 - the docs reflect what is now true
+
+### Cycle Checkpoints
+
+Each meaningful cycle should normally move through four checkpoints:
+
+1. **Doctrine checkpoint**
+   - cycle note and design corpus are aligned
+   - the shared semantic model is explicit enough to build against
+
+2. **Spec checkpoint**
+   - acceptance tests exist and fail for the right reasons
+   - the red spec expresses the behavior we actually want
+
+3. **Semantic checkpoint**
+   - the shared packet / control-plane semantics go green
+   - the agent-native CLI or protocol can express the slice honestly
+
+4. **Surface checkpoint**
+   - the human-facing page, TUI flow, or narrative surface catches up
+   - the same underlying semantics are legible through the human lens
+
+These are not four separate milestones. They are the normal sequence for
+turning design intent into a working XYPH slice.
 
 ### Tests Are The Spec
 
@@ -114,38 +167,88 @@ XYPH follows a hard rule:
 
 There is no separate prose-spec layer between design and tests.
 
-For milestone-scale behavior:
+For cycle-scale behavior:
 
 - acceptance tests live under `test/acceptance/`
 - reusable fixtures live under `test/fixtures/`
-- shared assertions and helpers live under `test/support/`
+- lower-level unit and integration tests remain organized by architecture
 
 Until older tests are migrated, existing unit/integration tests elsewhere in
-`test/` remain valid. New milestone-level behavioral spec should follow the
-acceptance/fixtures/support structure.
+`test/` remain valid. New cycle-level behavioral spec should follow the
+acceptance hierarchy described in [`/Users/james/git/xyph/test/acceptance/README.md`](test/acceptance/README.md).
 
-### Milestone Closeout And Reset
+### Red And Green Discipline
 
-Closing a milestone does **not** mean immediately starting the next design doc.
+Local red while iterating is acceptable and expected.
 
-After the milestone is merged, released, and tagged, the **first** move before
-writing the next milestone design docs is:
+That is especially true immediately after design, because the first useful step
+is often to write failing tests that define the slice.
+
+The rule is:
+
+- **local red is fine while iterating**
+- **pushed work must be green**
+
+In other words, red can exist as a local checkpoint in the middle of a cycle,
+but shared branch state should be brought back to passing before push and before
+submission for review or merge.
+
+### Cycle Closeout And Reset
+
+Closing a cycle does **not** mean immediately starting the next design doc.
+
+After the cycle is merged, released when appropriate, and closed, the **first**
+move before writing the next cycle design docs is:
 
 1. reconcile the graph backlog
-2. add work discovered during the milestone
+2. add work discovered during the cycle
 3. add retrospective fallout
 4. add worthwhile COOL IDEAS™
 5. triage and reconcile the backlog against current reality
 
 That reconciliation step may produce:
 
-- the next major milestone
+- the next major outcome milestone
 - one or more smaller debt-reduction cycles
-- cleanup or simplification cycles between milestones
+- cleanup or simplification cycles between larger releases
 
-This is intentional. XYPH should not roll blindly from one milestone into the
-next while tech debt, product drift, or newly discovered work piles up off to
-the side.
+This is intentional. XYPH should not roll blindly from one cycle into the next
+while tech debt, product drift, or newly discovered work piles up off to the
+side.
+
+### Required Closeout Checklist
+
+For any meaningful cycle that is intended to merge to `main`, closeout should be
+treated as a required gate, not optional cleanup.
+
+Before calling the cycle closed, verify:
+
+1. **Behavior landed**
+   - acceptance tests for the cycle exist and pass
+   - implementation still matches the active cycle note
+
+2. **Docs reconciled**
+   - the root README reflects current user-facing reality when the surface changed
+   - the design corpus reflects any product-model or doctrine change
+   - stale planning docs have been updated, demoted, or deleted
+
+3. **Backlog reconciled**
+   - work discovered during the cycle has been added
+   - retrospective fallout has been added
+   - preserved COOL IDEAS™ have been added
+   - backlog items that no longer fit the product have been rejected or superseded
+
+4. **Graveyard reviewed**
+   - explicitly check whether any graveyarded work should be reopened under the
+     current doctrine
+   - if nothing should reopen, record that outcome anyway
+
+5. **Next cycle chosen intentionally**
+   - decide whether the next cycle is a new product cycle or a debt-reduction /
+     simplification cycle
+
+The closeout question is not "did the code land?" It is "did behavior, docs,
+backlog, and graveyard all reconcile to the same product truth?"
 
 ### Development Standard
 
@@ -163,14 +266,20 @@ provenance boundaries, prefer explicit semantics over clever compression.
 
 ## Product Management Philosophy
 
-XYPH uses IBM Design Thinking style framing for milestone design:
+XYPH uses IBM Design Thinking style framing for cycle design:
 
 - sponsor actors
 - hills
 - playbacks
 - explicit invariants and non-goals
 
-Milestones should be grounded in operator and agent value, not backend vanity.
+Apply that discipline to both humans and agents:
+
+- sponsor users for the human surface
+- sponsor actors for the agent surface
+- one shared semantic model underneath both
+
+Cycles should be grounded in operator and agent value, not backend vanity.
 
 Before promoting a new direction, ask:
 
@@ -180,7 +289,33 @@ Before promoting a new direction, ask:
 - does this preserve graph truth, governance, and provenance?
 
 If the answer is unclear, the work probably belongs in the backlog, not in the
-active milestone.
+active cycle.
+
+### Formal Playbacks
+
+Playbacks are not optional demo theater. They are a required way to judge
+whether a cycle actually moved the relevant hill for the relevant sponsor
+actors.
+
+Each substantial cycle should normally include:
+
+- at least one **human playback**
+- at least one **agent playback**
+
+Those playbacks should be organized around the sponsor actors and hills named in
+the cycle note, not around a generic UI checklist.
+
+The point is to answer questions like:
+
+- did this cycle materially improve the hill it claimed to improve?
+- can the human sponsor actor do their job better now?
+- can the agent sponsor actor do its job better now?
+- do the human and agent surfaces still agree about what is true, what is
+  allowed, and what should happen next?
+
+Playbacks are where the sponsor perspectives and hills become operational.
+They are how XYPH checks product truth instead of merely shipping implementation
+momentum.
 
 ## Project Planning
 

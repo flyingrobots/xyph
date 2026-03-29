@@ -24,7 +24,7 @@
     "@flyingrobots/bijou": "^3.1.0",
     "@flyingrobots/bijou-node": "^3.1.0",
     "@flyingrobots/bijou-tui": "^3.1.0",
-    "@git-stunts/git-warp": "^14.16.2",
+    "@git-stunts/git-warp": "^15.0.1",
     "@git-stunts/plumbing": "^2.8.0",
     "@git-stunts/vault": "^1.0.1",
     "@noble/ed25519": "^3.0.0",

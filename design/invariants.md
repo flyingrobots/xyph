@@ -54,14 +54,18 @@ Design implication:
 
 ## 5. git-warp Owns Substrate Facts; XYPH Owns Meaning
 
-git-warp owns deterministic graph history, observation coordinates, provenance,
-receipts, working sets, braids, and other substrate facts. XYPH owns ontology,
-governance, human-facing surfaces, and the canonical machine control plane.
+git-warp owns deterministic graph history, worldlines, observer-relative
+projections, observation coordinates, receipts, provenance, working sets,
+braids, and the substrate mechanics for speculative ticking and transfer.
+XYPH owns ontology, policy, governance, human-facing surfaces, and the
+canonical machine control plane.
 
 Design implication:
 
 - do not leak XYPH governance or business semantics into git-warp
 - do not invent substrate truth in XYPH where git-warp should own it
+- do not rebuild worldline, observer, or working-set semantics in XYPH when the
+  substrate should expose them directly
 
 ## 6. One Lawful Mutation Path
 

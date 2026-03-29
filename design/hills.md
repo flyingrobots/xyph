@@ -77,20 +77,30 @@ This hill applies both to:
 
 ## Selected Vertical Program
 
-The current leverage-maximizing pair is:
+The current active vertical is the **Suggestions adoption vertical**.
 
-### Human Vertical: Hill 3
+### Human Vertical: Hill 5
 
-Build a full review and settlement governance vertical that makes stage,
-blocking reasons, missing evidence, expected actor, and next lawful actions
-legible from dedicated pages rather than inspector overload.
+Make AI suggestions transparent and useful by letting a human review, explain,
+adopt, dismiss, or supersede a suggestion without mistaking it for settled
+truth.
 
-### Agent Vertical: Hill 6
+### Agent Vertical: Hill 7
 
-Build an agent-native intake and orientation vertical that lets a cold-start
-agent become productive through XYPH alone, using shared semantic packets
-instead of shell archaeology.
+Make agent suggestions consumable by ensuring they become first-class graph
+artifacts that can be picked up, reviewed, and lawfully adopted into the same
+lifecycle as any other idea.
 
-These two hills come first because they sharpen the same product center of
-gravity: lawful action on top of graph truth. Once those are strong, AI
-suggestion hills become safer and easier to build.
+This vertical comes after the earlier Hill 3 / Hill 6 work because governance
+pages and agent semantic packets are already strong enough to carry suggestions
+without turning them into a side-channel.
+
+## Next Vertical After Suggestions
+
+The next follow-on vertical should be **Agent CLI hardening**:
+
+- deepen **Hill 6** in implementation, not just doctrine
+- bring the human-readable CLI experience up to the same product standard as the
+  TUI
+- make `briefing`, `next`, `context`, `act`, and `handoff` feel like one
+  coherent operating interface

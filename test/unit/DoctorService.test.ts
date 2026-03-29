@@ -196,8 +196,9 @@ describe('DoctorService', () => {
       ],
     });
 
+    const fetchSnapshot = vi.fn().mockResolvedValue(snapshot);
     mocks.createGraphContext.mockReturnValue({
-      fetchSnapshot: vi.fn().mockResolvedValue(snapshot),
+      fetchSnapshot,
       fetchEntityDetail: vi.fn(),
       filterSnapshot: vi.fn(),
       invalidateCache: vi.fn(),
@@ -224,6 +225,7 @@ describe('DoctorService', () => {
 
     const report = await new DoctorService(graphPort, roadmap).run();
 
+    expect(fetchSnapshot).toHaveBeenCalledWith(expect.any(Function), { profile: 'audit' });
     expect(report.status).toBe('error');
     expect(report.blocking).toBe(true);
     expect(report.counts.patchsets).toBe(1);

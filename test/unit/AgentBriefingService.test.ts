@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Quest } from '../../src/domain/entities/Quest.js';
+import type { GraphSnapshot } from '../../src/domain/models/dashboard.js';
 import type { GraphPort } from '../../src/ports/GraphPort.js';
 import type { RoadmapQueryPort } from '../../src/ports/RoadmapPort.js';
 import { makeSnapshot, campaign, intent, quest, submission } from '../helpers/snapshot.js';
@@ -113,6 +114,32 @@ function makeDoctor(
   };
 }
 
+function makeGraphContextDouble(
+  snapshot: GraphSnapshot,
+  opts?: {
+    caseNodes?: { id: string; props: Record<string, unknown> }[];
+    fetchEntityDetail?: ReturnType<typeof vi.fn>;
+  },
+) {
+  const caseNodes = opts?.caseNodes ?? [];
+  const fetchEntityDetail = opts?.fetchEntityDetail ?? vi.fn();
+  return {
+    fetchSnapshot: vi.fn().mockResolvedValue(snapshot),
+    fetchEntityDetail,
+    filterSnapshot: vi.fn(),
+    invalidateCache: vi.fn(),
+    graph: {
+      query: vi.fn(() => ({
+        match: vi.fn(() => ({
+          select: vi.fn(() => ({
+            run: vi.fn(async () => ({ nodes: caseNodes })),
+          })),
+        })),
+      })),
+    },
+  };
+}
+
 describe('AgentBriefingService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -164,15 +191,7 @@ describe('AgentBriefingService', () => {
       },
     });
 
-    mocks.createGraphContext.mockReturnValue({
-      fetchSnapshot: vi.fn().mockResolvedValue(snapshot),
-      fetchEntityDetail: vi.fn(),
-      filterSnapshot: vi.fn(),
-      invalidateCache: vi.fn(),
-      get graph() {
-        throw new Error('not used in test');
-      },
-    });
+    mocks.createGraphContext.mockReturnValue(makeGraphContextDouble(snapshot));
 
     const questEntities = [
       makeQuestEntity({
@@ -308,15 +327,7 @@ describe('AgentBriefingService', () => {
       sortedTaskIds: ['task:AGT-READY', 'task:AGT-PLAN'],
     });
 
-    mocks.createGraphContext.mockReturnValue({
-      fetchSnapshot: vi.fn().mockResolvedValue(snapshot),
-      fetchEntityDetail: vi.fn(),
-      filterSnapshot: vi.fn(),
-      invalidateCache: vi.fn(),
-      get graph() {
-        throw new Error('not used in test');
-      },
-    });
+    mocks.createGraphContext.mockReturnValue(makeGraphContextDouble(snapshot));
 
     const service = new AgentBriefingService(
       makeGraphWithHandoffs([]),
@@ -402,15 +413,7 @@ describe('AgentBriefingService', () => {
       sortedTaskIds: ['task:AGT-BLOCKED'],
     });
 
-    mocks.createGraphContext.mockReturnValue({
-      fetchSnapshot: vi.fn().mockResolvedValue(snapshot),
-      fetchEntityDetail: vi.fn(),
-      filterSnapshot: vi.fn(),
-      invalidateCache: vi.fn(),
-      get graph() {
-        throw new Error('not used in test');
-      },
-    });
+    mocks.createGraphContext.mockReturnValue(makeGraphContextDouble(snapshot));
 
     const doctor = makeDoctor({
       status: 'error',
@@ -523,15 +526,7 @@ describe('AgentBriefingService', () => {
       sortedTaskIds: ['task:AGT-REVIEW', 'task:AGT-MERGE'],
     });
 
-    mocks.createGraphContext.mockReturnValue({
-      fetchSnapshot: vi.fn().mockResolvedValue(snapshot),
-      fetchEntityDetail: vi.fn(),
-      filterSnapshot: vi.fn(),
-      invalidateCache: vi.fn(),
-      get graph() {
-        throw new Error('not used in test');
-      },
-    });
+    mocks.createGraphContext.mockReturnValue(makeGraphContextDouble(snapshot));
 
     const service = new AgentBriefingService(
       makeGraphWithHandoffs([]),
@@ -613,15 +608,7 @@ describe('AgentBriefingService', () => {
       ],
     });
 
-    mocks.createGraphContext.mockReturnValue({
-      fetchSnapshot: vi.fn().mockResolvedValue(snapshot),
-      fetchEntityDetail: vi.fn(),
-      filterSnapshot: vi.fn(),
-      invalidateCache: vi.fn(),
-      get graph() {
-        throw new Error('not used in test');
-      },
-    });
+    mocks.createGraphContext.mockReturnValue(makeGraphContextDouble(snapshot));
 
     const service = new AgentBriefingService(
       makeGraphWithHandoffs([]),
@@ -692,15 +679,7 @@ describe('AgentBriefingService', () => {
       ],
     });
 
-    mocks.createGraphContext.mockReturnValue({
-      fetchSnapshot: vi.fn().mockResolvedValue(snapshot),
-      fetchEntityDetail: vi.fn(),
-      filterSnapshot: vi.fn(),
-      invalidateCache: vi.fn(),
-      get graph() {
-        throw new Error('not used in test');
-      },
-    });
+    mocks.createGraphContext.mockReturnValue(makeGraphContextDouble(snapshot));
 
     const service = new AgentBriefingService(
       makeGraphWithHandoffs([]),
@@ -741,6 +720,99 @@ describe('AgentBriefingService', () => {
     ]));
   });
 
+  it('reuses one operational graph context for snapshot and case-queue reads', async () => {
+    const snapshot = makeSnapshot();
+    const fetchEntityDetail = vi.fn(async () => ({
+      id: 'case:C1',
+      type: 'case',
+      props: {
+        type: 'case',
+        question: 'Should the traceability split become governed work?',
+        status: 'open',
+        impact: 'local',
+        risk: 'reversible-low',
+        authority: 'human-only',
+      },
+      outgoing: [
+        { nodeId: 'task:TRACE', label: 'concerns' },
+        { nodeId: 'suggestion:TRACE', label: 'opened-from' },
+      ],
+      incoming: [],
+    }));
+    mocks.createGraphContext.mockReturnValue(makeGraphContextDouble(snapshot, {
+      caseNodes: [{
+        id: 'case:C1',
+        props: { type: 'case', status: 'open' },
+      }],
+      fetchEntityDetail,
+    }));
+
+    const service = new AgentBriefingService(
+      makeGraphWithHandoffs([]),
+      makeRoadmap([]),
+      'agent.hal',
+      makeDoctor(),
+    );
+
+    const briefing = await service.buildBriefing();
+
+    expect(mocks.createGraphContext).toHaveBeenCalledTimes(1);
+    expect(fetchEntityDetail).toHaveBeenCalledWith('case:C1');
+    expect(briefing.caseQueue).toEqual([
+      expect.objectContaining({
+        caseId: 'case:C1',
+        question: 'Should the traceability split become governed work?',
+      }),
+    ]);
+  });
+
+  it('keeps an inspect fallback for cases that are ready for judgment', async () => {
+    const snapshot = makeSnapshot();
+    const fetchEntityDetail = vi.fn(async () => ({
+      id: 'case:C2',
+      type: 'case',
+      props: {
+        type: 'case',
+        question: 'Should the collapse plan be approved?',
+        status: 'ready-for-judgment',
+        impact: 'policy',
+        risk: 'reversible-low',
+        authority: 'human-only',
+      },
+      outgoing: [
+        { nodeId: 'comparison-artifact:C2', label: 'concerns' },
+      ],
+      incoming: [],
+    }));
+    mocks.createGraphContext.mockReturnValue(makeGraphContextDouble(snapshot, {
+      caseNodes: [{
+        id: 'case:C2',
+        props: { type: 'case', status: 'ready-for-judgment' },
+      }],
+      fetchEntityDetail,
+    }));
+
+    const service = new AgentBriefingService(
+      makeGraphWithHandoffs([]),
+      makeRoadmap([]),
+      'agent.hal',
+      makeDoctor(),
+    );
+
+    const next = await service.next(3);
+
+    expect(next.candidates).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: 'inspect',
+        targetId: 'case:C2',
+        source: 'case',
+        questTitle: 'Should the collapse plan be approved?',
+        questStatus: 'ready-for-judgment',
+        priority: 'P1',
+      }),
+    ]));
+  });
+
   it('omits CHANGES_REQUESTED submissions from the briefing review queue', async () => {
     const snapshot = makeSnapshot({
       quests: [
@@ -769,15 +841,7 @@ describe('AgentBriefingService', () => {
       ],
     });
 
-    mocks.createGraphContext.mockReturnValue({
-      fetchSnapshot: vi.fn().mockResolvedValue(snapshot),
-      fetchEntityDetail: vi.fn(),
-      filterSnapshot: vi.fn(),
-      invalidateCache: vi.fn(),
-      get graph() {
-        throw new Error('not used in test');
-      },
-    });
+    mocks.createGraphContext.mockReturnValue(makeGraphContextDouble(snapshot));
 
     const service = new AgentBriefingService(
       makeGraphWithHandoffs([]),

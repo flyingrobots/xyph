@@ -34,11 +34,13 @@ import {
   type AgentQuestRef,
 } from './AgentRecommender.js';
 import {
+  buildCaseWorkSemantics,
   buildGovernanceWorkSemantics,
   buildQuestWorkSemantics,
   buildSuggestionWorkSemantics,
   buildSubmissionWorkSemantics,
   type AgentWorkSemantics,
+  type CaseWorkSemantics,
   type GovernanceWorkSemantics,
   type SuggestionWorkSemantics,
 } from './WorkSemanticsService.js';
@@ -65,6 +67,18 @@ export interface AgentSuggestionContext {
   targetId: string | null;
 }
 
+export interface AgentCaseContext {
+  caseId: string;
+  question: string;
+  status: string;
+  impact: string;
+  risk: string;
+  authority: string;
+  subjectIds: string[];
+  openedFromIds: string[];
+  briefIds: string[];
+}
+
 export interface AgentContextResult {
   detail: EntityDetail;
   readiness: ReadinessAssessment | null;
@@ -72,6 +86,7 @@ export interface AgentContextResult {
   submissionContext: AgentSubmissionContext | null;
   governanceContext: AgentGovernanceContext | null;
   suggestionContext: AgentSuggestionContext | null;
+  caseContext: AgentCaseContext | null;
   recommendedActions: AgentActionCandidate[];
   recommendationRequests: RecommendationRequest[];
   diagnostics: Diagnostic[];
@@ -355,6 +370,88 @@ export function buildSuggestionActionCandidates(input: {
   return candidates;
 }
 
+export function buildCaseContext(detail: EntityDetail): AgentCaseContext | null {
+  if (detail.type !== 'case') return null;
+
+  const question = typeof detail.props['question'] === 'string'
+    ? detail.props['question']
+    : typeof detail.props['decision_question'] === 'string'
+      ? detail.props['decision_question']
+      : typeof detail.props['title'] === 'string'
+        ? detail.props['title']
+        : detail.id;
+
+  const status = typeof detail.props['status'] === 'string' ? detail.props['status'] : 'open';
+  const impact = typeof detail.props['impact'] === 'string' ? detail.props['impact'] : 'local';
+  const risk = typeof detail.props['risk'] === 'string' ? detail.props['risk'] : 'reversible-low';
+  const authority = typeof detail.props['authority'] === 'string'
+    ? detail.props['authority']
+    : 'human-only';
+
+  return {
+    caseId: detail.id,
+    question,
+    status,
+    impact,
+    risk,
+    authority,
+    subjectIds: detail.outgoing
+      .filter((edge) => edge.label === 'concerns')
+      .map((edge) => edge.nodeId)
+      .sort((a, b) => a.localeCompare(b)),
+    openedFromIds: detail.outgoing
+      .filter((edge) => edge.label === 'opened-from')
+      .map((edge) => edge.nodeId)
+      .sort((a, b) => a.localeCompare(b)),
+    briefIds: detail.incoming
+      .filter((edge) => edge.label === 'briefs')
+      .map((edge) => edge.nodeId)
+      .sort((a, b) => a.localeCompare(b)),
+  };
+}
+
+export function buildCaseActionCandidates(input: {
+  caseContext: AgentCaseContext;
+  semantics: CaseWorkSemantics;
+}): AgentActionCandidate[] {
+  const candidates: AgentActionCandidate[] = [{
+    kind: 'inspect',
+    targetId: input.caseContext.caseId,
+    args: {},
+    priority: input.caseContext.impact === 'doctrine' || input.caseContext.impact === 'policy' ? 'P1' : 'P2',
+    reason: 'Inspect the governed case packet before preparing or reviewing a brief.',
+    confidence: 0.82,
+    requiresHumanApproval: false,
+    dryRunSummary: 'Inspect the current case packet, linked subject refs, and attached briefs.',
+    blockedBy: [],
+    allowed: true,
+    underlyingCommand: `xyph context ${input.caseContext.caseId}`,
+    sideEffects: [],
+    validationCode: null,
+  }];
+
+  for (const action of input.semantics.nextLawfulActions) {
+    if (action.kind !== 'brief') continue;
+    candidates.push({
+      kind: 'brief',
+      targetId: input.caseContext.caseId,
+      args: {},
+      priority: input.caseContext.impact === 'doctrine' || input.caseContext.impact === 'policy' ? 'P1' : 'P2',
+      reason: action.reason,
+      confidence: 0.88,
+      requiresHumanApproval: false,
+      dryRunSummary: 'Prepare a recommendation brief linked to the governed case.',
+      blockedBy: action.blockedBy,
+      allowed: action.allowed,
+      underlyingCommand: `xyph act brief ${input.caseContext.caseId}`,
+      sideEffects: [`create brief linked to ${input.caseContext.caseId}`],
+      validationCode: action.allowed ? null : 'blocked-precondition',
+    });
+  }
+
+  return sortActionCandidates(candidates);
+}
+
 export function buildGovernanceRecommendationRequests(input: {
   artifactId: string;
   targetId: string | null;
@@ -435,7 +532,7 @@ export class AgentContextService {
 
   public async fetch(id: string): Promise<AgentContextResult | null> {
     const graphCtx = createGraphContext(this.graphPort);
-    const snapshot = await graphCtx.fetchSnapshot();
+    const snapshot = await graphCtx.fetchSnapshot(undefined, { profile: 'operational' });
     const detail = await graphCtx.fetchEntityDetail(id);
     if (!detail) {
       return null;
@@ -460,6 +557,7 @@ export class AgentContextService {
           submissionContext,
           governanceContext: null,
           suggestionContext: null,
+          caseContext: null,
           recommendedActions: sortActionCandidates([
             this.toCommentCandidate(submissionContext.submission.id, 'submission'),
             ...(submissionAction
@@ -482,6 +580,7 @@ export class AgentContextService {
           submissionContext: null,
           governanceContext,
           suggestionContext: null,
+          caseContext: null,
           recommendedActions: buildGovernanceActionCandidates({
             artifactId: detail.id,
             semantics: governanceSemantics,
@@ -509,6 +608,7 @@ export class AgentContextService {
           submissionContext: null,
           governanceContext: null,
           suggestionContext,
+          caseContext: null,
           recommendedActions: buildSuggestionActionCandidates({
             suggestionId: detail.id,
             semantics: suggestionSemantics,
@@ -519,6 +619,35 @@ export class AgentContextService {
         };
       }
 
+      const caseContext = buildCaseContext(detail);
+      if (caseContext) {
+        const caseSemantics = buildCaseWorkSemantics({
+          caseId: caseContext.caseId,
+          question: caseContext.question,
+          status: caseContext.status,
+          impact: caseContext.impact,
+          risk: caseContext.risk,
+          authority: caseContext.authority,
+          briefCount: caseContext.briefIds.length,
+        });
+        return {
+          detail,
+          readiness: null,
+          dependency: null,
+          submissionContext: null,
+          governanceContext: null,
+          suggestionContext: null,
+          caseContext,
+          recommendedActions: buildCaseActionCandidates({
+            caseContext,
+            semantics: caseSemantics,
+          }),
+          recommendationRequests: [],
+          diagnostics: [],
+          semantics: caseSemantics,
+        };
+      }
+
       return {
         detail,
         readiness: null,
@@ -526,6 +655,7 @@ export class AgentContextService {
         submissionContext: null,
         governanceContext: null,
         suggestionContext: null,
+        caseContext: null,
         recommendedActions: [],
         recommendationRequests: [],
         diagnostics: [],
@@ -569,6 +699,7 @@ export class AgentContextService {
       submissionContext: null,
       governanceContext: null,
       suggestionContext: null,
+      caseContext: null,
       recommendedActions,
       recommendationRequests,
       diagnostics,

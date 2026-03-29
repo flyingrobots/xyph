@@ -45,7 +45,24 @@ function makeGraph() {
       observedFrontier: new Map([['agent.prime', 12], ['wl_review-auth', 0]]),
       edgeBirthEvent: new Map(),
     })),
+    materializeStrand: vi.fn(async () => ({
+      nodeAlive: {
+        entries: new Map([
+          ['task:ONE', new Set(['dot:1'])],
+          ['task:TWO', new Set(['dot:2'])],
+        ]),
+        tombstones: new Set<string>(),
+      },
+      edgeAlive: {
+        entries: new Map(),
+        tombstones: new Set<string>(),
+      },
+      prop: new Map(),
+      observedFrontier: new Map([['agent.prime', 12], ['wl_review-auth', 0]]),
+      edgeBirthEvent: new Map(),
+    })),
     patchWorkingSet: vi.fn(async () => 'patch:working-set'),
+    patchStrand: vi.fn(async () => 'patch:working-set'),
   };
 }
 
@@ -197,8 +214,8 @@ describe('MutationKernelService', () => {
       ],
     }, { workingSetId: 'wl_review-auth' });
 
-    expect(graph.materializeWorkingSet).toHaveBeenCalledWith('wl_review-auth');
-    expect(graph.patchWorkingSet).toHaveBeenCalledTimes(1);
+    expect(graph.materializeStrand).toHaveBeenCalledWith('wl_review-auth');
+    expect(graph.patchStrand).toHaveBeenCalledTimes(1);
     expect(result).toEqual(expect.objectContaining({
       valid: true,
       executed: true,

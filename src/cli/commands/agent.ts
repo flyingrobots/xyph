@@ -14,6 +14,7 @@ import {
 } from '../../domain/services/AgentActionService.js';
 import {
   AgentContextService,
+  type AgentCaseContext,
   type AgentGovernanceContext,
   type AgentSubmissionContext,
 } from '../../domain/services/AgentContextService.js';
@@ -26,6 +27,7 @@ import { AgentSubmissionService } from '../../domain/services/AgentSubmissionSer
 import type { ReadinessAssessment } from '../../domain/services/ReadinessService.js';
 import type {
   AgentWorkSemantics,
+  CaseWorkSemantics,
   GovernanceWorkSemantics,
   QuestWorkSemantics,
   SuggestionWorkSemantics,
@@ -168,6 +170,12 @@ function renderSharedSemantics(semantics: AgentWorkSemantics): string[] {
     lines.push(`  origin: ${semantics.origin}`);
     lines.push(`  progress: ${semantics.progress.currentLabel}`);
     lines.push(`  requestedBy: ${semantics.requestedBy ?? '—'}`);
+  } else if (semantics.kind === 'case') {
+    lines.push(`  impact: ${semantics.impact}`);
+    lines.push(`  risk: ${semantics.risk}`);
+    lines.push(`  authority: ${semantics.authority}`);
+    lines.push(`  status: ${semantics.status}`);
+    lines.push(`  briefs: ${semantics.briefCount}`);
   } else {
     lines.push(`  artifactKind: ${semantics.artifactKind}`);
     lines.push(`  progress: ${semantics.progress.currentLabel}`);
@@ -243,6 +251,7 @@ function renderAgentContext(
   dependency: AgentDependencyContext | null,
   submissionContext: AgentSubmissionContext | null,
   governanceContext: AgentGovernanceContext | null,
+  caseContext: AgentCaseContext | null,
   recommendedActions: AgentActionCandidate[],
   recommendationRequests: RecommendationRequest[],
   diagnostics: Diagnostic[],
@@ -352,6 +361,29 @@ function renderAgentContext(
     return lines.join('\n');
   }
 
+  if (caseContext) {
+    lines.push(caseContext.question);
+    lines.push(`status: ${caseContext.status}   impact: ${caseContext.impact}   risk: ${caseContext.risk}   authority: ${caseContext.authority}`);
+    if (caseContext.subjectIds.length > 0) {
+      lines.push(`subjects: ${caseContext.subjectIds.join(', ')}`);
+    }
+    if (caseContext.openedFromIds.length > 0) {
+      lines.push(`openedFrom: ${caseContext.openedFromIds.join(', ')}`);
+    }
+    if (caseContext.briefIds.length > 0) {
+      lines.push(`briefs: ${caseContext.briefIds.join(', ')}`);
+    }
+
+    if (semantics) {
+      lines.push('');
+      lines.push(...renderSharedSemantics(semantics));
+    }
+
+    lines.push('');
+    lines.push(...renderRecommendedActions(recommendedActions));
+    return lines.join('\n');
+  }
+
   const propKeys = Object.keys(detail.props).sort();
   if (propKeys.length > 0) {
     lines.push('');
@@ -390,6 +422,16 @@ function renderBriefing(briefing: {
     requestedBy: string | null;
     reason: string;
     semantics: SuggestionWorkSemantics;
+  }[];
+  caseQueue: {
+    caseId: string;
+    question: string;
+    status: string;
+    impact: string;
+    risk: string;
+    authority: string;
+    reason: string;
+    semantics: CaseWorkSemantics;
   }[];
   frontier: {
     quest: { id: string; title: string; status: string };
@@ -464,6 +506,22 @@ function renderBriefing(briefing: {
       if (entry.requestedBy) {
         lines.push(`      requestedBy: ${entry.requestedBy}`);
       }
+      if (entry.semantics.nextLawfulActions[0]) {
+        lines.push(`      next: ${entry.semantics.nextLawfulActions[0].label}`);
+      }
+    }
+  }
+
+  lines.push('');
+  lines.push(`Case Queue (${briefing.caseQueue.length})`);
+  if (briefing.caseQueue.length === 0) {
+    lines.push('  none');
+  } else {
+    for (const entry of briefing.caseQueue) {
+      lines.push(`  - ${entry.caseId} ${entry.question} [${entry.status}]`);
+      lines.push(`      ${entry.reason}`);
+      lines.push(`      impact: ${entry.impact} · risk: ${entry.risk} · authority: ${entry.authority}`);
+      lines.push(`      attention: ${entry.semantics.attentionState} · expected: ${entry.semantics.expectedActor}`);
       if (entry.semantics.nextLawfulActions[0]) {
         lines.push(`      next: ${entry.semantics.nextLawfulActions[0].label}`);
       }
@@ -752,12 +810,13 @@ export function registerAgentCommands(program: Command, ctx: CliContext): void {
               readiness: result.readiness,
               dependency: result.dependency,
               submissionContext: result.submissionContext ?? null,
-              governanceContext: result.governanceContext ?? null,
-              semantics: result.semantics,
-              recommendedActions: result.recommendedActions,
-              recommendationRequests: result.recommendationRequests,
-              diagnostics: result.diagnostics,
-            },
+            governanceContext: result.governanceContext ?? null,
+            caseContext: result.caseContext ?? null,
+            semantics: result.semantics,
+            recommendedActions: result.recommendedActions,
+            recommendationRequests: result.recommendationRequests,
+            diagnostics: result.diagnostics,
+          },
           },
         });
         return;
@@ -769,6 +828,7 @@ export function registerAgentCommands(program: Command, ctx: CliContext): void {
         result.dependency,
         result.submissionContext ?? null,
         result.governanceContext ?? null,
+        result.caseContext ?? null,
         result.recommendedActions,
         result.recommendationRequests,
         result.diagnostics,

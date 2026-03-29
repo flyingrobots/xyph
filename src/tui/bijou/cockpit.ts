@@ -166,7 +166,7 @@ export function suggestionsViewDescription(view: SuggestionsViewMode): string {
 export function shortId(id: unknown): string {
   if (typeof id === 'string') {
     return id.replace(
-      /^(task:|submission:|comparison-artifact:|collapse-proposal:|attestation:|campaign:|milestone:|worldline:|intent:|patchset:|suggestion:)/,
+      /^(task:|submission:|comparison-artifact:|collapse-proposal:|attestation:|campaign:|milestone:|worldline:|intent:|patchset:|suggestion:|case:)/,
       '',
     );
   }
@@ -471,6 +471,7 @@ function buildAiSuggestionItem(suggestion: AiSuggestionNode): AiSuggestionCockpi
   const secondaryParts = [
     suggestion.kind === 'ask-ai' ? 'queued ask-AI job' : null,
     suggestion.targetId ? `target ${shortId(suggestion.targetId)}` : null,
+    suggestion.linkedCaseId ? `case ${shortId(suggestion.linkedCaseId)}` : null,
     suggestion.kind,
     suggestion.origin === 'request' && suggestion.requestedBy ? `asked by ${shortPrincipal(suggestion.requestedBy)}` : null,
   ].filter(Boolean);
@@ -536,7 +537,15 @@ function compareCampaignItems(a: CampaignCockpitItem, b: CampaignCockpitItem): n
   return a.id.localeCompare(b.id);
 }
 
-function compareAiSuggestionItems(a: AiSuggestionCockpitItem, b: AiSuggestionCockpitItem): number {
+function compareAiSuggestionItems(a: AiSuggestionCockpitItem, b: AiSuggestionCockpitItem, agentId?: string): number {
+  if (agentId) {
+    const aMine = Number(a.suggestion.suggestedBy === agentId || a.suggestion.requestedBy === agentId);
+    const bMine = Number(b.suggestion.suggestedBy === agentId || b.suggestion.requestedBy === agentId);
+    const byMine = bMine - aMine;
+    if (byMine !== 0) return byMine;
+  }
+  const byLinkedCase = Number(Boolean(b.suggestion.linkedCaseId)) - Number(Boolean(a.suggestion.linkedCaseId));
+  if (byLinkedCase !== 0) return byLinkedCase;
   const byAskAi = Number(b.suggestion.kind === 'ask-ai') - Number(a.suggestion.kind === 'ask-ai');
   if (byAskAi !== 0) return byAskAi;
   return (b.timestamp ?? 0) - (a.timestamp ?? 0) || a.id.localeCompare(b.id);
@@ -555,11 +564,20 @@ function suggestionMatchesView(suggestion: AiSuggestionNode, view: SuggestionsVi
   }
 }
 
-function buildSuggestionItems(snapshot: GraphSnapshot, view: SuggestionsViewMode): AiSuggestionCockpitItem[] {
+function buildSuggestionItems(snapshot: GraphSnapshot, view: SuggestionsViewMode, agentId?: string): AiSuggestionCockpitItem[] {
   return snapshot.aiSuggestions
     .filter((suggestion) => suggestionMatchesView(suggestion, view))
     .map(buildAiSuggestionItem)
-    .sort(compareAiSuggestionItems);
+    .sort((a, b) => compareAiSuggestionItems(a, b, agentId));
+}
+
+export function suggestionViewCounts(snapshot: GraphSnapshot): Record<SuggestionsViewMode, number> {
+  return {
+    incoming: snapshot.aiSuggestions.filter((suggestion) => suggestionMatchesView(suggestion, 'incoming')).length,
+    queued: snapshot.aiSuggestions.filter((suggestion) => suggestionMatchesView(suggestion, 'queued')).length,
+    adopted: snapshot.aiSuggestions.filter((suggestion) => suggestionMatchesView(suggestion, 'adopted')).length,
+    dismissed: snapshot.aiSuggestions.filter((suggestion) => suggestionMatchesView(suggestion, 'dismissed')).length,
+  };
 }
 
 function buildQuestActivityEvents(quest: QuestNode): ActivityEvent[] {
@@ -898,7 +916,7 @@ export function cockpitLanes(
       { id: 'graveyard', title: 'Graveyard', description: 'Rejected and retired work', count: 0, freshCount: 0, attentionCount: 0, attentionTone: 'none' },
     ];
   }
-  const suggestionItems = buildSuggestionItems(snapshot, suggestionsView);
+  const suggestionItems = buildSuggestionItems(snapshot, suggestionsView, agentId);
   return [
     {
       id: 'now',
@@ -980,7 +998,7 @@ export function laneItems(
         .map((campaign) => buildCampaignItem(campaign, snapshot))
         .sort(compareCampaignItems);
     case 'suggestions':
-      return buildSuggestionItems(snapshot, suggestionsView);
+      return buildSuggestionItems(snapshot, suggestionsView, agentId);
     case 'graveyard':
       return snapshot.quests
         .filter((quest) => quest.status === 'GRAVEYARD')

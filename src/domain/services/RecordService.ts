@@ -3,11 +3,14 @@ import type { GraphPort } from '../../ports/GraphPort.js';
 import type { CanonicalArtifactKind } from '../models/controlPlane.js';
 import { MutationKernelService } from './MutationKernelService.js';
 import type {
+  AiSuggestionAdoptionKind,
   AiSuggestionAudience,
   AiSuggestionKind,
   AiSuggestionOrigin,
   AiSuggestionStatus,
 } from '../entities/AiSuggestion.js';
+import { defaultAiSuggestionAdoptionKind } from '../entities/AiSuggestion.js';
+import { Quest, type QuestKind, DEFAULT_QUEST_PRIORITY } from '../entities/Quest.js';
 
 interface CreateCommentInput {
   id?: string;
@@ -74,6 +77,35 @@ interface CreateAiSuggestionInput {
   idempotencyKey?: string;
 }
 
+interface ResolveAiSuggestionInput {
+  suggestionId: string;
+  resolvedBy: string;
+  adoptedArtifactKind?: AiSuggestionAdoptionKind;
+  rationale?: string;
+  idempotencyKey?: string;
+}
+
+interface DismissAiSuggestionInput extends ResolveAiSuggestionInput {
+  rationale: string;
+}
+
+interface SupersedeAiSuggestionInput extends ResolveAiSuggestionInput {
+  supersededById: string;
+}
+
+type CaseDecisionKind = 'adopt' | 'reject' | 'defer' | 'request-evidence';
+type CaseFollowOnKind = 'quest' | 'proposal' | 'none';
+
+interface CreateCaseDecisionInput {
+  id?: string;
+  caseId: string;
+  decision: CaseDecisionKind;
+  decidedBy: string;
+  rationale: string;
+  followOnKind?: CaseFollowOnKind;
+  idempotencyKey?: string;
+}
+
 function deriveId(prefix: string, explicitId: string | undefined, idempotencyKey: string | undefined): string {
   if (explicitId) return explicitId;
   if (idempotencyKey) {
@@ -104,6 +136,54 @@ function stableValue(payload: unknown): unknown {
 
 function stringifyDeterministicContent(payload: unknown): string {
   return JSON.stringify(stableValue(payload), null, 2);
+}
+
+function suggestionQuestKind(kind: AiSuggestionKind): QuestKind {
+  switch (kind) {
+    case 'dependency':
+    case 'promotion':
+    case 'reopen':
+      return 'maintenance';
+    case 'governance':
+      return 'ops';
+    default:
+      return 'delivery';
+  }
+}
+
+function buildSuggestionQuestDescription(input: {
+  summary: string;
+  why?: string;
+  evidence?: string;
+  nextAction?: string;
+}): string {
+  const sections = [
+    input.summary.trim(),
+    input.why?.trim() ? `Why\n${input.why.trim()}` : null,
+    input.evidence?.trim() ? `Evidence\n${input.evidence.trim()}` : null,
+    input.nextAction?.trim() ? `Suggested next action\n${input.nextAction.trim()}` : null,
+  ].filter((entry): entry is string => Boolean(entry && entry.trim().length > 0));
+  return sections.join('\n\n');
+}
+
+function questTitleFromSuggestion(title: string): string {
+  const trimmed = title.trim();
+  if (trimmed.length >= 5) return trimmed;
+  return `Quest ${trimmed}`.trim();
+}
+
+function caseDecisionExpectedDelta(
+  decision: CaseDecisionKind,
+  followOnKind: CaseFollowOnKind,
+): string {
+  if (decision === 'adopt') {
+    if (followOnKind === 'quest') return 'Create backlog quest';
+    if (followOnKind === 'proposal') return 'Create governed proposal';
+    return 'Record adoption without linked follow-on work';
+  }
+  if (decision === 'reject') return 'Reject the case outcome with no linked follow-on work';
+  if (decision === 'defer') return 'Defer the case without changing the current frontier';
+  return 'Return the case to preparation for more evidence';
 }
 
 export class RecordService {
@@ -295,6 +375,342 @@ export class RecordService {
       patch: result.patch,
       suggestedAt,
       contentOid: await graph.getContentOid(id),
+    };
+  }
+
+  public async createCaseDecision(input: CreateCaseDecisionInput): Promise<{
+    decisionId: string;
+    caseId: string;
+    decision: CaseDecisionKind;
+    followOnArtifactId?: string;
+    followOnArtifactKind?: Exclude<CaseFollowOnKind, 'none'>;
+    patch: string;
+    decidedAt: number;
+  }> {
+    const graph = await this.graphPort.getGraph();
+    const caseProps = await graph.getNodeProps(input.caseId);
+    if (!caseProps || caseProps['type'] !== 'case') {
+      throw new Error(`[NOT_FOUND] Case ${input.caseId} not found in the graph`);
+    }
+
+    const trimmedRationale = input.rationale.trim();
+    if (trimmedRationale.length === 0) {
+      throw new Error('[INVALID_INPUT] Rationale is required for a case decision');
+    }
+
+    const followOnKind: CaseFollowOnKind = input.decision === 'adopt'
+      ? (input.followOnKind ?? 'quest')
+      : 'none';
+    const decisionId = deriveId('decision:', input.id, input.idempotencyKey);
+    const decidedAt = Date.now();
+    const title = typeof caseProps['title'] === 'string'
+      ? caseProps['title']
+      : typeof caseProps['question'] === 'string'
+        ? caseProps['question']
+        : input.caseId;
+    const question = typeof caseProps['question'] === 'string'
+      ? caseProps['question']
+      : typeof caseProps['decision_question'] === 'string'
+        ? caseProps['decision_question']
+        : title;
+    const concernEdges = (await graph.neighbors(input.caseId, 'outgoing'))
+      .filter((edge) => edge.label === 'concerns');
+    const subjectIds = concernEdges.map((edge) => edge.nodeId);
+    const primarySubjectId = subjectIds[0];
+
+    let followOnArtifactId: string | undefined;
+    let followOnArtifactKind: Exclude<CaseFollowOnKind, 'none'> | undefined;
+    if (input.decision === 'adopt' && followOnKind === 'quest') {
+      const quest = new Quest({
+        id: deriveId(
+          'task:',
+          undefined,
+          input.idempotencyKey ? `${input.idempotencyKey}:quest` : `case-decision:${input.caseId}:quest`,
+        ),
+        title: questTitleFromSuggestion(title),
+        status: 'BACKLOG',
+        hours: 0,
+        priority: DEFAULT_QUEST_PRIORITY,
+        description: [question.trim(), '', `Decision rationale\n${trimmedRationale}`].join('\n').trim(),
+        taskKind: 'delivery',
+        type: 'task',
+      });
+      await graph.patch((p) => {
+        p.addNode(quest.id)
+          .setProperty(quest.id, 'status', quest.status)
+          .setProperty(quest.id, 'title', quest.title)
+          .setProperty(quest.id, 'hours', quest.hours)
+          .setProperty(quest.id, 'priority', quest.priority)
+          .setProperty(quest.id, 'task_kind', quest.taskKind)
+          .setProperty(quest.id, 'type', quest.type)
+          .setProperty(quest.id, 'description', quest.description ?? question);
+        if (primarySubjectId?.startsWith('campaign:')) {
+          p.addEdge(quest.id, primarySubjectId, 'belongs-to');
+        }
+      });
+      followOnArtifactId = quest.id;
+      followOnArtifactKind = 'quest';
+    } else if (input.decision === 'adopt' && followOnKind === 'proposal') {
+      const proposal = await this.createProposal({
+        kind: 'case-decision-follow-on',
+        subjectId: input.caseId,
+        targetId: primarySubjectId,
+        payload: {
+          caseId: input.caseId,
+          decision: input.decision,
+          question,
+          subjectIds,
+        },
+        rationale: trimmedRationale,
+        proposedBy: input.decidedBy,
+        observerProfileId: 'observer:default',
+        policyPackVersion: 'policy:default',
+        idempotencyKey: input.idempotencyKey
+          ? `${input.idempotencyKey}:proposal`
+          : `case-decision:${input.caseId}:proposal`,
+      });
+      followOnArtifactId = proposal.id;
+      followOnArtifactKind = 'proposal';
+    }
+
+    const expectedDelta = caseDecisionExpectedDelta(input.decision, followOnKind);
+    const patch = await graph.patch((p) => {
+      p.addNode(decisionId)
+        .setProperty(decisionId, 'type', 'decision')
+        .setProperty(decisionId, 'kind', input.decision)
+        .setProperty(decisionId, 'decision_scope', 'case')
+        .setProperty(decisionId, 'case_id', input.caseId)
+        .setProperty(decisionId, 'decided_by', input.decidedBy)
+        .setProperty(decisionId, 'decided_at', decidedAt)
+        .setProperty(decisionId, 'rationale', trimmedRationale)
+        .setProperty(decisionId, 'expected_delta', expectedDelta)
+        .addEdge(decisionId, input.caseId, 'decides')
+        .setProperty(
+          input.caseId,
+          'status',
+          input.decision === 'request-evidence'
+            ? 'gathering-briefs'
+            : input.decision === 'defer'
+              ? 'deferred'
+              : 'decided',
+        );
+      if (followOnArtifactId && followOnArtifactKind) {
+        p.setProperty(decisionId, 'follow_on_artifact_id', followOnArtifactId)
+          .setProperty(decisionId, 'follow_on_artifact_kind', followOnArtifactKind)
+          .addEdge(decisionId, followOnArtifactId, 'causes');
+      }
+    });
+
+    return {
+      decisionId,
+      caseId: input.caseId,
+      decision: input.decision,
+      ...(followOnArtifactId ? { followOnArtifactId } : {}),
+      ...(followOnArtifactKind ? { followOnArtifactKind } : {}),
+      patch,
+      decidedAt,
+    };
+  }
+
+  public async adoptAiSuggestion(input: ResolveAiSuggestionInput): Promise<{
+    suggestionId: string;
+    adoptedArtifactId: string;
+    adoptedArtifactKind: AiSuggestionAdoptionKind;
+    patch: string;
+    resolvedAt: number;
+  }> {
+    const graph = await this.graphPort.getGraph();
+    const props = await graph.getNodeProps(input.suggestionId);
+    if (!props || props['type'] !== 'ai_suggestion') {
+      throw new Error(`[NOT_FOUND] AI suggestion ${input.suggestionId} not found in the graph`);
+    }
+
+    const status = props['status'];
+    if (status === 'accepted' || status === 'implemented' || status === 'rejected') {
+      throw new Error(`[INVALID_STATE] AI suggestion ${input.suggestionId} is ${String(status)}, not adoptable`);
+    }
+    const trimmedRationale = input.rationale?.trim() ?? '';
+    if (!trimmedRationale) {
+      throw new Error('[INVALID_INPUT] Rationale is required to adopt an AI suggestion');
+    }
+
+    const targetId = typeof props['target_id'] === 'string' ? props['target_id'] : undefined;
+    const title = typeof props['title'] === 'string' ? props['title'] : input.suggestionId;
+    const summary = typeof props['summary'] === 'string' ? props['summary'] : '';
+    const kind = typeof props['suggestion_kind'] === 'string' ? props['suggestion_kind'] : 'general';
+    const why = typeof props['why'] === 'string' ? props['why'] : undefined;
+    const evidence = typeof props['evidence'] === 'string' ? props['evidence'] : undefined;
+    const nextAction = typeof props['next_action'] === 'string' ? props['next_action'] : undefined;
+    const relatedIdsRaw = typeof props['related_ids'] === 'string' ? props['related_ids'] : undefined;
+    const relatedIds = relatedIdsRaw
+      ? (() : string[] => {
+          try {
+            const parsed = JSON.parse(relatedIdsRaw) as unknown;
+            return Array.isArray(parsed)
+              ? parsed.filter((entry): entry is string => typeof entry === 'string')
+              : [];
+          } catch {
+            return [];
+          }
+        })()
+      : [];
+    const adoptedArtifactKind = input.adoptedArtifactKind ?? defaultAiSuggestionAdoptionKind(kind as AiSuggestionKind);
+    let adoptedArtifactId: string;
+    if (adoptedArtifactKind === 'quest') {
+      const quest = new Quest({
+        id: deriveId(
+          'task:',
+          undefined,
+          input.idempotencyKey
+            ? `${input.idempotencyKey}:quest`
+            : `suggestion-adopt:${input.suggestionId}:quest`,
+        ),
+        title: questTitleFromSuggestion(title),
+        status: 'BACKLOG',
+        hours: 0,
+        priority: DEFAULT_QUEST_PRIORITY,
+        description: buildSuggestionQuestDescription({ summary, why, evidence, nextAction }),
+        taskKind: suggestionQuestKind(kind as AiSuggestionKind),
+        type: 'task',
+      });
+      const campaignId = relatedIds.find((entry) => entry.startsWith('campaign:'))
+        ?? (targetId?.startsWith('campaign:') ? targetId : undefined);
+      await graph.patch((p) => {
+        p.addNode(quest.id)
+          .setProperty(quest.id, 'status', quest.status)
+          .setProperty(quest.id, 'title', quest.title)
+          .setProperty(quest.id, 'hours', quest.hours)
+          .setProperty(quest.id, 'priority', quest.priority)
+          .setProperty(quest.id, 'task_kind', quest.taskKind)
+          .setProperty(quest.id, 'type', quest.type)
+          .setProperty(quest.id, 'description', quest.description ?? summary)
+          .addEdge(input.suggestionId, quest.id, 'suggests');
+        if (campaignId) {
+          p.addEdge(quest.id, campaignId, 'belongs-to');
+        }
+      });
+      adoptedArtifactId = quest.id;
+    } else {
+      const proposal = await this.createProposal({
+        kind: 'ai-suggestion-adoption',
+        subjectId: input.suggestionId,
+        targetId,
+        payload: {
+          suggestionId: input.suggestionId,
+          suggestionKind: kind,
+          title,
+          summary,
+          why: why ?? null,
+          evidence: evidence ?? null,
+          nextAction: nextAction ?? null,
+          relatedIds,
+          adoptedArtifactKind,
+        },
+        rationale: trimmedRationale,
+        proposedBy: input.resolvedBy,
+        observerProfileId: 'observer:default',
+        policyPackVersion: 'policy:default',
+        idempotencyKey: input.idempotencyKey
+          ? `${input.idempotencyKey}:proposal`
+          : `suggestion-adopt:${input.suggestionId}`,
+      });
+      adoptedArtifactId = proposal.id;
+    }
+
+    const resolvedAt = Date.now();
+    const patch = await graph.patch((p) => {
+      p.setProperty(input.suggestionId, 'status', 'accepted')
+        .setProperty(input.suggestionId, 'resolved_by', input.resolvedBy)
+        .setProperty(input.suggestionId, 'resolved_at', resolvedAt)
+        .setProperty(input.suggestionId, 'resolution_kind', 'adopted')
+        .setProperty(input.suggestionId, 'adopted_artifact_id', adoptedArtifactId)
+        .setProperty(input.suggestionId, 'adopted_artifact_kind', adoptedArtifactKind);
+      p.setProperty(input.suggestionId, 'resolution_rationale', trimmedRationale);
+    });
+
+    return {
+      suggestionId: input.suggestionId,
+      adoptedArtifactId,
+      adoptedArtifactKind,
+      patch,
+      resolvedAt,
+    };
+  }
+
+  public async dismissAiSuggestion(input: DismissAiSuggestionInput): Promise<{
+    suggestionId: string;
+    patch: string;
+    resolvedAt: number;
+  }> {
+    const graph = await this.graphPort.getGraph();
+    const props = await graph.getNodeProps(input.suggestionId);
+    if (!props || props['type'] !== 'ai_suggestion') {
+      throw new Error(`[NOT_FOUND] AI suggestion ${input.suggestionId} not found in the graph`);
+    }
+    const status = props['status'];
+    if (status === 'accepted' || status === 'implemented' || status === 'rejected') {
+      throw new Error(`[INVALID_STATE] AI suggestion ${input.suggestionId} is ${String(status)}, not dismissible`);
+    }
+    const trimmedRationale = input.rationale.trim();
+    if (trimmedRationale.length === 0) {
+      throw new Error('[INVALID_INPUT] Rationale is required to dismiss an AI suggestion');
+    }
+
+    const resolvedAt = Date.now();
+    const patch = await graph.patch((p) => {
+      p.setProperty(input.suggestionId, 'status', 'rejected')
+        .setProperty(input.suggestionId, 'resolved_by', input.resolvedBy)
+        .setProperty(input.suggestionId, 'resolved_at', resolvedAt)
+        .setProperty(input.suggestionId, 'resolution_kind', 'dismissed')
+        .setProperty(input.suggestionId, 'resolution_rationale', trimmedRationale);
+    });
+
+    return {
+      suggestionId: input.suggestionId,
+      patch,
+      resolvedAt,
+    };
+  }
+
+  public async supersedeAiSuggestion(input: SupersedeAiSuggestionInput): Promise<{
+    suggestionId: string;
+    supersededById: string;
+    patch: string;
+    resolvedAt: number;
+  }> {
+    const graph = await this.graphPort.getGraph();
+    const props = await graph.getNodeProps(input.suggestionId);
+    if (!props || props['type'] !== 'ai_suggestion') {
+      throw new Error(`[NOT_FOUND] AI suggestion ${input.suggestionId} not found in the graph`);
+    }
+    if (!await graph.hasNode(input.supersededById)) {
+      throw new Error(`[NOT_FOUND] Replacement artifact ${input.supersededById} not found in the graph`);
+    }
+    const status = props['status'];
+    if (status === 'accepted' || status === 'implemented' || status === 'rejected') {
+      throw new Error(`[INVALID_STATE] AI suggestion ${input.suggestionId} is ${String(status)}, not supersedable`);
+    }
+    const trimmedRationale = input.rationale?.trim() ?? '';
+    if (!trimmedRationale) {
+      throw new Error('[INVALID_INPUT] Rationale is required to supersede an AI suggestion');
+    }
+
+    const resolvedAt = Date.now();
+    const patch = await graph.patch((p) => {
+      p.setProperty(input.suggestionId, 'status', 'rejected')
+        .setProperty(input.suggestionId, 'resolved_by', input.resolvedBy)
+        .setProperty(input.suggestionId, 'resolved_at', resolvedAt)
+        .setProperty(input.suggestionId, 'resolution_kind', 'superseded')
+        .setProperty(input.suggestionId, 'superseded_by_id', input.supersededById)
+        .setProperty(input.suggestionId, 'resolution_rationale', trimmedRationale)
+        .addEdge(input.supersededById, input.suggestionId, 'supersedes');
+    });
+
+    return {
+      suggestionId: input.suggestionId,
+      supersededById: input.supersededById,
+      patch,
+      resolvedAt,
     };
   }
 

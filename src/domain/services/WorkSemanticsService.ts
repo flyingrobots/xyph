@@ -96,6 +96,16 @@ export interface GovernanceWorkSemantics extends WorkSemantics {
   progress: GovernanceProgress;
 }
 
+export interface CaseWorkSemantics extends WorkSemantics {
+  kind: 'case';
+  question: string;
+  status: string;
+  impact: string;
+  risk: string;
+  authority: string;
+  briefCount: number;
+}
+
 export interface SuggestionWorkSemantics extends WorkSemantics {
   kind: 'suggestion';
   suggestionKind: AiSuggestionKind;
@@ -108,6 +118,7 @@ export interface SuggestionWorkSemantics extends WorkSemantics {
 export type AgentWorkSemantics =
   | QuestWorkSemantics
   | SubmissionWorkSemantics
+  | CaseWorkSemantics
   | GovernanceWorkSemantics
   | SuggestionWorkSemantics;
 
@@ -137,6 +148,8 @@ function actionLabel(kind: string): string {
       return 'Settle approved submission';
     case 'inspect':
       return 'Inspect context';
+    case 'brief':
+      return 'Prepare recommendation brief';
     case 'suggest':
       return 'Publish advisory suggestion';
     default:
@@ -800,6 +813,93 @@ export function buildSuggestionWorkSemantics(
     progress: buildSuggestionProgress(suggestion),
     blockingReasons: uniqueMessages(blockingReasons),
     missingEvidence: uniqueMessages(missingEvidence),
+    nextLawfulActions,
+    expectedActor,
+    attentionState,
+  };
+}
+
+export function buildCaseWorkSemantics(input: {
+  caseId: string;
+  question: string;
+  status: string;
+  impact: string;
+  risk: string;
+  authority: string;
+  briefCount: number;
+}): CaseWorkSemantics {
+  const {
+    caseId,
+    question,
+    status,
+    impact,
+    risk,
+    authority,
+    briefCount,
+  } = input;
+
+  const normalizedStatus = status.trim().toLowerCase();
+  const blockingReasons = uniqueMessages([
+    normalizedStatus === 'stale' ? 'The case context drifted and needs refreshed preparation before judgment.' : '',
+    normalizedStatus === 'invalidated' ? 'The governing subject changed enough to invalidate the current case packet.' : '',
+  ]);
+
+  const missingEvidence = uniqueMessages([
+    briefCount === 0 && ['open', 'gathering-briefs', 'prepared'].includes(normalizedStatus)
+      ? 'No recommendation brief has been attached to this case yet.'
+      : '',
+  ]);
+
+  const nextLawfulActions: NextLawfulAction[] = [];
+  if (['open', 'gathering-briefs', 'prepared'].includes(normalizedStatus)) {
+    nextLawfulActions.push({
+      kind: 'brief',
+      label: actionLabel('brief'),
+      allowed: true,
+      reason: 'Open case is waiting for one or more recommendation briefs before human judgment.',
+      blockedBy: [],
+      targetId: caseId,
+    });
+  }
+
+  if (normalizedStatus === 'ready-for-judgment') {
+    nextLawfulActions.push({
+      kind: 'inspect',
+      label: actionLabel('inspect'),
+      allowed: true,
+      reason: 'Case is ready for a human judgment pass with the currently attached briefs.',
+      blockedBy: [],
+      targetId: caseId,
+    });
+  }
+
+  let expectedActor: ExpectedActor = 'unknown';
+  let attentionState: WorkAttentionState = 'none';
+
+  if (blockingReasons.length > 0) {
+    expectedActor = 'human';
+    attentionState = 'blocked';
+  } else if (normalizedStatus === 'ready-for-judgment') {
+    expectedActor = 'human';
+    attentionState = 'review';
+  } else if (nextLawfulActions.some((action) => action.kind === 'brief' && action.allowed)) {
+    expectedActor = 'agent';
+    attentionState = 'ready';
+  } else if (['decided', 'applied', 'closed'].includes(normalizedStatus)) {
+    expectedActor = 'system';
+    attentionState = 'none';
+  }
+
+  return {
+    kind: 'case',
+    question,
+    status,
+    impact,
+    risk,
+    authority,
+    briefCount,
+    blockingReasons,
+    missingEvidence,
     nextLawfulActions,
     expectedActor,
     attentionState,

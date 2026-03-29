@@ -12,6 +12,7 @@ import {
   selectedLaneItem,
   shortId,
   shortPrincipal,
+  suggestionViewCounts,
   suggestionsViewTitle,
   type CockpitItem,
 } from '../cockpit.js';
@@ -275,6 +276,14 @@ function attentionBadge(style: StylePort, count: number, tone: 'none' | 'review'
 }
 
 function rowSupportText(item: CockpitItem): string {
+  if (item.kind === 'ai-suggestion' && item.suggestion.linkedCaseId) {
+    const caseSummary = item.suggestion.linkedCaseStatus
+      ? `linked case ${shortId(item.suggestion.linkedCaseId)} · ${item.suggestion.linkedCaseStatus}`
+      : `linked case ${shortId(item.suggestion.linkedCaseId)}`;
+    return [caseSummary, item.attentionReason || item.secondary || item.operationReason || '']
+      .filter(Boolean)
+      .join(' · ');
+  }
   return item.attentionReason || item.secondary || item.operationReason || '';
 }
 
@@ -899,7 +908,27 @@ function renderWorklistPane(model: DashboardModel, snapshot: GraphSnapshot, styl
 
   const lines = viewport.lines;
   if (items.length === 0) {
-    lines.push(style.styled(style.theme.semantic.muted, 'No items in this lane.'));
+    if (model.lane === 'suggestions') {
+      const counts = suggestionViewCounts(snapshot);
+      lines.push(style.styled(style.theme.semantic.muted, `No items in ${suggestionsViewTitle(model.suggestionsView).toLowerCase()}.`));
+      lines.push('');
+      lines.push(style.styled(style.theme.semantic.info, 'Suggestion views'));
+      lines.push(style.styled(
+        style.theme.semantic.muted,
+        `Incoming ${counts.incoming} · Queued ${counts.queued} · Adopted ${counts.adopted} · Dismissed ${counts.dismissed}`,
+      ));
+      lines.push(style.styled(style.theme.semantic.primary, 'Press v to cycle suggestion views.'));
+      const myOutstanding = snapshot.aiSuggestions.filter((suggestion) =>
+        (suggestion.suggestedBy === model.agentId || suggestion.requestedBy === model.agentId)
+        && suggestion.status !== 'implemented'
+        && suggestion.status !== 'rejected',
+      ).length;
+      if (myOutstanding > 0) {
+        lines.push(style.styled(style.theme.semantic.primary, `Press m to open My Stuff (${myOutstanding} of your suggestions still active).`));
+      }
+    } else {
+      lines.push(style.styled(style.theme.semantic.muted, 'No items in this lane.'));
+    }
   } else {
     const range = `${start + 1}-${Math.max(start + 1, viewport.endIndex)} of ${items.length}`;
     if (lines.length < innerHeight) {
@@ -1079,6 +1108,14 @@ function renderAiSuggestionDetail(style: StylePort, suggestion: AiSuggestionNode
   pushField(lines, 'Actor', shortPrincipal(suggestion.suggestedBy), { width });
   pushField(lines, 'When', `${formatAge(suggestion.suggestedAt)} ago`, { width });
   pushField(lines, 'Target', suggestion.targetId ? shortId(suggestion.targetId) : '—', { width });
+  if (suggestion.linkedCaseId) {
+    pushField(
+      lines,
+      'Case',
+      suggestion.linkedCaseStatus ? `${shortId(suggestion.linkedCaseId)} · ${suggestion.linkedCaseStatus}` : shortId(suggestion.linkedCaseId),
+      { width },
+    );
+  }
   if (suggestion.requestedBy) {
     pushField(lines, 'Requested', shortPrincipal(suggestion.requestedBy), { width });
   }

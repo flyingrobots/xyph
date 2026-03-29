@@ -5,7 +5,7 @@ import type { SubmissionReadModel } from '../../domain/services/SubmissionServic
 import type { QuestStatus } from '../../domain/entities/Quest.js';
 import { VALID_STATUSES as VALID_QUEST_STATUSES } from '../../domain/entities/Quest.js';
 import type { PatchsetRef, ReviewRef, DecisionProps } from '../../domain/entities/Submission.js';
-import type WarpGraph from '@git-stunts/git-warp';
+import type { WarpCore as WarpGraph } from '@git-stunts/git-warp';
 
 /**
  * WarpSubmissionAdapter — graph-only persistence for the submission lifecycle.

@@ -66,7 +66,7 @@ export function registerAnalyzeCommands(program: Command, ctx: CliContext): void
       // --- Fetch snapshot ---
       const { createGraphContext } = await import('../../infrastructure/GraphContext.js');
       const graphCtx = createGraphContext(ctx.graphPort);
-      const snapshot = await graphCtx.fetchSnapshot();
+      const snapshot = await graphCtx.fetchSnapshot(undefined, { profile: 'analysis' });
 
       // --- Glob test files ---
       const { globSync } = await import('node:fs');

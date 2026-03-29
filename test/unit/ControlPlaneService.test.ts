@@ -44,6 +44,7 @@ const mocks = vi.hoisted(() => ({
   compareCoordinates: vi.fn(),
   planCoordinateTransfer: vi.fn(),
   queryRun: vi.fn(),
+  queryAggregate: vi.fn(),
   getFrontier: vi.fn(),
   getStateSnapshot: vi.fn(),
   getGraph: vi.fn(),
@@ -152,7 +153,7 @@ function makeWorkingSetDescriptor(
 ) {
   return {
     schemaVersion: 1,
-    workingSetId: overrides.workingSetId ?? 'wl_review-auth',
+    strandId: overrides.workingSetId ?? 'wl_review-auth',
     graphName: 'xyph',
     createdAt: '2026-03-16T00:00:00.000Z',
     updatedAt: '2026-03-16T00:00:00.000Z',
@@ -175,11 +176,31 @@ function makeWorkingSetDescriptor(
       writable: overrides.overlayWritable ?? true,
     },
     braid: {
-      readOverlays: overrides.braidReadOverlays ?? [],
+      readOverlays: (overrides.braidReadOverlays ?? []).map((overlay) => ({
+        strandId: overlay.workingSetId,
+        overlayId: overlay.overlayId,
+        kind: overlay.kind,
+        headPatchSha: overlay.headPatchSha,
+        patchCount: overlay.patchCount,
+      })),
     },
     materialization: {
       cacheAuthority: 'derived' as const,
     },
+  };
+}
+
+function makeQueryBuilder(pattern?: string) {
+  return {
+    match: vi.fn((nextPattern: string | string[]) => makeQueryBuilder(
+      Array.isArray(nextPattern) ? nextPattern.join('|') : nextPattern,
+    )),
+    select: vi.fn(() => ({
+      run: () => mocks.queryRun(),
+    })),
+    aggregate: vi.fn(() => ({
+      run: () => mocks.queryAggregate(pattern),
+    })),
   };
 }
 
@@ -203,10 +224,10 @@ function makeCoordinateComparison(
     ...(overrides.scope ? { scope: overrides.scope } : {}),
     left: {
       requested: leftWorkingSetId
-        ? { kind: 'working_set', workingSetId: leftWorkingSetId }
+        ? { kind: 'strand', strandId: leftWorkingSetId }
         : { kind: 'live' },
       resolved: {
-        coordinateKind: leftWorkingSetId ? 'working_set' : 'frontier',
+        coordinateKind: leftWorkingSetId ? 'strand' : 'frontier',
         patchFrontier: { 'agent.prime': 'patch:left' },
         patchFrontierDigest: 'patch-frontier:left',
         lamportFrontier: { 'agent.prime': 12 },
@@ -224,15 +245,15 @@ function makeCoordinateComparison(
         ...(leftWorkingSetId === null
           ? {}
           : {
-            workingSet: {
-              workingSetId: leftWorkingSetId,
+            strand: {
+              strandId: leftWorkingSetId,
               baseLamportCeiling: null,
               overlayHeadPatchSha: null,
               overlayPatchCount: 1,
               overlayWritable: true,
               braid: {
                 readOverlayCount: 0,
-                braidedWorkingSetIds: [],
+                braidedStrandIds: [],
               },
             },
           }),
@@ -240,10 +261,10 @@ function makeCoordinateComparison(
     },
     right: {
       requested: rightWorkingSetId
-        ? { kind: 'working_set', workingSetId: rightWorkingSetId }
+        ? { kind: 'strand', strandId: rightWorkingSetId }
         : { kind: 'live' },
       resolved: {
-        coordinateKind: rightWorkingSetId ? 'working_set' : 'frontier',
+        coordinateKind: rightWorkingSetId ? 'strand' : 'frontier',
         patchFrontier: { 'agent.prime': 'patch:right' },
         patchFrontierDigest: 'patch-frontier:right',
         lamportFrontier: { 'agent.prime': 11 },
@@ -261,15 +282,15 @@ function makeCoordinateComparison(
         ...(rightWorkingSetId === null
           ? {}
           : {
-            workingSet: {
-              workingSetId: rightWorkingSetId,
+            strand: {
+              strandId: rightWorkingSetId,
               baseLamportCeiling: null,
               overlayHeadPatchSha: null,
               overlayPatchCount: 0,
               overlayWritable: true,
               braid: {
                 readOverlayCount: 0,
-                braidedWorkingSetIds: [],
+                braidedStrandIds: [],
               },
             },
           }),
@@ -394,10 +415,10 @@ function makeCoordinateTransferPlan(
     changed: overrides.changed ?? true,
     source: {
       requested: sourceWorkingSetId
-        ? { kind: 'working_set', workingSetId: sourceWorkingSetId }
+        ? { kind: 'strand', strandId: sourceWorkingSetId }
         : { kind: 'live' },
       resolved: {
-        coordinateKind: sourceWorkingSetId ? 'working_set' : 'frontier',
+        coordinateKind: sourceWorkingSetId ? 'strand' : 'frontier',
         patchFrontier: { 'agent.prime': 'patch:left' },
         patchFrontierDigest: 'patch-frontier:left',
         lamportFrontier: { 'agent.prime': 12 },
@@ -415,15 +436,15 @@ function makeCoordinateTransferPlan(
         ...(sourceWorkingSetId === null
           ? {}
           : {
-            workingSet: {
-              workingSetId: sourceWorkingSetId,
+            strand: {
+              strandId: sourceWorkingSetId,
               baseLamportCeiling: null,
               overlayHeadPatchSha: null,
               overlayPatchCount: 1,
               overlayWritable: true,
               braid: {
                 readOverlayCount: 0,
-                braidedWorkingSetIds: [],
+                braidedStrandIds: [],
               },
             },
           }),
@@ -431,10 +452,10 @@ function makeCoordinateTransferPlan(
     },
     target: {
       requested: targetWorkingSetId
-        ? { kind: 'working_set', workingSetId: targetWorkingSetId }
+        ? { kind: 'strand', strandId: targetWorkingSetId }
         : { kind: 'live' },
       resolved: {
-        coordinateKind: targetWorkingSetId ? 'working_set' : 'frontier',
+        coordinateKind: targetWorkingSetId ? 'strand' : 'frontier',
         patchFrontier: { 'agent.prime': 'patch:right' },
         patchFrontierDigest: 'patch-frontier:right',
         lamportFrontier: { 'agent.prime': 12 },
@@ -452,15 +473,15 @@ function makeCoordinateTransferPlan(
         ...(targetWorkingSetId === null
           ? {}
           : {
-            workingSet: {
-              workingSetId: targetWorkingSetId,
+            strand: {
+              strandId: targetWorkingSetId,
               baseLamportCeiling: null,
               overlayHeadPatchSha: null,
               overlayPatchCount: 0,
               overlayWritable: true,
               braid: {
                 readOverlayCount: 0,
-                braidedWorkingSetIds: [],
+                braidedStrandIds: [],
               },
             },
           }),
@@ -509,7 +530,7 @@ vi.mock('../../src/infrastructure/GraphContext.js', () => ({
     },
     fetchEntityDetail: async (id: string) => {
       await opts?.materializeGraph?.(graph);
-      return mocks.fetchEntityDetail(id);
+      return mocks.fetchEntityDetail(id, graph);
     },
     graph: {
       getStateSnapshot: graph.getStateSnapshot,
@@ -645,46 +666,93 @@ describe('ControlPlaneService', () => {
       }),
     );
     mocks.queryRun.mockResolvedValue({ nodes: [] });
+    mocks.queryAggregate.mockImplementation(async (pattern?: string) => {
+      const counts: Record<string, number> = {
+        'campaign:*': 1,
+        'milestone:*': 2,
+        'task:*': 2,
+        'intent:*': 3,
+        'approval:*': 4,
+        'artifact:*': 5,
+        'submission:*': 6,
+        'review:*': 7,
+        'decision:*': 8,
+        'story:*': 9,
+        'req:*': 10,
+        'criterion:*': 11,
+        'evidence:*': 12,
+        'policy:*': 13,
+        'suggestion:*': 14,
+      };
+      return {
+        stateHash: `state:${pattern ?? 'unknown'}`,
+        count: counts[pattern ?? ''] ?? 0,
+      };
+    });
+    const makeWorldline = () => ({
+      query: vi.fn(() => makeQueryBuilder()),
+      hasNode: vi.fn(async () => true),
+      getNodeProps: mocks.getNodeProps,
+      getContentOid: vi.fn(async () => null),
+      getContent: vi.fn(async () => null),
+      getEdges: vi.fn(async () => []),
+      traverse: {
+        topologicalSort: vi.fn(async (ids: string | string[]) => ({
+          sorted: Array.isArray(ids) ? ids : [ids],
+          hasCycle: false,
+        })),
+        bfs: vi.fn(async () => []),
+      },
+    });
     mocks.getGraph.mockResolvedValue({
+      writerId: 'agent.prime',
       getFrontier: mocks.getFrontier,
       getStateSnapshot: mocks.getStateSnapshot,
       hasNode: vi.fn(async () => true),
       getNodeProps: mocks.getNodeProps,
       syncCoverage: vi.fn(async () => null),
       materialize: vi.fn(async () => null),
-      query: vi.fn(() => ({
-        match: vi.fn(() => ({
-          select: vi.fn(() => ({
-            run: mocks.queryRun,
-          })),
-        })),
-      })),
+      query: vi.fn(() => makeQueryBuilder()),
       patchesFor: vi.fn(async () => ['patch:1', 'patch:2']),
       createWorkingSet: mocks.createWorkingSet,
+      createStrand: mocks.createWorkingSet,
       braidWorkingSet: mocks.braidWorkingSet,
+      braidStrand: mocks.braidWorkingSet,
       analyzeConflicts: mocks.analyzeConflicts,
       materializeWorkingSet: mocks.materializeWorkingSet,
+      materializeStrand: mocks.materializeWorkingSet,
       getWorkingSet: mocks.getWorkingSet,
+      getStrand: mocks.getWorkingSet,
       patchesForWorkingSet: mocks.patchesForWorkingSet,
+      patchesForStrand: mocks.patchesForWorkingSet,
       compareCoordinates: mocks.compareCoordinates,
       planCoordinateTransfer: mocks.planCoordinateTransfer,
+      worldline: vi.fn(async () => makeWorldline()),
     });
     mocks.openIsolatedGraph.mockResolvedValue({
+      writerId: 'agent.prime',
       getFrontier: mocks.getFrontier,
       getStateSnapshot: mocks.getStateSnapshot,
       hasNode: vi.fn(async () => true),
       getNodeProps: mocks.getNodeProps,
       syncCoverage: vi.fn(async () => null),
       materialize: vi.fn(async () => null),
+      query: vi.fn(() => makeQueryBuilder()),
       patchesFor: vi.fn(async () => ['patch:1']),
       materializeWorkingSet: mocks.materializeWorkingSet,
+      materializeStrand: mocks.materializeWorkingSet,
       getWorkingSet: mocks.getWorkingSet,
+      getStrand: mocks.getWorkingSet,
       patchesForWorkingSet: mocks.patchesForWorkingSet,
+      patchesForStrand: mocks.patchesForWorkingSet,
       createWorkingSet: mocks.createWorkingSet,
+      createStrand: mocks.createWorkingSet,
       braidWorkingSet: mocks.braidWorkingSet,
+      braidStrand: mocks.braidWorkingSet,
       analyzeConflicts: mocks.analyzeConflicts,
       compareCoordinates: mocks.compareCoordinates,
       planCoordinateTransfer: mocks.planCoordinateTransfer,
+      worldline: vi.fn(async () => makeWorldline()),
     });
     mocks.analyzeConflicts.mockResolvedValue({
       analysisVersion: 'conflict-analyzer/v2',
@@ -794,6 +862,7 @@ describe('ControlPlaneService', () => {
       event: 'start',
       cmd: 'observe',
     }));
+    expect(mocks.fetchSnapshot).not.toHaveBeenCalled();
     expect(result).toEqual(expect.objectContaining({
       v: CONTROL_PLANE_VERSION,
       id: 'req-1',
@@ -801,6 +870,12 @@ describe('ControlPlaneService', () => {
       cmd: 'observe',
       data: expect.objectContaining({
         projection: 'graph.summary',
+        counts: expect.objectContaining({
+          campaigns: 3,
+          approvals: 4,
+          quests: 2,
+          suggestions: 14,
+        }),
       }),
       observation: expect.objectContaining({
         worldlineId: 'worldline:live',
@@ -838,11 +913,17 @@ describe('ControlPlaneService', () => {
 
     expect(mocks.openIsolatedGraph).toHaveBeenCalledTimes(1);
     expect(mocks.materializeWorkingSet).toHaveBeenCalledWith('wl_review-auth', { ceiling: 10 });
+    expect(mocks.fetchSnapshot).not.toHaveBeenCalled();
     expect(result).toEqual(expect.objectContaining({
       ok: true,
       data: expect.objectContaining({
         projection: 'worldline.summary',
         at: { tick: 10 },
+        counts: expect.objectContaining({
+          campaigns: 3,
+          approvals: 4,
+          quests: 2,
+        }),
       }),
       observation: expect.objectContaining({
         worldlineId: 'worldline:review-auth',
@@ -970,7 +1051,7 @@ describe('ControlPlaneService', () => {
     });
 
     expect(mocks.createWorkingSet).toHaveBeenCalledWith({
-      workingSetId: 'wl_review-auth',
+      strandId: 'wl_review-auth',
       lamportCeiling: 11,
       owner: 'agent.prime',
       scope: 'OAuth review',
@@ -1058,7 +1139,7 @@ describe('ControlPlaneService', () => {
     });
 
     expect(mocks.braidWorkingSet).toHaveBeenCalledWith('wl_review-auth', {
-      braidedWorkingSetIds: ['wl_hold-auth', 'wl_audit-auth'],
+      braidedStrandIds: ['wl_hold-auth', 'wl_audit-auth'],
       writable: false,
     });
     expect(mocks.materializeWorkingSet).toHaveBeenCalledWith('wl_review-auth');
@@ -1271,12 +1352,12 @@ describe('ControlPlaneService', () => {
     });
 
     expect(mocks.compareCoordinates).toHaveBeenNthCalledWith(1, {
-      left: { kind: 'working_set', workingSetId: 'wl_review-auth' },
+      left: { kind: 'strand', strandId: 'wl_review-auth' },
       right: { kind: 'live' },
       targetId: 'task:ONE',
     });
     expect(mocks.compareCoordinates).toHaveBeenNthCalledWith(2, {
-      left: { kind: 'working_set', workingSetId: 'wl_review-auth' },
+      left: { kind: 'strand', strandId: 'wl_review-auth' },
       right: { kind: 'live' },
       targetId: 'task:ONE',
       scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
@@ -1393,12 +1474,12 @@ describe('ControlPlaneService', () => {
     });
 
     expect(mocks.compareCoordinates).toHaveBeenNthCalledWith(1, {
-      left: { kind: 'working_set', workingSetId: 'wl_review-auth', ceiling: 12 },
-      right: { kind: 'working_set', workingSetId: 'wl_release-review', ceiling: 10 },
+      left: { kind: 'strand', strandId: 'wl_review-auth', ceiling: 12 },
+      right: { kind: 'strand', strandId: 'wl_release-review', ceiling: 10 },
     });
     expect(mocks.compareCoordinates).toHaveBeenNthCalledWith(2, {
-      left: { kind: 'working_set', workingSetId: 'wl_review-auth', ceiling: 12 },
-      right: { kind: 'working_set', workingSetId: 'wl_release-review', ceiling: 10 },
+      left: { kind: 'strand', strandId: 'wl_review-auth', ceiling: 12 },
+      right: { kind: 'strand', strandId: 'wl_release-review', ceiling: 10 },
       scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
     });
     expect(result).toEqual(expect.objectContaining({
@@ -1578,16 +1659,16 @@ describe('ControlPlaneService', () => {
     });
 
     expect(mocks.compareCoordinates).toHaveBeenNthCalledWith(1, {
-      left: { kind: 'working_set', workingSetId: 'wl_review-auth' },
+      left: { kind: 'strand', strandId: 'wl_review-auth' },
       right: { kind: 'live' },
     });
     expect(mocks.compareCoordinates).toHaveBeenNthCalledWith(2, {
-      left: { kind: 'working_set', workingSetId: 'wl_review-auth' },
+      left: { kind: 'strand', strandId: 'wl_review-auth' },
       right: { kind: 'live' },
       scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
     });
     expect(mocks.planCoordinateTransfer).toHaveBeenCalledWith({
-      source: { kind: 'working_set', workingSetId: 'wl_review-auth' },
+      source: { kind: 'strand', strandId: 'wl_review-auth' },
       target: { kind: 'live' },
       scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
     });
@@ -2947,28 +3028,6 @@ describe('ControlPlaneService', () => {
   });
 
   it('supports observe at=tick for low-level projections via an isolated historical graph', async () => {
-    mocks.fetchSnapshot.mockResolvedValueOnce({
-      campaigns: [],
-      quests: [],
-      intents: [],
-      scrolls: [],
-      approvals: [],
-      submissions: [],
-      reviews: [],
-      decisions: [],
-      stories: [],
-      requirements: [],
-      criteria: [],
-      evidence: [],
-      policies: [],
-      suggestions: [],
-      asOf: 99,
-      graphMeta: { maxTick: 99, myTick: 42, writerCount: 2, tipSha: 'deadbee' },
-      sortedTaskIds: [],
-      sortedCampaignIds: [],
-      transitiveDownstream: new Map(),
-    });
-
     const service = new ControlPlaneService({
       getGraph: mocks.getGraph,
       openIsolatedGraph: mocks.openIsolatedGraph,
@@ -2986,10 +3045,16 @@ describe('ControlPlaneService', () => {
     });
 
     expect(mocks.openIsolatedGraph).toHaveBeenCalledTimes(1);
+    expect(mocks.fetchSnapshot).not.toHaveBeenCalled();
     expect(result).toEqual(expect.objectContaining({
       ok: true,
       data: expect.objectContaining({
         at: { tick: 42 },
+        counts: expect.objectContaining({
+          campaigns: 3,
+          approvals: 4,
+          quests: 2,
+        }),
       }),
       observation: expect.objectContaining({
         frontierDigest: expect.any(String),
@@ -3026,7 +3091,7 @@ describe('ControlPlaneService', () => {
   it('maps substrate working-set collisions onto invariant_violation for fork_worldline', async () => {
     mocks.createWorkingSet.mockRejectedValueOnce(Object.assign(
       new Error("Working set 'wl_review-auth' already exists"),
-      { code: 'E_WORKING_SET_ALREADY_EXISTS' },
+      { code: 'E_STRAND_ALREADY_EXISTS' },
     ));
 
     const service = new ControlPlaneService({
@@ -3051,7 +3116,7 @@ describe('ControlPlaneService', () => {
         details: expect.objectContaining({
           worldlineId: 'worldline:review-auth',
           workingSetId: 'wl_review-auth',
-          substrateCode: 'E_WORKING_SET_ALREADY_EXISTS',
+          substrateCode: 'E_STRAND_ALREADY_EXISTS',
         }),
       }),
     }));
@@ -3185,21 +3250,21 @@ describe('ControlPlaneService', () => {
       analysisVersion: 'conflict-analyzer/v2',
       resolvedCoordinate: {
         analysisVersion: 'conflict-analyzer/v2',
-        coordinateKind: 'working_set',
+        coordinateKind: 'strand',
         frontier: { 'agent.prime': 'abcdef123456' },
         frontierDigest: 'frontier:working-set',
         lamportCeiling: null,
         scanBudgetApplied: { maxPatches: null },
         truncationPolicy: 'reverse-causal-order',
-        workingSet: {
-          workingSetId: 'wl_review-auth',
+        strand: {
+          strandId: 'wl_review-auth',
           baseLamportCeiling: null,
           overlayHeadPatchSha: null,
           overlayPatchCount: 0,
           overlayWritable: true,
           braid: {
             readOverlayCount: 0,
-            braidedWorkingSetIds: [],
+            braidedStrandIds: [],
           },
         },
       },
@@ -3226,7 +3291,7 @@ describe('ControlPlaneService', () => {
 
     expect(mocks.analyzeConflicts).toHaveBeenCalledWith({
       evidence: 'full',
-      workingSetId: 'wl_review-auth',
+      strandId: 'wl_review-auth',
     });
     expect(result).toEqual(expect.objectContaining({
       ok: true,
@@ -3234,15 +3299,15 @@ describe('ControlPlaneService', () => {
         projection: 'conflicts',
         requested: expect.objectContaining({
           worldlineId: 'worldline:review-auth',
-          workingSetId: 'wl_review-auth',
+          strandId: 'wl_review-auth',
           evidence: 'full',
         }),
         analysis: expect.objectContaining({
           analysisVersion: 'conflict-analyzer/v2',
           resolvedCoordinate: expect.objectContaining({
-            coordinateKind: 'working_set',
-            workingSet: expect.objectContaining({
-              workingSetId: 'wl_review-auth',
+            coordinateKind: 'strand',
+            strand: expect.objectContaining({
+              strandId: 'wl_review-auth',
             }),
           }),
         }),
@@ -3277,21 +3342,21 @@ describe('ControlPlaneService', () => {
       analysisVersion: 'conflict-analyzer/v2',
       resolvedCoordinate: {
         analysisVersion: 'conflict-analyzer/v2',
-        coordinateKind: 'working_set',
+        coordinateKind: 'strand',
         frontier: { 'agent.prime': 'abcdef123456' },
         frontierDigest: 'frontier:working-set',
         lamportCeiling: null,
         scanBudgetApplied: { maxPatches: null },
         truncationPolicy: 'reverse-causal-order',
-        workingSet: {
-          workingSetId: 'wl_review-auth',
+        strand: {
+          strandId: 'wl_review-auth',
           baseLamportCeiling: null,
           overlayHeadPatchSha: 'patch:target',
           overlayPatchCount: 1,
           overlayWritable: true,
           braid: {
             readOverlayCount: 1,
-            braidedWorkingSetIds: ['wl_hold-auth'],
+            braidedStrandIds: ['wl_hold-auth'],
           },
         },
       },
@@ -3568,6 +3633,59 @@ describe('ControlPlaneService', () => {
         worldlineId: 'worldline:review-auth',
       }),
     }));
+  });
+
+  it('reads derived-worldline entity content from the derived worldline instead of live tip content', async () => {
+    const worldlineGetNodeProps = vi.fn(async (id: string) => id === 'note:ONE'
+      ? { type: 'note', title: 'Historical note', _content: 'oid:derived' }
+      : null);
+    const worldline = {
+      query: vi.fn(() => makeQueryBuilder()),
+      hasNode: vi.fn(async () => true),
+      getNodeProps: worldlineGetNodeProps,
+      getEdges: vi.fn(async () => []),
+      traverse: {
+        topologicalSort: vi.fn(async () => ({ sorted: [], hasCycle: false })),
+        bfs: vi.fn(async () => []),
+      },
+    };
+
+    const liveGraph = {
+      ...(await mocks.openIsolatedGraph()),
+      getContentOid: vi.fn(async () => 'oid:live-tip'),
+      getContent: vi.fn(async () => new TextEncoder().encode('live tip body')),
+      worldline: vi.fn(async () => worldline),
+    };
+    mocks.openIsolatedGraph.mockResolvedValue(liveGraph);
+
+    const service = new ControlPlaneService({
+      getGraph: mocks.getGraph,
+      openIsolatedGraph: mocks.openIsolatedGraph,
+      reset: vi.fn(),
+    }, 'agent.prime');
+
+    const derived = await (service as unknown as {
+      createDerivedWorldlineGraphContext: (
+        capability: { worldlineId: string },
+        selector: { kind: 'tip' },
+      ) => Promise<{
+        graph: {
+          getContentOid(nodeId: string): Promise<string | null>;
+          getContent(nodeId: string): Promise<Uint8Array | null>;
+        };
+      }>;
+    }).createDerivedWorldlineGraphContext(
+      { worldlineId: 'worldline:review-auth' },
+      { kind: 'tip' },
+    );
+
+    const contentOid = await derived.graph.getContentOid('note:ONE');
+    const content = await derived.graph.getContent('note:ONE');
+
+    expect(worldlineGetNodeProps).toHaveBeenCalledWith('note:ONE');
+    expect(contentOid).toBe('oid:derived');
+    expect(content).toBeNull();
+    expect(liveGraph.getContent).not.toHaveBeenCalled();
   });
 
   it('supports tick-based diffing and returns newly observed patch shas', async () => {

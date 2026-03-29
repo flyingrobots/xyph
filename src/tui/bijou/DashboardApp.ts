@@ -6,6 +6,7 @@ import {
   composite,
   createCommandPaletteState,
   createKeyMap,
+  createPagerState,
   createNavigableTableState,
   cpFilter,
   cpFocusNext,
@@ -16,6 +17,8 @@ import {
   drawer,
   flex,
   modal,
+  pager,
+  pagerScrollTo,
   quit,
   statusBar,
   toast as toastOverlay,
@@ -31,6 +34,7 @@ import type { StylePort } from '../../ports/StylePort.js';
 import type { GraphContext } from '../../infrastructure/GraphContext.js';
 import type {
   AiSuggestionNode,
+  CaseDetail,
   EntityDetail,
   GraphSnapshot,
   GovernanceArtifactNode,
@@ -46,17 +50,22 @@ import { confirmOverlay, inputOverlay } from './overlays.js';
 import { buildMyStuffDrawerLines, renderMyStuffDrawer } from './views/my-stuff-drawer.js';
 import { questTreeOverlay, questTreeOverlayBounds } from './views/quest-tree-modal.js';
 import { questPageView } from './views/quest-page-view.js';
+import { casePageView } from './views/case-page-view.js';
 import { governancePageView } from './views/governance-page-view.js';
 import { reviewPageView } from './views/review-page-view.js';
-import { suggestionPageView } from './views/suggestion-page-view.js';
+import { buildSuggestionExplainabilityBody, suggestionPageView } from './views/suggestion-page-view.js';
 import {
+  adoptSuggestion,
   claimQuest,
   commentOnEntity,
+  decideCase,
+  dismissSuggestion,
   promoteQuest,
   queueAskAiJob,
   rejectQuest,
   reopenQuest,
   reviewSubmission,
+  supersedeSuggestion,
   type AskAiJobInput,
   type WriteDeps,
 } from './write-cmds.js';
@@ -84,6 +93,12 @@ import {
   type ObserverWatermarks,
 } from './observer-watermarks.js';
 import { wrapWhitespaceText } from '../view-helpers.js';
+import { suggestionCanAdopt, suggestionCanDismiss, suggestionCanSupersede } from './suggestion-actions.js';
+import {
+  VALID_AI_SUGGESTION_ADOPTION_KINDS,
+  defaultAiSuggestionAdoptionKind,
+  type AiSuggestionAdoptionKind,
+} from '../../domain/entities/AiSuggestion.js';
 
 export type PendingWrite =
   | { kind: 'claim'; questId: string }
@@ -91,6 +106,10 @@ export type PendingWrite =
   | { kind: 'reject'; questId: string }
   | { kind: 'reopen'; questId: string }
   | { kind: 'comment'; targetId: string }
+  | { kind: 'case-decision'; caseId: string; decision: 'adopt' | 'reject' | 'defer' | 'request-evidence'; followOnKind?: 'quest' | 'proposal' | 'none' }
+  | { kind: 'adopt-suggestion'; suggestionId: string; adoptedArtifactKind: AiSuggestionAdoptionKind; rationale?: string }
+  | { kind: 'dismiss-suggestion'; suggestionId: string; rationale?: string }
+  | { kind: 'supersede-suggestion'; suggestionId: string; supersededById: string; rationale?: string }
   | { kind: 'approve'; patchsetId: string }
   | { kind: 'request-changes'; patchsetId: string }
   | ({ kind: 'ask-ai' } & AskAiJobInput);
@@ -136,12 +155,19 @@ export interface SuggestionPageRoute {
   sourceLane: CockpitLaneId;
 }
 
+export interface CasePageRoute {
+  kind: 'case';
+  caseId: string;
+  sourceLane: CockpitLaneId;
+}
+
 export type DashboardPageRoute =
   | LandingPageRoute
   | QuestPageRoute
   | ReviewPageRoute
   | GovernancePageRoute
-  | SuggestionPageRoute;
+  | SuggestionPageRoute
+  | CasePageRoute;
 
 export interface DashboardModel {
   lane: CockpitLaneId;
@@ -162,13 +188,14 @@ export interface DashboardModel {
   showLanding: boolean;
   showHelp: boolean;
   helpScrollY: number;
+  aiExplainabilityScrollY: number;
   cols: number;
   rows: number;
   logoText: string;
   requestId: number;
   loadingProgress: number;
   pulsePhase: number;
-  mode: 'normal' | 'confirm' | 'input' | 'palette' | 'quest-tree';
+  mode: 'normal' | 'confirm' | 'input' | 'palette' | 'quest-tree' | 'ai-explainability';
   confirmState: { prompt: string; action: ConfirmAction; hint?: string } | null;
   inputState: DashboardInputState | null;
   paletteState: CommandPaletteState | null;
@@ -235,12 +262,16 @@ type ViewAction =
   | { type: 'approve' }
   | { type: 'request-changes' }
   | { type: 'mark-lane-seen' }
-  | { type: 'ask-ai' };
+  | { type: 'ask-ai' }
+  | { type: 'supersede-suggestion' }
+  | { type: 'explain-ai' }
+  | { type: 'decide-case' };
 
 interface SingleInputState {
   kind: 'write';
   label: string;
   value: string;
+  allowEmpty?: boolean;
   action: Exclude<PendingWrite, { kind: 'ask-ai' }>;
 }
 
@@ -254,7 +285,37 @@ interface AskAiInputState {
   contextLabel?: string;
 }
 
-type DashboardInputState = SingleInputState | AskAiInputState;
+interface SuggestionSupersedeInputState {
+  kind: 'suggestion-supersede';
+  step: 'replacement' | 'rationale';
+  suggestionId: string;
+  replacementId: string;
+  value: string;
+}
+
+interface SuggestionAdoptInputState {
+  kind: 'suggestion-adopt';
+  step: 'kind' | 'rationale';
+  suggestionId: string;
+  adoptedArtifactKind: AiSuggestionAdoptionKind;
+  value: string;
+}
+
+interface CaseDecisionInputState {
+  kind: 'case-decision';
+  step: 'outcome' | 'follow-on-kind' | 'rationale';
+  caseId: string;
+  outcome: 'adopt' | 'reject' | 'defer' | 'request-evidence';
+  followOnKind: 'quest' | 'proposal' | 'none';
+  value: string;
+}
+
+type DashboardInputState =
+  | SingleInputState
+  | AskAiInputState
+  | SuggestionSupersedeInputState
+  | SuggestionAdoptInputState
+  | CaseDecisionInputState;
 
 export interface DashboardDeps {
   ctx: GraphContext;
@@ -337,9 +398,13 @@ function buildViewKeys(): KeyMap<ViewAction> {
       .bind('t', 'Open quest tree', { type: 'toggle-quest-tree' })
       .bind(';', 'Comment on selected quest', { type: 'comment' })
       .bind('n', 'Queue an Ask-AI job', { type: 'ask-ai' })
+      .bind('e', 'Open AI explainability', { type: 'explain-ai' })
+      .bind('d', 'Decide governed case', { type: 'decide-case' })
+      .bind('u', 'Mark selected suggestion superseded', { type: 'supersede-suggestion' })
       .bind('c', 'Claim selected quest', { type: 'claim' })
       .bind('p', 'Promote selected backlog quest', { type: 'promote' })
       .bind('shift+d', 'Reject selected backlog quest', { type: 'reject' })
+      .bind('shift+a', 'Adopt selected suggestion', { type: 'approve' })
       .bind('o', 'Reopen selected graveyard quest', { type: 'reopen' })
       .bind('a', 'Approve selected submission', { type: 'approve' })
       .bind('x', 'Request changes on selected submission', { type: 'request-changes' })
@@ -508,6 +573,7 @@ function activeQuestId(model: DashboardModel): string | undefined {
   if (page.kind === 'review') return undefined;
   if (page.kind === 'governance') return undefined;
   if (page.kind === 'suggestion') return undefined;
+  if (page.kind === 'case') return undefined;
   return questIdForItem(currentSelectedItem(model));
 }
 
@@ -528,7 +594,7 @@ function selectedSubmission(model: DashboardModel): SubmissionNode | undefined {
     }
     return model.snapshot?.submissions.find((submission) => submission.id === page.submissionId);
   }
-  if (page.kind === 'suggestion') return undefined;
+  if (page.kind === 'suggestion' || page.kind === 'case') return undefined;
   if (page.kind === 'quest' && model.pageDetail?.questDetail?.submission) {
     return model.pageDetail.questDetail.submission;
   }
@@ -539,7 +605,7 @@ function selectedSubmission(model: DashboardModel): SubmissionNode | undefined {
 function activeGovernanceId(model: DashboardModel): string | undefined {
   const page = currentPage(model);
   if (page.kind === 'governance') return page.entityId;
-  if (page.kind === 'suggestion') return undefined;
+  if (page.kind === 'suggestion' || page.kind === 'case') return undefined;
   if (!isLandingPage(model)) return undefined;
   return governanceIdForItem(currentSelectedItem(model));
 }
@@ -553,6 +619,7 @@ function selectedGovernanceArtifact(model: DashboardModel): GovernanceArtifactNo
 function activeSuggestionId(model: DashboardModel): string | undefined {
   const page = currentPage(model);
   if (page.kind === 'suggestion') return page.suggestionId;
+  if (page.kind === 'case') return undefined;
   if (!isLandingPage(model)) return undefined;
   return suggestionIdForItem(currentSelectedItem(model));
 }
@@ -561,6 +628,20 @@ function selectedAiSuggestion(model: DashboardModel): AiSuggestionNode | undefin
   const suggestionId = activeSuggestionId(model);
   if (!suggestionId) return undefined;
   return model.snapshot?.aiSuggestions.find((suggestion) => suggestion.id === suggestionId);
+}
+
+function activeCaseId(model: DashboardModel): string | undefined {
+  const page = currentPage(model);
+  if (page.kind === 'case') return page.caseId;
+  return undefined;
+}
+
+function selectedCaseDetail(model: DashboardModel): CaseDetail | undefined {
+  const caseId = activeCaseId(model);
+  if (!caseId) return undefined;
+  return model.pageDetail?.caseDetail?.id === caseId
+    ? model.pageDetail.caseDetail
+    : undefined;
 }
 
 function resetToLanding(model: DashboardModel): DashboardModel {
@@ -593,6 +674,8 @@ function pageEntityId(page: DashboardPageRoute): string | null {
       return page.entityId;
     case 'suggestion':
       return page.suggestionId;
+    case 'case':
+      return page.caseId;
   }
 }
 
@@ -680,6 +763,24 @@ function openSuggestionPage(
   }, [fetchPageDetail(nextRequestId, suggestionId, deps)]];
 }
 
+function openCasePage(
+  model: DashboardModel,
+  caseId: string,
+  sourceLane: CockpitLaneId,
+  deps: DashboardDeps,
+): [DashboardModel, Cmd<DashboardMsg>[]] {
+  const nextRequestId = model.pageRequestId + 1;
+  return [{
+    ...model,
+    pageStack: [...model.pageStack, { kind: 'case', caseId, sourceLane }],
+    pageScrollY: 0,
+    pageDetail: null,
+    pageLoading: true,
+    pageError: null,
+    pageRequestId: nextRequestId,
+  }, [fetchPageDetail(nextRequestId, caseId, deps)]];
+}
+
 function openSelectedItemPage(model: DashboardModel, deps: DashboardDeps): [DashboardModel, Cmd<DashboardMsg>[]] {
   const item = currentSelectedItem(model);
   const suggestionId = suggestionIdForItem(item);
@@ -691,6 +792,14 @@ function openSelectedItemPage(model: DashboardModel, deps: DashboardDeps): [Dash
   const questId = questIdForItem(item);
   if (questId) return openQuestPage(model, questId, model.lane, deps);
   return [model, []];
+}
+
+function linkedCaseIdForSuggestionDetail(detail: EntityDetail | null): string | undefined {
+  if (!detail || detail.type !== 'ai_suggestion') return undefined;
+  return detail.incoming
+    .filter((edge) => edge.label === 'opened-from' && edge.nodeId.startsWith('case:'))
+    .map((edge) => edge.nodeId)
+    .sort((left, right) => left.localeCompare(right))[0];
 }
 
 function popPage(model: DashboardModel, deps: DashboardDeps): [DashboardModel, Cmd<DashboardMsg>[]] {
@@ -896,6 +1005,12 @@ function askAiContextForModel(model: DashboardModel): AskAiContext {
         relatedIds: [],
         contextLabel: shortId(page.suggestionId),
       };
+    case 'case':
+      return {
+        targetId: page.caseId,
+        relatedIds: [],
+        contextLabel: shortId(page.caseId),
+      };
     case 'landing':
       break;
   }
@@ -938,6 +1053,53 @@ function askAiInputHint(state: AskAiInputState): string {
     : 'Enter: queue  Esc: cancel';
 }
 
+function suggestionSupersedeInputLabel(state: SuggestionSupersedeInputState): string {
+  if (state.step === 'replacement') {
+    return `Supersede ${state.suggestionId}\nReplacement artifact ID:`;
+  }
+  return `Supersede ${state.suggestionId}\nReplacement: ${state.replacementId}\nRationale:`;
+}
+
+function suggestionSupersedeInputHint(state: SuggestionSupersedeInputState): string {
+  return state.step === 'replacement'
+    ? 'Enter: next  Esc: cancel'
+    : 'Enter: supersede  Esc: cancel';
+}
+
+function suggestionAdoptInputLabel(state: SuggestionAdoptInputState): string {
+  if (state.step === 'kind') {
+    return `Adopt ${state.suggestionId}\nAdopt as (quest | proposal):`;
+  }
+  return `Adopt ${state.suggestionId}\nAdopt as: ${state.adoptedArtifactKind}\nRationale:`;
+}
+
+function suggestionAdoptInputHint(state: SuggestionAdoptInputState): string {
+  return state.step === 'kind'
+    ? 'Enter: next  Esc: cancel'
+    : 'Enter: adopt  Esc: cancel';
+}
+
+function caseDecisionInputLabel(state: CaseDecisionInputState): string {
+  if (state.step === 'outcome') {
+    return `Decide ${state.caseId}\nDecision (adopt | reject | defer | request-evidence):`;
+  }
+  if (state.step === 'follow-on-kind') {
+    return `Decide ${state.caseId}\nDecision: ${state.outcome}\nFollow-on (quest | proposal | none):`;
+  }
+  return [
+    `Decide ${state.caseId}`,
+    `Decision: ${state.outcome}`,
+    ...(state.outcome === 'adopt' ? [`Follow-on: ${state.followOnKind}`] : []),
+    'Rationale:',
+  ].join('\n');
+}
+
+function caseDecisionInputHint(state: CaseDecisionInputState): string {
+  return state.step === 'rationale'
+    ? 'Enter: decide  Esc: cancel'
+    : 'Enter: next  Esc: cancel';
+}
+
 interface ControlHint {
   key: string;
   label: string;
@@ -949,16 +1111,46 @@ function formatControlHints(entries: ControlHint[]): string {
 
 function contextControls(model: DashboardModel): ControlHint[] {
   if (!isLandingPage(model)) {
+    const caseDetail = selectedCaseDetail(model);
+    if (caseDetail) {
+      return [
+        { key: 'Esc', label: 'back' },
+        { key: 'PgUp/PgDn', label: 'page' },
+        { key: ';', label: 'comment' },
+        { key: 'd', label: 'decide' },
+        { key: 'n', label: 'ask ai' },
+      ];
+    }
+
+    const suggestion = selectedAiSuggestion(model);
+    if (suggestion) {
+      const hints: ControlHint[] = [
+        { key: 'Esc', label: 'back' },
+        { key: 'PgUp/PgDn', label: 'page' },
+        { key: ';', label: 'comment' },
+        { key: 'e', label: 'AI' },
+      ];
+      if (linkedCaseIdForSuggestionDetail(model.pageDetail)) {
+        hints.push({ key: 'Enter', label: 'case' });
+      }
+      if (suggestionCanAdopt(suggestion)) {
+        hints.push({ key: 'A', label: 'adopt' });
+      }
+      if (suggestionCanDismiss(suggestion)) {
+        hints.push({ key: 'D', label: 'dismiss' });
+      }
+      if (suggestionCanSupersede(suggestion)) {
+        hints.push({ key: 'u', label: 'supersede' });
+      }
+      hints.push({ key: 'n', label: 'ask ai' });
+      return hints;
+    }
+
     const hints: ControlHint[] = [
       { key: 'Esc', label: 'back' },
       { key: 'PgUp/PgDn', label: 'page' },
       { key: 'n', label: 'ask ai' },
     ];
-    const suggestion = selectedAiSuggestion(model);
-    if (suggestion) {
-      hints.push({ key: ';', label: 'comment' });
-      return hints;
-    }
     const governance = selectedGovernanceArtifact(model);
     if (governance) {
       hints.push({ key: ';', label: 'comment' });
@@ -1042,6 +1234,9 @@ function contextControls(model: DashboardModel): ControlHint[] {
   }
   if (model.lane === 'suggestions') {
     hints.push({ key: 'v', label: nextSuggestionsViewMode(model.suggestionsView).toLowerCase() });
+  }
+  if (item?.kind === 'ai-suggestion') {
+    hints.push({ key: 'e', label: 'AI' });
   }
   hints.push({ key: 'n', label: 'ask ai' });
   if (laneFreshCount(model.snapshot, model.lane, model.observerWatermarks, model.observerSeenItems, model.agentId, model.nowView, model.suggestionsView) > 0) {
@@ -1198,6 +1393,58 @@ function renderHelpModalBody(model: DashboardModel, style: StylePort): string {
   return [...visible, footer].join('\n');
 }
 
+function aiExplainabilityWidth(model: DashboardModel): number {
+  return Math.min(88, Math.max(56, model.cols - 12));
+}
+
+function aiExplainabilityBodyHeight(model: DashboardModel): number {
+  return Math.min(22, Math.max(10, model.rows - 10));
+}
+
+function aiExplainabilityMaxScroll(model: DashboardModel, style: StylePort): number {
+  const suggestion = selectedAiSuggestion(model);
+  if (!suggestion) return 0;
+  const contentWidth = Math.max(24, aiExplainabilityWidth(model) - 4);
+  const contentHeight = Math.max(1, aiExplainabilityBodyHeight(model) - 1);
+  const content = buildSuggestionExplainabilityBody(style, suggestion, contentWidth);
+  const totalLines = createPagerState({
+    content,
+    width: contentWidth,
+    height: contentHeight,
+  }).scroll.totalLines;
+  return Math.max(0, totalLines - contentHeight);
+}
+
+function clampAiExplainabilityScroll(model: DashboardModel, style: StylePort): DashboardModel {
+  const maxScroll = aiExplainabilityMaxScroll(model, style);
+  if (model.aiExplainabilityScrollY >= 0 && model.aiExplainabilityScrollY <= maxScroll) return model;
+  return { ...model, aiExplainabilityScrollY: Math.max(0, Math.min(model.aiExplainabilityScrollY, maxScroll)) };
+}
+
+function renderAiExplainabilityBody(model: DashboardModel, style: StylePort): string {
+  const suggestion = selectedAiSuggestion(model);
+  if (!suggestion) {
+    return style.styled(style.theme.semantic.muted, 'No AI explanation is available for the current context.');
+  }
+  const contentWidth = Math.max(24, aiExplainabilityWidth(model) - 4);
+  const contentHeight = aiExplainabilityBodyHeight(model);
+  const bodyHeight = Math.max(1, contentHeight - 1);
+  const content = buildSuggestionExplainabilityBody(style, suggestion, contentWidth);
+  const basePager = createPagerState({
+    content,
+    width: contentWidth,
+    height: bodyHeight,
+  });
+  const totalLines = Math.max(1, basePager.scroll.totalLines);
+  const pagerState = pagerScrollTo(basePager, model.aiExplainabilityScrollY);
+  const visible = pager(pagerState, { showScrollbar: false }).split('\n');
+  const footer = style.styled(
+    style.theme.semantic.muted,
+    `Scroll ${Math.min(pagerState.scroll.y + 1, totalLines)}/${totalLines} · e / esc close`,
+  );
+  return [...visible, footer].join('\n');
+}
+
 function buildPaletteItems(model: DashboardModel): CommandPaletteItem[] {
   const items: CommandPaletteItem[] = [
     { id: 'lane:now', label: 'Open Now lane', category: 'Navigate', shortcut: '1' },
@@ -1246,9 +1493,26 @@ function buildPaletteItems(model: DashboardModel): CommandPaletteItem[] {
   const suggestion = selectedAiSuggestion(model);
   if (suggestion && !isLandingPage(model)) {
     items.push({ id: 'comment', label: 'Comment on this suggestion', category: 'Action', shortcut: ';' });
+    items.push({ id: 'explain-ai', label: 'Open AI explainability', category: 'Inspect', shortcut: 'e' });
+    if (linkedCaseIdForSuggestionDetail(model.pageDetail)) {
+      items.push({ id: 'open-linked-case', label: 'Open linked governed case', category: 'Inspect', shortcut: 'Enter' });
+    }
+    if (suggestionCanAdopt(suggestion)) {
+      items.push({ id: 'approve', label: 'Adopt this suggestion into governed work', category: 'Action', shortcut: 'A' });
+    }
+    if (suggestionCanDismiss(suggestion)) {
+      items.push({ id: 'reject', label: suggestion.kind === 'ask-ai' ? 'Dismiss this Ask-AI job' : 'Dismiss this suggestion', category: 'Action', shortcut: 'D' });
+    }
+    if (suggestionCanSupersede(suggestion)) {
+      items.push({ id: 'supersede-suggestion', label: 'Mark this suggestion superseded by another artifact', category: 'Action', shortcut: 'u' });
+    }
   }
   if (currentPage(model).kind === 'review') {
     items.push({ id: 'comment', label: 'Comment on this submission', category: 'Action', shortcut: ';' });
+  }
+  if (selectedCaseDetail(model)) {
+    items.push({ id: 'decide-case', label: 'Record human case decision', category: 'Action', shortcut: 'd' });
+    items.push({ id: 'comment', label: 'Comment on this case', category: 'Action', shortcut: ';' });
   }
 
   const quest = selectedQuest(model);
@@ -1343,7 +1607,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
   function fetchSnapshot(requestId: number): Cmd<DashboardMsg> {
     return async (emit) => {
       try {
-        const snapshot = await deps.ctx.fetchSnapshot();
+        const snapshot = await deps.ctx.fetchSnapshot(undefined, { profile: 'operational' });
         emit({ type: 'snapshot-loaded', snapshot, requestId });
       } catch (err: unknown) {
         emit({ type: 'snapshot-error', error: err instanceof Error ? err.message : String(err), requestId });
@@ -1355,7 +1619,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
     return async (emit) => {
       deps.ctx.invalidateCache();
       try {
-        const snapshot = await deps.ctx.fetchSnapshot();
+        const snapshot = await deps.ctx.fetchSnapshot(undefined, { profile: 'operational' });
         emit({ type: 'snapshot-loaded', snapshot, requestId });
       } catch (err: unknown) {
         emit({ type: 'snapshot-error', error: err instanceof Error ? err.message : String(err), requestId });
@@ -1407,6 +1671,19 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         return reopenQuest(writeDeps, action.questId);
       case 'comment':
         return commentOnEntity(writeDeps, action.targetId, inputValue ?? '');
+      case 'case-decision':
+        return decideCase(writeDeps, {
+          caseId: action.caseId,
+          decision: action.decision,
+          rationale: inputValue ?? '',
+          followOnKind: action.followOnKind,
+        });
+      case 'adopt-suggestion':
+        return adoptSuggestion(writeDeps, action.suggestionId, action.adoptedArtifactKind, action.rationale ?? inputValue);
+      case 'dismiss-suggestion':
+        return dismissSuggestion(writeDeps, action.suggestionId, action.rationale ?? inputValue ?? '');
+      case 'supersede-suggestion':
+        return supersedeSuggestion(writeDeps, action);
       case 'approve':
         return reviewSubmission(writeDeps, action.patchsetId, 'approve', inputValue ?? '');
       case 'request-changes':
@@ -1438,15 +1715,6 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
           inputState: { kind: 'write', label: `Intent ID for ${quest.id}:`, value: '', action: { kind: 'promote', questId: quest.id } },
         }, []];
       }
-      case 'reject': {
-        const quest = selectedQuest(model);
-        if (!quest || quest.status !== 'BACKLOG') return [model, []];
-        return [{
-          ...model,
-          mode: 'input',
-          inputState: { kind: 'write', label: `Rejection rationale for ${quest.id}:`, value: '', action: { kind: 'reject', questId: quest.id } },
-        }, []];
-      }
       case 'reopen': {
         const quest = selectedQuest(model);
         if (!quest || quest.status !== 'GRAVEYARD') return [model, []];
@@ -1458,6 +1726,19 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
       }
       case 'comment': {
         if (isLandingPage(model)) return [model, []];
+        const caseDetail = selectedCaseDetail(model);
+        if (caseDetail) {
+          return [{
+            ...model,
+            mode: 'input',
+            inputState: {
+              kind: 'write',
+              label: `Comment on ${caseDetail.id}:`,
+              value: '',
+              action: { kind: 'comment', targetId: caseDetail.id },
+            },
+          }, []];
+        }
         const suggestion = selectedAiSuggestion(model);
         if (suggestion) {
           return [{
@@ -1511,6 +1792,26 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
           },
         }, []];
       }
+      case 'supersede-suggestion': {
+        const suggestion = selectedAiSuggestion(model);
+        if (!suggestion || !suggestionCanSupersede(suggestion)) return [model, []];
+        return [{
+          ...model,
+          mode: 'input',
+          inputState: {
+            kind: 'suggestion-supersede',
+            step: 'replacement',
+            suggestionId: suggestion.id,
+            replacementId: '',
+            value: '',
+          },
+        }, []];
+      }
+      case 'explain-ai': {
+        const suggestion = selectedAiSuggestion(model);
+        if (!suggestion) return [model, []];
+        return [{ ...model, mode: 'ai-explainability', aiExplainabilityScrollY: 0 }, []];
+      }
       case 'ask-ai': {
         const context = askAiContextForModel(model);
         return [{
@@ -1528,6 +1829,21 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         }, []];
       }
       case 'approve': {
+        const suggestion = selectedAiSuggestion(model);
+        if (suggestion && suggestionCanAdopt(suggestion)) {
+          const adoptedArtifactKind = defaultAiSuggestionAdoptionKind(suggestion.kind);
+          return [{
+            ...model,
+            mode: 'input',
+            inputState: {
+              kind: 'suggestion-adopt',
+              step: 'kind',
+              suggestionId: suggestion.id,
+              adoptedArtifactKind,
+              value: adoptedArtifactKind,
+            },
+          }, []];
+        }
         const submission = selectedSubmission(model);
         if (!submission || !submission.tipPatchsetId) return [model, []];
         return [{
@@ -1555,6 +1871,44 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
           },
         }, []];
       }
+      case 'decide-case': {
+        const caseDetail = selectedCaseDetail(model);
+        if (!caseDetail) return [model, []];
+        return [{
+          ...model,
+          mode: 'input',
+          inputState: {
+            kind: 'case-decision',
+            step: 'outcome',
+            caseId: caseDetail.id,
+            outcome: 'adopt',
+            followOnKind: 'quest',
+            value: 'adopt',
+          },
+        }, []];
+      }
+      case 'reject': {
+        const suggestion = selectedAiSuggestion(model);
+        if (suggestion && suggestionCanDismiss(suggestion)) {
+          return [{
+            ...model,
+            mode: 'input',
+            inputState: {
+              kind: 'write',
+              label: `Dismissal rationale for ${suggestion.id}:`,
+              value: '',
+              action: { kind: 'dismiss-suggestion', suggestionId: suggestion.id },
+            },
+          }, []];
+        }
+        const quest = selectedQuest(model);
+        if (!quest || quest.status !== 'BACKLOG') return [model, []];
+        return [{
+          ...model,
+          mode: 'input',
+          inputState: { kind: 'write', label: `Rejection rationale for ${quest.id}:`, value: '', action: { kind: 'reject', questId: quest.id } },
+        }, []];
+      }
       default:
         return [model, []];
     }
@@ -1578,6 +1932,12 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         return [switchLaneWithWatermark(resetToLanding(model), 'graveyard', deps), []];
       case 'open-page':
         return openSelectedItemPage(model, deps);
+      case 'open-linked-case': {
+        const linkedCaseId = linkedCaseIdForSuggestionDetail(model.pageDetail);
+        const page = currentPage(model);
+        const sourceLane = page.kind === 'suggestion' ? page.sourceLane : model.lane;
+        return linkedCaseId ? openCasePage(model, linkedCaseId, sourceLane, deps) : [model, []];
+      }
       case 'back':
         return popPage(model, deps);
       case 'refresh': {
@@ -1602,10 +1962,16 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         return promptForAction(model, { type: 'claim' });
       case 'comment':
         return promptForAction(model, { type: 'comment' });
+      case 'explain-ai':
+        return promptForAction(model, { type: 'explain-ai' });
+      case 'decide-case':
+        return promptForAction(model, { type: 'decide-case' });
       case 'promote':
         return promptForAction(model, { type: 'promote' });
       case 'reject':
         return promptForAction(model, { type: 'reject' });
+      case 'supersede-suggestion':
+        return promptForAction(model, { type: 'supersede-suggestion' });
       case 'reopen':
         return promptForAction(model, { type: 'reopen' });
       case 'approve':
@@ -1659,6 +2025,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         showLanding: true,
         showHelp: false,
         helpScrollY: 0,
+        aiExplainabilityScrollY: 0,
         cols,
         rows,
         logoText: deps.logoText,
@@ -1708,7 +2075,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
           cols: msg.columns,
           rows: msg.rows,
         };
-        return [clampHelpScroll(clampDrawerScroll(rebuildForLane(resized, resized.lane), deps), deps.style), []];
+        return [clampAiExplainabilityScroll(clampHelpScroll(clampDrawerScroll(rebuildForLane(resized, resized.lane), deps), deps.style), deps.style), []];
       }
 
       if (msg.type === 'snapshot-loaded') {
@@ -1837,6 +2204,19 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
           }
           if (msg.action === 'press' && msg.button === 'left') {
             return [{ ...model, showHelp: false, helpScrollY: 0 }, []];
+          }
+          return [model, []];
+        }
+
+        if (model.mode === 'ai-explainability') {
+          if (msg.action === 'scroll-down') {
+            return [clampAiExplainabilityScroll({ ...model, aiExplainabilityScrollY: model.aiExplainabilityScrollY + 3 }, deps.style), []];
+          }
+          if (msg.action === 'scroll-up') {
+            return [clampAiExplainabilityScroll({ ...model, aiExplainabilityScrollY: Math.max(0, model.aiExplainabilityScrollY - 3) }, deps.style), []];
+          }
+          if (msg.action === 'press' && msg.button === 'left') {
+            return [{ ...model, mode: 'normal', aiExplainabilityScrollY: 0 }, []];
           }
           return [model, []];
         }
@@ -1971,6 +2351,122 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
             return [{ ...model, mode: 'normal', inputState: null }, []];
           }
           if (msg.key === 'enter' || msg.key === 'return') {
+            if (model.inputState.kind === 'case-decision') {
+              const value = model.inputState.value.trim().toLowerCase();
+              if (model.inputState.step === 'outcome') {
+                if (!['adopt', 'reject', 'defer', 'request-evidence'].includes(value)) {
+                  return [model, []];
+                }
+                const outcome = value as CaseDecisionInputState['outcome'];
+                if (outcome === 'adopt') {
+                  return [{
+                    ...model,
+                    inputState: {
+                      ...model.inputState,
+                      step: 'follow-on-kind',
+                      outcome,
+                      value: model.inputState.followOnKind,
+                    },
+                  }, []];
+                }
+                return [{
+                  ...model,
+                  inputState: {
+                    ...model.inputState,
+                    step: 'rationale',
+                    outcome,
+                    value: '',
+                  },
+                }, []];
+              }
+              if (model.inputState.step === 'follow-on-kind') {
+                if (!['quest', 'proposal', 'none'].includes(value)) {
+                  return [model, []];
+                }
+                return [{
+                  ...model,
+                  inputState: {
+                    ...model.inputState,
+                    step: 'rationale',
+                    followOnKind: value as CaseDecisionInputState['followOnKind'],
+                    value: '',
+                  },
+                }, []];
+              }
+              if (value.length === 0) return [model, []];
+              return [{
+                ...model,
+                mode: 'normal',
+                inputState: null,
+                writePending: true,
+              }, [executeWrite({
+                kind: 'case-decision',
+                caseId: model.inputState.caseId,
+                decision: model.inputState.outcome,
+                followOnKind: model.inputState.outcome === 'adopt' ? model.inputState.followOnKind : 'none',
+              }, value)]];
+            }
+            if (model.inputState.kind === 'suggestion-adopt') {
+              if (model.inputState.step === 'kind') {
+                const value = model.inputState.value.trim().toLowerCase();
+                if (!VALID_AI_SUGGESTION_ADOPTION_KINDS.has(value)) {
+                  return [model, []];
+                }
+                return [{
+                  ...model,
+                  inputState: {
+                    ...model.inputState,
+                    step: 'rationale',
+                    adoptedArtifactKind: value as AiSuggestionAdoptionKind,
+                    value: '',
+                  },
+                }, []];
+              }
+              const rationale = model.inputState.value.trim();
+              if (rationale.length === 0) {
+                return [model, []];
+              }
+              return [{
+                ...model,
+                mode: 'normal',
+                inputState: null,
+                writePending: true,
+              }, [executeWrite({
+                kind: 'adopt-suggestion',
+                suggestionId: model.inputState.suggestionId,
+                adoptedArtifactKind: model.inputState.adoptedArtifactKind,
+                rationale,
+              })]];
+            }
+            if (model.inputState.kind === 'suggestion-supersede') {
+              const value = model.inputState.value.trim();
+              if (model.inputState.step === 'replacement') {
+                if (value.length === 0) return [model, []];
+                return [{
+                  ...model,
+                  inputState: {
+                    ...model.inputState,
+                    step: 'rationale',
+                    replacementId: value,
+                    value: '',
+                  },
+                }, []];
+              }
+              if (value.length === 0) {
+                return [model, []];
+              }
+              return [{
+                ...model,
+                mode: 'normal',
+                inputState: null,
+                writePending: true,
+              }, [executeWrite({
+                kind: 'supersede-suggestion',
+                suggestionId: model.inputState.suggestionId,
+                supersededById: model.inputState.replacementId,
+                rationale: value || undefined,
+              })]];
+            }
             if (model.inputState.kind === 'ask-ai') {
               const value = model.inputState.value.trim();
               if (value.length === 0) return [model, []];
@@ -2001,7 +2497,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
             }
 
             const { action, value } = model.inputState;
-            if (value.trim().length === 0) return [model, []];
+            if (!model.inputState.allowEmpty && value.trim().length === 0) return [model, []];
             return [{
               ...model,
               mode: 'normal',
@@ -2040,6 +2536,25 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
           }
           if (msg.key === 'k' || msg.key === 'up') {
             return [{ ...model, questTreeScrollY: Math.max(0, model.questTreeScrollY - 1) }, []];
+          }
+          return [model, []];
+        }
+
+        if (model.mode === 'ai-explainability') {
+          if (msg.key === 'escape' || msg.key === 'e') {
+            return [{ ...model, mode: 'normal', aiExplainabilityScrollY: 0 }, []];
+          }
+          if (msg.key === 'pagedown') {
+            return [clampAiExplainabilityScroll({ ...model, aiExplainabilityScrollY: model.aiExplainabilityScrollY + Math.max(6, model.rows - 14) }, deps.style), []];
+          }
+          if (msg.key === 'pageup') {
+            return [clampAiExplainabilityScroll({ ...model, aiExplainabilityScrollY: Math.max(0, model.aiExplainabilityScrollY - Math.max(6, model.rows - 14)) }, deps.style), []];
+          }
+          if (msg.key === 'j' || msg.key === 'down') {
+            return [clampAiExplainabilityScroll({ ...model, aiExplainabilityScrollY: model.aiExplainabilityScrollY + 1 }, deps.style), []];
+          }
+          if (msg.key === 'k' || msg.key === 'up') {
+            return [clampAiExplainabilityScroll({ ...model, aiExplainabilityScrollY: Math.max(0, model.aiExplainabilityScrollY - 1) }, deps.style), []];
           }
           return [model, []];
         }
@@ -2152,7 +2667,15 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         if (viewAction) {
           switch (viewAction.type) {
             case 'open-item-page':
-              return isLandingPage(model) ? openSelectedItemPage(model, deps) : [model, []];
+              if (isLandingPage(model)) return openSelectedItemPage(model, deps);
+              {
+                const page = currentPage(model);
+                if (page.kind === 'suggestion') {
+                  const linkedCaseId = linkedCaseIdForSuggestionDetail(model.pageDetail);
+                  return linkedCaseId ? openCasePage(model, linkedCaseId, page.sourceLane, deps) : [model, []];
+                }
+              }
+              return [model, []];
             case 'select-next': {
               if (!isLandingPage(model)) {
                 return wakeScrollbar(updatePageScroll(model, model.pageScrollY + 1), 'page');
@@ -2242,11 +2765,16 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
               return isLandingPage(model) ? [markLaneSeen(model, deps), []] : [model, []];
             case 'ask-ai':
               return promptForAction(model, viewAction);
+            case 'explain-ai':
+              return promptForAction(model, viewAction);
+            case 'decide-case':
+              return promptForAction(model, viewAction);
             case 'comment':
               return !isLandingPage(model) ? promptForAction(model, viewAction) : [model, []];
             case 'claim':
             case 'promote':
             case 'reject':
+            case 'supersede-suggestion':
             case 'reopen':
             case 'approve':
             case 'request-changes':
@@ -2335,6 +2863,18 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
               height: h,
             });
           }
+        } else if (model.snapshot && page.kind === 'case' && model.pageDetail?.caseDetail) {
+          content = casePageView({
+            model,
+            snapshot: model.snapshot,
+            page,
+            caseDetail: model.pageDetail.caseDetail,
+            detail: model.pageDetail,
+            sourceItem: currentSelectedItem(model),
+            style,
+            width: w,
+            height: h,
+          });
         }
         if (model.mode === 'confirm' && model.confirmState) {
           content = confirmOverlay(content, model.confirmState.prompt, model.cols, h, style, model.confirmState.hint);
@@ -2342,12 +2882,28 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         if (model.mode === 'input' && model.inputState) {
           content = inputOverlay(
             content,
-            model.inputState.kind === 'ask-ai' ? askAiInputLabel(model.inputState) : model.inputState.label,
+            model.inputState.kind === 'ask-ai'
+              ? askAiInputLabel(model.inputState)
+              : model.inputState.kind === 'suggestion-adopt'
+                ? suggestionAdoptInputLabel(model.inputState)
+              : model.inputState.kind === 'suggestion-supersede'
+                ? suggestionSupersedeInputLabel(model.inputState)
+              : model.inputState.kind === 'case-decision'
+                ? caseDecisionInputLabel(model.inputState)
+                : model.inputState.label,
             model.inputState.value,
             model.cols,
             h,
             style,
-            model.inputState.kind === 'ask-ai' ? askAiInputHint(model.inputState) : undefined,
+            model.inputState.kind === 'ask-ai'
+              ? askAiInputHint(model.inputState)
+              : model.inputState.kind === 'suggestion-adopt'
+                ? suggestionAdoptInputHint(model.inputState)
+              : model.inputState.kind === 'suggestion-supersede'
+                ? suggestionSupersedeInputHint(model.inputState)
+              : model.inputState.kind === 'case-decision'
+                ? caseDecisionInputHint(model.inputState)
+                : undefined,
           );
         }
         return content;
@@ -2405,6 +2961,17 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         if (quest) {
           output = questTreeOverlay(output, model.snapshot, quest, model.questTreeScrollY, model.cols, model.rows, style);
         }
+      }
+
+      if (model.mode === 'ai-explainability') {
+        const overlay = modal({
+          body: renderAiExplainabilityBody(model, style),
+          screenWidth: model.cols,
+          screenHeight: model.rows,
+          borderToken: style.theme.ui.aiLabel,
+          width: aiExplainabilityWidth(model),
+        });
+        output = composite(output, [overlay], { dim: true });
       }
 
       if (model.showHelp) {

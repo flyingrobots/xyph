@@ -76,8 +76,38 @@ export function buildMyStuffDrawerLines(
         style,
       });
     }
-    if (mySubmissions.length > 4) {
+  if (mySubmissions.length > 4) {
       lines.push(style.styled(style.theme.semantic.muted, `  +${mySubmissions.length - 4} more`));
+    }
+  }
+
+  // ── My Suggestions ────────────────────────────────────────────────
+  const mySuggestions = agentId
+    ? snap.aiSuggestions.filter((suggestion) =>
+        (suggestion.suggestedBy === agentId || suggestion.requestedBy === agentId)
+        && suggestion.status !== 'implemented'
+        && suggestion.status !== 'rejected',
+      )
+    : snap.aiSuggestions.filter((suggestion) => suggestion.status !== 'implemented' && suggestion.status !== 'rejected');
+
+  lines.push('');
+  const suggestionLabel = agentId ? 'My Suggestions' : 'Active Suggestions';
+  lines.push(separator({ label: `${suggestionLabel} (${mySuggestions.length})`, borderToken: style.theme.border.secondary, width: pw }));
+  if (mySuggestions.length === 0) {
+    lines.push(style.styled(style.theme.semantic.muted, '  (none active)'));
+  } else {
+    for (const suggestion of mySuggestions.slice(0, 4)) {
+      const caseMeta = suggestion.linkedCaseId ? `  ·  case ${suggestion.linkedCaseId.replace(/^case:/, '')}` : '';
+      pushWrappedBlock(lines, {
+        title: suggestion.title,
+        meta: `${suggestion.id.replace(/^suggestion:/, '')}  ·  ${suggestion.status}${caseMeta}`,
+        status: suggestion.status.toUpperCase(),
+        width: contentWidth,
+        style,
+      });
+    }
+    if (mySuggestions.length > 4) {
+      lines.push(style.styled(style.theme.semantic.muted, `  +${mySuggestions.length - 4} more`));
     }
   }
 

@@ -1,4 +1,4 @@
-import WarpGraph, { GitGraphAdapter } from '@git-stunts/git-warp';
+import { WarpCore as WarpGraph, GitGraphAdapter } from '@git-stunts/git-warp';
 import Plumbing from '@git-stunts/plumbing';
 import { createStylePort } from './infrastructure/adapters/BijouStyleAdapter.js';
 import { toNeighborEntries } from './infrastructure/helpers/isNeighborEntry.js';

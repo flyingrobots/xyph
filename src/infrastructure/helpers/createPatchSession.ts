@@ -1,4 +1,4 @@
-import type WarpGraph from '@git-stunts/git-warp';
+import type { WarpCore as WarpGraph } from '@git-stunts/git-warp';
 import { PatchSession } from '@git-stunts/git-warp';
 
 /**

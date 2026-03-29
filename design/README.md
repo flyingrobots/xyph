@@ -1,9 +1,9 @@
 # XYPH Design
 
 **Status:** Current product-design source of truth for XYPH.  
-**Scope:** Human-facing XYPH surfaces, agent-native XYPH interaction modes,
-attention routing, suggestion transparency, page taxonomy, and design-review
-practice.
+**Scope:** One unified design corpus for human-facing XYPH surfaces,
+agent-native XYPH interaction modes, shared semantic primitives, attention
+routing, suggestion transparency, page taxonomy, and design-review practice.
 
 ## Why This Directory Exists
 
@@ -27,6 +27,22 @@ Reference material:
 This is an adaptation, not cargo cult. XYPH should use IBM's discipline around
 outcomes, review loops, and representative actors without pretending it is a
 generic enterprise workflow console.
+
+## One Corpus, Two Lenses
+
+XYPH should not maintain one design system for humans and a separate one for
+agents. It has one product, one graph, one governance model, and one set of
+shared semantics.
+
+That means this corpus should:
+
+- define the shared primitives once
+- describe the human and agent lenses side by side
+- say explicitly where those lenses align
+- say explicitly where they intentionally diverge
+
+The TUI and the CLI are not separate products. They are different operating
+surfaces over the same graph truth.
 
 ## Non-Negotiable Invariants
 
@@ -53,6 +69,11 @@ constraints. The design process does **not** get to override these invariants:
 - **Suggestions do not bypass process**: whether sourced by a human, an
   explicit ask-AI job, or a spontaneous agent observation, ideas still enter
   the same lawful lifecycle.
+- **Human judgment governs; agent surfaces force clarity**: XYPH should be
+  designed equally from both perspectives, but the default technical pressure
+  should come from agent-native surfaces because they expose missing building
+  blocks quickly. That pressure does not override human explainability,
+  legibility, or governance boundaries.
 
 ## Product Intent
 
@@ -73,6 +94,32 @@ XYPH exists so a human or agent can:
 - leave durable graph-native state behind for the next collaborator, whether
   that collaborator is human or agent
 
+## Design And Build Order
+
+XYPH should be designed from both the human and agent perspectives on purpose.
+Neither surface is a compatibility appendix.
+
+By default, implementation should proceed in this order:
+
+1. define the shared semantic packet and lawful action model
+2. make the agent-native CLI/protocol express those semantics cleanly
+3. build the human-facing page or TUI flow on top of the same semantics
+
+This is the default because agent-native interfaces expose missing building
+blocks, hidden ambiguity, and soft semantics faster than UI polish does.
+
+The constraint on that default is equally important:
+
+- human judgment still defines what must be understandable
+- human explainability still defines what must be legible
+- if the agent surface and human surface diverge semantically, the product is
+  drifting
+
+Cycles usually move through doctrine, spec, semantic, and surface checkpoints.
+Those checkpoints are useful internally, but the slice is judged through formal
+playbacks tied to sponsor actors and hills, not just by whether a checkpoint
+exists.
+
 ## Design Corpus
 
 Start here, then use the focused design documents below:
@@ -91,6 +138,18 @@ Start here, then use the focused design documents below:
 - [Product Model](./product-model.md)
   Product principles, shared primitives, attention model, page model, and
   immediate design program.
+- [Substrate Alignment](./substrate-alignment.md)
+  The desired git-warp / XYPH boundary, current gaps, and the staged
+  alignment program for moving worldline/observer/working-set behavior down
+  into the substrate.
+- [Product Loop](./product-loop.md)
+  The larger governed project-shaping loop XYPH is meant to embody, including
+  how humans and agents participate differently in the same evolving process.
+- [Cycles](./cycles/README.md)
+  Design-first notes for the next bounded product or debt-reduction cycle.
+- [Alignment Sweep — 2026-03](./alignment-sweep-2026-03.md)
+  Short philosophical alignment review of docs, backlog, and graveyard against
+  the current product doctrine.
 
 ## Relationship To Other Docs
 
@@ -116,6 +175,10 @@ Start here, then use the focused design documents below:
 - update [Product Model](./product-model.md) whenever page structure,
   attention semantics, AI suggestion rules, or human/agent interaction models
   materially change
+- update alignment language whenever the human and agent lenses start drifting,
+  or whenever a new cycle intentionally privileges one surface first
+- add or update a note under [Cycles](./cycles/README.md) when a new bounded
+  cycle starts after backlog reconciliation
 
 The rule is simple: if the product model changes, capture it here before the
 new design drifts into implementation folklore.

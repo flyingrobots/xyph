@@ -10,9 +10,11 @@ import type { RequirementKind, RequirementPriority } from '../entities/Requireme
 import type { EvidenceKind, EvidenceResult } from '../entities/Evidence.js';
 import type { SuggestionStatus } from '../entities/Suggestion.js';
 import type {
+  AiSuggestionAdoptionKind,
   AiSuggestionAudience,
   AiSuggestionKind,
   AiSuggestionOrigin,
+  AiSuggestionResolutionKind,
   AiSuggestionStatus,
 } from '../entities/AiSuggestion.js';
 import type { LayerScore } from '../services/analysis/types.js';
@@ -225,6 +227,15 @@ export interface AiSuggestionNode {
   evidence?: string;
   nextAction?: string;
   relatedIds: string[];
+  resolvedBy?: string;
+  resolvedAt?: number;
+  resolutionKind?: AiSuggestionResolutionKind;
+  resolutionRationale?: string;
+  adoptedArtifactId?: string;
+  adoptedArtifactKind?: AiSuggestionAdoptionKind;
+  supersededById?: string;
+  linkedCaseId?: string;
+  linkedCaseStatus?: string;
 }
 
 export type NarrativeNodeType = 'spec' | 'adr' | 'note';
@@ -294,6 +305,54 @@ export interface QuestDetail {
   documents: NarrativeNode[];
   comments: CommentNode[];
   timeline: QuestTimelineEntry[];
+}
+
+export interface CaseNode {
+  id: string;
+  title: string;
+  question: string;
+  status: string;
+  impact: string;
+  risk: string;
+  authority: string;
+  openedBy?: string;
+  openedAt?: number;
+  reason?: string;
+}
+
+export interface CaseBriefNode {
+  id: string;
+  briefKind: string;
+  title: string;
+  rationale?: string;
+  authoredBy: string;
+  authoredAt: number;
+  body?: string;
+  contentOid?: string;
+  relatedIds: string[];
+}
+
+export interface CaseDecisionNode {
+  id: string;
+  decision: string;
+  rationale: string;
+  decidedBy: string;
+  decidedAt: number;
+  followOnArtifactId?: string;
+  followOnArtifactKind?: string;
+  expectedDelta?: string;
+  actualDelta?: string;
+}
+
+export interface CaseDetail {
+  id: string;
+  caseNode: CaseNode;
+  subjectIds: string[];
+  openedFromIds: string[];
+  briefs: CaseBriefNode[];
+  decisions: CaseDecisionNode[];
+  documents: NarrativeNode[];
+  comments: CommentNode[];
 }
 
 export interface EntityEdgeRef {
@@ -419,6 +478,7 @@ export interface EntityDetail {
   outgoing: EntityEdgeRef[];
   incoming: EntityEdgeRef[];
   questDetail?: QuestDetail;
+  caseDetail?: CaseDetail;
   governanceDetail?: GovernanceDetail;
 }
 

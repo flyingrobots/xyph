@@ -518,6 +518,7 @@ describe('agent act command', () => {
         },
         governanceDetail: null,
             agentContext: {
+              caseContext: null,
               readiness: {
                 valid: true,
             questId: 'task:CTX-001',
@@ -865,6 +866,7 @@ describe('agent act command', () => {
         questDetail: null,
         governanceDetail: null,
         agentContext: {
+          caseContext: null,
           readiness: null,
           dependency: null,
           submissionContext: {
@@ -1077,6 +1079,7 @@ describe('agent act command', () => {
           },
         },
         agentContext: {
+          caseContext: null,
           readiness: null,
           dependency: null,
           submissionContext: null,

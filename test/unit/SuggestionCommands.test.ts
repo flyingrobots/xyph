@@ -119,6 +119,7 @@ describe('suggestion commands', () => {
 
     await program.parseAsync(['suggestion', 'accept-all'], { from: 'user' });
 
+    expect(fetchSnapshot).toHaveBeenCalledWith(undefined, { profile: 'analysis' });
     expect(patchBuilder.setProperty).toHaveBeenCalledWith('evidence:auto-auto-2', 'result', 'linked');
     expect(patchBuilder.addEdge).toHaveBeenCalledWith('evidence:auto-auto-2', 'criterion:TRACE', 'verifies');
     expect(ctx.jsonOut).toHaveBeenCalledWith({
@@ -130,5 +131,44 @@ describe('suggestion commands', () => {
         ids: ['suggestion:auto-2'],
       },
     });
+  });
+
+  it('requires a non-empty rationale when adopting an AI suggestion', async () => {
+    const graph = {
+      hasNode: vi.fn().mockResolvedValue(true),
+      getNodeProps: vi.fn().mockResolvedValue({
+        type: 'ai_suggestion',
+        suggestion_kind: 'quest',
+        title: 'Promote the traceability split',
+        summary: 'Govern the traceability split as a first-class quest.',
+        status: 'suggested',
+      }),
+      patch: vi.fn(),
+    };
+
+    const ctx = makeCtx(graph);
+    const program = new Command();
+    registerSuggestionCommands(program, ctx);
+
+    await expect(
+      program.parseAsync(['suggestion', 'accept', 'suggestion:ai-1', '--rationale', '   '], { from: 'user' }),
+    ).rejects.toThrow('[INVALID_ARGS] --rationale must be non-empty');
+  });
+
+  it('requires a non-empty rationale when superseding an AI suggestion', async () => {
+    const graph = {
+      patch: vi.fn(),
+    };
+
+    const ctx = makeCtx(graph);
+    const program = new Command();
+    registerSuggestionCommands(program, ctx);
+
+    await expect(
+      program.parseAsync(
+        ['suggestion', 'supersede', 'suggestion:ai-1', '--by', 'task:Q2', '--rationale', '   '],
+        { from: 'user' },
+      ),
+    ).rejects.toThrow('[INVALID_ARGS] --rationale must be non-empty');
   });
 });

@@ -7,6 +7,18 @@ import { isExecutableQuestStatus } from '../../domain/entities/Quest.js';
 import { summarizeDoctorReport } from '../../domain/services/DiagnosticService.js';
 import { DoctorService } from '../../domain/services/DoctorService.js';
 import { WarpRoadmapAdapter } from '../../infrastructure/adapters/WarpRoadmapAdapter.js';
+import type { GraphSnapshotProfile } from '../../infrastructure/GraphContext.js';
+
+function snapshotProfileForDashboardView(view: string): GraphSnapshotProfile {
+  switch (view) {
+    case 'trace':
+      return 'audit';
+    case 'suggestions':
+      return 'analysis';
+    default:
+      return 'operational';
+  }
+}
 
 export function registerDashboardCommands(program: Command, ctx: CliContext): void {
   const withErrorHandler = createErrorHandler(ctx);
@@ -91,7 +103,10 @@ export function registerDashboardCommands(program: Command, ctx: CliContext): vo
 
       const { createGraphContext } = await import('../../infrastructure/GraphContext.js');
       const graphCtx = createGraphContext(ctx.graphPort);
-      const raw = await graphCtx.fetchSnapshot();
+      const raw = await graphCtx.fetchSnapshot(
+        undefined,
+        { profile: snapshotProfileForDashboardView(view) },
+      );
       const snapshot = graphCtx.filterSnapshot(raw, { includeGraveyard: opts.includeGraveyard ?? false });
       const doctorReport = await new DoctorService(
         ctx.graphPort,
@@ -338,7 +353,20 @@ export function registerDashboardCommands(program: Command, ctx: CliContext): vo
           if (ctx.json) {
             ctx.jsonOut({
               success: true, command: 'status', diagnostics,
-              data: { ...snapshot, view, health },
+              data: view === 'all'
+                ? {
+                  view,
+                  health,
+                  campaigns: snapshot.campaigns,
+                  intents: snapshot.intents,
+                  quests: snapshot.quests,
+                  scrolls: snapshot.scrolls,
+                  approvals: snapshot.approvals,
+                  submissions: snapshot.submissions,
+                  reviews: snapshot.reviews,
+                  decisions: snapshot.decisions,
+                }
+                : { ...snapshot, view, health },
             });
             return;
           }

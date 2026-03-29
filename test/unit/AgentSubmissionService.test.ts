@@ -136,6 +136,10 @@ describe('AgentSubmissionService', () => {
     const service = new AgentSubmissionService(makeGraphPort(), 'agent.hal');
     const result = await service.list(10);
 
+    expect(mocks.createGraphContext).toHaveBeenCalledTimes(1);
+    expect(mocks.createGraphContext.mock.results[0]?.value.fetchSnapshot)
+      .toHaveBeenCalledWith(undefined, { profile: 'operational' });
+
     expect(result.counts).toEqual({
       owned: 2,
       reviewable: 1,
@@ -218,6 +222,9 @@ describe('AgentSubmissionService', () => {
 
     const service = new AgentSubmissionService(makeGraphPort(), 'agent.hal');
     const result = await service.list(1);
+
+    expect(mocks.createGraphContext.mock.results[0]?.value.fetchSnapshot)
+      .toHaveBeenCalledWith(undefined, { profile: 'operational' });
 
     expect(result.counts.owned).toBe(2);
     expect(result.owned).toHaveLength(1);

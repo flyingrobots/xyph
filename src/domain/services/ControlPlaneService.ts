@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type WarpGraph from '@git-stunts/git-warp';
+import type { WarpCore as WarpGraph } from '@git-stunts/git-warp';
 import type {
   ConflictDiagnostic,
   CoordinateComparisonSelectorV1,
@@ -35,7 +35,11 @@ import {
 } from '../models/controlPlane.js';
 import type { Diagnostic } from '../models/diagnostics.js';
 import type { EntityDetail } from '../models/dashboard.js';
-import { createGraphContext, createGraphContextFromGraph } from '../../infrastructure/GraphContext.js';
+import {
+  createGraphContext,
+  createGraphContextFromGraph,
+  type GraphContextGraph,
+} from '../../infrastructure/GraphContext.js';
 import { WarpRoadmapAdapter } from '../../infrastructure/adapters/WarpRoadmapAdapter.js';
 import { AgentBriefingService } from './AgentBriefingService.js';
 import { AgentContextService } from './AgentContextService.js';
@@ -136,8 +140,8 @@ function controlPlaneFailure(
 
 type AnalyzeConflictsOptions = NonNullable<Parameters<WarpGraph['analyzeConflicts']>[0]>;
 type ConflictAnalysisResult = Awaited<ReturnType<WarpGraph['analyzeConflicts']>>;
-type WorkingSetDescriptor = NonNullable<Awaited<ReturnType<WarpGraph['getWorkingSet']>>>;
-type ResolvedWorkingSetContext = NonNullable<ConflictAnalysisResult['resolvedCoordinate']['workingSet']>;
+type WorkingSetDescriptor = NonNullable<Awaited<ReturnType<WarpGraph['getStrand']>>>;
+type ResolvedWorkingSetContext = NonNullable<ConflictAnalysisResult['resolvedCoordinate']['strand']>;
 type ComparisonResolvedSide = CoordinateComparisonV1['left']['resolved'];
 
 interface WorkingSetProjectionContext {
@@ -151,9 +155,27 @@ interface WorkingSetProjectionContext {
 }
 
 interface DerivedWorldlineGraphContext {
+  graph: GraphContextGraph;
   graphCtx: ReturnType<typeof createGraphContextFromGraph>;
   frontierDigest: string;
   backing: ObservationCoordinateBacking;
+}
+
+interface SummaryCounts {
+  campaigns: number;
+  quests: number;
+  intents: number;
+  approvals: number;
+  scrolls: number;
+  submissions: number;
+  reviews: number;
+  decisions: number;
+  stories: number;
+  requirements: number;
+  criteria: number;
+  evidence: number;
+  policies: number;
+  suggestions: number;
 }
 
 interface RedactionRecord {
@@ -349,29 +371,29 @@ function workingSetObservationBacking(fields: {
 
 function workingSetObservationBackingFromDescriptor(descriptor: WorkingSetDescriptor): ObservationCoordinateBacking {
   return workingSetObservationBacking({
-    workingSetId: descriptor.workingSetId,
+    workingSetId: descriptor.strandId,
     baseLamportCeiling: descriptor.baseObservation.lamportCeiling,
     overlayHeadPatchSha: descriptor.overlay.headPatchSha,
     overlayPatchCount: descriptor.overlay.patchCount,
     overlayWritable: descriptor.overlay.writable,
-    supportWorkingSetIds: descriptor.braid.readOverlays.map((overlay) => overlay.workingSetId),
+    supportWorkingSetIds: descriptor.braid.readOverlays.map((overlay) => overlay.strandId),
   });
 }
 
 function workingSetObservationBackingFromResolved(workingSet: ResolvedWorkingSetContext): ObservationCoordinateBacking {
   return workingSetObservationBacking({
-    workingSetId: workingSet.workingSetId,
+    workingSetId: workingSet.strandId,
     baseLamportCeiling: workingSet.baseLamportCeiling,
     overlayHeadPatchSha: workingSet.overlayHeadPatchSha,
     overlayPatchCount: workingSet.overlayPatchCount,
     overlayWritable: workingSet.overlayWritable,
-    supportWorkingSetIds: workingSet.braid.braidedWorkingSetIds,
+    supportWorkingSetIds: workingSet.braid.braidedStrandIds,
   });
 }
 
 function comparisonResolvedSideBacking(resolved: ComparisonResolvedSide): ObservationCoordinateBacking {
-  return resolved.workingSet
-    ? workingSetObservationBackingFromResolved(resolved.workingSet)
+  return resolved.strand
+    ? workingSetObservationBackingFromResolved(resolved.strand)
     : liveObservationBacking();
 }
 
@@ -693,6 +715,97 @@ export class ControlPlaneService implements ControlPlanePort {
     return await isolated.call(this.graphPort);
   }
 
+  private async openLiveSummaryGraph(): Promise<WarpGraph> {
+    const graph = await this.graphPort.getGraph();
+    await graph.syncCoverage();
+    return graph;
+  }
+
+  private async readGraphMeta(graph: GraphContextGraph): Promise<GraphMeta> {
+    const [state, frontier] = await Promise.all([
+      graph.getStateSnapshot(),
+      graph.getFrontier(),
+    ]);
+    const maxTick = state ? Math.max(0, ...state.observedFrontier.values()) : 0;
+    const myTick = state ? (state.observedFrontier.get(graph.writerId) ?? 0) : 0;
+    const writerCount = state ? state.observedFrontier.size : 0;
+    const tipSha = frontier.get(graph.writerId)?.slice(0, 7) ?? 'unknown';
+    return { maxTick, myTick, writerCount, tipSha };
+  }
+
+  private async countNodeFamily(graph: GraphContextGraph, pattern: string): Promise<number> {
+    const result = await graph.query().match(pattern).aggregate({ count: true }).run();
+    return 'count' in result && typeof result.count === 'number'
+      ? result.count
+      : 0;
+  }
+
+  private async readSummaryProjection(graph: GraphContextGraph): Promise<{
+    asOf: number;
+    counts: SummaryCounts;
+    graphMeta: GraphMeta;
+  }> {
+    const [graphMeta, counts] = await Promise.all([
+      this.readGraphMeta(graph),
+      Promise.all([
+        this.countNodeFamily(graph, 'campaign:*'),
+        this.countNodeFamily(graph, 'milestone:*'),
+        this.countNodeFamily(graph, 'task:*'),
+        this.countNodeFamily(graph, 'intent:*'),
+        this.countNodeFamily(graph, 'approval:*'),
+        this.countNodeFamily(graph, 'artifact:*'),
+        this.countNodeFamily(graph, 'submission:*'),
+        this.countNodeFamily(graph, 'review:*'),
+        this.countNodeFamily(graph, 'decision:*'),
+        this.countNodeFamily(graph, 'story:*'),
+        this.countNodeFamily(graph, 'req:*'),
+        this.countNodeFamily(graph, 'criterion:*'),
+        this.countNodeFamily(graph, 'evidence:*'),
+        this.countNodeFamily(graph, 'policy:*'),
+        this.countNodeFamily(graph, 'suggestion:*'),
+      ]),
+    ]);
+
+    const [
+      campaigns,
+      milestones,
+      quests,
+      intents,
+      approvals,
+      scrolls,
+      submissions,
+      reviews,
+      decisions,
+      stories,
+      requirements,
+      criteria,
+      evidence,
+      policies,
+      suggestions,
+    ] = counts;
+
+    return {
+      asOf: Date.now(),
+      counts: {
+        campaigns: campaigns + milestones,
+        quests,
+        intents,
+        approvals,
+        scrolls,
+        submissions,
+        reviews,
+        decisions,
+        stories,
+        requirements,
+        criteria,
+        evidence,
+        policies,
+        suggestions,
+      },
+      graphMeta,
+    };
+  }
+
   private maybeRedactEntityDetail(
     detail: EntityDetail,
     capability: EffectiveCapabilityGrant,
@@ -763,45 +876,28 @@ export class ControlPlaneService implements ControlPlanePort {
         const derived = capability.worldlineId === DEFAULT_WORLDLINE_ID
           ? null
           : await this.createDerivedWorldlineGraphContext(capability, selector);
-        const graphCtx = derived?.graphCtx ?? (
+        const graph = derived?.graph ?? (
           selector.kind === 'tip'
-            ? createGraphContext(this.graphPort)
-            : createGraphContextFromGraph(
-              await this.openObservationGraph(selector),
-              { ceiling: selector.tick, syncCoverage: false },
-            )
+            ? await this.openLiveSummaryGraph()
+            : await this.openObservationGraph(selector)
         );
-        const snapshot = await graphCtx.fetchSnapshot();
+        const summary = await this.readSummaryProjection(graph);
         return {
           data: {
             projection,
             at: selector.kind === 'tip' ? 'tip' : { tick: selector.tick },
-            asOf: snapshot.asOf,
-            counts: {
-              campaigns: snapshot.campaigns.length,
-              quests: snapshot.quests.length,
-              intents: snapshot.intents.length,
-              scrolls: snapshot.scrolls.length,
-              submissions: snapshot.submissions.length,
-              reviews: snapshot.reviews.length,
-              decisions: snapshot.decisions.length,
-              stories: snapshot.stories.length,
-              requirements: snapshot.requirements.length,
-              criteria: snapshot.criteria.length,
-              evidence: snapshot.evidence.length,
-              policies: snapshot.policies.length,
-              suggestions: snapshot.suggestions.length,
-            },
-            graphMeta: snapshot.graphMeta ?? null,
+            asOf: summary.asOf,
+            counts: summary.counts,
+            graphMeta: summary.graphMeta,
           },
           diagnostics: [],
           observation: await this.buildObservationCoordinate(
             request,
             capability,
-            snapshot.asOf,
-            snapshot.graphMeta ?? null,
+            summary.asOf,
+            summary.graphMeta,
             false,
-            graphCtx.graph,
+            graph,
             derived?.frontierDigest,
             derived?.backing,
           ),
@@ -818,8 +914,8 @@ export class ControlPlaneService implements ControlPlanePort {
         const frontierDigest = capability.worldlineId === DEFAULT_WORLDLINE_ID
           ? analysis.resolvedCoordinate.frontierDigest
           : (await this.materializeWorkingSetProjection(capability, selector)).frontierDigest;
-        const observationBacking = analysis.resolvedCoordinate.workingSet
-          ? workingSetObservationBackingFromResolved(analysis.resolvedCoordinate.workingSet)
+        const observationBacking = analysis.resolvedCoordinate.strand
+          ? workingSetObservationBackingFromResolved(analysis.resolvedCoordinate.strand)
           : undefined;
         return {
           data: {
@@ -849,10 +945,7 @@ export class ControlPlaneService implements ControlPlanePort {
         const graphCtx = derived?.graphCtx ?? (
           selector.kind === 'tip'
             ? createGraphContext(this.graphPort)
-            : createGraphContextFromGraph(
-              await this.openObservationGraph(selector),
-              { ceiling: selector.tick, syncCoverage: false },
-            )
+            : createGraphContextFromGraph(await this.openObservationGraph(selector), { syncCoverage: false })
         );
         const targetId = this.requireString(request.args['targetId'], 'observe targetId');
         const detail = await graphCtx.fetchEntityDetail(targetId);
@@ -1070,8 +1163,8 @@ export class ControlPlaneService implements ControlPlanePort {
 
     const worldlineId = capability.worldlineId;
     if (worldlineId !== DEFAULT_WORLDLINE_ID) {
-      const workingSetId = toSubstrateWorkingSetId(worldlineId);
-      if (!workingSetId) {
+      const strandId = toSubstrateWorkingSetId(worldlineId);
+      if (!strandId) {
         throw controlPlaneFailure(
           'invalid_args',
           "Projection 'conflicts' currently supports only worldline:live or canonical derived worldline ids backed by git-warp working sets.",
@@ -1081,7 +1174,7 @@ export class ControlPlaneService implements ControlPlanePort {
           },
         );
       }
-      options.workingSetId = workingSetId;
+      options.strandId = strandId;
     }
 
     const requested: Record<string, unknown> = {
@@ -1089,7 +1182,7 @@ export class ControlPlaneService implements ControlPlanePort {
       lamportCeiling,
       evidence: options.evidence ?? 'standard',
     };
-    if (options.workingSetId !== undefined) requested['workingSetId'] = options.workingSetId;
+    if (options.strandId !== undefined) requested['strandId'] = options.strandId;
     if (options.entityId !== undefined) requested['entityId'] = options.entityId;
     if (options.target !== undefined) requested['target'] = options.target;
     if (options.kind !== undefined) requested['kind'] = options.kind;
@@ -1153,8 +1246,8 @@ export class ControlPlaneService implements ControlPlanePort {
         : { kind: 'live' };
     }
 
-    const workingSetId = toSubstrateWorkingSetId(worldlineId);
-    if (!workingSetId) {
+    const strandId = toSubstrateWorkingSetId(worldlineId);
+    if (!strandId) {
       throw controlPlaneFailure(
         'invalid_args',
         `${cmd} currently supports only worldline:live or canonical derived worldline ids backed by git-warp working sets.`,
@@ -1166,8 +1259,8 @@ export class ControlPlaneService implements ControlPlanePort {
     }
 
     return selector.kind === 'tick'
-      ? { kind: 'working_set', workingSetId, ceiling: selector.tick }
-      : { kind: 'working_set', workingSetId };
+      ? { kind: 'strand', strandId, ceiling: selector.tick }
+      : { kind: 'strand', strandId };
   }
 
   private async findLatestCanonicalArtifactInSeries(
@@ -1232,7 +1325,7 @@ export class ControlPlaneService implements ControlPlanePort {
             substrateCode,
           },
         );
-      case 'E_WORKING_SET_NOT_FOUND':
+      case 'E_STRAND_NOT_FOUND':
         throw controlPlaneFailure(
           'not_found',
           err instanceof Error ? err.message : String(err),
@@ -1242,9 +1335,9 @@ export class ControlPlaneService implements ControlPlanePort {
             substrateCode,
           },
         );
-      case 'E_WORKING_SET_INVALID_ARGS':
-      case 'E_WORKING_SET_ID_INVALID':
-      case 'E_WORKING_SET_COORDINATE_INVALID':
+      case 'E_STRAND_INVALID_ARGS':
+      case 'E_STRAND_ID_INVALID':
+      case 'E_STRAND_COORDINATE_INVALID':
         throw controlPlaneFailure(
           'invalid_args',
           err instanceof Error ? err.message : String(err),
@@ -1254,9 +1347,9 @@ export class ControlPlaneService implements ControlPlanePort {
             substrateCode,
           },
         );
-      case 'E_WORKING_SET_ALREADY_EXISTS':
-      case 'E_WORKING_SET_CORRUPT':
-      case 'E_WORKING_SET_MISSING_OBJECT':
+      case 'E_STRAND_ALREADY_EXISTS':
+      case 'E_STRAND_CORRUPT':
+      case 'E_STRAND_MISSING_OBJECT':
         throw controlPlaneFailure(
           'invariant_violation',
           err instanceof Error ? err.message : String(err),
@@ -1280,7 +1373,7 @@ export class ControlPlaneService implements ControlPlanePort {
   ): never {
     const substrateCode = workingSetErrorCode(err);
     switch (substrateCode) {
-      case 'E_WORKING_SET_NOT_FOUND':
+      case 'E_STRAND_NOT_FOUND':
         throw controlPlaneFailure(
           'not_found',
           err instanceof Error ? err.message : String(err),
@@ -1292,9 +1385,9 @@ export class ControlPlaneService implements ControlPlanePort {
             substrateCode,
           },
         );
-      case 'E_WORKING_SET_INVALID_ARGS':
-      case 'E_WORKING_SET_ID_INVALID':
-      case 'E_WORKING_SET_COORDINATE_INVALID':
+      case 'E_STRAND_INVALID_ARGS':
+      case 'E_STRAND_ID_INVALID':
+      case 'E_STRAND_COORDINATE_INVALID':
         throw controlPlaneFailure(
           'invalid_args',
           err instanceof Error ? err.message : String(err),
@@ -1306,9 +1399,9 @@ export class ControlPlaneService implements ControlPlanePort {
             substrateCode,
           },
         );
-      case 'E_WORKING_SET_ALREADY_EXISTS':
-      case 'E_WORKING_SET_CORRUPT':
-      case 'E_WORKING_SET_MISSING_OBJECT':
+      case 'E_STRAND_ALREADY_EXISTS':
+      case 'E_STRAND_CORRUPT':
+      case 'E_STRAND_MISSING_OBJECT':
         throw controlPlaneFailure(
           'invariant_violation',
           err instanceof Error ? err.message : String(err),
@@ -1338,23 +1431,23 @@ export class ControlPlaneService implements ControlPlanePort {
   ): never {
     const substrateCode = workingSetErrorCode(err);
     switch (substrateCode) {
-      case 'E_WORKING_SET_NOT_FOUND':
+      case 'E_STRAND_NOT_FOUND':
         throw controlPlaneFailure(
           'not_found',
           err instanceof Error ? err.message : String(err),
           { worldlineId, workingSetId, substrateCode },
         );
-      case 'E_WORKING_SET_INVALID_ARGS':
-      case 'E_WORKING_SET_ID_INVALID':
-      case 'E_WORKING_SET_COORDINATE_INVALID':
+      case 'E_STRAND_INVALID_ARGS':
+      case 'E_STRAND_ID_INVALID':
+      case 'E_STRAND_COORDINATE_INVALID':
         throw controlPlaneFailure(
           'invalid_args',
           err instanceof Error ? err.message : String(err),
           { worldlineId, workingSetId, substrateCode },
         );
-      case 'E_WORKING_SET_ALREADY_EXISTS':
-      case 'E_WORKING_SET_CORRUPT':
-      case 'E_WORKING_SET_MISSING_OBJECT':
+      case 'E_STRAND_ALREADY_EXISTS':
+      case 'E_STRAND_CORRUPT':
+      case 'E_STRAND_MISSING_OBJECT':
         throw controlPlaneFailure(
           'invariant_violation',
           err instanceof Error ? err.message : String(err),
@@ -1371,7 +1464,7 @@ export class ControlPlaneService implements ControlPlanePort {
     workingSetId: string,
   ): Promise<WorkingSetDescriptor> {
     try {
-      const descriptor = await graph.getWorkingSet(workingSetId);
+      const descriptor = await graph.getStrand(workingSetId);
       if (!descriptor) {
         throw controlPlaneFailure(
           'not_found',
@@ -1395,10 +1488,10 @@ export class ControlPlaneService implements ControlPlanePort {
     worldlineId: string,
     analysis: ConflictAnalysisResult,
   ): Diagnostic[] {
-    const workingSet = analysis.resolvedCoordinate.workingSet;
+    const workingSet = analysis.resolvedCoordinate.strand;
     if (!workingSet || workingSet.braid.readOverlayCount === 0) return [];
 
-    const supportWorldlineIds = mapSupportWorldlineIds(workingSet.braid.braidedWorkingSetIds);
+    const supportWorldlineIds = mapSupportWorldlineIds(workingSet.braid.braidedStrandIds);
     return analysis.conflicts
       .filter((trace) => (
         (trace.target.targetKind === 'node_property' || trace.target.targetKind === 'edge_property')
@@ -1441,7 +1534,7 @@ export class ControlPlaneService implements ControlPlanePort {
     );
     try {
       const descriptor = await this.loadWorkingSetDescriptor(graph, capability.worldlineId, workingSetId);
-      const state = await graph.materializeWorkingSet(workingSetId, this.workingSetReadOptions(selector));
+      const state = await graph.materializeStrand(workingSetId, this.workingSetReadOptions(selector));
       const reader = createStateReaderV5(state);
       return {
         graph,
@@ -1477,22 +1570,29 @@ export class ControlPlaneService implements ControlPlanePort {
         selector,
       },
     );
+    const worldline = await graph.worldline({
+      source: selector.kind === 'tick'
+        ? { kind: 'strand', strandId: workingSetId, ceiling: selector.tick }
+        : { kind: 'strand', strandId: workingSetId },
+    });
 
+    let derivedState: WarpStateV5 | undefined;
     let frontierDigest: string | undefined;
     let backing: ObservationCoordinateBacking | undefined;
     try {
       const descriptor = await this.loadWorkingSetDescriptor(graph, capability.worldlineId, workingSetId);
-      const state = await graph.materializeWorkingSet(
+      const state = await graph.materializeStrand(
         workingSetId,
         this.workingSetReadOptions(selector),
       );
+      derivedState = state;
       frontierDigest = frontierDigestFromObservedFrontier(state.observedFrontier);
       backing = workingSetObservationBackingFromDescriptor(descriptor);
     } catch (err) {
       this.rethrowWorkingSetError(err, capability.worldlineId, workingSetId);
     }
 
-    if (frontierDigest === undefined || backing === undefined) {
+    if (derivedState === undefined || frontierDigest === undefined || backing === undefined) {
       throw controlPlaneFailure(
         'invariant_violation',
         'Derived-worldline read failed to resolve backing metadata.',
@@ -1503,15 +1603,71 @@ export class ControlPlaneService implements ControlPlanePort {
       );
     }
 
+    let cachedEdges: Promise<
+      { from: string; to: string; label: string; props: Record<string, unknown> }[]
+    > | null = null;
+    const loadEdges = async (): Promise<
+      { from: string; to: string; label: string; props: Record<string, unknown> }[]
+    > => {
+      if (!cachedEdges) {
+        cachedEdges = worldline.getEdges();
+      }
+      return cachedEdges;
+    };
+
+    const derivedGraph: GraphContextGraph = {
+      writerId: graph.writerId,
+      query: () => worldline.query(),
+      hasNode: (nodeId: string) => worldline.hasNode(nodeId),
+      getNodeProps: (nodeId: string) => worldline.getNodeProps(nodeId),
+      getStateSnapshot: async () => ({
+        observedFrontier: derivedState.observedFrontier,
+      }),
+      // git-warp does not currently expose historical per-writer tip SHAs for
+      // strand/worldline projections, so the derived adapter can only pair the
+      // projected observed frontier with the live frontier SHA map here.
+      getFrontier: () => graph.getFrontier(),
+      getContentOid: async (nodeId: string) => {
+        const props = await worldline.getNodeProps(nodeId);
+        const oid = props?.['_content'];
+        return typeof oid === 'string' ? oid : null;
+      },
+      getContent: async (nodeId: string) => {
+        const props = await worldline.getNodeProps(nodeId);
+        const derivedOid = typeof props?.['_content'] === 'string' ? props['_content'] : null;
+        if (!derivedOid) return null;
+        const liveOid = await graph.getContentOid(nodeId);
+        if (liveOid !== derivedOid) return null;
+        return graph.getContent(nodeId);
+      },
+      neighbors: async (
+        nodeId: string,
+        direction: 'outgoing' | 'incoming' | 'both' = 'outgoing',
+      ) => {
+        const edges = await loadEdges();
+        return edges.flatMap((edge) => {
+          if (direction === 'outgoing' && edge.from === nodeId) {
+            return [{ label: edge.label, nodeId: edge.to }];
+          }
+          if (direction === 'incoming' && edge.to === nodeId) {
+            return [{ label: edge.label, nodeId: edge.from }];
+          }
+          if (direction === 'both') {
+            if (edge.from === nodeId) return [{ label: edge.label, nodeId: edge.to }];
+            if (edge.to === nodeId) return [{ label: edge.label, nodeId: edge.from }];
+          }
+          return [];
+        });
+      },
+      traverse: worldline.traverse,
+      compareCoordinates: graph.compareCoordinates.bind(graph),
+    };
+
     return {
+      graph: derivedGraph,
       frontierDigest,
       backing,
-      graphCtx: createGraphContextFromGraph(graph, {
-        syncCoverage: false,
-        materializeGraph: async (workingGraph) => {
-          void workingGraph;
-        },
-      }),
+      graphCtx: createGraphContextFromGraph(derivedGraph, { syncCoverage: false }),
     };
   }
 
@@ -1541,7 +1697,7 @@ export class ControlPlaneService implements ControlPlanePort {
       }
       let patches: string[];
       try {
-        patches = await materialized.graph.patchesForWorkingSet(
+        patches = await materialized.graph.patchesForStrand(
           workingSetId,
           targetId,
           this.workingSetReadOptions(selector),
@@ -1613,7 +1769,7 @@ export class ControlPlaneService implements ControlPlanePort {
       let patches: string[] = [];
       if (targetId && current.reader.hasNode(targetId)) {
         try {
-          patches = await current.graph.patchesForWorkingSet(
+          patches = await current.graph.patchesForStrand(
             workingSetId,
             targetId,
             this.workingSetReadOptions(selector),
@@ -1657,7 +1813,7 @@ export class ControlPlaneService implements ControlPlanePort {
       let sincePatches: string[] = [];
       if (targetId && sinceMaterialized.reader.hasNode(targetId)) {
         try {
-          sincePatches = await sinceMaterialized.graph.patchesForWorkingSet(
+          sincePatches = await sinceMaterialized.graph.patchesForStrand(
             workingSetId,
             targetId,
             { ceiling: since.tick },
@@ -2239,10 +2395,10 @@ export class ControlPlaneService implements ControlPlanePort {
 
     const graph = await this.graphPort.getGraph();
 
-    let descriptor: Awaited<ReturnType<WarpGraph['createWorkingSet']>>;
+    let descriptor: Awaited<ReturnType<WarpGraph['createStrand']>>;
     try {
-      descriptor = await graph.createWorkingSet({
-        workingSetId,
+      descriptor = await graph.createStrand({
+        strandId: workingSetId,
         ...(selector.kind === 'tick' ? { lamportCeiling: selector.tick } : {}),
         owner,
         ...(scope === null ? {} : { scope }),
@@ -2251,7 +2407,7 @@ export class ControlPlaneService implements ControlPlanePort {
     } catch (err) {
       const substrateCode = workingSetErrorCode(err);
       switch (substrateCode) {
-        case 'E_WORKING_SET_ALREADY_EXISTS':
+        case 'E_STRAND_ALREADY_EXISTS':
           throw controlPlaneFailure(
             'invariant_violation',
             `Worldline '${worldlineId}' already exists.`,
@@ -2261,9 +2417,9 @@ export class ControlPlaneService implements ControlPlanePort {
               substrateCode,
             },
           );
-        case 'E_WORKING_SET_INVALID_ARGS':
-        case 'E_WORKING_SET_ID_INVALID':
-        case 'E_WORKING_SET_COORDINATE_INVALID':
+        case 'E_STRAND_INVALID_ARGS':
+        case 'E_STRAND_ID_INVALID':
+        case 'E_STRAND_COORDINATE_INVALID':
           throw controlPlaneFailure(
             'invalid_args',
             err instanceof Error ? err.message : String(err),
@@ -2273,7 +2429,7 @@ export class ControlPlaneService implements ControlPlanePort {
               substrateCode,
             },
           );
-        case 'E_WORKING_SET_NOT_FOUND':
+        case 'E_STRAND_NOT_FOUND':
           throw controlPlaneFailure(
             'not_found',
             err instanceof Error ? err.message : String(err),
@@ -2283,8 +2439,8 @@ export class ControlPlaneService implements ControlPlanePort {
               substrateCode,
             },
           );
-        case 'E_WORKING_SET_CORRUPT':
-        case 'E_WORKING_SET_MISSING_OBJECT':
+        case 'E_STRAND_CORRUPT':
+        case 'E_STRAND_MISSING_OBJECT':
           throw controlPlaneFailure(
             'invariant_violation',
             err instanceof Error ? err.message : String(err),
@@ -2436,10 +2592,10 @@ export class ControlPlaneService implements ControlPlanePort {
 
     const graph = await this.graphPort.getGraph();
 
-    let descriptor: Awaited<ReturnType<WarpGraph['braidWorkingSet']>>;
+    let descriptor: Awaited<ReturnType<WarpGraph['braidStrand']>>;
     try {
-      descriptor = await graph.braidWorkingSet(targetWorkingSetId, {
-        braidedWorkingSetIds: supportWorkingSetIds,
+      descriptor = await graph.braidStrand(targetWorkingSetId, {
+        braidedStrandIds: supportWorkingSetIds,
         ...(typeof readOnly === 'boolean' ? { writable: !readOnly } : {}),
       });
     } catch (err) {
@@ -2456,7 +2612,7 @@ export class ControlPlaneService implements ControlPlanePort {
       supportWorkingSetIds.map((workingSetId, index) => [workingSetId, supportWorldlineIds[index] ?? '']),
     );
     const supportDescriptors = descriptor.braid.readOverlays.map((overlay) => {
-      const supportWorldlineId = supportWorldlineByWorkingSetId.get(overlay.workingSetId);
+      const supportWorldlineId = supportWorldlineByWorkingSetId.get(overlay.strandId);
       if (!supportWorldlineId) {
         throw controlPlaneFailure(
           'invariant_violation',
@@ -2464,7 +2620,7 @@ export class ControlPlaneService implements ControlPlanePort {
           {
             worldlineId: targetWorldlineId,
             workingSetId: targetWorkingSetId,
-            overlayWorkingSetId: overlay.workingSetId,
+            overlayWorkingSetId: overlay.strandId,
           },
         );
       }
@@ -2477,7 +2633,7 @@ export class ControlPlaneService implements ControlPlanePort {
 
     let frontierDigestOverride: string | undefined;
     try {
-      const state = await graph.materializeWorkingSet(targetWorkingSetId);
+      const state = await graph.materializeStrand(targetWorkingSetId);
       frontierDigestOverride = frontierDigestFromObservedFrontier(state.observedFrontier);
     } catch (err) {
       this.rethrowWorkingSetError(err, targetWorldlineId, targetWorkingSetId);
@@ -2506,7 +2662,7 @@ export class ControlPlaneService implements ControlPlanePort {
           braid: {
             supportWorldlineIds,
             readOverlays: descriptor.braid.readOverlays.map((overlay) => {
-              const supportWorldlineId = supportWorldlineByWorkingSetId.get(overlay.workingSetId);
+              const supportWorldlineId = supportWorldlineByWorkingSetId.get(overlay.strandId);
               if (!supportWorldlineId) {
                 throw controlPlaneFailure(
                   'invariant_violation',
@@ -2514,7 +2670,7 @@ export class ControlPlaneService implements ControlPlanePort {
                   {
                     worldlineId: targetWorldlineId,
                     workingSetId: targetWorkingSetId,
-                    overlayWorkingSetId: overlay.workingSetId,
+                    overlayWorkingSetId: overlay.strandId,
                   },
                 );
               }
@@ -3206,7 +3362,7 @@ export class ControlPlaneService implements ControlPlanePort {
     if (workingSetId) {
       try {
         const descriptor = await this.loadWorkingSetDescriptor(graph, capability.worldlineId, workingSetId);
-        const state = await graph.materializeWorkingSet(workingSetId);
+        const state = await graph.materializeStrand(workingSetId);
         frontierDigestOverride = frontierDigestFromObservedFrontier(state.observedFrontier);
         backingOverride = workingSetObservationBackingFromDescriptor(descriptor);
       } catch (err) {
@@ -3490,7 +3646,7 @@ export class ControlPlaneService implements ControlPlanePort {
     observedAt: number,
     graphMeta: GraphMeta | null,
     onlyMeta = false,
-    graphOverride?: WarpGraph,
+    graphOverride?: GraphContextGraph,
     frontierDigestOverride?: string,
     backingOverride?: ObservationCoordinateBacking,
   ): Promise<ObservationCoordinate> {
@@ -3498,8 +3654,8 @@ export class ControlPlaneService implements ControlPlanePort {
     if (!frontierDigest) {
       const graph = graphOverride ?? await this.graphPort.getGraph();
       const state = await graph.getStateSnapshot();
-      frontierDigest = state
-        ? frontierDigestFromObservedFrontier(state.observedFrontier)
+        frontierDigest = state
+        ? frontierDigestFromObservedFrontier(new Map(state.observedFrontier))
         : digest(
           [...(await graph.getFrontier()).entries()].sort(([a], [b]) => a.localeCompare(b)),
         );
