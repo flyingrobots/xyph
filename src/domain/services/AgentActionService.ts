@@ -361,7 +361,7 @@ export class AgentActionValidator {
 
   private async fetchSnapshot(): Promise<GraphSnapshot> {
     const graphCtx = createGraphContext(this.graphPort);
-    return graphCtx.fetchSnapshot();
+    return graphCtx.fetchSnapshot(undefined, { profile: 'operational' });
   }
 
   private buildSubmissionSemantics(

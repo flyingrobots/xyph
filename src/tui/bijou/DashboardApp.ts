@@ -1601,7 +1601,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
   function fetchSnapshot(requestId: number): Cmd<DashboardMsg> {
     return async (emit) => {
       try {
-        const snapshot = await deps.ctx.fetchSnapshot();
+        const snapshot = await deps.ctx.fetchSnapshot(undefined, { profile: 'operational' });
         emit({ type: 'snapshot-loaded', snapshot, requestId });
       } catch (err: unknown) {
         emit({ type: 'snapshot-error', error: err instanceof Error ? err.message : String(err), requestId });
@@ -1613,7 +1613,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
     return async (emit) => {
       deps.ctx.invalidateCache();
       try {
-        const snapshot = await deps.ctx.fetchSnapshot();
+        const snapshot = await deps.ctx.fetchSnapshot(undefined, { profile: 'operational' });
         emit({ type: 'snapshot-loaded', snapshot, requestId });
       } catch (err: unknown) {
         emit({ type: 'snapshot-error', error: err instanceof Error ? err.message : String(err), requestId });

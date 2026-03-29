@@ -137,7 +137,10 @@ export interface GraphContext {
   readonly graph: WarpGraph;
 
   /** Build a snapshot from the current graph state (sync → query → traversal). */
-  fetchSnapshot(onProgress?: (msg: string) => void): Promise<GraphSnapshot>;
+  fetchSnapshot(
+    onProgress?: (msg: string) => void,
+    options?: FetchSnapshotOptions,
+  ): Promise<GraphSnapshot>;
 
   /** Build a detailed projection for a single graph entity. */
   fetchEntityDetail(id: string): Promise<EntityDetail | null>;
@@ -147,6 +150,12 @@ export interface GraphContext {
 
   /** Clear cached state so next fetchSnapshot() re-materializes. */
   invalidateCache(): void;
+}
+
+export type GraphSnapshotProfile = 'full' | 'operational';
+
+export interface FetchSnapshotOptions {
+  profile?: GraphSnapshotProfile;
 }
 
 export function createGraphContext(graphPort: GraphPort): GraphContext {
@@ -287,7 +296,7 @@ function deriveCampaignStatusFromQuests(quests: QuestNode[]): CampaignStatus {
 // ---------------------------------------------------------------------------
 
 class GraphContextImpl implements GraphContext {
-  private cachedSnapshot: GraphSnapshot | null = null;
+  private cachedSnapshots = new Map<GraphSnapshotProfile, GraphSnapshot>();
   private cachedFrontierKey: string | null = null;
   private _graph: WarpGraph | null = null;
 
@@ -306,7 +315,7 @@ class GraphContextImpl implements GraphContext {
   }
 
   invalidateCache(): void {
-    this.cachedSnapshot = null;
+    this.cachedSnapshots.clear();
     this.cachedFrontierKey = null;
   }
 
@@ -335,8 +344,14 @@ class GraphContextImpl implements GraphContext {
     };
   }
 
-  async fetchSnapshot(onProgress?: (msg: string) => void): Promise<GraphSnapshot> {
+  async fetchSnapshot(
+    onProgress?: (msg: string) => void,
+    options: FetchSnapshotOptions = {},
+  ): Promise<GraphSnapshot> {
     const log: (msg: string) => void = onProgress ?? function noop(): void { /* no-op */ };
+    const profile: GraphSnapshotProfile = options.profile ?? 'full';
+    const includeTraceability = profile === 'full';
+    const includeLegacySuggestions = profile === 'full';
 
     // --- Lifecycle: open → sync → materialize ---
     log('Opening project graph…');
@@ -353,11 +368,12 @@ class GraphContextImpl implements GraphContext {
     // Cache check: compare frontier key to detect both in-process writes
     // (via graph.patch()) and external writes (discovered by syncCoverage).
     // hasFrontierChanged() only detects external patches, missing same-instance mutations.
-    if (this.cachedSnapshot !== null) {
+    const cachedSnapshot = this.cachedSnapshots.get(profile);
+    if (cachedSnapshot !== undefined) {
       const currentKey = this.frontierKeyFromState(await graph.getStateSnapshot());
       if (currentKey === this.cachedFrontierKey) {
         log('No changes detected — using cached snapshot');
-        return this.cachedSnapshot;
+        return cachedSnapshot;
       }
     }
 
@@ -382,11 +398,21 @@ class GraphContextImpl implements GraphContext {
       graph.query().match('patchset:*').select(['id', 'props']).run().then(extractNodes),
       graph.query().match('review:*').select(['id', 'props']).run().then(extractNodes),
       graph.query().match('decision:*').select(['id', 'props']).run().then(extractNodes),
-      graph.query().match('story:*').select(['id', 'props']).run().then(extractNodes),
-      graph.query().match('req:*').select(['id', 'props']).run().then(extractNodes),
-      graph.query().match('criterion:*').select(['id', 'props']).run().then(extractNodes),
-      graph.query().match('evidence:*').select(['id', 'props']).run().then(extractNodes),
-      graph.query().match('policy:*').select(['id', 'props']).run().then(extractNodes),
+      includeTraceability
+        ? graph.query().match('story:*').select(['id', 'props']).run().then(extractNodes)
+        : Promise.resolve([]),
+      includeTraceability
+        ? graph.query().match('req:*').select(['id', 'props']).run().then(extractNodes)
+        : Promise.resolve([]),
+      includeTraceability
+        ? graph.query().match('criterion:*').select(['id', 'props']).run().then(extractNodes)
+        : Promise.resolve([]),
+      includeTraceability
+        ? graph.query().match('evidence:*').select(['id', 'props']).run().then(extractNodes)
+        : Promise.resolve([]),
+      includeTraceability
+        ? graph.query().match('policy:*').select(['id', 'props']).run().then(extractNodes)
+        : Promise.resolve([]),
       graph.query().match('suggestion:*').select(['id', 'props']).run().then(extractNodes),
       graph.query().match('case:*').select(['id', 'props']).run().then(extractNodes),
       graph.query().match('comparison-artifact:*').select(['id', 'props']).run().then(extractNodes),
@@ -407,10 +433,10 @@ class GraphContextImpl implements GraphContext {
       ...patchsetNodes.map((n) => n.id),
       ...reviewNodes.map((n) => n.id),
       ...decisionNodes.map((n) => n.id),
-      ...storyNodes.map((n) => n.id),
-      ...requirementNodes.map((n) => n.id),
-      ...evidenceNodes.map((n) => n.id),
-      ...policyNodes.map((n) => n.id),
+      ...(includeTraceability ? storyNodes.map((n) => n.id) : []),
+      ...(includeTraceability ? requirementNodes.map((n) => n.id) : []),
+      ...(includeTraceability ? evidenceNodes.map((n) => n.id) : []),
+      ...(includeTraceability ? policyNodes.map((n) => n.id) : []),
       ...caseNodes.map((n) => n.id),
     ];
     const neighborsCache = await batchNeighbors(graph, neighborsNeeded);
@@ -587,330 +613,325 @@ class GraphContextImpl implements GraphContext {
     }
 
     // --- Build traceability nodes (stories, requirements, criteria, evidence, policies) ---
-    log('Building traceability models…');
-
-    // Build reverse lookup: intent → stories via decomposes-to edges on intent nodes
-    // and story → requirements via decomposes-to edges on story nodes
-    // We look at the outgoing edges of story nodes and evidence nodes
-
-    // Build stories
     const stories: StoryNode[] = [];
-    for (const n of storyNodes) {
-      if (n.props['type'] !== 'story') continue;
-      const title = n.props['title'];
-      const persona = n.props['persona'];
-      const goal = n.props['goal'];
-      const benefit = n.props['benefit'];
-      const createdBy = n.props['created_by'];
-      const createdAt = n.props['created_at'];
-
-      if (typeof title !== 'string' || typeof persona !== 'string' ||
-          typeof goal !== 'string' || typeof benefit !== 'string' ||
-          typeof createdBy !== 'string' || typeof createdAt !== 'number') continue;
-
-      stories.push({
-        id: n.id, title, persona, goal, benefit, createdBy, createdAt,
-      });
-    }
-
-    // Resolve intent→story decomposes-to edges (intent outgoing → story)
-    // We need to check intent neighbors, but intents aren't in neighborsNeeded.
-    // Instead, check story node neighbors for incoming decomposes-to.
-    // Since we have story outgoing neighbors, we need to find which intent
-    // points to a story. The edge is intent→story (outgoing from intent).
-    // We'll batch-fetch intent neighbors too.
-    const intentNeighbors = await batchNeighbors(graph, intentNodes.map((n) => n.id));
-    for (const intent of intentNodes) {
-      const neighbors = intentNeighbors.get(intent.id) ?? [];
-      for (const nb of neighbors) {
-        if (nb.label === 'decomposes-to' && nb.nodeId.startsWith('story:')) {
-          const story = stories.find((s) => s.id === nb.nodeId);
-          if (story) story.intentId = intent.id;
-        }
-      }
-    }
-
-    // Build requirements
     const requirements: RequirementNode[] = [];
-    for (const n of requirementNodes) {
-      if (n.props['type'] !== 'requirement') continue;
-      const description = n.props['description'];
-      const kind = n.props['kind'];
-      const priority = n.props['priority'];
-
-      if (typeof description !== 'string' ||
-          typeof kind !== 'string' || !VALID_REQUIREMENT_KINDS.has(kind) ||
-          typeof priority !== 'string' || !VALID_REQUIREMENT_PRIORITIES.has(priority)) continue;
-
-      // Resolve has-criterion edges (req→criterion, outgoing from req)
-      const neighbors = neighborsCache.get(n.id) ?? [];
-      const criterionIds: string[] = [];
-      for (const nb of neighbors) {
-        if (nb.label === 'has-criterion' && nb.nodeId.startsWith('criterion:')) {
-          criterionIds.push(nb.nodeId);
-        }
-      }
-
-      requirements.push({
-        id: n.id,
-        description,
-        kind: kind as RequirementKind,
-        priority: priority as RequirementPriority,
-        taskIds: [],
-        criterionIds,
-      });
-    }
-
-    // Resolve story→req decomposes-to edges (story outgoing → req)
-    for (const story of stories) {
-      const neighbors = neighborsCache.get(story.id) ?? [];
-      for (const nb of neighbors) {
-        if (nb.label === 'decomposes-to' && nb.nodeId.startsWith('req:')) {
-          const req = requirements.find((r) => r.id === nb.nodeId);
-          if (req) req.storyId = story.id;
-        }
-      }
-    }
-
-    // Resolve task→req implements edges (task outgoing → req, reverse lookup)
-    for (const task of taskNodes) {
-      const neighbors = neighborsCache.get(task.id) ?? [];
-      for (const nb of neighbors) {
-        if (nb.label === 'implements' && nb.nodeId.startsWith('req:')) {
-          const req = requirements.find((r) => r.id === nb.nodeId);
-          if (req) req.taskIds.push(task.id);
-        }
-      }
-    }
-
-    // Build evidence (need to resolve verifies edges)
     const evidence: EvidenceNode[] = [];
-    for (const n of evidenceNodes) {
-      if (n.props['type'] !== 'evidence') continue;
-      const kind = n.props['kind'];
-      const result = n.props['result'];
-      const producedAt = n.props['produced_at'];
-      const producedBy = n.props['produced_by'];
-      const artifactHash = n.props['artifact_hash'];
-
-      if (typeof kind !== 'string' || !VALID_EVIDENCE_KINDS.has(kind) ||
-          typeof result !== 'string' || !VALID_EVIDENCE_RESULTS.has(result) ||
-          typeof producedAt !== 'number' || typeof producedBy !== 'string') continue;
-
-      // Resolve outgoing edges (verifies→criterion, implements→requirement)
-      const neighbors = neighborsCache.get(n.id) ?? [];
-      let criterionId: string | undefined;
-      let requirementId: string | undefined;
-      for (const nb of neighbors) {
-        if (nb.label === 'verifies' && nb.nodeId.startsWith('criterion:')) {
-          criterionId = nb.nodeId;
-        } else if (nb.label === 'implements' && nb.nodeId.startsWith('req:')) {
-          requirementId = nb.nodeId;
-        }
-      }
-
-      const sourceFile = n.props['source_file'];
-      evidence.push({
-        id: n.id,
-        kind: kind as EvidenceKind,
-        result: result as EvidenceResult,
-        producedAt,
-        producedBy,
-        criterionId,
-        requirementId,
-        artifactHash: typeof artifactHash === 'string' ? artifactHash : undefined,
-        sourceFile: typeof sourceFile === 'string' ? sourceFile : undefined,
-      });
-    }
-
-    // Build criteria (resolve reverse verifies edges for evidenceIds)
-    const evidenceByCriterion = new Map<string, string[]>();
-    for (const e of evidence) {
-      if (e.criterionId) {
-        const arr = evidenceByCriterion.get(e.criterionId) ?? [];
-        arr.push(e.id);
-        evidenceByCriterion.set(e.criterionId, arr);
-      }
-    }
-
     const criteria: CriterionNode[] = [];
-    for (const n of criterionNodes) {
-      if (n.props['type'] !== 'criterion') continue;
-      const description = n.props['description'];
-      const verifiable = n.props['verifiable'];
-
-      if (typeof description !== 'string') continue;
-
-      criteria.push({
-        id: n.id,
-        description,
-        verifiable: typeof verifiable === 'boolean' ? verifiable : true,
-        evidenceIds: evidenceByCriterion.get(n.id) ?? [],
-      });
-    }
-
-    // Resolve criterion→requirement reverse lookup (req→criterion has-criterion edge)
-    const criterionByReq = new Map<string, string[]>();
-    for (const req of requirements) {
-      for (const cId of req.criterionIds) {
-        const arr = criterionByReq.get(cId) ?? [];
-        arr.push(req.id);
-        criterionByReq.set(cId, arr);
-      }
-    }
-    for (const c of criteria) {
-      const reqIds = criterionByReq.get(c.id);
-      if (reqIds && reqIds.length > 0) {
-        c.requirementId = reqIds[0];
-      }
-    }
-
-    // Build policies (resolve governs edges)
     const policies: PolicyNode[] = [];
-    for (const n of policyNodes) {
-      if (n.props['type'] !== 'policy') continue;
+    if (includeTraceability) {
+      log('Building traceability models…');
 
-      const neighbors = neighborsCache.get(n.id) ?? [];
-      let campaignId: string | undefined;
-      for (const nb of neighbors) {
-        if (nb.label === 'governs' && (nb.nodeId.startsWith('campaign:') || nb.nodeId.startsWith('milestone:'))) {
-          campaignId = nb.nodeId;
-          break;
+      for (const n of storyNodes) {
+        if (n.props['type'] !== 'story') continue;
+        const title = n.props['title'];
+        const persona = n.props['persona'];
+        const goal = n.props['goal'];
+        const benefit = n.props['benefit'];
+        const createdBy = n.props['created_by'];
+        const createdAt = n.props['created_at'];
+
+        if (typeof title !== 'string' || typeof persona !== 'string' ||
+            typeof goal !== 'string' || typeof benefit !== 'string' ||
+            typeof createdBy !== 'string' || typeof createdAt !== 'number') continue;
+
+        stories.push({
+          id: n.id, title, persona, goal, benefit, createdBy, createdAt,
+        });
+      }
+
+      const intentNeighbors = await batchNeighbors(graph, intentNodes.map((n) => n.id));
+      for (const intent of intentNodes) {
+        const neighbors = intentNeighbors.get(intent.id) ?? [];
+        for (const nb of neighbors) {
+          if (nb.label === 'decomposes-to' && nb.nodeId.startsWith('story:')) {
+            const story = stories.find((s) => s.id === nb.nodeId);
+            if (story) story.intentId = intent.id;
+          }
         }
       }
 
-      const coverageThresholdRaw = n.props['coverage_threshold'];
-      const requireAllCriteriaRaw = n.props['require_all_criteria'];
-      const requireEvidenceRaw = n.props['require_evidence'];
-      const allowManualSealRaw = n.props['allow_manual_seal'];
+      for (const n of requirementNodes) {
+        if (n.props['type'] !== 'requirement') continue;
+        const description = n.props['description'];
+        const kind = n.props['kind'];
+        const priority = n.props['priority'];
 
-      const coverageThreshold = (
-        typeof coverageThresholdRaw === 'number' &&
-        Number.isFinite(coverageThresholdRaw) &&
-        coverageThresholdRaw >= 0 &&
-        coverageThresholdRaw <= 1
-      )
-        ? coverageThresholdRaw
-        : DEFAULT_POLICY_COVERAGE_THRESHOLD;
+        if (typeof description !== 'string' ||
+            typeof kind !== 'string' || !VALID_REQUIREMENT_KINDS.has(kind) ||
+            typeof priority !== 'string' || !VALID_REQUIREMENT_PRIORITIES.has(priority)) continue;
 
-      policies.push({
-        id: n.id,
-        campaignId,
-        coverageThreshold,
-        requireAllCriteria: typeof requireAllCriteriaRaw === 'boolean'
-          ? requireAllCriteriaRaw
-          : DEFAULT_POLICY_REQUIRE_ALL_CRITERIA,
-        requireEvidence: typeof requireEvidenceRaw === 'boolean'
-          ? requireEvidenceRaw
-          : DEFAULT_POLICY_REQUIRE_EVIDENCE,
-        allowManualSeal: typeof allowManualSealRaw === 'boolean'
-          ? allowManualSealRaw
-          : DEFAULT_POLICY_ALLOW_MANUAL_SEAL,
-      });
-    }
+        const neighbors = neighborsCache.get(n.id) ?? [];
+        const criterionIds: string[] = [];
+        for (const nb of neighbors) {
+          if (nb.label === 'has-criterion' && nb.nodeId.startsWith('criterion:')) {
+            criterionIds.push(nb.nodeId);
+          }
+        }
 
-    // --- Compute traceability rollups for quests and campaigns ---
-    const policyByCampaignId = new Map<string, PolicyNode>();
-    for (const policy of policies) {
-      if (!policy.campaignId || policyByCampaignId.has(policy.campaignId)) continue;
-      policyByCampaignId.set(policy.campaignId, policy);
-    }
-
-    const requirementsByQuestId = new Map<string, RequirementNode[]>();
-    for (const requirement of requirements) {
-      for (const taskId of requirement.taskIds) {
-        const linked = requirementsByQuestId.get(taskId) ?? [];
-        linked.push(requirement);
-        requirementsByQuestId.set(taskId, linked);
-      }
-    }
-    const criteriaByRequirementId = new Map<string, CriterionNode[]>();
-    for (const criterion of criteria) {
-      if (!criterion.requirementId) continue;
-      const linked = criteriaByRequirementId.get(criterion.requirementId) ?? [];
-      linked.push(criterion);
-      criteriaByRequirementId.set(criterion.requirementId, linked);
-    }
-
-    for (const quest of quests) {
-      const questRequirements = requirementsByQuestId.get(quest.id) ?? [];
-      const questCriteria = questRequirements.flatMap((requirement) => criteriaByRequirementId.get(requirement.id) ?? []);
-      const appliedPolicy = quest.campaignId ? policyByCampaignId.get(quest.campaignId) : undefined;
-      quest.computedCompletion = computeCompletionSummary(
-        questRequirements.map((requirement) => ({
-          id: requirement.id,
-          criterionIds: requirement.criterionIds,
-        })),
-        questCriteria.map((criterion) => ({
-          id: criterion.id,
-          evidence: criterion.evidenceIds
-            .map((evidenceId) => evidence.find((entry) => entry.id === evidenceId))
-            .filter((entry): entry is EvidenceNode => Boolean(entry))
-            .map((entry) => ({
-              id: entry.id,
-              result: entry.result,
-              producedAt: entry.producedAt,
-            })),
-        })),
-        {
-          policy: appliedPolicy
-            ? {
-                id: appliedPolicy.id,
-                coverageThreshold: appliedPolicy.coverageThreshold,
-                requireAllCriteria: appliedPolicy.requireAllCriteria,
-                requireEvidence: appliedPolicy.requireEvidence,
-              }
-            : undefined,
-          manualComplete: quest.status === 'DONE',
-        },
-      );
-    }
-
-    const questsByCampaignId = new Map<string, QuestNode[]>();
-    for (const quest of quests) {
-      if (!quest.campaignId) continue;
-      const members = questsByCampaignId.get(quest.campaignId) ?? [];
-      members.push(quest);
-      questsByCampaignId.set(quest.campaignId, members);
-    }
-    for (const campaign of campaigns) {
-      const memberQuests = questsByCampaignId.get(campaign.id);
-      if (memberQuests && memberQuests.length > 0) {
-        campaign.status = deriveCampaignStatusFromQuests(memberQuests);
+        requirements.push({
+          id: n.id,
+          description,
+          kind: kind as RequirementKind,
+          priority: priority as RequirementPriority,
+          taskIds: [],
+          criterionIds,
+        });
       }
 
-      const questIds = new Set((memberQuests ?? []).map((quest) => quest.id));
-      const campaignRequirements = requirements.filter((requirement) => requirement.taskIds.some((taskId) => questIds.has(taskId)));
-      const campaignCriteria = campaignRequirements.flatMap((requirement) => criteriaByRequirementId.get(requirement.id) ?? []);
-      const appliedPolicy = policyByCampaignId.get(campaign.id);
-      campaign.computedCompletion = computeCompletionSummary(
-        campaignRequirements.map((requirement) => ({
-          id: requirement.id,
-          criterionIds: requirement.criterionIds,
-        })),
-        campaignCriteria.map((criterion) => ({
-          id: criterion.id,
-          evidence: criterion.evidenceIds
-            .map((evidenceId) => evidence.find((entry) => entry.id === evidenceId))
-            .filter((entry): entry is EvidenceNode => Boolean(entry))
-            .map((entry) => ({
-              id: entry.id,
-              result: entry.result,
-              producedAt: entry.producedAt,
-            })),
-        })),
-        {
-          policy: appliedPolicy
-            ? {
-                id: appliedPolicy.id,
-                coverageThreshold: appliedPolicy.coverageThreshold,
-                requireAllCriteria: appliedPolicy.requireAllCriteria,
-                requireEvidence: appliedPolicy.requireEvidence,
-              }
-            : undefined,
-          manualComplete: campaign.status === 'DONE',
-        },
-      );
+      for (const story of stories) {
+        const neighbors = neighborsCache.get(story.id) ?? [];
+        for (const nb of neighbors) {
+          if (nb.label === 'decomposes-to' && nb.nodeId.startsWith('req:')) {
+            const req = requirements.find((r) => r.id === nb.nodeId);
+            if (req) req.storyId = story.id;
+          }
+        }
+      }
+
+      for (const task of taskNodes) {
+        const neighbors = neighborsCache.get(task.id) ?? [];
+        for (const nb of neighbors) {
+          if (nb.label === 'implements' && nb.nodeId.startsWith('req:')) {
+            const req = requirements.find((r) => r.id === nb.nodeId);
+            if (req) req.taskIds.push(task.id);
+          }
+        }
+      }
+
+      for (const n of evidenceNodes) {
+        if (n.props['type'] !== 'evidence') continue;
+        const kind = n.props['kind'];
+        const result = n.props['result'];
+        const producedAt = n.props['produced_at'];
+        const producedBy = n.props['produced_by'];
+        const artifactHash = n.props['artifact_hash'];
+
+        if (typeof kind !== 'string' || !VALID_EVIDENCE_KINDS.has(kind) ||
+            typeof result !== 'string' || !VALID_EVIDENCE_RESULTS.has(result) ||
+            typeof producedAt !== 'number' || typeof producedBy !== 'string') continue;
+
+        const neighbors = neighborsCache.get(n.id) ?? [];
+        let criterionId: string | undefined;
+        let requirementId: string | undefined;
+        for (const nb of neighbors) {
+          if (nb.label === 'verifies' && nb.nodeId.startsWith('criterion:')) {
+            criterionId = nb.nodeId;
+          } else if (nb.label === 'implements' && nb.nodeId.startsWith('req:')) {
+            requirementId = nb.nodeId;
+          }
+        }
+
+        const sourceFile = n.props['source_file'];
+        evidence.push({
+          id: n.id,
+          kind: kind as EvidenceKind,
+          result: result as EvidenceResult,
+          producedAt,
+          producedBy,
+          criterionId,
+          requirementId,
+          artifactHash: typeof artifactHash === 'string' ? artifactHash : undefined,
+          sourceFile: typeof sourceFile === 'string' ? sourceFile : undefined,
+        });
+      }
+
+      const evidenceByCriterion = new Map<string, string[]>();
+      for (const e of evidence) {
+        if (e.criterionId) {
+          const arr = evidenceByCriterion.get(e.criterionId) ?? [];
+          arr.push(e.id);
+          evidenceByCriterion.set(e.criterionId, arr);
+        }
+      }
+
+      for (const n of criterionNodes) {
+        if (n.props['type'] !== 'criterion') continue;
+        const description = n.props['description'];
+        const verifiable = n.props['verifiable'];
+
+        if (typeof description !== 'string') continue;
+
+        criteria.push({
+          id: n.id,
+          description,
+          verifiable: typeof verifiable === 'boolean' ? verifiable : true,
+          evidenceIds: evidenceByCriterion.get(n.id) ?? [],
+        });
+      }
+
+      const criterionByReq = new Map<string, string[]>();
+      for (const req of requirements) {
+        for (const cId of req.criterionIds) {
+          const arr = criterionByReq.get(cId) ?? [];
+          arr.push(req.id);
+          criterionByReq.set(cId, arr);
+        }
+      }
+      for (const c of criteria) {
+        const reqIds = criterionByReq.get(c.id);
+        if (reqIds && reqIds.length > 0) {
+          c.requirementId = reqIds[0];
+        }
+      }
+
+      for (const n of policyNodes) {
+        if (n.props['type'] !== 'policy') continue;
+
+        const neighbors = neighborsCache.get(n.id) ?? [];
+        let campaignId: string | undefined;
+        for (const nb of neighbors) {
+          if (nb.label === 'governs' && (nb.nodeId.startsWith('campaign:') || nb.nodeId.startsWith('milestone:'))) {
+            campaignId = nb.nodeId;
+            break;
+          }
+        }
+
+        const coverageThresholdRaw = n.props['coverage_threshold'];
+        const requireAllCriteriaRaw = n.props['require_all_criteria'];
+        const requireEvidenceRaw = n.props['require_evidence'];
+        const allowManualSealRaw = n.props['allow_manual_seal'];
+
+        const coverageThreshold = (
+          typeof coverageThresholdRaw === 'number' &&
+          Number.isFinite(coverageThresholdRaw) &&
+          coverageThresholdRaw >= 0 &&
+          coverageThresholdRaw <= 1
+        )
+          ? coverageThresholdRaw
+          : DEFAULT_POLICY_COVERAGE_THRESHOLD;
+
+        policies.push({
+          id: n.id,
+          campaignId,
+          coverageThreshold,
+          requireAllCriteria: typeof requireAllCriteriaRaw === 'boolean'
+            ? requireAllCriteriaRaw
+            : DEFAULT_POLICY_REQUIRE_ALL_CRITERIA,
+          requireEvidence: typeof requireEvidenceRaw === 'boolean'
+            ? requireEvidenceRaw
+            : DEFAULT_POLICY_REQUIRE_EVIDENCE,
+          allowManualSeal: typeof allowManualSealRaw === 'boolean'
+            ? allowManualSealRaw
+            : DEFAULT_POLICY_ALLOW_MANUAL_SEAL,
+        });
+      }
+
+      const policyByCampaignId = new Map<string, PolicyNode>();
+      for (const policy of policies) {
+        if (!policy.campaignId || policyByCampaignId.has(policy.campaignId)) continue;
+        policyByCampaignId.set(policy.campaignId, policy);
+      }
+
+      const requirementsByQuestId = new Map<string, RequirementNode[]>();
+      for (const requirement of requirements) {
+        for (const taskId of requirement.taskIds) {
+          const linked = requirementsByQuestId.get(taskId) ?? [];
+          linked.push(requirement);
+          requirementsByQuestId.set(taskId, linked);
+        }
+      }
+      const criteriaByRequirementId = new Map<string, CriterionNode[]>();
+      for (const criterion of criteria) {
+        if (!criterion.requirementId) continue;
+        const linked = criteriaByRequirementId.get(criterion.requirementId) ?? [];
+        linked.push(criterion);
+        criteriaByRequirementId.set(criterion.requirementId, linked);
+      }
+
+      for (const quest of quests) {
+        const questRequirements = requirementsByQuestId.get(quest.id) ?? [];
+        const questCriteria = questRequirements.flatMap((requirement) => criteriaByRequirementId.get(requirement.id) ?? []);
+        const appliedPolicy = quest.campaignId ? policyByCampaignId.get(quest.campaignId) : undefined;
+        quest.computedCompletion = computeCompletionSummary(
+          questRequirements.map((requirement) => ({
+            id: requirement.id,
+            criterionIds: requirement.criterionIds,
+          })),
+          questCriteria.map((criterion) => ({
+            id: criterion.id,
+            evidence: criterion.evidenceIds
+              .map((evidenceId) => evidence.find((entry) => entry.id === evidenceId))
+              .filter((entry): entry is EvidenceNode => Boolean(entry))
+              .map((entry) => ({
+                id: entry.id,
+                result: entry.result,
+                producedAt: entry.producedAt,
+              })),
+          })),
+          {
+            policy: appliedPolicy
+              ? {
+                  id: appliedPolicy.id,
+                  coverageThreshold: appliedPolicy.coverageThreshold,
+                  requireAllCriteria: appliedPolicy.requireAllCriteria,
+                  requireEvidence: appliedPolicy.requireEvidence,
+                }
+              : undefined,
+            manualComplete: quest.status === 'DONE',
+          },
+        );
+      }
+
+      const questsByCampaignId = new Map<string, QuestNode[]>();
+      for (const quest of quests) {
+        if (!quest.campaignId) continue;
+        const members = questsByCampaignId.get(quest.campaignId) ?? [];
+        members.push(quest);
+        questsByCampaignId.set(quest.campaignId, members);
+      }
+      for (const campaign of campaigns) {
+        const memberQuests = questsByCampaignId.get(campaign.id);
+        if (memberQuests && memberQuests.length > 0) {
+          campaign.status = deriveCampaignStatusFromQuests(memberQuests);
+        }
+
+        const questIds = new Set((memberQuests ?? []).map((quest) => quest.id));
+        const campaignRequirements = requirements.filter((requirement) => requirement.taskIds.some((taskId) => questIds.has(taskId)));
+        const campaignCriteria = campaignRequirements.flatMap((requirement) => criteriaByRequirementId.get(requirement.id) ?? []);
+        const appliedPolicy = policyByCampaignId.get(campaign.id);
+        campaign.computedCompletion = computeCompletionSummary(
+          campaignRequirements.map((requirement) => ({
+            id: requirement.id,
+            criterionIds: requirement.criterionIds,
+          })),
+          campaignCriteria.map((criterion) => ({
+            id: criterion.id,
+            evidence: criterion.evidenceIds
+              .map((evidenceId) => evidence.find((entry) => entry.id === evidenceId))
+              .filter((entry): entry is EvidenceNode => Boolean(entry))
+              .map((entry) => ({
+                id: entry.id,
+                result: entry.result,
+                producedAt: entry.producedAt,
+              })),
+          })),
+          {
+            policy: appliedPolicy
+              ? {
+                  id: appliedPolicy.id,
+                  coverageThreshold: appliedPolicy.coverageThreshold,
+                  requireAllCriteria: appliedPolicy.requireAllCriteria,
+                  requireEvidence: appliedPolicy.requireEvidence,
+                }
+              : undefined,
+            manualComplete: campaign.status === 'DONE',
+          },
+        );
+      }
+    } else {
+      const questsByCampaignId = new Map<string, QuestNode[]>();
+      for (const quest of quests) {
+        if (!quest.campaignId) continue;
+        const members = questsByCampaignId.get(quest.campaignId) ?? [];
+        members.push(quest);
+        questsByCampaignId.set(quest.campaignId, members);
+      }
+      for (const campaign of campaigns) {
+        const memberQuests = questsByCampaignId.get(campaign.id);
+        if (memberQuests && memberQuests.length > 0) {
+          campaign.status = deriveCampaignStatusFromQuests(memberQuests);
+        }
+      }
     }
 
     // --- Build suggestions (M11 Phase 4) ---
@@ -1016,6 +1037,7 @@ class GraphContextImpl implements GraphContext {
       }
 
       if (n.props['type'] !== 'suggestion') continue;
+      if (!includeLegacySuggestions) continue;
       const testFile = n.props['test_file'];
       const targetId = n.props['target_id'];
       const targetType = n.props['target_type'];
@@ -1146,7 +1168,7 @@ class GraphContextImpl implements GraphContext {
       asOf: Date.now(), graphMeta, sortedTaskIds, sortedCampaignIds,
       transitiveDownstream,
     };
-    this.cachedSnapshot = snap;
+    this.cachedSnapshots.set(profile, snap);
     this.cachedFrontierKey = this.frontierKeyFromState(state);
     return snap;
   }

@@ -349,7 +349,7 @@ export class AgentBriefingService {
 
   private async fetchSnapshot(): Promise<GraphSnapshot> {
     const graphCtx = createGraphContext(this.graphPort);
-    return graphCtx.fetchSnapshot();
+    return graphCtx.fetchSnapshot(undefined, { profile: 'operational' });
   }
 
   private async buildWorkSummaries(

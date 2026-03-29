@@ -532,7 +532,7 @@ export class AgentContextService {
 
   public async fetch(id: string): Promise<AgentContextResult | null> {
     const graphCtx = createGraphContext(this.graphPort);
-    const snapshot = await graphCtx.fetchSnapshot();
+    const snapshot = await graphCtx.fetchSnapshot(undefined, { profile: 'operational' });
     const detail = await graphCtx.fetchEntityDetail(id);
     if (!detail) {
       return null;
