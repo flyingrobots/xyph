@@ -1004,6 +1004,74 @@ describe('DashboardApp', () => {
     expect(strip(app.view(supersede) as string)).toContain('Replacement artifact ID');
   });
 
+  it('does not submit suggestion adoption without a rationale', () => {
+    const app = buildApp();
+    const loaded = ready(app, makeSnapshot({
+      aiSuggestions: [{
+        id: 'suggestion:S1',
+        type: 'ai-suggestion',
+        kind: 'quest',
+        title: 'Promote the suggestion',
+        summary: 'Adopt this into a real quest.',
+        status: 'suggested',
+        audience: 'human',
+        origin: 'request',
+        suggestedBy: 'agent.prime',
+        suggestedAt: 100,
+        relatedIds: [],
+      }],
+    }));
+
+    const [suggestions] = app.update(key('5'), loaded);
+    const [page] = app.update(key('enter'), suggestions);
+    const [adopt] = app.update(key('a', { shift: true }), page);
+    const [rationaleStep] = app.update(key('enter'), adopt);
+    const [blocked, cmds] = app.update(key('enter'), rationaleStep);
+
+    expect(blocked.mode).toBe('input');
+    expect(blocked.writePending).toBe(false);
+    expect(blocked.inputState).toMatchObject({
+      kind: 'suggestion-adopt',
+      step: 'rationale',
+    });
+    expect(cmds).toEqual([]);
+  });
+
+  it('does not submit suggestion supersession without a rationale', () => {
+    const app = buildApp();
+    const loaded = ready(app, makeSnapshot({
+      aiSuggestions: [{
+        id: 'suggestion:S1',
+        type: 'ai-suggestion',
+        kind: 'general',
+        title: 'Supersede the suggestion',
+        summary: 'Route this through the real artifact instead.',
+        status: 'suggested',
+        audience: 'human',
+        origin: 'request',
+        suggestedBy: 'agent.prime',
+        suggestedAt: 100,
+        relatedIds: [],
+      }],
+    }));
+
+    const [suggestions] = app.update(key('5'), loaded);
+    const [page] = app.update(key('enter'), suggestions);
+    const [supersede] = app.update(key('u'), page);
+    const [typedReplacement] = app.update(key('t'), supersede);
+    const [rationaleStep] = app.update(key('enter'), typedReplacement);
+    const [blocked, cmds] = app.update(key('enter'), rationaleStep);
+
+    expect(blocked.mode).toBe('input');
+    expect(blocked.writePending).toBe(false);
+    expect(blocked.inputState).toMatchObject({
+      kind: 'suggestion-supersede',
+      step: 'rationale',
+      replacementId: 't',
+    });
+    expect(cmds).toEqual([]);
+  });
+
   it('opens the AI explainability modal from a suggestion page', () => {
     const app = buildApp();
     const loaded = ready(app, makeSnapshot({

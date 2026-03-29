@@ -2407,8 +2407,8 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
               }, value)]];
             }
             if (model.inputState.kind === 'suggestion-adopt') {
-              const value = model.inputState.value.trim().toLowerCase();
               if (model.inputState.step === 'kind') {
+                const value = model.inputState.value.trim().toLowerCase();
                 if (!VALID_AI_SUGGESTION_ADOPTION_KINDS.has(value)) {
                   return [model, []];
                 }
@@ -2422,6 +2422,10 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
                   },
                 }, []];
               }
+              const rationale = model.inputState.value.trim();
+              if (rationale.length === 0) {
+                return [model, []];
+              }
               return [{
                 ...model,
                 mode: 'normal',
@@ -2431,7 +2435,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
                 kind: 'adopt-suggestion',
                 suggestionId: model.inputState.suggestionId,
                 adoptedArtifactKind: model.inputState.adoptedArtifactKind,
-                rationale: value || undefined,
+                rationale,
               })]];
             }
             if (model.inputState.kind === 'suggestion-supersede') {
@@ -2447,6 +2451,9 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
                     value: '',
                   },
                 }, []];
+              }
+              if (value.length === 0) {
+                return [model, []];
               }
               return [{
                 ...model,
