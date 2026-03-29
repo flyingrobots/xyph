@@ -485,7 +485,7 @@ export function registerSuggestionCommands(program: Command, ctx: CliContext): v
 
       const { createGraphContext } = await import('../../infrastructure/GraphContext.js');
       const graphCtx = createGraphContext(ctx.graphPort);
-      const snapshot = await graphCtx.fetchSnapshot();
+      const snapshot = await graphCtx.fetchSnapshot(undefined, { profile: 'operational' });
 
       const pending = snapshot.suggestions.filter(
         (s) => s.status === 'PENDING' && s.confidence >= minConf,
