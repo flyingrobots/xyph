@@ -10,6 +10,7 @@ import type {
 import type { GraphPort } from '../../ports/GraphPort.js';
 import type { RoadmapQueryPort } from '../../ports/RoadmapPort.js';
 import { createGraphContext } from '../../infrastructure/GraphContext.js';
+import type { GraphContext } from '../../infrastructure/GraphContext.js';
 import { toNeighborEntries } from '../../infrastructure/helpers/isNeighborEntry.js';
 import { summarizeDoctorReport } from './DiagnosticService.js';
 import {
@@ -255,7 +256,7 @@ export class AgentBriefingService {
   }
 
   public async buildBriefing(): Promise<AgentBriefing> {
-    const snapshot = await this.fetchSnapshot();
+    const { graphCtx, snapshot } = await this.openOperationalRead();
     const assignments = await this.buildWorkSummaries(
       snapshot.quests.filter((quest) =>
         quest.assignedTo === this.agentId &&
@@ -276,7 +277,7 @@ export class AgentBriefingService {
     const reviewQueue = this.buildReviewQueue(snapshot);
     const governanceQueue = this.buildGovernanceQueue(snapshot);
     const suggestionQueue = this.buildSuggestionQueue(snapshot);
-    const caseQueue = await this.buildCaseQueue();
+    const caseQueue = await this.buildCaseQueue(graphCtx);
     const recentHandoffs = await this.buildRecentHandoffs();
     const doctorReport = await this.doctor.run();
     const recommendationQueue = buildRecommendationRequests(doctorReport);
@@ -312,7 +313,7 @@ export class AgentBriefingService {
   }
 
   public async next(limit = 5): Promise<AgentNextResult> {
-    const snapshot = await this.fetchSnapshot();
+    const { graphCtx, snapshot } = await this.openOperationalRead();
     const doctorReport = await this.doctor.run();
     const recommendationQueue = buildRecommendationRequests(doctorReport);
     const candidates = (
@@ -326,7 +327,7 @@ export class AgentBriefingService {
     candidates.push(...this.buildSubmissionCandidates(snapshot));
     candidates.push(...this.buildGovernanceCandidates(snapshot));
     candidates.push(...this.buildSuggestionCandidates(snapshot));
-    candidates.push(...(await this.buildCaseCandidates()));
+    candidates.push(...(await this.buildCaseCandidates(graphCtx)));
     candidates.push(...this.buildDoctorCandidates(snapshot, recommendationQueue));
 
     candidates.sort((a, b) =>
@@ -347,9 +348,10 @@ export class AgentBriefingService {
     };
   }
 
-  private async fetchSnapshot(): Promise<GraphSnapshot> {
+  private async openOperationalRead(): Promise<{ graphCtx: GraphContext; snapshot: GraphSnapshot }> {
     const graphCtx = createGraphContext(this.graphPort);
-    return graphCtx.fetchSnapshot(undefined, { profile: 'operational' });
+    const snapshot = await graphCtx.fetchSnapshot(undefined, { profile: 'operational' });
+    return { graphCtx, snapshot };
   }
 
   private async buildWorkSummaries(
@@ -527,14 +529,12 @@ export class AgentBriefingService {
     return queue;
   }
 
-  private async buildCaseQueue(): Promise<AgentCaseQueueEntry[]> {
-    const graph = await this.graphPort.getGraph();
-    const caseNodes = await graph.query()
+  private async buildCaseQueue(graphCtx: GraphContext): Promise<AgentCaseQueueEntry[]> {
+    const caseNodes = await graphCtx.graph.query()
       .match('case:*')
       .select(['id', 'props'])
       .run()
       .then(extractNodes);
-    const graphCtx = createGraphContext(this.graphPort);
 
     const queue = (await Promise.all(caseNodes.map(async (node) => {
       if (node.props['type'] !== 'case') return null;
@@ -659,8 +659,8 @@ export class AgentBriefingService {
     );
   }
 
-  private async buildCaseCandidates(): Promise<AgentNextCandidate[]> {
-    const queue = await this.buildCaseQueue();
+  private async buildCaseCandidates(graphCtx: GraphContext): Promise<AgentNextCandidate[]> {
+    const queue = await this.buildCaseQueue(graphCtx);
     return queue.flatMap((entry) =>
       buildCaseActionCandidates({
         caseContext: {
