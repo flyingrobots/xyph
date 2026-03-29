@@ -168,4 +168,133 @@ describe('GraphContext read path', () => {
       }),
     ]);
   });
+
+  it('uses the analysis snapshot profile for legacy traceability reads without scanning stories or policies', async () => {
+    const queriedPatterns: string[] = [];
+    const queryNodes = new Map<string, { id: string; props: Record<string, unknown> }[]>([
+      ['req:*', [{
+        id: 'req:R-1',
+        props: {
+          type: 'requirement',
+          description: 'System traces test links',
+          kind: 'functional',
+          priority: 'must',
+        },
+      }]],
+      ['criterion:*', [{
+        id: 'criterion:C-1',
+        props: {
+          type: 'criterion',
+          description: 'Criterion has linked evidence',
+          verifiable: true,
+        },
+      }]],
+      ['evidence:*', [{
+        id: 'evidence:E-1',
+        props: {
+          type: 'evidence',
+          kind: 'test',
+          result: 'linked',
+          produced_at: 1,
+          produced_by: 'agent:test',
+          source_file: 'test/unit/Trace.test.ts',
+        },
+      }]],
+      ['suggestion:*', [{
+        id: 'suggestion:S-1',
+        props: {
+          type: 'suggestion',
+          test_file: 'test/unit/Trace.test.ts',
+          target_id: 'criterion:C-1',
+          target_type: 'criterion',
+          confidence: 0.91,
+          layers: '[]',
+          status: 'PENDING',
+          suggested_by: 'agent:test',
+          suggested_at: 1,
+        },
+      }]],
+    ]);
+
+    const graph = {
+      writerId: 'writer.test',
+      syncCoverage: vi.fn(async () => undefined),
+      materialize: vi.fn(async () => null),
+      getStateSnapshot: vi.fn(async () => ({
+        observedFrontier: new Map([['writer.test', 1]]),
+      })),
+      getFrontier: vi.fn(async () => new Map([['writer.test', 'abcdef1234567']])),
+      query: vi.fn(() => {
+        let pattern = '';
+        return {
+          match(value: string) {
+            pattern = value;
+            queriedPatterns.push(value);
+            return this;
+          },
+          select() {
+            return this;
+          },
+          run: vi.fn(async () => ({ nodes: queryNodes.get(pattern) ?? [] })),
+        };
+      }),
+      neighbors: vi.fn(async (id: string) => {
+        if (id === 'req:R-1') {
+          return [{ nodeId: 'criterion:C-1', label: 'has-criterion' }];
+        }
+        if (id === 'evidence:E-1') {
+          return [{ nodeId: 'criterion:C-1', label: 'verifies' }];
+        }
+        return [];
+      }),
+      getNodeProps: vi.fn(async () => null),
+      getContent: vi.fn(async () => null),
+      getContentOid: vi.fn(async () => null),
+      hasNode: vi.fn(async () => false),
+      traverse: {
+        topologicalSort: vi.fn(async () => ({ sorted: [] })),
+        bfs: vi.fn(async () => []),
+      },
+      compareCoordinates: vi.fn(),
+    } as unknown as WarpGraph;
+
+    const ctx = createGraphContextFromGraph(graph, { syncCoverage: false });
+    const snapshot = await ctx.fetchSnapshot(undefined, { profile: 'analysis' });
+
+    expect(queriedPatterns).not.toContain('story:*');
+    expect(queriedPatterns).not.toContain('policy:*');
+    expect(queriedPatterns).toContain('req:*');
+    expect(queriedPatterns).toContain('criterion:*');
+    expect(queriedPatterns).toContain('evidence:*');
+    expect(queriedPatterns).toContain('suggestion:*');
+    expect(snapshot.stories).toEqual([]);
+    expect(snapshot.policies).toEqual([]);
+    expect(snapshot.requirements).toEqual([
+      expect.objectContaining({
+        id: 'req:R-1',
+        criterionIds: ['criterion:C-1'],
+      }),
+    ]);
+    expect(snapshot.criteria).toEqual([
+      expect.objectContaining({
+        id: 'criterion:C-1',
+        requirementId: 'req:R-1',
+        evidenceIds: ['evidence:E-1'],
+      }),
+    ]);
+    expect(snapshot.evidence).toEqual([
+      expect.objectContaining({
+        id: 'evidence:E-1',
+        criterionId: 'criterion:C-1',
+        sourceFile: 'test/unit/Trace.test.ts',
+      }),
+    ]);
+    expect(snapshot.suggestions).toEqual([
+      expect.objectContaining({
+        id: 'suggestion:S-1',
+        targetId: 'criterion:C-1',
+        status: 'PENDING',
+      }),
+    ]);
+  });
 });

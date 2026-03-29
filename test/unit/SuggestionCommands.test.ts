@@ -119,7 +119,7 @@ describe('suggestion commands', () => {
 
     await program.parseAsync(['suggestion', 'accept-all'], { from: 'user' });
 
-    expect(fetchSnapshot).toHaveBeenCalledWith(undefined, { profile: 'operational' });
+    expect(fetchSnapshot).toHaveBeenCalledWith(undefined, { profile: 'analysis' });
     expect(patchBuilder.setProperty).toHaveBeenCalledWith('evidence:auto-auto-2', 'result', 'linked');
     expect(patchBuilder.addEdge).toHaveBeenCalledWith('evidence:auto-auto-2', 'criterion:TRACE', 'verifies');
     expect(ctx.jsonOut).toHaveBeenCalledWith({

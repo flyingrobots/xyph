@@ -152,7 +152,7 @@ export interface GraphContext {
   invalidateCache(): void;
 }
 
-export type GraphSnapshotProfile = 'full' | 'operational';
+export type GraphSnapshotProfile = 'full' | 'operational' | 'analysis';
 
 export interface FetchSnapshotOptions {
   profile?: GraphSnapshotProfile;
@@ -350,8 +350,12 @@ class GraphContextImpl implements GraphContext {
   ): Promise<GraphSnapshot> {
     const log: (msg: string) => void = onProgress ?? function noop(): void { /* no-op */ };
     const profile: GraphSnapshotProfile = options.profile ?? 'full';
-    const includeTraceability = profile === 'full';
-    const includeLegacySuggestions = profile === 'full';
+    const includeFullTraceability = profile === 'full';
+    const includeAnalysisTraceability = profile === 'analysis';
+    const includeRequirementModels = includeFullTraceability || includeAnalysisTraceability;
+    const includeCriterionModels = includeFullTraceability || includeAnalysisTraceability;
+    const includeEvidenceModels = includeFullTraceability || includeAnalysisTraceability;
+    const includeLegacySuggestions = includeFullTraceability || includeAnalysisTraceability;
 
     // --- Lifecycle: open → sync → materialize ---
     log('Opening project graph…');
@@ -398,19 +402,19 @@ class GraphContextImpl implements GraphContext {
       graph.query().match('patchset:*').select(['id', 'props']).run().then(extractNodes),
       graph.query().match('review:*').select(['id', 'props']).run().then(extractNodes),
       graph.query().match('decision:*').select(['id', 'props']).run().then(extractNodes),
-      includeTraceability
+      includeFullTraceability
         ? graph.query().match('story:*').select(['id', 'props']).run().then(extractNodes)
         : Promise.resolve([]),
-      includeTraceability
+      includeRequirementModels
         ? graph.query().match('req:*').select(['id', 'props']).run().then(extractNodes)
         : Promise.resolve([]),
-      includeTraceability
+      includeCriterionModels
         ? graph.query().match('criterion:*').select(['id', 'props']).run().then(extractNodes)
         : Promise.resolve([]),
-      includeTraceability
+      includeEvidenceModels
         ? graph.query().match('evidence:*').select(['id', 'props']).run().then(extractNodes)
         : Promise.resolve([]),
-      includeTraceability
+      includeFullTraceability
         ? graph.query().match('policy:*').select(['id', 'props']).run().then(extractNodes)
         : Promise.resolve([]),
       graph.query().match('suggestion:*').select(['id', 'props']).run().then(extractNodes),
@@ -433,10 +437,10 @@ class GraphContextImpl implements GraphContext {
       ...patchsetNodes.map((n) => n.id),
       ...reviewNodes.map((n) => n.id),
       ...decisionNodes.map((n) => n.id),
-      ...(includeTraceability ? storyNodes.map((n) => n.id) : []),
-      ...(includeTraceability ? requirementNodes.map((n) => n.id) : []),
-      ...(includeTraceability ? evidenceNodes.map((n) => n.id) : []),
-      ...(includeTraceability ? policyNodes.map((n) => n.id) : []),
+      ...(includeFullTraceability ? storyNodes.map((n) => n.id) : []),
+      ...(includeRequirementModels ? requirementNodes.map((n) => n.id) : []),
+      ...(includeEvidenceModels ? evidenceNodes.map((n) => n.id) : []),
+      ...(includeFullTraceability ? policyNodes.map((n) => n.id) : []),
       ...caseNodes.map((n) => n.id),
     ];
     const neighborsCache = await batchNeighbors(graph, neighborsNeeded);
@@ -618,7 +622,7 @@ class GraphContextImpl implements GraphContext {
     const evidence: EvidenceNode[] = [];
     const criteria: CriterionNode[] = [];
     const policies: PolicyNode[] = [];
-    if (includeTraceability) {
+    if (includeFullTraceability) {
       log('Building traceability models…');
 
       for (const n of storyNodes) {
@@ -918,7 +922,139 @@ class GraphContextImpl implements GraphContext {
           },
         );
       }
+    } else if (includeAnalysisTraceability) {
+      log('Building traceability models…');
+
+      for (const n of requirementNodes) {
+        if (n.props['type'] !== 'requirement') continue;
+        const description = n.props['description'];
+        const kind = n.props['kind'];
+        const priority = n.props['priority'];
+
+        if (typeof description !== 'string' ||
+            typeof kind !== 'string' || !VALID_REQUIREMENT_KINDS.has(kind) ||
+            typeof priority !== 'string' || !VALID_REQUIREMENT_PRIORITIES.has(priority)) continue;
+
+        const neighbors = neighborsCache.get(n.id) ?? [];
+        const criterionIds: string[] = [];
+        for (const nb of neighbors) {
+          if (nb.label === 'has-criterion' && nb.nodeId.startsWith('criterion:')) {
+            criterionIds.push(nb.nodeId);
+          }
+        }
+
+        requirements.push({
+          id: n.id,
+          description,
+          kind: kind as RequirementKind,
+          priority: priority as RequirementPriority,
+          taskIds: [],
+          criterionIds,
+        });
+      }
+
+      for (const task of taskNodes) {
+        const neighbors = neighborsCache.get(task.id) ?? [];
+        for (const nb of neighbors) {
+          if (nb.label === 'implements' && nb.nodeId.startsWith('req:')) {
+            const req = requirements.find((r) => r.id === nb.nodeId);
+            if (req) req.taskIds.push(task.id);
+          }
+        }
+      }
+
+      for (const n of evidenceNodes) {
+        if (n.props['type'] !== 'evidence') continue;
+        const kind = n.props['kind'];
+        const result = n.props['result'];
+        const producedAt = n.props['produced_at'];
+        const producedBy = n.props['produced_by'];
+        const artifactHash = n.props['artifact_hash'];
+
+        if (typeof kind !== 'string' || !VALID_EVIDENCE_KINDS.has(kind) ||
+            typeof result !== 'string' || !VALID_EVIDENCE_RESULTS.has(result) ||
+            typeof producedAt !== 'number' || typeof producedBy !== 'string') continue;
+
+        const neighbors = neighborsCache.get(n.id) ?? [];
+        let criterionId: string | undefined;
+        let requirementId: string | undefined;
+        for (const nb of neighbors) {
+          if (nb.label === 'verifies' && nb.nodeId.startsWith('criterion:')) {
+            criterionId = nb.nodeId;
+          } else if (nb.label === 'implements' && nb.nodeId.startsWith('req:')) {
+            requirementId = nb.nodeId;
+          }
+        }
+
+        const sourceFile = n.props['source_file'];
+        evidence.push({
+          id: n.id,
+          kind: kind as EvidenceKind,
+          result: result as EvidenceResult,
+          producedAt,
+          producedBy,
+          criterionId,
+          requirementId,
+          artifactHash: typeof artifactHash === 'string' ? artifactHash : undefined,
+          sourceFile: typeof sourceFile === 'string' ? sourceFile : undefined,
+        });
+      }
+
+      const evidenceByCriterion = new Map<string, string[]>();
+      for (const e of evidence) {
+        if (e.criterionId) {
+          const arr = evidenceByCriterion.get(e.criterionId) ?? [];
+          arr.push(e.id);
+          evidenceByCriterion.set(e.criterionId, arr);
+        }
+      }
+
+      for (const n of criterionNodes) {
+        if (n.props['type'] !== 'criterion') continue;
+        const description = n.props['description'];
+        const verifiable = n.props['verifiable'];
+
+        if (typeof description !== 'string') continue;
+
+        criteria.push({
+          id: n.id,
+          description,
+          verifiable: typeof verifiable === 'boolean' ? verifiable : true,
+          evidenceIds: evidenceByCriterion.get(n.id) ?? [],
+        });
+      }
+
+      const criterionByReq = new Map<string, string[]>();
+      for (const req of requirements) {
+        for (const cId of req.criterionIds) {
+          const arr = criterionByReq.get(cId) ?? [];
+          arr.push(req.id);
+          criterionByReq.set(cId, arr);
+        }
+      }
+      for (const c of criteria) {
+        const reqIds = criterionByReq.get(c.id);
+        if (reqIds && reqIds.length > 0) {
+          c.requirementId = reqIds[0];
+        }
+      }
     } else {
+      const questsByCampaignId = new Map<string, QuestNode[]>();
+      for (const quest of quests) {
+        if (!quest.campaignId) continue;
+        const members = questsByCampaignId.get(quest.campaignId) ?? [];
+        members.push(quest);
+        questsByCampaignId.set(quest.campaignId, members);
+      }
+      for (const campaign of campaigns) {
+        const memberQuests = questsByCampaignId.get(campaign.id);
+        if (memberQuests && memberQuests.length > 0) {
+          campaign.status = deriveCampaignStatusFromQuests(memberQuests);
+        }
+      }
+    }
+
+    if (includeAnalysisTraceability) {
       const questsByCampaignId = new Map<string, QuestNode[]>();
       for (const quest of quests) {
         if (!quest.campaignId) continue;

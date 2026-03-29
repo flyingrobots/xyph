@@ -143,6 +143,7 @@ describe('analyze command', () => {
 
     await program.parseAsync(['analyze'], { from: 'user' });
 
+    expect(fetchSnapshot).toHaveBeenCalledWith(undefined, { profile: 'analysis' });
     expect(patchBuilder.setProperty).toHaveBeenCalledWith(expect.stringMatching(/^evidence:auto-/), 'result', 'linked');
     expect(ctx.jsonOut).toHaveBeenCalledWith({
       success: true,
