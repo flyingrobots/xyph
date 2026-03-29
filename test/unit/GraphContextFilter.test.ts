@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { createGraphContext } from '../../src/infrastructure/GraphContext.js';
 import { makeSnapshot, quest } from '../helpers/snapshot.js';
 import type { GraphPort } from '../../src/ports/GraphPort.js';
-import type WarpGraph from '@git-stunts/git-warp';
+import type { WarpCore as WarpGraph } from '@git-stunts/git-warp';
 
 /** Stub GraphPort — filterSnapshot never touches the graph. */
 const stubGraphPort: GraphPort = {

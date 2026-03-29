@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type WarpGraph from '@git-stunts/git-warp';
+import type { WarpCore as WarpGraph } from '@git-stunts/git-warp';
 import type {
   ConflictDiagnostic,
   CoordinateComparisonSelectorV1,
@@ -136,8 +136,8 @@ function controlPlaneFailure(
 
 type AnalyzeConflictsOptions = NonNullable<Parameters<WarpGraph['analyzeConflicts']>[0]>;
 type ConflictAnalysisResult = Awaited<ReturnType<WarpGraph['analyzeConflicts']>>;
-type WorkingSetDescriptor = NonNullable<Awaited<ReturnType<WarpGraph['getWorkingSet']>>>;
-type ResolvedWorkingSetContext = NonNullable<ConflictAnalysisResult['resolvedCoordinate']['workingSet']>;
+type WorkingSetDescriptor = NonNullable<Awaited<ReturnType<WarpGraph['getStrand']>>>;
+type ResolvedWorkingSetContext = NonNullable<ConflictAnalysisResult['resolvedCoordinate']['strand']>;
 type ComparisonResolvedSide = CoordinateComparisonV1['left']['resolved'];
 
 interface WorkingSetProjectionContext {
@@ -349,29 +349,29 @@ function workingSetObservationBacking(fields: {
 
 function workingSetObservationBackingFromDescriptor(descriptor: WorkingSetDescriptor): ObservationCoordinateBacking {
   return workingSetObservationBacking({
-    workingSetId: descriptor.workingSetId,
+    workingSetId: descriptor.strandId,
     baseLamportCeiling: descriptor.baseObservation.lamportCeiling,
     overlayHeadPatchSha: descriptor.overlay.headPatchSha,
     overlayPatchCount: descriptor.overlay.patchCount,
     overlayWritable: descriptor.overlay.writable,
-    supportWorkingSetIds: descriptor.braid.readOverlays.map((overlay) => overlay.workingSetId),
+    supportWorkingSetIds: descriptor.braid.readOverlays.map((overlay) => overlay.strandId),
   });
 }
 
 function workingSetObservationBackingFromResolved(workingSet: ResolvedWorkingSetContext): ObservationCoordinateBacking {
   return workingSetObservationBacking({
-    workingSetId: workingSet.workingSetId,
+    workingSetId: workingSet.strandId,
     baseLamportCeiling: workingSet.baseLamportCeiling,
     overlayHeadPatchSha: workingSet.overlayHeadPatchSha,
     overlayPatchCount: workingSet.overlayPatchCount,
     overlayWritable: workingSet.overlayWritable,
-    supportWorkingSetIds: workingSet.braid.braidedWorkingSetIds,
+    supportWorkingSetIds: workingSet.braid.braidedStrandIds,
   });
 }
 
 function comparisonResolvedSideBacking(resolved: ComparisonResolvedSide): ObservationCoordinateBacking {
-  return resolved.workingSet
-    ? workingSetObservationBackingFromResolved(resolved.workingSet)
+  return resolved.strand
+    ? workingSetObservationBackingFromResolved(resolved.strand)
     : liveObservationBacking();
 }
 
@@ -818,8 +818,8 @@ export class ControlPlaneService implements ControlPlanePort {
         const frontierDigest = capability.worldlineId === DEFAULT_WORLDLINE_ID
           ? analysis.resolvedCoordinate.frontierDigest
           : (await this.materializeWorkingSetProjection(capability, selector)).frontierDigest;
-        const observationBacking = analysis.resolvedCoordinate.workingSet
-          ? workingSetObservationBackingFromResolved(analysis.resolvedCoordinate.workingSet)
+        const observationBacking = analysis.resolvedCoordinate.strand
+          ? workingSetObservationBackingFromResolved(analysis.resolvedCoordinate.strand)
           : undefined;
         return {
           data: {
@@ -1070,8 +1070,8 @@ export class ControlPlaneService implements ControlPlanePort {
 
     const worldlineId = capability.worldlineId;
     if (worldlineId !== DEFAULT_WORLDLINE_ID) {
-      const workingSetId = toSubstrateWorkingSetId(worldlineId);
-      if (!workingSetId) {
+      const strandId = toSubstrateWorkingSetId(worldlineId);
+      if (!strandId) {
         throw controlPlaneFailure(
           'invalid_args',
           "Projection 'conflicts' currently supports only worldline:live or canonical derived worldline ids backed by git-warp working sets.",
@@ -1081,7 +1081,7 @@ export class ControlPlaneService implements ControlPlanePort {
           },
         );
       }
-      options.workingSetId = workingSetId;
+      options.strandId = strandId;
     }
 
     const requested: Record<string, unknown> = {
@@ -1089,7 +1089,7 @@ export class ControlPlaneService implements ControlPlanePort {
       lamportCeiling,
       evidence: options.evidence ?? 'standard',
     };
-    if (options.workingSetId !== undefined) requested['workingSetId'] = options.workingSetId;
+    if (options.strandId !== undefined) requested['strandId'] = options.strandId;
     if (options.entityId !== undefined) requested['entityId'] = options.entityId;
     if (options.target !== undefined) requested['target'] = options.target;
     if (options.kind !== undefined) requested['kind'] = options.kind;
@@ -1153,8 +1153,8 @@ export class ControlPlaneService implements ControlPlanePort {
         : { kind: 'live' };
     }
 
-    const workingSetId = toSubstrateWorkingSetId(worldlineId);
-    if (!workingSetId) {
+    const strandId = toSubstrateWorkingSetId(worldlineId);
+    if (!strandId) {
       throw controlPlaneFailure(
         'invalid_args',
         `${cmd} currently supports only worldline:live or canonical derived worldline ids backed by git-warp working sets.`,
@@ -1166,8 +1166,8 @@ export class ControlPlaneService implements ControlPlanePort {
     }
 
     return selector.kind === 'tick'
-      ? { kind: 'working_set', workingSetId, ceiling: selector.tick }
-      : { kind: 'working_set', workingSetId };
+      ? { kind: 'strand', strandId, ceiling: selector.tick }
+      : { kind: 'strand', strandId };
   }
 
   private async findLatestCanonicalArtifactInSeries(
@@ -1232,7 +1232,7 @@ export class ControlPlaneService implements ControlPlanePort {
             substrateCode,
           },
         );
-      case 'E_WORKING_SET_NOT_FOUND':
+      case 'E_STRAND_NOT_FOUND':
         throw controlPlaneFailure(
           'not_found',
           err instanceof Error ? err.message : String(err),
@@ -1242,9 +1242,9 @@ export class ControlPlaneService implements ControlPlanePort {
             substrateCode,
           },
         );
-      case 'E_WORKING_SET_INVALID_ARGS':
-      case 'E_WORKING_SET_ID_INVALID':
-      case 'E_WORKING_SET_COORDINATE_INVALID':
+      case 'E_STRAND_INVALID_ARGS':
+      case 'E_STRAND_ID_INVALID':
+      case 'E_STRAND_COORDINATE_INVALID':
         throw controlPlaneFailure(
           'invalid_args',
           err instanceof Error ? err.message : String(err),
@@ -1254,9 +1254,9 @@ export class ControlPlaneService implements ControlPlanePort {
             substrateCode,
           },
         );
-      case 'E_WORKING_SET_ALREADY_EXISTS':
-      case 'E_WORKING_SET_CORRUPT':
-      case 'E_WORKING_SET_MISSING_OBJECT':
+      case 'E_STRAND_ALREADY_EXISTS':
+      case 'E_STRAND_CORRUPT':
+      case 'E_STRAND_MISSING_OBJECT':
         throw controlPlaneFailure(
           'invariant_violation',
           err instanceof Error ? err.message : String(err),
@@ -1280,7 +1280,7 @@ export class ControlPlaneService implements ControlPlanePort {
   ): never {
     const substrateCode = workingSetErrorCode(err);
     switch (substrateCode) {
-      case 'E_WORKING_SET_NOT_FOUND':
+      case 'E_STRAND_NOT_FOUND':
         throw controlPlaneFailure(
           'not_found',
           err instanceof Error ? err.message : String(err),
@@ -1292,9 +1292,9 @@ export class ControlPlaneService implements ControlPlanePort {
             substrateCode,
           },
         );
-      case 'E_WORKING_SET_INVALID_ARGS':
-      case 'E_WORKING_SET_ID_INVALID':
-      case 'E_WORKING_SET_COORDINATE_INVALID':
+      case 'E_STRAND_INVALID_ARGS':
+      case 'E_STRAND_ID_INVALID':
+      case 'E_STRAND_COORDINATE_INVALID':
         throw controlPlaneFailure(
           'invalid_args',
           err instanceof Error ? err.message : String(err),
@@ -1306,9 +1306,9 @@ export class ControlPlaneService implements ControlPlanePort {
             substrateCode,
           },
         );
-      case 'E_WORKING_SET_ALREADY_EXISTS':
-      case 'E_WORKING_SET_CORRUPT':
-      case 'E_WORKING_SET_MISSING_OBJECT':
+      case 'E_STRAND_ALREADY_EXISTS':
+      case 'E_STRAND_CORRUPT':
+      case 'E_STRAND_MISSING_OBJECT':
         throw controlPlaneFailure(
           'invariant_violation',
           err instanceof Error ? err.message : String(err),
@@ -1338,23 +1338,23 @@ export class ControlPlaneService implements ControlPlanePort {
   ): never {
     const substrateCode = workingSetErrorCode(err);
     switch (substrateCode) {
-      case 'E_WORKING_SET_NOT_FOUND':
+      case 'E_STRAND_NOT_FOUND':
         throw controlPlaneFailure(
           'not_found',
           err instanceof Error ? err.message : String(err),
           { worldlineId, workingSetId, substrateCode },
         );
-      case 'E_WORKING_SET_INVALID_ARGS':
-      case 'E_WORKING_SET_ID_INVALID':
-      case 'E_WORKING_SET_COORDINATE_INVALID':
+      case 'E_STRAND_INVALID_ARGS':
+      case 'E_STRAND_ID_INVALID':
+      case 'E_STRAND_COORDINATE_INVALID':
         throw controlPlaneFailure(
           'invalid_args',
           err instanceof Error ? err.message : String(err),
           { worldlineId, workingSetId, substrateCode },
         );
-      case 'E_WORKING_SET_ALREADY_EXISTS':
-      case 'E_WORKING_SET_CORRUPT':
-      case 'E_WORKING_SET_MISSING_OBJECT':
+      case 'E_STRAND_ALREADY_EXISTS':
+      case 'E_STRAND_CORRUPT':
+      case 'E_STRAND_MISSING_OBJECT':
         throw controlPlaneFailure(
           'invariant_violation',
           err instanceof Error ? err.message : String(err),
@@ -1371,7 +1371,7 @@ export class ControlPlaneService implements ControlPlanePort {
     workingSetId: string,
   ): Promise<WorkingSetDescriptor> {
     try {
-      const descriptor = await graph.getWorkingSet(workingSetId);
+      const descriptor = await graph.getStrand(workingSetId);
       if (!descriptor) {
         throw controlPlaneFailure(
           'not_found',
@@ -1395,10 +1395,10 @@ export class ControlPlaneService implements ControlPlanePort {
     worldlineId: string,
     analysis: ConflictAnalysisResult,
   ): Diagnostic[] {
-    const workingSet = analysis.resolvedCoordinate.workingSet;
+    const workingSet = analysis.resolvedCoordinate.strand;
     if (!workingSet || workingSet.braid.readOverlayCount === 0) return [];
 
-    const supportWorldlineIds = mapSupportWorldlineIds(workingSet.braid.braidedWorkingSetIds);
+    const supportWorldlineIds = mapSupportWorldlineIds(workingSet.braid.braidedStrandIds);
     return analysis.conflicts
       .filter((trace) => (
         (trace.target.targetKind === 'node_property' || trace.target.targetKind === 'edge_property')
@@ -1441,7 +1441,7 @@ export class ControlPlaneService implements ControlPlanePort {
     );
     try {
       const descriptor = await this.loadWorkingSetDescriptor(graph, capability.worldlineId, workingSetId);
-      const state = await graph.materializeWorkingSet(workingSetId, this.workingSetReadOptions(selector));
+      const state = await graph.materializeStrand(workingSetId, this.workingSetReadOptions(selector));
       const reader = createStateReaderV5(state);
       return {
         graph,
@@ -1477,22 +1477,29 @@ export class ControlPlaneService implements ControlPlanePort {
         selector,
       },
     );
+    const worldline = await graph.worldline({
+      source: selector.kind === 'tick'
+        ? { kind: 'strand', strandId: workingSetId, ceiling: selector.tick }
+        : { kind: 'strand', strandId: workingSetId },
+    });
 
+    let derivedState: WarpStateV5 | undefined;
     let frontierDigest: string | undefined;
     let backing: ObservationCoordinateBacking | undefined;
     try {
       const descriptor = await this.loadWorkingSetDescriptor(graph, capability.worldlineId, workingSetId);
-      const state = await graph.materializeWorkingSet(
+      const state = await graph.materializeStrand(
         workingSetId,
         this.workingSetReadOptions(selector),
       );
+      derivedState = state;
       frontierDigest = frontierDigestFromObservedFrontier(state.observedFrontier);
       backing = workingSetObservationBackingFromDescriptor(descriptor);
     } catch (err) {
       this.rethrowWorkingSetError(err, capability.worldlineId, workingSetId);
     }
 
-    if (frontierDigest === undefined || backing === undefined) {
+    if (derivedState === undefined || frontierDigest === undefined || backing === undefined) {
       throw controlPlaneFailure(
         'invariant_violation',
         'Derived-worldline read failed to resolve backing metadata.',
@@ -1503,10 +1510,54 @@ export class ControlPlaneService implements ControlPlanePort {
       );
     }
 
+    let cachedEdges: Promise<
+      { from: string; to: string; label: string; props: Record<string, unknown> }[]
+    > | null = null;
+    const loadEdges = async (): Promise<
+      { from: string; to: string; label: string; props: Record<string, unknown> }[]
+    > => {
+      if (!cachedEdges) {
+        cachedEdges = worldline.getEdges();
+      }
+      return cachedEdges;
+    };
+
+    const derivedGraph = {
+      writerId: graph.writerId,
+      query: () => worldline.query(),
+      hasNode: (nodeId: string) => worldline.hasNode(nodeId),
+      getNodeProps: (nodeId: string) => worldline.getNodeProps(nodeId),
+      getStateSnapshot: async () => ({
+        observedFrontier: derivedState.observedFrontier,
+      }),
+      getFrontier: () => graph.getFrontier(),
+      getContentOid: async (nodeId: string) => {
+        const props = await worldline.getNodeProps(nodeId);
+        const oid = props?.['_content'];
+        return typeof oid === 'string' ? oid : null;
+      },
+      getContent: (nodeId: string) => graph.getContent(nodeId),
+      neighbors: async (nodeId: string, direction: 'outgoing' | 'incoming') => {
+        const edges = await loadEdges();
+        return edges
+          .filter((edge) => (
+            direction === 'outgoing'
+              ? edge.from === nodeId
+              : edge.to === nodeId
+          ))
+          .map((edge) => ({
+            label: edge.label,
+            nodeId: direction === 'outgoing' ? edge.to : edge.from,
+          }));
+      },
+      traverse: worldline.traverse,
+      compareCoordinates: graph.compareCoordinates.bind(graph),
+    } as unknown as WarpGraph;
+
     return {
       frontierDigest,
       backing,
-      graphCtx: createGraphContextFromGraph(graph, {
+      graphCtx: createGraphContextFromGraph(derivedGraph, {
         syncCoverage: false,
         materializeGraph: async (workingGraph) => {
           void workingGraph;
@@ -1541,7 +1592,7 @@ export class ControlPlaneService implements ControlPlanePort {
       }
       let patches: string[];
       try {
-        patches = await materialized.graph.patchesForWorkingSet(
+        patches = await materialized.graph.patchesForStrand(
           workingSetId,
           targetId,
           this.workingSetReadOptions(selector),
@@ -1613,7 +1664,7 @@ export class ControlPlaneService implements ControlPlanePort {
       let patches: string[] = [];
       if (targetId && current.reader.hasNode(targetId)) {
         try {
-          patches = await current.graph.patchesForWorkingSet(
+          patches = await current.graph.patchesForStrand(
             workingSetId,
             targetId,
             this.workingSetReadOptions(selector),
@@ -1657,7 +1708,7 @@ export class ControlPlaneService implements ControlPlanePort {
       let sincePatches: string[] = [];
       if (targetId && sinceMaterialized.reader.hasNode(targetId)) {
         try {
-          sincePatches = await sinceMaterialized.graph.patchesForWorkingSet(
+          sincePatches = await sinceMaterialized.graph.patchesForStrand(
             workingSetId,
             targetId,
             { ceiling: since.tick },
@@ -2239,10 +2290,10 @@ export class ControlPlaneService implements ControlPlanePort {
 
     const graph = await this.graphPort.getGraph();
 
-    let descriptor: Awaited<ReturnType<WarpGraph['createWorkingSet']>>;
+    let descriptor: Awaited<ReturnType<WarpGraph['createStrand']>>;
     try {
-      descriptor = await graph.createWorkingSet({
-        workingSetId,
+      descriptor = await graph.createStrand({
+        strandId: workingSetId,
         ...(selector.kind === 'tick' ? { lamportCeiling: selector.tick } : {}),
         owner,
         ...(scope === null ? {} : { scope }),
@@ -2251,7 +2302,7 @@ export class ControlPlaneService implements ControlPlanePort {
     } catch (err) {
       const substrateCode = workingSetErrorCode(err);
       switch (substrateCode) {
-        case 'E_WORKING_SET_ALREADY_EXISTS':
+        case 'E_STRAND_ALREADY_EXISTS':
           throw controlPlaneFailure(
             'invariant_violation',
             `Worldline '${worldlineId}' already exists.`,
@@ -2261,9 +2312,9 @@ export class ControlPlaneService implements ControlPlanePort {
               substrateCode,
             },
           );
-        case 'E_WORKING_SET_INVALID_ARGS':
-        case 'E_WORKING_SET_ID_INVALID':
-        case 'E_WORKING_SET_COORDINATE_INVALID':
+        case 'E_STRAND_INVALID_ARGS':
+        case 'E_STRAND_ID_INVALID':
+        case 'E_STRAND_COORDINATE_INVALID':
           throw controlPlaneFailure(
             'invalid_args',
             err instanceof Error ? err.message : String(err),
@@ -2273,7 +2324,7 @@ export class ControlPlaneService implements ControlPlanePort {
               substrateCode,
             },
           );
-        case 'E_WORKING_SET_NOT_FOUND':
+        case 'E_STRAND_NOT_FOUND':
           throw controlPlaneFailure(
             'not_found',
             err instanceof Error ? err.message : String(err),
@@ -2283,8 +2334,8 @@ export class ControlPlaneService implements ControlPlanePort {
               substrateCode,
             },
           );
-        case 'E_WORKING_SET_CORRUPT':
-        case 'E_WORKING_SET_MISSING_OBJECT':
+        case 'E_STRAND_CORRUPT':
+        case 'E_STRAND_MISSING_OBJECT':
           throw controlPlaneFailure(
             'invariant_violation',
             err instanceof Error ? err.message : String(err),
@@ -2436,10 +2487,10 @@ export class ControlPlaneService implements ControlPlanePort {
 
     const graph = await this.graphPort.getGraph();
 
-    let descriptor: Awaited<ReturnType<WarpGraph['braidWorkingSet']>>;
+    let descriptor: Awaited<ReturnType<WarpGraph['braidStrand']>>;
     try {
-      descriptor = await graph.braidWorkingSet(targetWorkingSetId, {
-        braidedWorkingSetIds: supportWorkingSetIds,
+      descriptor = await graph.braidStrand(targetWorkingSetId, {
+        braidedStrandIds: supportWorkingSetIds,
         ...(typeof readOnly === 'boolean' ? { writable: !readOnly } : {}),
       });
     } catch (err) {
@@ -2456,7 +2507,7 @@ export class ControlPlaneService implements ControlPlanePort {
       supportWorkingSetIds.map((workingSetId, index) => [workingSetId, supportWorldlineIds[index] ?? '']),
     );
     const supportDescriptors = descriptor.braid.readOverlays.map((overlay) => {
-      const supportWorldlineId = supportWorldlineByWorkingSetId.get(overlay.workingSetId);
+      const supportWorldlineId = supportWorldlineByWorkingSetId.get(overlay.strandId);
       if (!supportWorldlineId) {
         throw controlPlaneFailure(
           'invariant_violation',
@@ -2464,7 +2515,7 @@ export class ControlPlaneService implements ControlPlanePort {
           {
             worldlineId: targetWorldlineId,
             workingSetId: targetWorkingSetId,
-            overlayWorkingSetId: overlay.workingSetId,
+            overlayWorkingSetId: overlay.strandId,
           },
         );
       }
@@ -2477,7 +2528,7 @@ export class ControlPlaneService implements ControlPlanePort {
 
     let frontierDigestOverride: string | undefined;
     try {
-      const state = await graph.materializeWorkingSet(targetWorkingSetId);
+      const state = await graph.materializeStrand(targetWorkingSetId);
       frontierDigestOverride = frontierDigestFromObservedFrontier(state.observedFrontier);
     } catch (err) {
       this.rethrowWorkingSetError(err, targetWorldlineId, targetWorkingSetId);
@@ -2506,7 +2557,7 @@ export class ControlPlaneService implements ControlPlanePort {
           braid: {
             supportWorldlineIds,
             readOverlays: descriptor.braid.readOverlays.map((overlay) => {
-              const supportWorldlineId = supportWorldlineByWorkingSetId.get(overlay.workingSetId);
+              const supportWorldlineId = supportWorldlineByWorkingSetId.get(overlay.strandId);
               if (!supportWorldlineId) {
                 throw controlPlaneFailure(
                   'invariant_violation',
@@ -2514,7 +2565,7 @@ export class ControlPlaneService implements ControlPlanePort {
                   {
                     worldlineId: targetWorldlineId,
                     workingSetId: targetWorkingSetId,
-                    overlayWorkingSetId: overlay.workingSetId,
+                    overlayWorkingSetId: overlay.strandId,
                   },
                 );
               }
@@ -3206,7 +3257,7 @@ export class ControlPlaneService implements ControlPlanePort {
     if (workingSetId) {
       try {
         const descriptor = await this.loadWorkingSetDescriptor(graph, capability.worldlineId, workingSetId);
-        const state = await graph.materializeWorkingSet(workingSetId);
+        const state = await graph.materializeStrand(workingSetId);
         frontierDigestOverride = frontierDigestFromObservedFrontier(state.observedFrontier);
         backingOverride = workingSetObservationBackingFromDescriptor(descriptor);
       } catch (err) {

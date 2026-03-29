@@ -11,7 +11,7 @@
  *  #4  QueryResultV1.nodes[i].id and .props are optional even when select(['id','props']) was called
  */
 
-import type WarpGraph from '@git-stunts/git-warp';
+import type { WarpCore as WarpGraph } from '@git-stunts/git-warp';
 import type { QueryResultV1, AggregateResult } from '@git-stunts/git-warp';
 import {
   normalizeQuestPriority,
@@ -257,21 +257,21 @@ function extractAttestationState(summary: GovernanceAttestationSummary): Governa
 function buildComparisonSelector(
   worldlineId: string,
   selector: ObservationSelector,
-): { kind: 'live'; ceiling?: number } | { kind: 'working_set'; workingSetId: string; ceiling?: number } | null {
+): { kind: 'live'; ceiling?: number } | { kind: 'strand'; strandId: string; ceiling?: number } | null {
   if (worldlineId === DEFAULT_WORLDLINE_ID) {
     return selector.kind === 'tick'
       ? { kind: 'live', ceiling: selector.tick }
       : { kind: 'live' };
   }
 
-  const workingSetId = toSubstrateWorkingSetId(worldlineId);
-  if (!workingSetId) {
+  const strandId = toSubstrateWorkingSetId(worldlineId);
+  if (!strandId) {
     return null;
   }
 
   return selector.kind === 'tick'
-    ? { kind: 'working_set', workingSetId, ceiling: selector.tick }
-    : { kind: 'working_set', workingSetId };
+    ? { kind: 'strand', strandId, ceiling: selector.tick }
+    : { kind: 'strand', strandId };
 }
 
 function deriveCampaignStatusFromQuests(quests: QuestNode[]): CampaignStatus {

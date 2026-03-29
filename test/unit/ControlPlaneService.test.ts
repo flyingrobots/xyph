@@ -152,7 +152,7 @@ function makeWorkingSetDescriptor(
 ) {
   return {
     schemaVersion: 1,
-    workingSetId: overrides.workingSetId ?? 'wl_review-auth',
+    strandId: overrides.workingSetId ?? 'wl_review-auth',
     graphName: 'xyph',
     createdAt: '2026-03-16T00:00:00.000Z',
     updatedAt: '2026-03-16T00:00:00.000Z',
@@ -175,7 +175,13 @@ function makeWorkingSetDescriptor(
       writable: overrides.overlayWritable ?? true,
     },
     braid: {
-      readOverlays: overrides.braidReadOverlays ?? [],
+      readOverlays: (overrides.braidReadOverlays ?? []).map((overlay) => ({
+        strandId: overlay.workingSetId,
+        overlayId: overlay.overlayId,
+        kind: overlay.kind,
+        headPatchSha: overlay.headPatchSha,
+        patchCount: overlay.patchCount,
+      })),
     },
     materialization: {
       cacheAuthority: 'derived' as const,
@@ -203,10 +209,10 @@ function makeCoordinateComparison(
     ...(overrides.scope ? { scope: overrides.scope } : {}),
     left: {
       requested: leftWorkingSetId
-        ? { kind: 'working_set', workingSetId: leftWorkingSetId }
+        ? { kind: 'strand', strandId: leftWorkingSetId }
         : { kind: 'live' },
       resolved: {
-        coordinateKind: leftWorkingSetId ? 'working_set' : 'frontier',
+        coordinateKind: leftWorkingSetId ? 'strand' : 'frontier',
         patchFrontier: { 'agent.prime': 'patch:left' },
         patchFrontierDigest: 'patch-frontier:left',
         lamportFrontier: { 'agent.prime': 12 },
@@ -224,15 +230,15 @@ function makeCoordinateComparison(
         ...(leftWorkingSetId === null
           ? {}
           : {
-            workingSet: {
-              workingSetId: leftWorkingSetId,
+            strand: {
+              strandId: leftWorkingSetId,
               baseLamportCeiling: null,
               overlayHeadPatchSha: null,
               overlayPatchCount: 1,
               overlayWritable: true,
               braid: {
                 readOverlayCount: 0,
-                braidedWorkingSetIds: [],
+                braidedStrandIds: [],
               },
             },
           }),
@@ -240,10 +246,10 @@ function makeCoordinateComparison(
     },
     right: {
       requested: rightWorkingSetId
-        ? { kind: 'working_set', workingSetId: rightWorkingSetId }
+        ? { kind: 'strand', strandId: rightWorkingSetId }
         : { kind: 'live' },
       resolved: {
-        coordinateKind: rightWorkingSetId ? 'working_set' : 'frontier',
+        coordinateKind: rightWorkingSetId ? 'strand' : 'frontier',
         patchFrontier: { 'agent.prime': 'patch:right' },
         patchFrontierDigest: 'patch-frontier:right',
         lamportFrontier: { 'agent.prime': 11 },
@@ -261,15 +267,15 @@ function makeCoordinateComparison(
         ...(rightWorkingSetId === null
           ? {}
           : {
-            workingSet: {
-              workingSetId: rightWorkingSetId,
+            strand: {
+              strandId: rightWorkingSetId,
               baseLamportCeiling: null,
               overlayHeadPatchSha: null,
               overlayPatchCount: 0,
               overlayWritable: true,
               braid: {
                 readOverlayCount: 0,
-                braidedWorkingSetIds: [],
+                braidedStrandIds: [],
               },
             },
           }),
@@ -394,10 +400,10 @@ function makeCoordinateTransferPlan(
     changed: overrides.changed ?? true,
     source: {
       requested: sourceWorkingSetId
-        ? { kind: 'working_set', workingSetId: sourceWorkingSetId }
+        ? { kind: 'strand', strandId: sourceWorkingSetId }
         : { kind: 'live' },
       resolved: {
-        coordinateKind: sourceWorkingSetId ? 'working_set' : 'frontier',
+        coordinateKind: sourceWorkingSetId ? 'strand' : 'frontier',
         patchFrontier: { 'agent.prime': 'patch:left' },
         patchFrontierDigest: 'patch-frontier:left',
         lamportFrontier: { 'agent.prime': 12 },
@@ -415,15 +421,15 @@ function makeCoordinateTransferPlan(
         ...(sourceWorkingSetId === null
           ? {}
           : {
-            workingSet: {
-              workingSetId: sourceWorkingSetId,
+            strand: {
+              strandId: sourceWorkingSetId,
               baseLamportCeiling: null,
               overlayHeadPatchSha: null,
               overlayPatchCount: 1,
               overlayWritable: true,
               braid: {
                 readOverlayCount: 0,
-                braidedWorkingSetIds: [],
+                braidedStrandIds: [],
               },
             },
           }),
@@ -431,10 +437,10 @@ function makeCoordinateTransferPlan(
     },
     target: {
       requested: targetWorkingSetId
-        ? { kind: 'working_set', workingSetId: targetWorkingSetId }
+        ? { kind: 'strand', strandId: targetWorkingSetId }
         : { kind: 'live' },
       resolved: {
-        coordinateKind: targetWorkingSetId ? 'working_set' : 'frontier',
+        coordinateKind: targetWorkingSetId ? 'strand' : 'frontier',
         patchFrontier: { 'agent.prime': 'patch:right' },
         patchFrontierDigest: 'patch-frontier:right',
         lamportFrontier: { 'agent.prime': 12 },
@@ -452,15 +458,15 @@ function makeCoordinateTransferPlan(
         ...(targetWorkingSetId === null
           ? {}
           : {
-            workingSet: {
-              workingSetId: targetWorkingSetId,
+            strand: {
+              strandId: targetWorkingSetId,
               baseLamportCeiling: null,
               overlayHeadPatchSha: null,
               overlayPatchCount: 0,
               overlayWritable: true,
               braid: {
                 readOverlayCount: 0,
-                braidedWorkingSetIds: [],
+                braidedStrandIds: [],
               },
             },
           }),
@@ -645,7 +651,27 @@ describe('ControlPlaneService', () => {
       }),
     );
     mocks.queryRun.mockResolvedValue({ nodes: [] });
+    const makeWorldline = () => ({
+      query: vi.fn(() => ({
+        match: vi.fn(() => ({
+          select: vi.fn(() => ({
+            run: mocks.queryRun,
+          })),
+        })),
+      })),
+      hasNode: vi.fn(async () => true),
+      getNodeProps: mocks.getNodeProps,
+      getEdges: vi.fn(async () => []),
+      traverse: {
+        topologicalSort: vi.fn(async (ids: string | string[]) => ({
+          sorted: Array.isArray(ids) ? ids : [ids],
+          hasCycle: false,
+        })),
+        bfs: vi.fn(async () => []),
+      },
+    });
     mocks.getGraph.mockResolvedValue({
+      writerId: 'agent.prime',
       getFrontier: mocks.getFrontier,
       getStateSnapshot: mocks.getStateSnapshot,
       hasNode: vi.fn(async () => true),
@@ -661,15 +687,22 @@ describe('ControlPlaneService', () => {
       })),
       patchesFor: vi.fn(async () => ['patch:1', 'patch:2']),
       createWorkingSet: mocks.createWorkingSet,
+      createStrand: mocks.createWorkingSet,
       braidWorkingSet: mocks.braidWorkingSet,
+      braidStrand: mocks.braidWorkingSet,
       analyzeConflicts: mocks.analyzeConflicts,
       materializeWorkingSet: mocks.materializeWorkingSet,
+      materializeStrand: mocks.materializeWorkingSet,
       getWorkingSet: mocks.getWorkingSet,
+      getStrand: mocks.getWorkingSet,
       patchesForWorkingSet: mocks.patchesForWorkingSet,
+      patchesForStrand: mocks.patchesForWorkingSet,
       compareCoordinates: mocks.compareCoordinates,
       planCoordinateTransfer: mocks.planCoordinateTransfer,
+      worldline: vi.fn(async () => makeWorldline()),
     });
     mocks.openIsolatedGraph.mockResolvedValue({
+      writerId: 'agent.prime',
       getFrontier: mocks.getFrontier,
       getStateSnapshot: mocks.getStateSnapshot,
       hasNode: vi.fn(async () => true),
@@ -678,13 +711,19 @@ describe('ControlPlaneService', () => {
       materialize: vi.fn(async () => null),
       patchesFor: vi.fn(async () => ['patch:1']),
       materializeWorkingSet: mocks.materializeWorkingSet,
+      materializeStrand: mocks.materializeWorkingSet,
       getWorkingSet: mocks.getWorkingSet,
+      getStrand: mocks.getWorkingSet,
       patchesForWorkingSet: mocks.patchesForWorkingSet,
+      patchesForStrand: mocks.patchesForWorkingSet,
       createWorkingSet: mocks.createWorkingSet,
+      createStrand: mocks.createWorkingSet,
       braidWorkingSet: mocks.braidWorkingSet,
+      braidStrand: mocks.braidWorkingSet,
       analyzeConflicts: mocks.analyzeConflicts,
       compareCoordinates: mocks.compareCoordinates,
       planCoordinateTransfer: mocks.planCoordinateTransfer,
+      worldline: vi.fn(async () => makeWorldline()),
     });
     mocks.analyzeConflicts.mockResolvedValue({
       analysisVersion: 'conflict-analyzer/v2',
@@ -970,7 +1009,7 @@ describe('ControlPlaneService', () => {
     });
 
     expect(mocks.createWorkingSet).toHaveBeenCalledWith({
-      workingSetId: 'wl_review-auth',
+      strandId: 'wl_review-auth',
       lamportCeiling: 11,
       owner: 'agent.prime',
       scope: 'OAuth review',
@@ -1058,7 +1097,7 @@ describe('ControlPlaneService', () => {
     });
 
     expect(mocks.braidWorkingSet).toHaveBeenCalledWith('wl_review-auth', {
-      braidedWorkingSetIds: ['wl_hold-auth', 'wl_audit-auth'],
+      braidedStrandIds: ['wl_hold-auth', 'wl_audit-auth'],
       writable: false,
     });
     expect(mocks.materializeWorkingSet).toHaveBeenCalledWith('wl_review-auth');
@@ -1271,12 +1310,12 @@ describe('ControlPlaneService', () => {
     });
 
     expect(mocks.compareCoordinates).toHaveBeenNthCalledWith(1, {
-      left: { kind: 'working_set', workingSetId: 'wl_review-auth' },
+      left: { kind: 'strand', strandId: 'wl_review-auth' },
       right: { kind: 'live' },
       targetId: 'task:ONE',
     });
     expect(mocks.compareCoordinates).toHaveBeenNthCalledWith(2, {
-      left: { kind: 'working_set', workingSetId: 'wl_review-auth' },
+      left: { kind: 'strand', strandId: 'wl_review-auth' },
       right: { kind: 'live' },
       targetId: 'task:ONE',
       scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
@@ -1393,12 +1432,12 @@ describe('ControlPlaneService', () => {
     });
 
     expect(mocks.compareCoordinates).toHaveBeenNthCalledWith(1, {
-      left: { kind: 'working_set', workingSetId: 'wl_review-auth', ceiling: 12 },
-      right: { kind: 'working_set', workingSetId: 'wl_release-review', ceiling: 10 },
+      left: { kind: 'strand', strandId: 'wl_review-auth', ceiling: 12 },
+      right: { kind: 'strand', strandId: 'wl_release-review', ceiling: 10 },
     });
     expect(mocks.compareCoordinates).toHaveBeenNthCalledWith(2, {
-      left: { kind: 'working_set', workingSetId: 'wl_review-auth', ceiling: 12 },
-      right: { kind: 'working_set', workingSetId: 'wl_release-review', ceiling: 10 },
+      left: { kind: 'strand', strandId: 'wl_review-auth', ceiling: 12 },
+      right: { kind: 'strand', strandId: 'wl_release-review', ceiling: 10 },
       scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
     });
     expect(result).toEqual(expect.objectContaining({
@@ -1578,16 +1617,16 @@ describe('ControlPlaneService', () => {
     });
 
     expect(mocks.compareCoordinates).toHaveBeenNthCalledWith(1, {
-      left: { kind: 'working_set', workingSetId: 'wl_review-auth' },
+      left: { kind: 'strand', strandId: 'wl_review-auth' },
       right: { kind: 'live' },
     });
     expect(mocks.compareCoordinates).toHaveBeenNthCalledWith(2, {
-      left: { kind: 'working_set', workingSetId: 'wl_review-auth' },
+      left: { kind: 'strand', strandId: 'wl_review-auth' },
       right: { kind: 'live' },
       scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
     });
     expect(mocks.planCoordinateTransfer).toHaveBeenCalledWith({
-      source: { kind: 'working_set', workingSetId: 'wl_review-auth' },
+      source: { kind: 'strand', strandId: 'wl_review-auth' },
       target: { kind: 'live' },
       scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
     });
@@ -3026,7 +3065,7 @@ describe('ControlPlaneService', () => {
   it('maps substrate working-set collisions onto invariant_violation for fork_worldline', async () => {
     mocks.createWorkingSet.mockRejectedValueOnce(Object.assign(
       new Error("Working set 'wl_review-auth' already exists"),
-      { code: 'E_WORKING_SET_ALREADY_EXISTS' },
+      { code: 'E_STRAND_ALREADY_EXISTS' },
     ));
 
     const service = new ControlPlaneService({
@@ -3051,7 +3090,7 @@ describe('ControlPlaneService', () => {
         details: expect.objectContaining({
           worldlineId: 'worldline:review-auth',
           workingSetId: 'wl_review-auth',
-          substrateCode: 'E_WORKING_SET_ALREADY_EXISTS',
+          substrateCode: 'E_STRAND_ALREADY_EXISTS',
         }),
       }),
     }));
@@ -3185,21 +3224,21 @@ describe('ControlPlaneService', () => {
       analysisVersion: 'conflict-analyzer/v2',
       resolvedCoordinate: {
         analysisVersion: 'conflict-analyzer/v2',
-        coordinateKind: 'working_set',
+        coordinateKind: 'strand',
         frontier: { 'agent.prime': 'abcdef123456' },
         frontierDigest: 'frontier:working-set',
         lamportCeiling: null,
         scanBudgetApplied: { maxPatches: null },
         truncationPolicy: 'reverse-causal-order',
-        workingSet: {
-          workingSetId: 'wl_review-auth',
+        strand: {
+          strandId: 'wl_review-auth',
           baseLamportCeiling: null,
           overlayHeadPatchSha: null,
           overlayPatchCount: 0,
           overlayWritable: true,
           braid: {
             readOverlayCount: 0,
-            braidedWorkingSetIds: [],
+            braidedStrandIds: [],
           },
         },
       },
@@ -3226,7 +3265,7 @@ describe('ControlPlaneService', () => {
 
     expect(mocks.analyzeConflicts).toHaveBeenCalledWith({
       evidence: 'full',
-      workingSetId: 'wl_review-auth',
+      strandId: 'wl_review-auth',
     });
     expect(result).toEqual(expect.objectContaining({
       ok: true,
@@ -3234,15 +3273,15 @@ describe('ControlPlaneService', () => {
         projection: 'conflicts',
         requested: expect.objectContaining({
           worldlineId: 'worldline:review-auth',
-          workingSetId: 'wl_review-auth',
+          strandId: 'wl_review-auth',
           evidence: 'full',
         }),
         analysis: expect.objectContaining({
           analysisVersion: 'conflict-analyzer/v2',
           resolvedCoordinate: expect.objectContaining({
-            coordinateKind: 'working_set',
-            workingSet: expect.objectContaining({
-              workingSetId: 'wl_review-auth',
+            coordinateKind: 'strand',
+            strand: expect.objectContaining({
+              strandId: 'wl_review-auth',
             }),
           }),
         }),
@@ -3277,21 +3316,21 @@ describe('ControlPlaneService', () => {
       analysisVersion: 'conflict-analyzer/v2',
       resolvedCoordinate: {
         analysisVersion: 'conflict-analyzer/v2',
-        coordinateKind: 'working_set',
+        coordinateKind: 'strand',
         frontier: { 'agent.prime': 'abcdef123456' },
         frontierDigest: 'frontier:working-set',
         lamportCeiling: null,
         scanBudgetApplied: { maxPatches: null },
         truncationPolicy: 'reverse-causal-order',
-        workingSet: {
-          workingSetId: 'wl_review-auth',
+        strand: {
+          strandId: 'wl_review-auth',
           baseLamportCeiling: null,
           overlayHeadPatchSha: 'patch:target',
           overlayPatchCount: 1,
           overlayWritable: true,
           braid: {
             readOverlayCount: 1,
-            braidedWorkingSetIds: ['wl_hold-auth'],
+            braidedStrandIds: ['wl_hold-auth'],
           },
         },
       },

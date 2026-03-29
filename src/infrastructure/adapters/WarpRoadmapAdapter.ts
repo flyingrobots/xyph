@@ -1,5 +1,5 @@
 import type { RoadmapPort } from '../../ports/RoadmapPort.js';
-import type WarpGraph from '@git-stunts/git-warp';
+import type { WarpCore as WarpGraph } from '@git-stunts/git-warp';
 import {
   DEFAULT_QUEST_PRIORITY,
   Quest,

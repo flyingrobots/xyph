@@ -1,5 +1,5 @@
 import type { GraphPort } from '../../ports/GraphPort.js';
-import WarpGraph, { GitGraphAdapter, type LoggerPort } from '@git-stunts/git-warp';
+import { WarpCore as WarpGraph, GitGraphAdapter, type LoggerPort } from '@git-stunts/git-warp';
 import Plumbing from '@git-stunts/plumbing';
 
 /**

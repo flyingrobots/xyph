@@ -3,7 +3,7 @@ import { execSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
-import WarpGraph, { GitGraphAdapter } from '@git-stunts/git-warp';
+import { WarpCore as WarpGraph, GitGraphAdapter } from '@git-stunts/git-warp';
 import type { PatchSession } from '@git-stunts/git-warp';
 import Plumbing from '@git-stunts/plumbing';
 

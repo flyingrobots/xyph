@@ -1,4 +1,4 @@
-import type WarpGraph from '@git-stunts/git-warp';
+import type { WarpCore as WarpGraph } from '@git-stunts/git-warp';
 import type { QueryResultV1, AggregateResult } from '@git-stunts/git-warp';
 import type { GraphPort } from '../../ports/GraphPort.js';
 import type { RoadmapQueryPort } from '../../ports/RoadmapPort.js';
