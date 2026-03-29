@@ -1,51 +1,95 @@
 <div align="center">
   <img src="docs/assets/title-screen.gif" alt="XYPH Title Screen" />
   <h1>XYPH [<a href="https://ipa-reader.com/?text=%CB%8Cz%C9%AAf">/ˌzɪf/</a>]</h1>
-  <h3>Reificatory Engine</h3>
-  <p><em>Xyph it done.</em></p>
+  <p><strong>Offline-first planning and collaboration for humans and agents.</strong></p>
 </div>
 
 ---
 
 ## What Is XYPH?
 
-**XYPH _xyphs_ intent into reality.**
-An offline-first, decentralized, deterministic **planning compiler + collaboration engine** for humans and agents.
+XYPH is a graph-native planning and execution system for software and product
+work. It gives humans and agents one shared place to plan work, claim it,
+review it, settle it, and keep the full history attached to the work itself.
 
-**No server. No database. Just Git.**
-Instead of hand-orchestrating workflows, you compile intent into a living graph, execute it to completion, and settle outcomes with receipts.
+Instead of splitting coordination across tickets, pull requests, CI logs, chat,
+and local notes, XYPH keeps the plan in a WARP graph and exposes it through a
+CLI, a TUI cockpit, and a machine-facing control plane.
 
-### xyph (verb)
+Under the hood, XYPH uses [git-warp](https://github.com/git-stunts/git-warp) to
+store its graph in Git. Git provides the content-addressed storage,
+replication, and offline sync behavior; XYPH provides the workflow model,
+governance rules, and human/agent operating surfaces.
 
-To compile intent into an executable plan, run it to completion, and settle the result into history with verifiable receipts.
+## Why Use XYPH?
 
-### How It Works
+Use XYPH when you want:
 
-XYPH solves the **Agentic Coordination Problem**: how do autonomous agents and humans collaborate on complex work without devolving into chaos? The answer is a **Planning Compiler** — a deterministic pipeline that transforms human intent into verified artifacts, the same way a software compiler transforms source code into executables.
+- one shared, durable plan for humans and agents
+- offline-first work that still syncs deterministically later
+- governance, review, and provenance attached to the work itself
+- a machine-readable surface that is as serious as the human-facing one
+- graph-native context instead of stitching meaning together from five tools
 
-| Planning Compiler | Software Compiler |
+XYPH is especially useful when work is long-lived, collaborative, and needs an
+auditable chain from "why does this exist?" to "what shipped?" It is less about
+chat-style task capture and more about durable coordination and settlement.
+
+## Core Concepts
+
+If you are new to XYPH, these are the main nouns:
+
+| Term | Meaning |
 |---|---|
-| Human intent, natural-language specs | Source code |
-| WARP graph (intermediate representation) | AST / IR |
-| Verified artifacts (code, docs, deployments) | Machine code |
+| **Intent** | A human declaration of why work should exist |
+| **Campaign** | A container for related work |
+| **Quest** | A unit of work |
+| **Submission** | A review envelope for proposed work |
+| **Scroll** | A sealed artifact emitted when work is settled |
+| **Suggestion** | Advisory content proposed by a human or agent |
+| **WARP graph** | The append-only, multi-writer graph XYPH stores its plan in |
+| **Worldline** | A live or derived continuation of graph history used for inspection or speculation |
 
-Humans decide _what_ to build and _why_. Agents figure out _how_ and do the work. Nobody sends messages to coordinate; instead, everyone reads and writes to the shared graph. This pattern is called **stigmergy** — coordination through the environment itself.
+The first five terms make up XYPH's **Digital Guild** workflow vocabulary. They
+are the product's built-in nouns for planning, execution, review, and
+settlement.
 
-Everything lives in a single [**WARP graph**](https://github.com/git-stunts/git-warp) — a multi-writer CRDT graph database stored in Git. Conflicts are resolved deterministically via **Last-Writer-Wins** using Lamport timestamps. Multiple entities can work with XYPH simultaneously, deterministically, and without fear of merge conflicts.
+## How XYPH Works
 
-XYPH is offline-first, distributed, and defaults to living in your current Git repo alongside the rest of your project. It is invisible to normal Git workflows — it never interacts with any Git worktrees.
+You can think of XYPH as a planning compiler with a graph-backed runtime:
 
-### The Digital Guild Model
+1. A human declares an **Intent**.
+2. The work is shaped into **Campaigns** and **Quests**.
+3. Humans and agents read the same graph-backed plan.
+4. Work is claimed, executed, and submitted for review.
+5. Reviews, evidence, and settlement decisions are written back to the graph.
+6. The graph becomes the durable history of what changed, who did it, and why.
 
-XYPH uses a **Digital Guild** metaphor to structure collaboration:
+### What Makes The WARP Graph Different?
 
-- **Intents** — sovereign declarations of _why_ work should exist (humans only)
-- **Campaigns** — named collections of related work (like milestones or epics)
-- **Quests** — individual units of work (like tickets or tasks)
-- **Submissions** — review envelopes linking a quest to patchsets, reviews, and a terminal decision
-- **Scrolls** — content-addressed artifacts produced when a quest is sealed
-- **Guild Seals** — Ed25519 cryptographic signatures proving who did the work
-- **Genealogy of Intent** — the chain from scroll → quest → campaign → intent → human, ensuring every artifact traces back to a human decision
+A normal graph store is usually concerned with current nodes and edges. XYPH's
+WARP graph is different:
+
+- it is append-only and history-preserving
+- it supports multi-writer offline work
+- it converges deterministically when writers sync later
+- it gives XYPH one substrate for planning, provenance, review, and
+  speculation
+
+That is why XYPH can treat the graph as the plan instead of as a cache or a
+reporting layer.
+
+### Why Not Just Use Issues + PRs + CI?
+
+Traditional tools scatter the story:
+
+- tickets hold intent
+- branches or PRs hold implementation discussion
+- CI holds evidence
+- chat holds coordination
+- local notebooks hold the rest
+
+XYPH keeps those surfaces graph-native and queryable together.
 
 ---
 
@@ -84,6 +128,40 @@ Verify everything is working:
 ```bash
 npx tsx xyph-actuator.ts status --view roadmap
 ```
+
+## Five-Minute Quick Start
+
+Create one intent and one quest:
+
+```bash
+export XYPH_AGENT_ID=human.ada
+
+npx tsx xyph-actuator.ts intent intent:demo \
+  --title "Users need a better notification workflow" \
+  --requested-by human.ada
+
+npx tsx xyph-actuator.ts quest task:demo-001 \
+  --title "Add notification preferences screen" \
+  --campaign none \
+  --intent intent:demo
+```
+
+Read the current plan:
+
+```bash
+npx tsx xyph-actuator.ts status --view roadmap
+```
+
+Inspect what you just wrote:
+
+```bash
+npx tsx xyph-actuator.ts show task:demo-001
+npx tsx xyph-actuator.ts history task:demo-001
+npx tsx xyph-actuator.ts status --view lineage
+```
+
+That is the core loop: write work into the graph, read it back through XYPH's
+projections, then act on it through the same system.
 
 ---
 

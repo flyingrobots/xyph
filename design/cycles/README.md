@@ -122,3 +122,4 @@ around it.
 3. [Case-Driven Governance](./0003-case-driven-governance.md)
 4. [git-warp Substrate Alignment](./0004-substrate-alignment.md)
 5. [Quest Detail Read Boundary](./0005-quest-detail-read-boundary.md)
+6. [README Onboarding Reset](./0006-readme-onboarding-reset.md)
