@@ -9,19 +9,27 @@ instead of letting it harden into the next accidental architecture.
 
 ## Status
 
-Active implementation cycle.
+Completed on 2026-04-03.
 
-The graph is healthy enough again to anchor the next slice honestly, and the
-current bridge has done its job: `GraphContext` is gone. The first observer-
-native seam cuts are now in code:
+The read-boundary reset landed enough real seam movement to close this cycle
+honestly:
 
 - normal product reads open explicit observation sessions
 - CLI roots own observation/inspection adapter wiring
 - `show` generic-entity reads bypass the omnibus detail path
 - `DoctorService` uses an explicit inspection seam
+- dashboard page reads are observer-keyed instead of routing through one
+  generic detail lens
+- landing `Review`, `Suggestions`, and `Now` lanes now use targeted
+  observer-backed read models instead of deriving those views from the omnibus
+  landing snapshot
 
-The next step is not to rename the bridge again. The next step is to keep
-shrinking it until the remaining projection layer is obviously transitional.
+The remaining bridge is now narrower and more obviously temporary than when the
+cycle started. What remains is explicit follow-on work, not hidden cycle
+failure: the landing shell still boots from a broad operational snapshot for
+cross-lane/meta state, and `WarpObservationAdapter` still lowers many reads
+through `ObservedGraphProjection` until git-warp exposes narrower substrate
+primitives.
 
 ## Graph Anchor
 
