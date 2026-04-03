@@ -170,6 +170,16 @@ export function suggestionsViewDescription(view: SuggestionsViewMode): string {
   }
 }
 
+export function suggestionShapingLabel(linkedCaseId?: string): string {
+  return linkedCaseId ? 'governed case' : 'backlog attention';
+}
+
+export function suggestionShapingSummary(linkedCaseId?: string): string {
+  return linkedCaseId
+    ? 'This suggestion has been elevated into governed case handling. Continue through the case rather than treating it as routine backlog attention.'
+    : 'This suggestion remains routine backlog attention until a human or policy elevates it into a governed case.';
+}
+
 export function shortId(id: unknown): string {
   if (typeof id === 'string') {
     return id.replace(
@@ -457,6 +467,9 @@ function aiSuggestionAttention(suggestion: AiSuggestionNode): AttentionDetail {
   if (suggestion.status === 'accepted' || suggestion.status === 'implemented' || suggestion.status === 'rejected') {
     return { state: 'none' };
   }
+  if (suggestion.linkedCaseId) {
+    return { state: 'none' };
+  }
   if (suggestion.kind === 'ask-ai' && (suggestion.audience === 'agent' || suggestion.audience === 'either')) {
     return {
       state: 'ready',
@@ -482,7 +495,6 @@ function buildAiSuggestionItem(suggestion: AiSuggestionNode): AiSuggestionCockpi
   const secondaryParts = [
     suggestion.kind === 'ask-ai' ? 'queued ask-AI job' : null,
     suggestion.targetId ? `target ${shortId(suggestion.targetId)}` : null,
-    suggestion.linkedCaseId ? `case ${shortId(suggestion.linkedCaseId)}` : null,
     suggestion.kind,
     suggestion.origin === 'request' && suggestion.requestedBy ? `asked by ${shortPrincipal(suggestion.requestedBy)}` : null,
   ].filter(Boolean);
@@ -861,11 +873,13 @@ function buildOperationItems(snapshot: GraphSnapshot, agentId?: string): Cockpit
   for (const suggestion of snapshot.aiSuggestions) {
     if (suggestion.status !== 'suggested' && suggestion.status !== 'queued') continue;
     const item = buildAiSuggestionItem(suggestion);
-    item.operationReason = suggestion.kind === 'ask-ai'
-      ? 'explicit ask-AI job queued for agent pickup'
-      : suggestion.audience === 'agent'
-        ? 'AI suggestion queued for agent pickup'
-        : 'AI suggestion waiting for human triage';
+    item.operationReason = suggestion.linkedCaseId
+      ? 'governed case is carrying the next human decision'
+      : suggestion.kind === 'ask-ai'
+        ? 'explicit ask-AI job queued for agent pickup'
+        : suggestion.audience === 'agent'
+          ? 'AI suggestion queued for agent pickup'
+          : 'AI suggestion waiting for human triage';
     items.push(item);
   }
 

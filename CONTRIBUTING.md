@@ -70,6 +70,11 @@ Unless a cycle explicitly declares something human-only, a human-facing feature
 is not really done until the same underlying semantics exist in the agent
 surface too.
 
+For the repo's process posture, use
+[`/Users/james/git/xyph/design/method-alignment.md`](design/method-alignment.md):
+XYPH should absorb METHOD's discipline without turning the product or repo into
+a literal filesystem-native workflow system. The graph remains the plan.
+
 ## Architectural Principles
 
 ### Hexagonal architecture
@@ -101,6 +106,21 @@ Bad:
 - abstraction for its own sake
 - indirection before there is pressure for it
 - “clean architecture” rituals that slow delivery without protecting behavior
+
+### Runtime-backed modeling
+
+XYPH adopts System-Style JavaScript as its engineering doctrine for
+infrastructure code. See
+[`/Users/james/git/xyph/docs/canonical/SYSTEM_STYLE_JAVASCRIPT.md`](docs/canonical/SYSTEM_STYLE_JAVASCRIPT.md).
+
+Short version:
+
+- runtime truth outranks TypeScript
+- boundary parsing establishes trust
+- policy- and authority-sensitive code should prefer runtime-backed domain
+  types and typed failures
+- projections, packets, and render models may remain plain structured data when
+  they do not carry hidden invariants
 
 ## Current Active Plan
 

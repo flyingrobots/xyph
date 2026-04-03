@@ -69,6 +69,8 @@ export interface AgentGovernanceContext {
 export interface AgentSuggestionContext {
   suggestion: AiSuggestionNode;
   targetId: string | null;
+  linkedCaseId: string | null;
+  linkedCaseStatus: string | null;
 }
 
 export interface AgentCaseContext {
@@ -334,9 +336,30 @@ export function buildSuggestionActionCandidates(input: {
   suggestionId: string;
   semantics: SuggestionWorkSemantics;
 }): AgentActionCandidate[] {
-  const candidates: AgentActionCandidate[] = [{
+  const candidates: AgentActionCandidate[] = [];
+  const suggestionId = input.suggestionId;
+
+  if (input.semantics.shapingState === 'governed-case' && input.semantics.linkedCaseId) {
+    candidates.push({
+      kind: 'inspect',
+      targetId: input.semantics.linkedCaseId,
+      args: {},
+      priority: 'P2',
+      reason: input.semantics.shapingReason,
+      confidence: 0.9,
+      requiresHumanApproval: false,
+      dryRunSummary: 'Inspect the governed case that now carries this shaping matter.',
+      blockedBy: [],
+      allowed: true,
+      underlyingCommand: `xyph context ${input.semantics.linkedCaseId}`,
+      sideEffects: [],
+      validationCode: null,
+    });
+  }
+
+  candidates.push({
     kind: 'inspect',
-    targetId: input.suggestionId,
+    targetId: suggestionId,
     args: {},
     priority: DEFAULT_QUEST_PRIORITY,
     reason: input.semantics.nextLawfulActions[0]?.reason
@@ -346,27 +369,28 @@ export function buildSuggestionActionCandidates(input: {
     dryRunSummary: 'Inspect the suggestion context, provenance, and requested follow-up.',
     blockedBy: [],
     allowed: true,
-    underlyingCommand: `xyph context ${input.suggestionId}`,
+    underlyingCommand: `xyph context ${suggestionId}`,
     sideEffects: [],
     validationCode: null,
-  }];
+  });
 
   if (input.semantics.suggestionKind === 'ask-ai'
+    && input.semantics.shapingState !== 'governed-case'
     && (input.semantics.audience === 'agent' || input.semantics.audience === 'either')
     && input.semantics.attentionState !== 'none') {
     candidates.push({
       kind: 'suggest',
-      targetId: input.suggestionId,
+      targetId: suggestionId,
       args: {},
       priority: 'P2',
       reason: 'Respond to the queued ask-AI job with one or more visible advisory suggestions.',
       confidence: 0.91,
       requiresHumanApproval: false,
-      dryRunSummary: 'Use `xyph suggest` to publish advisory follow-up that answers the queued ask-AI request.',
+      dryRunSummary: 'Use `xyph suggest` to publish advisory follow-up that answers this routine shaping request.',
       blockedBy: [],
       allowed: true,
-      underlyingCommand: `xyph suggest --kind general --related ${input.suggestionId}`,
-      sideEffects: [`record advisory follow-up linked to ${input.suggestionId}`],
+      underlyingCommand: `xyph suggest --kind general --related ${suggestionId}`,
+      sideEffects: [`record advisory follow-up linked to ${suggestionId}`],
       validationCode: null,
     });
   }
@@ -641,6 +665,7 @@ export class AgentContextService {
           risk: caseContext.risk,
           authority: caseContext.authority,
           briefCount: caseContext.briefIds.length,
+          openedFromCount: caseContext.openedFromIds.length,
         });
         return {
           detail,
@@ -790,6 +815,8 @@ export class AgentContextService {
     return {
       suggestion,
       targetId: suggestion.targetId ?? null,
+      linkedCaseId: suggestion.linkedCaseId ?? null,
+      linkedCaseStatus: suggestion.linkedCaseStatus ?? null,
     };
   }
 

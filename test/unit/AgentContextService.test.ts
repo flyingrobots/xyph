@@ -718,6 +718,7 @@ describe('AgentContextService', () => {
     expect(result.semantics).toMatchObject({
       kind: 'suggestion',
       suggestionKind: 'ask-ai',
+      shapingState: 'backlog-attention',
       attentionState: 'ready',
       expectedActor: 'agent',
     });
@@ -729,6 +730,92 @@ describe('AgentContextService', () => {
       expect.objectContaining({
         kind: 'suggest',
         targetId: 'suggestion:CTX-AI',
+      }),
+    ]));
+  });
+
+  it('explains when a suggestion has been elevated into governed case handling', async () => {
+    const snapshot = makeSnapshot({
+      aiSuggestions: [
+        {
+          id: 'suggestion:CTX-LINKED',
+          type: 'ai-suggestion',
+          kind: 'ask-ai',
+          title: 'Decide whether CTX-LINKED needs governed handling',
+          summary: 'Inspect the shaping matter and decide whether to open governed work.',
+          status: 'queued',
+          audience: 'agent',
+          origin: 'request',
+          suggestedBy: 'human.ada',
+          suggestedAt: 451,
+          targetId: 'task:CTX-LINKED',
+          requestedBy: 'human.ada',
+          relatedIds: ['task:CTX-LINKED'],
+          linkedCaseId: 'case:CTX-LINKED',
+          linkedCaseStatus: 'open',
+        },
+      ],
+    });
+
+    const detail = {
+      id: 'suggestion:CTX-LINKED',
+      type: 'ai_suggestion',
+      props: {
+        type: 'ai_suggestion',
+        suggestion_kind: 'ask-ai',
+        title: 'Decide whether CTX-LINKED needs governed handling',
+      },
+      content: null,
+      contentOid: null,
+      outgoing: [],
+      incoming: [],
+    };
+
+    mocks.fetchSnapshot.mockResolvedValue(snapshot);
+    mocks.fetchEntityDetail.mockResolvedValue(detail);
+
+    const service = new AgentContextService(
+      makeGraphPort(),
+      makeRoadmap(null),
+      'agent.hal',
+      makeReadPort(),
+      makeDoctor(),
+    );
+
+    const result = await service.fetch('suggestion:CTX-LINKED');
+    expect(result).not.toBeNull();
+    if (!result) {
+      throw new Error('expected result');
+    }
+    expect(result.suggestionContext).toMatchObject({
+      targetId: 'task:CTX-LINKED',
+      linkedCaseId: 'case:CTX-LINKED',
+      linkedCaseStatus: 'open',
+    });
+    expect(result.semantics).toMatchObject({
+      kind: 'suggestion',
+      shapingState: 'governed-case',
+      linkedCaseId: 'case:CTX-LINKED',
+      linkedCaseStatus: 'open',
+      attentionState: 'none',
+    });
+    if (result.semantics?.kind === 'suggestion') {
+      expect(result.semantics.shapingReason).toContain('case:CTX-LINKED');
+    }
+    expect(result.recommendedActions).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: 'inspect',
+        targetId: 'case:CTX-LINKED',
+      }),
+      expect.objectContaining({
+        kind: 'inspect',
+        targetId: 'suggestion:CTX-LINKED',
+      }),
+    ]));
+    expect(result.recommendedActions).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: 'suggest',
+        targetId: 'suggestion:CTX-LINKED',
       }),
     ]));
   });

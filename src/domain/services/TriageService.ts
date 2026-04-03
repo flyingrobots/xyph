@@ -1,4 +1,5 @@
 import { Quest } from '../entities/Quest.js';
+import { DomainValidationError } from '../errors/DomainValidationError.js';
 import type { RoadmapQueryPort, RoadmapMutationPort } from '../../ports/RoadmapPort.js';
 import type { DiagnosticLogPort } from '../../ports/DiagnosticLogPort.js';
 import { createNoopDiagnosticLogger } from '../../infrastructure/logging/DiagnosticLogger.js';
@@ -8,6 +9,19 @@ import { createNoopDiagnosticLogger } from '../../infrastructure/logging/Diagnos
  * Handles backlog normalization and linking work to human intent.
  * Part of Milestone 3.
  */
+export class TriageServiceError extends DomainValidationError {
+  constructor(
+    message: string,
+    code: string,
+    details: Record<string, unknown> = {},
+  ) {
+    super(message, code, {
+      service: 'TriageService',
+      ...details,
+    });
+  }
+}
+
 export class TriageService {
   private readonly logger: DiagnosticLogPort;
 
@@ -24,9 +38,20 @@ export class TriageService {
    * @param contextHash BLAKE3 hash of the originating NL prompt/intent
    */
   public async linkIntent(taskId: string, contextHash: string): Promise<void> {
+    if (typeof contextHash !== 'string' || contextHash.trim().length === 0) {
+      throw new TriageServiceError(
+        'Triage origin context must be a non-empty BLAKE3 reference.',
+        'triage.invalid_origin_context',
+        { taskId, contextHash },
+      );
+    }
     const quest = await this.roadmap.getQuest(taskId);
     if (!quest) {
-      throw new Error(`Quest ${taskId} not found for triage`);
+      throw new TriageServiceError(
+        `Quest ${taskId} not found for triage`,
+        'triage.quest_not_found',
+        { taskId },
+      );
     }
 
     this.logger.info('[Triage] Linking quest to intent', { taskId, contextHash });

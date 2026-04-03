@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { Intent } from '../../src/domain/entities/Intent.js';
+import { Intent, IntentValidationError } from '../../src/domain/entities/Intent.js';
 
 describe('Intent Entity', () => {
   const validProps = {
@@ -21,6 +21,11 @@ describe('Intent Entity', () => {
   it('should accept an optional description', () => {
     const intent = new Intent({ ...validProps, description: 'A longer form description of the intent.' });
     expect(intent.description).toBe('A longer form description of the intent.');
+  });
+
+  it('freezes trusted runtime instances after construction', () => {
+    const intent = new Intent(validProps);
+    expect(Object.isFrozen(intent)).toBe(true);
   });
 
   it('should reject an id without intent: prefix', () => {
@@ -66,5 +71,23 @@ describe('Intent Entity', () => {
   it('should reject a non-finite createdAt', () => {
     expect(() => new Intent({ ...validProps, createdAt: NaN }))
       .toThrow('positive timestamp');
+  });
+
+  it('throws a typed validation error with stable metadata', () => {
+    try {
+      new Intent({ ...validProps, requestedBy: 'agent.james' });
+      throw new Error('expected intent validation to fail');
+    } catch (error) {
+      expect(error).toBeInstanceOf(IntentValidationError);
+      if (error instanceof IntentValidationError) {
+        expect(error.code).toBe('intent.invalid_requested_by');
+        expect(error.details).toMatchObject({
+          entity: 'Intent',
+          field: 'requestedBy',
+          value: 'agent.james',
+          expectedPrefix: 'human.',
+        });
+      }
+    }
   });
 });

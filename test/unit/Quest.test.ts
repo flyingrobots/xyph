@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   Quest,
+  QuestValidationError,
   normalizeQuestKind,
   normalizeQuestPriority,
 } from '../../src/domain/entities/Quest.js';
@@ -20,6 +21,18 @@ describe('Quest Entity', () => {
     expect(quest.isDone()).toBe(false);
     expect(quest.taskKind).toBe('maintenance');
     expect(quest.priority).toBe('P3');
+  });
+
+  it('freezes trusted runtime instances after construction', () => {
+    const quest = new Quest({
+      id: 'task:freeze-check',
+      title: 'Frozen Quest',
+      status: 'BACKLOG',
+      hours: 1,
+      type: 'task'
+    });
+
+    expect(Object.isFrozen(quest)).toBe(true);
   });
 
   it('should identify a completed quest', () => {
@@ -87,6 +100,29 @@ describe('Quest Entity', () => {
     })).toThrow('finite non-negative number');
   });
 
+  it('throws a typed validation error with stable metadata', () => {
+    try {
+      new Quest({
+        id: 'task:typed-error',
+        title: 'Typed Error Quest',
+        status: 'NOPE' as never,
+        hours: 1,
+        type: 'task'
+      });
+      throw new Error('expected quest validation to fail');
+    } catch (error) {
+      expect(error).toBeInstanceOf(QuestValidationError);
+      if (error instanceof QuestValidationError) {
+        expect(error.code).toBe('quest.invalid_status');
+        expect(error.details).toMatchObject({
+          entity: 'Quest',
+          field: 'status',
+          value: 'NOPE',
+        });
+      }
+    }
+  });
+
   it('defaults task kind to delivery when omitted', () => {
     const quest = new Quest({
       id: 'task:007',
@@ -127,5 +163,19 @@ describe('Quest Entity', () => {
 
     expect(quest.status).toBe('READY');
     expect(quest.isExecutable()).toBe(true);
+  });
+
+  it('captures the normalized description and preserves runtime immutability', () => {
+    const quest = new Quest({
+      id: 'task:010',
+      title: 'Trimmed Description Quest',
+      status: 'READY',
+      hours: 1,
+      description: '  Trim me for trusted runtime storage.  ',
+      type: 'task',
+    });
+
+    expect(quest.description).toBe('Trim me for trusted runtime storage.');
+    expect(Object.isFrozen(quest)).toBe(true);
   });
 });

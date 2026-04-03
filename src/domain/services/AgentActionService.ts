@@ -326,6 +326,13 @@ function extractCaseBriefIds(detail: EntityDetail): string[] {
     .sort((a, b) => a.localeCompare(b));
 }
 
+function extractCaseOpenedFromIds(detail: EntityDetail): string[] {
+  return detail.outgoing
+    .filter((edge) => edge.label === 'opened-from')
+    .map((edge) => edge.nodeId)
+    .sort((a, b) => a.localeCompare(b));
+}
+
 function buildBriefActionDetails(action: BriefAction): Record<string, unknown> {
   return {
     caseId: action.targetId,
@@ -933,6 +940,7 @@ export class AgentActionValidator {
       risk: typeof detail.props['risk'] === 'string' ? detail.props['risk'] : 'reversible-low',
       authority: typeof detail.props['authority'] === 'string' ? detail.props['authority'] : 'human-only',
       briefCount: extractCaseBriefIds(detail).length,
+      openedFromCount: extractCaseOpenedFromIds(detail).length,
     });
 
     const briefId = autoId('brief:');

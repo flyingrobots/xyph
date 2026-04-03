@@ -22,6 +22,7 @@ export type WorkAttentionState = 'none' | 'review' | 'ready' | 'blocked';
 export type ExpectedActor = 'human' | 'agent' | 'either' | 'system' | 'unknown';
 export type Claimability = 'claimable' | 'claimed-by-self' | 'claimed-by-other' | 'not-claimable';
 export type EvidenceVerdict = 'satisfied' | 'partial' | 'missing' | 'failing' | 'untracked';
+export type ShapingState = 'backlog-attention' | 'governed-case';
 
 export interface RequirementSemantics {
   id: string;
@@ -65,6 +66,11 @@ export interface WorkSemantics {
   attentionState: WorkAttentionState;
 }
 
+interface ShapingWorkSemantics {
+  shapingState: ShapingState;
+  shapingReason: string;
+}
+
 export interface QuestWorkSemantics extends WorkSemantics {
   kind: 'quest';
   claimability: Claimability;
@@ -96,7 +102,7 @@ export interface GovernanceWorkSemantics extends WorkSemantics {
   progress: GovernanceProgress;
 }
 
-export interface CaseWorkSemantics extends WorkSemantics {
+export interface CaseWorkSemantics extends WorkSemantics, ShapingWorkSemantics {
   kind: 'case';
   question: string;
   status: string;
@@ -106,12 +112,14 @@ export interface CaseWorkSemantics extends WorkSemantics {
   briefCount: number;
 }
 
-export interface SuggestionWorkSemantics extends WorkSemantics {
+export interface SuggestionWorkSemantics extends WorkSemantics, ShapingWorkSemantics {
   kind: 'suggestion';
   suggestionKind: AiSuggestionKind;
   audience: AiSuggestionAudience;
   origin: AiSuggestionOrigin;
   requestedBy: string | null;
+  linkedCaseId: string | null;
+  linkedCaseStatus: string | null;
   progress: GovernanceProgress;
 }
 
@@ -742,29 +750,40 @@ export function buildSuggestionWorkSemantics(
   suggestion: AiSuggestionNode,
   principalId: string,
 ): SuggestionWorkSemantics {
+  const linkedCaseId = suggestion.linkedCaseId ?? null;
+  const linkedCaseStatus = suggestion.linkedCaseStatus ?? null;
+  const elevatedToCase = linkedCaseId !== null;
   const terminal = suggestion.status === 'accepted'
     || suggestion.status === 'implemented'
     || suggestion.status === 'rejected';
   const expectedActor: ExpectedActor = terminal
     ? 'system'
+    : elevatedToCase
+      ? 'either'
     : suggestion.audience === 'either'
       ? 'either'
       : suggestion.audience;
 
-  const attentionState: WorkAttentionState = terminal
+  const attentionState: WorkAttentionState = terminal || elevatedToCase
     ? 'none'
     : suggestion.audience === 'human'
       ? 'review'
       : 'ready';
+
+  const shapingReason = elevatedToCase
+    ? `This suggestion has been elevated into governed case ${linkedCaseId}${linkedCaseStatus ? ` (${linkedCaseStatus})` : ''}. Continue the work through the case instead of treating this suggestion as standalone backlog attention.`
+    : 'This suggestion remains routine backlog attention until a human or policy elevates it into a governed case.';
 
   const nextLawfulActions: NextLawfulAction[] = [
     {
       kind: 'inspect',
       label: actionLabel('inspect'),
       allowed: true,
-      reason: 'Inspect the suggestion context before responding or triaging it.',
+      reason: elevatedToCase
+        ? shapingReason
+        : 'Inspect the suggestion context before responding or triaging it.',
       blockedBy: [],
-      targetId: suggestion.id,
+      targetId: elevatedToCase ? linkedCaseId ?? suggestion.id : suggestion.id,
     },
     {
       kind: 'comment',
@@ -776,7 +795,7 @@ export function buildSuggestionWorkSemantics(
     },
   ];
 
-  if (!terminal && (
+  if (!terminal && !elevatedToCase && (
     suggestion.kind === 'ask-ai' ||
     suggestion.audience === 'agent' ||
     suggestion.audience === 'either'
@@ -793,11 +812,13 @@ export function buildSuggestionWorkSemantics(
     });
   }
 
-  const missingEvidence = !suggestion.evidence && suggestion.kind === 'ask-ai'
+  const missingEvidence = !elevatedToCase && !suggestion.evidence && suggestion.kind === 'ask-ai'
     ? ['No supporting evidence or context has been attached to this ask-AI job yet.']
     : [];
 
-  const blockingReasons = !terminal
+  const blockingReasons = elevatedToCase
+    ? [shapingReason]
+    : !terminal
     && suggestion.audience === 'agent'
     && suggestion.origin === 'request'
     && suggestion.requestedBy === principalId
@@ -810,7 +831,11 @@ export function buildSuggestionWorkSemantics(
     audience: suggestion.audience,
     origin: suggestion.origin,
     requestedBy: suggestion.requestedBy ?? null,
+    linkedCaseId,
+    linkedCaseStatus,
     progress: buildSuggestionProgress(suggestion),
+    shapingState: elevatedToCase ? 'governed-case' : 'backlog-attention',
+    shapingReason,
     blockingReasons: uniqueMessages(blockingReasons),
     missingEvidence: uniqueMessages(missingEvidence),
     nextLawfulActions,
@@ -827,6 +852,7 @@ export function buildCaseWorkSemantics(input: {
   risk: string;
   authority: string;
   briefCount: number;
+  openedFromCount: number;
 }): CaseWorkSemantics {
   const {
     caseId,
@@ -836,6 +862,7 @@ export function buildCaseWorkSemantics(input: {
     risk,
     authority,
     briefCount,
+    openedFromCount,
   } = input;
 
   const normalizedStatus = status.trim().toLowerCase();
@@ -849,6 +876,9 @@ export function buildCaseWorkSemantics(input: {
       ? 'No recommendation brief has been attached to this case yet.'
       : '',
   ]);
+  const shapingReason = openedFromCount > 0
+    ? `This matter has been elevated from advisory or backlog attention into governed case ${caseId}. Continue through the case rather than treating it as routine backlog shaping.`
+    : `This matter requires governed case handling through ${caseId} rather than routine backlog shaping.`;
 
   const nextLawfulActions: NextLawfulAction[] = [];
   if (['open', 'gathering-briefs', 'prepared'].includes(normalizedStatus)) {
@@ -898,6 +928,8 @@ export function buildCaseWorkSemantics(input: {
     risk,
     authority,
     briefCount,
+    shapingState: 'governed-case',
+    shapingReason,
     blockingReasons,
     missingEvidence,
     nextLawfulActions,

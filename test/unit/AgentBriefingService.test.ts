@@ -706,6 +706,7 @@ describe('AgentBriefingService', () => {
         requestedBy: 'human.ada',
         semantics: {
           kind: 'suggestion',
+          shapingState: 'backlog-attention',
           attentionState: 'ready',
           expectedActor: 'agent',
           suggestionKind: 'ask-ai',
@@ -821,6 +822,94 @@ describe('AgentBriefingService', () => {
         questTitle: 'Should the collapse plan be approved?',
         questStatus: 'ready-for-judgment',
         priority: 'P1',
+      }),
+    ]));
+  });
+
+  it('routes linked shaping work through case attention instead of routine suggestion pickup', async () => {
+    const snapshot = makeSnapshot({
+      aiSuggestions: [
+        {
+          id: 'suggestion:ASK-LINKED',
+          type: 'ai-suggestion',
+          kind: 'ask-ai',
+          title: 'Should TRACE-LINKED become governed work?',
+          summary: 'Inspect task:TRACE-LINKED and decide whether it requires governed handling.',
+          status: 'queued',
+          audience: 'agent',
+          origin: 'request',
+          suggestedBy: 'human.ada',
+          suggestedAt: 310,
+          targetId: 'task:TRACE-LINKED',
+          requestedBy: 'human.ada',
+          relatedIds: ['task:TRACE-LINKED'],
+        },
+      ],
+    });
+    const fetchEntityDetail = vi.fn(async () => ({
+      id: 'case:C-LINKED',
+      type: 'case',
+      props: {
+        type: 'case',
+        question: 'Should TRACE-LINKED become governed work?',
+        status: 'open',
+        impact: 'local',
+        risk: 'reversible-low',
+        authority: 'human-only',
+      },
+      outgoing: [
+        { nodeId: 'task:TRACE-LINKED', label: 'concerns' },
+        { nodeId: 'suggestion:ASK-LINKED', label: 'opened-from' },
+      ],
+      incoming: [],
+    }));
+    const readPort = makeOperationalReadPortDouble(snapshot, {
+      caseNodes: [{
+        id: 'case:C-LINKED',
+        props: { type: 'case', status: 'open' },
+      }],
+      outgoing: {
+        'case:C-LINKED': [
+          { nodeId: 'task:TRACE-LINKED', label: 'concerns' },
+          { nodeId: 'suggestion:ASK-LINKED', label: 'opened-from' },
+        ],
+      },
+      fetchEntityDetail,
+    });
+
+    const service = new AgentBriefingService(
+      makeGraphWithHandoffs([]),
+      makeRoadmap([]),
+      'agent.hal',
+      readPort.port,
+      makeDoctor(),
+    );
+
+    const briefing = await service.buildBriefing();
+    expect(briefing.suggestionQueue).toEqual([]);
+    expect(briefing.caseQueue).toMatchObject([
+      {
+        caseId: 'case:C-LINKED',
+        openedFromIds: ['suggestion:ASK-LINKED'],
+        semantics: {
+          kind: 'case',
+          shapingState: 'governed-case',
+        },
+      },
+    ]);
+
+    const next = await service.next(5);
+    expect(next.candidates).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: 'suggest',
+        targetId: 'suggestion:ASK-LINKED',
+      }),
+    ]));
+    expect(next.candidates).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: 'brief',
+        targetId: 'case:C-LINKED',
+        source: 'case',
       }),
     ]));
   });

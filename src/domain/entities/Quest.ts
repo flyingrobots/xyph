@@ -1,3 +1,5 @@
+import { DomainValidationError } from '../errors/DomainValidationError.js';
+
 /**
  * Quest Entity
  * Pure domain representation of a unit of work in the Digital Guild.
@@ -101,6 +103,19 @@ export interface QuestProps {
   originContext?: string;
 }
 
+export class QuestValidationError extends DomainValidationError {
+  constructor(
+    message: string,
+    code: string,
+    details: Record<string, unknown> = {},
+  ) {
+    super(message, code, {
+      entity: 'Quest',
+      ...details,
+    });
+  }
+}
+
 export class Quest {
   public readonly id: string;
   public readonly title: string;
@@ -119,21 +134,41 @@ export class Quest {
 
   constructor(props: QuestProps) {
     if (!props.id || !props.id.startsWith('task:')) {
-      throw new Error(`Quest ID must start with 'task:' prefix, got: '${props.id}'`);
+      throw new QuestValidationError(
+        `Quest ID must start with 'task:' prefix, got: '${props.id}'`,
+        'quest.invalid_id',
+        { field: 'id', value: props.id, expectedPrefix: 'task:' },
+      );
     }
     if (typeof props.title !== 'string' || props.title.length < 5) {
-      throw new Error(`Quest title must be at least 5 characters, got: '${props.title}'`);
+      throw new QuestValidationError(
+        `Quest title must be at least 5 characters, got: '${props.title}'`,
+        'quest.invalid_title',
+        { field: 'title', value: props.title, minLength: 5 },
+      );
     }
     if (!VALID_STATUSES.has(props.status)) {
-      throw new Error(`Quest status must be one of ${[...VALID_STATUSES].join(', ')}, got: '${props.status}'`);
+      throw new QuestValidationError(
+        `Quest status must be one of ${[...VALID_STATUSES].join(', ')}, got: '${props.status}'`,
+        'quest.invalid_status',
+        { field: 'status', value: props.status, validStatuses: [...VALID_STATUSES] },
+      );
     }
     // Zero hours is valid: coordination tasks, meta-quests, and unestimated work items
     if (!Number.isFinite(props.hours) || props.hours < 0) {
-      throw new Error(`Quest hours must be a finite non-negative number, got: ${props.hours}`);
+      throw new QuestValidationError(
+        `Quest hours must be a finite non-negative number, got: ${props.hours}`,
+        'quest.invalid_hours',
+        { field: 'hours', value: props.hours },
+      );
     }
     if (props.description !== undefined) {
       if (typeof props.description !== 'string' || props.description.trim().length < 5) {
-        throw new Error(`Quest description must be at least 5 characters, got: '${String(props.description)}'`);
+        throw new QuestValidationError(
+          `Quest description must be at least 5 characters, got: '${String(props.description)}'`,
+          'quest.invalid_description',
+          { field: 'description', value: props.description, minLength: 5 },
+        );
       }
     }
     const taskKind = normalizeQuestKind(props.taskKind);
@@ -153,6 +188,7 @@ export class Quest {
     this.readyAt = props.readyAt;
     this.type = props.type;
     this.originContext = props.originContext;
+    Object.freeze(this);
   }
 
   public toProps(): QuestProps {

@@ -496,6 +496,9 @@ export class AgentBriefingService {
         if (semantics.attentionState === 'none') {
           return [];
         }
+        if (suggestion.linkedCaseId) {
+          return [];
+        }
         if (!(suggestion.audience === 'agent' || suggestion.audience === 'either')) {
           return [];
         }
@@ -540,6 +543,7 @@ export class AgentBriefingService {
         risk: caseContext.risk,
         authority: caseContext.authority,
         briefCount: caseContext.briefIds.length,
+        openedFromCount: caseContext.openedFromIds.length,
       });
       if (semantics.attentionState === 'none') return null;
       return {

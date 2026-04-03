@@ -120,6 +120,9 @@ function buildCasePageContent(
 ): string {
   const lines: string[] = [];
   const currentDecision = caseDetail.decisions[0];
+  const shapingSummary = caseDetail.openedFromIds.length > 0
+    ? 'This case was elevated from advisory or backlog attention into governed case handling. Continue through the case rather than treating the source suggestion as routine backlog pickup.'
+    : 'This work requires governed case handling rather than routine backlog attention.';
 
   pushWrappedText(lines, caseDetail.caseNode.question, width, '', (line) =>
     style.styled(style.theme.semantic.primary, line));
@@ -155,6 +158,7 @@ function buildCasePageContent(
   pushField(lines, 'Impact', caseDetail.caseNode.impact, width, (value) => statusText(style, value));
   pushField(lines, 'Risk', caseDetail.caseNode.risk, width, (value) => statusText(style, value));
   pushField(lines, 'Authority', caseDetail.caseNode.authority, width, (value) => statusText(style, value));
+  pushField(lines, 'Shaping', 'governed case', width, (value) => statusText(style, value));
   if (caseDetail.caseNode.openedBy) {
     pushField(lines, 'Opened by', shortPrincipal(caseDetail.caseNode.openedBy), width);
   }
@@ -170,6 +174,10 @@ function buildCasePageContent(
   if (caseDetail.caseNode.reason) {
     pushField(lines, 'Reason', caseDetail.caseNode.reason, width);
   }
+  lines.push('');
+
+  pushSectionTitle(lines, style, 'Shaping');
+  pushWrappedText(lines, shapingSummary, width);
   lines.push('');
 
   pushSectionTitle(lines, style, 'Briefs');

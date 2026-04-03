@@ -1232,7 +1232,10 @@ describe('DashboardApp', () => {
     expect(lanePlain).toContain('Rejected Quest');
 
     const [page] = app.update(key('enter'), graveyard);
-    const pagePlain = strip(app.view(page) as string);
+    const widePage = widen(app, page, 140, 60);
+    const [scrolledOnce] = app.update(key('pagedown'), widePage);
+    const [scrolledPage] = app.update(key('pagedown'), scrolledOnce);
+    const pagePlain = strip(app.view(scrolledPage) as string);
     expect(pagePlain).toContain('Landing / Graveyard / G1');
     expect(pagePlain).toContain('Quest retired to Graveyard.');
     expect(pagePlain).toContain('Actions');
@@ -1662,6 +1665,18 @@ describe('DashboardApp', () => {
       sourceLane: 'suggestions',
     });
 
+    const wideSuggestionPage = widen(app, suggestionDetailLoaded, 140, 60);
+    const suggestionPlain = strip(app.view(wideSuggestionPage) as string);
+    expect(suggestionPlain).toContain('Shaping');
+    expect(suggestionPlain).toContain('governed case');
+    expect(suggestionPlain).toContain('Open linked governed case');
+    expect(suggestionPlain).toContain('This suggestion has been elevated into governed case handling.');
+    expect(suggestionPlain).toContain('routine backlog');
+    expect(suggestionPlain).toContain('attention.');
+    expect(suggestionPlain).not.toContain('Adopt suggestion into quest or proposal');
+    expect(suggestionPlain).not.toContain('Dismiss suggestion with rationale');
+    expect(suggestionPlain).not.toContain('Mark suggestion superseded by another artifact');
+
     const [caseDetailLoaded] = app.update({
       type: 'page-detail-loaded',
       entityId: 'case:TRACE-1',
@@ -1724,6 +1739,10 @@ describe('DashboardApp', () => {
     expect(plain).toContain('Should traceability become its own governed quest?');
     expect(plain).toContain('Recommendation: split the traceability work');
     expect(plain).toContain('Decide this case');
+    expect(plain).toContain('Shaping');
+    expect(plain).toContain('governed case');
+    expect(plain).toContain('This case was elevated from advisory or backlog attention into governed case handling.');
+    expect(plain).toContain('the source suggestion as routine backlog pickup.');
 
     const [decision] = app.update(key('d'), wideCasePage);
     expect(decision.mode).toBe('input');

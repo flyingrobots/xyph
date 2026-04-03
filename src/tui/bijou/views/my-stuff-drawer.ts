@@ -103,7 +103,7 @@ export function buildMyStuffDrawerLines(
     lines.push(style.styled(style.theme.semantic.muted, '  (none active)'));
   } else {
     for (const suggestion of mySuggestions.slice(0, 4)) {
-      const caseMeta = suggestion.linkedCaseId ? `  ·  case ${suggestion.linkedCaseId.replace(/^case:/, '')}` : '';
+      const caseMeta = suggestion.linkedCaseId ? `  ·  governed case ${suggestion.linkedCaseId.replace(/^case:/, '')}` : '';
       pushWrappedBlock(lines, {
         title: suggestion.title,
         meta: `${suggestion.id.replace(/^suggestion:/, '')}  ·  ${suggestion.status}${caseMeta}`,

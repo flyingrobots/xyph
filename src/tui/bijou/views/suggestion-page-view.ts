@@ -5,7 +5,15 @@ import type { AiSuggestionNode, EntityDetail, GraphSnapshot } from '../../../dom
 import type { StylePort } from '../../../ports/StylePort.js';
 import type { DashboardModel, SuggestionPageRoute } from '../DashboardApp.js';
 import type { CockpitItem } from '../cockpit.js';
-import { laneTitle, shortId, shortPrincipal, suggestionsViewTitle, type SuggestionsViewMode } from '../cockpit.js';
+import {
+  laneTitle,
+  shortId,
+  shortPrincipal,
+  suggestionShapingLabel,
+  suggestionShapingSummary,
+  suggestionsViewTitle,
+  type SuggestionsViewMode,
+} from '../cockpit.js';
 import { suggestionCanAdopt, suggestionCanDismiss, suggestionCanSupersede } from '../suggestion-actions.js';
 import {
   buildVerticalScrollbarRail,
@@ -111,17 +119,33 @@ function pageActions(style: StylePort, suggestion: AiSuggestionNode, detail: Ent
     { key: ';', label: 'Comment on this suggestion', token: style.theme.semantic.info },
     { key: 'e', label: 'Open AI explainability', token: style.theme.ui.aiLabel },
   ];
-  const hasLinkedCase = Boolean(
-    suggestion.linkedCaseId
-    || detail?.incoming?.some((entry) => entry.label === 'opened-from' && entry.nodeId.startsWith('case:')),
-  );
+  const hasLinkedCase = Boolean(linkedCaseForSuggestion(suggestion, detail));
   if (hasLinkedCase) {
     actions.push({ key: 'Enter', label: 'Open linked governed case', token: style.theme.semantic.primary });
   }
   return actions;
 }
 
-function suggestionLifecycleActions(style: StylePort, suggestion: AiSuggestionNode): SuggestionPageAction[] {
+function linkedCaseForSuggestion(
+  suggestion: AiSuggestionNode,
+  detail: EntityDetail | null,
+): { id: string; status?: string } | null {
+  if (suggestion.linkedCaseId) {
+    return { id: suggestion.linkedCaseId, status: suggestion.linkedCaseStatus };
+  }
+  const linkedCaseId = detail?.incoming
+    ?.filter((entry) => entry.label === 'opened-from' && entry.nodeId.startsWith('case:'))
+    .map((entry) => entry.nodeId)
+    .sort((left, right) => left.localeCompare(right))[0];
+  return linkedCaseId ? { id: linkedCaseId, status: suggestion.linkedCaseStatus } : null;
+}
+
+function suggestionLifecycleActions(
+  style: StylePort,
+  suggestion: AiSuggestionNode,
+  detail: EntityDetail | null,
+): SuggestionPageAction[] {
+  if (linkedCaseForSuggestion(suggestion, detail)) return [];
   const actions: SuggestionPageAction[] = [];
   if (suggestionCanAdopt(suggestion)) {
     actions.push({ key: 'a', label: 'Adopt suggestion into quest or proposal', token: style.theme.semantic.success });
@@ -174,6 +198,8 @@ function buildSuggestionPageContent(
   const lines: string[] = [];
   const outgoing = detail?.outgoing ?? [];
   const incoming = detail?.incoming ?? [];
+  const linkedCase = linkedCaseForSuggestion(suggestion, detail);
+  const shapingLabel = suggestionShapingLabel(linkedCase?.id);
 
   pushWrappedText(
     lines,
@@ -198,7 +224,7 @@ function buildSuggestionPageContent(
   for (const action of pageActions(style, suggestion, detail)) {
     pushAction(lines, style, action, width);
   }
-  for (const action of suggestionLifecycleActions(style, suggestion)) {
+  for (const action of suggestionLifecycleActions(style, suggestion, detail)) {
     pushAction(lines, style, action, width);
   }
   lines.push('');
@@ -230,11 +256,12 @@ function buildSuggestionPageContent(
   pushField(lines, 'Actor', shortPrincipal(suggestion.suggestedBy), width);
   pushField(lines, 'When', `${formatAge(suggestion.suggestedAt)} ago`, width);
   pushField(lines, 'Target', suggestion.targetId ? shortId(suggestion.targetId) : '—', width);
-  if (suggestion.linkedCaseId) {
+  pushField(lines, 'Shaping', shapingLabel, width, (value) => statusText(style, value));
+  if (linkedCase) {
     pushField(
       lines,
       'Case',
-      suggestion.linkedCaseStatus ? `${shortId(suggestion.linkedCaseId)} · ${suggestion.linkedCaseStatus}` : shortId(suggestion.linkedCaseId),
+      linkedCase.status ? `${shortId(linkedCase.id)} · ${linkedCase.status}` : shortId(linkedCase.id),
       width,
       (value) => statusText(style, value),
     );
@@ -245,6 +272,10 @@ function buildSuggestionPageContent(
   if (suggestion.relatedIds.length > 0) {
     pushField(lines, 'Related', suggestion.relatedIds.map(shortId).join(', '), width);
   }
+  lines.push('');
+
+  pushSectionTitle(lines, style, 'Shaping');
+  pushWrappedText(lines, suggestionShapingSummary(linkedCase?.id), width);
   lines.push('');
 
   pushSectionTitle(lines, style, 'Summary');

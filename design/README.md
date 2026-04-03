@@ -152,6 +152,9 @@ Start here, then use the focused design documents below:
 - [Product Loop](./product-loop.md)
   The larger governed project-shaping loop XYPH is meant to embody, including
   how humans and agents participate differently in the same evolving process.
+- [METHOD Alignment](./method-alignment.md)
+  How XYPH should absorb METHOD's discipline without turning the product into a
+  filesystem-native, prescriptive workflow tool.
 - [Cycles](./cycles/README.md)
   Design-first notes for the next bounded product or debt-reduction cycle.
 - [Alignment Sweep — 2026-03](./alignment-sweep-2026-03.md)
@@ -168,6 +171,9 @@ Start here, then use the focused design documents below:
   remains the concrete current graph-contract document.
 - [`/Users/james/git/xyph/docs/canonical/AGENT_PROTOCOL.md`](../docs/canonical/AGENT_PROTOCOL.md)
   remains the protocol and command-contract source of truth.
+- [`/Users/james/git/xyph/docs/canonical/SYSTEM_STYLE_JAVASCRIPT.md`](../docs/canonical/SYSTEM_STYLE_JAVASCRIPT.md)
+  is the engineering doctrine for runtime-backed modeling, boundary parsing,
+  and TypeScript's non-authoritative role inside XYPH.
 - [`/Users/james/git/xyph/CONTRIBUTING.md`](../CONTRIBUTING.md)
   codifies the milestone development loop, acceptance-test-as-spec rule, and
   milestone closeout/backlog-reconciliation workflow.
@@ -186,6 +192,8 @@ Start here, then use the focused design documents below:
 - update [Product Model](./product-model.md) whenever page structure,
   attention semantics, AI suggestion rules, or human/agent interaction models
   materially change
+- update [METHOD Alignment](./method-alignment.md) when XYPH's process posture
+  changes or when more of the workflow becomes graph-native and programmable
 - update alignment language whenever the human and agent lenses start drifting,
   or whenever a new cycle intentionally privileges one surface first
 - add or update a note under [Cycles](./cycles/README.md) when a new bounded

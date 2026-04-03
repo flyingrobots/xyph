@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { TriageService } from '../../src/domain/services/TriageService.js';
+import { TriageService, TriageServiceError } from '../../src/domain/services/TriageService.js';
 import type { RoadmapQueryPort, RoadmapMutationPort } from '../../src/ports/RoadmapPort.js';
 import { Quest } from '../../src/domain/entities/Quest.js';
 
@@ -44,5 +44,30 @@ describe('TriageService', () => {
     const missing = await service.auditBacklog();
     expect(missing).toContain('task:T-001');
     expect(missing).not.toContain('task:T-002');
+  });
+
+  it('throws a typed error when triage targets a missing quest', async () => {
+    vi.mocked(mockRoadmap.getQuest).mockResolvedValue(null);
+
+    await expect(service.linkIntent('task:MISSING', 'blake3:hash')).rejects.toBeInstanceOf(TriageServiceError);
+    await expect(service.linkIntent('task:MISSING', 'blake3:hash')).rejects.toMatchObject({
+      code: 'triage.quest_not_found',
+      details: {
+        service: 'TriageService',
+        taskId: 'task:MISSING',
+      },
+    });
+  });
+
+  it('rejects an empty origin context with a typed error', async () => {
+    await expect(service.linkIntent('task:TST-001', '')).rejects.toBeInstanceOf(TriageServiceError);
+    await expect(service.linkIntent('task:TST-001', '')).rejects.toMatchObject({
+      code: 'triage.invalid_origin_context',
+      details: {
+        service: 'TriageService',
+        taskId: 'task:TST-001',
+        contextHash: '',
+      },
+    });
   });
 });

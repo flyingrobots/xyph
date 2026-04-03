@@ -13,6 +13,8 @@ import {
   selectedLaneItem,
   shortId,
   shortPrincipal,
+  suggestionShapingLabel,
+  suggestionShapingSummary,
   suggestionViewCounts,
   suggestionsViewTitle,
   type CockpitItem,
@@ -286,8 +288,8 @@ function attentionBadge(style: StylePort, count: number, tone: 'none' | 'review'
 function rowSupportText(item: CockpitItem): string {
   if (item.kind === 'ai-suggestion' && item.suggestion.linkedCaseId) {
     const caseSummary = item.suggestion.linkedCaseStatus
-      ? `linked case ${shortId(item.suggestion.linkedCaseId)} · ${item.suggestion.linkedCaseStatus}`
-      : `linked case ${shortId(item.suggestion.linkedCaseId)}`;
+      ? `governed case ${shortId(item.suggestion.linkedCaseId)} · ${item.suggestion.linkedCaseStatus}`
+      : `governed case ${shortId(item.suggestion.linkedCaseId)}`;
     return [caseSummary, item.attentionReason || item.secondary || item.operationReason || '']
       .filter(Boolean)
       .join(' · ');
@@ -1172,6 +1174,7 @@ function renderActivityDetail(style: StylePort, item: CockpitItem, width: number
 
 function renderAiSuggestionDetail(style: StylePort, suggestion: AiSuggestionNode, item: CockpitItem, width: number): string {
   const lines: string[] = [];
+  const shapingLabel = suggestionShapingLabel(suggestion.linkedCaseId);
   pushWrappedText(lines, `${renderAiLabel(style)} ${suggestion.title}`, {
     width,
     decorate: (line) => style.styled(style.theme.semantic.primary, line),
@@ -1186,6 +1189,7 @@ function renderAiSuggestionDetail(style: StylePort, suggestion: AiSuggestionNode
   pushField(lines, 'Actor', shortPrincipal(suggestion.suggestedBy), { width });
   pushField(lines, 'When', `${formatAge(suggestion.suggestedAt)} ago`, { width });
   pushField(lines, 'Target', suggestion.targetId ? shortId(suggestion.targetId) : '—', { width });
+  pushField(lines, 'Shaping', shapingLabel, { width });
   if (suggestion.linkedCaseId) {
     pushField(
       lines,
@@ -1197,6 +1201,11 @@ function renderAiSuggestionDetail(style: StylePort, suggestion: AiSuggestionNode
   if (suggestion.requestedBy) {
     pushField(lines, 'Requested', shortPrincipal(suggestion.requestedBy), { width });
   }
+  lines.push('');
+  pushWrappedText(lines, suggestionShapingSummary(suggestion.linkedCaseId), {
+    width,
+    decorate: (line) => style.styled(style.theme.semantic.muted, line),
+  });
   lines.push('');
   pushWrappedText(lines, suggestion.summary, {
     width,

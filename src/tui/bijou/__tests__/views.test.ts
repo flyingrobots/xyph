@@ -381,7 +381,7 @@ describe('cockpitView', () => {
 
     const plain = strip(cockpitView(model, style, 120, 30));
 
-    expect(plain).toContain('case TRACE-1');
+    expect(plain).toContain('governed case TRACE-1');
     expect(plain.indexOf('My suggestion has a governed case')).toBeLessThan(
       plain.indexOf('Someone else suggested this first'),
     );
@@ -648,7 +648,7 @@ describe('renderMyStuffDrawer', () => {
 
     const plain = strip(renderMyStuffDrawer(snap, style, 'agent.test', 60, 24));
     expect(plain).toContain('Promote traceability follow-up');
-    expect(plain).toContain('case TRACE-1');
+    expect(plain).toContain('governed case TRACE-1');
   });
 
   it('renders graph health findings in the drawer drill-down', () => {
