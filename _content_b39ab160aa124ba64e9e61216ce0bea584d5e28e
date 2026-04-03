@@ -1,1 +1,0 @@
-Graph timeline already records task:TRG-001 as DONE on 2026-02-17, then later shows a BACKLOG suggestion on 2026-02-27. Treat the current BACKLOG state as suspicious bookkeeping drift and reconcile it before planning against this node as if it were untouched work.
