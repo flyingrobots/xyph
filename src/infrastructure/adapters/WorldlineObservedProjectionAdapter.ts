@@ -21,7 +21,7 @@ export function adaptObservedHandleToObservedProjectionGraph(
       nodeId: string,
       direction: 'outgoing' | 'incoming' | 'both' = 'outgoing',
       edgeLabel?: string,
-    ) => {
+    ): ReturnType<ObservedProjectionGraph['neighbors']> => {
       const edges = await handle.getEdges();
       return edges.flatMap((edge) => {
         if (edgeLabel && edge.label !== edgeLabel) return [];

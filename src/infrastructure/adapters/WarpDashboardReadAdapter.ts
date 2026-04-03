@@ -1,3 +1,11 @@
+import type {
+  DashboardNowLaneData,
+  DashboardReviewLaneData,
+  DashboardReviewPageData,
+  DashboardSuggestionLaneData,
+  EntityDetail,
+  GraphSnapshot,
+} from '../../domain/models/dashboard.js';
 import type { GraphPort } from '../../ports/GraphPort.js';
 import type {
   DashboardObservationView,
@@ -187,38 +195,41 @@ export class WarpDashboardReadAdapter implements DashboardReadPort {
     this.base = new WarpObservationAdapter(graphPort);
   }
 
-  public async fetchOperationalSnapshot(view: DashboardObservationView = 'landing') {
+  public async fetchOperationalSnapshot(view: DashboardObservationView = 'landing'): Promise<GraphSnapshot> {
     const session = await this.base.openSession(liveObservation('dashboard.snapshot', DASHBOARD_VIEW_OBSERVERS[view]));
     return await session.fetchSnapshot('operational');
   }
 
-  public async fetchEntityDetail(view: DashboardObservationView, id: string) {
+  public async fetchEntityDetail(view: DashboardObservationView, id: string): Promise<EntityDetail | null> {
     const session = await this.base.openSession(liveObservation(`dashboard.detail.${view}`, DASHBOARD_VIEW_OBSERVERS[view]));
     return await session.fetchEntityDetail(id);
   }
 
-  public async fetchLandingNowLaneData() {
+  public async fetchLandingNowLaneData(): Promise<DashboardNowLaneData> {
     const session = await this.base.openSession(
       liveObservation('dashboard.view.landing.now', DASHBOARD_LANDING_NOW_LANE_OBSERVER),
     );
     return await readNowLaneData(session);
   }
 
-  public async fetchLandingReviewLaneData() {
+  public async fetchLandingReviewLaneData(): Promise<DashboardReviewLaneData> {
     const session = await this.base.openSession(
       liveObservation('dashboard.view.landing.review', DASHBOARD_LANDING_REVIEW_LANE_OBSERVER),
     );
     return await readReviewLaneData(session);
   }
 
-  public async fetchLandingSuggestionLaneData() {
+  public async fetchLandingSuggestionLaneData(): Promise<DashboardSuggestionLaneData> {
     const session = await this.base.openSession(
       liveObservation('dashboard.view.landing.suggestions', DASHBOARD_LANDING_SUGGESTION_LANE_OBSERVER),
     );
     return await readSuggestionLaneData(session);
   }
 
-  public async fetchReviewPageData(submissionId: string, questId: string) {
+  public async fetchReviewPageData(
+    submissionId: string,
+    questId: string,
+  ): Promise<DashboardReviewPageData | null> {
     const session = await this.base.openSession(
       liveObservation('dashboard.view.review', DASHBOARD_VIEW_OBSERVERS['review-page']),
     );

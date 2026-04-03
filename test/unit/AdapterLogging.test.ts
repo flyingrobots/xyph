@@ -6,12 +6,12 @@ import { WarpSubmissionAdapter } from '../../src/infrastructure/adapters/WarpSub
 import { WarpIntakeAdapter } from '../../src/infrastructure/adapters/WarpIntakeAdapter.js';
 
 function makeLogger() {
-  const entries: Array<{
+  const entries: {
     timestamp: number;
     level: string;
     message: string;
     context?: Record<string, unknown>;
-  }> = [];
+  }[] = [];
   const sink = new CallbackDiagnosticLogSink();
   sink.onEntry = (entry) => {
     entries.push(entry);
