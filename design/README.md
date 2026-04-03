@@ -142,6 +142,13 @@ Start here, then use the focused design documents below:
   The desired git-warp / XYPH boundary, current gaps, and the staged
   alignment program for moving worldline/observer/working-set behavior down
   into the substrate.
+- [Effect Emission Alignment](./effect-emission-alignment.md)
+  Cross-repo doctrine for outbound effect emission, delivery observation,
+  replay-safe suppression, and debugger visibility across XYPH, git-warp, and
+  `warp-ttd`.
+- [Graph Trust Repair Session](./graph-trust-repair-session.md)
+  A bounded doctrine/playback artifact for deciding canonical graph truth,
+  repair policy, and dogfood gates before further graph repair work.
 - [Product Loop](./product-loop.md)
   The larger governed project-shaping loop XYPH is meant to embody, including
   how humans and agents participate differently in the same evolving process.
@@ -155,6 +162,10 @@ Start here, then use the focused design documents below:
 
 - [`/Users/james/git/xyph/docs/canonical/ARCHITECTURE.md`](../docs/canonical/ARCHITECTURE.md)
   remains the technical architecture source of truth.
+- [`/Users/james/git/xyph/docs/canonical/ONTOLOGY_CATALOG.md`](../docs/canonical/ONTOLOGY_CATALOG.md)
+  is the full product-wide ontology catalog for graph families, edge families,
+  and adjacent public handles. [`GRAPH_SCHEMA.md`](../docs/canonical/GRAPH_SCHEMA.md)
+  remains the concrete current graph-contract document.
 - [`/Users/james/git/xyph/docs/canonical/AGENT_PROTOCOL.md`](../docs/canonical/AGENT_PROTOCOL.md)
   remains the protocol and command-contract source of truth.
 - [`/Users/james/git/xyph/CONTRIBUTING.md`](../CONTRIBUTING.md)

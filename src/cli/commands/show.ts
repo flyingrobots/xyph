@@ -14,7 +14,9 @@ import type {
 } from '../../domain/models/dashboard.js';
 import type { Diagnostic } from '../../domain/models/diagnostics.js';
 import { collectQuestDiagnostics } from '../../domain/services/DiagnosticService.js';
+import { readGenericEntityDetail } from '../../domain/services/EntityDetailReadService.js';
 import { RecordService } from '../../domain/services/RecordService.js';
+import { liveObservation } from '../../ports/ObservationPort.js';
 
 interface NarrativeWriteOptions {
   on: string;
@@ -108,6 +110,16 @@ function renderTimeline(entries: QuestTimelineEntry[]): string[] {
     lines.push(`  - ${new Date(entry.at).toISOString()}  ${entry.kind}${actor}: ${entry.title}${related}`);
   }
   return lines;
+}
+
+function requiresProjectedEntityDetail(id: string): boolean {
+  return (
+    id.startsWith('task:') ||
+    id.startsWith('case:') ||
+    id.startsWith('comparison-artifact:') ||
+    id.startsWith('collapse-proposal:') ||
+    id.startsWith('attestation:')
+  );
 }
 
 function renderQuestDetail(
@@ -233,9 +245,12 @@ export function registerShowCommands(program: Command, ctx: CliContext): void {
     .command('show <id>')
     .description('Inspect a graph entity; task:* renders a quest detail projection')
     .action(withErrorHandler(async (id: string) => {
-      const { createGraphContext } = await import('../../infrastructure/GraphContext.js');
-      const graphCtx = createGraphContext(ctx.graphPort);
-      const detail = await graphCtx.fetchEntityDetail(id);
+      const readSession = await ctx.observation.openSession(
+        liveObservation('show.detail'),
+      );
+      const detail = requiresProjectedEntityDetail(id)
+        ? await readSession.fetchEntityDetail(id)
+        : await readGenericEntityDetail(readSession, id);
       if (!detail) {
         throw new Error(`[NOT_FOUND] Node ${id} not found in the graph`);
       }

@@ -13,6 +13,7 @@ import { createHash } from 'node:crypto';
 import type { Command } from 'commander';
 import type { CliContext } from '../context.js';
 import { createErrorHandler } from '../errorHandler.js';
+import { liveObservation } from '../../ports/ObservationPort.js';
 
 /** Deterministic short hash of testFile+targetId to avoid slug truncation collisions. */
 function linkHash(testFile: string, targetId: string): string {
@@ -64,9 +65,10 @@ export function registerAnalyzeCommands(program: Command, ctx: CliContext): void
       }
 
       // --- Fetch snapshot ---
-      const { createGraphContext } = await import('../../infrastructure/GraphContext.js');
-      const graphCtx = createGraphContext(ctx.graphPort);
-      const snapshot = await graphCtx.fetchSnapshot(undefined, { profile: 'analysis' });
+      const readSession = await ctx.observation.openSession(
+        liveObservation('analyze.snapshot'),
+      );
+      const snapshot = await readSession.fetchSnapshot('analysis');
 
       // --- Glob test files ---
       const { globSync } = await import('node:fs');

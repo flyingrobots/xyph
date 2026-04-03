@@ -1,15 +1,15 @@
-import type {
-  GraphSnapshot,
-  SubmissionNode,
-} from '../models/dashboard.js';
-import type { GraphPort } from '../../ports/GraphPort.js';
-import { createGraphContext } from '../../infrastructure/GraphContext.js';
+import type { SubmissionNode } from '../models/dashboard.js';
+import {
+  liveObservation,
+  type ObservationPort,
+} from '../../ports/ObservationPort.js';
 import type {
   DecisionKind,
   ReviewVerdict,
   SubmissionStatus,
 } from '../entities/Submission.js';
 import { SUBMISSION_STATUS_ORDER } from '../entities/Submission.js';
+import { readSubmissionModel, type SubmissionReadModel } from './SubmissionReadService.js';
 
 export const AGENT_SUBMISSION_STALE_HOURS = 72;
 const STALE_WINDOW_MS = AGENT_SUBMISSION_STALE_HOURS * 60 * 60 * 1000;
@@ -78,17 +78,19 @@ function sortEntries(a: AgentSubmissionEntry, b: AgentSubmissionEntry): number {
 
 export class AgentSubmissionService {
   constructor(
-    private readonly graphPort: GraphPort,
     private readonly agentId: string,
+    private readonly readPort: ObservationPort,
   ) {}
 
   public async list(limit = 10): Promise<AgentSubmissionQueues> {
-    const graphCtx = createGraphContext(this.graphPort);
-    const snapshot = await graphCtx.fetchSnapshot(undefined, { profile: 'operational' });
-    const activeSubmissions = snapshot.submissions.filter((entry) => !isTerminalSubmission(entry.status));
+    const readSession = await this.readPort.openSession(
+      liveObservation('agent.submissions'),
+    );
+    const submissions = await readSubmissionModel(readSession);
+    const activeSubmissions = submissions.submissions.filter((entry) => !isTerminalSubmission(entry.status));
 
     const entries = activeSubmissions
-      .map((submission) => this.toEntry(snapshot, submission))
+      .map((submission) => this.toEntry(submissions, submission))
       .sort(sortEntries);
 
     const owned = entries
@@ -111,7 +113,7 @@ export class AgentSubmissionService {
       .slice(0, limit);
 
     return {
-      asOf: snapshot.asOf,
+      asOf: submissions.asOf,
       staleAfterHours: AGENT_SUBMISSION_STALE_HOURS,
       counts: {
         owned: entries.filter((entry) => entry.submittedBy === this.agentId).length,
@@ -134,19 +136,18 @@ export class AgentSubmissionService {
     };
   }
 
-  private toEntry(snapshot: GraphSnapshot, submission: SubmissionNode): AgentSubmissionEntry {
-    const quest = snapshot.quests.find((entry) => entry.id === submission.questId);
+  private toEntry(model: SubmissionReadModel, submission: SubmissionNode): AgentSubmissionEntry {
+    const quest = model.questsById.get(submission.questId);
     const reviews = submission.tipPatchsetId
-      ? snapshot.reviews.filter((entry) => entry.patchsetId === submission.tipPatchsetId)
+      ? (model.reviewsByPatchset.get(submission.tipPatchsetId) ?? [])
       : [];
     const latestReview = reviews
       .slice()
       .sort((a, b) => b.reviewedAt - a.reviewedAt || b.id.localeCompare(a.id))[0];
-    const latestDecision = snapshot.decisions
-      .filter((entry) => entry.submissionId === submission.id)
+    const latestDecision = (model.decisionsBySubmission.get(submission.id) ?? [])
       .slice()
       .sort((a, b) => b.decidedAt - a.decidedAt || b.id.localeCompare(a.id))[0];
-    const stale = snapshot.asOf - submission.submittedAt >= STALE_WINDOW_MS;
+    const stale = model.asOf - submission.submittedAt >= STALE_WINDOW_MS;
     const attentionCodes: string[] = [];
 
     if (stale) {

@@ -1,7 +1,7 @@
 import { separator, type BaseStatusKey } from '@flyingrobots/bijou';
 import type { StylePort } from '../../../ports/StylePort.js';
 import { formatAge, wrapWhitespaceText } from '../../view-helpers.js';
-import type { GraphSnapshot } from '../../../domain/models/dashboard.js';
+import type { DashboardHealth, DashboardHealthIssue, GraphSnapshot } from '../../../domain/models/dashboard.js';
 
 interface ActivityEvent {
   ts: number;
@@ -11,7 +11,7 @@ interface ActivityEvent {
 }
 
 /**
- * Render "My Stuff" drawer content — agent's quests, submissions, and activity feed.
+ * Render the operations drawer content — graph health, scoped work, and recent activity.
  *
  * This is a global drawer available from any screen via the 'm' keybinding.
  * Content is agent-scoped when agentId is set, project-wide otherwise.
@@ -21,11 +21,17 @@ export function buildMyStuffDrawerLines(
   style: StylePort,
   agentId: string | undefined,
   pw: number,
+  health?: DashboardHealth | null,
 ): string[] {
   if (pw < 10) return [];
   const lines: string[] = [];
   const questById = new Map(snap.quests.map(q => [q.id, q]));
   const contentWidth = Math.max(12, pw - 4);
+
+  pushGraphHealthSection(lines, health, pw, contentWidth, style);
+  if (lines.length > 0) {
+    lines.push('');
+  }
 
   // ── My Quests ─────────────────────────────────────────────────────
   const myIssues = agentId
@@ -212,12 +218,78 @@ export function renderMyStuffDrawer(
   pw: number,
   ph: number,
   scrollY = 0,
+  health?: DashboardHealth | null,
 ): string {
   if (pw < 10 || ph < 1) return '';
-  const allLines = buildMyStuffDrawerLines(snap, style, agentId, pw);
+  const allLines = buildMyStuffDrawerLines(snap, style, agentId, pw, health);
   const maxScroll = Math.max(0, allLines.length - ph);
   const clampedScroll = Math.max(0, Math.min(scrollY, maxScroll));
   return allLines.slice(clampedScroll, clampedScroll + ph).join('\n');
+}
+
+function pushGraphHealthSection(
+  lines: string[],
+  health: DashboardHealth | null | undefined,
+  width: number,
+  contentWidth: number,
+  style: StylePort,
+): void {
+  if (!health) return;
+
+  const issueCount = health.summary.issueCount;
+  const blockingCount = health.summary.blockingIssueCount;
+  const warningCount = Math.max(0, issueCount - blockingCount);
+  lines.push(separator({
+    label: issueCount > 0 ? `Graph Health (${issueCount})` : 'Graph Health',
+    borderToken: style.theme.border.secondary,
+    width,
+  }));
+
+  if (issueCount === 0) {
+    lines.push(style.styled(style.theme.semantic.success, '  graph healthy'));
+    return;
+  }
+
+  const summaryBits: string[] = [];
+  if (blockingCount > 0) {
+    summaryBits.push(style.styled(style.theme.semantic.error, `!! ${blockingCount} blocking`));
+  }
+  if (warningCount > 0) {
+    summaryBits.push(style.styled(style.theme.semantic.warning, `! ${warningCount} warning`));
+  }
+  lines.push(`  ${summaryBits.join('  ')}`);
+  lines.push(style.styled(
+    style.theme.semantic.muted,
+    `  readiness ${health.summary.readinessGaps}  ·  governed ${health.summary.governedCompletionGaps}`,
+  ));
+
+  const issues = health.issues.slice(0, 5);
+  for (const issue of issues) {
+    lines.push('');
+    pushHealthIssue(lines, issue, contentWidth, style);
+  }
+  if (health.issues.length > issues.length) {
+    lines.push('');
+    lines.push(style.styled(
+      style.theme.semantic.muted,
+      `  +${health.issues.length - issues.length} more doctor finding${health.issues.length - issues.length === 1 ? '' : 's'}`,
+    ));
+  }
+}
+
+function pushHealthIssue(
+  lines: string[],
+  issue: DashboardHealthIssue,
+  width: number,
+  style: StylePort,
+): void {
+  const marker = issue.severity === 'error'
+    ? style.styled(style.theme.semantic.error, '!!')
+    : style.styled(style.theme.semantic.warning, '!');
+  const subject = issue.nodeId ?? issue.code;
+  const category = style.styled(style.theme.semantic.muted, issue.category);
+  lines.push(`  ${marker}  ${style.styled(style.theme.semantic.primary, subject)}  ${category}`);
+  pushWrapped(lines, issue.message, width, '     ', (line) => style.styled(style.theme.semantic.muted, line));
 }
 
 function pushWrappedBlock(

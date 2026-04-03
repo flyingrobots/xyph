@@ -2,8 +2,15 @@ import { createStylePort } from '../infrastructure/adapters/BijouStyleAdapter.js
 import { createPlainStylePort } from '../infrastructure/adapters/PlainStyleAdapter.js';
 import type { StylePort } from '../ports/StylePort.js';
 import { WarpGraphAdapter } from '../infrastructure/adapters/WarpGraphAdapter.js';
+import { WarpObservationAdapter } from '../infrastructure/adapters/WarpObservationAdapter.js';
+import { WarpOperationalReadAdapter } from '../infrastructure/adapters/WarpOperationalReadAdapter.js';
+import { WarpSubstrateInspectionAdapter } from '../infrastructure/adapters/WarpSubstrateInspectionAdapter.js';
 import { resolveIdentity, type ResolvedIdentity } from './identity.js';
 import type { Diagnostic } from '../domain/models/diagnostics.js';
+import type { DiagnosticLogPort } from '../ports/DiagnosticLogPort.js';
+import type { ObservationPort } from '../ports/ObservationPort.js';
+import type { OperationalReadPort } from '../ports/OperationalReadPort.js';
+import type { SubstrateInspectionPort } from '../ports/SubstrateInspectionPort.js';
 
 export { DEFAULT_AGENT_ID } from './identity.js';
 
@@ -40,6 +47,10 @@ export interface CliContext {
   readonly identity: ResolvedIdentity;
   readonly json: boolean;
   readonly graphPort: WarpGraphAdapter;
+  readonly observation: ObservationPort;
+  readonly operationalRead: OperationalReadPort;
+  readonly inspection: SubstrateInspectionPort;
+  readonly logger: DiagnosticLogPort;
   readonly style: StylePort;
   ok(msg: string): void;
   warn(msg: string): void;
@@ -67,6 +78,7 @@ export function createCliContext(
     env?: NodeJS.ProcessEnv;
     homeDir?: string;
     identity?: ResolvedIdentity;
+    logger?: DiagnosticLogPort;
   },
 ): CliContext {
   const identity = opts?.identity ?? resolveIdentity({
@@ -76,7 +88,10 @@ export function createCliContext(
     homeDir: opts?.homeDir,
   });
   const agentId = identity.agentId;
-  const graphPort = new WarpGraphAdapter(repoPath, graphName, agentId);
+  const graphPort = new WarpGraphAdapter(repoPath, graphName, agentId, opts?.logger);
+  const observation = new WarpObservationAdapter(graphPort);
+  const operationalRead = new WarpOperationalReadAdapter(graphPort);
+  const inspection = new WarpSubstrateInspectionAdapter(graphPort);
   const jsonMode = opts?.json ?? false;
   const style = jsonMode ? createPlainStylePort() : createStylePort();
 
@@ -108,6 +123,10 @@ export function createCliContext(
     identity,
     json: jsonMode,
     graphPort,
+    observation,
+    operationalRead,
+    inspection,
+    logger: opts?.logger ?? { debug() {}, info() {}, warn() {}, error() {}, child() { return this; } },
     style,
     ok(msg: string): void {
       if (jsonMode) return;

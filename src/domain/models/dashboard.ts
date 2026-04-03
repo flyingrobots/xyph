@@ -307,6 +307,23 @@ export interface QuestDetail {
   timeline: QuestTimelineEntry[];
 }
 
+export interface DashboardReviewPageData {
+  quest: QuestNode;
+  submission: SubmissionNode;
+  reviews: ReviewNode[];
+  decisions: DecisionNode[];
+  scroll?: ScrollNode;
+}
+
+export interface DashboardReviewLaneData {
+  submissions: SubmissionNode[];
+  quests: QuestNode[];
+}
+
+export interface DashboardSuggestionLaneData {
+  aiSuggestions: AiSuggestionNode[];
+}
+
 export interface CaseNode {
   id: string;
   title: string;
@@ -487,6 +504,28 @@ export interface GraphMeta {
   myTick: number;        // observedFrontier.get(writerId) ?? 0
   writerCount: number;   // observedFrontier.size
   tipSha: string;        // short SHA (7 chars) of our writer's tip from getFrontier()
+}
+
+export interface DashboardHealthSummary {
+  issueCount: number;
+  blockingIssueCount: number;
+  readinessGaps: number;
+  governedCompletionGaps: number;
+}
+
+export interface DashboardHealthIssue {
+  severity: 'error' | 'warning';
+  category: 'structural' | 'readiness' | 'governance' | 'workflow';
+  code: string;
+  nodeId?: string;
+  message: string;
+}
+
+export interface DashboardHealth {
+  status: 'ok' | 'warn' | 'error';
+  blocking: boolean;
+  summary: DashboardHealthSummary;
+  issues: DashboardHealthIssue[];
 }
 
 export interface GraphSnapshot {

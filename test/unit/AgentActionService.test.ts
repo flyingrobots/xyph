@@ -5,6 +5,7 @@ import type { RoadmapQueryPort } from '../../src/ports/RoadmapPort.js';
 import type { EntityDetail } from '../../src/domain/models/dashboard.js';
 import { AgentActionService } from '../../src/domain/services/AgentActionService.js';
 import { makeSnapshot, quest, review, submission } from '../helpers/snapshot.js';
+import { makeObservationSessionDouble } from '../helpers/observation.js';
 
 const mocks = vi.hoisted(() => ({
   createPatchSession: vi.fn(),
@@ -25,8 +26,8 @@ const mocks = vi.hoisted(() => ({
   getCommitsSince: vi.fn(),
   isMerged: vi.fn(),
   merge: vi.fn(),
+  openSession: vi.fn(),
   fetchEntityDetail: vi.fn(),
-  fetchSnapshot: vi.fn(),
   hasPrivateKey: vi.fn(),
   sign: vi.fn(),
   payloadDigest: vi.fn(),
@@ -74,15 +75,12 @@ vi.mock('../../src/infrastructure/adapters/FsKeyringAdapter.js', () => ({
   },
 }));
 
-vi.mock('../../src/infrastructure/GraphContext.js', () => ({
-  createGraphContext: () => ({
-    fetchEntityDetail(id: string) {
-      return mocks.fetchEntityDetail(id);
-    },
-    fetchSnapshot() {
-      return mocks.fetchSnapshot();
-    },
-  }),
+vi.mock('../../src/infrastructure/adapters/WarpObservationAdapter.js', () => ({
+  WarpObservationAdapter: class WarpObservationAdapter {
+    openSession() {
+      return mocks.openSession();
+    }
+  },
 }));
 
 vi.mock('../../src/infrastructure/adapters/WarpSubmissionAdapter.js', () => ({
@@ -334,6 +332,12 @@ function makeDoctor(report?: Record<string, unknown>) {
   };
 }
 
+function makeReadPort() {
+  return {
+    openSession: mocks.openSession,
+  };
+}
+
 describe('AgentActionService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -355,7 +359,7 @@ describe('AgentActionService', () => {
     mocks.isMerged.mockResolvedValue(false);
     mocks.merge.mockResolvedValue('mergecommit123456');
     mocks.fetchEntityDetail.mockResolvedValue(makeQuestDetail());
-    mocks.fetchSnapshot.mockResolvedValue(makeSnapshot({
+    const snapshot = makeSnapshot({
       quests: [
         quest({
           id: 'task:AGT-001',
@@ -384,6 +388,9 @@ describe('AgentActionService', () => {
           reviewedBy: 'human.reviewer',
         }),
       ],
+    });
+    mocks.openSession.mockResolvedValue(makeObservationSessionDouble(snapshot, {
+      fetchEntityDetail: mocks.fetchEntityDetail,
     }));
     mocks.hasPrivateKey.mockReturnValue(true);
     mocks.sign.mockResolvedValue({ keyId: 'did:key:test', alg: 'ed25519' });
@@ -395,6 +402,7 @@ describe('AgentActionService', () => {
       makeGraphPort({}),
       makeRoadmap(makeQuest()),
       'agent.hal',
+      makeReadPort(),
       makeDoctor(),
     );
 
@@ -423,6 +431,7 @@ describe('AgentActionService', () => {
       makeGraphPort({}),
       makeRoadmap(makeQuest()),
       'agent.hal',
+      makeReadPort(),
       makeDoctor(),
     );
 
@@ -451,6 +460,8 @@ describe('AgentActionService', () => {
       makeGraphPort({}),
       makeRoadmap(makeQuest({ status: 'READY' })),
       'agent.hal',
+      makeReadPort(),
+      makeDoctor(),
     );
 
     const outcome = await service.execute({
@@ -481,6 +492,8 @@ describe('AgentActionService', () => {
       makeGraphPort({}),
       makeRoadmap(makeQuest({ status: 'READY', assignedTo: 'agent.other' })),
       'agent.hal',
+      makeReadPort(),
+      makeDoctor(),
     );
 
     const outcome = await service.execute({
@@ -514,6 +527,8 @@ describe('AgentActionService', () => {
         title: 'Traceability packet quest',
       })),
       'agent.hal',
+      makeReadPort(),
+      makeDoctor(),
     );
 
     const outcome = await service.execute({
@@ -561,6 +576,8 @@ describe('AgentActionService', () => {
       makeGraphPort(graph),
       makeRoadmap(makeQuest()),
       'agent.hal',
+      makeReadPort(),
+      makeDoctor(),
     );
 
     const outcome = await service.execute({
@@ -604,6 +621,8 @@ describe('AgentActionService', () => {
       makeGraphPort(graph),
       makeRoadmap(makeQuest()),
       'agent.hal',
+      makeReadPort(),
+      makeDoctor(),
     );
 
     const outcome = await service.execute({
@@ -642,6 +661,8 @@ describe('AgentActionService', () => {
       makeGraphPort(graph),
       makeRoadmap(makeQuest()),
       'agent.hal',
+      makeReadPort(),
+      makeDoctor(),
     );
 
     const outcome = await service.execute({
@@ -684,6 +705,8 @@ describe('AgentActionService', () => {
       makeGraphPort(graph),
       makeRoadmap(makeQuest()),
       'agent.hal',
+      makeReadPort(),
+      makeDoctor(),
     );
 
     const outcome = await service.execute({
@@ -725,6 +748,7 @@ describe('AgentActionService', () => {
       makeGraphPort({}),
       makeRoadmap(makeQuest()),
       'agent.hal',
+      makeReadPort(),
       makeDoctor(),
     );
 
@@ -769,6 +793,7 @@ describe('AgentActionService', () => {
       makeGraphPort({}),
       makeRoadmap(makeQuest()),
       'agent.hal',
+      makeReadPort(),
       makeDoctor(),
     );
 
@@ -812,6 +837,7 @@ describe('AgentActionService', () => {
       makeGraphPort(graph),
       makeRoadmap(makeQuest()),
       'agent.hal',
+      makeReadPort(),
       makeDoctor(),
     );
 
@@ -847,6 +873,7 @@ describe('AgentActionService', () => {
       makeGraphPort({}),
       makeRoadmap(makeQuest()),
       'agent.hal',
+      makeReadPort(),
       makeDoctor(),
     );
 
@@ -900,6 +927,7 @@ describe('AgentActionService', () => {
       makeGraphPort(graph),
       makeRoadmap(makeQuest()),
       'agent.hal',
+      makeReadPort(),
       makeDoctor(),
     );
 
@@ -950,6 +978,7 @@ describe('AgentActionService', () => {
       makeGraphPort({}),
       makeRoadmap(makeQuest()),
       'agent.hal',
+      makeReadPort(),
       makeDoctor(),
     );
 
@@ -998,6 +1027,7 @@ describe('AgentActionService', () => {
       makeGraphPort(graph),
       makeRoadmap(makeQuest()),
       'agent.hal',
+      makeReadPort(),
       makeDoctor(),
     );
 
@@ -1040,6 +1070,7 @@ describe('AgentActionService', () => {
       makeGraphPort({}),
       makeRoadmap(makeQuest({ status: 'IN_PROGRESS' })),
       'agent.hal',
+      makeReadPort(),
       makeDoctor(),
     );
 
@@ -1080,6 +1111,7 @@ describe('AgentActionService', () => {
       makeGraphPort({}),
       makeRoadmap(makeQuest({ status: 'IN_PROGRESS', priority: 'P0' })),
       'agent.hal',
+      makeReadPort(),
       makeDoctor({
         status: 'error',
         healthy: false,
@@ -1135,6 +1167,7 @@ describe('AgentActionService', () => {
       makeGraphPort({}),
       makeRoadmap(makeQuest()),
       'agent.hal',
+      makeReadPort(),
       makeDoctor(),
     );
 

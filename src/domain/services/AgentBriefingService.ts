@@ -1,4 +1,3 @@
-import type { QueryResultV1, AggregateResult } from '@git-stunts/git-warp';
 import type { Diagnostic } from '../models/diagnostics.js';
 import type { RecommendationRequest } from '../models/recommendations.js';
 import type {
@@ -8,10 +7,9 @@ import type {
   QuestNode,
 } from '../models/dashboard.js';
 import type { GraphPort } from '../../ports/GraphPort.js';
+import type { OperationalReadPort, OperationalReadSession } from '../../ports/OperationalReadPort.js';
+import { liveObservation } from '../../ports/ObservationPort.js';
 import type { RoadmapQueryPort } from '../../ports/RoadmapPort.js';
-import { createGraphContext } from '../../infrastructure/GraphContext.js';
-import type { GraphContext } from '../../infrastructure/GraphContext.js';
-import { toNeighborEntries } from '../../infrastructure/helpers/isNeighborEntry.js';
 import { summarizeDoctorReport } from './DiagnosticService.js';
 import {
   compareQuestPriority,
@@ -28,6 +26,7 @@ import {
   type AgentSubmissionEntry,
   type AgentSubmissionNextStep,
 } from './AgentSubmissionService.js';
+import { readSubmissionModel, type SubmissionReadModel } from './SubmissionReadService.js';
 import {
   AgentRecommender,
   type AgentActionCandidate,
@@ -55,18 +54,7 @@ import {
   type SuggestionWorkSemantics,
   type SubmissionWorkSemantics,
 } from './WorkSemanticsService.js';
-
-interface QNode {
-  id: string;
-  props: Record<string, unknown>;
-}
-
-function extractNodes(result: QueryResultV1 | AggregateResult): QNode[] {
-  if (!('nodes' in result)) return [];
-  return result.nodes.filter(
-    (node): node is QNode => typeof node.id === 'string' && node.props !== undefined,
-  );
-}
+import { readAiSuggestions } from './AiSuggestionReadService.js';
 
 export interface AgentBriefingIdentity {
   agentId: string;
@@ -242,21 +230,24 @@ export class AgentBriefingService {
   private readonly doctor: Pick<DoctorService, 'run'>;
 
   constructor(
-    private readonly graphPort: GraphPort,
+    graphPort: GraphPort,
     roadmap: RoadmapQueryPort,
     private readonly agentId: string,
+    private readonly readPort: OperationalReadPort,
     doctor?: Pick<DoctorService, 'run'>,
   ) {
     this.readiness = new ReadinessService(roadmap);
     this.doctor = doctor ?? new DoctorService(graphPort, roadmap);
     this.recommender = new AgentRecommender(
-      new AgentActionValidator(graphPort, roadmap, agentId, this.doctor),
+      new AgentActionValidator(graphPort, roadmap, agentId, readPort, this.doctor),
       agentId,
     );
   }
 
   public async buildBriefing(): Promise<AgentBriefing> {
-    const { graphCtx, snapshot } = await this.openOperationalRead();
+    const { readSession, snapshot } = await this.openOperationalRead();
+    const aiSuggestions = await readAiSuggestions(readSession);
+    const submissionModel = await readSubmissionModel(readSession);
     const assignments = await this.buildWorkSummaries(
       snapshot.quests.filter((quest) =>
         quest.assignedTo === this.agentId &&
@@ -274,11 +265,11 @@ export class AgentBriefingService {
       snapshot,
     );
 
-    const reviewQueue = this.buildReviewQueue(snapshot);
+    const reviewQueue = this.buildReviewQueue(submissionModel);
     const governanceQueue = this.buildGovernanceQueue(snapshot);
-    const suggestionQueue = this.buildSuggestionQueue(snapshot);
-    const caseQueue = await this.buildCaseQueue(graphCtx);
-    const recentHandoffs = await this.buildRecentHandoffs();
+    const suggestionQueue = this.buildSuggestionQueue(aiSuggestions);
+    const caseQueue = await this.buildCaseQueue(readSession);
+    const recentHandoffs = await this.buildRecentHandoffs(readSession);
     const doctorReport = await this.doctor.run();
     const recommendationQueue = buildRecommendationRequests(doctorReport);
     const diagnostics = summarizeDoctorReport(doctorReport);
@@ -313,7 +304,9 @@ export class AgentBriefingService {
   }
 
   public async next(limit = 5): Promise<AgentNextResult> {
-    const { graphCtx, snapshot } = await this.openOperationalRead();
+    const { readSession, snapshot } = await this.openOperationalRead();
+    const aiSuggestions = await readAiSuggestions(readSession);
+    const submissionModel = await readSubmissionModel(readSession);
     const doctorReport = await this.doctor.run();
     const recommendationQueue = buildRecommendationRequests(doctorReport);
     const candidates = (
@@ -324,10 +317,10 @@ export class AgentBriefingService {
       )
     ).flat();
 
-    candidates.push(...this.buildSubmissionCandidates(snapshot));
+    candidates.push(...this.buildSubmissionCandidates(submissionModel));
     candidates.push(...this.buildGovernanceCandidates(snapshot));
-    candidates.push(...this.buildSuggestionCandidates(snapshot));
-    candidates.push(...(await this.buildCaseCandidates(graphCtx)));
+    candidates.push(...this.buildSuggestionCandidates(aiSuggestions));
+    candidates.push(...(await this.buildCaseCandidates(readSession)));
     candidates.push(...this.buildDoctorCandidates(snapshot, recommendationQueue));
 
     candidates.sort((a, b) =>
@@ -348,10 +341,12 @@ export class AgentBriefingService {
     };
   }
 
-  private async openOperationalRead(): Promise<{ graphCtx: GraphContext; snapshot: GraphSnapshot }> {
-    const graphCtx = createGraphContext(this.graphPort);
-    const snapshot = await graphCtx.fetchSnapshot(undefined, { profile: 'operational' });
-    return { graphCtx, snapshot };
+  private async openOperationalRead(): Promise<{ readSession: OperationalReadSession; snapshot: GraphSnapshot }> {
+    const readSession = await this.readPort.openOperationalSession(
+      liveObservation('agent.briefing'),
+    );
+    const snapshot = await readSession.fetchOperationalSnapshot();
+    return { readSession, snapshot };
   }
 
   private async buildWorkSummaries(
@@ -432,18 +427,17 @@ export class AgentBriefingService {
     }));
   }
 
-  private buildReviewQueue(snapshot: GraphSnapshot): AgentReviewQueueEntry[] {
-    const questById = new Map(snapshot.quests.map((quest) => [quest.id, quest] as const));
-    const queue = snapshot.submissions
+  private buildReviewQueue(model: SubmissionReadModel): AgentReviewQueueEntry[] {
+    const queue = model.submissions
       .filter((submission) =>
         isReviewableByAgent(submission, this.agentId),
       )
       .map((submission) => {
-        const quest = questById.get(submission.questId);
+        const quest = model.questsById.get(submission.questId);
         const reviews = submission.tipPatchsetId
-          ? snapshot.reviews.filter((entry) => entry.patchsetId === submission.tipPatchsetId)
+          ? (model.reviewsByPatchset.get(submission.tipPatchsetId) ?? [])
           : [];
-        const decisions = snapshot.decisions.filter((entry) => entry.submissionId === submission.id);
+        const decisions = model.decisionsBySubmission.get(submission.id) ?? [];
         return {
           submissionId: submission.id,
           questId: submission.questId,
@@ -495,8 +489,8 @@ export class AgentBriefingService {
     return queue;
   }
 
-  private buildSuggestionQueue(snapshot: GraphSnapshot): AgentSuggestionQueueEntry[] {
-    const queue = snapshot.aiSuggestions
+  private buildSuggestionQueue(aiSuggestions: GraphSnapshot['aiSuggestions']): AgentSuggestionQueueEntry[] {
+    const queue = aiSuggestions
       .flatMap((suggestion) => {
         const semantics = buildSuggestionWorkSemantics(suggestion, this.agentId);
         if (semantics.attentionState === 'none') {
@@ -529,16 +523,12 @@ export class AgentBriefingService {
     return queue;
   }
 
-  private async buildCaseQueue(graphCtx: GraphContext): Promise<AgentCaseQueueEntry[]> {
-    const caseNodes = await graphCtx.graph.query()
-      .match('case:*')
-      .select(['id', 'props'])
-      .run()
-      .then(extractNodes);
+  private async buildCaseQueue(readSession: OperationalReadSession): Promise<AgentCaseQueueEntry[]> {
+    const caseNodes = await readSession.queryNodes('case:*');
 
     const queue = (await Promise.all(caseNodes.map(async (node) => {
       if (node.props['type'] !== 'case') return null;
-      const detail = await graphCtx.fetchEntityDetail(node.id);
+      const detail = await readSession.fetchEntityDetail(node.id);
       if (!detail) return null;
       const caseContext = buildCaseContext(detail);
       if (!caseContext) return null;
@@ -576,14 +566,13 @@ export class AgentBriefingService {
     return queue;
   }
 
-  private buildSubmissionCandidates(snapshot: GraphSnapshot): AgentNextCandidate[] {
-    const questById = new Map(snapshot.quests.map((quest) => [quest.id, quest] as const));
+  private buildSubmissionCandidates(model: SubmissionReadModel): AgentNextCandidate[] {
     const terminalStatuses = new Set(['MERGED', 'CLOSED']);
 
-    const candidates = snapshot.submissions
+    const candidates = model.submissions
       .filter((submission) => !terminalStatuses.has(submission.status))
       .flatMap((submission) => {
-        const quest = questById.get(submission.questId);
+        const quest = model.questsById.get(submission.questId);
         const entry: AgentSubmissionEntry = {
           submissionId: submission.id,
           questId: submission.questId,
@@ -606,9 +595,9 @@ export class AgentBriefingService {
         };
 
         const reviews = submission.tipPatchsetId
-          ? snapshot.reviews.filter((review) => review.patchsetId === submission.tipPatchsetId)
+          ? (model.reviewsByPatchset.get(submission.tipPatchsetId) ?? [])
           : [];
-        const decisions = snapshot.decisions.filter((decision) => decision.submissionId === submission.id);
+        const decisions = model.decisionsBySubmission.get(submission.id) ?? [];
         const semantics = buildSubmissionWorkSemantics({
           submission,
           quest,
@@ -643,8 +632,8 @@ export class AgentBriefingService {
     );
   }
 
-  private buildSuggestionCandidates(snapshot: GraphSnapshot): AgentNextCandidate[] {
-    return this.buildSuggestionQueue(snapshot).flatMap((entry) =>
+  private buildSuggestionCandidates(aiSuggestions: GraphSnapshot['aiSuggestions']): AgentNextCandidate[] {
+    return this.buildSuggestionQueue(aiSuggestions).flatMap((entry) =>
       buildSuggestionActionCandidates({
         suggestionId: entry.suggestionId,
         semantics: entry.semantics,
@@ -659,8 +648,8 @@ export class AgentBriefingService {
     );
   }
 
-  private async buildCaseCandidates(graphCtx: GraphContext): Promise<AgentNextCandidate[]> {
-    const queue = await this.buildCaseQueue(graphCtx);
+  private async buildCaseCandidates(readSession: OperationalReadSession): Promise<AgentNextCandidate[]> {
+    const queue = await this.buildCaseQueue(readSession);
     return queue.flatMap((entry) => {
       const candidates = buildCaseActionCandidates({
         caseContext: {
@@ -941,13 +930,8 @@ export class AgentBriefingService {
     return alerts;
   }
 
-  private async buildRecentHandoffs(limit = 5): Promise<AgentHandoffSummary[]> {
-    const graph = await this.graphPort.getGraph();
-    const noteNodes = await graph.query()
-      .match('note:*')
-      .select(['id', 'props'])
-      .run()
-      .then(extractNodes);
+  private async buildRecentHandoffs(readSession: OperationalReadSession, limit = 5): Promise<AgentHandoffSummary[]> {
+    const noteNodes = await readSession.queryNodes('note:*');
 
     const summaries = await Promise.all(noteNodes.map(async (node) => {
       const title = node.props['title'];
@@ -963,7 +947,7 @@ export class AgentBriefingService {
         return null;
       }
 
-      const relatedIds = toNeighborEntries(await graph.neighbors(node.id, 'outgoing'))
+      const relatedIds = (await readSession.neighbors(node.id, 'outgoing'))
         .filter((edge) => edge.label === 'documents')
         .map((edge) => edge.nodeId)
         .sort((a, b) => a.localeCompare(b));

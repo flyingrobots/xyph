@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createGraphContext } from '../../src/infrastructure/GraphContext.js';
+import { createObservedGraphProjection } from '../../src/infrastructure/ObservedGraphProjection.js';
 import { makeSnapshot, quest } from '../helpers/snapshot.js';
 import type { GraphPort } from '../../src/ports/GraphPort.js';
 import type { WarpCore as WarpGraph } from '@git-stunts/git-warp';
@@ -10,7 +10,7 @@ const stubGraphPort: GraphPort = {
 };
 
 describe('filterSnapshot — transitiveDownstream', () => {
-  const ctx = createGraphContext(stubGraphPort);
+  const ctx = createObservedGraphProjection(stubGraphPort);
 
   it('strips GRAVEYARD task keys from transitiveDownstream', () => {
     const snap = makeSnapshot({

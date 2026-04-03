@@ -11,10 +11,18 @@ const input = vi.fn();
 const review = vi.fn();
 const validateReview = vi.fn();
 
-vi.mock('../../src/infrastructure/GraphContext.js', () => ({
-  createGraphContext: vi.fn(() => ({
-    fetchSnapshot,
-  })),
+vi.mock('../../src/infrastructure/adapters/WarpObservationAdapter.js', () => ({
+  WarpObservationAdapter: class WarpObservationAdapter {
+    async openSession() {
+      return {
+        fetchSnapshot,
+        fetchEntityDetail: vi.fn(),
+        queryNodes: vi.fn(),
+        neighbors: vi.fn(),
+        hasNode: vi.fn(),
+      };
+    }
+  },
 }));
 
 vi.mock('@flyingrobots/bijou', () => ({
@@ -44,6 +52,15 @@ vi.mock('../../src/domain/services/SubmissionService.js', () => ({
 import { registerWizardCommands } from '../../src/cli/commands/wizards.js';
 
 function makeCtx(): CliContext {
+  const observation = {
+    openSession: vi.fn(async () => ({
+      fetchSnapshot,
+      fetchEntityDetail: vi.fn(),
+      queryNodes: vi.fn(),
+      neighbors: vi.fn(),
+      hasNode: vi.fn(),
+    })),
+  };
   return {
     agentId: 'human.reviewer',
     identity: { agentId: 'human.reviewer', source: 'default', origin: null },
@@ -51,6 +68,11 @@ function makeCtx(): CliContext {
     graphPort: {
       getGraph: vi.fn(),
     } as CliContext['graphPort'],
+    observation: observation as CliContext['observation'],
+    operationalRead: observation as CliContext['operationalRead'],
+    inspection: {
+      openInspectionSession: vi.fn(),
+    } as CliContext['inspection'],
     style: {} as CliContext['style'],
     ok: vi.fn(),
     warn: vi.fn(),
@@ -105,7 +127,7 @@ describe('wizard commands', () => {
 
     await program.parseAsync(['review-wizard'], { from: 'user' });
 
-    expect(fetchSnapshot).toHaveBeenCalledWith(undefined, { profile: 'operational' });
+    expect(fetchSnapshot).toHaveBeenCalledWith('operational');
     expect(validateReview).toHaveBeenCalledWith('patchset:P-1', 'human.reviewer');
     expect(review).toHaveBeenCalledWith({
       patchsetId: 'patchset:P-1',

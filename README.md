@@ -307,6 +307,41 @@ The TUI is a [bijou](https://github.com/flyingrobots/bijou)-powered interactive 
 
 ```bash
 XYPH_AGENT_ID=human.ada npm run tui
+XYPH_AGENT_ID=human.ada npm run tui:logs
+```
+
+XYPH writes durable local diagnostic logs under `~/.xyph/logs/`:
+
+- `actuator.log` for CLI / actuator sessions
+- `dashboard.log` for the TUI
+
+The first place to look when startup hangs, refresh stalls, or a command wedges is:
+
+```bash
+npm run logs
+npm run logs:follow
+```
+
+If you want the TUI and a live dashboard log tail together, use:
+
+```bash
+npm run tui:logs
+```
+
+This opens the TUI plus a live log follower in `tmux`. By default it follows
+`dashboard.log`. You can override the log channel or line count:
+
+```bash
+npm run tui:logs -- --channel all
+npm run tui:logs -- --channel dashboard --lines 50
+```
+
+You can also narrow it:
+
+```bash
+npm run logs -- --channel actuator
+npm run logs -- --channel dashboard --lines 50
+npm run logs -- --channel actuator --follow
 ```
 
 ### Seven Lanes

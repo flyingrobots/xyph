@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { WarpGraphAdapter } from '../../src/infrastructure/adapters/WarpGraphAdapter.js';
-import { createGraphContext } from '../../src/infrastructure/GraphContext.js';
+import { createObservedGraphProjection } from '../../src/infrastructure/ObservedGraphProjection.js';
 import { execSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
@@ -110,7 +110,7 @@ describe('WarpTraceabilityAdapter Integration', () => {
     });
 
     // Now fetch the snapshot and verify
-    const ctx = createGraphContext(graphPort);
+    const ctx = createObservedGraphProjection(graphPort);
     const snapshot = await ctx.fetchSnapshot();
 
     // Verify story

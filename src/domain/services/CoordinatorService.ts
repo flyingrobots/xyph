@@ -3,19 +3,29 @@ import { IngestService } from './IngestService.js';
 import { NormalizeService } from './NormalizeService.js';
 import { RebalanceService } from './RebalanceService.js';
 import { Quest } from '../entities/Quest.js';
+import type { DiagnosticLogPort } from '../../ports/DiagnosticLogPort.js';
+import { createNoopDiagnosticLogger } from '../../infrastructure/logging/DiagnosticLogger.js';
 
 /**
  * CoordinatorService
  * The "Brain" of XYPH. Orchestrates the pipeline and maintains graph health.
  */
 export class CoordinatorService {
+  private readonly logger: DiagnosticLogPort;
+
   constructor(
     private readonly roadmap: RoadmapPort,
-    private readonly agentId: string,
+    agentId: string,
     private readonly ingest: IngestService,
     private readonly normalize: NormalizeService,
-    private readonly rebalance: RebalanceService
-  ) {}
+    private readonly rebalance: RebalanceService,
+    logger?: DiagnosticLogPort,
+  ) {
+    this.logger = logger ?? createNoopDiagnosticLogger({
+      component: 'CoordinatorService',
+      agentId,
+    });
+  }
 
   /**
    * Orchestrates the full pipeline from raw input to roadmap mutation.
@@ -23,12 +33,12 @@ export class CoordinatorService {
    * @param contextHash BLAKE3 hash of the originating NL prompt/intent (optional)
    */
   public async orchestrate(rawInput: string, contextHash?: string): Promise<void> {
-    console.log(`[${new Date().toISOString()}] Orchestration started by ${this.agentId}`);
+    this.logger.info('orchestration started', { rawInputLength: rawInput.length });
 
     // Phase 1: Ingest
     let quests = this.ingest.ingestMarkdown(rawInput);
     if (quests.length === 0) {
-      console.warn(`[${this.agentId}] No quests parsed from input (${rawInput.length} chars)`);
+      this.logger.warn('no quests parsed from input', { rawInputLength: rawInput.length });
       return;
     }
 
@@ -42,7 +52,10 @@ export class CoordinatorService {
 
     // Phase 3: Triage (Genealogy of Intent)
     if (contextHash) {
-      console.log(`[${this.agentId}] Linking ${quests.length} quests to origin context ${contextHash}`);
+      this.logger.info('linking quests to origin context', {
+        questCount: quests.length,
+        contextHash,
+      });
       quests = quests.map(q => new Quest({
         ...q.toProps(),
         originContext: contextHash,
@@ -65,11 +78,11 @@ export class CoordinatorService {
     for (const quest of quests) {
       try {
         const sha = await this.roadmap.upsertQuest(quest);
-        console.log(`[OK] Quest ${quest.id} emitted to graph. Patch: ${sha}`);
+        this.logger.info('quest emitted to graph', { questId: quest.id, patch: sha });
         results.push({ questId: quest.id, success: true });
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
-        console.error(`[ERROR] Failed to upsert quest ${quest.id}: ${msg}`);
+        this.logger.error('failed to upsert quest', { questId: quest.id, message: msg });
         results.push({ questId: quest.id, success: false, error: msg });
       }
     }
@@ -85,7 +98,7 @@ export class CoordinatorService {
    * Syncs state, runs janitorial checks, and reports health.
    */
   public async heartbeat(): Promise<void> {
-    console.log(`[${new Date().toISOString()}] Heartbeat started by ${this.agentId}`);
+    this.logger.info('heartbeat started');
 
     try {
       // 1. Sync with the causal frontier
@@ -99,11 +112,11 @@ export class CoordinatorService {
 
       // 4. Report status
       const done = quests.filter(q => q.isDone()).length;
-      console.log(`[*] Roadmap Status: ${done}/${quests.length} quests completed.`);
+      this.logger.info('roadmap status', { done, total: quests.length });
 
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error(`[ERROR] Heartbeat failed: ${msg}`);
+      this.logger.error('heartbeat failed', { message: msg });
       throw err;
     }
   }
@@ -111,7 +124,7 @@ export class CoordinatorService {
   private runJanitorialChecks(quests: Quest[]): void {
     const claimed = quests.filter(q => q.assignedTo).length;
     if (claimed > 0) {
-      console.log(`[*] Janitorial: ${claimed} quests currently claimed by agents.`);
+      this.logger.info('janitorial claimed quests', { claimed });
     }
   }
 }

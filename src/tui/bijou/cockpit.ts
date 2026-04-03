@@ -5,6 +5,8 @@ import type {
   AiSuggestionNode,
   CampaignNode,
   ComparisonArtifactNode,
+  DashboardReviewLaneData,
+  DashboardSuggestionLaneData,
   GovernanceArtifactNode,
   GraphSnapshot,
   QuestNode,
@@ -98,6 +100,11 @@ export interface ActivityCockpitItem extends CockpitBaseItem {
 export interface AiSuggestionCockpitItem extends CockpitBaseItem {
   kind: 'ai-suggestion';
   suggestion: AiSuggestionNode;
+}
+
+export interface CockpitLaneOverrides {
+  reviewLaneData?: DashboardReviewLaneData | null;
+  suggestionLaneData?: DashboardSuggestionLaneData | null;
 }
 
 interface AttentionDetail {
@@ -351,8 +358,7 @@ function submissionAttention(submission: SubmissionNode): AttentionDetail {
   return { state: 'none' };
 }
 
-function buildSubmissionItem(submission: SubmissionNode, snapshot: GraphSnapshot): SubmissionCockpitItem {
-  const questTitle = snapshot.quests.find((quest) => quest.id === submission.questId)?.title ?? submission.questId;
+function buildSubmissionItemWithQuestTitle(submission: SubmissionNode, questTitle: string): SubmissionCockpitItem {
   const attention = submissionAttention(submission);
   return {
     id: submission.id,
@@ -367,6 +373,11 @@ function buildSubmissionItem(submission: SubmissionNode, snapshot: GraphSnapshot
     ...(attention.reason ? { attentionReason: attention.reason } : {}),
     submission,
   };
+}
+
+function buildSubmissionItem(submission: SubmissionNode, snapshot: GraphSnapshot): SubmissionCockpitItem {
+  const questTitle = snapshot.quests.find((quest) => quest.id === submission.questId)?.title ?? submission.questId;
+  return buildSubmissionItemWithQuestTitle(submission, questTitle);
 }
 
 function buildGovernanceItem(artifact: GovernanceArtifactNode): CockpitItem {
@@ -527,6 +538,13 @@ function compareSubmissionItems(a: SubmissionCockpitItem, b: SubmissionCockpitIt
   return b.submission.submittedAt - a.submission.submittedAt;
 }
 
+export function buildReviewLaneItemsFromData(data: DashboardReviewLaneData): SubmissionCockpitItem[] {
+  const questTitleById = new Map(data.quests.map((quest) => [quest.id, quest.title] as const));
+  return data.submissions
+    .map((submission) => buildSubmissionItemWithQuestTitle(submission, questTitleById.get(submission.questId) ?? submission.questId))
+    .sort(compareSubmissionItems);
+}
+
 function compareGovernanceItems(a: CockpitItem, b: CockpitItem): number {
   return (b.timestamp ?? 0) - (a.timestamp ?? 0) || a.id.localeCompare(b.id);
 }
@@ -571,12 +589,27 @@ function buildSuggestionItems(snapshot: GraphSnapshot, view: SuggestionsViewMode
     .sort((a, b) => compareAiSuggestionItems(a, b, agentId));
 }
 
-export function suggestionViewCounts(snapshot: GraphSnapshot): Record<SuggestionsViewMode, number> {
+export function buildSuggestionItemsFromData(
+  data: DashboardSuggestionLaneData,
+  view: SuggestionsViewMode,
+  agentId?: string,
+): AiSuggestionCockpitItem[] {
+  return data.aiSuggestions
+    .filter((suggestion) => suggestionMatchesView(suggestion, view))
+    .map(buildAiSuggestionItem)
+    .sort((a, b) => compareAiSuggestionItems(a, b, agentId));
+}
+
+export function suggestionViewCounts(
+  snapshot: GraphSnapshot,
+  overrides: CockpitLaneOverrides = {},
+): Record<SuggestionsViewMode, number> {
+  const suggestions = overrides.suggestionLaneData?.aiSuggestions ?? snapshot.aiSuggestions;
   return {
-    incoming: snapshot.aiSuggestions.filter((suggestion) => suggestionMatchesView(suggestion, 'incoming')).length,
-    queued: snapshot.aiSuggestions.filter((suggestion) => suggestionMatchesView(suggestion, 'queued')).length,
-    adopted: snapshot.aiSuggestions.filter((suggestion) => suggestionMatchesView(suggestion, 'adopted')).length,
-    dismissed: snapshot.aiSuggestions.filter((suggestion) => suggestionMatchesView(suggestion, 'dismissed')).length,
+    incoming: suggestions.filter((suggestion) => suggestionMatchesView(suggestion, 'incoming')).length,
+    queued: suggestions.filter((suggestion) => suggestionMatchesView(suggestion, 'queued')).length,
+    adopted: suggestions.filter((suggestion) => suggestionMatchesView(suggestion, 'adopted')).length,
+    dismissed: suggestions.filter((suggestion) => suggestionMatchesView(suggestion, 'dismissed')).length,
   };
 }
 
@@ -882,9 +915,10 @@ export function laneAttentionCount(
   agentId?: string,
   nowView: NowViewMode = 'queue',
   suggestionsView: SuggestionsViewMode = 'incoming',
+  overrides: CockpitLaneOverrides = {},
 ): number {
   if (!snapshot || (lane !== 'review' && lane !== 'settlement')) return 0;
-  return laneItems(snapshot, lane, agentId, nowView, suggestionsView)
+  return laneItems(snapshot, lane, agentId, nowView, suggestionsView, overrides)
     .reduce((count, item) => count + itemAttentionWeight(item), 0);
 }
 
@@ -894,9 +928,10 @@ function laneAttentionToneForLane(
   agentId?: string,
   nowView: NowViewMode = 'queue',
   suggestionsView: SuggestionsViewMode = 'incoming',
+  overrides: CockpitLaneOverrides = {},
 ): CockpitLane['attentionTone'] {
   if (!snapshot || (lane !== 'review' && lane !== 'settlement')) return 'none';
-  return laneAttentionTone(laneItems(snapshot, lane, agentId, nowView, suggestionsView));
+  return laneAttentionTone(laneItems(snapshot, lane, agentId, nowView, suggestionsView, overrides));
 }
 
 export function cockpitLanes(
@@ -904,6 +939,7 @@ export function cockpitLanes(
   agentId?: string,
   nowView: NowViewMode = 'queue',
   suggestionsView: SuggestionsViewMode = 'incoming',
+  overrides: CockpitLaneOverrides = {},
 ): CockpitLane[] {
   if (!snapshot) {
     return [
@@ -917,6 +953,9 @@ export function cockpitLanes(
     ];
   }
   const suggestionItems = buildSuggestionItems(snapshot, suggestionsView, agentId);
+  const visibleSuggestionItems = overrides.suggestionLaneData
+    ? buildSuggestionItemsFromData(overrides.suggestionLaneData, suggestionsView, agentId)
+    : suggestionItems;
   return [
     {
       id: 'now',
@@ -932,10 +971,10 @@ export function cockpitLanes(
       id: 'review',
       title: 'Review',
       description: 'Submission lanes',
-      count: snapshot.submissions.length,
+      count: laneItems(snapshot, 'review', agentId, nowView, suggestionsView, overrides).length,
       freshCount: 0,
-      attentionCount: laneAttentionCount(snapshot, 'review', agentId, nowView, suggestionsView),
-      attentionTone: laneAttentionToneForLane(snapshot, 'review', agentId, nowView, suggestionsView),
+      attentionCount: laneAttentionCount(snapshot, 'review', agentId, nowView, suggestionsView, overrides),
+      attentionTone: laneAttentionToneForLane(snapshot, 'review', agentId, nowView, suggestionsView, overrides),
     },
     {
       id: 'settlement',
@@ -950,10 +989,10 @@ export function cockpitLanes(
       id: 'suggestions',
       title: 'Suggestions',
       description: suggestionsViewDescription(suggestionsView),
-      count: suggestionItems.length,
+      count: visibleSuggestionItems.length,
       freshCount: 0,
-      attentionCount: suggestionItems.filter((item) => item.attentionState !== 'none').length,
-      attentionTone: laneAttentionTone(suggestionItems),
+      attentionCount: visibleSuggestionItems.filter((item) => item.attentionState !== 'none').length,
+      attentionTone: laneAttentionTone(visibleSuggestionItems),
     },
     { id: 'campaigns', title: 'Campaigns', description: 'Strategic containers', count: snapshot.campaigns.length, freshCount: 0, attentionCount: 0, attentionTone: 'none' },
     {
@@ -974,6 +1013,7 @@ export function laneItems(
   agentId?: string,
   nowView: NowViewMode = 'queue',
   suggestionsView: SuggestionsViewMode = 'incoming',
+  overrides: CockpitLaneOverrides = {},
 ): CockpitItem[] {
   switch (lane) {
     case 'now':
@@ -986,9 +1026,11 @@ export function laneItems(
         .map(buildQuestItem)
         .sort(compareQuestItems);
     case 'review':
-      return snapshot.submissions
-        .map((submission) => buildSubmissionItem(submission, snapshot))
-        .sort(compareSubmissionItems);
+      return overrides.reviewLaneData
+        ? buildReviewLaneItemsFromData(overrides.reviewLaneData)
+        : snapshot.submissions
+          .map((submission) => buildSubmissionItem(submission, snapshot))
+          .sort(compareSubmissionItems);
     case 'settlement':
       return snapshot.governanceArtifacts
         .map(buildGovernanceItem)
@@ -998,7 +1040,9 @@ export function laneItems(
         .map((campaign) => buildCampaignItem(campaign, snapshot))
         .sort(compareCampaignItems);
     case 'suggestions':
-      return buildSuggestionItems(snapshot, suggestionsView, agentId);
+      return overrides.suggestionLaneData
+        ? buildSuggestionItemsFromData(overrides.suggestionLaneData, suggestionsView, agentId)
+        : buildSuggestionItems(snapshot, suggestionsView, agentId);
     case 'graveyard':
       return snapshot.quests
         .filter((quest) => quest.status === 'GRAVEYARD')
@@ -1015,8 +1059,9 @@ export function buildLaneTable(
   agentId?: string,
   nowView: NowViewMode = 'queue',
   suggestionsView: SuggestionsViewMode = 'incoming',
+  overrides: CockpitLaneOverrides = {},
 ): NavigableTableState {
-  const items = snapshot ? laneItems(snapshot, lane, agentId, nowView, suggestionsView) : [];
+  const items = snapshot ? laneItems(snapshot, lane, agentId, nowView, suggestionsView, overrides) : [];
   let table = createNavigableTableState({
     columns: [
       { header: 'Kind', width: 11 },
@@ -1042,9 +1087,10 @@ export function selectedLaneItem(
   agentId?: string,
   nowView: NowViewMode = 'queue',
   suggestionsView: SuggestionsViewMode = 'incoming',
+  overrides: CockpitLaneOverrides = {},
 ): CockpitItem | undefined {
   if (!snapshot) return undefined;
-  return laneItems(snapshot, lane, agentId, nowView, suggestionsView)[focusRow];
+  return laneItems(snapshot, lane, agentId, nowView, suggestionsView, overrides)[focusRow];
 }
 
 export function laneTitle(lane: CockpitLaneId): string {
@@ -1086,9 +1132,10 @@ export function laneFreshCount(
   agentId?: string,
   nowView: NowViewMode = 'queue',
   suggestionsView: SuggestionsViewMode = 'incoming',
+  overrides: CockpitLaneOverrides = {},
 ): number {
   if (!snapshot) return 0;
-  return laneItems(snapshot, lane, agentId, nowView, suggestionsView)
+  return laneItems(snapshot, lane, agentId, nowView, suggestionsView, overrides)
     .filter((item) => itemIsFresh(item, lane, watermarks, seenItems))
     .length;
 }
@@ -1099,9 +1146,10 @@ export function laneLatestTimestamp(
   agentId?: string,
   nowView: NowViewMode = 'queue',
   suggestionsView: SuggestionsViewMode = 'incoming',
+  overrides: CockpitLaneOverrides = {},
 ): number {
   if (!snapshot) return 0;
-  return laneItems(snapshot, lane, agentId, nowView, suggestionsView)
+  return laneItems(snapshot, lane, agentId, nowView, suggestionsView, overrides)
     .reduce((latest, item) => Math.max(latest, item.timestamp ?? 0), 0);
 }
 
@@ -1112,9 +1160,10 @@ export function cockpitLanesWithFreshness(
   agentId?: string,
   nowView: NowViewMode = 'queue',
   suggestionsView: SuggestionsViewMode = 'incoming',
+  overrides: CockpitLaneOverrides = {},
 ): CockpitLane[] {
-  return cockpitLanes(snapshot, agentId, nowView, suggestionsView).map((lane) => ({
+  return cockpitLanes(snapshot, agentId, nowView, suggestionsView, overrides).map((lane) => ({
     ...lane,
-    freshCount: laneFreshCount(snapshot, lane.id, watermarks, seenItems, agentId, nowView, suggestionsView),
+    freshCount: laneFreshCount(snapshot, lane.id, watermarks, seenItems, agentId, nowView, suggestionsView, overrides),
   }));
 }

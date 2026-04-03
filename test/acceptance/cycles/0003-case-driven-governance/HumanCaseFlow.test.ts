@@ -4,12 +4,12 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createPlainStylePort, ensurePlainBijouContext } from '../../../../src/infrastructure/adapters/PlainStyleAdapter.js';
-import { createGraphContext } from '../../../../src/infrastructure/GraphContext.js';
+import { createObservedGraphProjection } from '../../../../src/infrastructure/ObservedGraphProjection.js';
 import { WarpGraphAdapter } from '../../../../src/infrastructure/adapters/WarpGraphAdapter.js';
 import { RecordService } from '../../../../src/domain/services/RecordService.js';
 import type { DashboardModel, CasePageRoute } from '../../../../src/tui/bijou/DashboardApp.js';
 import { buildLaneTable } from '../../../../src/tui/bijou/cockpit.js';
-import type { EntityDetail, GraphSnapshot } from '../../../../src/domain/models/dashboard.js';
+import type { DashboardHealth, EntityDetail, GraphSnapshot } from '../../../../src/domain/models/dashboard.js';
 import { emptyObserverSeenItems, emptyObserverWatermarks } from '../../../../src/tui/bijou/observer-watermarks.js';
 import { casePageView } from '../../../../src/tui/bijou/views/case-page-view.js';
 import { strip } from '../../../helpers/ansi.js';
@@ -17,6 +17,17 @@ import { strip } from '../../../helpers/ansi.js';
 ensurePlainBijouContext();
 
 const style = createPlainStylePort();
+const healthyDashboardHealth: DashboardHealth = {
+  status: 'ok',
+  blocking: false,
+  summary: {
+    issueCount: 0,
+    blockingIssueCount: 0,
+    readinessGaps: 0,
+    governedCompletionGaps: 0,
+  },
+  issues: [],
+};
 
 describe('Cycle 0003: Human Case Flow', () => {
   let repoPath: string;
@@ -96,7 +107,7 @@ describe('Cycle 0003: Human Case Flow', () => {
       follow_on_artifact_kind: 'quest',
     });
 
-    const graphCtx = createGraphContext(graphPort);
+    const graphCtx = createObservedGraphProjection(graphPort);
     const snapshot = await graphCtx.fetchSnapshot();
     const detail = await graphCtx.fetchEntityDetail('case:TRACE-1');
 
@@ -142,13 +153,13 @@ describe('Cycle 0003: Human Case Flow', () => {
 
 function makeModel(snapshot: GraphSnapshot, detail: EntityDetail): DashboardModel {
   const laneState = {
-    now: { focusRow: 0, inspectorScrollY: 0 },
-    plan: { focusRow: 0, inspectorScrollY: 0 },
-    review: { focusRow: 0, inspectorScrollY: 0 },
-    settlement: { focusRow: 0, inspectorScrollY: 0 },
-    suggestions: { focusRow: 0, inspectorScrollY: 0 },
-    campaigns: { focusRow: 0, inspectorScrollY: 0 },
-    graveyard: { focusRow: 0, inspectorScrollY: 0 },
+    now: { focusRow: 0, inspectorScrollY: 0, railScrollY: 0 },
+    plan: { focusRow: 0, inspectorScrollY: 0, railScrollY: 0 },
+    review: { focusRow: 0, inspectorScrollY: 0, railScrollY: 0 },
+    settlement: { focusRow: 0, inspectorScrollY: 0, railScrollY: 0 },
+    suggestions: { focusRow: 0, inspectorScrollY: 0, railScrollY: 0 },
+    campaigns: { focusRow: 0, inspectorScrollY: 0, railScrollY: 0 },
+    graveyard: { focusRow: 0, inspectorScrollY: 0, railScrollY: 0 },
   };
 
   return {
@@ -165,6 +176,7 @@ function makeModel(snapshot: GraphSnapshot, detail: EntityDetail): DashboardMode
     table: buildLaneTable(snapshot, 'suggestions', 20, 0, 'human.tester'),
     inspectorOpen: true,
     snapshot,
+    health: healthyDashboardHealth,
     loading: false,
     error: null,
     showLanding: false,

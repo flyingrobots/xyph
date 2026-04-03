@@ -1,5 +1,7 @@
 import { Quest } from '../entities/Quest.js';
 import type { RoadmapQueryPort, RoadmapMutationPort } from '../../ports/RoadmapPort.js';
+import type { DiagnosticLogPort } from '../../ports/DiagnosticLogPort.js';
+import { createNoopDiagnosticLogger } from '../../infrastructure/logging/DiagnosticLogger.js';
 
 /**
  * TriageService
@@ -7,9 +9,14 @@ import type { RoadmapQueryPort, RoadmapMutationPort } from '../../ports/RoadmapP
  * Part of Milestone 3.
  */
 export class TriageService {
+  private readonly logger: DiagnosticLogPort;
+
   constructor(
-    private readonly roadmap: RoadmapQueryPort & RoadmapMutationPort
-  ) {}
+    private readonly roadmap: RoadmapQueryPort & RoadmapMutationPort,
+    logger?: DiagnosticLogPort,
+  ) {
+    this.logger = logger ?? createNoopDiagnosticLogger({ component: 'TriageService' });
+  }
 
   /**
    * Links a quest to its origin context (human intent).
@@ -22,7 +29,7 @@ export class TriageService {
       throw new Error(`Quest ${taskId} not found for triage`);
     }
 
-    console.log(`[Triage] Linking quest ${taskId} to intent ${contextHash}`);
+    this.logger.info('[Triage] Linking quest to intent', { taskId, contextHash });
 
     const enrichedQuest = new Quest({
       ...quest,
@@ -42,7 +49,7 @@ export class TriageService {
       .map(q => q.id);
 
     if (missing.length > 0) {
-      console.warn(`[Triage] Audit: ${missing.length} quests missing origin context.`);
+      this.logger.warn('[Triage] Backlog quests missing origin context', { count: missing.length });
     }
 
     return missing;

@@ -1,5 +1,7 @@
 import type { QuestStatus } from '../entities/Quest.js';
 import type { RoadmapQueryPort } from '../../ports/RoadmapPort.js';
+import type { DiagnosticLogPort } from '../../ports/DiagnosticLogPort.js';
+import { createNoopDiagnosticLogger } from '../../infrastructure/logging/DiagnosticLogger.js';
 
 /**
  * SovereigntyService
@@ -33,7 +35,14 @@ export interface AncestryResult {
 }
 
 export class SovereigntyService {
-  constructor(private readonly roadmap: RoadmapQueryPort) {}
+  private readonly logger: DiagnosticLogPort;
+
+  constructor(
+    private readonly roadmap: RoadmapQueryPort,
+    logger?: DiagnosticLogPort,
+  ) {
+    this.logger = logger ?? createNoopDiagnosticLogger({ component: 'SovereigntyService' });
+  }
 
   /**
    * Checks whether a quest has a valid authorized-by edge to an intent: node.
@@ -76,7 +85,7 @@ export class SovereigntyService {
     }
 
     if (violations.length > 0) {
-      console.warn(
+      this.logger.warn(
         `[Sovereignty] ${violations.length} authorized quest(s) violate Genealogy of Intent (Constitution Art. IV).`,
       );
     }

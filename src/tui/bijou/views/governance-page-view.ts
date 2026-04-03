@@ -351,9 +351,10 @@ export function governancePageView(options: {
   const chrome = renderDashboardChrome({
     lane: page.sourceLane,
     agentId: model.agentId,
+    health: model.health,
     nowView: model.nowView,
     breadcrumbSegments: ['Landing', laneTitle(page.sourceLane), shortId(page.entityId)],
-  }, snapshot, style, width);
+  }, snapshot, model, style, width);
   const chromeHeight = chrome.split('\n').length;
   const bodyHeight = Math.max(1, height - chromeHeight - 1);
 

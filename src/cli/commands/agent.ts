@@ -8,6 +8,7 @@ import {
   VALID_REQUIREMENT_PRIORITIES,
 } from '../../domain/entities/Requirement.js';
 import { WarpRoadmapAdapter } from '../../infrastructure/adapters/WarpRoadmapAdapter.js';
+import { DoctorService } from '../../domain/services/DoctorService.js';
 import {
   AgentActionService,
   type AgentActionOutcome,
@@ -691,6 +692,8 @@ function renderSubmissions(queues: {
 
 export function registerAgentCommands(program: Command, ctx: CliContext): void {
   const withErrorHandler = createErrorHandler(ctx);
+  const roadmap = new WarpRoadmapAdapter(ctx.graphPort);
+  const doctor = new DoctorService(ctx.graphPort, roadmap, ctx.inspection);
 
   program
     .command('briefing')
@@ -698,8 +701,10 @@ export function registerAgentCommands(program: Command, ctx: CliContext): void {
     .action(withErrorHandler(async () => {
       const service = new AgentBriefingService(
         ctx.graphPort,
-        new WarpRoadmapAdapter(ctx.graphPort),
+        roadmap,
         ctx.agentId,
+        ctx.operationalRead,
+        doctor,
       );
       const briefing = await service.buildBriefing();
 
@@ -728,8 +733,10 @@ export function registerAgentCommands(program: Command, ctx: CliContext): void {
 
       const service = new AgentBriefingService(
         ctx.graphPort,
-        new WarpRoadmapAdapter(ctx.graphPort),
+        roadmap,
         ctx.agentId,
+        ctx.operationalRead,
+        doctor,
       );
       const result = await service.next(limit);
 
@@ -759,7 +766,7 @@ export function registerAgentCommands(program: Command, ctx: CliContext): void {
         throw new Error(`[INVALID_ARGS] --limit must be a positive integer, got '${opts.limit}'`);
       }
 
-      const service = new AgentSubmissionService(ctx.graphPort, ctx.agentId);
+      const service = new AgentSubmissionService(ctx.agentId, ctx.observation);
       const queues = await service.list(limit);
 
       if (ctx.json) {
@@ -780,8 +787,10 @@ export function registerAgentCommands(program: Command, ctx: CliContext): void {
     .action(withErrorHandler(async (id: string) => {
       const service = new AgentContextService(
         ctx.graphPort,
-        new WarpRoadmapAdapter(ctx.graphPort),
+        roadmap,
         ctx.agentId,
+        ctx.observation,
+        doctor,
       );
       const result = await service.fetch(id);
       if (!result) {
@@ -870,8 +879,10 @@ export function registerAgentCommands(program: Command, ctx: CliContext): void {
     .action(withErrorHandler(async (actionKind: string, targetId: string, opts: ActOptions) => {
       const service = new AgentActionService(
         ctx.graphPort,
-        new WarpRoadmapAdapter(ctx.graphPort),
+        roadmap,
         ctx.agentId,
+        ctx.observation,
+        doctor,
       );
 
       const outcome = await service.execute({
@@ -921,8 +932,10 @@ export function registerAgentCommands(program: Command, ctx: CliContext): void {
     .action(withErrorHandler(async (targetId: string, opts: Pick<ActOptions, 'message' | 'title' | 'related'>) => {
       const service = new AgentActionService(
         ctx.graphPort,
-        new WarpRoadmapAdapter(ctx.graphPort),
+        roadmap,
         ctx.agentId,
+        ctx.observation,
+        doctor,
       );
 
       const outcome = await service.execute({

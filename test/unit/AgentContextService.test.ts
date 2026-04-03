@@ -2,15 +2,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Quest } from '../../src/domain/entities/Quest.js';
 import type { RoadmapQueryPort } from '../../src/ports/RoadmapPort.js';
 import type { GraphPort } from '../../src/ports/GraphPort.js';
-import { makeSnapshot, quest, campaign, intent, submission } from '../helpers/snapshot.js';
+import { makeSnapshot, quest, campaign, intent, review, submission } from '../helpers/snapshot.js';
+import { makeObservationSessionDouble } from '../helpers/observation.js';
 import { AgentContextService } from '../../src/domain/services/AgentContextService.js';
 
 const mocks = vi.hoisted(() => ({
-  createGraphContext: vi.fn(),
-}));
-
-vi.mock('../../src/infrastructure/GraphContext.js', () => ({
-  createGraphContext: (graphPort: unknown) => mocks.createGraphContext(graphPort),
+  openSession: vi.fn(),
+  fetchSnapshot: vi.fn(),
+  fetchEntityDetail: vi.fn(),
 }));
 
 function makeRoadmap(
@@ -92,9 +91,22 @@ function makeDoctor() {
   };
 }
 
+function makeReadPort() {
+  return {
+    openSession: mocks.openSession,
+  };
+}
+
 describe('AgentContextService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.openSession.mockResolvedValue({
+      fetchSnapshot: mocks.fetchSnapshot,
+      fetchEntityDetail: mocks.fetchEntityDetail,
+      queryNodes: vi.fn(),
+      neighbors: vi.fn(),
+      hasNode: vi.fn(),
+    });
   });
 
   it('builds quest context with dependency state and a validated claim recommendation', async () => {
@@ -163,15 +175,8 @@ describe('AgentContextService', () => {
       },
     };
 
-    mocks.createGraphContext.mockReturnValue({
-      fetchSnapshot: vi.fn().mockResolvedValue(snapshot),
-      fetchEntityDetail: vi.fn().mockResolvedValue(detail),
-      filterSnapshot: vi.fn(),
-      invalidateCache: vi.fn(),
-      get graph() {
-        throw new Error('not used in test');
-      },
-    });
+    mocks.fetchSnapshot.mockResolvedValue(snapshot);
+    mocks.fetchEntityDetail.mockResolvedValue(detail);
 
     const service = new AgentContextService(
       makeGraphPort(),
@@ -194,6 +199,7 @@ describe('AgentContextService', () => {
         },
       ),
       'agent.hal',
+      makeReadPort(),
       makeDoctor(),
     );
 
@@ -275,15 +281,8 @@ describe('AgentContextService', () => {
       },
     };
 
-    mocks.createGraphContext.mockReturnValue({
-      fetchSnapshot: vi.fn().mockResolvedValue(snapshot),
-      fetchEntityDetail: vi.fn().mockResolvedValue(detail),
-      filterSnapshot: vi.fn(),
-      invalidateCache: vi.fn(),
-      get graph() {
-        throw new Error('not used in test');
-      },
-    });
+    mocks.fetchSnapshot.mockResolvedValue(snapshot);
+    mocks.fetchEntityDetail.mockResolvedValue(detail);
 
     const service = new AgentContextService(
       makeGraphPort(),
@@ -312,6 +311,7 @@ describe('AgentContextService', () => {
         },
       ),
       'agent.hal',
+      makeReadPort(),
       makeDoctor(),
     );
 
@@ -384,15 +384,8 @@ describe('AgentContextService', () => {
       },
     };
 
-    mocks.createGraphContext.mockReturnValue({
-      fetchSnapshot: vi.fn().mockResolvedValue(snapshot),
-      fetchEntityDetail: vi.fn().mockResolvedValue(detail),
-      filterSnapshot: vi.fn(),
-      invalidateCache: vi.fn(),
-      get graph() {
-        throw new Error('not used in test');
-      },
-    });
+    mocks.fetchSnapshot.mockResolvedValue(snapshot);
+    mocks.fetchEntityDetail.mockResolvedValue(detail);
 
     const service = new AgentContextService(
       makeGraphPort(),
@@ -421,6 +414,7 @@ describe('AgentContextService', () => {
         },
       ),
       'agent.hal',
+      makeReadPort(),
       makeDoctor(),
     );
 
@@ -458,6 +452,15 @@ describe('AgentContextService', () => {
           approvalCount: 1,
         }),
       ],
+      reviews: [
+        review({
+          id: 'review:CTX-SUB',
+          patchsetId: 'patchset:CTX-SUB',
+          verdict: 'approve',
+          reviewedBy: 'human.reviewer',
+          reviewedAt: Date.UTC(2026, 2, 18, 3, 15, 0),
+        }),
+      ],
       sortedTaskIds: ['task:CTX-SUB'],
     });
 
@@ -475,20 +478,16 @@ describe('AgentContextService', () => {
       incoming: [],
     };
 
-    mocks.createGraphContext.mockReturnValue({
-      fetchSnapshot: vi.fn().mockResolvedValue(snapshot),
-      fetchEntityDetail: vi.fn().mockResolvedValue(detail),
-      filterSnapshot: vi.fn(),
-      invalidateCache: vi.fn(),
-      get graph() {
-        throw new Error('not used in test');
-      },
-    });
+    mocks.fetchEntityDetail.mockResolvedValue(detail);
+    mocks.openSession.mockResolvedValue(makeObservationSessionDouble(snapshot, {
+      fetchEntityDetail: mocks.fetchEntityDetail,
+    }));
 
     const service = new AgentContextService(
       makeGraphPort(),
       makeRoadmap(null),
       'agent.hal',
+      makeReadPort(),
       makeDoctor(),
     );
 
@@ -579,20 +578,14 @@ describe('AgentContextService', () => {
       governanceDetail: snapshot.governanceArtifacts[0]?.governance,
     };
 
-    mocks.createGraphContext.mockReturnValue({
-      fetchSnapshot: vi.fn().mockResolvedValue(snapshot),
-      fetchEntityDetail: vi.fn().mockResolvedValue(detail),
-      filterSnapshot: vi.fn(),
-      invalidateCache: vi.fn(),
-      get graph() {
-        throw new Error('not used in test');
-      },
-    });
+    mocks.fetchSnapshot.mockResolvedValue(snapshot);
+    mocks.fetchEntityDetail.mockResolvedValue(detail);
 
     const service = new AgentContextService(
       makeGraphPort(),
       makeRoadmap(null),
       'agent.hal',
+      makeReadPort(),
       makeDoctor(),
     );
 
@@ -698,20 +691,14 @@ describe('AgentContextService', () => {
       incoming: [],
     };
 
-    mocks.createGraphContext.mockReturnValue({
-      fetchSnapshot: vi.fn().mockResolvedValue(snapshot),
-      fetchEntityDetail: vi.fn().mockResolvedValue(detail),
-      filterSnapshot: vi.fn(),
-      invalidateCache: vi.fn(),
-      get graph() {
-        throw new Error('not used in test');
-      },
-    });
+    mocks.fetchSnapshot.mockResolvedValue(snapshot);
+    mocks.fetchEntityDetail.mockResolvedValue(detail);
 
     const service = new AgentContextService(
       makeGraphPort(),
       makeRoadmap(null),
       'agent.hal',
+      makeReadPort(),
       makeDoctor(),
     );
 
@@ -788,15 +775,8 @@ describe('AgentContextService', () => {
       },
     };
 
-    mocks.createGraphContext.mockReturnValue({
-      fetchSnapshot: vi.fn().mockResolvedValue(snapshot),
-      fetchEntityDetail: vi.fn().mockResolvedValue(detail),
-      filterSnapshot: vi.fn(),
-      invalidateCache: vi.fn(),
-      get graph() {
-        throw new Error('not used in test');
-      },
-    });
+    mocks.fetchSnapshot.mockResolvedValue(snapshot);
+    mocks.fetchEntityDetail.mockResolvedValue(detail);
 
     const doctor = {
       run: vi.fn().mockResolvedValue({
@@ -867,6 +847,7 @@ describe('AgentContextService', () => {
         description: 'Quest is blocked by a structural graph defect.',
       })),
       'agent.hal',
+      makeReadPort(),
       doctor,
     );
 

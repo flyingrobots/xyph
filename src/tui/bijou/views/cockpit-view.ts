@@ -4,6 +4,7 @@ import type { AiSuggestionNode, GraphSnapshot, QuestNode, SubmissionNode, Campai
 import type { StylePort } from '../../../ports/StylePort.js';
 import type { DashboardModel } from '../DashboardApp.js';
 import {
+  buildReviewLaneItemsFromData,
   cockpitLanesWithFreshness,
   itemNeedsAttention,
   itemIsFresh,
@@ -67,9 +68,16 @@ interface WorklistRowSpan extends LineSpan {
   rowIndex: number;
 }
 
+interface LaneRailViewport {
+  header: string;
+  lines: string[];
+  regions: ({ lane: DashboardModel['lane'] } & LineSpan)[];
+}
+
 export interface DashboardChromeOptions {
   lane: DashboardModel['lane'];
   agentId?: string;
+  health?: DashboardModel['health'];
   nowView: DashboardModel['nowView'];
   breadcrumbSegments: string[];
 }
@@ -406,13 +414,14 @@ function computeCockpitPaneLayout(
   const hero = renderDashboardChrome({
     lane: model.lane,
     agentId: model.agentId,
+    health: model.health,
     nowView: model.nowView,
     breadcrumbSegments: model.lane === 'now' && model.nowView === 'activity'
       ? ['Landing', laneTitle(model.lane), 'Recent Activity']
       : model.lane === 'suggestions'
         ? ['Landing', laneTitle(model.lane), suggestionsViewTitle(model.suggestionsView)]
       : ['Landing', laneTitle(model.lane)],
-  }, snapshot, style, width);
+  }, snapshot, model, style, width);
   const heroHeight = hero.split('\n').length;
   const bodyY = heroHeight + 1;
   const bodyHeight = Math.max(1, height - heroHeight - 1);
@@ -489,15 +498,9 @@ export function describeCockpitInteractionMap(
 
   const layout = computeCockpitPaneLayout(model, snapshot, style, w, h);
 
-  const railHeader = renderPaneHeader({
-    title: 'Lanes',
-    detail: 'operator surfaces',
-    width: layout.railRect.width,
-    borderToken: style.theme.border.muted,
-  });
-  const { regions } = buildLaneRailContent(model, snapshot, style, Math.max(12, layout.railRect.width - 4));
-  const laneBodyTop = paneBodyContentTop(layout.railRect, railHeader);
-  const laneRegions: LaneInteractiveRegion[] = regions.map((region) => ({
+  const railViewport = buildLaneRailViewport(model, snapshot, style, layout.railRect.width, layout.railRect.height);
+  const laneBodyTop = paneBodyContentTop(layout.railRect, railViewport.header);
+  const laneRegions: LaneInteractiveRegion[] = railViewport.regions.map((region) => ({
     lane: region.lane,
     rect: {
       x: layout.railRect.x,
@@ -508,7 +511,14 @@ export function describeCockpitInteractionMap(
   }));
 
   const accentToken = laneAccent(style, model.lane);
-  const worklistItems = laneItems(snapshot, model.lane, model.agentId, model.nowView, model.suggestionsView);
+  const worklistItems = laneItems(
+    snapshot,
+    model.lane,
+    model.agentId,
+    model.nowView,
+    model.suggestionsView,
+    { reviewLaneData: model.reviewLaneData, suggestionLaneData: model.suggestionLaneData },
+  );
   const selected = worklistItems[model.table.focusRow];
   const worklistHeader = renderPaneHeader({
     title: style.styled(accentToken, laneTitle(model.lane)),
@@ -656,6 +666,7 @@ function fitAlignedLine(
 function renderHero(
   options: DashboardChromeOptions,
   snapshot: GraphSnapshot,
+  model: DashboardModel,
   style: StylePort,
   width: number,
 ): string {
@@ -663,18 +674,23 @@ function renderHero(
   const graphMeta = snapshot.graphMeta;
   const active = snapshot.quests.filter((quest) => quest.status === 'IN_PROGRESS').length;
   const ready = snapshot.quests.filter((quest) => quest.status === 'READY').length;
-  const reviewQueue = snapshot.submissions.filter((submission) =>
-    submission.status === 'OPEN' || submission.status === 'CHANGES_REQUESTED',
-  ).length;
+  const reviewQueue = (model.reviewLaneData
+    ? buildReviewLaneItemsFromData(model.reviewLaneData).map((item) => item.submission)
+    : snapshot.submissions
+  ).filter((submission) => submission.status === 'OPEN' || submission.status === 'CHANGES_REQUESTED').length;
   const settlementQueue = snapshot.governanceArtifacts.filter((artifact) =>
     artifact.type === 'collapse-proposal'
       && artifact.governance.series.latestInSeries
       && artifact.governance.freshness === 'fresh'
       && (artifact.governance.lifecycle === 'approved' || artifact.governance.lifecycle === 'pending_attestation'),
   ).length;
-  const suggestionQueue = snapshot.aiSuggestions.filter((suggestion) =>
-    suggestion.status === 'suggested' || suggestion.status === 'queued',
-  ).length;
+  const suggestionQueue = model.suggestionLaneData
+    ? model.suggestionLaneData.aiSuggestions.filter((suggestion) =>
+      suggestion.status === 'suggested' || suggestion.status === 'queued'
+    ).length
+    : snapshot.aiSuggestions.filter((suggestion) =>
+      suggestion.status === 'suggested' || suggestion.status === 'queued',
+    ).length;
 
   const innerWidth = Math.max(12, width - 4);
   const leftVariants: AlignedVariant[] = [
@@ -725,16 +741,29 @@ function renderHero(
   ];
   const heroLine = fitAlignedLine(leftVariants, rightVariants, innerWidth);
 
-  const summary = [
+  const summaryItems = [
     style.styled(style.theme.semantic.info, ` active ${active}`),
     style.styled(style.theme.semantic.primary, ` ready ${ready}`),
     style.styled(style.theme.semantic.warning, ` review ${reviewQueue}`),
     style.styled(style.theme.semantic.success, ` settle ${settlementQueue}`),
     style.styled(style.theme.ui.aiLabel, ` suggest ${suggestionQueue}`),
+  ];
+  if (options.health) {
+    const blockingCount = options.health.summary.blockingIssueCount;
+    const warningCount = Math.max(0, options.health.summary.issueCount - blockingCount);
+    if (blockingCount > 0) {
+      summaryItems.push(style.styled(style.theme.semantic.error, ` !! ${blockingCount}`));
+    }
+    if (warningCount > 0) {
+      summaryItems.push(style.styled(style.theme.semantic.warning, ` ! ${warningCount}`));
+    }
+  }
+  summaryItems.push(
     graphMeta
       ? ` tick ${graphMeta.myTick}/${graphMeta.maxTick} · writers ${graphMeta.writerCount}`
       : ' graph meta unavailable',
-  ].join('  ');
+  );
+  const summary = summaryItems.join('  ');
 
   return box([heroLine, summary].join('\n'), {
     width,
@@ -771,11 +800,12 @@ function renderBreadcrumbLine(
 export function renderDashboardChrome(
   options: DashboardChromeOptions,
   snapshot: GraphSnapshot,
+  model: DashboardModel,
   style: StylePort,
   width: number,
 ): string {
   const accentToken = laneAccent(style, options.lane);
-  const hero = renderHero(options, snapshot, style, width);
+  const hero = renderHero(options, snapshot, model, style, width);
   const breadcrumb = renderBreadcrumbLine(style, accentToken, width, options.breadcrumbSegments);
   return breadcrumb ? [hero, breadcrumb].join('\n') : hero;
 }
@@ -788,7 +818,15 @@ function buildLaneRailContent(
 ): { lines: string[]; regions: ({ lane: DashboardModel['lane'] } & LineSpan)[] } {
   const lines: string[] = [];
   const regions: ({ lane: DashboardModel['lane'] } & LineSpan)[] = [];
-  const lanes = cockpitLanesWithFreshness(snapshot, model.observerWatermarks, model.observerSeenItems, model.agentId, model.nowView, model.suggestionsView);
+  const lanes = cockpitLanesWithFreshness(
+    snapshot,
+    model.observerWatermarks,
+    model.observerSeenItems,
+    model.agentId,
+    model.nowView,
+    model.suggestionsView,
+    { reviewLaneData: model.reviewLaneData, suggestionLaneData: model.suggestionLaneData },
+  );
   for (const lane of lanes) {
     const selected = lane.id === model.lane;
     const accentToken = laneAccent(style, lane.id);
@@ -816,7 +854,13 @@ function buildLaneRailContent(
   return { lines, regions };
 }
 
-function renderLaneRail(model: DashboardModel, snapshot: GraphSnapshot, style: StylePort, width: number, height: number): string {
+function buildLaneRailViewport(
+  model: DashboardModel,
+  snapshot: GraphSnapshot,
+  style: StylePort,
+  width: number,
+  height: number,
+): LaneRailViewport {
   const innerWidth = Math.max(12, width - 4);
   const header = renderPaneHeader({
     title: 'Lanes',
@@ -824,7 +868,7 @@ function renderLaneRail(model: DashboardModel, snapshot: GraphSnapshot, style: S
     width,
     borderToken: style.theme.border.muted,
   });
-  const { lines } = buildLaneRailContent(model, snapshot, style, innerWidth);
+  const { lines, regions } = buildLaneRailContent(model, snapshot, style, innerWidth);
 
   lines.push(style.styled(style.theme.semantic.muted, 'Surface'));
   pushField(lines, 'Graph', 'xyph', {
@@ -849,18 +893,52 @@ function renderLaneRail(model: DashboardModel, snapshot: GraphSnapshot, style: S
     });
   }
 
-  return renderPaneCard({
+  const innerHeight = paneBodyHeight(height, header);
+  const totalLines = lines.length;
+  const maxScrollY = Math.max(0, totalLines - innerHeight);
+  const scrollY = Math.max(0, Math.min(model.laneState[model.lane].railScrollY, maxScrollY));
+  const visibleLines = lines.slice(scrollY, scrollY + innerHeight);
+  while (visibleLines.length < innerHeight) visibleLines.push('');
+
+  const viewportEnd = scrollY + innerHeight - 1;
+  const visibleRegions = regions.flatMap((region) => {
+    if (region.lineEnd < scrollY || region.lineStart > viewportEnd) return [];
+    return [{
+      lane: region.lane,
+      lineStart: Math.max(0, region.lineStart - scrollY),
+      lineEnd: Math.max(0, Math.min(viewportEnd, region.lineEnd) - scrollY),
+    }];
+  });
+
+  return {
     header,
+    lines: visibleLines,
+    regions: visibleRegions,
+  };
+}
+
+function renderLaneRail(model: DashboardModel, snapshot: GraphSnapshot, style: StylePort, width: number, height: number): string {
+  const viewport = buildLaneRailViewport(model, snapshot, style, width, height);
+
+  return renderPaneCard({
+    header: viewport.header,
     width,
     height,
     borderToken: style.theme.border.muted,
-    bodyLines: lines,
+    bodyLines: viewport.lines,
   });
 }
 
 function renderWorklistPane(model: DashboardModel, snapshot: GraphSnapshot, style: StylePort, width: number, height: number): string {
   const accentToken = laneAccent(style, model.lane);
-  const items = laneItems(snapshot, model.lane, model.agentId, model.nowView, model.suggestionsView);
+  const items = laneItems(
+    snapshot,
+    model.lane,
+    model.agentId,
+    model.nowView,
+    model.suggestionsView,
+    { reviewLaneData: model.reviewLaneData, suggestionLaneData: model.suggestionLaneData },
+  );
   const selected = items[model.table.focusRow];
   const header = renderPaneHeader({
     title: style.styled(accentToken, laneTitle(model.lane)),
@@ -909,7 +987,7 @@ function renderWorklistPane(model: DashboardModel, snapshot: GraphSnapshot, styl
   const lines = viewport.lines;
   if (items.length === 0) {
     if (model.lane === 'suggestions') {
-      const counts = suggestionViewCounts(snapshot);
+      const counts = suggestionViewCounts(snapshot, { suggestionLaneData: model.suggestionLaneData });
       lines.push(style.styled(style.theme.semantic.muted, `No items in ${suggestionsViewTitle(model.suggestionsView).toLowerCase()}.`));
       lines.push('');
       lines.push(style.styled(style.theme.semantic.info, 'Suggestion views'));
@@ -918,13 +996,13 @@ function renderWorklistPane(model: DashboardModel, snapshot: GraphSnapshot, styl
         `Incoming ${counts.incoming} · Queued ${counts.queued} · Adopted ${counts.adopted} · Dismissed ${counts.dismissed}`,
       ));
       lines.push(style.styled(style.theme.semantic.primary, 'Press v to cycle suggestion views.'));
-      const myOutstanding = snapshot.aiSuggestions.filter((suggestion) =>
+      const myOutstanding = (model.suggestionLaneData?.aiSuggestions ?? snapshot.aiSuggestions).filter((suggestion) =>
         (suggestion.suggestedBy === model.agentId || suggestion.requestedBy === model.agentId)
         && suggestion.status !== 'implemented'
         && suggestion.status !== 'rejected',
       ).length;
       if (myOutstanding > 0) {
-        lines.push(style.styled(style.theme.semantic.primary, `Press m to open My Stuff (${myOutstanding} of your suggestions still active).`));
+        lines.push(style.styled(style.theme.semantic.primary, `Press m to open the drawer (${myOutstanding} of your suggestions still active).`));
       }
     } else {
       lines.push(style.styled(style.theme.semantic.muted, 'No items in this lane.'));

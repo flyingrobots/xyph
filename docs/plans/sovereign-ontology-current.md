@@ -26,6 +26,24 @@ The canonical control-plane model is:
 - `propose`
 - `comment`
 
+In that model:
+- `warp-ttd` remains the generic time-travel debugger for warp-like systems
+- XYPH may seek worldlines when a product feature needs it, but does not need
+  its own generic replay shell
+- XYPH should surface speculative forks of canonical truth as **Strands**
+- a Strand is a speculative copy-on-write overlay graph pinned to an ancestor
+  worldline
+- git-warp owns the substrate mechanics of worldlines and Strands
+- XYPH owns the semantics and law around who, when, and what is allowed to
+  create, braid, abandon, or collapse Strands
+- ticking is substrate/runtime behavior and should not be casually assumed to
+  be host-controlled; in some runtimes hosts submit intents and the runtime
+  ticks until inert
+- Strands may tick independently, tick in coordination, braid together, be
+  abandoned, or be collapsed into canonical truth through governance policy
+- humans and agents participate through the same model: observe through
+  observers, mutate through writers submitting intents
+
 Human surface direction:
 - TUI first
 - Web second
@@ -48,15 +66,20 @@ Human surface direction:
    - `xyph api explain` now diagnoses durable governance artifacts directly, returning stable reason codes and next-command guidance for stale comparisons, blocked collapse proposals, and the distinction between attesting a proposal and approving the bound comparison gate.
    - The TUI now projects those same durable governance artifacts into the BIJOU 3.1-powered `Settlement` lane of the XYPH cockpit, so compare/collapse/attestation work can be scanned in the main worklist and inspected without dropping to raw JSON first.
    - Conflict meaning, governance, compare/collapse, and human workflow semantics remain XYPH concerns.
-3. **Worldline working sets after substrate facts**
-   - Fork/worldline work should use logical working sets over graph observations, not Git worktrees.
+3. **Worldline Strands after substrate facts**
+   - Fork/worldline work should use Strands over graph observations, not Git worktrees.
    - Materialized graph states are caches, not authoritative models.
-   - `fork_worldline` is now implemented as a thin mapping onto git-warp working-set creation for `worldline:live`, with optional current-frontier Lamport ceiling support via `at: { tick }`.
+   - `fork_worldline` is now implemented as a thin mapping onto git-warp Strand/worldline substrate creation for `worldline:live`, with optional current-frontier Lamport ceiling support via `at: { tick }`.
    - `braid_worldlines` is now implemented as a thin mapping onto git-warp braid descriptors for canonical derived worldlines, using `supportWorldlineIds` and optional `readOnly` while keeping the public API worldline-first.
-   - Canonical derived worldlines now support working-set-backed `observe(graph.summary)`, `observe(worldline.summary)`, `observe(entity.detail)`, `history`, `diff`, `apply`, `observe(conflicts)`, `compare_worldlines`, and governed `collapse_worldline` slices.
+   - Canonical derived worldlines now support Strand-backed `observe(graph.summary)`, `observe(worldline.summary)`, `observe(entity.detail)`, `history`, `diff`, `apply`, `observe(conflicts)`, `compare_worldlines`, and governed `collapse_worldline` slices.
    - Observation coordinates for those slices now make the substrate backing explicit, including braid support-worldline IDs when the selected worldline is braided.
    - `observe(conflicts)` now warns when braided overlays are fighting over singleton LWW properties in a way that self-erases co-presence in the application projection.
    - `braid_worldlines` is the canonical composition verb: multiple worldline-derived effects kept co-present rather than silently merged or rebased.
+   - XYPH should let humans and agents create, inspect, braid, abandon, and
+     govern the collapse of Strands without exposing raw substrate jargon as
+     the only operator language.
+   - Mutations should be expressed through writers and submitted intents, not
+     through ad hoc host-side graph surgery.
    - Arbitrary historical frontiers, derived-from-derived forking, and broader compatibility-projection parity remain future slices.
 
 ## Canonical Docs

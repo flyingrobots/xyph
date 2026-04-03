@@ -3,16 +3,9 @@ import { Quest } from '../../src/domain/entities/Quest.js';
 import type { GraphSnapshot } from '../../src/domain/models/dashboard.js';
 import type { GraphPort } from '../../src/ports/GraphPort.js';
 import type { RoadmapQueryPort } from '../../src/ports/RoadmapPort.js';
-import { makeSnapshot, campaign, intent, quest, submission } from '../helpers/snapshot.js';
+import { makeSnapshot, campaign, intent, quest, review, submission } from '../helpers/snapshot.js';
+import { makeObservationSessionDouble } from '../helpers/observation.js';
 import { AgentBriefingService } from '../../src/domain/services/AgentBriefingService.js';
-
-const mocks = vi.hoisted(() => ({
-  createGraphContext: vi.fn(),
-}));
-
-vi.mock('../../src/infrastructure/GraphContext.js', () => ({
-  createGraphContext: (graphPort: unknown) => mocks.createGraphContext(graphPort),
-}));
 
 function makeGraphWithHandoffs(noteNodes: { id: string; props: Record<string, unknown> }[], outgoing: Record<string, { nodeId: string; label: string }[]> = {}): GraphPort {
   const graph = {
@@ -114,30 +107,31 @@ function makeDoctor(
   };
 }
 
-function makeGraphContextDouble(
+function makeOperationalReadPortDouble(
   snapshot: GraphSnapshot,
   opts?: {
     caseNodes?: { id: string; props: Record<string, unknown> }[];
+    noteNodes?: { id: string; props: Record<string, unknown> }[];
+    outgoing?: Record<string, { nodeId: string; label: string }[]>;
     fetchEntityDetail?: ReturnType<typeof vi.fn>;
   },
 ) {
   const caseNodes = opts?.caseNodes ?? [];
+  const noteNodes = opts?.noteNodes ?? [];
+  const outgoing = opts?.outgoing ?? {};
   const fetchEntityDetail = opts?.fetchEntityDetail ?? vi.fn();
-  return {
-    fetchSnapshot: vi.fn().mockResolvedValue(snapshot),
-    fetchEntityDetail,
-    filterSnapshot: vi.fn(),
-    invalidateCache: vi.fn(),
-    graph: {
-      query: vi.fn(() => ({
-        match: vi.fn(() => ({
-          select: vi.fn(() => ({
-            run: vi.fn(async () => ({ nodes: caseNodes })),
-          })),
-        })),
-      })),
+  const session = makeObservationSessionDouble(snapshot, {
+    extraNodesByPattern: {
+      'case:*': caseNodes,
+      'note:*': noteNodes,
     },
+    outgoing,
+    fetchEntityDetail,
+  });
+  const port = {
+    openOperationalSession: vi.fn().mockResolvedValue(session),
   };
+  return { port, session, fetchEntityDetail };
 }
 
 describe('AgentBriefingService', () => {
@@ -191,7 +185,26 @@ describe('AgentBriefingService', () => {
       },
     });
 
-    mocks.createGraphContext.mockReturnValue(makeGraphContextDouble(snapshot));
+    const readPort = makeOperationalReadPortDouble(snapshot, {
+      noteNodes: [
+        {
+          id: 'note:handoff-1',
+          props: {
+            type: 'note',
+            note_kind: 'handoff',
+            title: 'Wrapped READY gating',
+            authored_by: 'agent.hal',
+            authored_at: 150,
+          },
+        },
+      ],
+      outgoing: {
+        'note:handoff-1': [
+          { nodeId: 'task:AGT-001', label: 'documents' },
+          { nodeId: 'submission:AGT-001', label: 'documents' },
+        ],
+      },
+    });
 
     const questEntities = [
       makeQuestEntity({
@@ -208,23 +221,7 @@ describe('AgentBriefingService', () => {
     ];
 
     const service = new AgentBriefingService(
-      makeGraphWithHandoffs([
-        {
-          id: 'note:handoff-1',
-          props: {
-            type: 'note',
-            note_kind: 'handoff',
-            title: 'Wrapped READY gating',
-            authored_by: 'agent.hal',
-            authored_at: 150,
-          },
-        },
-      ], {
-        'note:handoff-1': [
-          { nodeId: 'task:AGT-001', label: 'documents' },
-          { nodeId: 'submission:AGT-001', label: 'documents' },
-        ],
-      }),
+      makeGraphWithHandoffs([]),
       makeRoadmap(
         questEntities,
         {
@@ -255,6 +252,7 @@ describe('AgentBriefingService', () => {
         },
       ),
       'agent.hal',
+      readPort.port,
       makeDoctor(),
     );
 
@@ -327,7 +325,7 @@ describe('AgentBriefingService', () => {
       sortedTaskIds: ['task:AGT-READY', 'task:AGT-PLAN'],
     });
 
-    mocks.createGraphContext.mockReturnValue(makeGraphContextDouble(snapshot));
+    const readPort = makeOperationalReadPortDouble(snapshot);
 
     const service = new AgentBriefingService(
       makeGraphWithHandoffs([]),
@@ -375,6 +373,7 @@ describe('AgentBriefingService', () => {
         },
       ),
       'agent.hal',
+      readPort.port,
       makeDoctor(),
     );
 
@@ -412,8 +411,6 @@ describe('AgentBriefingService', () => {
       ],
       sortedTaskIds: ['task:AGT-BLOCKED'],
     });
-
-    mocks.createGraphContext.mockReturnValue(makeGraphContextDouble(snapshot));
 
     const doctor = makeDoctor({
       status: 'error',
@@ -454,6 +451,7 @@ describe('AgentBriefingService', () => {
         }),
       ]),
       'agent.hal',
+      makeOperationalReadPortDouble(snapshot).port,
       doctor,
     );
 
@@ -523,10 +521,19 @@ describe('AgentBriefingService', () => {
           tipPatchsetId: 'patchset:AGT-MERGE',
         }),
       ],
+      reviews: [
+        review({
+          id: 'review:AGT-MERGE',
+          patchsetId: 'patchset:AGT-MERGE',
+          verdict: 'approve',
+          reviewedBy: 'human.reviewer',
+          reviewedAt: 250,
+        }),
+      ],
       sortedTaskIds: ['task:AGT-REVIEW', 'task:AGT-MERGE'],
     });
 
-    mocks.createGraphContext.mockReturnValue(makeGraphContextDouble(snapshot));
+    const readPort = makeOperationalReadPortDouble(snapshot);
 
     const service = new AgentBriefingService(
       makeGraphWithHandoffs([]),
@@ -547,6 +554,7 @@ describe('AgentBriefingService', () => {
         }),
       ]),
       'agent.hal',
+      readPort.port,
       makeDoctor(),
     );
 
@@ -608,12 +616,13 @@ describe('AgentBriefingService', () => {
       ],
     });
 
-    mocks.createGraphContext.mockReturnValue(makeGraphContextDouble(snapshot));
+    const readPort = makeOperationalReadPortDouble(snapshot);
 
     const service = new AgentBriefingService(
       makeGraphWithHandoffs([]),
       makeRoadmap([]),
       'agent.hal',
+      readPort.port,
       makeDoctor(),
     );
 
@@ -679,12 +688,13 @@ describe('AgentBriefingService', () => {
       ],
     });
 
-    mocks.createGraphContext.mockReturnValue(makeGraphContextDouble(snapshot));
+    const readPort = makeOperationalReadPortDouble(snapshot);
 
     const service = new AgentBriefingService(
       makeGraphWithHandoffs([]),
       makeRoadmap([]),
       'agent.hal',
+      readPort.port,
       makeDoctor(),
     );
 
@@ -739,24 +749,25 @@ describe('AgentBriefingService', () => {
       ],
       incoming: [],
     }));
-    mocks.createGraphContext.mockReturnValue(makeGraphContextDouble(snapshot, {
+    const readPort = makeOperationalReadPortDouble(snapshot, {
       caseNodes: [{
         id: 'case:C1',
         props: { type: 'case', status: 'open' },
       }],
       fetchEntityDetail,
-    }));
+    });
 
     const service = new AgentBriefingService(
       makeGraphWithHandoffs([]),
       makeRoadmap([]),
       'agent.hal',
+      readPort.port,
       makeDoctor(),
     );
 
     const briefing = await service.buildBriefing();
 
-    expect(mocks.createGraphContext).toHaveBeenCalledTimes(1);
+    expect(readPort.port.openOperationalSession).toHaveBeenCalledTimes(1);
     expect(fetchEntityDetail).toHaveBeenCalledWith('case:C1');
     expect(briefing.caseQueue).toEqual([
       expect.objectContaining({
@@ -784,18 +795,19 @@ describe('AgentBriefingService', () => {
       ],
       incoming: [],
     }));
-    mocks.createGraphContext.mockReturnValue(makeGraphContextDouble(snapshot, {
+    const readPort = makeOperationalReadPortDouble(snapshot, {
       caseNodes: [{
         id: 'case:C2',
         props: { type: 'case', status: 'ready-for-judgment' },
       }],
       fetchEntityDetail,
-    }));
+    });
 
     const service = new AgentBriefingService(
       makeGraphWithHandoffs([]),
       makeRoadmap([]),
       'agent.hal',
+      readPort.port,
       makeDoctor(),
     );
 
@@ -839,9 +851,18 @@ describe('AgentBriefingService', () => {
           tipPatchsetId: 'patchset:AGT-CHANGES',
         }),
       ],
+      reviews: [
+        review({
+          id: 'review:AGT-CHANGES',
+          patchsetId: 'patchset:AGT-CHANGES',
+          verdict: 'request-changes',
+          reviewedBy: 'human.reviewer',
+          reviewedAt: 120,
+        }),
+      ],
     });
 
-    mocks.createGraphContext.mockReturnValue(makeGraphContextDouble(snapshot));
+    const readPort = makeOperationalReadPortDouble(snapshot);
 
     const service = new AgentBriefingService(
       makeGraphWithHandoffs([]),
@@ -853,6 +874,7 @@ describe('AgentBriefingService', () => {
         }),
       ]),
       'agent.hal',
+      readPort.port,
       makeDoctor(),
     );
 

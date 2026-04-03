@@ -7,21 +7,43 @@
  */
 
 import { vi } from 'vitest';
-import type { GraphContext } from '../../src/infrastructure/GraphContext.js';
-import type { GraphSnapshot } from '../../src/domain/models/dashboard.js';
+import type {
+  DashboardReviewLaneData,
+  DashboardReviewPageData,
+  DashboardSuggestionLaneData,
+  GraphSnapshot,
+} from '../../src/domain/models/dashboard.js';
+import type { DashboardReadPort } from '../../src/ports/DashboardReadPort.js';
 import type { IntakePort } from '../../src/ports/IntakePort.js';
 import type { GraphPort } from '../../src/ports/GraphPort.js';
 import type { SubmissionPort } from '../../src/ports/SubmissionPort.js';
 import { makeSnapshot } from './snapshot.js';
 
-export function mockGraphContext(snapshotOverrides?: Partial<GraphSnapshot>): GraphContext {
+type MockReadProjection = DashboardReadPort & {
+  readonly graph: never;
+  fetchSnapshot: (profile?: string) => Promise<GraphSnapshot>;
+  filterSnapshot: (snapshot: GraphSnapshot) => GraphSnapshot;
+  invalidateCache: () => void;
+};
+
+export function mockReadProjection(snapshotOverrides?: Partial<GraphSnapshot>): MockReadProjection {
   const snap = makeSnapshot(snapshotOverrides);
+  const fetchSnapshot = vi.fn().mockResolvedValue(snap);
+  const invalidateCache = vi.fn();
+  const fetchLandingReviewLaneData = vi.fn().mockResolvedValue({ submissions: [], quests: [] } satisfies DashboardReviewLaneData);
+  const fetchLandingSuggestionLaneData = vi.fn().mockResolvedValue({ aiSuggestions: [] } satisfies DashboardSuggestionLaneData);
+  const fetchReviewPageData = vi.fn().mockResolvedValue(null as DashboardReviewPageData | null);
   return {
     get graph(): never { throw new Error('not initialized'); },
-    fetchSnapshot: vi.fn().mockResolvedValue(snap) as GraphContext['fetchSnapshot'],
-    fetchEntityDetail: vi.fn().mockResolvedValue(null) as GraphContext['fetchEntityDetail'],
-    filterSnapshot: vi.fn((s: GraphSnapshot) => s) as GraphContext['filterSnapshot'],
-    invalidateCache: vi.fn(),
+    fetchSnapshot,
+    fetchOperationalSnapshot: vi.fn().mockResolvedValue(snap) as DashboardReadPort['fetchOperationalSnapshot'],
+    fetchEntityDetail: vi.fn().mockResolvedValue(null) as DashboardReadPort['fetchEntityDetail'],
+    fetchLandingReviewLaneData: fetchLandingReviewLaneData as DashboardReadPort['fetchLandingReviewLaneData'],
+    fetchLandingSuggestionLaneData: fetchLandingSuggestionLaneData as DashboardReadPort['fetchLandingSuggestionLaneData'],
+    fetchReviewPageData: fetchReviewPageData as DashboardReadPort['fetchReviewPageData'],
+    filterSnapshot: vi.fn((s: GraphSnapshot) => s),
+    invalidateCache,
+    invalidate: invalidateCache,
   };
 }
 

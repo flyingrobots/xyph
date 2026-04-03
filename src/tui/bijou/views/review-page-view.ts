@@ -3,10 +3,10 @@ import { createPagerState, pager, pagerScrollTo, viewport } from '@flyingrobots/
 import type { TokenValue } from '@flyingrobots/bijou';
 import type {
   DecisionNode,
-  EntityDetail,
   GraphSnapshot,
   QuestNode,
   ReviewNode,
+  ScrollNode,
   SubmissionNode,
 } from '../../../domain/models/dashboard.js';
 import type { StylePort } from '../../../ports/StylePort.js';
@@ -135,32 +135,21 @@ function latestDecision(decisions: DecisionNode[]): DecisionNode | null {
     .sort((a, b) => b.decidedAt - a.decidedAt || b.id.localeCompare(a.id))[0] ?? null;
 }
 
-function reviewSet(snapshot: GraphSnapshot, submission: SubmissionNode): ReviewNode[] {
-  return submission.tipPatchsetId
-    ? snapshot.reviews.filter((review) => review.patchsetId === submission.tipPatchsetId)
-    : [];
-}
-
-function decisionSet(snapshot: GraphSnapshot, submission: SubmissionNode): DecisionNode[] {
-  return snapshot.decisions.filter((decision) => decision.submissionId === submission.id);
-}
-
 function buildReviewPageContent(
   style: StylePort,
   submission: SubmissionNode,
   quest: QuestNode,
-  detail: EntityDetail | null,
   page: ReviewPageRoute,
   sourceItem: CockpitItem | undefined,
-  snapshot: GraphSnapshot,
+  reviews: ReviewNode[],
+  decisions: DecisionNode[],
+  scroll: ScrollNode | undefined,
   width: number,
   loading: boolean,
   error: string | null,
   agentId: string | undefined,
 ): string {
   const lines: string[] = [];
-  const reviews = reviewSet(snapshot, submission);
-  const decisions = decisionSet(snapshot, submission);
   const semantics = buildSubmissionWorkSemantics({
     submission,
     quest,
@@ -176,7 +165,7 @@ function buildReviewPageContent(
   lines.push('');
   pushReasonBlock(lines, style, sourceItem, width);
 
-  if (loading && !detail?.questDetail) {
+  if (loading) {
     lines.push(style.styled(style.theme.semantic.muted, 'Loading full review context...'));
     lines.push('');
   } else if (error) {
@@ -211,8 +200,8 @@ function buildReviewPageContent(
   pushField(lines, 'Reviews', String(reviews.length), width);
   pushField(lines, 'Latest review', latestReviewEntry?.verdict ?? '—', width, (value) => statusText(style, value));
   pushField(lines, 'Latest decision', latestDecisionEntry?.kind ?? '—', width, (value) => statusText(style, value));
-  if (detail?.questDetail?.scroll?.id) {
-    pushField(lines, 'Scroll', shortId(detail.questDetail.scroll.id), width);
+  if (scroll?.id) {
+    pushField(lines, 'Scroll', shortId(scroll.id), width);
   }
   lines.push('');
 
@@ -271,7 +260,9 @@ export interface ReviewPageViewArgs {
   page: ReviewPageRoute;
   quest: QuestNode;
   submission: SubmissionNode;
-  detail: EntityDetail | null;
+  reviews: ReviewNode[];
+  decisions: DecisionNode[];
+  scroll?: ScrollNode;
   sourceItem: CockpitItem | undefined;
   style: StylePort;
   width: number;
@@ -279,14 +270,15 @@ export interface ReviewPageViewArgs {
 }
 
 export function reviewPageView(args: ReviewPageViewArgs): string {
-  const { model, snapshot, page, quest, submission, detail, sourceItem, style, width, height } = args;
+  const { model, snapshot, page, quest, submission, reviews, decisions, scroll, sourceItem, style, width, height } = args;
   const accent = laneAccent(style, page.sourceLane);
   const chrome = renderDashboardChrome({
     lane: page.sourceLane,
     agentId: model.agentId,
+    health: model.health,
     nowView: model.nowView,
     breadcrumbSegments: ['Landing', laneTitle(page.sourceLane), shortId(page.submissionId)],
-  }, snapshot, style, width);
+  }, snapshot, model, style, width);
   const chromeHeight = chrome.split('\n').length;
   const bodyHeight = Math.max(1, height - chromeHeight - 1);
   const header = renderPaneHeader({
@@ -301,10 +293,11 @@ export function reviewPageView(args: ReviewPageViewArgs): string {
     style,
     submission,
     quest,
-    detail,
     page,
     sourceItem,
-    snapshot,
+    reviews,
+    decisions,
+    scroll,
     contentWidth,
     model.pageLoading,
     model.pageError,

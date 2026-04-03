@@ -1,5 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import type { GraphPort } from '../../ports/GraphPort.js';
+import {
+  liveObservation,
+  type ObservationPort,
+} from '../../ports/ObservationPort.js';
 import type { RoadmapQueryPort } from '../../ports/RoadmapPort.js';
 import {
   VALID_QUEST_PRIORITIES,
@@ -13,7 +17,7 @@ import {
   type RequirementKind,
   type RequirementPriority,
 } from '../entities/Requirement.js';
-import type { EntityDetail, GraphSnapshot } from '../models/dashboard.js';
+import type { EntityDetail } from '../models/dashboard.js';
 import type { RecommendationRequest } from '../models/recommendations.js';
 import { IntakeService } from './IntakeService.js';
 import { ReadinessService } from './ReadinessService.js';
@@ -34,7 +38,6 @@ import {
   formatUnsignedScrollOverrideWarning,
 } from './SettlementKeyPolicy.js';
 import { createPatchSession } from '../../infrastructure/helpers/createPatchSession.js';
-import { createGraphContext } from '../../infrastructure/GraphContext.js';
 import { FsKeyringAdapter } from '../../infrastructure/adapters/FsKeyringAdapter.js';
 import { WarpIntakeAdapter } from '../../infrastructure/adapters/WarpIntakeAdapter.js';
 import { WarpSubmissionAdapter } from '../../infrastructure/adapters/WarpSubmissionAdapter.js';
@@ -45,6 +48,7 @@ import {
   buildSubmissionWorkSemantics,
   type AgentWorkSemantics,
 } from './WorkSemanticsService.js';
+import { findSubmissionContext, readSubmissionModel } from './SubmissionReadService.js';
 
 export const ROUTINE_AGENT_ACTION_KINDS = [
   'claim', 'shape', 'packet', 'ready', 'comment', 'brief', 'submit', 'review', 'handoff', 'seal', 'merge',
@@ -344,6 +348,7 @@ export class AgentActionValidator {
     private readonly graphPort: GraphPort,
     private readonly roadmap: RoadmapQueryPort,
     private readonly agentId: string,
+    private readonly readPort: ObservationPort,
     doctor?: Pick<DoctorService, 'run'>,
   ) {
     this.intake = new IntakeService(roadmap);
@@ -359,28 +364,21 @@ export class AgentActionValidator {
     return this.cachedRecommendationRequests;
   }
 
-  private async fetchSnapshot(): Promise<GraphSnapshot> {
-    const graphCtx = createGraphContext(this.graphPort);
-    return graphCtx.fetchSnapshot(undefined, { profile: 'operational' });
-  }
+  private async readSubmissionSemantics(
+    submissionIdOrPatchsetId: string,
+  ): Promise<AgentWorkSemantics | null> {
+    const readSession = await this.readPort.openSession(
+      liveObservation('agent.action.inspect'),
+    );
+    const model = await readSubmissionModel(readSession);
+    const context = findSubmissionContext(model, submissionIdOrPatchsetId);
+    if (!context) return null;
 
-  private buildSubmissionSemantics(
-    snapshot: GraphSnapshot,
-    submissionId: string,
-  ): AgentWorkSemantics | null {
-    const submission = snapshot.submissions.find((entry) => entry.id === submissionId);
-    if (!submission) return null;
-
-    const quest = snapshot.quests.find((entry) => entry.id === submission.questId);
-    const reviews = submission.tipPatchsetId
-      ? snapshot.reviews.filter((entry) => entry.patchsetId === submission.tipPatchsetId)
-      : [];
-    const decisions = snapshot.decisions.filter((entry) => entry.submissionId === submission.id);
     return buildSubmissionWorkSemantics({
-      submission,
-      quest,
-      reviews,
-      decisions,
+      submission: context.submission,
+      quest: context.quest ?? undefined,
+      reviews: context.reviews,
+      decisions: context.decisions,
       principalId: this.agentId,
     });
   }
@@ -885,8 +883,10 @@ export class AgentActionValidator {
       ]);
     }
 
-    const graphCtx = createGraphContext(this.graphPort);
-    const detail = await graphCtx.fetchEntityDetail(request.targetId);
+    const readSession = await this.readPort.openSession(
+      liveObservation('agent.action.comment'),
+    );
+    const detail = await readSession.fetchEntityDetail(request.targetId);
     if (!detail || detail.type !== 'case') {
       return failAssessment(request, 'not-found', [
         `Target ${request.targetId} not found as a governed case in the graph`,
@@ -1129,7 +1129,7 @@ export class AgentActionValidator {
         `Patchset ${request.targetId} not found or has no parent submission`,
       ]);
     }
-    const semantics = this.buildSubmissionSemantics(await this.fetchSnapshot(), submissionId);
+    const semantics = await this.readSubmissionSemantics(submissionId);
 
     try {
       await this.submissions.validateReview(request.targetId, this.agentId);
@@ -1294,8 +1294,10 @@ export class AgentActionValidator {
       ]);
     }
 
-    const graphCtx = createGraphContext(this.graphPort);
-    const detail = await graphCtx.fetchEntityDetail(request.targetId);
+    const readSession = await this.readPort.openSession(
+      liveObservation('agent.action.settlement'),
+    );
+    const detail = await readSession.fetchEntityDetail(request.targetId);
     const gate = assessSettlementGate(detail?.questDetail, 'seal');
     if (!gate.allowed) {
       return failAssessment(request, gate.code ?? 'precondition-failed', [
@@ -1388,7 +1390,7 @@ export class AgentActionValidator {
     const explicitPatchsetId = typeof request.args['patchsetId'] === 'string' && request.args['patchsetId'].trim().length > 0
       ? request.args['patchsetId'].trim()
       : undefined;
-    const semantics = this.buildSubmissionSemantics(await this.fetchSnapshot(), request.targetId);
+    const semantics = await this.readSubmissionSemantics(request.targetId);
 
     const adapter = new WarpSubmissionAdapter(this.graphPort, this.agentId);
     let tipPatchsetId: string;
@@ -1446,8 +1448,10 @@ export class AgentActionValidator {
     if (blockerFailure) return blockerFailure;
 
     if (shouldAutoSeal && questId) {
-      const graphCtx = createGraphContext(this.graphPort);
-      const detail = await graphCtx.fetchEntityDetail(questId);
+      const readSession = await this.readPort.openSession(
+        liveObservation('agent.action.merge'),
+      );
+      const detail = await readSession.fetchEntityDetail(questId);
       const gate = assessSettlementGate(detail?.questDetail, 'merge');
       if (!gate.allowed) {
         return failAssessment(request, gate.code ?? 'precondition-failed', [
@@ -1568,9 +1572,10 @@ export class AgentActionService {
     private readonly graphPort: GraphPort,
     private readonly roadmap: RoadmapQueryPort,
     private readonly agentId: string,
+    readPort: ObservationPort,
     doctor?: Pick<DoctorService, 'run'>,
   ) {
-    this.validator = new AgentActionValidator(graphPort, roadmap, agentId, doctor);
+    this.validator = new AgentActionValidator(graphPort, roadmap, agentId, readPort, doctor);
   }
 
   public async execute(request: AgentActionRequest): Promise<AgentActionOutcome> {

@@ -5,10 +5,18 @@ import { registerSuggestionCommands } from '../../src/cli/commands/suggestions.j
 
 const fetchSnapshot = vi.fn();
 
-vi.mock('../../src/infrastructure/GraphContext.js', () => ({
-  createGraphContext: vi.fn(() => ({
-    fetchSnapshot,
-  })),
+vi.mock('../../src/infrastructure/adapters/WarpObservationAdapter.js', () => ({
+  WarpObservationAdapter: class WarpObservationAdapter {
+    async openSession() {
+      return {
+        fetchSnapshot,
+        fetchEntityDetail: vi.fn(),
+        queryNodes: vi.fn(),
+        neighbors: vi.fn(),
+        hasNode: vi.fn(),
+      };
+    }
+  },
 }));
 
 function createPatchBuilder() {
@@ -24,6 +32,15 @@ function makeCtx(graph: {
   getNodeProps?: (id: string) => Promise<Record<string, unknown> | undefined>;
   patch: (fn: (builder: ReturnType<typeof createPatchBuilder>) => void) => Promise<string>;
 }): CliContext {
+  const observation = {
+    openSession: vi.fn(async () => ({
+      fetchSnapshot,
+      fetchEntityDetail: vi.fn(),
+      queryNodes: vi.fn(),
+      neighbors: vi.fn(),
+      hasNode: vi.fn(),
+    })),
+  };
   return {
     agentId: 'agent.trace',
     identity: { agentId: 'agent.trace', source: 'default', origin: null },
@@ -31,6 +48,11 @@ function makeCtx(graph: {
     graphPort: {
       getGraph: async () => graph,
     } as CliContext['graphPort'],
+    observation: observation as CliContext['observation'],
+    operationalRead: observation as CliContext['operationalRead'],
+    inspection: {
+      openInspectionSession: vi.fn(),
+    } as CliContext['inspection'],
     style: {} as CliContext['style'],
     ok: vi.fn(),
     warn: vi.fn(),
@@ -119,7 +141,7 @@ describe('suggestion commands', () => {
 
     await program.parseAsync(['suggestion', 'accept-all'], { from: 'user' });
 
-    expect(fetchSnapshot).toHaveBeenCalledWith(undefined, { profile: 'analysis' });
+    expect(fetchSnapshot).toHaveBeenCalledWith('analysis');
     expect(patchBuilder.setProperty).toHaveBeenCalledWith('evidence:auto-auto-2', 'result', 'linked');
     expect(patchBuilder.addEdge).toHaveBeenCalledWith('evidence:auto-auto-2', 'criterion:TRACE', 'verifies');
     expect(ctx.jsonOut).toHaveBeenCalledWith({

@@ -15,6 +15,7 @@ import {
   settlementGateFailureData,
 } from '../../domain/services/SettlementGateService.js';
 import { settlementAssessmentToDiagnostics } from '../../domain/services/DiagnosticService.js';
+import { liveObservation } from '../../ports/ObservationPort.js';
 
 export function registerSubmissionCommands(program: Command, ctx: CliContext): void {
   const withErrorHandler = createErrorHandler(ctx);
@@ -197,7 +198,6 @@ export function registerSubmissionCommands(program: Command, ctx: CliContext): v
       const { GitWorkspaceAdapter } = await import('../../infrastructure/adapters/GitWorkspaceAdapter.js');
       const { GuildSealService } = await import('../../domain/services/GuildSealService.js');
       const { FsKeyringAdapter } = await import('../../infrastructure/adapters/FsKeyringAdapter.js');
-      const { createGraphContext } = await import('../../infrastructure/GraphContext.js');
 
       const adapter = new WarpSubmissionAdapter(ctx.graphPort, ctx.agentId);
       const service = new SubmissionService(adapter);
@@ -209,8 +209,10 @@ export function registerSubmissionCommands(program: Command, ctx: CliContext): v
       const shouldAutoSeal = typeof questId === 'string' && questStatus !== 'DONE';
 
       if (shouldAutoSeal && questId) {
-        const graphCtx = createGraphContext(ctx.graphPort);
-        const detail = await graphCtx.fetchEntityDetail(questId);
+        const readSession = await ctx.observation.openSession(
+          liveObservation('submission.merge'),
+        );
+        const detail = await readSession.fetchEntityDetail(questId);
         const assessment = assessSettlementGate(detail?.questDetail, 'merge');
         if (!assessment.allowed) {
           return ctx.failWithData(

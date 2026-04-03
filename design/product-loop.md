@@ -212,12 +212,17 @@ care about perspective diversity, not only raw agent count.
 
 ### 5. Decide
 
-A human makes the governing decision.
+By default, a human makes the governing decision.
 
 This is the point where sovereignty, policy, and explainability matter most.
-The human should not be rubber-stamping an agent recommendation. They should be
-adjudicating a case with visible inputs, rationale, uncertainty, and
-alternatives.
+Under the current default posture, the human should not be rubber-stamping an
+agent recommendation. They should be adjudicating a case with visible inputs,
+rationale, uncertainty, and alternatives.
+
+Longer term, the authority engine should remain principal-general. If future
+policy delegates some decision classes beyond humans, that delegation should be
+explicit, attributable, and governable rather than implied by a separate
+authority system.
 
 Typical outcomes may include:
 

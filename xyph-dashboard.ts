@@ -41,16 +41,17 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { run } from '@flyingrobots/bijou-tui';
 import { createStylePort } from './src/infrastructure/adapters/BijouStyleAdapter.js';
-import { createGraphContext } from './src/infrastructure/GraphContext.js';
+import { WarpDashboardReadAdapter } from './src/infrastructure/adapters/WarpDashboardReadAdapter.js';
 import { WarpGraphAdapter } from './src/infrastructure/adapters/WarpGraphAdapter.js';
 import { WarpIntakeAdapter } from './src/infrastructure/adapters/WarpIntakeAdapter.js';
 import { WarpSubmissionAdapter } from './src/infrastructure/adapters/WarpSubmissionAdapter.js';
 import { createDashboardApp } from './src/tui/bijou/DashboardApp.js';
 import { createFileObserverWatermarkStore } from './src/tui/bijou/observer-watermarks.js';
 import { loadRandomLogo, selectLogoSize } from './src/tui/logo-loader.js';
-import { TuiLogger } from './src/tui/TuiLogger.js';
 import { parseAsOverrideFromArgv, resolveIdentity } from './src/cli/identity.js';
 import { resolveGraphRuntime } from './src/cli/runtimeGraph.js';
+import { CallbackDiagnosticLogSink, DiagnosticLogger, MultiplexDiagnosticLogSink } from './src/infrastructure/logging/DiagnosticLogger.js';
+import { FileDiagnosticLogSink, resolveDiagnosticLogPath } from './src/infrastructure/logging/FileDiagnosticLogSink.js';
 
 // Initialize bijou context with XYPH presets via StylePort.
 const style = createStylePort();
@@ -75,15 +76,31 @@ const splash = loadRandomLogo(logosDir, 'xyph', selectLogoSize(cols, rows), {
   maxWidth: cols - 4,
   maxHeight: rows - 12,
 });
-const logger = new TuiLogger({ component: 'xyph-dashboard' });
+const logPath = resolveDiagnosticLogPath('dashboard');
+const tuiSink = new CallbackDiagnosticLogSink();
+const logger = new DiagnosticLogger(
+  new MultiplexDiagnosticLogSink([
+    new FileDiagnosticLogSink(logPath),
+    tuiSink,
+  ]),
+  { component: 'xyph-dashboard' },
+);
 const graphPort = new WarpGraphAdapter(runtime.repoPath, runtime.graphName, agentId, logger);
-const ctx = createGraphContext(graphPort);
+const readPort = new WarpDashboardReadAdapter(graphPort);
 const intake = new WarpIntakeAdapter(graphPort, agentId);
 const submissionPort = new WarpSubmissionAdapter(graphPort, agentId);
 const observerWatermarkStore = createFileObserverWatermarkStore();
 
+logger.info('dashboard session starting', {
+  agentId,
+  cwd,
+  repoPath: runtime.repoPath,
+  graphName: runtime.graphName,
+  logPath,
+});
+
 const app = createDashboardApp({
-  ctx,
+  readPort,
   intake,
   graphPort,
   submissionPort,
@@ -96,6 +113,15 @@ const app = createDashboardApp({
     repoPath: runtime.repoPath,
     graphName: runtime.graphName,
   },
+  logger,
 });
 
-await run(app, { altScreen: true, hideCursor: true, mouse: true });
+try {
+  await run(app, { altScreen: true, hideCursor: true, mouse: true });
+  logger.info('dashboard session ended cleanly');
+} catch (error: unknown) {
+  logger.error('dashboard session crashed', error instanceof Error
+    ? { name: error.name, message: error.message, stack: error.stack }
+    : { message: String(error) });
+  throw error;
+}

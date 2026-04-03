@@ -1,12 +1,12 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
-import { createGraphContext } from '../../src/infrastructure/GraphContext.js';
+import { createObservedGraphProjection } from '../../src/infrastructure/ObservedGraphProjection.js';
 import { WarpGraphAdapter } from '../../src/infrastructure/adapters/WarpGraphAdapter.js';
 import { execSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
 
-describe('GraphContext read-path honesty and campaign derivation', () => {
+describe('ObservedGraphProjection read-path honesty and campaign derivation', () => {
   let repoPath: string;
   let graphPort: WarpGraphAdapter;
   const writerId = 'human.reader';
@@ -97,7 +97,7 @@ describe('GraphContext read-path honesty and campaign derivation', () => {
     const graph = await graphPort.getGraph();
     const checkpointSpy = vi.spyOn(graph, 'createCheckpoint');
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-    const ctx = createGraphContext(graphPort);
+    const ctx = createObservedGraphProjection(graphPort);
     const progress: string[] = [];
 
     try {
@@ -120,7 +120,7 @@ describe('GraphContext read-path honesty and campaign derivation', () => {
   it('fetchEntityDetail does not materialize before targeted live reads', async () => {
     const graph = await graphPort.getGraph();
     const materializeSpy = vi.spyOn(graph, 'materialize');
-    const ctx = createGraphContext(graphPort);
+    const ctx = createObservedGraphProjection(graphPort);
 
     try {
       const detail = await ctx.fetchEntityDetail('task:T-BACKLOG-1');
@@ -133,7 +133,7 @@ describe('GraphContext read-path honesty and campaign derivation', () => {
   });
 
   it('derives campaign status from member quests and preserves stored status only when no quests exist', async () => {
-    const ctx = createGraphContext(graphPort);
+    const ctx = createObservedGraphProjection(graphPort);
     const snapshot = await ctx.fetchSnapshot();
     const campaignStatus = new Map(snapshot.campaigns.map((campaign) => [campaign.id, campaign.status]));
 

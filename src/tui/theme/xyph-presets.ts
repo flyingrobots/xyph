@@ -2,9 +2,13 @@
  * XYPH Extended Theme Presets.
  *
  * Uses bijou's `extendTheme()` to add XYPH-specific status and UI keys
- * to both built-in presets. Each palette ships as a dark + light pair;
- * bare names (`teal-orange-pink`, `cyan-magenta`) are aliases resolved
- * at runtime by `detectColorScheme()` in `BijouStyleAdapter.ts`.
+ * to both built-in presets. Each palette ships as a dark + light pair; bare
+ * names (`teal-orange-pink`, `cyan-magenta`) are aliases resolved at runtime
+ * by `detectColorScheme()` in `BijouStyleAdapter.ts`.
+ *
+ * Regardless of the underlying palette family, XYPH's official brand/progress
+ * gradient is the same shared two-stop sweep:
+ *   linear-gradient(90deg, #F74C06, #F9BC2C)
  */
 
 import {
@@ -46,6 +50,25 @@ export type XyphUiKey = BaseUiKey | XyphExtUi;
 
 /** Fully typed XYPH theme. */
 export type XyphTheme = Theme<XyphStatusKey, XyphUiKey, BaseGradientKey>;
+
+/** Official XYPH brand gradient used across shared CLI/TUI surfaces. */
+export const XYPH_OFFICIAL_BRAND_GRADIENT: Theme['gradient']['brand'] = [
+  { pos: 0, color: [247, 76, 6] },
+  { pos: 1, color: [249, 188, 44] },
+];
+
+function withOfficialGradient(theme: Theme, name?: string): Theme {
+  const gradient = XYPH_OFFICIAL_BRAND_GRADIENT.map((stop) => ({ ...stop }));
+  return {
+    ...theme,
+    ...(name ? { name } : {}),
+    gradient: {
+      ...theme.gradient,
+      brand: gradient.map((stop) => ({ ...stop })),
+      progress: gradient.map((stop) => ({ ...stop })),
+    },
+  };
+}
 
 // ── Shared XYPH status extensions (dark) ──────────────────────────────
 
@@ -141,8 +164,11 @@ const TEAL_ORANGE_LIGHT_SURFACE: Theme['surface'] = {
 
 // ── Extended presets — dark ────────────────────────────────────────────
 
+const CYAN_MAGENTA_DARK_BASE: Theme = withOfficialGradient(CYAN_MAGENTA, 'cyan-magenta');
+const TEAL_ORANGE_PINK_DARK_BASE: Theme = withOfficialGradient(TEAL_ORANGE_PINK, 'teal-orange-pink');
+
 export const XYPH_CYAN_MAGENTA_DARK: XyphTheme = extendTheme<XyphExtStatus, XyphExtUi>(
-  CYAN_MAGENTA,
+  CYAN_MAGENTA_DARK_BASE,
   {
     status: XYPH_STATUS_CYAN_MAGENTA_DARK,
     ui: {
@@ -160,7 +186,7 @@ export const XYPH_CYAN_MAGENTA_DARK: XyphTheme = extendTheme<XyphExtStatus, Xyph
 );
 
 export const XYPH_TEAL_ORANGE_PINK_DARK: XyphTheme = extendTheme<XyphExtStatus, XyphExtUi>(
-  TEAL_ORANGE_PINK,
+  TEAL_ORANGE_PINK_DARK_BASE,
   {
     status: XYPH_STATUS_TEAL_ORANGE_DARK,
     ui: {
@@ -180,7 +206,7 @@ export const XYPH_TEAL_ORANGE_PINK_DARK: XyphTheme = extendTheme<XyphExtStatus, 
 // ── Extended presets — light ──────────────────────────────────────────
 
 const CYAN_MAGENTA_LIGHT_BASE: Theme = {
-  ...CYAN_MAGENTA,
+  ...withOfficialGradient(CYAN_MAGENTA),
   name: 'cyan-magenta-light',
   semantic: {
     success: tv('#059669'),
@@ -230,7 +256,7 @@ export const XYPH_CYAN_MAGENTA_LIGHT: XyphTheme = extendTheme<XyphExtStatus, Xyp
 );
 
 const TEAL_ORANGE_LIGHT_BASE: Theme = {
-  ...TEAL_ORANGE_PINK,
+  ...withOfficialGradient(TEAL_ORANGE_PINK),
   name: 'teal-orange-pink-light',
   semantic: {
     success: tv('#059669'),

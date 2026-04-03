@@ -19,21 +19,37 @@ import { registerShowCommands } from './src/cli/commands/show.js';
 import { registerAgentCommands } from './src/cli/commands/agent.js';
 import { registerDoctorCommands } from './src/cli/commands/doctor.js';
 import { registerApiCommands } from './src/cli/commands/api.js';
+import { DiagnosticLogger } from './src/infrastructure/logging/DiagnosticLogger.js';
+import { FileDiagnosticLogSink, resolveDiagnosticLogPath } from './src/infrastructure/logging/FileDiagnosticLogSink.js';
 
 // Best-effort pre-scan for --json before Commander parses.
 // createCliContext() handles theme init internally based on this flag.
 const jsonFlag = process.argv.includes('--json');
 const asOverride = parseAsOverrideFromArgv(process.argv);
 const runtime = resolveGraphRuntime({ cwd: process.cwd() });
+const logPath = resolveDiagnosticLogPath('actuator');
+const logger = new DiagnosticLogger(
+  new FileDiagnosticLogSink(logPath),
+  { component: 'xyph-actuator' },
+);
 
 /**
  * XYPH Actuator - The "Hands" of the Causal Agent.
  * Exposes the git-warp Node.js API as a CLI for agentic mutations.
  */
 
+logger.info('actuator session starting', {
+  cwd: process.cwd(),
+  repoPath: runtime.repoPath,
+  graphName: runtime.graphName,
+  argv: process.argv.slice(2),
+  logPath,
+});
+
 const ctx = createCliContext(process.cwd(), runtime.repoPath, runtime.graphName, {
   json: jsonFlag,
   as: asOverride,
+  logger,
 });
 
 program
@@ -61,4 +77,12 @@ registerAgentCommands(program, ctx);
 registerDoctorCommands(program, ctx);
 registerApiCommands(program, ctx);
 
-await program.parseAsync(process.argv);
+try {
+  await program.parseAsync(process.argv);
+  logger.info('actuator session ended cleanly');
+} catch (error: unknown) {
+  logger.error('actuator session crashed', error instanceof Error
+    ? { name: error.name, message: error.message, stack: error.stack }
+    : { message: String(error) });
+  throw error;
+}

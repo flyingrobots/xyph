@@ -121,8 +121,8 @@ vi.mock('../../src/infrastructure/adapters/GitWorkspaceAdapter.js', () => ({
   },
 }));
 
-vi.mock('../../src/infrastructure/GraphContext.js', () => ({
-  createGraphContext: () => ({
+vi.mock('../../src/infrastructure/ObservedGraphProjection.js', () => ({
+  createObservedGraphProjection: () => ({
     fetchEntityDetail(id: string): Promise<EntityDetail | null> {
       return mocks.fetchEntityDetail(id);
     },

@@ -20,26 +20,61 @@ export class WarpGraphAdapter implements GraphPort {
 
   public async getGraph(): Promise<WarpGraph> {
     if (!this.graphPromise) {
+      this.logger?.debug('warp graph getGraph cache miss', {
+        cwd: this.cwd,
+        graphName: this.graphName,
+        writerId: this.writerId,
+      });
       this.graphPromise = this.open().catch((err) => {
+        this.logger?.error('warp graph open failed', {
+          cwd: this.cwd,
+          graphName: this.graphName,
+          writerId: this.writerId,
+          error: err instanceof Error ? err.message : String(err),
+        });
         this.graphPromise = null;
         throw err;
+      });
+    } else {
+      this.logger?.debug('warp graph getGraph cache hit', {
+        graphName: this.graphName,
+        writerId: this.writerId,
       });
     }
     return this.graphPromise;
   }
 
   public async openIsolatedGraph(): Promise<WarpGraph> {
+    this.logger?.debug('warp graph openIsolatedGraph requested', {
+      cwd: this.cwd,
+      graphName: this.graphName,
+      writerId: this.writerId,
+    });
     return this.open();
   }
 
   public reset(): void {
+    this.logger?.warn('warp graph adapter reset', {
+      graphName: this.graphName,
+      writerId: this.writerId,
+    });
     this.graphPromise = null;
   }
 
+  public getLogger(): LoggerPort | undefined {
+    return this.logger;
+  }
+
   private async open(): Promise<WarpGraph> {
+    const startedAt = Date.now();
+    this.logger?.info('warp graph opening', {
+      cwd: this.cwd,
+      graphName: this.graphName,
+      writerId: this.writerId,
+    });
     const plumbing = Plumbing.createDefault({ cwd: this.cwd });
     const persistence = new GitGraphAdapter({ plumbing });
-    return WarpGraph.open({
+    const graph = await WarpGraph.open({
       persistence,
       graphName: this.graphName,
       writerId: this.writerId,
@@ -47,5 +82,11 @@ export class WarpGraphAdapter implements GraphPort {
       checkpointPolicy: { every: 50 },
       logger: this.logger,
     });
+    this.logger?.info('warp graph opened', {
+      graphName: this.graphName,
+      writerId: this.writerId,
+      durationMs: Date.now() - startedAt,
+    });
+    return graph;
   }
 }

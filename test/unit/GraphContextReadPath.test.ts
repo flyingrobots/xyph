@@ -1,8 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
-  createGraphContextFromGraph,
-  type GraphContextGraph,
-} from '../../src/infrastructure/GraphContext.js';
+  createObservedGraphProjectionFromGraph,
+  type ObservedProjectionGraph,
+} from '../../src/infrastructure/ObservedGraphProjection.js';
 
 function makeQueryBuilder(nodes: { id: string; props: Record<string, unknown> }[] = []) {
   return {
@@ -16,10 +16,10 @@ function makeQueryBuilder(nodes: { id: string; props: Record<string, unknown> }[
   };
 }
 
-describe('GraphContext read path', () => {
+describe('ObservedGraphProjection read path', () => {
   it('does not call materialize() when building a live snapshot', async () => {
     const materialize = vi.fn(async () => null);
-    const graph: GraphContextGraph = {
+    const graph: ObservedProjectionGraph = {
       writerId: 'writer.test',
       syncCoverage: vi.fn(async () => undefined),
       materialize,
@@ -40,7 +40,7 @@ describe('GraphContext read path', () => {
       compareCoordinates: vi.fn(),
     };
 
-    const ctx = createGraphContextFromGraph(graph, { syncCoverage: false });
+    const ctx = createObservedGraphProjectionFromGraph(graph, { syncCoverage: false });
     const snapshot = await ctx.fetchSnapshot();
 
     expect(snapshot.graphMeta?.maxTick).toBe(1);
@@ -50,7 +50,7 @@ describe('GraphContext read path', () => {
 
   it('does not call materialize() before a targeted entity detail read', async () => {
     const materialize = vi.fn(async () => null);
-    const graph: GraphContextGraph = {
+    const graph: ObservedProjectionGraph = {
       writerId: 'writer.test',
       syncCoverage: vi.fn(async () => undefined),
       materialize,
@@ -73,7 +73,7 @@ describe('GraphContext read path', () => {
       compareCoordinates: vi.fn(),
     };
 
-    const ctx = createGraphContextFromGraph(graph, { syncCoverage: false });
+    const ctx = createObservedGraphProjectionFromGraph(graph, { syncCoverage: false });
     const detail = await ctx.fetchEntityDetail('misc:ONE');
 
     expect(detail?.id).toBe('misc:ONE');
@@ -88,7 +88,7 @@ describe('GraphContext read path', () => {
       return [start];
     });
 
-    const graph: GraphContextGraph = {
+    const graph: ObservedProjectionGraph = {
       writerId: 'writer.test',
       syncCoverage: vi.fn(async () => undefined),
       materialize: vi.fn(async () => null),
@@ -151,7 +151,7 @@ describe('GraphContext read path', () => {
       compareCoordinates: vi.fn(),
     };
 
-    const ctx = createGraphContextFromGraph(graph, { syncCoverage: false });
+    const ctx = createObservedGraphProjectionFromGraph(graph, { syncCoverage: false });
     const detail = await ctx.fetchEntityDetail('task:T-1');
 
     expect(detail?.questDetail?.documents.map((entry) => entry.id)).toEqual(['note:N-1', 'note:N-2']);
@@ -187,7 +187,7 @@ describe('GraphContext read path', () => {
       }]],
     ]);
 
-    const graph: GraphContextGraph = {
+    const graph: ObservedProjectionGraph = {
       writerId: 'writer.test',
       syncCoverage: vi.fn(async () => undefined),
       materialize: vi.fn(async () => null),
@@ -226,7 +226,7 @@ describe('GraphContext read path', () => {
       compareCoordinates: vi.fn(),
     };
 
-    const ctx = createGraphContextFromGraph(graph, { syncCoverage: false });
+    const ctx = createObservedGraphProjectionFromGraph(graph, { syncCoverage: false });
     const snapshot = await ctx.fetchSnapshot(undefined, { profile: 'operational' });
 
     expect(queriedPatterns).not.toContain('story:*');
@@ -304,7 +304,7 @@ describe('GraphContext read path', () => {
       }]],
     ]);
 
-    const graph: GraphContextGraph = {
+    const graph: ObservedProjectionGraph = {
       writerId: 'writer.test',
       syncCoverage: vi.fn(async () => undefined),
       materialize: vi.fn(async () => null),
@@ -349,7 +349,7 @@ describe('GraphContext read path', () => {
       compareCoordinates: vi.fn(),
     };
 
-    const ctx = createGraphContextFromGraph(graph, { syncCoverage: false });
+    const ctx = createObservedGraphProjectionFromGraph(graph, { syncCoverage: false });
     const snapshot = await ctx.fetchSnapshot(undefined, { profile: 'analysis' });
 
     expect(queriedPatterns).not.toContain('story:*');
@@ -418,7 +418,7 @@ describe('GraphContext read path', () => {
       }]],
     ]);
 
-    const graph: GraphContextGraph = {
+    const graph: ObservedProjectionGraph = {
       writerId: 'writer.test',
       syncCoverage: vi.fn(async () => undefined),
       materialize: vi.fn(async () => null),
@@ -457,7 +457,7 @@ describe('GraphContext read path', () => {
       compareCoordinates: vi.fn(),
     };
 
-    const ctx = createGraphContextFromGraph(graph, { syncCoverage: false });
+    const ctx = createObservedGraphProjectionFromGraph(graph, { syncCoverage: false });
     const snapshot = await ctx.fetchSnapshot(undefined, { profile: 'analysis' });
 
     expect(queriedPatterns).toContain('case:*');
@@ -565,7 +565,7 @@ describe('GraphContext read path', () => {
       }]],
     ]);
 
-    const graph: GraphContextGraph = {
+    const graph: ObservedProjectionGraph = {
       writerId: 'writer.test',
       syncCoverage: vi.fn(async () => undefined),
       materialize: vi.fn(async () => null),
@@ -622,7 +622,7 @@ describe('GraphContext read path', () => {
       compareCoordinates: vi.fn(),
     };
 
-    const ctx = createGraphContextFromGraph(graph, { syncCoverage: false });
+    const ctx = createObservedGraphProjectionFromGraph(graph, { syncCoverage: false });
     const snapshot = await ctx.fetchSnapshot(undefined, { profile: 'audit' });
 
     expect(queriedPatterns).toContain('story:*');
@@ -649,7 +649,7 @@ describe('GraphContext read path', () => {
   it('tracks cached frontiers per profile so stale full snapshots do not survive newer operational reads', async () => {
     let currentTick = 1;
 
-    const graph: GraphContextGraph = {
+    const graph: ObservedProjectionGraph = {
       writerId: 'writer.test',
       syncCoverage: vi.fn(async () => undefined),
       materialize: vi.fn(async () => null),
@@ -697,7 +697,7 @@ describe('GraphContext read path', () => {
       compareCoordinates: vi.fn(),
     };
 
-    const ctx = createGraphContextFromGraph(graph, { syncCoverage: false });
+    const ctx = createObservedGraphProjectionFromGraph(graph, { syncCoverage: false });
 
     const fullAtTick1 = await ctx.fetchSnapshot(undefined, { profile: 'full' });
     expect(fullAtTick1.quests[0]?.title).toBe('Quest v1');

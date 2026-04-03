@@ -7,7 +7,7 @@ import path from 'node:path';
 import type { CliContext } from '../../../../src/cli/context.js';
 import { registerSuggestionCommands } from '../../../../src/cli/commands/suggestions.js';
 import { RecordService } from '../../../../src/domain/services/RecordService.js';
-import { createGraphContext } from '../../../../src/infrastructure/GraphContext.js';
+import { createObservedGraphProjection } from '../../../../src/infrastructure/ObservedGraphProjection.js';
 import { WarpGraphAdapter } from '../../../../src/infrastructure/adapters/WarpGraphAdapter.js';
 import { createPlainStylePort, ensurePlainBijouContext } from '../../../../src/infrastructure/adapters/PlainStyleAdapter.js';
 import type { DashboardModel, SuggestionPageRoute } from '../../../../src/tui/bijou/DashboardApp.js';
@@ -91,7 +91,7 @@ describe('Cycle 0001: Suggestion Adoption and Explainability', () => {
       }),
     }));
 
-    const graphCtx = createGraphContext(graphPort);
+    const graphCtx = createObservedGraphProjection(graphPort);
     const snapshot = await graphCtx.fetchSnapshot();
     const suggestion = snapshot.aiSuggestions.find((entry) => entry.id === 'suggestion:AI-QUEST');
     expect(suggestion).toMatchObject({
@@ -175,7 +175,7 @@ describe('Cycle 0001: Suggestion Adoption and Explainability', () => {
       }),
     }));
 
-    const graphCtx = createGraphContext(graphPort);
+    const graphCtx = createObservedGraphProjection(graphPort);
     const snapshot = await graphCtx.fetchSnapshot();
     const suggestion = snapshot.aiSuggestions.find((entry) => entry.id === 'suggestion:AI-DEP');
     expect(suggestion).toMatchObject({
@@ -251,7 +251,7 @@ describe('Cycle 0001: Suggestion Adoption and Explainability', () => {
       }),
     }));
 
-    const graphCtx = createGraphContext(graphPort);
+    const graphCtx = createObservedGraphProjection(graphPort);
     const snapshot = await graphCtx.fetchSnapshot();
     const suggestion = snapshot.aiSuggestions.find((entry) => entry.id === 'suggestion:AI-DISMISS');
     expect(suggestion).toMatchObject({
@@ -316,7 +316,7 @@ describe('Cycle 0001: Suggestion Adoption and Explainability', () => {
       }),
     }));
 
-    const graphCtx = createGraphContext(graphPort);
+    const graphCtx = createObservedGraphProjection(graphPort);
     const snapshot = await graphCtx.fetchSnapshot();
     const suggestion = snapshot.aiSuggestions.find((entry) => entry.id === 'suggestion:AI-OLD');
     expect(suggestion).toMatchObject({
@@ -368,7 +368,7 @@ function makeCliContext(graphPort: WarpGraphAdapter, repoPath: string): CliConte
 function renderSuggestionPage(
   snapshot: GraphSnapshot,
   suggestion: NonNullable<GraphSnapshot['aiSuggestions'][number]> | undefined,
-  detail: Awaited<ReturnType<ReturnType<typeof createGraphContext>['fetchEntityDetail']>>,
+  detail: Awaited<ReturnType<ReturnType<typeof createObservedGraphProjection>['fetchEntityDetail']>>,
   suggestionsView: DashboardModel['suggestionsView'],
 ): string {
   if (!suggestion) {
@@ -381,13 +381,13 @@ function renderSuggestionPage(
     suggestionsView,
     pageStack: [{ kind: 'landing' }, { kind: 'suggestion', suggestionId: suggestion.id, sourceLane: 'suggestions' }],
     laneState: {
-      now: { focusRow: 0, inspectorScrollY: 0 },
-      plan: { focusRow: 0, inspectorScrollY: 0 },
-      review: { focusRow: 0, inspectorScrollY: 0 },
-      settlement: { focusRow: 0, inspectorScrollY: 0 },
-      suggestions: { focusRow: 0, inspectorScrollY: 0 },
-      campaigns: { focusRow: 0, inspectorScrollY: 0 },
-      graveyard: { focusRow: 0, inspectorScrollY: 0 },
+      now: { focusRow: 0, inspectorScrollY: 0, railScrollY: 0 },
+      plan: { focusRow: 0, inspectorScrollY: 0, railScrollY: 0 },
+      review: { focusRow: 0, inspectorScrollY: 0, railScrollY: 0 },
+      settlement: { focusRow: 0, inspectorScrollY: 0, railScrollY: 0 },
+      suggestions: { focusRow: 0, inspectorScrollY: 0, railScrollY: 0 },
+      campaigns: { focusRow: 0, inspectorScrollY: 0, railScrollY: 0 },
+      graveyard: { focusRow: 0, inspectorScrollY: 0, railScrollY: 0 },
     },
     scrollbars: {
       worklist: { level: 0, generation: 0 },

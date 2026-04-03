@@ -5,12 +5,14 @@ import { assertPrefix } from '../validators.js';
 import { generateId } from '../generateId.js';
 import type { GraphSnapshot } from '../../domain/models/dashboard.js';
 import { VALID_TASK_KINDS, type QuestKind } from '../../domain/entities/Quest.js';
+import { liveObservation } from '../../ports/ObservationPort.js';
 
 /** Lightweight snapshot fetch for wizard option lists. */
 async function fetchWizardSnapshot(ctx: CliContext): Promise<GraphSnapshot> {
-  const { createGraphContext } = await import('../../infrastructure/GraphContext.js');
-  const gctx = createGraphContext(ctx.graphPort);
-  return gctx.fetchSnapshot(undefined, { profile: 'operational' });
+  const readSession = await ctx.observation.openSession(
+    liveObservation('wizard.snapshot'),
+  );
+  return await readSession.fetchSnapshot('operational');
 }
 
 export function registerWizardCommands(program: Command, ctx: CliContext): void {

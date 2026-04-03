@@ -1,4 +1,4 @@
-import type { WarpCore as WarpGraph } from '@git-stunts/git-warp';
+import type { LoggerPort, WarpCore as WarpGraph } from '@git-stunts/git-warp';
 
 /**
  * GraphPort — shared WARP graph lifecycle.
@@ -16,4 +16,7 @@ export interface GraphPort {
 
   /** Clear cached state, forcing a fresh graph on next getGraph(). */
   reset(): void;
+
+  /** Returns the diagnostic logger associated with this graph handle, if any. */
+  getLogger?(): LoggerPort | undefined;
 }

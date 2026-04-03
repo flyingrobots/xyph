@@ -23,6 +23,7 @@ import {
   type AiSuggestionStatus,
   defaultAiSuggestionAdoptionKind,
 } from '../../domain/entities/AiSuggestion.js';
+import { liveObservation } from '../../ports/ObservationPort.js';
 
 function aiSuggestionOrigin(opts: { kind: string; requestedBy?: string }): 'request' | 'spontaneous' {
   if (opts.kind === 'ask-ai') return 'request';
@@ -491,9 +492,10 @@ export function registerSuggestionCommands(program: Command, ctx: CliContext): v
         throw new Error(`--min-confidence must be a number between 0 and 1, got: '${opts.minConfidence}'`);
       }
 
-      const { createGraphContext } = await import('../../infrastructure/GraphContext.js');
-      const graphCtx = createGraphContext(ctx.graphPort);
-      const snapshot = await graphCtx.fetchSnapshot(undefined, { profile: 'analysis' });
+      const readSession = await ctx.observation.openSession(
+        liveObservation('suggestions.accept-all'),
+      );
+      const snapshot = await readSession.fetchSnapshot('analysis');
 
       const pending = snapshot.suggestions.filter(
         (s) => s.status === 'PENDING' && s.confidence >= minConf,

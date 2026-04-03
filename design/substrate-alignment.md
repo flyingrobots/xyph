@@ -5,8 +5,8 @@ product loop, case model, and speculative-lane discussion have become clearer.
 
 The short version is:
 
-- git-warp should own worldlines, observer-relative reads, working sets,
-  speculative ticking, transfer/collapse primitives, and substrate receipts
+- git-warp should own worldlines, Strands, observer-relative reads,
+  deterministic ticking, transfer/collapse primitives, and substrate receipts
 - XYPH should own policy, governance, cases, briefs, decisions, and the human
   + agent surfaces that govern when substrate moves are lawful
 
@@ -19,14 +19,19 @@ the intended architecture.
 The desired substrate model is:
 
 - **WorldLine**: a causal lane of graph truth
-- **Observer**: a read-only projection over a worldline plus access policy
-- **Working Set**: a speculative copy-on-write lane pinned to a base
-  observation
-- **Intent**: a proposed rewrite against a working set or worldline
+- **Observer**: a read-only projection that acts on a worldline and a
+  coordinate
+- **Strand**: a speculative fork of a pinned ancestor worldline, implemented
+  as a cheap copy-on-write overlay graph
+- **Writer**: the authority that proposes graph rewrites
+- **Intent**: a proposed graph rewrite submitted through a writer against a
+  worldline or Strand
 - **Tick**: deterministic admission of intents plus application of admitted
   rewrites
 - **BTR / tick receipt**: the replayable hologram of what happened, what was
   admitted, and what was rejected as counterfactual
+- **Effect emission / delivery observation**: replay-safe substrate facts for
+  outbound effects and their external realization or suppression
 - **Transfer / collapse**: promotion of one speculative result into a target
   canonical worldline
 
@@ -35,7 +40,12 @@ In that model:
 - plain reads never think about Git mechanics
 - historical and observer-relative reads are substrate facts, not XYPH
   inventions
+- XYPH may seek a worldline to build product features, but generic time-travel
+  debugging remains a substrate/debugger concern rather than a bespoke XYPH
+  shell
 - speculative search across many candidate futures is substrate behavior
+- host control over ticking is not assumed; some runtimes may expose ticking
+  while others may accept intents and tick until inert without host control
 - XYPH decides whether a move is lawful, desirable, governed, or canonical for
   the product
 
@@ -46,9 +56,9 @@ git-warp already provides several important pieces of that model:
 - coordinate materialization via frontier plus optional Lamport ceiling
 - seek/time-travel over historical coordinates
 - observer views
-- working sets as pinned base observation plus overlay identity
-- braid composition for working sets
-- working-set comparison and transfer planning
+- Strands as pinned base observation plus overlay identity
+- braid composition for Strands
+- Strand comparison and transfer planning
 - visible state readers and projections over materialized state
 - receipts, provenance, and deterministic reducer behavior
 
@@ -60,37 +70,42 @@ But the current runtime story is still lower-level than the desired model:
   durable immutable worldline object
 - observer views exist, but they are not yet the default read abstraction for
   higher-layer apps
-- working sets already represent pinned base observation plus overlay, but
+- Strands already represent pinned base observation plus overlay, but
   intent queues and deterministic bundle admission are not yet the dominant
   public write model
 - transfer planning exists, but the broader "promote this speculative lane into
   canonical truth" story is still more implicit than it should be
 
-On the XYPH side, the main symptom is
-[`GraphContext`](./../src/infrastructure/GraphContext.ts):
+On the XYPH side, the current symptom is the bridge between
+[`WarpObservedGraphReadAdapter`](./../src/infrastructure/adapters/WarpObservedGraphReadAdapter.ts)
+and
+[`ObservedGraphProjection`](./../src/infrastructure/ObservedGraphProjection.ts):
 
-- it opens/materializes the graph
-- queries many node families
-- fetches neighbors broadly
-- compiles an omnibus `GraphSnapshot`
-- then hands that synthetic read model to many surfaces
+- the app-facing surfaces now open worldline-backed read sessions instead of
+  constructing the old `GraphContext` directly
+- but the main adapter still hard-codes a live worldline
+- wraps that worldline in a fake graph facade
+- then feeds it into one broad projection engine that still compiles an
+  omnibus `GraphSnapshot`
 
-That broad projection is application meaning mixed together with substrate
-structure. It is useful in places, but it is too wide to be the default read
-path.
+That bridge was the right tactical move to delete `GraphContext`, but it is
+still application meaning mixed together with substrate structure. It is useful
+as a temporary compatibility layer, but it is too wide to be the long-term
+default read path.
 
 ## Responsibility Split
 
 ### git-warp should own
 
 - worldline coordinates and coordinate-aware materialization
+- Strand mechanics and lifecycle at the substrate layer
 - observer-relative projections
 - immutable or reader-backed historical inspection
-- working sets as speculative lanes
 - braid composition across speculative lanes
 - intent admission and deterministic ticking
 - counterfactual recording for rejected conflicting rewrites
-- transfer/collapse primitives between worldlines or working sets
+- emitted outbound effects and delivery observations
+- transfer/collapse primitives between worldlines or Strands
 - receipts, provenance, and replayable substrate truth
 
 ### XYPH should own
@@ -100,6 +115,8 @@ path.
 - cases, briefs, decisions, and decision receipts
 - human and agent sponsor-actor surfaces
 - product-facing queues, pages, and playbacks
+- the law around who, when, and what is allowed to create, braid, abandon, or
+  collapse Strands
 - doctrine, hills, and operational meaning layered on substrate facts
 
 The boundary is:
@@ -108,6 +125,17 @@ The boundary is:
   and promoted
 - XYPH owns **whether** that movement is lawful, governed, useful, and
   explainable for the product
+
+Concretely, a `Strand` in XYPH should mean:
+
+- a speculative fork of a pinned ancestor worldline
+- backed by a cheap copy-on-write substrate overlay graph managed by git-warp
+- able to tick independently or in lockstep with another worldline when the
+  substrate/runtime allows that behavior
+- optionally braided together with other Strands so multiple overlay effects
+  remain co-present
+- explicitly abandoned or collapsed into canonical truth through governed
+  review/attestation/settlement policy
 
 ## Gaps To Close
 
@@ -123,9 +151,9 @@ We want the primary read model to be:
 - choose an observer/access policy
 - read through that projected handle
 
-### 2. Working sets need to become the obvious speculative-worldline primitive
+### 2. Strands need to become the obvious speculative-worldline primitive
 
-Working sets already store:
+Strands already store:
 
 - pinned base frontier
 - optional Lamport ceiling
@@ -135,6 +163,17 @@ Working sets already store:
 That is almost exactly the right model. The missing part is to make
 intent-driven ticking, counterfactual recording, and promotion/transfer feel
 like first-class substrate behavior rather than higher-layer folklore.
+
+At the XYPH product layer, that same capability should be surfaced as
+first-class `Strands` rather than as raw substrate jargon. Humans and agents
+should be able to:
+
+- create a Strand from a canonical or derived worldline
+- observe and reason about how a Strand is ticking without assuming the host
+  is the component that drives ticks
+- braid Strands together when co-present overlays are the right model
+- abandon a Strand explicitly
+- collapse a Strand into canonical truth only through governed policy
 
 ### 3. XYPH must stop defaulting to omnibus graph reconstruction
 
@@ -153,17 +192,17 @@ proceed in stages.
 ### Stage 1: Observer / worldline read alignment
 
 git-warp should expose a clean way to hold multiple independent read handles
-over explicit coordinates or pinned working sets without treating one mutable
+over explicit coordinates or pinned Strands without treating one mutable
 `WarpGraph` session as the only practical read abstraction.
 
 The result should let XYPH replace at least one targeted read path without
 using a giant `GraphSnapshot`.
 
-### Stage 2: Working-set intent and tick model
+### Stage 2: Strand intent and tick model
 
 git-warp should expose:
 
-- intent queueing against a working set
+- intent queueing against a Strand
 - deterministic tick admission
 - footprint overlap/conflict rejection
 - counterfactual recording in the receipt/BTR
@@ -182,9 +221,10 @@ XYPH may still wrap that move in review, attestation, or settlement policy.
 
 As git-warp grows those primitives, XYPH should:
 
-- narrow `GraphContext`
-- replace broad app snapshots with observer/worldline-backed reads where
-  possible
+- replace bridge adapters that hard-code live-worldline behavior with explicit
+  observer/worldline-native read sessions
+- move targeted product reads onto narrow, purpose-built projections instead of
+  the omnibus `ObservedGraphProjection`
 - keep only the product semantics and UI shaping that genuinely belong above
   the substrate
 

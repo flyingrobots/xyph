@@ -15,8 +15,11 @@ import type {
   SubmissionNode,
 } from '../models/dashboard.js';
 import type { GraphPort } from '../../ports/GraphPort.js';
+import {
+  liveObservation,
+  type ObservationPort,
+} from '../../ports/ObservationPort.js';
 import type { RoadmapQueryPort } from '../../ports/RoadmapPort.js';
-import { createGraphContext } from '../../infrastructure/GraphContext.js';
 import { computeFrontier } from './DepAnalysis.js';
 import { collectQuestDiagnostics } from './DiagnosticService.js';
 import { DoctorService } from './DoctorService.js';
@@ -44,6 +47,7 @@ import {
   type GovernanceWorkSemantics,
   type SuggestionWorkSemantics,
 } from './WorkSemanticsService.js';
+import { findSubmissionContext, readSubmissionModel, type SubmissionReadModel } from './SubmissionReadService.js';
 
 export interface AgentSubmissionContext {
   submission: SubmissionNode;
@@ -516,60 +520,68 @@ export class AgentContextService {
   private readonly agentId: string;
 
   constructor(
-    private readonly graphPort: GraphPort,
+    graphPort: GraphPort,
     roadmap: RoadmapQueryPort,
     agentId: string,
+    private readonly readPort: ObservationPort,
     doctor?: Pick<DoctorService, 'run'>,
   ) {
     this.agentId = agentId;
     this.readiness = new ReadinessService(roadmap);
     this.doctor = doctor ?? new DoctorService(graphPort, roadmap);
     this.recommender = new AgentRecommender(
-      new AgentActionValidator(graphPort, roadmap, agentId, this.doctor),
+      new AgentActionValidator(graphPort, roadmap, agentId, this.readPort, this.doctor),
       agentId,
     );
   }
 
   public async fetch(id: string): Promise<AgentContextResult | null> {
-    const graphCtx = createGraphContext(this.graphPort);
-    const snapshot = await graphCtx.fetchSnapshot(undefined, { profile: 'operational' });
-    const detail = await graphCtx.fetchEntityDetail(id);
+    const readSession = await this.readPort.openSession(
+      liveObservation('agent.context'),
+    );
+    const detail = await readSession.fetchEntityDetail(id);
     if (!detail) {
       return null;
     }
 
     if (!detail.questDetail) {
-      const submissionContext = this.buildSubmissionContext(snapshot, id);
-      if (submissionContext) {
-        const semantics = buildSubmissionWorkSemantics({
-          submission: submissionContext.submission,
-          quest: submissionContext.quest ?? undefined,
-          reviews: submissionContext.reviews,
-          decisions: submissionContext.decisions,
-          principalId: this.agentId,
-        });
-        const submissionAction = this.toSubmissionCandidate(submissionContext.submission);
+      if (id.startsWith('submission:') || id.startsWith('patchset:')) {
+        const submissionContext = this.buildSubmissionContext(
+          await readSubmissionModel(readSession),
+          id,
+        );
+        if (submissionContext) {
+          const semantics = buildSubmissionWorkSemantics({
+            submission: submissionContext.submission,
+            quest: submissionContext.quest ?? undefined,
+            reviews: submissionContext.reviews,
+            decisions: submissionContext.decisions,
+            principalId: this.agentId,
+          });
+          const submissionAction = this.toSubmissionCandidate(submissionContext.submission);
 
-        return {
-          detail,
-          readiness: null,
-          dependency: null,
-          submissionContext,
-          governanceContext: null,
-          suggestionContext: null,
-          caseContext: null,
-          recommendedActions: sortActionCandidates([
-            this.toCommentCandidate(submissionContext.submission.id, 'submission'),
-            ...(submissionAction
-              ? [submissionAction]
-              : []),
-          ]),
-          recommendationRequests: [],
-          diagnostics: [],
-          semantics,
-        };
+          return {
+            detail,
+            readiness: null,
+            dependency: null,
+            submissionContext,
+            governanceContext: null,
+            suggestionContext: null,
+            caseContext: null,
+            recommendedActions: sortActionCandidates([
+              this.toCommentCandidate(submissionContext.submission.id, 'submission'),
+              ...(submissionAction
+                ? [submissionAction]
+                : []),
+            ]),
+            recommendationRequests: [],
+            diagnostics: [],
+            semantics,
+          };
+        }
       }
 
+      const snapshot = await readSession.fetchSnapshot('operational');
       const governanceContext = this.buildGovernanceContext(snapshot, detail);
       const governanceSemantics = buildGovernanceWorkSemantics(detail);
       if (governanceContext && governanceSemantics) {
@@ -663,6 +675,7 @@ export class AgentContextService {
       };
     }
 
+    const snapshot = await readSession.fetchSnapshot('operational');
     const quest = detail.questDetail.quest;
     const readiness = await this.readiness.assess(id, { transition: false });
     const dependency = buildAgentDependencyContext(snapshot, quest);
@@ -708,31 +721,19 @@ export class AgentContextService {
   }
 
   private buildSubmissionContext(
-    snapshot: GraphSnapshot,
+    model: SubmissionReadModel,
     id: string,
   ): AgentSubmissionContext | null {
-    const submission = id.startsWith('submission:')
-      ? snapshot.submissions.find((entry) => entry.id === id)
-      : id.startsWith('patchset:')
-        ? snapshot.submissions.find((entry) => entry.tipPatchsetId === id)
-        : undefined;
-    if (!submission) return null;
-
-    const focusPatchsetId = id.startsWith('patchset:')
-      ? id
-      : submission.tipPatchsetId ?? null;
-    const reviews = focusPatchsetId
-      ? snapshot.reviews.filter((entry) => entry.patchsetId === focusPatchsetId)
-      : [];
-    const decisions = snapshot.decisions.filter((entry) => entry.submissionId === submission.id);
+    const context = findSubmissionContext(model, id);
+    if (!context) return null;
 
     return {
-      submission,
-      quest: snapshot.quests.find((entry) => entry.id === submission.questId) ?? null,
-      reviews,
-      decisions,
-      focusPatchsetId,
-      nextStep: determineSubmissionNextStep(submission, this.agentId),
+      submission: context.submission,
+      quest: context.quest,
+      reviews: context.reviews,
+      decisions: context.decisions,
+      focusPatchsetId: context.focusPatchsetId,
+      nextStep: determineSubmissionNextStep(context.submission, this.agentId),
     };
   }
 

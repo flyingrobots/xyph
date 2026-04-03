@@ -8,6 +8,7 @@ import {
   XYPH_CYAN_MAGENTA_LIGHT,
   XYPH_TEAL_ORANGE_PINK_DARK,
   XYPH_TEAL_ORANGE_PINK_LIGHT,
+  XYPH_OFFICIAL_BRAND_GRADIENT,
   type XyphStatusKey,
   type XyphTheme,
 } from '../xyph-presets.js';
@@ -93,6 +94,11 @@ function validateTheme(theme: XyphTheme): void {
     it('has at least one gradient stop per gradient', () => {
       expect(theme.gradient.brand.length).toBeGreaterThanOrEqual(1);
       expect(theme.gradient.progress.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('uses the official XYPH brand gradient for brand and progress', () => {
+      expect(theme.gradient.brand).toEqual(XYPH_OFFICIAL_BRAND_GRADIENT);
+      expect(theme.gradient.progress).toEqual(XYPH_OFFICIAL_BRAND_GRADIENT);
     });
   });
 }

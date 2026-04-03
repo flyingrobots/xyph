@@ -7,12 +7,25 @@ import type { DashboardModel } from '../DashboardApp.js';
 /** A foreground content line with its pre-ANSI visual width. */
 interface FgLine { text: string; width: number }
 
-export function landingView(model: DashboardModel, style: StylePort): string {
-  const muted = style.theme.semantic.muted;
-  const border = style.theme.border.primary;
-  const ctx = getDefaultContext();
+let cachedLoadingBackground:
+  | { cols: number; rows: number; rendered: string }
+  | null = null;
 
-  // ── Spiral background ────────────────────────────────────────────────
+function renderLandingBackground(
+  model: DashboardModel,
+  style: StylePort,
+  muted: StylePort['theme']['semantic']['muted'],
+): string {
+  if (
+    model.loading
+    && cachedLoadingBackground
+    && cachedLoadingBackground.cols === model.cols
+    && cachedLoadingBackground.rows === model.rows
+  ) {
+    return cachedLoadingBackground.rendered;
+  }
+
+  const ctx = getDefaultContext();
   let bg = surfaceToString(
     canvas(model.cols, model.rows, spiralShader, {
       time: Date.now() / 1000,
@@ -23,7 +36,23 @@ export function landingView(model: DashboardModel, style: StylePort): string {
   if (!bg.trim()) {
     bg = spiralFrame(model.cols, model.rows, Date.now()).join('\n');
   }
-  const styledBg = style.styled(muted, bg);
+  const rendered = style.styled(muted, bg);
+  if (model.loading) {
+    cachedLoadingBackground = {
+      cols: model.cols,
+      rows: model.rows,
+      rendered,
+    };
+  }
+  return rendered;
+}
+
+export function landingView(model: DashboardModel, style: StylePort): string {
+  const muted = style.theme.semantic.muted;
+  const border = style.theme.border.primary;
+
+  // ── Spiral background ────────────────────────────────────────────────
+  const styledBg = renderLandingBackground(model, style, muted);
 
   // ── Foreground content ───────────────────────────────────────────────
   const fg: FgLine[] = [];

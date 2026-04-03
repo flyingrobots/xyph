@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { createGraphContext } from '../../src/infrastructure/GraphContext.js';
+import { createObservedGraphProjection } from '../../src/infrastructure/ObservedGraphProjection.js';
 import { WarpIntakeAdapter } from '../../src/infrastructure/adapters/WarpIntakeAdapter.js';
 import { WarpGraphAdapter } from '../../src/infrastructure/adapters/WarpGraphAdapter.js';
 import { execSync } from 'node:child_process';
@@ -10,11 +10,11 @@ import fs from 'node:fs';
 /**
  * Cross-Adapter Visibility Tests
  *
- * Verifies that GraphContext and WarpIntakeAdapter share a single
+ * Verifies that ObservedGraphProjection and WarpIntakeAdapter share a single
  * WarpGraph instance via GraphPort. Writes are immediately visible
  * to reads — no syncCoverage() or invalidateCache() needed.
  */
-describe('Cross-Adapter Visibility (GraphContext sees Intake mutations)', () => {
+describe('Cross-Adapter Visibility (ObservedGraphProjection sees Intake mutations)', () => {
   let repoPath: string;
   const writerId = 'human.tester';
   let graphPort: WarpGraphAdapter;
@@ -68,8 +68,8 @@ describe('Cross-Adapter Visibility (GraphContext sees Intake mutations)', () => 
     }
   });
 
-  it('GraphContext sees promote mutation from a separate Intake adapter (no invalidateCache)', async () => {
-    const ctx = createGraphContext(graphPort);
+  it('ObservedGraphProjection sees promote mutation from a separate Intake adapter (no invalidateCache)', async () => {
+    const ctx = createObservedGraphProjection(graphPort);
     const before = await ctx.fetchSnapshot();
     const questBefore = before.quests.find((q) => q.id === 'task:XVIS-001');
     expect(questBefore).toBeDefined();
@@ -87,8 +87,8 @@ describe('Cross-Adapter Visibility (GraphContext sees Intake mutations)', () => 
     expect(questAfter?.intentId).toBe('intent:cross-test');
   });
 
-  it('GraphContext sees reject mutation from a separate Intake adapter (no invalidateCache)', async () => {
-    const ctx = createGraphContext(graphPort);
+  it('ObservedGraphProjection sees reject mutation from a separate Intake adapter (no invalidateCache)', async () => {
+    const ctx = createObservedGraphProjection(graphPort);
     const before = await ctx.fetchSnapshot();
     const questBefore = before.quests.find((q) => q.id === 'task:XVIS-002');
     expect(questBefore).toBeDefined();
@@ -105,7 +105,7 @@ describe('Cross-Adapter Visibility (GraphContext sees Intake mutations)', () => 
   });
 
   it('graphMeta is populated and snapshot updates after an Intake mutation', async () => {
-    const ctx = createGraphContext(graphPort);
+    const ctx = createObservedGraphProjection(graphPort);
     const before = await ctx.fetchSnapshot();
     expect(before.graphMeta).toBeDefined();
     expect(before.graphMeta?.maxTick).toBeGreaterThan(0);
@@ -129,7 +129,7 @@ describe('Cross-Adapter Visibility (GraphContext sees Intake mutations)', () => 
   });
 
   it('cached snapshot is returned when no mutations occurred (hasFrontierChanged short-circuit)', async () => {
-    const ctx = createGraphContext(graphPort);
+    const ctx = createObservedGraphProjection(graphPort);
     const first = await ctx.fetchSnapshot();
     const second = await ctx.fetchSnapshot();
     expect(second).toBe(first);

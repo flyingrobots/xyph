@@ -4,10 +4,10 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { WarpGraphAdapter } from '../../src/infrastructure/adapters/WarpGraphAdapter.js';
-import { createGraphContext } from '../../src/infrastructure/GraphContext.js';
+import { createObservedGraphProjection } from '../../src/infrastructure/ObservedGraphProjection.js';
 import { createPatchSession } from '../../src/infrastructure/helpers/createPatchSession.js';
 
-describe('GraphContext entity detail integration', () => {
+describe('ObservedGraphProjection entity detail integration', () => {
   let repoPath: string;
   let graphPort: WarpGraphAdapter;
 
@@ -186,7 +186,7 @@ describe('GraphContext entity detail integration', () => {
     await reviewReply.attachContent('comment:SHOW-4', 'Added a clearer explanation and updated the quest timeline labels.');
     await reviewReply.commit();
 
-    const ctx = createGraphContext(graphPort);
+    const ctx = createObservedGraphProjection(graphPort);
     const detail = await ctx.fetchEntityDetail('task:SHOW-001');
 
     expect(detail).not.toBeNull();
@@ -286,7 +286,7 @@ describe('GraphContext entity detail integration', () => {
   });
 
   it('builds task entity detail without routing through fetchSnapshot', { timeout: 30_000 }, async () => {
-    const ctx = createGraphContext(graphPort);
+    const ctx = createObservedGraphProjection(graphPort);
     const snapshotSpy = vi.spyOn(ctx, 'fetchSnapshot');
 
     try {
@@ -301,7 +301,7 @@ describe('GraphContext entity detail integration', () => {
 
   it('does not scan whole narrative families when building task entity detail', { timeout: 30_000 }, async () => {
     const graph = await graphPort.getGraph();
-    const ctx = createGraphContext(graphPort);
+    const ctx = createObservedGraphProjection(graphPort);
     const seenPatterns: string[] = [];
     const originalQuery = graph.query.bind(graph);
     const querySpy = vi.spyOn(graph, 'query').mockImplementation(((...args: unknown[]) => {
@@ -360,7 +360,7 @@ describe('GraphContext entity detail integration', () => {
         .addEdge('review:SELF-001', 'patchset:SELF-001', 'reviews');
     });
 
-    const ctx = createGraphContext(graphPort);
+    const ctx = createObservedGraphProjection(graphPort);
     const snapshot = await ctx.fetchSnapshot();
     const submission = snapshot.submissions.find((entry) => entry.id === 'submission:SELF-001');
 
@@ -411,7 +411,7 @@ describe('GraphContext entity detail integration', () => {
       p.addEdge('req:SHOW-MILESTONE', 'criterion:SHOW-MILESTONE', 'has-criterion');
     });
 
-    const ctx = createGraphContext(graphPort);
+    const ctx = createObservedGraphProjection(graphPort);
     const detail = await ctx.fetchEntityDetail('task:SHOW-MILESTONE');
 
     expect(detail?.questDetail).toBeDefined();

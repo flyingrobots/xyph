@@ -2,12 +2,12 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { visibleLength, type App } from '@flyingrobots/bijou-tui';
 import { createPlainStylePort, ensurePlainBijouContext } from '../../../infrastructure/adapters/PlainStyleAdapter.js';
 import { createDashboardApp, type DashboardModel, type DashboardMsg } from '../DashboardApp.js';
-import type { GraphSnapshot } from '../../../domain/models/dashboard.js';
+import type { DashboardHealth, GraphSnapshot } from '../../../domain/models/dashboard.js';
 import { createMemoryObserverWatermarkStore, observerWatermarkScopeKey, type ObserverWatermarks } from '../observer-watermarks.js';
 import { describeCockpitInteractionMap } from '../views/cockpit-view.js';
 import { makeSnapshot } from '../../../../test/helpers/snapshot.js';
 import { makeKey as key, makeMouse as mouse, makeResize as resize } from '../../../../test/helpers/keys.js';
-import { mockGraphContext, mockIntakePort, mockGraphPort, mockSubmissionPort } from '../../../../test/helpers/ports.js';
+import { mockReadProjection, mockIntakePort, mockGraphPort, mockSubmissionPort } from '../../../../test/helpers/ports.js';
 import { strip } from '../../../../test/helpers/ansi.js';
 
 ensurePlainBijouContext();
@@ -18,9 +18,33 @@ const TEST_SCOPE = {
   graphName: 'xyph',
 } as const;
 
+const healthyDashboardHealth: DashboardHealth = {
+  status: 'ok',
+  blocking: false,
+  summary: {
+    issueCount: 0,
+    blockingIssueCount: 0,
+    readinessGaps: 0,
+    governedCompletionGaps: 0,
+  },
+  issues: [],
+};
+
+function makeHealth(overrides?: Partial<DashboardHealth>): DashboardHealth {
+  return {
+    ...healthyDashboardHealth,
+    ...overrides,
+    summary: {
+      ...healthyDashboardHealth.summary,
+      ...overrides?.summary,
+    },
+    issues: overrides?.issues ?? healthyDashboardHealth.issues,
+  };
+}
+
 function buildApp(snapshotOverrides?: Partial<GraphSnapshot>, watermarks?: Partial<ObserverWatermarks>): App<DashboardModel, DashboardMsg> {
   return createDashboardApp({
-    ctx: mockGraphContext(snapshotOverrides),
+    readPort: mockReadProjection(snapshotOverrides),
     intake: mockIntakePort(),
     graphPort: mockGraphPort(),
     submissionPort: mockSubmissionPort(),
@@ -37,7 +61,7 @@ function buildApp(snapshotOverrides?: Partial<GraphSnapshot>, watermarks?: Parti
 function ready(app: App<DashboardModel, DashboardMsg>, snapshot: GraphSnapshot): DashboardModel {
   const [initial] = app.init();
   const [loaded] = app.update(
-    { type: 'snapshot-loaded', snapshot, requestId: initial.requestId },
+    { type: 'snapshot-loaded', snapshot, health: healthyDashboardHealth, requestId: initial.requestId },
     initial,
   );
   return loaded;
@@ -104,6 +128,75 @@ describe('DashboardApp', () => {
     expect(loaded.showLanding).toBe(false);
   });
 
+  it('does not block the first snapshot when graph health stalls', async () => {
+    vi.stubEnv('XYPH_TUI_HEALTH_TIMEOUT_MS', '5');
+    const logger = {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    };
+    const snapshot = makeSnapshot({
+      quests: [{ id: 'task:Q1', title: 'Quest One', status: 'READY', hours: 1 }],
+    });
+    const ctx = mockReadProjection({
+      quests: [{ id: 'task:Q1', title: 'Quest One', status: 'READY', hours: 1 }],
+    });
+    const graphPort = {
+      ...mockGraphPort(),
+      getGraph: vi.fn().mockImplementation(() => new Promise(() => {})),
+    };
+    const app = createDashboardApp({
+      readPort: ctx,
+      intake: mockIntakePort(),
+      graphPort,
+      submissionPort: mockSubmissionPort(),
+      style: createPlainStylePort(),
+      agentId: 'agent.test',
+      logoText: 'XYPH',
+      observerWatermarkStore: createMemoryObserverWatermarkStore(),
+      observerWatermarkScope: TEST_SCOPE,
+      logger,
+    });
+
+    const [initial, cmds] = app.init();
+    const emitted: DashboardMsg[] = [];
+    await cmds[0]?.((msg) => {
+      emitted.push(msg);
+    }, {
+      onPulse: () => ({ dispose() {} }),
+      sleep: async () => undefined,
+      defer: async () => undefined,
+      now: () => Date.now(),
+    });
+
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0]).toEqual({
+      type: 'snapshot-loaded',
+      snapshot,
+      requestId: initial.requestId,
+    });
+
+    await cmds[1]?.((msg) => {
+      emitted.push(msg);
+    }, {
+      onPulse: () => ({ dispose() {} }),
+      sleep: async () => undefined,
+      defer: async () => undefined,
+      now: () => Date.now(),
+    });
+
+    expect(emitted[1]).toEqual({
+      type: 'health-loaded',
+      health: null,
+      requestId: initial.requestId,
+    });
+    expect(logger.warn).toHaveBeenCalledWith(
+      'dashboard health load timed out',
+      expect.objectContaining({ timeoutMs: 5 }),
+    );
+  });
+
   it('switches lanes with number keys 1-7', () => {
     const app = buildApp();
     const loaded = ready(app, makeSnapshot());
@@ -141,6 +234,27 @@ describe('DashboardApp', () => {
     expect(next.lane).toBe('review');
   });
 
+  it('scrolls the lane rail when the rail overflows', () => {
+    const app = buildApp();
+    const loaded = widen(app, ready(app, makeSnapshot()), 90, 18);
+    const map = describeCockpitInteractionMap(loaded, createPlainStylePort(), loaded.cols, loaded.rows - 2);
+    expect(map).not.toBeNull();
+    if (!map) throw new Error('Expected interaction map');
+
+    let state = loaded;
+    for (let index = 0; index < 12; index += 1) {
+      const [next] = app.update(
+        mouse('scroll-down', map.railRect.y + 2, map.railRect.x + 2),
+        state,
+      );
+      state = next;
+    }
+
+    expect(state.laneState.now.railScrollY).toBeGreaterThan(0);
+    const plain = strip(app.view(state) as string);
+    expect(plain).toContain('Reality');
+  });
+
   it('cycles lanes with [ and ]', () => {
     const app = buildApp();
     const loaded = ready(app, makeSnapshot());
@@ -155,7 +269,7 @@ describe('DashboardApp', () => {
   it('marks the current lane as seen when switching away from it', () => {
     const store = createMemoryObserverWatermarkStore();
     const app = createDashboardApp({
-      ctx: mockGraphContext(),
+      readPort: mockReadProjection(),
       intake: mockIntakePort(),
       graphPort: mockGraphPort(),
       submissionPort: mockSubmissionPort(),
@@ -275,7 +389,7 @@ describe('DashboardApp', () => {
   });
 
   it('opens a dedicated governance page for settlement artifacts', () => {
-    const ctx = mockGraphContext({
+    const ctx = mockReadProjection({
       governanceArtifacts: [{
         id: 'collapse-proposal:settle-1',
         type: 'collapse-proposal',
@@ -316,7 +430,7 @@ describe('DashboardApp', () => {
       },
     });
     const app = createDashboardApp({
-      ctx,
+      readPort: ctx,
       intake: mockIntakePort(),
       graphPort: mockGraphPort(),
       submissionPort: mockSubmissionPort(),
@@ -395,7 +509,7 @@ describe('DashboardApp', () => {
   });
 
   it('opens a dedicated review page for submissions', () => {
-    const ctx = mockGraphContext({
+    const ctx = mockReadProjection({
       quests: [{
         id: 'task:REV-1',
         title: 'Reviewable quest',
@@ -413,44 +527,28 @@ describe('DashboardApp', () => {
         submittedAt: 100,
       }],
     });
-    (ctx.fetchEntityDetail as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
-      id: 'task:REV-1',
-      type: 'task',
-      props: { type: 'task' },
-      outgoing: [],
-      incoming: [],
-      questDetail: {
+    (ctx.fetchReviewPageData as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      quest: {
         id: 'task:REV-1',
-        quest: {
-          id: 'task:REV-1',
-          title: 'Reviewable quest',
-          status: 'IN_PROGRESS',
-          hours: 3,
-        },
-        submission: {
-          id: 'submission:REV-1',
-          questId: 'task:REV-1',
-          status: 'OPEN',
-          tipPatchsetId: 'patchset:REV-1',
-          headsCount: 1,
-          approvalCount: 0,
-          submittedBy: 'agent.other',
-          submittedAt: 100,
-        },
-        reviews: [],
-        decisions: [],
-        stories: [],
-        requirements: [],
-        criteria: [],
-        evidence: [],
-        policies: [],
-        documents: [],
-        comments: [],
-        timeline: [],
+        title: 'Reviewable quest',
+        status: 'IN_PROGRESS',
+        hours: 3,
       },
+      submission: {
+        id: 'submission:REV-1',
+        questId: 'task:REV-1',
+        status: 'OPEN',
+        tipPatchsetId: 'patchset:REV-1',
+        headsCount: 1,
+        approvalCount: 0,
+        submittedBy: 'agent.other',
+        submittedAt: 100,
+      },
+      reviews: [],
+      decisions: [],
     });
     const app = createDashboardApp({
-      ctx,
+      readPort: ctx,
       intake: mockIntakePort(),
       graphPort: mockGraphPort(),
       submissionPort: mockSubmissionPort(),
@@ -489,43 +587,28 @@ describe('DashboardApp', () => {
     });
 
     const [detailLoaded] = app.update({
-      type: 'page-detail-loaded',
-      entityId: 'task:REV-1',
-      detail: {
-        id: 'task:REV-1',
-        type: 'task',
-        props: { type: 'task' },
-        outgoing: [],
-        incoming: [],
-        questDetail: {
+      type: 'review-page-loaded',
+      submissionId: 'submission:REV-1',
+      questId: 'task:REV-1',
+      data: {
+        quest: {
           id: 'task:REV-1',
-          quest: {
-            id: 'task:REV-1',
-            title: 'Reviewable quest',
-            status: 'IN_PROGRESS',
-            hours: 3,
-          },
-          submission: {
-            id: 'submission:REV-1',
-            questId: 'task:REV-1',
-            status: 'OPEN',
-            tipPatchsetId: 'patchset:REV-1',
-            headsCount: 1,
-            approvalCount: 0,
-            submittedBy: 'agent.other',
-            submittedAt: 100,
-          },
-          reviews: [],
-          decisions: [],
-          stories: [],
-          requirements: [],
-          criteria: [],
-          evidence: [],
-          policies: [],
-          documents: [],
-          comments: [],
-          timeline: [],
+          title: 'Reviewable quest',
+          status: 'IN_PROGRESS',
+          hours: 3,
         },
+        submission: {
+          id: 'submission:REV-1',
+          questId: 'task:REV-1',
+          status: 'OPEN',
+          tipPatchsetId: 'patchset:REV-1',
+          headsCount: 1,
+          approvalCount: 0,
+          submittedBy: 'agent.other',
+          submittedAt: 100,
+        },
+        reviews: [],
+        decisions: [],
       },
       requestId: opened.pageRequestId,
     }, opened);
@@ -541,6 +624,90 @@ describe('DashboardApp', () => {
       kind: 'comment',
       targetId: 'submission:REV-1',
     });
+  });
+
+  it('renders the landing review lane from targeted review-lane data', () => {
+    const app = buildApp({
+      quests: [{
+        id: 'task:REV-LANE-1',
+        title: 'Review lane quest',
+        status: 'IN_PROGRESS',
+        hours: 2,
+      }],
+      submissions: [],
+    });
+    const loaded = ready(app, makeSnapshot({
+      quests: [{
+        id: 'task:REV-LANE-1',
+        title: 'Review lane quest',
+        status: 'IN_PROGRESS',
+        hours: 2,
+      }],
+      submissions: [],
+    }));
+
+    const [withLaneData] = app.update({
+      type: 'review-lane-loaded',
+      requestId: loaded.requestId,
+      data: {
+        quests: [{
+          id: 'task:REV-LANE-1',
+          title: 'Review lane quest',
+          status: 'IN_PROGRESS',
+          hours: 2,
+        }],
+        submissions: [{
+          id: 'submission:REV-LANE-1',
+          questId: 'task:REV-LANE-1',
+          status: 'OPEN',
+          tipPatchsetId: 'patchset:REV-LANE-1',
+          headsCount: 1,
+          approvalCount: 0,
+          submittedBy: 'agent.other',
+          submittedAt: 500,
+        }],
+      },
+    }, loaded);
+    const [review] = app.update(key('3'), withLaneData);
+    const plain = strip(app.view(review) as string);
+
+    expect(plain).toContain('submission:REV-LANE-1'.replace('submission:', ''));
+    expect(plain).toContain('Review lane quest');
+  });
+
+  it('renders the landing suggestions lane from targeted suggestion-lane data', () => {
+    const app = buildApp({
+      aiSuggestions: [],
+    });
+    const loaded = ready(app, makeSnapshot({
+      aiSuggestions: [],
+    }));
+
+    const [withLaneData] = app.update({
+      type: 'suggestion-lane-loaded',
+      requestId: loaded.requestId,
+      data: {
+        aiSuggestions: [{
+          id: 'suggestion:SUG-LANE-1',
+          type: 'ai-suggestion',
+          kind: 'general',
+          title: 'Adopt observer-per-view dashboard reads',
+          summary: 'Move more cockpit lanes onto dedicated observers.',
+          status: 'suggested',
+          audience: 'agent',
+          origin: 'request',
+          suggestedBy: 'agent.prime',
+          suggestedAt: 600,
+          requestedBy: 'human.james',
+          relatedIds: [],
+        }],
+      },
+    }, loaded);
+    const [suggestions] = app.update(key('5'), withLaneData);
+    const plain = strip(app.view(suggestions) as string);
+
+    expect(plain).toContain('Adopt observer-per-view dashboard reads');
+    expect(plain).toContain('prime');
   });
 
   it('selects worklist rows by click and scrolls panes with the mouse wheel', () => {
@@ -666,6 +833,325 @@ describe('DashboardApp', () => {
     const [palette] = app.update(key(':'), loaded);
     expect(palette.mode).toBe('palette');
     expect(palette.paletteState).not.toBeNull();
+  });
+
+  it('renders doctor findings in the drawer when health data is present', () => {
+    const app = buildApp();
+    const [initial] = app.init();
+    const snapshot = makeSnapshot({
+      quests: [{ id: 'task:TRC-010', title: 'Trace completion', status: 'DONE', hours: 2 }],
+    });
+    const health: DashboardHealth = {
+      status: 'warn',
+      blocking: false,
+      summary: {
+        issueCount: 1,
+        blockingIssueCount: 0,
+        readinessGaps: 0,
+        governedCompletionGaps: 1,
+      },
+      issues: [{
+        severity: 'warning',
+        category: 'governance',
+        code: 'governance-incomplete-linked',
+        nodeId: 'task:TRC-010',
+        message: 'task:TRC-010 is governed by policy:TRACE and currently computes as LINKED.',
+      }],
+    };
+
+    const [loaded] = app.update(
+      { type: 'snapshot-loaded', snapshot, health, requestId: initial.requestId },
+      initial,
+    );
+    const [drawer] = app.update(key('m'), loaded);
+    const [opened] = app.update({ type: 'drawer-frame', value: 56 }, drawer);
+    const plain = strip(app.view(opened) as string);
+
+    expect(plain).toContain('Graph Health (1)');
+    expect(plain).toContain('task:TRC-010');
+  });
+
+  it('renders the quit confirmation above the drawer chrome', () => {
+    const app = buildApp();
+    const loaded = widen(app, ready(app, makeSnapshot({
+      quests: [
+        { id: 'task:Q1', title: 'Quest One', status: 'READY', hours: 1, assignedTo: 'agent.test' },
+        { id: 'task:Q2', title: 'Quest Two', status: 'BACKLOG', hours: 1 },
+      ],
+    })), 140, 24);
+
+    const [drawer] = app.update(key('m'), loaded);
+    const [opened] = app.update({ type: 'drawer-frame', value: 56 }, drawer);
+    const [confirm] = app.update(key('q'), opened);
+    const plain = strip(app.view(confirm) as string);
+    const promptLine = plain.split('\n').find((line) => line.includes('Quit XYPH?'));
+
+    expect(confirm.mode).toBe('confirm');
+    expect(promptLine).toBeDefined();
+    expect(promptLine).toMatch(/│\s*Quit XYPH\?\s*│/);
+  });
+
+  it('opens the doctor page with h and renders graph health findings', () => {
+    const app = buildApp();
+    const [initial] = app.init();
+    const snapshot = makeSnapshot();
+    const health = makeHealth({
+      status: 'warn',
+      summary: {
+        issueCount: 2,
+        blockingIssueCount: 1,
+        readinessGaps: 0,
+        governedCompletionGaps: 1,
+      },
+      issues: [
+        {
+          severity: 'error',
+          category: 'structural',
+          code: 'graph-health-blocking',
+          nodeId: 'artifact:campaign:SOVEREIGNTY',
+          message: 'artifact:campaign:SOVEREIGNTY points at a missing campaign.',
+        },
+        {
+          severity: 'warning',
+          category: 'governance',
+          code: 'governance-incomplete-linked',
+          nodeId: 'task:TRC-010',
+          message: 'task:TRC-010 is governed by policy:TRACE and currently computes as LINKED.',
+        },
+      ],
+    });
+    const [loaded] = app.update(
+      { type: 'snapshot-loaded', snapshot, health, requestId: initial.requestId },
+      initial,
+    );
+    const wide = widen(app, loaded, 140, 60);
+    const [doctor] = app.update(key('h'), wide);
+    const plain = strip(app.view(doctor) as string);
+
+    expect(doctor.pageStack[doctor.pageStack.length - 1]).toMatchObject({ kind: 'doctor', filter: 'all' });
+    expect(plain).toContain('Doctor');
+    expect(plain).toContain('artifact:campaign:SOVEREIGNTY');
+    expect(plain).toContain('task:TRC-010');
+  });
+
+  it('cycles doctor filters with v on the doctor page', () => {
+    const app = buildApp();
+    const [initial] = app.init();
+    const snapshot = makeSnapshot();
+    const health = makeHealth({
+      status: 'warn',
+      summary: {
+        issueCount: 2,
+        blockingIssueCount: 1,
+        readinessGaps: 0,
+        governedCompletionGaps: 1,
+      },
+      issues: [
+        {
+          severity: 'error',
+          category: 'structural',
+          code: 'graph-health-blocking',
+          nodeId: 'artifact:campaign:SOVEREIGNTY',
+          message: 'artifact:campaign:SOVEREIGNTY points at a missing campaign.',
+        },
+        {
+          severity: 'warning',
+          category: 'governance',
+          code: 'governance-incomplete-linked',
+          nodeId: 'task:TRC-010',
+          message: 'task:TRC-010 is governed by policy:TRACE and currently computes as LINKED.',
+        },
+      ],
+    });
+    const [loaded] = app.update(
+      { type: 'snapshot-loaded', snapshot, health, requestId: initial.requestId },
+      initial,
+    );
+    const wide = widen(app, loaded, 140, 60);
+    const [doctor] = app.update(key('h'), wide);
+    const [blocking] = app.update(key('v'), doctor);
+    const plain = strip(app.view(blocking) as string);
+
+    expect(blocking.pageStack[blocking.pageStack.length - 1]).toMatchObject({ kind: 'doctor', filter: 'blocking' });
+    expect(plain).toContain('artifact:campaign:SOVEREIGNTY');
+    expect(plain).not.toContain('task:TRC-010');
+  });
+
+  it('moves doctor focus with j and opens the selected quest finding with enter', () => {
+    const app = buildApp();
+    const [initial] = app.init();
+    const snapshot = makeSnapshot({
+      quests: [{ id: 'task:TRC-010', title: 'Trace completion', status: 'DONE', hours: 2 }],
+    });
+    const health = makeHealth({
+      status: 'warn',
+      summary: {
+        issueCount: 2,
+        blockingIssueCount: 1,
+        readinessGaps: 0,
+        governedCompletionGaps: 1,
+      },
+      issues: [
+        {
+          severity: 'error',
+          category: 'structural',
+          code: 'graph-health-blocking',
+          nodeId: 'artifact:campaign:SOVEREIGNTY',
+          message: 'artifact:campaign:SOVEREIGNTY points at a missing campaign.',
+        },
+        {
+          severity: 'warning',
+          category: 'governance',
+          code: 'governance-incomplete-linked',
+          nodeId: 'task:TRC-010',
+          message: 'task:TRC-010 is governed by policy:TRACE and currently computes as LINKED.',
+        },
+      ],
+    });
+    const [loaded] = app.update(
+      { type: 'snapshot-loaded', snapshot, health, requestId: initial.requestId },
+      initial,
+    );
+    const wide = widen(app, loaded, 140, 60);
+    const [doctor] = app.update(key('h'), wide);
+    const [focused] = app.update(key('j'), doctor);
+    const [opened] = app.update(key('enter'), focused);
+
+    expect(opened.pageStack[opened.pageStack.length - 1]).toMatchObject({ kind: 'quest', questId: 'task:TRC-010' });
+  });
+
+  it('shows a toast when the selected doctor finding has no openable page target', () => {
+    const app = buildApp();
+    const [initial] = app.init();
+    const snapshot = makeSnapshot();
+    const health = makeHealth({
+      status: 'error',
+      blocking: true,
+      summary: {
+        issueCount: 1,
+        blockingIssueCount: 1,
+        readinessGaps: 0,
+        governedCompletionGaps: 0,
+      },
+      issues: [
+        {
+          severity: 'error',
+          category: 'structural',
+          code: 'graph-health-blocking',
+          nodeId: 'artifact:campaign:SOVEREIGNTY',
+          message: 'artifact:campaign:SOVEREIGNTY points at a missing campaign.',
+        },
+      ],
+    });
+    const [loaded] = app.update(
+      { type: 'snapshot-loaded', snapshot, health, requestId: initial.requestId },
+      initial,
+    );
+    const [doctor] = app.update(key('h'), widen(app, loaded, 140, 60));
+    const [attempted] = app.update(key('enter'), doctor);
+
+    expect(attempted.toast?.variant).toBe('error');
+    expect(attempted.toast?.message).toBe('No doctor target page exists for artifact:campaign:SOVEREIGNTY.');
+  });
+
+  it('shows a success toast when graph health improves after the first load', () => {
+    const app = buildApp();
+    const [initial] = app.init();
+    const snapshot = makeSnapshot();
+    const previousHealth = makeHealth({
+      status: 'warn',
+      summary: {
+        issueCount: 46,
+        blockingIssueCount: 0,
+        readinessGaps: 0,
+        governedCompletionGaps: 46,
+      },
+    });
+    const [loaded] = app.update(
+      { type: 'snapshot-loaded', snapshot, health: previousHealth, requestId: initial.requestId },
+      initial,
+    );
+    expect(loaded.toast).toBeNull();
+
+    const nextHealth = makeHealth({
+      status: 'warn',
+      summary: {
+        issueCount: 40,
+        blockingIssueCount: 0,
+        readinessGaps: 0,
+        governedCompletionGaps: 40,
+      },
+    });
+    const [improved] = app.update(
+      { type: 'health-loaded', health: nextHealth, requestId: loaded.requestId },
+      loaded,
+    );
+
+    expect(improved.toast?.variant).toBe('success');
+    expect(improved.toast?.message).toBe('Graph health improved: 46 -> 40 issues.');
+  });
+
+  it('shows an error toast when blocking graph issues appear after a healthy snapshot', () => {
+    const app = buildApp();
+    const loaded = ready(app, makeSnapshot());
+    const blockingHealth = makeHealth({
+      status: 'error',
+      blocking: true,
+      summary: {
+        issueCount: 1,
+        blockingIssueCount: 1,
+        readinessGaps: 0,
+        governedCompletionGaps: 0,
+      },
+      issues: [{
+        severity: 'error',
+        category: 'structural',
+        code: 'graph-health-blocking',
+        nodeId: 'artifact:campaign:SOVEREIGNTY',
+        message: 'artifact:campaign:SOVEREIGNTY points at a missing campaign.',
+      }],
+    });
+
+    const [regressed] = app.update(
+      { type: 'health-loaded', health: blockingHealth, requestId: loaded.requestId },
+      loaded,
+    );
+
+    expect(regressed.toast?.variant).toBe('error');
+    expect(regressed.toast?.message).toBe('Blocking graph health alert: 1 issue detected.');
+  });
+
+  it('preserves an existing toast instead of overwriting it with a health transition toast', () => {
+    const app = buildApp();
+    const loaded = ready(app, makeSnapshot());
+    const currentToast = { message: 'Quest claimed.', variant: 'success' as const, expiresAt: 123 };
+    const modelWithToast = { ...loaded, toast: currentToast };
+    const improvedHealth = makeHealth({
+      status: 'warn',
+      summary: {
+        issueCount: 5,
+        blockingIssueCount: 0,
+        readinessGaps: 0,
+        governedCompletionGaps: 5,
+      },
+    });
+    const baselineHealth = makeHealth({
+      status: 'warn',
+      summary: {
+        issueCount: 8,
+        blockingIssueCount: 0,
+        readinessGaps: 0,
+        governedCompletionGaps: 8,
+      },
+    });
+    const seeded = { ...modelWithToast, health: baselineHealth };
+
+    const [updated] = app.update(
+      { type: 'health-loaded', health: improvedHealth, requestId: seeded.requestId },
+      seeded,
+    );
+
+    expect(updated.toast).toEqual(currentToast);
   });
 
   it('toggles the inspector with i', () => {
@@ -1110,7 +1596,7 @@ describe('DashboardApp', () => {
   });
 
   it('opens a linked case page from a suggestion page and starts a human decision flow', () => {
-    const ctx = mockGraphContext({
+    const ctx = mockReadProjection({
       aiSuggestions: [{
         id: 'suggestion:AI-TRACE',
         type: 'ai-suggestion',
@@ -1127,7 +1613,7 @@ describe('DashboardApp', () => {
     });
 
     const app = createDashboardApp({
-      ctx,
+      readPort: ctx,
       intake: mockIntakePort(),
       graphPort: mockGraphPort(),
       submissionPort: mockSubmissionPort(),

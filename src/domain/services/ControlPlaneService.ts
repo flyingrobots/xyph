@@ -36,11 +36,14 @@ import {
 import type { Diagnostic } from '../models/diagnostics.js';
 import type { EntityDetail } from '../models/dashboard.js';
 import {
-  createGraphContext,
-  createGraphContextFromGraph,
-  type GraphContextGraph,
-} from '../../infrastructure/GraphContext.js';
+  createObservedGraphProjection,
+  createObservedGraphProjectionFromGraph,
+  type ObservedProjectionGraph,
+} from '../../infrastructure/ObservedGraphProjection.js';
+import { WarpObservationAdapter } from '../../infrastructure/adapters/WarpObservationAdapter.js';
+import { WarpOperationalReadAdapter } from '../../infrastructure/adapters/WarpOperationalReadAdapter.js';
 import { WarpRoadmapAdapter } from '../../infrastructure/adapters/WarpRoadmapAdapter.js';
+import { WarpSubstrateInspectionAdapter } from '../../infrastructure/adapters/WarpSubstrateInspectionAdapter.js';
 import { AgentBriefingService } from './AgentBriefingService.js';
 import { AgentContextService } from './AgentContextService.js';
 import { AgentSubmissionService } from './AgentSubmissionService.js';
@@ -154,9 +157,9 @@ interface WorkingSetProjectionContext {
   backing: ObservationCoordinateBacking;
 }
 
-interface DerivedWorldlineGraphContext {
-  graph: GraphContextGraph;
-  graphCtx: ReturnType<typeof createGraphContextFromGraph>;
+interface DerivedWorldlineProjection {
+  graph: ObservedProjectionGraph;
+  projection: ReturnType<typeof createObservedGraphProjectionFromGraph>;
   frontierDigest: string;
   backing: ObservationCoordinateBacking;
 }
@@ -434,13 +437,17 @@ export class ControlPlaneService implements ControlPlanePort {
   private readonly mutations: MutationKernelService;
   private readonly records: RecordService;
   private readonly capabilities: CapabilityResolverService;
+  private readonly observation: WarpObservationAdapter;
+  private readonly operationalRead: WarpOperationalReadAdapter;
 
   constructor(
     private readonly graphPort: GraphPort,
     agentId: string,
   ) {
     this.roadmap = new WarpRoadmapAdapter(graphPort);
-    this.doctor = new DoctorService(graphPort, this.roadmap);
+    this.observation = new WarpObservationAdapter(graphPort);
+    this.operationalRead = new WarpOperationalReadAdapter(graphPort);
+    this.doctor = new DoctorService(graphPort, this.roadmap, new WarpSubstrateInspectionAdapter(graphPort));
     this.mutations = new MutationKernelService(graphPort);
     this.records = new RecordService(graphPort);
     this.capabilities = new CapabilityResolverService(agentId);
@@ -595,10 +602,16 @@ export class ControlPlaneService implements ControlPlanePort {
     actions: AgentActionService;
   } {
     return {
-      briefing: new AgentBriefingService(this.graphPort, this.roadmap, principalId, this.doctor),
-      context: new AgentContextService(this.graphPort, this.roadmap, principalId, this.doctor),
-      submissions: new AgentSubmissionService(this.graphPort, principalId),
-      actions: new AgentActionService(this.graphPort, this.roadmap, principalId),
+      briefing: new AgentBriefingService(
+        this.graphPort,
+        this.roadmap,
+        principalId,
+        this.operationalRead,
+        this.doctor,
+      ),
+      context: new AgentContextService(this.graphPort, this.roadmap, principalId, this.observation, this.doctor),
+      submissions: new AgentSubmissionService(principalId, this.observation),
+      actions: new AgentActionService(this.graphPort, this.roadmap, principalId, this.observation, this.doctor),
     };
   }
 
@@ -721,7 +734,7 @@ export class ControlPlaneService implements ControlPlanePort {
     return graph;
   }
 
-  private async readGraphMeta(graph: GraphContextGraph): Promise<GraphMeta> {
+  private async readGraphMeta(graph: ObservedProjectionGraph): Promise<GraphMeta> {
     const [state, frontier] = await Promise.all([
       graph.getStateSnapshot(),
       graph.getFrontier(),
@@ -733,14 +746,14 @@ export class ControlPlaneService implements ControlPlanePort {
     return { maxTick, myTick, writerCount, tipSha };
   }
 
-  private async countNodeFamily(graph: GraphContextGraph, pattern: string): Promise<number> {
+  private async countNodeFamily(graph: ObservedProjectionGraph, pattern: string): Promise<number> {
     const result = await graph.query().match(pattern).aggregate({ count: true }).run();
     return 'count' in result && typeof result.count === 'number'
       ? result.count
       : 0;
   }
 
-  private async readSummaryProjection(graph: GraphContextGraph): Promise<{
+  private async readSummaryProjection(graph: ObservedProjectionGraph): Promise<{
     asOf: number;
     counts: SummaryCounts;
     graphMeta: GraphMeta;
@@ -875,7 +888,7 @@ export class ControlPlaneService implements ControlPlanePort {
       case 'worldline.summary': {
         const derived = capability.worldlineId === DEFAULT_WORLDLINE_ID
           ? null
-          : await this.createDerivedWorldlineGraphContext(capability, selector);
+          : await this.createDerivedWorldlineProjection(capability, selector);
         const graph = derived?.graph ?? (
           selector.kind === 'tip'
             ? await this.openLiveSummaryGraph()
@@ -941,14 +954,14 @@ export class ControlPlaneService implements ControlPlanePort {
       case 'entity.detail': {
         const derived = capability.worldlineId === DEFAULT_WORLDLINE_ID
           ? null
-          : await this.createDerivedWorldlineGraphContext(capability, selector);
-        const graphCtx = derived?.graphCtx ?? (
+          : await this.createDerivedWorldlineProjection(capability, selector);
+        const projectionReader = derived?.projection ?? (
           selector.kind === 'tip'
-            ? createGraphContext(this.graphPort)
-            : createGraphContextFromGraph(await this.openObservationGraph(selector), { syncCoverage: false })
+            ? createObservedGraphProjection(this.graphPort)
+            : createObservedGraphProjectionFromGraph(await this.openObservationGraph(selector), { syncCoverage: false })
         );
         const targetId = this.requireString(request.args['targetId'], 'observe targetId');
-        const detail = await graphCtx.fetchEntityDetail(targetId);
+        const detail = await projectionReader.fetchEntityDetail(targetId);
         if (!detail) {
           throw controlPlaneFailure(
             'not_found',
@@ -973,7 +986,7 @@ export class ControlPlaneService implements ControlPlanePort {
             Date.now(),
             null,
             true,
-            graphCtx.graph,
+            projectionReader.graph,
             derived?.frontierDigest,
             derived?.backing,
           ),
@@ -1550,10 +1563,10 @@ export class ControlPlaneService implements ControlPlanePort {
     }
   }
 
-  private async createDerivedWorldlineGraphContext(
+  private async createDerivedWorldlineProjection(
     capability: EffectiveCapabilityGrant,
     selector: ObservationSelector,
-  ): Promise<DerivedWorldlineGraphContext> {
+  ): Promise<DerivedWorldlineProjection> {
     const workingSetId = this.resolveDerivedWorkingSetId(capability, 'observe');
     if (!workingSetId) {
       throw controlPlaneFailure(
@@ -1615,7 +1628,7 @@ export class ControlPlaneService implements ControlPlanePort {
       return cachedEdges;
     };
 
-    const derivedGraph: GraphContextGraph = {
+    const derivedGraph: ObservedProjectionGraph = {
       writerId: graph.writerId,
       query: () => worldline.query(),
       hasNode: (nodeId: string) => worldline.hasNode(nodeId),
@@ -1667,7 +1680,7 @@ export class ControlPlaneService implements ControlPlanePort {
       graph: derivedGraph,
       frontierDigest,
       backing,
-      graphCtx: createGraphContextFromGraph(derivedGraph, { syncCoverage: false }),
+      projection: createObservedGraphProjectionFromGraph(derivedGraph, { syncCoverage: false }),
     };
   }
 
@@ -2149,13 +2162,13 @@ export class ControlPlaneService implements ControlPlanePort {
       this.listCanonicalArtifactNodes(graph, 'comparison-artifact'),
       this.listCanonicalArtifactNodes(graph, 'collapse-proposal'),
     ]);
-    const graphCtx = createGraphContextFromGraph(graph, { syncCoverage: false });
+    const projectionReader = createObservedGraphProjectionFromGraph(graph, { syncCoverage: false });
 
     const comparisonDetails = (await Promise.all(
-      comparisonNodes.map(async ({ id }) => graphCtx.fetchEntityDetail(id)),
+      comparisonNodes.map(async ({ id }) => projectionReader.fetchEntityDetail(id)),
     )).filter((detail): detail is NonNullable<typeof detail> => Boolean(detail));
     const collapseDetails = (await Promise.all(
-      collapseNodes.map(async ({ id }) => graphCtx.fetchEntityDetail(id)),
+      collapseNodes.map(async ({ id }) => projectionReader.fetchEntityDetail(id)),
     )).filter((detail): detail is NonNullable<typeof detail> => Boolean(detail));
 
     const comparisonItems = comparisonDetails
@@ -2235,8 +2248,8 @@ export class ControlPlaneService implements ControlPlanePort {
     graph: WarpGraph,
     artifactId: string,
   ): Promise<Record<string, unknown>> {
-    const graphCtx = createGraphContextFromGraph(graph, { syncCoverage: false });
-    const detail = await graphCtx.fetchEntityDetail(artifactId);
+    const projectionReader = createObservedGraphProjectionFromGraph(graph, { syncCoverage: false });
+    const detail = await projectionReader.fetchEntityDetail(artifactId);
     if (!detail) {
       throw controlPlaneFailure('not_found', `Entity ${artifactId} not found in the graph`);
     }
@@ -2264,7 +2277,7 @@ export class ControlPlaneService implements ControlPlanePort {
     const entries = (await Promise.all(
       nodes
         .filter((node) => node.props['artifact_series_key'] === seriesKey)
-        .map(async ({ id }) => graphCtx.fetchEntityDetail(id)),
+        .map(async ({ id }) => projectionReader.fetchEntityDetail(id)),
     ))
       .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry))
       .sort((left, right) => {
@@ -3646,7 +3659,7 @@ export class ControlPlaneService implements ControlPlanePort {
     observedAt: number,
     graphMeta: GraphMeta | null,
     onlyMeta = false,
-    graphOverride?: GraphContextGraph,
+    graphOverride?: ObservedProjectionGraph,
     frontierDigestOverride?: string,
     backingOverride?: ObservationCoordinateBacking,
   ): Promise<ObservationCoordinate> {

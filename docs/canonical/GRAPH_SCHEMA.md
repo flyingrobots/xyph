@@ -1,6 +1,12 @@
 # GRAPH SCHEMA
-**Version:** 2.3.0
+**Version:** 2.5.0
 **Status:** AUTHORITATIVE
+
+**Scope note:** This document defines the concrete graph-node and graph-edge
+contract for the current WARP graph. For the full product-wide ontology
+catalog, including partially implemented families and non-graph public handles
+such as `worldline:*` and `observer:*`, see
+[`/Users/james/git/xyph/docs/canonical/ONTOLOGY_CATALOG.md`](./ONTOLOGY_CATALOG.md).
 
 ## 1. Node ID Grammar
 
@@ -12,7 +18,7 @@ Example: `task:BDK-001`, `campaign:BEDROCK`, `submission:abc123`
 
 ## 2. Prefix Taxonomy
 
-### Active Prefixes (used by actuator and graph queries)
+### Active Prefixes (canonical graph families used by the product)
 
 | Prefix | Node Type | Purpose | Example |
 |--------|-----------|---------|---------|
@@ -20,20 +26,31 @@ Example: `task:BDK-001`, `campaign:BEDROCK`, `submission:abc123`
 | `campaign` | Campaign | High-level milestone or epoch. | `campaign:BEDROCK` |
 | `milestone` | Campaign | Alias for campaign (legacy). | `milestone:M1` |
 | `intent` | Intent | Sovereign human declaration of purpose. | `intent:SOVEREIGNTY` |
+| `story` | Story | User-story layer between intent and requirements. | `story:TRC-001` |
+| `req` | Requirement | Concrete requirement implemented by work. | `req:TRC-001` |
+| `criterion` | Criterion | Verifiable acceptance criterion for a requirement. | `criterion:TRC-001` |
+| `evidence` | Evidence | Evidence that verifies a criterion or links to a requirement. | `evidence:scan-TRC-001` |
+| `policy` | Policy | Campaign-scoped Definition of Done policy. | `policy:done-default` |
+| `config` | Config | Graph-resident operational configuration singleton. | `config:xyph` |
+| `suggestion` | Suggestion | Advisory intake family; `type` distinguishes trace-link vs AI suggestion semantics. | `suggestion:019xyz` |
+| `case` | Case | Governed shape-change matter requiring preparation and judgment. | `case:TRACE-1` |
+| `brief` | Brief | Durable recommendation brief attached to a case. | `brief:TRACE-REC` |
 | `spec` | Spec | Graph-native design/spec document. | `spec:ready-gate` |
 | `adr` | ADR | Graph-native architecture decision record. | `adr:0007` |
 | `note` | Note | Graph-native working note or quest memo. | `note:quest-brief` |
 | `comment` | Comment | Append-only discussion event. | `comment:019xyz` |
 | `proposal` | Proposal | Non-authoritative candidate transform or plan. | `proposal:019xyz` |
+| `collapse-proposal` | Collapse Proposal | Durable settlement preview or execution artifact. | `collapse-proposal:abc123` |
+| `comparison-artifact` | Comparison Artifact | Durable governance comparison artifact. | `comparison-artifact:def456` |
 | `attestation` | Attestation | Append-only approval/rejection/certification record. | `attestation:019xyz` |
 | `artifact` | Scroll | Sealed output of completed quest. | `artifact:task:BDK-001` |
 | `approval` | ApprovalGate | Formal human approval requirement. | `approval:cp-001` |
 | `submission` | Submission | Review lifecycle envelope. | `submission:abc123` |
 | `patchset` | Patchset | Immutable proposed change snapshot. | `patchset:def456` |
 | `review` | Review | Per-reviewer verdict on a patchset. | `review:ghi789` |
-| `decision` | Decision | Terminal merge or close event. | `decision:jkl012` |
+| `decision` | Decision | Shared review-settlement or case-judgment artifact. | `decision:jkl012` |
 
-### Reserved Prefixes (in schema, not actively used by actuator)
+### Reserved / Non-Canonical Current Prefixes
 
 | Prefix | Purpose |
 |--------|---------|
@@ -56,7 +73,12 @@ Example: `task:BDK-001`, `campaign:BEDROCK`, `submission:abc123`
 | `belongs-to` | task → campaign/milestone | Quest is part of a campaign. |
 | `authorized-by` | task → intent | Quest traces to human intent (sovereignty). |
 | `depends-on` | task → task | Source cannot start until target is DONE. |
-| `documents` | spec/adr/note → target | Graph-native document records durable context for a node. |
+| `decomposes-to` | intent/story → story/req | Traceability decomposition: intent into story, story into requirement. |
+| `implements` | task/evidence → req | Quest-to-requirement lineage is canonical; analyzer-generated evidence may also attach directly to a requirement. |
+| `has-criterion` | req → criterion | Requirement owns one or more acceptance criteria. |
+| `verifies` | evidence → criterion | Evidence verifies a criterion. |
+| `governs` | policy → campaign/milestone | Definition of Done policy governs a campaign or milestone. |
+| `documents` | spec/adr/note/brief → target | Durable narrative or brief context records linked material for a node. |
 | `comments-on` | comment → target | Append-only discussion attached to a node. |
 | `replies-to` | comment → comment | Comment-thread reply chain. |
 | `proposes` | proposal → subject | Proposal is about the subject node. |
@@ -65,27 +87,35 @@ Example: `task:BDK-001`, `campaign:BEDROCK`, `submission:abc123`
 | `fulfills` | artifact → task | Scroll is the sealed output of a quest. |
 | `submits` | submission → task | Submission proposes work for a quest. |
 | `has-patchset` | patchset → submission | Patchset belongs to a submission. |
-| `supersedes` | patchset → patchset | New patchset replaces old one. |
+| `supersedes` | patchset/spec/adr/note/comparison-artifact/collapse-proposal/suggestion → prior peer | Append-only revision, advisory replacement, or governance-lane replacement. |
 | `reviews` | review → patchset | Review evaluates a patchset. |
-| `decides` | decision → submission | Terminal decision resolves a submission. |
+| `decides` | decision → submission/case | Terminal review settlement or case judgment. |
 | `approves` | approval → (target) | Approval gate grants permission. |
+| `suggests` | suggestion → target | Suggestion points at a candidate target or adopted follow-on artifact. |
+| `relates-to` | suggestion → related node | Loose advisory cross-reference when no more specific edge exists. |
+| `opened-from` | case → suggestion/ingress artifact | Case was elevated from prior advisory or provenance artifacts. |
+| `concerns` | case → subject node | Case is about the linked subject set. |
+| `briefs` | brief → case | Brief is attached to a case. |
+| `causes` | decision → follow-on artifact | Decision explicitly caused linked follow-on work. |
 
-### Reserved Edge Types (in schema, not actively queried)
+### Reserved / Non-Canonical Current Edge Types
 
 | Edge Label | Meaning |
 |------------|---------|
-| `implements` | Code fulfills a requirement. |
 | `augments` | Extends or enhances another node. |
-| `relates-to` | General association. |
 | `blocks` | Forward dependency (inverse of depends-on). |
 | `consumed-by` | Resource consumption. |
-| `documents` | Documentation link (use graph-native content blobs by default). |
 
 ## 4. Node Property Contracts
 
 All properties use **snake_case** in the WARP graph. Timestamps are Unix epoch numbers.
 
 **Design rule:** queryable metadata belongs in node/edge properties. Substantial bodies belong in graph-native content blobs attached with `attachContent()` / `attachEdgeContent()`.
+
+**Subtype-aware families:** `suggestion:*` uses `type` to distinguish
+trace-link suggestions from AI suggestions. `decision:*` uses `type: 'decision'`
+for the shared family and `decision_scope` when the concrete decision semantics
+need further disambiguation.
 
 ### Quest (`task:*`)
 
@@ -120,6 +150,7 @@ Legacy: Pre-VOC-001 `INBOX` values are normalized to `BACKLOG` at read time.
 - `belongs-to` → campaign:/milestone: (required before `READY`)
 - `authorized-by` → intent: (required for `PLANNED`+)
 - `depends-on` → task: (optional, Weaver)
+- `implements` → req: (required by readiness for `delivery`, `maintenance`, and `ops`)
 
 **Execution semantics:**
 - `PLANNED` quests are draft-shaped work and are excluded from executable DAG analysis.
@@ -147,9 +178,236 @@ Legacy: Pre-VOC-001 `INBOX` values are normalized to `BACKLOG` at read time.
 
 ---
 
+### Story (`story:*`)
+
+| Property | Type | Set By | Notes |
+|----------|------|--------|-------|
+| `type` | `'story'` | story/packet command | Required. |
+| `title` | string | story/packet command | ≥5 chars. |
+| `persona` | string | story/packet command | Required. |
+| `goal` | string | story/packet command | Required. |
+| `benefit` | string | story/packet command | Required. |
+| `created_by` | string | story/packet command | Principal ID. |
+| `created_at` | number | story/packet command | Timestamp. |
+
+**Edges:**
+- Incoming `decomposes-to` from `intent:` (optional but canonical for traced delivery work)
+- `decomposes-to` → `req:` (canonical story-to-requirement link)
+
+---
+
+### Requirement (`req:*`)
+
+| Property | Type | Set By | Notes |
+|----------|------|--------|-------|
+| `type` | `'requirement'` | requirement/packet command | Required. |
+| `description` | string | requirement/packet command | ≥5 chars. |
+| `kind` | RequirementKind | requirement/packet command | `functional` or `non-functional`. |
+| `priority` | RequirementPriority | requirement/packet command | `must`, `should`, `could`, or `wont`. |
+
+**Edges:**
+- Incoming `decomposes-to` from `story:` (required for `delivery` readiness)
+- Incoming `implements` from `task:` (required for requirement-backed quest readiness)
+- Incoming `implements` from `evidence:` (optional auxiliary auto-link used by analysis/suggestions flows)
+- `has-criterion` → `criterion:` (required before a requirement-backed quest becomes `READY`)
+
+---
+
+### Criterion (`criterion:*`)
+
+| Property | Type | Set By | Notes |
+|----------|------|--------|-------|
+| `type` | `'criterion'` | criterion/packet command | Required. |
+| `description` | string | criterion/packet command | ≥5 chars. |
+| `verifiable` | boolean | criterion/packet command | Required on write; defaults to `true` in the standard CLI flow. |
+
+**Edges:**
+- Incoming `has-criterion` from `req:` (canonical requirement-to-criterion link)
+- Incoming `verifies` from `evidence:` (evidence attached to this criterion)
+
+---
+
+### Evidence (`evidence:*`)
+
+| Property | Type | Set By | Notes |
+|----------|------|--------|-------|
+| `type` | `'evidence'` | evidence/scan/analyze/suggestions | Required. |
+| `kind` | EvidenceKind | evidence/scan/analyze/suggestions | `test`, `benchmark`, `manual`, or `screenshot`. |
+| `result` | EvidenceResult | evidence/scan/analyze/suggestions | `pass`, `fail`, or `linked`. |
+| `produced_at` | number | evidence/scan/analyze/suggestions | Timestamp. |
+| `produced_by` | string | evidence/scan/analyze/suggestions | Principal or producing subsystem. |
+| `artifact_hash` | string | evidence command | Optional content hash. |
+| `scan_locations` | string | scan command | Optional JSON-encoded file/line list for annotation-discovered evidence. |
+| `source_file` | string | analyze/suggestions | Optional source test file for auto-linked evidence. |
+| `auto_confidence` | number | analyze/suggestions | Optional heuristic confidence in the auto-link. |
+
+**Edges:**
+- `verifies` → `criterion:` (canonical evidence-to-criterion link)
+- optional `implements` → `req:` (auxiliary requirement-level auto-link produced by analysis/suggestions)
+
+---
+
+### Policy (`policy:*`)
+
+| Property | Type | Set By | Notes |
+|----------|------|--------|-------|
+| `type` | `'policy'` | policy command | Required. |
+| `coverage_threshold` | number | policy command | Between `0` and `1`; defaults to `1.0`. |
+| `require_all_criteria` | boolean | policy command | Defaults to `true`. |
+| `require_evidence` | boolean | policy command | Defaults to `true`. |
+| `allow_manual_seal` | boolean | policy command | Defaults to `false`. |
+
+**Edges:**
+- `governs` → `campaign:`/`milestone:` (required when attaching policy scope)
+
+---
+
+### Config (`config:xyph`)
+
+`config:*` is not a general workflow family. The only current canonical graph
+config node is `config:xyph`.
+
+| Property | Type | Set By | Notes |
+|----------|------|--------|-------|
+| `type` | `'config'` | config command | Required. |
+| `minAutoConfidence` | number | config command | Optional analyzer auto-link threshold. |
+| `suggestionFloor` | number | config command | Optional minimum confidence for creating `suggestion:*` nodes. |
+| `testGlob` | string | config command | Optional glob for analyzer test discovery. |
+| `heuristicWeights` | string | config command | Optional JSON-encoded heuristic-layer weights. |
+| `llm` | string | config command | Optional JSON-encoded LLM provider/model config. |
+
+**Edges:** none canonical.
+
+---
+
+### Suggestion (`suggestion:*`)
+
+`suggestion:*` is intentionally subtype-aware. The `type` property is required
+to disambiguate between trace-link suggestions and AI suggestions.
+
+#### Trace-Link Suggestion (`type: 'suggestion'`)
+
+These nodes hold low-confidence analyzer candidates for
+`test -> criterion/requirement` linkage pending human review.
+
+| Property | Type | Set By | Notes |
+|----------|------|--------|-------|
+| `type` | `'suggestion'` | analyze command | Required. |
+| `test_file` | string | analyze command | Source test file. |
+| `target_id` | string | analyze command | Suggested `criterion:*` or `req:*` target. |
+| `target_type` | string | analyze command | `'criterion'` or `'requirement'`. |
+| `confidence` | number | analyze command | Between `0` and `1`. |
+| `layers` | string | analyze command | JSON-encoded heuristic layer breakdown. |
+| `status` | SuggestionStatus | analyze/suggestions | `PENDING`, `ACCEPTED`, or `REJECTED`. |
+| `suggested_by` | string | analyze command | Principal ID. |
+| `suggested_at` | number | analyze command | Timestamp. |
+| `rationale` | string | suggestions command | Optional human rationale on accept/reject. |
+| `resolved_by` | string | suggestions command | Optional principal who resolved the suggestion. |
+| `resolved_at` | number | suggestions command | Optional resolution timestamp. |
+
+**Edges:**
+- `suggests` → `criterion:`/`req:` (required candidate linkage)
+
+#### AI Suggestion (`type: 'ai_suggestion'`)
+
+These nodes are advisory artifacts used by the human TUI and the agent CLI for
+explicit ask-AI jobs and spontaneous recommendations.
+
+| Property | Type | Set By | Notes |
+|----------|------|--------|-------|
+| `type` | `'ai_suggestion'` | suggestions/record services | Required. |
+| `suggestion_kind` | string | suggestions/record services | `ask-ai`, `quest`, `dependency`, `promotion`, `campaign`, `intent`, `governance`, `reopen`, or `general`. |
+| `title` | string | suggestions/record services | Required short label. |
+| `summary` | string | suggestions/record services | Required durable summary. |
+| `status` | AiSuggestionStatus | suggestions/record services | `suggested`, `queued`, `accepted`, `rejected`, or `implemented`. |
+| `audience` | AiSuggestionAudience | suggestions/record services | `human`, `agent`, or `either`. |
+| `origin` | AiSuggestionOrigin | suggestions/record services | `spontaneous` or `request`. |
+| `suggested_by` | string | suggestions/record services | Principal or subsystem. |
+| `suggested_at` | number | suggestions/record services | Timestamp. |
+| `related_ids` | string | suggestions/record services | JSON-encoded related node ID list. |
+| `target_id` | string | suggestions/record services | Optional primary target. |
+| `requested_by` | string | suggestions/record services | Optional requester for ask-AI style flows. |
+| `why` | string | suggestions/record services | Optional rationale/context. |
+| `evidence` | string | suggestions/record services | Optional supporting evidence summary. |
+| `next_action` | string | suggestions/record services | Optional recommended next step. |
+| `resolved_by` | string | suggestions/record services | Optional resolver principal. |
+| `resolved_at` | number | suggestions/record services | Optional resolution timestamp. |
+| `resolution_kind` | string | suggestions/record services | Optional `adopted`, `dismissed`, or `superseded`. |
+| `resolution_rationale` | string | suggestions/record services | Optional durable rationale for resolution. |
+| `adopted_artifact_id` | string | suggestions/record services | Optional quest/proposal created during adoption. |
+| `adopted_artifact_kind` | string | suggestions/record services | Optional `quest` or `proposal`. |
+| `superseded_by_id` | string | suggestions/record services | Optional replacement artifact. |
+
+**Bodies:** stored via `attachContent()` as structured advisory content or
+ask-AI output. Long-form reasoning should live in the content blob, not in
+large scalar properties.
+
+**Edges:**
+- optional `suggests` → primary target or adopted follow-on artifact
+- optional `relates-to` → additional related nodes
+- optional incoming `opened-from` from `case:` nodes when a suggestion is elevated into governed casework
+- optional incoming `supersedes` from the replacing artifact when explicitly superseded
+
+---
+
+### Case (`case:*`)
+
+`case:*` is the durable shape-governance spine for matters that materially
+alter frontier, sequencing, policy, or doctrine.
+
+| Property | Type | Set By | Notes |
+|----------|------|--------|-------|
+| `type` | `'case'` | case/governance flows | Required. |
+| `title` | string | case/governance flows | Durable short label. |
+| `question` | string | case/governance flows | Preferred explicit decision question. |
+| `decision_question` | string | legacy/case flows | Legacy compatibility alias for `question`. |
+| `status` | CaseStatus | case/governance flows | See current values below. Defaults to `open` at read time. |
+| `impact` | string | case/governance flows | Design-intent axis. Current values are `local`, `frontier`, `policy`, or `doctrine`. |
+| `risk` | string | case/governance flows | Design-intent axis. Current values are `reversible-low`, `reversible-high`, or `hard-to-reverse`. |
+| `authority` | string | case/governance flows | Design-intent axis. Current values are `human-only`, `human-decide-agent-apply`, or `policy-delegated`. |
+| `opened_by` | string | case/governance flows | Optional principal who opened the case. |
+| `opened_at` | number | case/governance flows | Optional opening timestamp. |
+| `reason` | string | case/governance flows | Optional explanation of why governed handling was required. |
+
+**Current CaseStatus values:** `open`, `gathering-briefs`, `prepared`,
+`ready-for-judgment`, `deferred`, `decided`, `applied`, `closed`, `stale`,
+`invalidated`
+
+**Edges:**
+- `concerns` → one or more subject nodes the case is about
+- optional `opened-from` → prior advisory or provenance artifacts such as `suggestion:*`
+- incoming `briefs` from `brief:` nodes
+- incoming `decides` from case-scoped `decision:` nodes
+
+---
+
+### Brief (`brief:*`)
+
+`brief:*` is the durable judgment-preparation artifact attached to a case.
+
+| Property | Type | Set By | Notes |
+|----------|------|--------|-------|
+| `type` | `'brief'` | agent/human case-prep flows | Required. |
+| `brief_kind` | string | agent/human case-prep flows | Current public flow uses `recommendation`. |
+| `title` | string | agent/human case-prep flows | Required short label. |
+| `rationale` | string | agent/human case-prep flows | Required summary of the recommendation. |
+| `authored_by` | string | agent/human case-prep flows | Principal ID. |
+| `authored_at` | number | agent/human case-prep flows | Timestamp. |
+
+**Bodies:** stored via `attachContent()` on the node. The content blob carries
+the long-form recommendation body.
+
+**Edges:**
+- `briefs` → `case:` (required)
+- optional `documents` → related nodes other than the owning case
+
+---
+
 ### Graph-native Docs / Discussion (`spec:*`, `adr:*`, `note:*`, `comment:*`)
 
 These node families keep durable coordination narrative inside the XYPH graph.
+`brief:*` is documented separately because it carries case-governance semantics
+in addition to durable narrative content.
 
 | Property | Type | Applies To | Notes |
 |----------|------|------------|-------|
@@ -161,7 +419,7 @@ These node families keep durable coordination narrative inside the XYPH graph.
 **Bodies:** stored via `attachContent()` on the node. Do not store long-form markdown in scalar properties.
 
 **Edges:**
-- `documents` → task:/campaign:/intent:/req:/submission: (durable linked context)
+- `documents` → any node ID (durable linked context)
 - `comments-on` → any node ID (discussion attachment)
 - `replies-to` → comment: (threading)
 - `supersedes` → prior spec:/adr:/note: revision (append-only history)
@@ -270,8 +528,6 @@ whole-graph substrate fact and the XYPH-scoped operational substrate fact.
 - incoming `attests` from `attestation:*` records are expected
 - current `collapse_worldline dryRun:false` uses approving attestations over
   this durable comparison artifact as the execution gate
-
----
 
 ---
 
@@ -416,31 +672,53 @@ content. The current control-plane slice stores JSON containing at least
 
 ### Decision (`decision:*`)
 
+`decision:*` is a shared family across review settlement and case judgment.
+`type: 'decision'` identifies the family. `decision_scope` disambiguates
+case-scoped semantics when needed.
+
 | Property | Type | Set By | Notes |
 |----------|------|--------|-------|
-| `type` | `'decision'` | merge/close | Required. Distinguishes from legacy concept/decision nodes. |
-| `kind` | DecisionKind | merge/close | `'merge'` or `'close'`. |
-| `decided_by` | string | merge/close | Principal ID. |
-| `decided_at` | number | merge/close | Timestamp. |
-| `rationale` | string | merge/close | Required explanation. |
-| `merge_commit` | string | merge | Git merge commit SHA. |
+| `type` | `'decision'` | merge/close/case judgment | Required. Distinguishes from legacy concept/decision nodes. |
+| `kind` | string | merge/close/case judgment | Submission scope currently uses `'merge'` or `'close'`; case scope currently uses `'adopt'`, `'reject'`, `'defer'`, or `'request-evidence'`. |
+| `decision_scope` | string | case judgment | Optional. Current explicit value is `'case'`; omission currently implies legacy submission-scoped decision semantics. |
+| `case_id` | string | case judgment | Required for case-scoped decisions. |
+| `decided_by` | string | merge/close/case judgment | Principal ID. |
+| `decided_at` | number | merge/close/case judgment | Timestamp. |
+| `rationale` | string | merge/close/case judgment | Required explanation. |
+| `merge_commit` | string | merge | Optional Git merge commit SHA for submission merge decisions. |
+| `expected_delta` | string | case judgment | Optional durable statement of the intended outcome. |
+| `follow_on_artifact_id` | string | case judgment | Optional linked quest/proposal or other follow-on artifact. |
+| `follow_on_artifact_kind` | string | case judgment | Optional artifact-kind label for the linked follow-on artifact. |
 
-**Edges:** `decides` → submission:
+**Edges:**
+- `decides` → `submission:` or `case:` (required)
+- optional `causes` → follow-on artifact created or explicitly caused by the decision
 
 ## 5. Edge Traversal Patterns
 
 ```
-intent: ←authorized-by← task: ─belongs-to─→ campaign:
-                           │
-                           ├──depends-on──→ task:
-                           │
-                           ←submits── submission: ←decides── decision:
-                                          │
-                                          ←has-patchset── patchset: ←reviews── review:
-                                                              │
-                                                              ─supersedes─→ patchset:
-                           │
-                           ←fulfills── artifact: (scroll)
+task: --authorized-by--> intent:
+intent: --decomposes-to--> story: --decomposes-to--> req: --has-criterion--> criterion:
+task: --implements--> req:
+evidence: --verifies--> criterion:
+evidence: --implements--> req: (auxiliary auto-link)
+task: --belongs-to--> campaign: <-governs-- policy:
+task: --depends-on--> task:
+config:xyph (singleton, no canonical edges)
+
+suggestion: --suggests--> req:/criterion:/target:
+suggestion: --relates-to--> any-node:
+case: --opened-from--> suggestion:/artifact:
+case: --concerns--> any-node:
+brief: --briefs--> case:
+brief: --documents--> any-node:
+
+submission: --submits--> task:
+patchset: --has-patchset--> submission: <-decides-- decision:
+review: --reviews--> patchset: --supersedes--> patchset:
+decision: --decides--> case:
+decision: --causes--> task:/proposal:/other-artifact: (optional)
+artifact: --fulfills--> task:
 ```
 
 ![Entity-relationship diagram](../diagrams/entity-relationship.svg)

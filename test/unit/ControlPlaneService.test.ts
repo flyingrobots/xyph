@@ -509,8 +509,8 @@ function makeCoordinateTransferPlan(
   };
 }
 
-vi.mock('../../src/infrastructure/GraphContext.js', () => ({
-  createGraphContext: () => ({
+vi.mock('../../src/infrastructure/ObservedGraphProjection.js', () => ({
+  createObservedGraphProjection: () => ({
     fetchSnapshot: mocks.fetchSnapshot,
     fetchEntityDetail: mocks.fetchEntityDetail,
     graph: {
@@ -518,7 +518,7 @@ vi.mock('../../src/infrastructure/GraphContext.js', () => ({
       getFrontier: mocks.getFrontier,
     },
   }),
-  createGraphContextFromGraph: (graph: {
+  createObservedGraphProjectionFromGraph: (graph: {
     getStateSnapshot: typeof mocks.getStateSnapshot;
     getFrontier: typeof mocks.getFrontier;
   }, opts?: {
@@ -3665,7 +3665,7 @@ describe('ControlPlaneService', () => {
     }, 'agent.prime');
 
     const derived = await (service as unknown as {
-      createDerivedWorldlineGraphContext: (
+      createDerivedWorldlineProjection: (
         capability: { worldlineId: string },
         selector: { kind: 'tip' },
       ) => Promise<{
@@ -3674,7 +3674,7 @@ describe('ControlPlaneService', () => {
           getContent(nodeId: string): Promise<Uint8Array | null>;
         };
       }>;
-    }).createDerivedWorldlineGraphContext(
+    }).createDerivedWorldlineProjection(
       { worldlineId: 'worldline:review-auth' },
       { kind: 'tip' },
     );

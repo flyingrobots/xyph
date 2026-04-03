@@ -1,24 +1,21 @@
-import type { QueryResultV1, AggregateResult } from '@git-stunts/git-warp';
 import type { GraphPort } from '../../ports/GraphPort.js';
+import {
+  liveObservation,
+  type ObservationSession,
+} from '../../ports/ObservationPort.js';
 import type { RoadmapQueryPort } from '../../ports/RoadmapPort.js';
+import type { SubstrateInspectionPort } from '../../ports/SubstrateInspectionPort.js';
 import type { QuestPriority } from '../entities/Quest.js';
 import type { Diagnostic } from '../models/diagnostics.js';
 import type { GraphMeta, GraphSnapshot } from '../models/dashboard.js';
-import {
-  createGraphContext,
-  type GraphContextGraph,
-} from '../../infrastructure/GraphContext.js';
+import { WarpSubstrateInspectionAdapter } from '../../infrastructure/adapters/WarpSubstrateInspectionAdapter.js';
 import { toNeighborEntries, type NeighborEntry } from '../../infrastructure/helpers/isNeighborEntry.js';
 import {
   compareQuestPriority,
   DEFAULT_QUEST_PRIORITY,
 } from '../entities/Quest.js';
-import { ReadinessService } from './ReadinessService.js';
 import { doctorIssueToDiagnostic } from './DiagnosticService.js';
-import {
-  SovereigntyService,
-  SOVEREIGNTY_AUDIT_STATUSES,
-} from './SovereigntyService.js';
+import { SOVEREIGNTY_AUDIT_STATUSES } from './SovereigntyService.js';
 
 type DoctorIssueBucket =
   | 'dangling-edge'
@@ -149,15 +146,8 @@ export interface DoctorReport {
   diagnostics: Diagnostic[];
 }
 
-function extractNodes(result: QueryResultV1 | AggregateResult): QNode[] {
-  if (!('nodes' in result)) return [];
-  return result.nodes.filter(
-    (node): node is QNode => typeof node.id === 'string' && node.props !== undefined,
-  );
-}
-
 async function batchNeighbors(
-  graph: GraphContextGraph,
+  graph: ObservationSession,
   ids: string[],
   direction: 'outgoing' | 'incoming' = 'outgoing',
 ): Promise<Map<string, NeighborEntry[]>> {
@@ -174,10 +164,10 @@ async function batchNeighbors(
 }
 
 async function queryNodeFamily(
-  graph: GraphContextGraph,
+  graph: ObservationSession,
   prefix: string,
-): Promise<QNode[]> {
-  return graph.query().match(prefix).select(['id', 'props']).run().then(extractNodes);
+): Promise<{ id: string; props: Record<string, unknown> }[]> {
+  return await graph.queryNodes(prefix);
 }
 
 interface DoctorPrescriptionContext {
@@ -189,25 +179,23 @@ function moreUrgentPriority(a: QuestPriority, b: QuestPriority): QuestPriority {
   return compareQuestPriority(a, b) <= 0 ? a : b;
 }
 
-export class DoctorService {
-  private readonly readiness: ReadinessService;
-  private readonly sovereignty: SovereigntyService;
+const SOVEREIGNTY_AUDIT_STATUS_SET = new Set<string>(SOVEREIGNTY_AUDIT_STATUSES);
 
+export class DoctorService {
   constructor(
-    private readonly graphPort: GraphPort,
-    roadmap: RoadmapQueryPort,
-  ) {
-    this.readiness = new ReadinessService(roadmap);
-    this.sovereignty = new SovereigntyService(roadmap);
-  }
+    graphPort: GraphPort,
+    _roadmap: RoadmapQueryPort,
+    private readonly inspectionPort: SubstrateInspectionPort = new WarpSubstrateInspectionAdapter(graphPort),
+  ) {}
 
   public async run(options?: DoctorRunOptions): Promise<DoctorReport> {
     const onProgress: (progress: DoctorProgress) => void = options?.onProgress ?? ((_: DoctorProgress): void => undefined);
-    const graphCtx = createGraphContext(this.graphPort);
-    const snapshot = await graphCtx.fetchSnapshot((message) => {
-      onProgress({ stage: 'snapshot', message });
-    }, { profile: 'audit' });
-    const graph = graphCtx.graph;
+    const graph = await this.inspectionPort.openInspectionSession(
+      liveObservation('doctor.audit'),
+    );
+    onProgress({ stage: 'snapshot', message: 'Opening observed audit session.' });
+    const snapshot = await graph.fetchSnapshot('audit');
+    onProgress({ stage: 'snapshot', message: 'Snapshot ready.' });
 
     onProgress({
       stage: 'neighbors',
@@ -296,8 +284,8 @@ export class DoctorService {
     this.collectNarrativeOrphans(specNodes, adrNodes, noteNodes, commentNodes, outgoingNeighbors, pushIssue);
     this.collectWorkflowOrphans(snapshot, patchsetNodes, outgoingNeighbors, questIds, submissionIds, patchsetIds, pushIssue);
     this.collectTraceabilityOrphans(snapshot, storyIds, requirementIds, campaignIds, pushIssue);
-    await this.collectReadinessGaps(snapshot, pushIssue);
-    await this.collectSovereigntyViolations(pushIssue);
+    this.collectReadinessGaps(snapshot, outgoingNeighbors, incomingNeighbors, pushIssue);
+    this.collectSovereigntyViolations(snapshot, outgoingNeighbors, pushIssue);
     this.collectGovernedCompletionGaps(snapshot, pushIssue);
 
     issues.sort((a, b) =>
@@ -962,41 +950,160 @@ export class DoctorService {
     }
   }
 
-  private async collectReadinessGaps(
+  private collectReadinessGaps(
     snapshot: GraphSnapshot,
+    outgoingNeighbors: Map<string, NeighborEntry[]>,
+    incomingNeighbors: Map<string, NeighborEntry[]>,
     pushIssue: (issue: DoctorIssue) => void,
-  ): Promise<void> {
+  ): void {
+    const requirementById = new Map(snapshot.requirements.map((requirement) => [requirement.id, requirement] as const));
+    const implementedRequirementsByQuest = new Map<string, string[]>();
+    for (const requirement of snapshot.requirements) {
+      for (const taskId of requirement.taskIds) {
+        const current = implementedRequirementsByQuest.get(taskId) ?? [];
+        current.push(requirement.id);
+        implementedRequirementsByQuest.set(taskId, current);
+      }
+    }
+
     const candidates = snapshot.quests.filter((quest) =>
       quest.status !== 'BACKLOG' && quest.status !== 'GRAVEYARD',
     );
 
     for (const quest of candidates) {
-      const assessment = await this.readiness.assess(quest.id, { transition: false });
-      if (assessment.valid) continue;
+      const questOutgoing = outgoingNeighbors.get(quest.id) ?? [];
+      const questIncoming = incomingNeighbors.get(quest.id) ?? [];
+      const unmet: { message: string; nodeId?: string }[] = [];
+      const intentId = quest.intentId
+        ?? questOutgoing.find((edge) => edge.label === 'authorized-by' && edge.nodeId.startsWith('intent:'))?.nodeId;
+      const campaignId = quest.campaignId
+        ?? questOutgoing.find((edge) =>
+          edge.label === 'belongs-to' && (
+            edge.nodeId.startsWith('campaign:') ||
+            edge.nodeId.startsWith('milestone:')
+          ),
+        )?.nodeId;
+
+      if (!intentId) {
+        unmet.push({
+          message: `Quest ${quest.id} needs an authorized-by edge to an intent:* node before READY`,
+        });
+      }
+      if (!campaignId) {
+        unmet.push({
+          message: `Quest ${quest.id} needs campaign assignment before READY`,
+        });
+      }
+      if (!quest.description) {
+        unmet.push({
+          message: `Quest ${quest.id} needs a durable description before READY`,
+        });
+      }
+
+      const implementedRequirementIds = [
+        ...(implementedRequirementsByQuest.get(quest.id) ?? []),
+        ...questOutgoing
+          .filter((edge) => edge.label === 'implements' && edge.nodeId.startsWith('req:'))
+          .map((edge) => edge.nodeId),
+      ].filter((id, index, ids) => ids.indexOf(id) === index);
+
+      const assessRequirementBackedQuest = (label: string): void => {
+        if (implementedRequirementIds.length === 0) {
+          unmet.push({
+            message: `${label} ${quest.id} needs at least one implements edge to req:* before READY`,
+          });
+          return;
+        }
+
+        for (const requirementId of implementedRequirementIds) {
+          const requirement = requirementById.get(requirementId);
+          const criterionIds = [
+            ...(requirement?.criterionIds ?? []),
+            ...(outgoingNeighbors.get(requirementId) ?? [])
+              .filter((edge) => edge.label === 'has-criterion' && edge.nodeId.startsWith('criterion:'))
+              .map((edge) => edge.nodeId),
+          ].filter((id, index, ids) => ids.indexOf(id) === index);
+
+          if (criterionIds.length === 0) {
+            unmet.push({
+              nodeId: requirementId,
+              message: `${requirementId} needs at least one has-criterion edge before ${quest.id} can become READY`,
+            });
+          }
+        }
+      };
+
+      switch (quest.taskKind) {
+        case 'delivery':
+          assessRequirementBackedQuest('Delivery quest');
+          for (const requirementId of implementedRequirementIds) {
+            const requirement = requirementById.get(requirementId);
+            const hasStory = Boolean(requirement?.storyId) || (incomingNeighbors.get(requirementId) ?? [])
+              .some((edge) => edge.label === 'decomposes-to' && edge.nodeId.startsWith('story:'));
+            if (!hasStory) {
+              unmet.push({
+                nodeId: requirementId,
+                message: `Delivery quest ${quest.id} requires a story→req chain; ${requirementId} has no incoming decomposes-to edge from story:*`,
+              });
+            }
+          }
+          break;
+        case 'maintenance':
+          assessRequirementBackedQuest('Maintenance quest');
+          break;
+        case 'ops':
+          assessRequirementBackedQuest('Ops quest');
+          break;
+        case 'spike': {
+          const framingDoc = questIncoming.find((edge) =>
+            edge.label === 'documents' && (
+              edge.nodeId.startsWith('note:') ||
+              edge.nodeId.startsWith('spec:') ||
+              edge.nodeId.startsWith('adr:')
+            ),
+          );
+          if (!framingDoc) {
+            unmet.push({
+              message: `Spike quest ${quest.id} needs at least one linked note/spec/adr before READY`,
+            });
+          }
+          break;
+        }
+        default:
+          break;
+      }
+
+      if (unmet.length === 0) continue;
       pushIssue({
         bucket: 'readiness-gap',
         severity: 'warning',
         code: 'quest-readiness-gap',
-        message: `${quest.id} fails the readiness contract: ${assessment.unmet.map((item) => item.message).join(' | ')}`,
+        message: `${quest.id} fails the readiness contract: ${unmet.map((item) => item.message).join(' | ')}`,
         nodeId: quest.id,
-        relatedIds: assessment.unmet
+        relatedIds: unmet
           .map((item) => item.nodeId)
           .filter((nodeId): nodeId is string => typeof nodeId === 'string'),
       });
     }
   }
 
-  private async collectSovereigntyViolations(
+  private collectSovereigntyViolations(
+    snapshot: GraphSnapshot,
+    outgoingNeighbors: Map<string, NeighborEntry[]>,
     pushIssue: (issue: DoctorIssue) => void,
-  ): Promise<void> {
-    const violations = await this.sovereignty.auditAuthorizedWork();
-    for (const violation of violations) {
+  ): void {
+    for (const quest of snapshot.quests.filter((candidate) => SOVEREIGNTY_AUDIT_STATUS_SET.has(candidate.status))) {
+      const intentId = quest.intentId
+        ?? (outgoingNeighbors.get(quest.id) ?? [])
+          .find((edge) => edge.label === 'authorized-by' && edge.nodeId.startsWith('intent:'))
+          ?.nodeId;
+      if (intentId) continue;
       pushIssue({
         bucket: 'sovereignty-violation',
         severity: 'warning',
         code: 'missing-intent-ancestry',
-        message: `${violation.questId} lacks sovereign intent ancestry: ${violation.reason}`,
-        nodeId: violation.questId,
+        message: `${quest.id} lacks sovereign intent ancestry: Quest has no authorized-by edge to an intent: node (Constitution Art. IV — Genealogy of Intent)`,
+        nodeId: quest.id,
         relatedIds: [],
       });
     }

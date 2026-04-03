@@ -6,11 +6,7 @@ import { makeSnapshot, campaign, quest, submission, review, decision, scroll } f
 import { DoctorService } from '../../src/domain/services/DoctorService.js';
 
 const mocks = vi.hoisted(() => ({
-  createGraphContext: vi.fn(),
-}));
-
-vi.mock('../../src/infrastructure/GraphContext.js', () => ({
-  createGraphContext: (graphPort: unknown) => mocks.createGraphContext(graphPort),
+  fetchSnapshot: vi.fn(),
 }));
 
 function makeRoadmap(
@@ -196,14 +192,7 @@ describe('DoctorService', () => {
       ],
     });
 
-    const fetchSnapshot = vi.fn().mockResolvedValue(snapshot);
-    mocks.createGraphContext.mockReturnValue({
-      fetchSnapshot,
-      fetchEntityDetail: vi.fn(),
-      filterSnapshot: vi.fn(),
-      invalidateCache: vi.fn(),
-      graph: await graphPort.getGraph(),
-    });
+    mocks.fetchSnapshot.mockResolvedValue(snapshot);
 
     const roadmap = makeRoadmap([
       new Quest({
@@ -223,9 +212,26 @@ describe('DoctorService', () => {
       }),
     ]);
 
-    const report = await new DoctorService(graphPort, roadmap).run();
+    const report = await new DoctorService(graphPort, roadmap, {
+      openInspectionSession: vi.fn(async () => {
+        const graph = await graphPort.getGraph();
+        return {
+          fetchSnapshot: mocks.fetchSnapshot,
+          fetchEntityDetail: vi.fn(),
+          getNodeProps: graph.getNodeProps,
+          getContent: vi.fn(),
+          getContentOid: vi.fn(),
+          queryNodes: async (pattern: string) => {
+            const result = await graph.query().match(pattern).select(['id', 'props']).run();
+            return 'nodes' in result ? result.nodes : [];
+          },
+          neighbors: graph.neighbors,
+          hasNode: graph.hasNode,
+        };
+      }),
+    }).run();
 
-    expect(fetchSnapshot).toHaveBeenCalledWith(expect.any(Function), { profile: 'audit' });
+    expect(mocks.fetchSnapshot).toHaveBeenCalledWith('audit');
     expect(report.status).toBe('error');
     expect(report.blocking).toBe(true);
     expect(report.counts.patchsets).toBe(1);
@@ -345,6 +351,8 @@ describe('DoctorService', () => {
           hours: 2,
           description: 'Quest is fully shaped and ready.',
           taskKind: 'delivery',
+          campaignId: 'campaign:TRACE',
+          intentId: 'intent:READY-OK',
         }),
       ],
       stories: [
@@ -415,14 +423,6 @@ describe('DoctorService', () => {
       ],
     });
 
-    mocks.createGraphContext.mockReturnValue({
-      fetchSnapshot: vi.fn().mockResolvedValue(snapshot),
-      fetchEntityDetail: vi.fn(),
-      filterSnapshot: vi.fn(),
-      invalidateCache: vi.fn(),
-      graph: await graphPort.getGraph(),
-    });
-
     const roadmap = makeRoadmap(
       [
         new Quest({
@@ -451,11 +451,33 @@ describe('DoctorService', () => {
       },
     );
 
-    const report = await new DoctorService(graphPort, roadmap).run();
+    mocks.fetchSnapshot.mockResolvedValue(snapshot);
+    const report = await new DoctorService(graphPort, roadmap, {
+      openInspectionSession: vi.fn(async () => {
+        const graph = await graphPort.getGraph();
+        return {
+          fetchSnapshot: mocks.fetchSnapshot,
+          fetchEntityDetail: vi.fn(),
+          getNodeProps: graph.getNodeProps,
+          getContent: vi.fn(),
+          getContentOid: vi.fn(),
+          queryNodes: async (pattern: string) => {
+            const result = await graph.query().match(pattern).select(['id', 'props']).run();
+            return 'nodes' in result ? result.nodes : [];
+          },
+          neighbors: graph.neighbors,
+          hasNode: graph.hasNode,
+        };
+      }),
+    }).run();
 
     expect(report.status).toBe('ok');
     expect(report.healthy).toBe(true);
     expect(report.blocking).toBe(false);
+    expect(roadmap.getQuests).not.toHaveBeenCalled();
+    expect(roadmap.getQuest).not.toHaveBeenCalled();
+    expect(roadmap.getOutgoingEdges).not.toHaveBeenCalled();
+    expect(roadmap.getIncomingEdges).not.toHaveBeenCalled();
     expect(report.prescriptions).toEqual([]);
     expect(report.summary.topRemediationBuckets).toEqual([]);
     expect(report.summary.issueCount).toBe(0);
@@ -487,14 +509,6 @@ describe('DoctorService', () => {
       existingIds: ['task:P0-BLOCKED'],
     });
 
-    mocks.createGraphContext.mockReturnValue({
-      fetchSnapshot: vi.fn().mockResolvedValue(snapshot),
-      fetchEntityDetail: vi.fn(),
-      filterSnapshot: vi.fn(),
-      invalidateCache: vi.fn(),
-      graph: await graphPort.getGraph(),
-    });
-
     const roadmap = makeRoadmap([
       new Quest({
         id: 'task:P0-BLOCKED',
@@ -506,7 +520,25 @@ describe('DoctorService', () => {
       }),
     ]);
 
-    const report = await new DoctorService(graphPort, roadmap).run();
+    mocks.fetchSnapshot.mockResolvedValue(snapshot);
+    const report = await new DoctorService(graphPort, roadmap, {
+      openInspectionSession: vi.fn(async () => {
+        const graph = await graphPort.getGraph();
+        return {
+          fetchSnapshot: mocks.fetchSnapshot,
+          fetchEntityDetail: vi.fn(),
+          getNodeProps: graph.getNodeProps,
+          getContent: vi.fn(),
+          getContentOid: vi.fn(),
+          queryNodes: async (pattern: string) => {
+            const result = await graph.query().match(pattern).select(['id', 'props']).run();
+            return 'nodes' in result ? result.nodes : [];
+          },
+          neighbors: graph.neighbors,
+          hasNode: graph.hasNode,
+        };
+      }),
+    }).run();
 
     expect(report.prescriptions).toEqual(expect.arrayContaining([
       expect.objectContaining({

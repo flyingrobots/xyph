@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { createPlainStylePort, ensurePlainBijouContext } from '../../../infrastructure/adapters/PlainStyleAdapter.js';
 import type { DashboardModel } from '../DashboardApp.js';
-import type { GraphSnapshot } from '../../../domain/models/dashboard.js';
+import type { DashboardHealth, GraphSnapshot } from '../../../domain/models/dashboard.js';
 import { emptyObserverSeenItems, emptyObserverWatermarks } from '../observer-watermarks.js';
 import { cockpitView } from '../views/cockpit-view.js';
 import { renderMyStuffDrawer } from '../views/my-stuff-drawer.js';
@@ -12,16 +12,27 @@ import { makeSnapshot } from '../../../../test/helpers/snapshot.js';
 ensurePlainBijouContext();
 
 const style = createPlainStylePort();
+const healthyDashboardHealth: DashboardHealth = {
+  status: 'ok',
+  blocking: false,
+  summary: {
+    issueCount: 0,
+    blockingIssueCount: 0,
+    readinessGaps: 0,
+    governedCompletionGaps: 0,
+  },
+  issues: [],
+};
 
 function makeModel(snapshot: GraphSnapshot | null): DashboardModel {
   const laneState = {
-    now: { focusRow: 0, inspectorScrollY: 0 },
-    plan: { focusRow: 0, inspectorScrollY: 0 },
-    review: { focusRow: 0, inspectorScrollY: 0 },
-    settlement: { focusRow: 0, inspectorScrollY: 0 },
-    suggestions: { focusRow: 0, inspectorScrollY: 0 },
-    campaigns: { focusRow: 0, inspectorScrollY: 0 },
-    graveyard: { focusRow: 0, inspectorScrollY: 0 },
+    now: { focusRow: 0, inspectorScrollY: 0, railScrollY: 0 },
+    plan: { focusRow: 0, inspectorScrollY: 0, railScrollY: 0 },
+    review: { focusRow: 0, inspectorScrollY: 0, railScrollY: 0 },
+    settlement: { focusRow: 0, inspectorScrollY: 0, railScrollY: 0 },
+    suggestions: { focusRow: 0, inspectorScrollY: 0, railScrollY: 0 },
+    campaigns: { focusRow: 0, inspectorScrollY: 0, railScrollY: 0 },
+    graveyard: { focusRow: 0, inspectorScrollY: 0, railScrollY: 0 },
   };
   return {
     lane: 'now',
@@ -37,6 +48,7 @@ function makeModel(snapshot: GraphSnapshot | null): DashboardModel {
     table: buildLaneTable(snapshot, 'now', 20, 0, 'agent.test'),
     inspectorOpen: true,
     snapshot,
+    health: healthyDashboardHealth,
     loading: false,
     error: null,
     showLanding: false,
@@ -65,7 +77,10 @@ function makeModel(snapshot: GraphSnapshot | null): DashboardModel {
     observerWatermarks: emptyObserverWatermarks(),
     observerSeenItems: emptyObserverSeenItems(),
     pageScrollY: 0,
+    reviewLaneData: null,
+    suggestionLaneData: null,
     pageDetail: null,
+    reviewPageData: null,
     pageLoading: false,
     pageError: null,
     pageRequestId: 0,
@@ -87,6 +102,70 @@ describe('cockpitView', () => {
     expect(plain).toContain('operator surfaces');
     expect(plain).not.toContain('Scroll 1/');
     expect(plain).toContain('unplaced work');
+  });
+
+  it('renders a warning health badge when graph health has non-blocking debt', () => {
+    const health: DashboardHealth = {
+      status: 'warn',
+      blocking: false,
+      summary: {
+        issueCount: 46,
+        blockingIssueCount: 0,
+        readinessGaps: 0,
+        governedCompletionGaps: 46,
+      },
+      issues: [
+        {
+          severity: 'warning',
+          category: 'governance',
+          code: 'graph-health-governed-gaps',
+          nodeId: 'task:TRC-010',
+          message: 'task:TRC-010 is governed and currently computes as LINKED.',
+        },
+      ],
+    };
+    const model = {
+      ...makeModel(makeSnapshot({
+        quests: [{ id: 'task:Q1', title: 'Quest One', status: 'READY', hours: 2 }],
+      })),
+      health,
+    };
+    const plain = strip(cockpitView(model, style, 120, 30));
+
+    expect(plain).toContain('! 46');
+    expect(plain).not.toContain('!!');
+  });
+
+  it('renders blocking and warning health badges when blockers exist', () => {
+    const health: DashboardHealth = {
+      status: 'error',
+      blocking: true,
+      summary: {
+        issueCount: 7,
+        blockingIssueCount: 2,
+        readinessGaps: 3,
+        governedCompletionGaps: 2,
+      },
+      issues: [
+        {
+          severity: 'error',
+          category: 'structural',
+          code: 'graph-health-blocking',
+          nodeId: 'artifact:campaign:SOVEREIGNTY',
+          message: 'artifact:campaign:SOVEREIGNTY points at a missing campaign.',
+        },
+      ],
+    };
+    const model = {
+      ...makeModel(makeSnapshot({
+        quests: [{ id: 'task:Q1', title: 'Quest One', status: 'READY', hours: 2 }],
+      })),
+      health,
+    };
+    const plain = strip(cockpitView(model, style, 120, 30));
+
+    expect(plain).toContain('!! 2');
+    expect(plain).toContain('! 5');
   });
 
   it('falls back to a stacked layout on narrow terminals', () => {
@@ -570,5 +649,45 @@ describe('renderMyStuffDrawer', () => {
     const plain = strip(renderMyStuffDrawer(snap, style, 'agent.test', 60, 24));
     expect(plain).toContain('Promote traceability follow-up');
     expect(plain).toContain('case TRACE-1');
+  });
+
+  it('renders graph health findings in the drawer drill-down', () => {
+    const snap = makeSnapshot({
+      quests: [{ id: 'task:TRC-010', title: 'Trace completion', status: 'DONE', hours: 2 }],
+    });
+    const health: DashboardHealth = {
+      status: 'warn',
+      blocking: false,
+      summary: {
+        issueCount: 2,
+        blockingIssueCount: 0,
+        readinessGaps: 0,
+        governedCompletionGaps: 2,
+      },
+      issues: [
+        {
+          severity: 'warning',
+          category: 'governance',
+          code: 'governance-incomplete-linked',
+          nodeId: 'task:TRC-010',
+          message: 'task:TRC-010 is governed by policy:TRACE and currently computes as LINKED.',
+        },
+        {
+          severity: 'warning',
+          category: 'governance',
+          code: 'governance-untracked-work',
+          nodeId: 'task:ACT-001',
+          message: 'task:ACT-001 is governed but still lacks enough traceability structure to compute completion honestly.',
+        },
+      ],
+    };
+
+    const plain = strip(renderMyStuffDrawer(snap, style, 'agent.test', 60, 24, 0, health));
+
+    expect(plain).toContain('Graph Health (2)');
+    expect(plain).toContain('readiness 0');
+    expect(plain).toContain('governed 2');
+    expect(plain).toContain('task:TRC-010');
+    expect(plain).toContain('task:ACT-001');
   });
 });

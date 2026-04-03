@@ -117,6 +117,7 @@ export function registerDoctorCommands(program: Command, ctx: CliContext): void 
       const service = new DoctorService(
         ctx.graphPort,
         new WarpRoadmapAdapter(ctx.graphPort),
+        ctx.inspection,
       );
       if (ctx.json) ctx.jsonStart('doctor prescribe');
       const report = await service.prescribe({
@@ -155,6 +156,7 @@ export function registerDoctorCommands(program: Command, ctx: CliContext): void 
       const service = new DoctorService(
         ctx.graphPort,
         new WarpRoadmapAdapter(ctx.graphPort),
+        ctx.inspection,
       );
       if (ctx.json) ctx.jsonStart('doctor');
       const report = await service.run({

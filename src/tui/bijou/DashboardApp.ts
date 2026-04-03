@@ -31,10 +31,14 @@ import {
 import { EASINGS } from '@flyingrobots/bijou-tui';
 import { type TokenValue } from '@flyingrobots/bijou';
 import type { StylePort } from '../../ports/StylePort.js';
-import type { GraphContext } from '../../infrastructure/GraphContext.js';
 import type {
   AiSuggestionNode,
   CaseDetail,
+  DashboardHealth,
+  DashboardHealthIssue,
+  DashboardReviewLaneData,
+  DashboardReviewPageData,
+  DashboardSuggestionLaneData,
   EntityDetail,
   GraphSnapshot,
   GovernanceArtifactNode,
@@ -42,8 +46,12 @@ import type {
   SubmissionNode,
 } from '../../domain/models/dashboard.js';
 import type { IntakePort } from '../../ports/IntakePort.js';
+import type { DashboardReadPort } from '../../ports/DashboardReadPort.js';
+import type { DashboardObservationView } from '../../ports/DashboardReadPort.js';
 import type { GraphPort } from '../../ports/GraphPort.js';
 import type { SubmissionPort } from '../../ports/SubmissionPort.js';
+import { DoctorService } from '../../domain/services/DoctorService.js';
+import { WarpRoadmapAdapter } from '../../infrastructure/adapters/WarpRoadmapAdapter.js';
 import { cockpitView, describeCockpitInteractionMap, type CockpitRect } from './views/cockpit-view.js';
 import { landingView } from './views/landing-view.js';
 import { confirmOverlay, inputOverlay } from './overlays.js';
@@ -52,6 +60,11 @@ import { questTreeOverlay, questTreeOverlayBounds } from './views/quest-tree-mod
 import { questPageView } from './views/quest-page-view.js';
 import { casePageView } from './views/case-page-view.js';
 import { governancePageView } from './views/governance-page-view.js';
+import {
+  buildDoctorPageContentData,
+  doctorPageView,
+  filteredDoctorIssues,
+} from './views/doctor-page-view.js';
 import { reviewPageView } from './views/review-page-view.js';
 import { buildSuggestionExplainabilityBody, suggestionPageView } from './views/suggestion-page-view.js';
 import {
@@ -119,6 +132,7 @@ export type ConfirmAction = PendingWrite | { kind: 'quit' };
 export interface LaneState {
   focusRow: number;
   inspectorScrollY: number;
+  railScrollY: number;
 }
 
 export interface ScrollbarVisibilityState {
@@ -161,13 +175,23 @@ export interface CasePageRoute {
   sourceLane: CockpitLaneId;
 }
 
+export type DoctorFilter = 'all' | 'blocking' | 'structural' | 'readiness' | 'governance' | 'workflow';
+
+export interface DoctorPageRoute {
+  kind: 'doctor';
+  sourceLane: CockpitLaneId;
+  filter: DoctorFilter;
+  focusIssue: number;
+}
+
 export type DashboardPageRoute =
   | LandingPageRoute
   | QuestPageRoute
   | ReviewPageRoute
   | GovernancePageRoute
   | SuggestionPageRoute
-  | CasePageRoute;
+  | CasePageRoute
+  | DoctorPageRoute;
 
 export interface DashboardModel {
   lane: CockpitLaneId;
@@ -183,6 +207,7 @@ export interface DashboardModel {
   table: NavigableTableState;
   inspectorOpen: boolean;
   snapshot: GraphSnapshot | null;
+  health: DashboardHealth | null;
   loading: boolean;
   error: string | null;
   showLanding: boolean;
@@ -211,7 +236,10 @@ export interface DashboardModel {
   observerWatermarks: ObserverWatermarks;
   observerSeenItems: ObserverSeenItems;
   pageScrollY: number;
+  reviewLaneData: DashboardReviewLaneData | null;
+  suggestionLaneData: DashboardSuggestionLaneData | null;
   pageDetail: EntityDetail | null;
+  reviewPageData: DashboardReviewPageData | null;
   pageLoading: boolean;
   pageError: string | null;
   pageRequestId: number;
@@ -221,7 +249,10 @@ export type DashboardMsg =
   | KeyMsg
   | MouseMsg
   | ResizeMsg
-  | { type: 'snapshot-loaded'; snapshot: GraphSnapshot; requestId: number }
+  | { type: 'snapshot-loaded'; snapshot: GraphSnapshot; health?: DashboardHealth | null; requestId: number }
+  | { type: 'health-loaded'; health: DashboardHealth | null; requestId: number }
+  | { type: 'review-lane-loaded'; data: DashboardReviewLaneData; requestId: number }
+  | { type: 'suggestion-lane-loaded'; data: DashboardSuggestionLaneData; requestId: number }
   | { type: 'snapshot-error'; error: string; requestId: number }
   | { type: 'loading-progress'; value: number }
   | { type: 'write-success'; message: string }
@@ -231,12 +262,15 @@ export type DashboardMsg =
   | { type: 'drawer-frame'; value: number }
   | { type: 'scrollbar-visibility'; pane: 'worklist' | 'inspector' | 'page'; level: number; generation: number }
   | { type: 'page-detail-loaded'; entityId: string; detail: EntityDetail | null; requestId: number }
-  | { type: 'page-detail-error'; entityId: string; error: string; requestId: number };
+  | { type: 'page-detail-error'; entityId: string; error: string; requestId: number }
+  | { type: 'review-page-loaded'; submissionId: string; questId: string; data: DashboardReviewPageData | null; requestId: number }
+  | { type: 'review-page-error'; submissionId: string; questId: string; error: string; requestId: number };
 
 type GlobalAction =
   | { type: 'jump-lane'; lane: CockpitLaneId }
   | { type: 'next-lane' }
   | { type: 'prev-lane' }
+  | { type: 'open-doctor' }
   | { type: 'refresh' }
   | { type: 'toggle-lane-view' }
   | { type: 'toggle-help' }
@@ -318,7 +352,7 @@ type DashboardInputState =
   | CaseDecisionInputState;
 
 export interface DashboardDeps {
-  ctx: GraphContext;
+  readPort: DashboardReadPort;
   intake: IntakePort;
   graphPort: GraphPort;
   submissionPort: SubmissionPort;
@@ -327,10 +361,18 @@ export interface DashboardDeps {
   logoText: string;
   observerWatermarkStore: ObserverWatermarkStore;
   observerWatermarkScope: ObserverWatermarkScope;
+  logger?: {
+    debug(message: string, context?: Record<string, unknown>): void;
+    info(message: string, context?: Record<string, unknown>): void;
+    warn(message: string, context?: Record<string, unknown>): void;
+    error(message: string, context?: Record<string, unknown>): void;
+  };
 }
 
 const LANE_ORDER = [...cockpitLaneOrder()];
 const MAX_SCROLLBAR_VISIBILITY = 4;
+const DOCTOR_FILTER_ORDER: DoctorFilter[] = ['all', 'blocking', 'readiness', 'governance', 'structural', 'workflow'];
+const DEFAULT_HEALTH_TIMEOUT_MS = 3000;
 
 function currentPage(model: DashboardModel): DashboardPageRoute {
   return model.pageStack[model.pageStack.length - 1] ?? { kind: 'landing' };
@@ -350,14 +392,128 @@ function emptyScrollbars(): DashboardModel['scrollbars'] {
 
 function emptyLaneState(): Record<CockpitLaneId, LaneState> {
   return {
-    now: { focusRow: 0, inspectorScrollY: 0 },
-    plan: { focusRow: 0, inspectorScrollY: 0 },
-    review: { focusRow: 0, inspectorScrollY: 0 },
-    settlement: { focusRow: 0, inspectorScrollY: 0 },
-    suggestions: { focusRow: 0, inspectorScrollY: 0 },
-    campaigns: { focusRow: 0, inspectorScrollY: 0 },
-    graveyard: { focusRow: 0, inspectorScrollY: 0 },
+    now: { focusRow: 0, inspectorScrollY: 0, railScrollY: 0 },
+    plan: { focusRow: 0, inspectorScrollY: 0, railScrollY: 0 },
+    review: { focusRow: 0, inspectorScrollY: 0, railScrollY: 0 },
+    settlement: { focusRow: 0, inspectorScrollY: 0, railScrollY: 0 },
+    suggestions: { focusRow: 0, inspectorScrollY: 0, railScrollY: 0 },
+    campaigns: { focusRow: 0, inspectorScrollY: 0, railScrollY: 0 },
+    graveyard: { focusRow: 0, inspectorScrollY: 0, railScrollY: 0 },
   };
+}
+
+function countLabel(count: number, singular: string, plural = `${singular}s`): string {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
+function resolveHealthTimeoutMs(): number {
+  const raw = process.env['XYPH_TUI_HEALTH_TIMEOUT_MS'];
+  if (!raw) return DEFAULT_HEALTH_TIMEOUT_MS;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_HEALTH_TIMEOUT_MS;
+}
+
+function serializeError(err: unknown): Record<string, unknown> {
+  if (err instanceof Error) {
+    return {
+      name: err.name,
+      message: err.message,
+      stack: err.stack,
+    };
+  }
+  return { message: String(err) };
+}
+
+async function raceWithTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+): Promise<{ kind: 'result'; value: T } | { kind: 'timeout' }> {
+  return await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => resolve({ kind: 'timeout' }), timeoutMs);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve({ kind: 'result', value });
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
+function doctorFilterLabel(filter: DoctorFilter): string {
+  switch (filter) {
+    case 'all':
+      return 'All';
+    case 'blocking':
+      return 'Blocking';
+    case 'structural':
+      return 'Structural';
+    case 'readiness':
+      return 'Readiness';
+    case 'governance':
+      return 'Governance';
+    case 'workflow':
+      return 'Workflow';
+  }
+}
+
+function nextDoctorFilter(filter: DoctorFilter): DoctorFilter {
+  const index = DOCTOR_FILTER_ORDER.indexOf(filter);
+  return DOCTOR_FILTER_ORDER[(index + 1) % DOCTOR_FILTER_ORDER.length] ?? 'all';
+}
+
+function healthTransitionToast(
+  previous: DashboardHealth | null,
+  next: DashboardHealth | null,
+): { message: string; variant: 'success' | 'error' } | null {
+  if (!previous || !next) return null;
+
+  const previousBlocking = previous.summary.blockingIssueCount;
+  const nextBlocking = next.summary.blockingIssueCount;
+  const previousReadiness = previous.summary.readinessGaps;
+  const nextReadiness = next.summary.readinessGaps;
+  const previousIssues = previous.summary.issueCount;
+  const nextIssues = next.summary.issueCount;
+
+  if (previousBlocking === 0 && nextBlocking > 0) {
+    return {
+      message: `Blocking graph health alert: ${countLabel(nextBlocking, 'issue')} detected.`,
+      variant: 'error',
+    };
+  }
+
+  if (previousReadiness === 0 && nextReadiness > 0) {
+    return {
+      message: `Readiness regressed: ${countLabel(nextReadiness, 'quest')} now fail readiness.`,
+      variant: 'error',
+    };
+  }
+
+  if (previousBlocking > 0 && nextBlocking === 0) {
+    return {
+      message: 'Blocking graph health issues cleared.',
+      variant: 'success',
+    };
+  }
+
+  if (previousIssues > 0 && nextIssues === 0) {
+    return {
+      message: 'Graph health is clean.',
+      variant: 'success',
+    };
+  }
+
+  if (nextBlocking === 0 && nextIssues < previousIssues) {
+    return {
+      message: `Graph health improved: ${previousIssues} -> ${nextIssues} issues.`,
+      variant: 'success',
+    };
+  }
+
+  return null;
 }
 
 function buildGlobalKeys(): KeyMap<GlobalAction> {
@@ -372,6 +528,7 @@ function buildGlobalKeys(): KeyMap<GlobalAction> {
       .bind('7', 'Graveyard lane', { type: 'jump-lane', lane: 'graveyard' })
       .bind('[', 'Previous lane', { type: 'prev-lane' })
       .bind(']', 'Next lane', { type: 'next-lane' })
+      .bind('h', 'Open graph health page', { type: 'open-doctor' })
       .bind('r', 'Refresh snapshot', { type: 'refresh' })
       .bind('v', 'Toggle lane view', { type: 'toggle-lane-view' })
       .bind('i', 'Toggle inspector', { type: 'toggle-inspector' })
@@ -494,7 +651,15 @@ function scrollInspectorBy(model: DashboardModel, delta: number): [DashboardMode
 }
 
 function currentSelectedItem(model: DashboardModel): CockpitItem | undefined {
-  return selectedLaneItem(model.snapshot, model.lane, model.table.focusRow, model.agentId, model.nowView, model.suggestionsView);
+  return selectedLaneItem(
+    model.snapshot,
+    model.lane,
+    model.table.focusRow,
+    model.agentId,
+    model.nowView,
+    model.suggestionsView,
+    { reviewLaneData: model.reviewLaneData, suggestionLaneData: model.suggestionLaneData },
+  );
 }
 
 function governancePrefixes(): readonly string[] {
@@ -574,6 +739,7 @@ function activeQuestId(model: DashboardModel): string | undefined {
   if (page.kind === 'governance') return undefined;
   if (page.kind === 'suggestion') return undefined;
   if (page.kind === 'case') return undefined;
+  if (page.kind === 'doctor') return undefined;
   return questIdForItem(currentSelectedItem(model));
 }
 
@@ -589,12 +755,10 @@ function selectedQuest(model: DashboardModel): QuestNode | undefined {
 function selectedSubmission(model: DashboardModel): SubmissionNode | undefined {
   const page = currentPage(model);
   if (page.kind === 'review') {
-    if (model.pageDetail?.questDetail?.submission?.id === page.submissionId) {
-      return model.pageDetail.questDetail.submission;
-    }
+    if (model.reviewPageData?.submission.id === page.submissionId) return model.reviewPageData.submission;
     return model.snapshot?.submissions.find((submission) => submission.id === page.submissionId);
   }
-  if (page.kind === 'suggestion' || page.kind === 'case') return undefined;
+  if (page.kind === 'suggestion' || page.kind === 'case' || page.kind === 'doctor') return undefined;
   if (page.kind === 'quest' && model.pageDetail?.questDetail?.submission) {
     return model.pageDetail.questDetail.submission;
   }
@@ -605,7 +769,7 @@ function selectedSubmission(model: DashboardModel): SubmissionNode | undefined {
 function activeGovernanceId(model: DashboardModel): string | undefined {
   const page = currentPage(model);
   if (page.kind === 'governance') return page.entityId;
-  if (page.kind === 'suggestion' || page.kind === 'case') return undefined;
+  if (page.kind === 'suggestion' || page.kind === 'case' || page.kind === 'doctor') return undefined;
   if (!isLandingPage(model)) return undefined;
   return governanceIdForItem(currentSelectedItem(model));
 }
@@ -619,7 +783,7 @@ function selectedGovernanceArtifact(model: DashboardModel): GovernanceArtifactNo
 function activeSuggestionId(model: DashboardModel): string | undefined {
   const page = currentPage(model);
   if (page.kind === 'suggestion') return page.suggestionId;
-  if (page.kind === 'case') return undefined;
+  if (page.kind === 'case' || page.kind === 'doctor') return undefined;
   if (!isLandingPage(model)) return undefined;
   return suggestionIdForItem(currentSelectedItem(model));
 }
@@ -649,7 +813,10 @@ function resetToLanding(model: DashboardModel): DashboardModel {
     ...model,
     pageStack: [{ kind: 'landing' }],
     pageScrollY: 0,
+    reviewLaneData: model.reviewLaneData,
+    suggestionLaneData: model.suggestionLaneData,
     pageDetail: null,
+    reviewPageData: null,
     pageLoading: false,
     pageError: null,
   };
@@ -669,20 +836,46 @@ function pageEntityId(page: DashboardPageRoute): string | null {
     case 'quest':
       return page.questId;
     case 'review':
-      return page.questId;
+      return null;
     case 'governance':
       return page.entityId;
     case 'suggestion':
       return page.suggestionId;
     case 'case':
       return page.caseId;
+    case 'doctor':
+      return null;
   }
 }
 
-function fetchPageDetail(requestId: number, entityId: string, deps: DashboardDeps): Cmd<DashboardMsg> {
+function pageObservationView(page: DashboardPageRoute): DashboardObservationView | null {
+  switch (page.kind) {
+    case 'landing':
+      return 'landing';
+    case 'quest':
+      return 'quest-page';
+    case 'review':
+      return 'review-page';
+    case 'governance':
+      return 'governance-page';
+    case 'suggestion':
+      return 'suggestion-page';
+    case 'case':
+      return 'case-page';
+    case 'doctor':
+      return 'doctor-page';
+  }
+}
+
+function fetchPageDetail(
+  requestId: number,
+  view: DashboardObservationView,
+  entityId: string,
+  deps: DashboardDeps,
+): Cmd<DashboardMsg> {
   return async (emit) => {
     try {
-      const detail = await deps.ctx.fetchEntityDetail(entityId);
+      const detail = await deps.readPort.fetchEntityDetail(view, entityId);
       emit({ type: 'page-detail-loaded', entityId, detail, requestId });
     } catch (err: unknown) {
       emit({
@@ -693,6 +886,41 @@ function fetchPageDetail(requestId: number, entityId: string, deps: DashboardDep
       });
     }
   };
+}
+
+function fetchReviewPageData(
+  requestId: number,
+  submissionId: string,
+  questId: string,
+  deps: DashboardDeps,
+): Cmd<DashboardMsg> {
+  return async (emit) => {
+    try {
+      const data = await deps.readPort.fetchReviewPageData(submissionId, questId);
+      emit({ type: 'review-page-loaded', submissionId, questId, data, requestId });
+    } catch (err: unknown) {
+      emit({
+        type: 'review-page-error',
+        submissionId,
+        questId,
+        error: err instanceof Error ? err.message : String(err),
+        requestId,
+      });
+    }
+  };
+}
+
+function fetchPageContext(
+  requestId: number,
+  page: DashboardPageRoute,
+  deps: DashboardDeps,
+): Cmd<DashboardMsg>[] {
+  if (page.kind === 'review') {
+    return [fetchReviewPageData(requestId, page.submissionId, page.questId, deps)];
+  }
+  const entityId = pageEntityId(page);
+  const view = pageObservationView(page);
+  return entityId && view ? [fetchPageDetail(requestId, view, entityId, deps)] : [];
 }
 
 function openReviewPage(
@@ -708,10 +936,11 @@ function openReviewPage(
     pageStack: [...model.pageStack, { kind: 'review', submissionId, questId, sourceLane }],
     pageScrollY: 0,
     pageDetail: null,
+    reviewPageData: null,
     pageLoading: true,
     pageError: null,
     pageRequestId: nextRequestId,
-  }, [fetchPageDetail(nextRequestId, questId, deps)]];
+  }, [fetchReviewPageData(nextRequestId, submissionId, questId, deps)]];
 }
 
 function openQuestPage(model: DashboardModel, questId: string, sourceLane: CockpitLaneId, deps: DashboardDeps): [DashboardModel, Cmd<DashboardMsg>[]] {
@@ -721,10 +950,11 @@ function openQuestPage(model: DashboardModel, questId: string, sourceLane: Cockp
     pageStack: [...model.pageStack, { kind: 'quest', questId, sourceLane }],
     pageScrollY: 0,
     pageDetail: null,
+    reviewPageData: null,
     pageLoading: true,
     pageError: null,
     pageRequestId: nextRequestId,
-  }, [fetchPageDetail(nextRequestId, questId, deps)]];
+  }, [fetchPageDetail(nextRequestId, 'quest-page', questId, deps)]];
 }
 
 function openGovernancePage(
@@ -739,10 +969,11 @@ function openGovernancePage(
     pageStack: [...model.pageStack, { kind: 'governance', entityId, sourceLane }],
     pageScrollY: 0,
     pageDetail: null,
+    reviewPageData: null,
     pageLoading: true,
     pageError: null,
     pageRequestId: nextRequestId,
-  }, [fetchPageDetail(nextRequestId, entityId, deps)]];
+  }, [fetchPageDetail(nextRequestId, 'governance-page', entityId, deps)]];
 }
 
 function openSuggestionPage(
@@ -757,10 +988,11 @@ function openSuggestionPage(
     pageStack: [...model.pageStack, { kind: 'suggestion', suggestionId, sourceLane }],
     pageScrollY: 0,
     pageDetail: null,
+    reviewPageData: null,
     pageLoading: true,
     pageError: null,
     pageRequestId: nextRequestId,
-  }, [fetchPageDetail(nextRequestId, suggestionId, deps)]];
+  }, [fetchPageDetail(nextRequestId, 'suggestion-page', suggestionId, deps)]];
 }
 
 function openCasePage(
@@ -775,10 +1007,90 @@ function openCasePage(
     pageStack: [...model.pageStack, { kind: 'case', caseId, sourceLane }],
     pageScrollY: 0,
     pageDetail: null,
+    reviewPageData: null,
     pageLoading: true,
     pageError: null,
     pageRequestId: nextRequestId,
-  }, [fetchPageDetail(nextRequestId, caseId, deps)]];
+  }, [fetchPageDetail(nextRequestId, 'case-page', caseId, deps)]];
+}
+
+function openDoctorPage(
+  model: DashboardModel,
+  sourceLane: CockpitLaneId,
+): [DashboardModel, Cmd<DashboardMsg>[]] {
+  const page = currentPage(model);
+  if (page.kind === 'doctor') {
+    return [{
+      ...model,
+      pageScrollY: 0,
+      pageDetail: null,
+      reviewPageData: null,
+      pageLoading: false,
+      pageError: null,
+    }, []];
+  }
+  return [{
+    ...model,
+    pageStack: [...model.pageStack, { kind: 'doctor', sourceLane, filter: 'all', focusIssue: 0 }],
+    pageScrollY: 0,
+    pageDetail: null,
+    reviewPageData: null,
+    pageLoading: false,
+    pageError: null,
+  }, []];
+}
+
+function cycleDoctorPageFilter(model: DashboardModel): DashboardModel {
+  const page = currentPage(model);
+  if (page.kind !== 'doctor') return model;
+  return {
+    ...model,
+    pageStack: [
+      ...model.pageStack.slice(0, -1),
+      { ...page, filter: nextDoctorFilter(page.filter), focusIssue: 0 },
+    ],
+    pageScrollY: 0,
+  };
+}
+
+function focusedDoctorIssue(model: DashboardModel): DashboardHealthIssue | undefined {
+  const page = currentPage(model);
+  if (page.kind !== 'doctor') return undefined;
+  return filteredDoctorIssues(model.health?.issues ?? [], page.filter)[page.focusIssue];
+}
+
+function updateDoctorIssueFocus(
+  model: DashboardModel,
+  style: StylePort,
+  desiredIndex: number,
+): DashboardModel {
+  const page = currentPage(model);
+  if (page.kind !== 'doctor') return model;
+  const { issues, issueStarts } = buildDoctorPageContentData(
+    model,
+    page,
+    style,
+    Math.max(12, model.cols - 4),
+  );
+  if (issues.length === 0) {
+    return {
+      ...model,
+      pageStack: [
+        ...model.pageStack.slice(0, -1),
+        { ...page, focusIssue: 0 },
+      ],
+      pageScrollY: 0,
+    };
+  }
+  const focusIssue = Math.max(0, Math.min(desiredIndex, issues.length - 1));
+  return {
+    ...model,
+    pageStack: [
+      ...model.pageStack.slice(0, -1),
+      { ...page, focusIssue },
+    ],
+    pageScrollY: issueStarts[focusIssue] ?? 0,
+  };
 }
 
 function openSelectedItemPage(model: DashboardModel, deps: DashboardDeps): [DashboardModel, Cmd<DashboardMsg>[]] {
@@ -812,18 +1124,20 @@ function popPage(model: DashboardModel, deps: DashboardDeps): [DashboardModel, C
       pageStack,
       pageScrollY: 0,
       pageDetail: null,
+      reviewPageData: null,
       pageLoading: false,
       pageError: null,
     }, []];
   }
   const nextRequestId = model.pageRequestId + 1;
-  const entityId = pageEntityId(nextPage);
-  if (!entityId) {
+  const cmds = fetchPageContext(nextRequestId, nextPage, deps);
+  if (cmds.length === 0) {
     return [{
       ...model,
       pageStack,
       pageScrollY: 0,
       pageDetail: null,
+      reviewPageData: null,
       pageLoading: false,
       pageError: null,
     }, []];
@@ -833,15 +1147,25 @@ function popPage(model: DashboardModel, deps: DashboardDeps): [DashboardModel, C
     pageStack,
     pageScrollY: 0,
     pageDetail: null,
+    reviewPageData: null,
     pageLoading: true,
     pageError: null,
     pageRequestId: nextRequestId,
-  }, [fetchPageDetail(nextRequestId, entityId, deps)]];
+  }, cmds];
 }
 
 function rebuildForLane(model: DashboardModel, lane: CockpitLaneId, snapshot = model.snapshot): DashboardModel {
   const memory = model.laneState[lane];
-  const table = buildLaneTable(snapshot, lane, Math.max(8, model.rows - 8), memory.focusRow, model.agentId, model.nowView, model.suggestionsView);
+  const table = buildLaneTable(
+    snapshot,
+    lane,
+    Math.max(8, model.rows - 8),
+    memory.focusRow,
+    model.agentId,
+    model.nowView,
+    model.suggestionsView,
+    { reviewLaneData: model.reviewLaneData, suggestionLaneData: model.suggestionLaneData },
+  );
   return {
     ...model,
     lane,
@@ -877,6 +1201,19 @@ function updateInspectorScroll(model: DashboardModel, inspectorScrollY: number):
       [model.lane]: {
         ...model.laneState[model.lane],
         inspectorScrollY: Math.max(0, inspectorScrollY),
+      },
+    },
+  };
+}
+
+function updateRailScroll(model: DashboardModel, railScrollY: number): DashboardModel {
+  return {
+    ...model,
+    laneState: {
+      ...model.laneState,
+      [model.lane]: {
+        ...model.laneState[model.lane],
+        railScrollY: Math.max(0, railScrollY),
       },
     },
   };
@@ -1111,6 +1448,7 @@ function formatControlHints(entries: ControlHint[]): string {
 
 function contextControls(model: DashboardModel): ControlHint[] {
   if (!isLandingPage(model)) {
+    const page = currentPage(model);
     const caseDetail = selectedCaseDetail(model);
     if (caseDetail) {
       return [
@@ -1151,12 +1489,16 @@ function contextControls(model: DashboardModel): ControlHint[] {
       { key: 'PgUp/PgDn', label: 'page' },
       { key: 'n', label: 'ask ai' },
     ];
+    if (page.kind === 'doctor') {
+      hints.push({ key: 'v', label: doctorFilterLabel(nextDoctorFilter(page.filter)).toLowerCase() });
+      return hints;
+    }
     const governance = selectedGovernanceArtifact(model);
     if (governance) {
       hints.push({ key: ';', label: 'comment' });
       return hints;
     }
-    if (currentPage(model).kind === 'review') {
+    if (page.kind === 'review') {
       hints.push({ key: ';', label: 'comment' });
       const submission = selectedSubmission(model);
       if (submission && (submission.status === 'OPEN' || submission.status === 'CHANGES_REQUESTED')) {
@@ -1274,6 +1616,8 @@ function renderStatusLine(model: DashboardModel): string {
       ? `${laneTitle(page.sourceLane)} / ${shortId(page.submissionId)}`
     : page.kind === 'governance'
       ? `${laneTitle(page.sourceLane)} / ${shortId(page.entityId)}`
+    : page.kind === 'doctor'
+      ? `${laneTitle(page.sourceLane)} / Health`
     : page.kind === 'suggestion'
         ? `${laneTitle(page.sourceLane)} / ${page.sourceLane === 'suggestions' ? `${suggestionsViewTitle(model.suggestionsView)} / ` : ''}${shortId(page.suggestionId)}`
       : model.lane === 'now' && model.nowView === 'activity'
@@ -1293,6 +1637,8 @@ function renderStatusLine(model: DashboardModel): string {
       ? `Review page · ${shortId(page.submissionId)}`
     : page.kind === 'governance'
       ? `Governance page · ${shortId(page.entityId)}`
+    : page.kind === 'doctor'
+      ? `Doctor page · ${doctorFilterLabel(page.filter)}`
     : page.kind === 'suggestion'
       ? `Suggestion page · ${shortId(page.suggestionId)}`
       : currentSelectedItem(model)
@@ -1446,6 +1792,7 @@ function renderAiExplainabilityBody(model: DashboardModel, style: StylePort): st
 }
 
 function buildPaletteItems(model: DashboardModel): CommandPaletteItem[] {
+  const page = currentPage(model);
   const items: CommandPaletteItem[] = [
     { id: 'lane:now', label: 'Open Now lane', category: 'Navigate', shortcut: '1' },
     { id: 'lane:plan', label: 'Open Plan lane', category: 'Navigate', shortcut: '2' },
@@ -1454,6 +1801,7 @@ function buildPaletteItems(model: DashboardModel): CommandPaletteItem[] {
     { id: 'lane:suggestions', label: 'Open Suggestions lane', category: 'Navigate', shortcut: '5' },
     { id: 'lane:campaigns', label: 'Open Campaigns lane', category: 'Navigate', shortcut: '6' },
     { id: 'lane:graveyard', label: 'Open Graveyard lane', category: 'Navigate', shortcut: '7' },
+    { id: 'open-doctor', label: 'Open graph health page', category: 'Inspect', shortcut: 'h' },
     { id: 'refresh', label: 'Refresh snapshot', category: 'Global', shortcut: 'r' },
     ...(isLandingPage(model) && model.lane === 'now'
       ? [{
@@ -1471,7 +1819,15 @@ function buildPaletteItems(model: DashboardModel): CommandPaletteItem[] {
           shortcut: 'v',
         } satisfies CommandPaletteItem]
       : []),
-    { id: 'toggle-drawer', label: 'Toggle My Stuff drawer', category: 'Global', shortcut: 'm' },
+    ...(page.kind === 'doctor'
+      ? [{
+          id: 'toggle-lane-view',
+          label: `Show ${doctorFilterLabel(nextDoctorFilter(page.filter)).toLowerCase()} findings`,
+          category: 'Inspect',
+          shortcut: 'v',
+        } satisfies CommandPaletteItem]
+      : []),
+    { id: 'toggle-drawer', label: 'Toggle operations drawer', category: 'Global', shortcut: 'm' },
     { id: 'ask-ai', label: 'Queue Ask-AI job', category: 'Suggest', shortcut: 'n' },
   ];
 
@@ -1507,7 +1863,7 @@ function buildPaletteItems(model: DashboardModel): CommandPaletteItem[] {
       items.push({ id: 'supersede-suggestion', label: 'Mark this suggestion superseded by another artifact', category: 'Action', shortcut: 'u' });
     }
   }
-  if (currentPage(model).kind === 'review') {
+  if (page.kind === 'review') {
     items.push({ id: 'comment', label: 'Comment on this submission', category: 'Action', shortcut: ';' });
   }
   if (selectedCaseDetail(model)) {
@@ -1571,6 +1927,7 @@ function drawerMaxScroll(model: DashboardModel, deps: DashboardDeps): number {
     deps.style,
     model.agentId,
     bodyWidth,
+    model.health,
   ).length;
   return Math.max(0, totalLines - bodyHeight);
 }
@@ -1604,26 +1961,192 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
 
   let watcherUnsub: (() => void) | null = null;
 
+  function healthCategoryForBucket(bucket: string): DashboardHealthIssue['category'] {
+    switch (bucket) {
+      case 'dangling-edge':
+      case 'orphan-node':
+        return 'structural';
+      case 'readiness-gap':
+        return 'readiness';
+      case 'governed-completion-gap':
+      case 'sovereignty-violation':
+        return 'governance';
+      default:
+        return 'workflow';
+    }
+  }
+
+  async function loadDashboardHealth(): Promise<DashboardHealth | null> {
+    const startedAt = Date.now();
+    const timeoutMs = resolveHealthTimeoutMs();
+    deps.logger?.debug('dashboard health load started', { timeoutMs });
+    try {
+      const outcome = await raceWithTimeout(new DoctorService(
+        deps.graphPort,
+        new WarpRoadmapAdapter(deps.graphPort),
+      ).run(), timeoutMs);
+      if (outcome.kind === 'timeout') {
+        deps.logger?.warn('dashboard health load timed out', {
+          timeoutMs,
+          durationMs: Date.now() - startedAt,
+        });
+        return null;
+      }
+      const report = outcome.value;
+      deps.logger?.info('dashboard health load finished', {
+        durationMs: Date.now() - startedAt,
+        issueCount: report.summary.issueCount,
+        blockingIssueCount: report.summary.blockingIssueCount,
+        readinessGaps: report.summary.readinessGaps,
+        governedCompletionGaps: report.summary.governedCompletionGaps,
+        status: report.status,
+      });
+      return {
+        status: report.status,
+        blocking: report.blocking,
+        summary: {
+          issueCount: report.summary.issueCount,
+          blockingIssueCount: report.summary.blockingIssueCount,
+          readinessGaps: report.summary.readinessGaps,
+          governedCompletionGaps: report.summary.governedCompletionGaps,
+        },
+        issues: report.issues.map((issue) => ({
+          severity: issue.severity,
+          category: healthCategoryForBucket(issue.bucket),
+          code: issue.code,
+          nodeId: issue.nodeId,
+          message: issue.message,
+        })),
+      };
+    } catch (error: unknown) {
+      deps.logger?.error('dashboard health load failed', {
+        durationMs: Date.now() - startedAt,
+        ...serializeError(error),
+      });
+      return null;
+    }
+  }
+
+  async function loadOperationalSnapshot(): Promise<GraphSnapshot> {
+    const startedAt = Date.now();
+    deps.logger?.debug('dashboard state load started', { profile: 'operational' });
+    const snapshot = await deps.readPort.fetchOperationalSnapshot('landing');
+    deps.logger?.info('dashboard state load finished', {
+      durationMs: Date.now() - startedAt,
+      questCount: snapshot.quests.length,
+      campaignCount: snapshot.campaigns.length,
+      submissionCount: snapshot.submissions.length,
+      suggestionCount: snapshot.suggestions.length,
+    });
+    return snapshot;
+  }
+
+  async function loadReviewLaneData(): Promise<DashboardReviewLaneData> {
+    const startedAt = Date.now();
+    deps.logger?.debug('dashboard review lane load started');
+    const data = await deps.readPort.fetchLandingReviewLaneData();
+    deps.logger?.info('dashboard review lane load finished', {
+      durationMs: Date.now() - startedAt,
+      submissionCount: data.submissions.length,
+      questCount: data.quests.length,
+    });
+    return data;
+  }
+
+  async function loadSuggestionLaneData(): Promise<DashboardSuggestionLaneData> {
+    const startedAt = Date.now();
+    deps.logger?.debug('dashboard suggestion lane load started');
+    const data = await deps.readPort.fetchLandingSuggestionLaneData();
+    deps.logger?.info('dashboard suggestion lane load finished', {
+      durationMs: Date.now() - startedAt,
+      suggestionCount: data.aiSuggestions.length,
+    });
+    return data;
+  }
+
   function fetchSnapshot(requestId: number): Cmd<DashboardMsg> {
     return async (emit) => {
       try {
-        const snapshot = await deps.ctx.fetchSnapshot(undefined, { profile: 'operational' });
+        deps.logger?.debug('dashboard snapshot request started', { requestId });
+        const snapshot = await loadOperationalSnapshot();
+        deps.logger?.info('dashboard snapshot request succeeded', {
+          requestId,
+          questCount: snapshot.quests.length,
+        });
         emit({ type: 'snapshot-loaded', snapshot, requestId });
       } catch (err: unknown) {
+        deps.logger?.error('dashboard snapshot request failed', {
+          requestId,
+          ...serializeError(err),
+        });
         emit({ type: 'snapshot-error', error: err instanceof Error ? err.message : String(err), requestId });
       }
     };
   }
 
-  function refreshAfterWrite(requestId: number): Cmd<DashboardMsg> {
+  function fetchHealth(requestId: number): Cmd<DashboardMsg> {
     return async (emit) => {
-      deps.ctx.invalidateCache();
       try {
-        const snapshot = await deps.ctx.fetchSnapshot(undefined, { profile: 'operational' });
-        emit({ type: 'snapshot-loaded', snapshot, requestId });
+        deps.logger?.debug('dashboard health request started', { requestId });
+        const health = await loadDashboardHealth();
+        deps.logger?.info('dashboard health request succeeded', {
+          requestId,
+          healthStatus: health?.status ?? 'unavailable',
+        });
+        emit({ type: 'health-loaded', health, requestId });
       } catch (err: unknown) {
-        emit({ type: 'snapshot-error', error: err instanceof Error ? err.message : String(err), requestId });
+        deps.logger?.error('dashboard health request failed', {
+          requestId,
+          ...serializeError(err),
+        });
       }
+    };
+  }
+
+  function fetchReviewLane(requestId: number): Cmd<DashboardMsg> {
+    return async (emit) => {
+      try {
+        deps.logger?.debug('dashboard review lane request started', { requestId });
+        const data = await loadReviewLaneData();
+        deps.logger?.info('dashboard review lane request succeeded', {
+          requestId,
+          submissionCount: data.submissions.length,
+        });
+        emit({ type: 'review-lane-loaded', data, requestId });
+      } catch (err: unknown) {
+        deps.logger?.warn('dashboard review lane request failed', {
+          requestId,
+          ...serializeError(err),
+        });
+      }
+    };
+  }
+
+  function fetchSuggestionLane(requestId: number): Cmd<DashboardMsg> {
+    return async (emit) => {
+      try {
+        deps.logger?.debug('dashboard suggestion lane request started', { requestId });
+        const data = await loadSuggestionLaneData();
+        deps.logger?.info('dashboard suggestion lane request succeeded', {
+          requestId,
+          suggestionCount: data.aiSuggestions.length,
+        });
+        emit({ type: 'suggestion-lane-loaded', data, requestId });
+      } catch (err: unknown) {
+        deps.logger?.warn('dashboard suggestion lane request failed', {
+          requestId,
+          ...serializeError(err),
+        });
+      }
+    };
+  }
+
+  function refreshAfterWrite(requestId: number): Cmd<DashboardMsg> {
+    return async (emit, capabilities) => {
+      deps.readPort.invalidate();
+      await fetchSnapshot(requestId)(emit, capabilities);
+      await fetchReviewLane(requestId)(emit, capabilities);
+      await fetchSuggestionLane(requestId)(emit, capabilities);
     };
   }
 
@@ -1657,6 +2180,42 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
       await new Promise((resolve) => setTimeout(resolve, 3000));
       emit({ type: 'dismiss-toast', expiresAt });
     };
+  }
+
+  function openDoctorIssuePage(model: DashboardModel): [DashboardModel, Cmd<DashboardMsg>[]] {
+    const page = currentPage(model);
+    const issue = focusedDoctorIssue(model);
+    if (page.kind !== 'doctor' || !issue) return [model, []];
+
+    const nodeId = issue.nodeId;
+    if (!nodeId) {
+      const expiresAt = Date.now() + 3000;
+      return [{
+        ...model,
+        toast: { message: 'Selected doctor finding has no linked graph node.', variant: 'error', expiresAt },
+      }, [delayedDismissToast(expiresAt)]];
+    }
+
+    if (nodeId.startsWith('task:')) return openQuestPage(model, nodeId, page.sourceLane, deps);
+    if (nodeId.startsWith('suggestion:')) return openSuggestionPage(model, nodeId, page.sourceLane, deps);
+    if (nodeId.startsWith('case:')) return openCasePage(model, nodeId, page.sourceLane, deps);
+    if (
+      nodeId.startsWith('comparison-artifact:')
+      || nodeId.startsWith('collapse-proposal:')
+      || nodeId.startsWith('attestation:')
+    ) {
+      return openGovernancePage(model, nodeId, page.sourceLane, deps);
+    }
+
+    const expiresAt = Date.now() + 3000;
+    return [{
+      ...model,
+      toast: {
+        message: `No doctor target page exists for ${nodeId}.`,
+        variant: 'error',
+        expiresAt,
+      },
+    }, [delayedDismissToast(expiresAt)]];
   }
 
   function executeWrite(action: PendingWrite, inputValue?: string): Cmd<DashboardMsg> {
@@ -1930,6 +2489,8 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         return [switchLaneWithWatermark(resetToLanding(model), 'campaigns', deps), []];
       case 'lane:graveyard':
         return [switchLaneWithWatermark(resetToLanding(model), 'graveyard', deps), []];
+      case 'open-doctor':
+        return openDoctorPage(model, model.lane);
       case 'open-page':
         return openSelectedItemPage(model, deps);
       case 'open-linked-case': {
@@ -1942,9 +2503,15 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         return popPage(model, deps);
       case 'refresh': {
         const nextReqId = model.requestId + 1;
-        return [{ ...model, loading: true, error: null, requestId: nextReqId }, [fetchSnapshot(nextReqId)]];
+        return [{
+          ...model,
+          loading: true,
+          error: null,
+          requestId: nextReqId,
+        }, [fetchSnapshot(nextReqId), fetchHealth(nextReqId), fetchReviewLane(nextReqId), fetchSuggestionLane(nextReqId)]];
       }
       case 'toggle-lane-view':
+        if (currentPage(model).kind === 'doctor') return wakeScrollbar(cycleDoctorPageFilter(model), 'page');
         if (model.lane === 'now') return wakeScrollbar(toggleNowView(model, deps), 'worklist');
         if (model.lane === 'suggestions') return wakeScrollbar(toggleSuggestionsView(model, deps), 'worklist');
         return [model, []];
@@ -2020,6 +2587,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         table: createNavigableTableState({ columns: [], rows: [], height: Math.max(8, rows - 8) }),
         inspectorOpen: true,
         snapshot: null,
+        health: null,
         loading: true,
         error: null,
         showLanding: true,
@@ -2048,13 +2616,19 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         observerWatermarks: freshnessState.watermarks,
         observerSeenItems: freshnessState.seenItems,
         pageScrollY: 0,
+        reviewLaneData: null,
+        suggestionLaneData: null,
         pageDetail: null,
+        reviewPageData: null,
         pageLoading: false,
         pageError: null,
         pageRequestId: 0,
       };
       return [model, [
         fetchSnapshot(model.requestId),
+        fetchHealth(model.requestId),
+        fetchReviewLane(model.requestId),
+        fetchSuggestionLane(model.requestId),
         startWatching(),
         fadeScrollbar('worklist', model.scrollbars.worklist.generation),
         animate<DashboardMsg>({
@@ -2084,6 +2658,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         const updated = visitSelectedItem(rebuildForLane({
           ...model,
           snapshot: msg.snapshot,
+          health: msg.health === undefined ? model.health : msg.health,
           loading: pendingRefresh,
           error: null,
           showLanding: false,
@@ -2091,21 +2666,48 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
           refreshPending: false,
           watching: true,
           requestId: pendingRefresh ? model.requestId + 1 : model.requestId,
+          toast: model.toast,
         }, model.lane, msg.snapshot), deps);
         const clamped = clampDrawerScroll(updated, deps);
         const nextPage = currentPage(clamped);
-        const cmds: Cmd<DashboardMsg>[] = pendingRefresh ? [fetchSnapshot(clamped.requestId)] : [];
-        const entityId = pageEntityId(nextPage);
-        if (entityId) {
+        const cmds: Cmd<DashboardMsg>[] = pendingRefresh
+          ? [fetchSnapshot(clamped.requestId), fetchHealth(clamped.requestId), fetchReviewLane(clamped.requestId), fetchSuggestionLane(clamped.requestId)]
+          : [];
+        const pageCmds = fetchPageContext(clamped.pageRequestId + 1, nextPage, deps);
+        if (pageCmds.length > 0) {
           const nextPageRequestId = clamped.pageRequestId + 1;
           return [{
             ...clamped,
             pageLoading: true,
             pageError: null,
             pageRequestId: nextPageRequestId,
-          }, [...cmds, fetchPageDetail(nextPageRequestId, entityId, deps)]];
+          }, [...cmds, ...pageCmds]];
         }
         return [clamped, cmds];
+      }
+
+      if (msg.type === 'health-loaded') {
+        if (msg.requestId !== model.requestId) return [model, []];
+        if (!msg.health) return [model, []];
+        const transitionToast = model.toast ? null : healthTransitionToast(model.health, msg.health);
+        const transitionToastExpiresAt = transitionToast ? Date.now() + 3000 : null;
+        return [{
+          ...model,
+          health: msg.health,
+          toast: transitionToast && transitionToastExpiresAt
+            ? { ...transitionToast, expiresAt: transitionToastExpiresAt }
+            : model.toast,
+        }, transitionToastExpiresAt ? [delayedDismissToast(transitionToastExpiresAt)] : []];
+      }
+
+      if (msg.type === 'review-lane-loaded') {
+        if (msg.requestId !== model.requestId) return [model, []];
+        return [rebuildForLane({ ...model, reviewLaneData: msg.data }, model.lane), []];
+      }
+
+      if (msg.type === 'suggestion-lane-loaded') {
+        if (msg.requestId !== model.requestId) return [model, []];
+        return [rebuildForLane({ ...model, suggestionLaneData: msg.data }, model.lane), []];
       }
 
       if (msg.type === 'snapshot-error') {
@@ -2121,6 +2723,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         return [{
           ...model,
           pageDetail: msg.detail,
+          reviewPageData: null,
           pageLoading: false,
           pageError: msg.detail ? null : 'Page detail is not available for this item.',
         }, []];
@@ -2138,10 +2741,51 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         }, []];
       }
 
+      if (msg.type === 'review-page-loaded') {
+        if (msg.requestId !== model.pageRequestId) return [model, []];
+        const page = currentPage(model);
+        if (
+          page.kind !== 'review' ||
+          page.submissionId !== msg.submissionId ||
+          page.questId !== msg.questId
+        ) {
+          return [model, []];
+        }
+        return [{
+          ...model,
+          pageDetail: null,
+          reviewPageData: msg.data,
+          pageLoading: false,
+          pageError: msg.data ? null : 'Review context is not available for this submission.',
+        }, []];
+      }
+
+      if (msg.type === 'review-page-error') {
+        if (msg.requestId !== model.pageRequestId) return [model, []];
+        const page = currentPage(model);
+        if (
+          page.kind !== 'review' ||
+          page.submissionId !== msg.submissionId ||
+          page.questId !== msg.questId
+        ) {
+          return [model, []];
+        }
+        return [{
+          ...model,
+          pageLoading: false,
+          pageError: msg.error,
+        }, []];
+      }
+
       if (msg.type === 'remote-change') {
         if (model.loading) return [{ ...model, refreshPending: true }, []];
         const nextReqId = model.requestId + 1;
-        return [{ ...model, loading: true, requestId: nextReqId, refreshPending: false }, [fetchSnapshot(nextReqId)]];
+        return [{
+          ...model,
+          loading: true,
+          requestId: nextReqId,
+          refreshPending: false,
+        }, [fetchSnapshot(nextReqId), fetchHealth(nextReqId), fetchReviewLane(nextReqId), fetchSuggestionLane(nextReqId)]];
       }
 
       if (msg.type === 'loading-progress') {
@@ -2158,7 +2802,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
           requestId: nextReqId,
           writePending: false,
           toast: { message: msg.message, variant: 'success', expiresAt },
-        }, [refreshAfterWrite(nextReqId), delayedDismissToast(expiresAt)]];
+        }, [refreshAfterWrite(nextReqId), fetchHealth(nextReqId), delayedDismissToast(expiresAt)]];
       }
 
       if (msg.type === 'write-error') {
@@ -2292,6 +2936,9 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
 
         if (msg.action === 'scroll-down' || msg.action === 'scroll-up') {
           const delta = msg.action === 'scroll-down' ? 1 : -1;
+          if (pointInRect(interactionMap.railRect, msg.col, msg.row)) {
+            return [updateRailScroll(model, model.laneState[model.lane].railScrollY + delta * 3), []];
+          }
           if (interactionMap.inspectorRect && model.inspectorOpen && pointInRect(interactionMap.inspectorRect, msg.col, msg.row)) {
             return scrollInspectorBy(model, delta * 3);
           }
@@ -2632,11 +3279,19 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
               const currentIndex = LANE_ORDER.indexOf(model.lane);
               return wakeScrollbar(switchLaneWithWatermark(resetToLanding(model), laneForIndex((currentIndex - 1 + LANE_ORDER.length) % LANE_ORDER.length), deps), 'worklist');
             }
+            case 'open-doctor':
+              return wakeScrollbar(openDoctorPage(model, model.lane)[0], 'page');
             case 'refresh': {
               const nextReqId = model.requestId + 1;
-              return [{ ...model, loading: true, error: null, requestId: nextReqId }, [fetchSnapshot(nextReqId)]];
+              return [{
+                ...model,
+                loading: true,
+                error: null,
+                requestId: nextReqId,
+              }, [fetchSnapshot(nextReqId), fetchHealth(nextReqId), fetchReviewLane(nextReqId), fetchSuggestionLane(nextReqId)]];
             }
             case 'toggle-lane-view':
+              if (currentPage(model).kind === 'doctor') return wakeScrollbar(cycleDoctorPageFilter(model), 'page');
               if (!isLandingPage(model)) return [model, []];
               if (model.lane === 'now') return wakeScrollbar(toggleNowView(model, deps), 'worklist');
               if (model.lane === 'suggestions') return wakeScrollbar(toggleSuggestionsView(model, deps), 'worklist');
@@ -2670,6 +3325,9 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
               if (isLandingPage(model)) return openSelectedItemPage(model, deps);
               {
                 const page = currentPage(model);
+                if (page.kind === 'doctor') {
+                  return openDoctorIssuePage(model);
+                }
                 if (page.kind === 'suggestion') {
                   const linkedCaseId = linkedCaseIdForSuggestionDetail(model.pageDetail);
                   return linkedCaseId ? openCasePage(model, linkedCaseId, page.sourceLane, deps) : [model, []];
@@ -2677,6 +3335,12 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
               }
               return [model, []];
             case 'select-next': {
+              {
+                const page = currentPage(model);
+                if (page.kind === 'doctor') {
+                  return wakeScrollbar(updateDoctorIssueFocus(model, deps.style, page.focusIssue + 1), 'page');
+                }
+              }
               if (!isLandingPage(model)) {
                 return wakeScrollbar(updatePageScroll(model, model.pageScrollY + 1), 'page');
               }
@@ -2690,6 +3354,12 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
               return wakeScrollbar(nextModel, 'worklist');
             }
             case 'select-prev': {
+              {
+                const page = currentPage(model);
+                if (page.kind === 'doctor') {
+                  return wakeScrollbar(updateDoctorIssueFocus(model, deps.style, page.focusIssue - 1), 'page');
+                }
+              }
               if (!isLandingPage(model)) {
                 return wakeScrollbar(updatePageScroll(model, model.pageScrollY - 1), 'page');
               }
@@ -2703,6 +3373,9 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
               return wakeScrollbar(nextModel, 'worklist');
             }
             case 'top': {
+              if (currentPage(model).kind === 'doctor') {
+                return wakeScrollbar(updateDoctorIssueFocus(model, deps.style, 0), 'page');
+              }
               if (!isLandingPage(model)) {
                 return wakeScrollbar(updatePageScroll(model, 0), 'page');
               }
@@ -2713,6 +3386,13 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
               return wakeScrollbar(nextModel, 'worklist');
             }
             case 'bottom': {
+              if (currentPage(model).kind === 'doctor') {
+                const page = currentPage(model);
+                const issueCount = page.kind === 'doctor'
+                  ? filteredDoctorIssues(model.health?.issues ?? [], page.filter).length
+                  : 0;
+                return wakeScrollbar(updateDoctorIssueFocus(model, deps.style, Math.max(0, issueCount - 1)), 'page');
+              }
               if (!isLandingPage(model)) {
                 return [model, []];
               }
@@ -2799,7 +3479,16 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
       const viewRenderer = (w: number, h: number): string => {
         const page = currentPage(model);
         let content = cockpitView(model, style, w, h);
-        if (model.snapshot && page.kind === 'quest') {
+        if (model.snapshot && page.kind === 'doctor') {
+          content = doctorPageView({
+            model,
+            snapshot: model.snapshot,
+            page,
+            style,
+            width: w,
+            height: h,
+          });
+        } else if (model.snapshot && page.kind === 'quest') {
           const quest = model.pageDetail?.questDetail?.quest
             ?? model.snapshot.quests.find((entry) => entry.id === page.questId);
           if (quest) {
@@ -2816,7 +3505,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
             });
           }
         } else if (model.snapshot && page.kind === 'review') {
-          const quest = model.pageDetail?.questDetail?.quest
+          const quest = model.reviewPageData?.quest
             ?? model.snapshot.quests.find((entry) => entry.id === page.questId);
           const submission = selectedSubmission(model);
           if (quest && submission) {
@@ -2826,7 +3515,9 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
               page,
               quest,
               submission,
-              detail: model.pageDetail,
+              reviews: model.reviewPageData?.reviews ?? [],
+              decisions: model.reviewPageData?.decisions ?? [],
+              scroll: model.reviewPageData?.scroll,
               sourceItem: currentSelectedItem(model),
               style,
               width: w,
@@ -2876,6 +3567,28 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
             height: h,
           });
         }
+        if (model.drawerWidth > 4 && model.snapshot) {
+          const drawerContent = renderMyStuffDrawer(
+            model.snapshot,
+            style,
+            model.agentId,
+            model.drawerWidth - 2,
+            h - 2,
+            model.drawerScrollY,
+            model.health,
+          );
+          const drawerOverlay = drawer({
+            content: drawerContent,
+            anchor: 'right',
+            width: model.drawerWidth,
+            screenWidth: model.cols,
+            screenHeight: h,
+            title: 'Operations',
+            borderToken: style.theme.border.primary,
+          });
+          content = composite(content, [drawerOverlay]);
+        }
+
         if (model.mode === 'confirm' && model.confirmState) {
           content = confirmOverlay(content, model.confirmState.prompt, model.cols, h, style, model.confirmState.hint);
         }
@@ -2918,28 +3631,6 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         { basis: 1, content: statusBg },
         { basis: 1, content: controlsBg },
       );
-
-      if (model.drawerWidth > 4 && model.snapshot) {
-        const drawerHeight = model.rows - 2;
-        const drawerContent = renderMyStuffDrawer(
-          model.snapshot,
-          style,
-          model.agentId,
-          model.drawerWidth - 2,
-          drawerHeight - 2,
-          model.drawerScrollY,
-        );
-        const drawerOverlay = drawer({
-          content: drawerContent,
-          anchor: 'right',
-          width: model.drawerWidth,
-          screenWidth: model.cols,
-          screenHeight: drawerHeight,
-          title: model.agentId ? 'My Stuff' : 'Activity',
-          borderToken: style.theme.border.primary,
-        });
-        output = composite(output, [drawerOverlay]);
-      }
 
       if (model.mode === 'palette' && model.paletteState) {
         const rendered = commandPalette(model.paletteState, {

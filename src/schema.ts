@@ -9,7 +9,7 @@ export const PREFIXES = [
   'tool', 'event', 'metric', 'artifact', 'roadmap', 'campaign', 'intent', 'approval',
   'submission', 'patchset', 'review',
   'story', 'req', 'criterion', 'evidence',
-  'policy', 'config', 'suggestion',
+  'policy', 'config', 'suggestion', 'case', 'brief',
   'proposal', 'attestation', 'comparison-artifact', 'collapse-proposal',
 ] as const;
 
@@ -24,6 +24,7 @@ export const EDGE_TYPES = [
   'submits', 'has-patchset', 'supersedes', 'reviews', 'decides',
   'decomposes-to', 'has-criterion', 'verifies',
   'governs', 'suggests',
+  'opened-from', 'concerns', 'briefs', 'causes',
 ] as const;
 
 export type EdgeType = typeof EDGE_TYPES[number];

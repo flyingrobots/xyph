@@ -5,7 +5,8 @@ import type { SubmissionReadModel } from '../../domain/services/SubmissionServic
 import type { QuestStatus } from '../../domain/entities/Quest.js';
 import { VALID_STATUSES as VALID_QUEST_STATUSES } from '../../domain/entities/Quest.js';
 import type { PatchsetRef, ReviewRef, DecisionProps } from '../../domain/entities/Submission.js';
-import type { WarpCore as WarpGraph } from '@git-stunts/git-warp';
+import type { LoggerPort, WarpCore as WarpGraph } from '@git-stunts/git-warp';
+import { graphAdapterLogger, withLoggedAdapterOperation } from '../logging/AdapterLogging.js';
 
 /**
  * WarpSubmissionAdapter — graph-only persistence for the submission lifecycle.
@@ -14,10 +15,14 @@ import type { WarpCore as WarpGraph } from '@git-stunts/git-warp';
  * All writes go through graph.patch() and are immediately visible.
  */
 export class WarpSubmissionAdapter implements SubmissionPort, SubmissionReadModel {
+  private readonly logger: LoggerPort;
+
   constructor(
     private readonly graphPort: GraphPort,
     private readonly agentId: string,
-  ) {}
+  ) {
+    this.logger = graphAdapterLogger(graphPort, 'WarpSubmissionAdapter');
+  }
 
   // =========================================================================
   // Write operations (SubmissionPort)
@@ -35,39 +40,55 @@ export class WarpSubmissionAdapter implements SubmissionPort, SubmissionReadMode
       description: string;
     };
   }): Promise<{ patchSha: string }> {
-    const graph = await this.graphPort.getGraph();
-    const now = Date.now();
+    return withLoggedAdapterOperation(
+      this.logger,
+      {
+        start: 'submission submit started',
+        success: 'submission submit finished',
+        level: 'info',
+        context: {
+          questId: args.questId,
+          submissionId: args.submissionId,
+          patchsetId: args.patchsetId,
+        },
+        successContext: (result) => ({ patchSha: result.patchSha }),
+      },
+      async () => {
+        const graph = await this.graphPort.getGraph();
+        const now = Date.now();
 
-    const patchSha = await graph.patch((p) => {
-      p.addNode(args.submissionId)
-        .setProperty(args.submissionId, 'type', 'submission')
-        .setProperty(args.submissionId, 'quest_id', args.questId)
-        .setProperty(args.submissionId, 'submitted_by', this.agentId)
-        .setProperty(args.submissionId, 'submitted_at', now);
+        const patchSha = await graph.patch((p) => {
+          p.addNode(args.submissionId)
+            .setProperty(args.submissionId, 'type', 'submission')
+            .setProperty(args.submissionId, 'quest_id', args.questId)
+            .setProperty(args.submissionId, 'submitted_by', this.agentId)
+            .setProperty(args.submissionId, 'submitted_at', now);
 
-      p.addEdge(args.submissionId, args.questId, 'submits');
+          p.addEdge(args.submissionId, args.questId, 'submits');
 
-      p.addNode(args.patchsetId)
-        .setProperty(args.patchsetId, 'type', 'patchset')
-        .setProperty(args.patchsetId, 'workspace_ref', args.patchset.workspaceRef)
-        .setProperty(args.patchsetId, 'description', args.patchset.description)
-        .setProperty(args.patchsetId, 'authored_by', this.agentId)
-        .setProperty(args.patchsetId, 'authored_at', now);
+          p.addNode(args.patchsetId)
+            .setProperty(args.patchsetId, 'type', 'patchset')
+            .setProperty(args.patchsetId, 'workspace_ref', args.patchset.workspaceRef)
+            .setProperty(args.patchsetId, 'description', args.patchset.description)
+            .setProperty(args.patchsetId, 'authored_by', this.agentId)
+            .setProperty(args.patchsetId, 'authored_at', now);
 
-      if (args.patchset.baseRef) {
-        p.setProperty(args.patchsetId, 'base_ref', args.patchset.baseRef);
-      }
-      if (args.patchset.headRef) {
-        p.setProperty(args.patchsetId, 'head_ref', args.patchset.headRef);
-      }
-      if (args.patchset.commitShas && args.patchset.commitShas.length > 0) {
-        p.setProperty(args.patchsetId, 'commit_shas', args.patchset.commitShas.join(','));
-      }
+          if (args.patchset.baseRef) {
+            p.setProperty(args.patchsetId, 'base_ref', args.patchset.baseRef);
+          }
+          if (args.patchset.headRef) {
+            p.setProperty(args.patchsetId, 'head_ref', args.patchset.headRef);
+          }
+          if (args.patchset.commitShas && args.patchset.commitShas.length > 0) {
+            p.setProperty(args.patchsetId, 'commit_shas', args.patchset.commitShas.join(','));
+          }
 
-      p.addEdge(args.patchsetId, args.submissionId, 'has-patchset');
-    });
+          p.addEdge(args.patchsetId, args.submissionId, 'has-patchset');
+        });
 
-    return { patchSha };
+        return { patchSha };
+      },
+    );
   }
 
   public async revise(args: {
@@ -82,32 +103,48 @@ export class WarpSubmissionAdapter implements SubmissionPort, SubmissionReadMode
       description: string;
     };
   }): Promise<{ patchSha: string }> {
-    const graph = await this.graphPort.getGraph();
-    const now = Date.now();
+    return withLoggedAdapterOperation(
+      this.logger,
+      {
+        start: 'submission revise started',
+        success: 'submission revise finished',
+        level: 'info',
+        context: {
+          submissionId: args.submissionId,
+          patchsetId: args.patchsetId,
+          supersedesPatchsetId: args.supersedesPatchsetId,
+        },
+        successContext: (result) => ({ patchSha: result.patchSha }),
+      },
+      async () => {
+        const graph = await this.graphPort.getGraph();
+        const now = Date.now();
 
-    const patchSha = await graph.patch((p) => {
-      p.addNode(args.patchsetId)
-        .setProperty(args.patchsetId, 'type', 'patchset')
-        .setProperty(args.patchsetId, 'workspace_ref', args.patchset.workspaceRef)
-        .setProperty(args.patchsetId, 'description', args.patchset.description)
-        .setProperty(args.patchsetId, 'authored_by', this.agentId)
-        .setProperty(args.patchsetId, 'authored_at', now);
+        const patchSha = await graph.patch((p) => {
+          p.addNode(args.patchsetId)
+            .setProperty(args.patchsetId, 'type', 'patchset')
+            .setProperty(args.patchsetId, 'workspace_ref', args.patchset.workspaceRef)
+            .setProperty(args.patchsetId, 'description', args.patchset.description)
+            .setProperty(args.patchsetId, 'authored_by', this.agentId)
+            .setProperty(args.patchsetId, 'authored_at', now);
 
-      if (args.patchset.baseRef) {
-        p.setProperty(args.patchsetId, 'base_ref', args.patchset.baseRef);
-      }
-      if (args.patchset.headRef) {
-        p.setProperty(args.patchsetId, 'head_ref', args.patchset.headRef);
-      }
-      if (args.patchset.commitShas && args.patchset.commitShas.length > 0) {
-        p.setProperty(args.patchsetId, 'commit_shas', args.patchset.commitShas.join(','));
-      }
+          if (args.patchset.baseRef) {
+            p.setProperty(args.patchsetId, 'base_ref', args.patchset.baseRef);
+          }
+          if (args.patchset.headRef) {
+            p.setProperty(args.patchsetId, 'head_ref', args.patchset.headRef);
+          }
+          if (args.patchset.commitShas && args.patchset.commitShas.length > 0) {
+            p.setProperty(args.patchsetId, 'commit_shas', args.patchset.commitShas.join(','));
+          }
 
-      p.addEdge(args.patchsetId, args.submissionId, 'has-patchset');
-      p.addEdge(args.patchsetId, args.supersedesPatchsetId, 'supersedes');
-    });
+          p.addEdge(args.patchsetId, args.submissionId, 'has-patchset');
+          p.addEdge(args.patchsetId, args.supersedesPatchsetId, 'supersedes');
+        });
 
-    return { patchSha };
+        return { patchSha };
+      },
+    );
   }
 
   public async review(args: {
@@ -116,21 +153,37 @@ export class WarpSubmissionAdapter implements SubmissionPort, SubmissionReadMode
     verdict: 'approve' | 'request-changes' | 'comment';
     comment: string;
   }): Promise<{ patchSha: string }> {
-    const graph = await this.graphPort.getGraph();
-    const now = Date.now();
+    return withLoggedAdapterOperation(
+      this.logger,
+      {
+        start: 'submission review started',
+        success: 'submission review finished',
+        level: 'info',
+        context: {
+          patchsetId: args.patchsetId,
+          reviewId: args.reviewId,
+          verdict: args.verdict,
+        },
+        successContext: (result) => ({ patchSha: result.patchSha }),
+      },
+      async () => {
+        const graph = await this.graphPort.getGraph();
+        const now = Date.now();
 
-    const patchSha = await graph.patch((p) => {
-      p.addNode(args.reviewId)
-        .setProperty(args.reviewId, 'type', 'review')
-        .setProperty(args.reviewId, 'verdict', args.verdict)
-        .setProperty(args.reviewId, 'comment', args.comment)
-        .setProperty(args.reviewId, 'reviewed_by', this.agentId)
-        .setProperty(args.reviewId, 'reviewed_at', now);
+        const patchSha = await graph.patch((p) => {
+          p.addNode(args.reviewId)
+            .setProperty(args.reviewId, 'type', 'review')
+            .setProperty(args.reviewId, 'verdict', args.verdict)
+            .setProperty(args.reviewId, 'comment', args.comment)
+            .setProperty(args.reviewId, 'reviewed_by', this.agentId)
+            .setProperty(args.reviewId, 'reviewed_at', now);
 
-      p.addEdge(args.reviewId, args.patchsetId, 'reviews');
-    });
+          p.addEdge(args.reviewId, args.patchsetId, 'reviews');
+        });
 
-    return { patchSha };
+        return { patchSha };
+      },
+    );
   }
 
   public async decide(args: {
@@ -140,25 +193,41 @@ export class WarpSubmissionAdapter implements SubmissionPort, SubmissionReadMode
     rationale: string;
     mergeCommit?: string;
   }): Promise<{ patchSha: string }> {
-    const graph = await this.graphPort.getGraph();
-    const now = Date.now();
+    return withLoggedAdapterOperation(
+      this.logger,
+      {
+        start: 'submission decide started',
+        success: 'submission decide finished',
+        level: 'info',
+        context: {
+          submissionId: args.submissionId,
+          decisionId: args.decisionId,
+          kind: args.kind,
+        },
+        successContext: (result) => ({ patchSha: result.patchSha }),
+      },
+      async () => {
+        const graph = await this.graphPort.getGraph();
+        const now = Date.now();
 
-    const patchSha = await graph.patch((p) => {
-      p.addNode(args.decisionId)
-        .setProperty(args.decisionId, 'type', 'decision')
-        .setProperty(args.decisionId, 'kind', args.kind)
-        .setProperty(args.decisionId, 'decided_by', this.agentId)
-        .setProperty(args.decisionId, 'decided_at', now)
-        .setProperty(args.decisionId, 'rationale', args.rationale);
+        const patchSha = await graph.patch((p) => {
+          p.addNode(args.decisionId)
+            .setProperty(args.decisionId, 'type', 'decision')
+            .setProperty(args.decisionId, 'kind', args.kind)
+            .setProperty(args.decisionId, 'decided_by', this.agentId)
+            .setProperty(args.decisionId, 'decided_at', now)
+            .setProperty(args.decisionId, 'rationale', args.rationale);
 
-      if (args.mergeCommit) {
-        p.setProperty(args.decisionId, 'merge_commit', args.mergeCommit);
-      }
+          if (args.mergeCommit) {
+            p.setProperty(args.decisionId, 'merge_commit', args.mergeCommit);
+          }
 
-      p.addEdge(args.decisionId, args.submissionId, 'decides');
-    });
+          p.addEdge(args.decisionId, args.submissionId, 'decides');
+        });
 
-    return { patchSha };
+        return { patchSha };
+      },
+    );
   }
 
   // =========================================================================
@@ -191,50 +260,72 @@ export class WarpSubmissionAdapter implements SubmissionPort, SubmissionReadMode
   }
 
   public async getOpenSubmissionsForQuest(questId: string): Promise<string[]> {
-    const graph = await this.graphPort.getGraph();
-    const submissionNeighbors = toNeighborEntries(
-      await graph.neighbors(questId, 'incoming', 'submits'),
+    return withLoggedAdapterOperation(
+      this.logger,
+      {
+        start: 'submission getOpenSubmissionsForQuest started',
+        success: 'submission getOpenSubmissionsForQuest finished',
+        context: { questId },
+        successContext: (submissionIds) => ({ count: submissionIds.length }),
+      },
+      async () => {
+        const graph = await this.graphPort.getGraph();
+        const submissionNeighbors = toNeighborEntries(
+          await graph.neighbors(questId, 'incoming', 'submits'),
+        );
+
+        const open: string[] = [];
+        for (const n of submissionNeighbors) {
+          const props = await graph.getNodeProps(n.nodeId);
+          if (!props || props['type'] !== 'submission') continue;
+
+          const decisions = await this._getDecisionsFromGraph(graph, n.nodeId);
+          const isTerminal = decisions.some((d) => d.kind === 'merge' || d.kind === 'close');
+          if (!isTerminal) {
+            open.push(n.nodeId);
+          }
+        }
+
+        return open;
+      },
     );
-
-    const open: string[] = [];
-    for (const n of submissionNeighbors) {
-      const props = await graph.getNodeProps(n.nodeId);
-      if (!props || props['type'] !== 'submission') continue;
-
-      const decisions = await this._getDecisionsFromGraph(graph, n.nodeId);
-      const isTerminal = decisions.some((d) => d.kind === 'merge' || d.kind === 'close');
-      if (!isTerminal) {
-        open.push(n.nodeId);
-      }
-    }
-
-    return open;
   }
 
   public async getPatchsetRefs(submissionId: string): Promise<PatchsetRef[]> {
-    const graph = await this.graphPort.getGraph();
-    const patchsetNeighbors = toNeighborEntries(
-      await graph.neighbors(submissionId, 'incoming', 'has-patchset'),
+    return withLoggedAdapterOperation(
+      this.logger,
+      {
+        start: 'submission getPatchsetRefs started',
+        success: 'submission getPatchsetRefs finished',
+        context: { submissionId },
+        successContext: (refs) => ({ count: refs.length }),
+      },
+      async () => {
+        const graph = await this.graphPort.getGraph();
+        const patchsetNeighbors = toNeighborEntries(
+          await graph.neighbors(submissionId, 'incoming', 'has-patchset'),
+        );
+
+        const refs: PatchsetRef[] = [];
+        for (const n of patchsetNeighbors) {
+          const props = await graph.getNodeProps(n.nodeId);
+          if (!props || props['type'] !== 'patchset') continue;
+
+          const authoredAt = props['authored_at'];
+          if (typeof authoredAt !== 'number') continue;
+
+          const outgoing = toNeighborEntries(await graph.neighbors(n.nodeId, 'outgoing', 'supersedes'));
+          const ref: PatchsetRef = {
+            id: n.nodeId,
+            authoredAt,
+            supersedesId: outgoing[0]?.nodeId,
+          };
+          refs.push(ref);
+        }
+
+        return refs;
+      },
     );
-
-    const refs: PatchsetRef[] = [];
-    for (const n of patchsetNeighbors) {
-      const props = await graph.getNodeProps(n.nodeId);
-      if (!props || props['type'] !== 'patchset') continue;
-
-      const authoredAt = props['authored_at'];
-      if (typeof authoredAt !== 'number') continue;
-
-      const outgoing = toNeighborEntries(await graph.neighbors(n.nodeId, 'outgoing', 'supersedes'));
-      const ref: PatchsetRef = {
-        id: n.nodeId,
-        authoredAt,
-        supersedesId: outgoing[0]?.nodeId,
-      };
-      refs.push(ref);
-    }
-
-    return refs;
   }
 
   public async getSubmissionForPatchset(patchsetId: string): Promise<string | null> {
@@ -281,39 +372,61 @@ export class WarpSubmissionAdapter implements SubmissionPort, SubmissionReadMode
   }
 
   public async getReviewsForPatchset(patchsetId: string): Promise<ReviewRef[]> {
-    const graph = await this.graphPort.getGraph();
-    const reviewNeighbors = toNeighborEntries(
-      await graph.neighbors(patchsetId, 'incoming', 'reviews'),
+    return withLoggedAdapterOperation(
+      this.logger,
+      {
+        start: 'submission getReviewsForPatchset started',
+        success: 'submission getReviewsForPatchset finished',
+        context: { patchsetId },
+        successContext: (reviews) => ({ count: reviews.length }),
+      },
+      async () => {
+        const graph = await this.graphPort.getGraph();
+        const reviewNeighbors = toNeighborEntries(
+          await graph.neighbors(patchsetId, 'incoming', 'reviews'),
+        );
+
+        const reviews: ReviewRef[] = [];
+        for (const n of reviewNeighbors) {
+          const props = await graph.getNodeProps(n.nodeId);
+          if (!props || props['type'] !== 'review') continue;
+
+          const verdict = props['verdict'];
+          const reviewedBy = props['reviewed_by'];
+          const reviewedAt = props['reviewed_at'];
+          if (
+            typeof verdict !== 'string' ||
+            typeof reviewedBy !== 'string' ||
+            typeof reviewedAt !== 'number'
+          ) {
+            continue;
+          }
+          if (verdict !== 'approve' && verdict !== 'request-changes' && verdict !== 'comment') {
+            continue;
+          }
+
+          reviews.push({ id: n.nodeId, verdict, reviewedBy, reviewedAt });
+        }
+
+        return reviews;
+      },
     );
-
-    const reviews: ReviewRef[] = [];
-    for (const n of reviewNeighbors) {
-      const props = await graph.getNodeProps(n.nodeId);
-      if (!props || props['type'] !== 'review') continue;
-
-      const verdict = props['verdict'];
-      const reviewedBy = props['reviewed_by'];
-      const reviewedAt = props['reviewed_at'];
-      if (
-        typeof verdict !== 'string' ||
-        typeof reviewedBy !== 'string' ||
-        typeof reviewedAt !== 'number'
-      ) {
-        continue;
-      }
-      if (verdict !== 'approve' && verdict !== 'request-changes' && verdict !== 'comment') {
-        continue;
-      }
-
-      reviews.push({ id: n.nodeId, verdict, reviewedBy, reviewedAt });
-    }
-
-    return reviews;
   }
 
   public async getDecisionsForSubmission(submissionId: string): Promise<DecisionProps[]> {
-    const graph = await this.graphPort.getGraph();
-    return this._getDecisionsFromGraph(graph, submissionId);
+    return withLoggedAdapterOperation(
+      this.logger,
+      {
+        start: 'submission getDecisionsForSubmission started',
+        success: 'submission getDecisionsForSubmission finished',
+        context: { submissionId },
+        successContext: (decisions) => ({ count: decisions.length }),
+      },
+      async () => {
+        const graph = await this.graphPort.getGraph();
+        return this._getDecisionsFromGraph(graph, submissionId);
+      },
+    );
   }
 
   // =========================================================================

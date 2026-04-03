@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { WarpIntakeAdapter } from '../../src/infrastructure/adapters/WarpIntakeAdapter.js';
 import { WarpGraphAdapter } from '../../src/infrastructure/adapters/WarpGraphAdapter.js';
-import { createGraphContext } from '../../src/infrastructure/GraphContext.js';
+import { createObservedGraphProjection } from '../../src/infrastructure/ObservedGraphProjection.js';
 import { execSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
@@ -104,7 +104,7 @@ describe('WarpIntakeAdapter Integration', () => {
       taskKind: 'maintenance',
     });
 
-    const reader = createGraphContext(graphPort);
+    const reader = createObservedGraphProjection(graphPort);
     const snapshot = await reader.fetchSnapshot();
     const q = snapshot.quests.find((q) => q.id === 'task:INTAKE-001');
     expect(q).toBeDefined();
@@ -181,7 +181,7 @@ describe('WarpIntakeAdapter Integration', () => {
     await adapter.ready('task:INTAKE-003');
     const after = Date.now();
 
-    const reader = createGraphContext(graphPort);
+    const reader = createObservedGraphProjection(graphPort);
     const snapshot = await reader.fetchSnapshot();
     const q = snapshot.quests.find((quest) => quest.id === 'task:INTAKE-003');
     expect(q?.status).toBe('READY');
@@ -202,7 +202,7 @@ describe('WarpIntakeAdapter Integration', () => {
       taskKind: 'ops',
     });
 
-    const reader = createGraphContext(graphPort);
+    const reader = createObservedGraphProjection(graphPort);
     const snapshot = await reader.fetchSnapshot();
     const q = snapshot.quests.find((quest) => quest.id === 'task:INTAKE-SHAPE-BACKLOG');
     expect(q?.status).toBe('BACKLOG');
@@ -216,7 +216,7 @@ describe('WarpIntakeAdapter Integration', () => {
       taskKind: 'maintenance',
     });
 
-    const reader = createGraphContext(graphPort);
+    const reader = createObservedGraphProjection(graphPort);
     const snapshot = await reader.fetchSnapshot();
     const q = snapshot.quests.find((quest) => quest.id === 'task:INTAKE-SHAPE-PLANNED');
     expect(q?.status).toBe('PLANNED');
@@ -237,7 +237,7 @@ describe('WarpIntakeAdapter Integration', () => {
     await adapter.reject('task:INTAKE-002', 'Not worth pursuing');
     const after = Date.now();
 
-    const reader = createGraphContext(graphPort);
+    const reader = createObservedGraphProjection(graphPort);
     const snapshot = await reader.fetchSnapshot();
     const q = snapshot.quests.find((q) => q.id === 'task:INTAKE-002');
     expect(q).toBeDefined();
@@ -267,7 +267,7 @@ describe('WarpIntakeAdapter Integration', () => {
     const adapter = new WarpIntakeAdapter(graphPort, humanAgentId);
     await adapter.reject('task:INTAKE-REJECT-BACKLOG', 'Redundant with existing work');
 
-    const reader = createGraphContext(graphPort);
+    const reader = createObservedGraphProjection(graphPort);
     const snapshot = await reader.fetchSnapshot();
     const q = snapshot.quests.find((q) => q.id === 'task:INTAKE-REJECT-BACKLOG');
     expect(q?.status).toBe('GRAVEYARD');
@@ -279,7 +279,7 @@ describe('WarpIntakeAdapter Integration', () => {
     const adapter = new WarpIntakeAdapter(graphPort, humanAgentId);
     await adapter.reject('task:INTAKE-REJECT-PLANNED', 'Superseded by git-warp native API');
 
-    const reader = createGraphContext(graphPort);
+    const reader = createObservedGraphProjection(graphPort);
     const snapshot = await reader.fetchSnapshot();
     const q = snapshot.quests.find((q) => q.id === 'task:INTAKE-REJECT-PLANNED');
     expect(q?.status).toBe('GRAVEYARD');

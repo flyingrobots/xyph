@@ -5,7 +5,7 @@ import { registerShowCommands } from '../../src/cli/commands/show.js';
 
 const mocks = vi.hoisted(() => ({
   createPatchSession: vi.fn(),
-  createGraphContext: vi.fn(),
+  openSession: vi.fn(),
   WarpRoadmapAdapter: vi.fn(),
   readinessAssess: vi.fn(),
   createComment: vi.fn(),
@@ -15,8 +15,12 @@ vi.mock('../../src/infrastructure/helpers/createPatchSession.js', () => ({
   createPatchSession: (graph: unknown) => mocks.createPatchSession(graph),
 }));
 
-vi.mock('../../src/infrastructure/GraphContext.js', () => ({
-  createGraphContext: (graphPort: unknown) => mocks.createGraphContext(graphPort),
+vi.mock('../../src/infrastructure/adapters/WarpObservationAdapter.js', () => ({
+  WarpObservationAdapter: class WarpObservationAdapter {
+    openSession() {
+      return mocks.openSession();
+    }
+  },
 }));
 
 vi.mock('../../src/infrastructure/adapters/WarpRoadmapAdapter.js', () => ({
@@ -55,6 +59,9 @@ function makeCtx(graph: {
   hasNode: (id: string) => Promise<boolean>;
   getContentOid?: (id: string) => Promise<string | null>;
 }): CliContext {
+  const observation = {
+    openSession: mocks.openSession,
+  };
   return {
     agentId: 'human.architect',
     identity: { agentId: 'human.architect', source: 'default', origin: null },
@@ -62,6 +69,11 @@ function makeCtx(graph: {
     graphPort: {
       getGraph: async () => graph,
     } as CliContext['graphPort'],
+    observation: observation as CliContext['observation'],
+    operationalRead: observation as CliContext['operationalRead'],
+    inspection: {
+      openInspectionSession: mocks.openSession,
+    } as CliContext['inspection'],
     style: {} as CliContext['style'],
     ok: vi.fn(),
     warn: vi.fn(),
@@ -203,8 +215,12 @@ describe('show and narrative commands', () => {
         timeline: [],
       },
     };
-    mocks.createGraphContext.mockReturnValue({
+    mocks.openSession.mockResolvedValue({
+      fetchSnapshot: vi.fn(),
       fetchEntityDetail: vi.fn().mockResolvedValue(detail),
+      queryNodes: vi.fn(),
+      neighbors: vi.fn(),
+      hasNode: vi.fn(),
     });
 
     const program = new Command();
@@ -231,6 +247,59 @@ describe('show and narrative commands', () => {
           taskKind: 'delivery',
           unmet: [],
         },
+      },
+        });
+  });
+
+  it('show reads generic entities through the targeted observed-session path', async () => {
+    const ctx = makeCtx({
+      hasNode: vi.fn().mockResolvedValue(true),
+    });
+    const fetchEntityDetail = vi.fn().mockResolvedValue({
+      id: 'note:Q-001',
+      type: 'note',
+      props: { type: 'note', title: 'Readiness note' },
+      content: 'body',
+      contentOid: 'oid:note',
+      outgoing: [],
+      incoming: [],
+    });
+    const getNodeProps = vi.fn().mockResolvedValue({
+      type: 'note',
+      title: 'Readiness note',
+    });
+    mocks.openSession.mockResolvedValue({
+      fetchSnapshot: vi.fn(),
+      fetchEntityDetail,
+      getNodeProps,
+      getContent: vi.fn().mockResolvedValue('body'),
+      getContentOid: vi.fn().mockResolvedValue('oid:note'),
+      queryNodes: vi.fn(),
+      neighbors: vi.fn().mockResolvedValue([]),
+      hasNode: vi.fn().mockResolvedValue(true),
+    });
+
+    const program = new Command();
+    registerShowCommands(program, ctx);
+
+    await program.parseAsync(['show', 'note:Q-001'], { from: 'user' });
+
+    expect(getNodeProps).toHaveBeenCalledWith('note:Q-001');
+    expect(fetchEntityDetail).not.toHaveBeenCalled();
+    expect(ctx.jsonOut).toHaveBeenCalledWith({
+      success: true,
+      command: 'show',
+      diagnostics: [],
+      data: {
+        id: 'note:Q-001',
+        type: 'note',
+        props: { type: 'note', title: 'Readiness note' },
+        content: 'body',
+        contentOid: 'oid:note',
+        outgoing: [],
+        incoming: [],
+        questDetail: null,
+        readiness: null,
       },
     });
   });

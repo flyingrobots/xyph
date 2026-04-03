@@ -86,8 +86,8 @@ export interface BlockerInfo {
 /**
  * Computes which non-DONE tasks block the most other tasks.
  *
- * Transitive downstream counts are pre-computed by git-warp's BFS
- * in GraphContext and passed via the `transitiveDownstream` map.
+ * Transitive downstream counts are pre-computed by the observed projection
+ * builder and passed via the `transitiveDownstream` map.
  * This function only computes direct counts and sorts.
  */
 export function computeTopBlockers(

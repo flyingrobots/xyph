@@ -1,11 +1,15 @@
 # AUTHORITY MODEL
-**Version:** 0.1.0
+**Version:** 0.2.0
 **Status:** FREEZE CANDIDATE
 
 ## Purpose
 
 This document defines how XYPH separates perception, identity, and authority in
 the sovereign control plane.
+
+Load-bearing design direction:
+
+> **XYPH uses one authority model for all principals.**
 
 Load-bearing rule:
 
@@ -16,6 +20,11 @@ XYPH must not blur together:
 - who is acting
 - how reality is being observed
 - what the actor is permitted to do
+
+It must also avoid creating separate hidden permission systems for humans,
+agents, services, or future institutional principals. The capability engine is
+principal-general even when current policy or constitutional defaults reserve
+some powers to human principals.
 
 ## Runtime Concepts
 
@@ -30,6 +39,8 @@ Examples:
 - future institutional or service principals
 
 Principals are the source of authorship, accountability, and audit identity.
+Authority is resolved over principals in general, not over a human-only role
+system plus an agent special case.
 
 ### Observer Profile
 
@@ -75,6 +86,44 @@ Capability resolution is computed from:
 
 The same observer profile may yield different effective powers under different
 principals, policy packs, or coordinates.
+
+The same capability-resolution machinery should apply to:
+
+- human principals
+- agent principals
+- service principals
+- future institutional principals
+
+XYPH should not grow one authority engine for humans and a second, parallel
+delegation story for agents.
+
+## Default Reservation Posture
+
+XYPH may still reserve some capabilities to human principals by default under
+the active constitution or policy pack.
+
+That should be understood as a **default reservation policy**, not as a
+metaphysical split where humans use one authority model and non-humans use
+another.
+
+Examples of capability classes that may be human-reserved by default include:
+
+- sovereign intent declaration
+- approval-gate satisfaction
+- workflow/profile activation
+- emergency override
+- high-risk replay or admin/debug powers
+
+Those reservations must be:
+
+- explicit
+- inspectable
+- attributable
+- revocable when doctrine or policy changes
+
+The long-term target is a principal-general authority system with bounded,
+governed reservations where required, not a permanent blanket assumption that
+all meaningful authority is human-only.
 
 ## Observer Profiles and Authority
 

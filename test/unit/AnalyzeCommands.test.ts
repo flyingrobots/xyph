@@ -22,10 +22,18 @@ vi.mock('../../src/infrastructure/adapters/ConfigAdapter.js', () => ({
   },
 }));
 
-vi.mock('../../src/infrastructure/GraphContext.js', () => ({
-  createGraphContext: vi.fn(() => ({
-    fetchSnapshot,
-  })),
+vi.mock('../../src/infrastructure/adapters/WarpObservationAdapter.js', () => ({
+  WarpObservationAdapter: class WarpObservationAdapter {
+    async openSession() {
+      return {
+        fetchSnapshot,
+        fetchEntityDetail: vi.fn(),
+        queryNodes: vi.fn(),
+        neighbors: vi.fn(),
+        hasNode: vi.fn(),
+      };
+    }
+  },
 }));
 
 vi.mock('node:fs', () => ({
@@ -71,6 +79,15 @@ function createPatchBuilder() {
 function makeCtx(graph: {
   patch: (fn: (builder: ReturnType<typeof createPatchBuilder>) => void) => Promise<string>;
 }): CliContext {
+  const observation = {
+    openSession: vi.fn(async () => ({
+      fetchSnapshot,
+      fetchEntityDetail: vi.fn(),
+      queryNodes: vi.fn(),
+      neighbors: vi.fn(),
+      hasNode: vi.fn(),
+    })),
+  };
   return {
     agentId: 'agent.trace',
     identity: { agentId: 'agent.trace', source: 'default', origin: null },
@@ -78,6 +95,11 @@ function makeCtx(graph: {
     graphPort: {
       getGraph: async () => graph,
     } as CliContext['graphPort'],
+    observation: observation as CliContext['observation'],
+    operationalRead: observation as CliContext['operationalRead'],
+    inspection: {
+      openInspectionSession: vi.fn(),
+    } as CliContext['inspection'],
     style: {} as CliContext['style'],
     ok: vi.fn(),
     warn: vi.fn(),
@@ -143,7 +165,7 @@ describe('analyze command', () => {
 
     await program.parseAsync(['analyze'], { from: 'user' });
 
-    expect(fetchSnapshot).toHaveBeenCalledWith(undefined, { profile: 'analysis' });
+    expect(fetchSnapshot).toHaveBeenCalledWith('analysis');
     expect(patchBuilder.setProperty).toHaveBeenCalledWith(expect.stringMatching(/^evidence:auto-/), 'result', 'linked');
     expect(ctx.jsonOut).toHaveBeenCalledWith({
       success: true,

@@ -337,6 +337,12 @@ Observer profiles do not contain direct command permissions. They carry
 perception defaults such as basis, aperture, diagnostic scope, and comparison
 policy defaults. Capability is computed at execution time.
 
+This capability model is principal-general: the same authority engine applies
+to human, agent, service, and future institutional principals. Human-reserved
+operations should be treated as explicit default policy or constitutional
+reservations inside that shared model, not as a separate human-only permission
+system.
+
 ## One Mutation Kernel
 
 `apply` is the canonical mutation path for graph-native transforms. It exposes a

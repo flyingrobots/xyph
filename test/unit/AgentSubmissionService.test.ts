@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { GraphPort } from '../../src/ports/GraphPort.js';
 import { makeSnapshot, campaign, decision, intent, quest, review, submission } from '../helpers/snapshot.js';
+import { makeObservationSessionDouble } from '../helpers/observation.js';
 import {
   AGENT_SUBMISSION_STALE_HOURS,
   AgentSubmissionService,
@@ -8,22 +8,18 @@ import {
 } from '../../src/domain/services/AgentSubmissionService.js';
 
 const mocks = vi.hoisted(() => ({
-  createGraphContext: vi.fn(),
+  openSession: vi.fn(),
 }));
 
-vi.mock('../../src/infrastructure/GraphContext.js', () => ({
-  createGraphContext: (graphPort: unknown) => mocks.createGraphContext(graphPort),
-}));
-
-function makeGraphPort(): GraphPort {
+function makeReadPort() {
   return {
-    getGraph: vi.fn(),
-    reset: vi.fn(),
+    openSession: mocks.openSession,
   };
 }
 
 describe('AgentSubmissionService', () => {
   beforeEach(() => {
+    vi.restoreAllMocks();
     vi.clearAllMocks();
   });
 
@@ -112,6 +108,13 @@ describe('AgentSubmissionService', () => {
           verdict: 'request-changes',
           reviewedAt: asOf - (80 * 60 * 1000),
         }),
+        review({
+          id: 'review:REV-002',
+          patchsetId: 'patchset:REV-002',
+          verdict: 'request-changes',
+          reviewedBy: 'human.reviewer',
+          reviewedAt: asOf - (40 * 60 * 1000),
+        }),
       ],
       decisions: [
         decision({
@@ -123,22 +126,13 @@ describe('AgentSubmissionService', () => {
       ],
     });
 
-    mocks.createGraphContext.mockReturnValue({
-      fetchSnapshot: vi.fn().mockResolvedValue(snapshot),
-      fetchEntityDetail: vi.fn(),
-      filterSnapshot: vi.fn(),
-      invalidateCache: vi.fn(),
-      get graph() {
-        throw new Error('not used in test');
-      },
-    });
+    vi.spyOn(Date, 'now').mockReturnValue(asOf);
+    mocks.openSession.mockResolvedValue(makeObservationSessionDouble(snapshot));
 
-    const service = new AgentSubmissionService(makeGraphPort(), 'agent.hal');
+    const service = new AgentSubmissionService('agent.hal', makeReadPort());
     const result = await service.list(10);
 
-    expect(mocks.createGraphContext).toHaveBeenCalledTimes(1);
-    expect(mocks.createGraphContext.mock.results[0]?.value.fetchSnapshot)
-      .toHaveBeenCalledWith(undefined, { profile: 'operational' });
+    expect(mocks.openSession).toHaveBeenCalledTimes(1);
 
     expect(result.counts).toEqual({
       owned: 2,
@@ -210,21 +204,11 @@ describe('AgentSubmissionService', () => {
       ],
     });
 
-    mocks.createGraphContext.mockReturnValue({
-      fetchSnapshot: vi.fn().mockResolvedValue(snapshot),
-      fetchEntityDetail: vi.fn(),
-      filterSnapshot: vi.fn(),
-      invalidateCache: vi.fn(),
-      get graph() {
-        throw new Error('not used in test');
-      },
-    });
+    vi.spyOn(Date, 'now').mockReturnValue(asOf);
+    mocks.openSession.mockResolvedValue(makeObservationSessionDouble(snapshot));
 
-    const service = new AgentSubmissionService(makeGraphPort(), 'agent.hal');
+    const service = new AgentSubmissionService('agent.hal', makeReadPort());
     const result = await service.list(1);
-
-    expect(mocks.createGraphContext.mock.results[0]?.value.fetchSnapshot)
-      .toHaveBeenCalledWith(undefined, { profile: 'operational' });
 
     expect(result.counts.owned).toBe(2);
     expect(result.owned).toHaveLength(1);

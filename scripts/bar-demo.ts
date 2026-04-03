@@ -1,7 +1,7 @@
 #!/usr/bin/env -S npx tsx
 
 import { lerp3, type GradientStop } from '@flyingrobots/bijou';
-import { XYPH_CYAN_MAGENTA as CYAN_MAGENTA, XYPH_TEAL_ORANGE_PINK as TEAL_ORANGE_PINK } from '../src/tui/theme/xyph-presets.js';
+import { XYPH_OFFICIAL_BRAND_GRADIENT } from '../src/tui/theme/xyph-presets.js';
 
 const sleep = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -53,8 +53,7 @@ async function runDemo(): Promise<void> {
   const trackChar = '⠐';
 
   const gradients: [string, GradientStop[]][] = [
-    ['A: cyan → magenta (current)', CYAN_MAGENTA.gradient.brand],
-    ['B: teal → orange → pink (candidate)', TEAL_ORANGE_PINK.gradient.brand],
+    ['XYPH official brand gradient (#F74C06 → #F9BC2C)', XYPH_OFFICIAL_BRAND_GRADIENT],
   ];
 
   for (const [label, stops] of gradients) {

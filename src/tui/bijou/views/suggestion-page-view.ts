@@ -406,11 +406,12 @@ export function suggestionPageView(args: SuggestionPageViewArgs): string {
   const chrome = renderDashboardChrome({
     lane: page.sourceLane,
     agentId: model.agentId,
+    health: model.health,
     nowView: model.nowView,
     breadcrumbSegments: page.sourceLane === 'suggestions'
       ? ['Landing', laneTitle(page.sourceLane), suggestionsViewTitle(model.suggestionsView), shortId(page.suggestionId)]
       : ['Landing', laneTitle(page.sourceLane), shortId(page.suggestionId)],
-  }, snapshot, style, width);
+  }, snapshot, model, style, width);
   const chromeHeight = chrome.split('\n').length;
   const bodyHeight = Math.max(1, height - chromeHeight - 1);
   const header = renderPaneHeader({

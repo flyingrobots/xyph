@@ -5,11 +5,15 @@ import { renderDiagnosticsLines } from '../renderDiagnostics.js';
 import { assertPrefixOneOf, assertNodeExists } from '../validators.js';
 import { isExecutableQuestStatus } from '../../domain/entities/Quest.js';
 import { summarizeDoctorReport } from '../../domain/services/DiagnosticService.js';
+import { filterGraphSnapshot } from '../../domain/services/GraphSnapshotFilter.js';
 import { DoctorService } from '../../domain/services/DoctorService.js';
 import { WarpRoadmapAdapter } from '../../infrastructure/adapters/WarpRoadmapAdapter.js';
-import type { GraphSnapshotProfile } from '../../infrastructure/GraphContext.js';
+import {
+  liveObservation,
+  type SnapshotProfile,
+} from '../../ports/ObservationPort.js';
 
-function snapshotProfileForDashboardView(view: string): GraphSnapshotProfile {
+function snapshotProfileForDashboardView(view: string): SnapshotProfile {
   switch (view) {
     case 'trace':
       return 'audit';
@@ -101,16 +105,15 @@ export function registerDashboardCommands(program: Command, ctx: CliContext): vo
         return ctx.fail(`Unknown --view '${view}'. Valid options: ${validViews.join(', ')}`);
       }
 
-      const { createGraphContext } = await import('../../infrastructure/GraphContext.js');
-      const graphCtx = createGraphContext(ctx.graphPort);
-      const raw = await graphCtx.fetchSnapshot(
-        undefined,
-        { profile: snapshotProfileForDashboardView(view) },
+      const readSession = await ctx.observation.openSession(
+        liveObservation('dashboard.status'),
       );
-      const snapshot = graphCtx.filterSnapshot(raw, { includeGraveyard: opts.includeGraveyard ?? false });
+      const raw = await readSession.fetchSnapshot(snapshotProfileForDashboardView(view));
+      const snapshot = filterGraphSnapshot(raw, { includeGraveyard: opts.includeGraveyard ?? false });
       const doctorReport = await new DoctorService(
         ctx.graphPort,
         new WarpRoadmapAdapter(ctx.graphPort),
+        ctx.inspection,
       ).run();
       const diagnostics = summarizeDoctorReport(doctorReport);
       const health = {

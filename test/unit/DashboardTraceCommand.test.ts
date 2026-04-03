@@ -4,7 +4,6 @@ import type { CliContext } from '../../src/cli/context.js';
 import { makeSnapshot } from '../helpers/snapshot.js';
 
 const fetchSnapshot = vi.fn();
-const filterSnapshot = vi.fn();
 const doctorRun = vi.fn();
 const roadmapCtor = vi.fn();
 
@@ -23,26 +22,42 @@ vi.mock('../../src/infrastructure/adapters/WarpRoadmapAdapter.js', () => ({
   }),
 }));
 
-vi.mock('../../src/infrastructure/GraphContext.js', () => ({
-  createGraphContext: vi.fn(() => ({
-    fetchSnapshot,
-    filterSnapshot,
-    graph: {
-      traverse: {
-        topologicalSort: vi.fn(),
-      },
-    },
-  })),
+vi.mock('../../src/infrastructure/adapters/WarpObservationAdapter.js', () => ({
+  WarpObservationAdapter: class WarpObservationAdapter {
+    async openSession() {
+      return {
+        fetchSnapshot,
+        fetchEntityDetail: vi.fn(),
+        queryNodes: vi.fn(),
+        neighbors: vi.fn(),
+        hasNode: vi.fn(),
+      };
+    }
+  },
 }));
 
 import { registerDashboardCommands } from '../../src/cli/commands/dashboard.js';
 
 function makeCtx(): CliContext {
+  const observation = {
+    openSession: vi.fn(async () => ({
+      fetchSnapshot,
+      fetchEntityDetail: vi.fn(),
+      queryNodes: vi.fn(),
+      neighbors: vi.fn(),
+      hasNode: vi.fn(),
+    })),
+  };
   return {
     agentId: 'human.test',
     identity: { agentId: 'human.test', source: 'default', origin: null },
     json: true,
     graphPort: {} as CliContext['graphPort'],
+    observation: observation as CliContext['observation'],
+    operationalRead: observation as CliContext['operationalRead'],
+    inspection: {
+      openInspectionSession: vi.fn(),
+    } as CliContext['inspection'],
     style: {} as CliContext['style'],
     ok: vi.fn(),
     warn: vi.fn(),
@@ -151,15 +166,13 @@ describe('dashboard trace view JSON', () => {
     });
 
     fetchSnapshot.mockResolvedValue(snapshot);
-    filterSnapshot.mockReturnValue(snapshot);
-
     const ctx = makeCtx();
     const program = new Command();
     registerDashboardCommands(program, ctx);
 
     await program.parseAsync(['status', '--view', 'trace'], { from: 'user' });
 
-    expect(fetchSnapshot).toHaveBeenCalledWith(undefined, { profile: 'audit' });
+    expect(fetchSnapshot).toHaveBeenCalledWith('audit');
 
     expect(ctx.jsonOut).toHaveBeenCalledWith({
       success: true,
@@ -264,15 +277,13 @@ describe('dashboard trace view JSON', () => {
     });
 
     fetchSnapshot.mockResolvedValue(snapshot);
-    filterSnapshot.mockReturnValue(snapshot);
-
     const ctx = makeCtx();
     const program = new Command();
     registerDashboardCommands(program, ctx);
 
     await program.parseAsync(['status', '--view', 'trace'], { from: 'user' });
 
-    expect(fetchSnapshot).toHaveBeenCalledWith(undefined, { profile: 'audit' });
+    expect(fetchSnapshot).toHaveBeenCalledWith('audit');
 
     expect(ctx.jsonOut).toHaveBeenCalledWith(expect.objectContaining({
       success: true,
@@ -319,15 +330,13 @@ describe('dashboard trace view JSON', () => {
     });
 
     fetchSnapshot.mockResolvedValue(snapshot);
-    filterSnapshot.mockReturnValue(snapshot);
-
     const ctx = makeCtx();
     const program = new Command();
     registerDashboardCommands(program, ctx);
 
     await program.parseAsync(['status', '--view', 'roadmap'], { from: 'user' });
 
-    expect(fetchSnapshot).toHaveBeenCalledWith(undefined, { profile: 'operational' });
+    expect(fetchSnapshot).toHaveBeenCalledWith('operational');
   });
 
   it('uses the operational snapshot profile and bounded workflow payload for all status views', async () => {
@@ -392,15 +401,13 @@ describe('dashboard trace view JSON', () => {
     });
 
     fetchSnapshot.mockResolvedValue(snapshot);
-    filterSnapshot.mockReturnValue(snapshot);
-
     const ctx = makeCtx();
     const program = new Command();
     registerDashboardCommands(program, ctx);
 
     await program.parseAsync(['status', '--view', 'all'], { from: 'user' });
 
-    expect(fetchSnapshot).toHaveBeenCalledWith(undefined, { profile: 'operational' });
+    expect(fetchSnapshot).toHaveBeenCalledWith('operational');
     expect(ctx.jsonOut).toHaveBeenCalledWith({
       success: true,
       command: 'status',
@@ -452,15 +459,13 @@ describe('dashboard trace view JSON', () => {
     });
 
     fetchSnapshot.mockResolvedValue(snapshot);
-    filterSnapshot.mockReturnValue(snapshot);
-
     const ctx = makeCtx();
     const program = new Command();
     registerDashboardCommands(program, ctx);
 
     await program.parseAsync(['status', '--view', 'suggestions'], { from: 'user' });
 
-    expect(fetchSnapshot).toHaveBeenCalledWith(undefined, { profile: 'analysis' });
+    expect(fetchSnapshot).toHaveBeenCalledWith('analysis');
     expect(ctx.jsonOut).toHaveBeenCalledWith({
       success: true,
       command: 'status',

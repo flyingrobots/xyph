@@ -11,7 +11,7 @@ XYPH's aesthetic is **clean, gradient-rich, and border-defined**. Every output s
 The **Digital Guild** vocabulary is the thematic foundation. We don't have "tasks" and "milestones" — we have **Quests**, **Campaigns**, **Scrolls**, **Seals**, and **Intents**. The visual language reinforces this identity: progress bars shimmer with the brand gradient, sealed quests carry a `⊕`, and the graph is always the single source of truth.
 
 **Principles:**
-- Gradient over flat color — the cyan→magenta sweep is our signature.
+- Gradient over flat color — the orange→gold sweep is our signature.
 - Borders define hierarchy — rounded in TUI, single-line in CLI.
 - Dim is a first-class color — secondary information recedes, primary information pops.
 - Every glyph earns its place — no decoration without meaning.
@@ -20,26 +20,28 @@ The **Digital Guild** vocabulary is the thematic foundation. We don't have "task
 
 ## 2. Brand Gradient
 
-**Primary gradient:** Cyan `rgb(0,255,255)` → Magenta `rgb(255,0,255)`
+**Official CSS gradient:** `background: linear-gradient(90deg, #F74C06, #F9BC2C);`
+
+**Primary gradient:** Ember Orange `#F74C06` → Sun Gold `#F9BC2C`
 
 ```
-Cyan ████████████████████████████████████████ Magenta
- (0,255,255)          ↔          (255,0,255)
+Ember ████████████████████████████████████████ Gold
+ #F74C06               ↔               #F9BC2C
 ```
 
 **Interpolation:** Linear RGB. For a bar of length `N`, position `i` maps to:
 ```
 t = i / (N - 1)
-r = round(0   + 255 * t)    // 0 → 255
-g = round(255 - 255 * t)    // 255 → 0
-b = 255                     // constant
+r = round(247 +   2 * t)    // 247 → 249
+g = round( 76 + 112 * t)    //  76 → 188
+b = round(  6 +  38 * t)    //   6 →  44
 ```
 
-**Positional mapping:** Color is determined by the slot's position in the bar, not by fill amount. A 10% bar shows cyan fills on the left; a 90% bar reveals magenta fills on the right. The gradient is the bar's identity, not a heat indicator.
+**Positional mapping:** Color is determined by the slot's position in the bar, not by fill amount. A 10% bar shows ember/orange fills on the left; a 90% bar reveals the brighter gold end on the right. The gradient is the bar's identity, not a heat indicator.
 
 **Application:**
 - Progress bars (primary use)
-- Potential future use: header accents, wordmark treatment
+- Landing/header wordmarks and hero accents
 
 ---
 
@@ -47,7 +49,7 @@ b = 255                     // constant
 
 ### 3.1 Status Colors
 
-Defined in `src/tui/theme/tokens.ts` (status field). Consumed via `t.inkStatus(status)` in TUI and `styled(token, text)` / chalk in CLI.
+Defined in [`/Users/james/git/xyph/src/tui/theme/xyph-presets.ts`](../../src/tui/theme/xyph-presets.ts). Consumed through the shared style port in both TUI and CLI surfaces.
 
 | Status             | Color     | Hex/Note                    |
 |--------------------|-----------|-----------------------------|
@@ -128,7 +130,7 @@ The edge character inherits the gradient color at that position.
 100% ██████████████████████████████████████████████████
 ```
 
-(In terminal: fills render in cyan→magenta gradient; track renders in dark gray.)
+(In terminal: fills render in the official ember→gold gradient; track renders in dark gray.)
 
 ### 4.4 Reference Implementation
 
@@ -357,7 +359,7 @@ Logo families: `xyph/`, `byFlyingRobots/`, `flyingRobotsTall/`, `flyingRobotsWid
 Items not yet decided — flagged for future design sessions:
 
 - [ ] **Unified border style** — should CLI adopt `round` to match TUI, or keep `single`?
-- [ ] **Header/wordmark gradient** — apply the cyan→magenta gradient to ASCII logo or header text?
+- [ ] **Header/wordmark gradient** — do we want broader use of the official orange→gold gradient beyond current hero/header treatments?
 - [ ] **Spinner design** — character set, color, and animation cadence for async operations
 - [ ] **Table styling overhaul** — gradient row accents, better column alignment, responsive widths
 - [ ] **Status badge rendering** — inline colored badges vs. prefix icons for status display
@@ -366,5 +368,5 @@ Items not yet decided — flagged for future design sessions:
 
 ---
 
-*Last updated: 2026-02-22*
+*Last updated: 2026-03-30*
 *Source of truth for visual decisions. When in doubt, check `scripts/bar-demo.ts` for the living reference.*

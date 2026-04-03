@@ -2,18 +2,30 @@ import { describe, it, expect } from 'vitest';
 import type { App, KeyMsg } from '@flyingrobots/bijou-tui';
 import { createPlainStylePort, ensurePlainBijouContext } from '../../../infrastructure/adapters/PlainStyleAdapter.js';
 import { createDashboardApp, type DashboardModel, type DashboardMsg } from '../DashboardApp.js';
-import type { GraphSnapshot } from '../../../domain/models/dashboard.js';
+import type { DashboardHealth, GraphSnapshot } from '../../../domain/models/dashboard.js';
 import { createMemoryObserverWatermarkStore } from '../observer-watermarks.js';
 import { strip } from '../../../../test/helpers/ansi.js';
 import { makeSnapshot } from '../../../../test/helpers/snapshot.js';
 import { makeKey as key, makeResize as resize } from '../../../../test/helpers/keys.js';
-import { mockGraphContext, mockIntakePort, mockGraphPort, mockSubmissionPort } from '../../../../test/helpers/ports.js';
+import { mockReadProjection, mockIntakePort, mockGraphPort, mockSubmissionPort } from '../../../../test/helpers/ports.js';
 
 ensurePlainBijouContext();
 
+const healthyDashboardHealth: DashboardHealth = {
+  status: 'ok',
+  blocking: false,
+  summary: {
+    issueCount: 0,
+    blockingIssueCount: 0,
+    readinessGaps: 0,
+    governedCompletionGaps: 0,
+  },
+  issues: [],
+};
+
 function buildApp(snapshotOverrides?: Partial<GraphSnapshot>): App<DashboardModel, DashboardMsg> {
   return createDashboardApp({
-    ctx: mockGraphContext(snapshotOverrides),
+    readPort: mockReadProjection(snapshotOverrides),
     intake: mockIntakePort(),
     graphPort: mockGraphPort(),
     submissionPort: mockSubmissionPort(),
@@ -27,7 +39,12 @@ function buildApp(snapshotOverrides?: Partial<GraphSnapshot>): App<DashboardMode
 
 function ready(app: App<DashboardModel, DashboardMsg>, snap: GraphSnapshot): DashboardModel {
   const [initial] = app.init();
-  const [loaded] = app.update({ type: 'snapshot-loaded', snapshot: snap, requestId: initial.requestId }, initial);
+  const [loaded] = app.update({
+    type: 'snapshot-loaded',
+    snapshot: snap,
+    health: healthyDashboardHealth,
+    requestId: initial.requestId,
+  }, initial);
   return loaded;
 }
 

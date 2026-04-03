@@ -14,6 +14,7 @@ import {
   settlementGateFailureData,
 } from '../../domain/services/SettlementGateService.js';
 import { settlementAssessmentToDiagnostics } from '../../domain/services/DiagnosticService.js';
+import { liveObservation } from '../../ports/ObservationPort.js';
 export {
   allowUnsignedScrollsForSettlement,
   formatMissingSettlementKeyMessage,
@@ -33,13 +34,14 @@ export function registerArtifactCommands(program: Command, ctx: CliContext): voi
     .action(withErrorHandler(async (id: string, opts: { artifact: string; rationale: string }) => {
       const { GuildSealService } = await import('../../domain/services/GuildSealService.js');
       const { FsKeyringAdapter } = await import('../../infrastructure/adapters/FsKeyringAdapter.js');
-      const { createGraphContext } = await import('../../infrastructure/GraphContext.js');
       const keyring = new FsKeyringAdapter();
       const sealService = new GuildSealService(keyring);
       const allowUnsignedScrolls = allowUnsignedScrollsForSettlement();
 
-      const graphCtx = createGraphContext(ctx.graphPort);
-      const detail = await graphCtx.fetchEntityDetail(id);
+      const readSession = await ctx.observation.openSession(
+        liveObservation('artifact.seal'),
+      );
+      const detail = await readSession.fetchEntityDetail(id);
       const assessment = assessSettlementGate(detail?.questDetail, 'seal');
       if (!assessment.allowed) {
         return ctx.failWithData(
