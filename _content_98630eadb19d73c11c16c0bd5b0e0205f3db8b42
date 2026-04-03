@@ -1,1 +1,0 @@
-Repo evidence exists for the graveyard reopen flow in src/tui/bijou/DashboardApp.ts, src/tui/bijou/write-cmds.ts, and src/tui/bijou/__tests__/DashboardApp.test.ts. Treat task:GRV-002 as stale graph bookkeeping that needs traceability and status reconciliation, not untouched backlog.

@@ -1,0 +1,1 @@
+Local repo progress on 2026-04-03: WorkSemanticsService now distinguishes routine backlog attention from governed-case elevation, and agent briefing/context/action flows route linked suggestions through case handling instead of ordinary suggestion pickup. This is real repo-local progress that has not yet been settled into graph status or traceability.
