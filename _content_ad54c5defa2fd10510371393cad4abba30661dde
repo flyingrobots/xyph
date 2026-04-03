@@ -1,1 +1,0 @@
-Local repo progress on 2026-04-03: linked suggestions now carry explicit governed-case semantics, and the dashboard suggestion/case surfaces are being updated to expose shaping state instead of treating linked suggestions as routine pickup. This is repo-local progress not yet settled into graph status or traceability.
