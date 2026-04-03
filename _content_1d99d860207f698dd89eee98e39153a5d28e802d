@@ -1,0 +1,1 @@
+Traceability reconciled on 2026-04-03. Added story:req:criterion packet for the implemented move command in src/cli/commands/link.ts. Automated witness: npx vitest run test/unit/LinkCommands.test.ts passed locally and verifies that move removes the prior belongs-to edge, adds the new campaign edge, and reports the patch in JSON output.
