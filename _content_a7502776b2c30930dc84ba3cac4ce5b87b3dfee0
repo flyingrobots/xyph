@@ -1,0 +1,1 @@
+Traceability backfill on 2026-04-03: req:cli-show and criterion:cli-show now describe the command contract, and test/unit/ShowCommands.test.ts passed locally as evidence for both quest and generic entity paths.
