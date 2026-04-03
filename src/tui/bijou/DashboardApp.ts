@@ -36,6 +36,7 @@ import type {
   CaseDetail,
   DashboardHealth,
   DashboardHealthIssue,
+  DashboardNowLaneData,
   DashboardReviewLaneData,
   DashboardReviewPageData,
   DashboardSuggestionLaneData,
@@ -236,6 +237,7 @@ export interface DashboardModel {
   observerWatermarks: ObserverWatermarks;
   observerSeenItems: ObserverSeenItems;
   pageScrollY: number;
+  nowLaneData: DashboardNowLaneData | null;
   reviewLaneData: DashboardReviewLaneData | null;
   suggestionLaneData: DashboardSuggestionLaneData | null;
   pageDetail: EntityDetail | null;
@@ -251,6 +253,7 @@ export type DashboardMsg =
   | ResizeMsg
   | { type: 'snapshot-loaded'; snapshot: GraphSnapshot; health?: DashboardHealth | null; requestId: number }
   | { type: 'health-loaded'; health: DashboardHealth | null; requestId: number }
+  | { type: 'now-lane-loaded'; data: DashboardNowLaneData; requestId: number }
   | { type: 'review-lane-loaded'; data: DashboardReviewLaneData; requestId: number }
   | { type: 'suggestion-lane-loaded'; data: DashboardSuggestionLaneData; requestId: number }
   | { type: 'snapshot-error'; error: string; requestId: number }
@@ -658,7 +661,11 @@ function currentSelectedItem(model: DashboardModel): CockpitItem | undefined {
     model.agentId,
     model.nowView,
     model.suggestionsView,
-    { reviewLaneData: model.reviewLaneData, suggestionLaneData: model.suggestionLaneData },
+    {
+      nowLaneData: model.nowLaneData,
+      reviewLaneData: model.reviewLaneData,
+      suggestionLaneData: model.suggestionLaneData,
+    },
   );
 }
 
@@ -813,6 +820,7 @@ function resetToLanding(model: DashboardModel): DashboardModel {
     ...model,
     pageStack: [{ kind: 'landing' }],
     pageScrollY: 0,
+    nowLaneData: model.nowLaneData,
     reviewLaneData: model.reviewLaneData,
     suggestionLaneData: model.suggestionLaneData,
     pageDetail: null,
@@ -1164,7 +1172,11 @@ function rebuildForLane(model: DashboardModel, lane: CockpitLaneId, snapshot = m
     model.agentId,
     model.nowView,
     model.suggestionsView,
-    { reviewLaneData: model.reviewLaneData, suggestionLaneData: model.suggestionLaneData },
+    {
+      nowLaneData: model.nowLaneData,
+      reviewLaneData: model.reviewLaneData,
+      suggestionLaneData: model.suggestionLaneData,
+    },
   );
   return {
     ...model,
@@ -2041,6 +2053,20 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
     return snapshot;
   }
 
+  async function loadNowLaneData(): Promise<DashboardNowLaneData> {
+    const startedAt = Date.now();
+    deps.logger?.debug('dashboard now lane load started');
+    const data = await deps.readPort.fetchLandingNowLaneData();
+    deps.logger?.info('dashboard now lane load finished', {
+      durationMs: Date.now() - startedAt,
+      questCount: data.quests.length,
+      submissionCount: data.submissions.length,
+      governanceCount: data.governanceArtifacts.length,
+      suggestionCount: data.aiSuggestions.length,
+    });
+    return data;
+  }
+
   async function loadReviewLaneData(): Promise<DashboardReviewLaneData> {
     const startedAt = Date.now();
     deps.logger?.debug('dashboard review lane load started');
@@ -2103,6 +2129,26 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
     };
   }
 
+  function fetchNowLane(requestId: number): Cmd<DashboardMsg> {
+    return async (emit) => {
+      try {
+        deps.logger?.debug('dashboard now lane request started', { requestId });
+        const data = await loadNowLaneData();
+        deps.logger?.info('dashboard now lane request succeeded', {
+          requestId,
+          questCount: data.quests.length,
+          submissionCount: data.submissions.length,
+        });
+        emit({ type: 'now-lane-loaded', data, requestId });
+      } catch (err: unknown) {
+        deps.logger?.warn('dashboard now lane request failed', {
+          requestId,
+          ...serializeError(err),
+        });
+      }
+    };
+  }
+
   function fetchReviewLane(requestId: number): Cmd<DashboardMsg> {
     return async (emit) => {
       try {
@@ -2145,6 +2191,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
     return async (emit, capabilities) => {
       deps.readPort.invalidate();
       await fetchSnapshot(requestId)(emit, capabilities);
+      await fetchNowLane(requestId)(emit, capabilities);
       await fetchReviewLane(requestId)(emit, capabilities);
       await fetchSuggestionLane(requestId)(emit, capabilities);
     };
@@ -2508,7 +2555,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
           loading: true,
           error: null,
           requestId: nextReqId,
-        }, [fetchSnapshot(nextReqId), fetchHealth(nextReqId), fetchReviewLane(nextReqId), fetchSuggestionLane(nextReqId)]];
+        }, [fetchSnapshot(nextReqId), fetchHealth(nextReqId), fetchNowLane(nextReqId), fetchReviewLane(nextReqId), fetchSuggestionLane(nextReqId)]];
       }
       case 'toggle-lane-view':
         if (currentPage(model).kind === 'doctor') return wakeScrollbar(cycleDoctorPageFilter(model), 'page');
@@ -2616,6 +2663,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         observerWatermarks: freshnessState.watermarks,
         observerSeenItems: freshnessState.seenItems,
         pageScrollY: 0,
+        nowLaneData: null,
         reviewLaneData: null,
         suggestionLaneData: null,
         pageDetail: null,
@@ -2627,6 +2675,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
       return [model, [
         fetchSnapshot(model.requestId),
         fetchHealth(model.requestId),
+        fetchNowLane(model.requestId),
         fetchReviewLane(model.requestId),
         fetchSuggestionLane(model.requestId),
         startWatching(),
@@ -2671,7 +2720,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         const clamped = clampDrawerScroll(updated, deps);
         const nextPage = currentPage(clamped);
         const cmds: Cmd<DashboardMsg>[] = pendingRefresh
-          ? [fetchSnapshot(clamped.requestId), fetchHealth(clamped.requestId), fetchReviewLane(clamped.requestId), fetchSuggestionLane(clamped.requestId)]
+          ? [fetchSnapshot(clamped.requestId), fetchHealth(clamped.requestId), fetchNowLane(clamped.requestId), fetchReviewLane(clamped.requestId), fetchSuggestionLane(clamped.requestId)]
           : [];
         const pageCmds = fetchPageContext(clamped.pageRequestId + 1, nextPage, deps);
         if (pageCmds.length > 0) {
@@ -2698,6 +2747,11 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
             ? { ...transitionToast, expiresAt: transitionToastExpiresAt }
             : model.toast,
         }, transitionToastExpiresAt ? [delayedDismissToast(transitionToastExpiresAt)] : []];
+      }
+
+      if (msg.type === 'now-lane-loaded') {
+        if (msg.requestId !== model.requestId) return [model, []];
+        return [rebuildForLane({ ...model, nowLaneData: msg.data }, model.lane), []];
       }
 
       if (msg.type === 'review-lane-loaded') {
@@ -2785,7 +2839,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
           loading: true,
           requestId: nextReqId,
           refreshPending: false,
-        }, [fetchSnapshot(nextReqId), fetchHealth(nextReqId), fetchReviewLane(nextReqId), fetchSuggestionLane(nextReqId)]];
+        }, [fetchSnapshot(nextReqId), fetchHealth(nextReqId), fetchNowLane(nextReqId), fetchReviewLane(nextReqId), fetchSuggestionLane(nextReqId)]];
       }
 
       if (msg.type === 'loading-progress') {
@@ -3288,7 +3342,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
                 loading: true,
                 error: null,
                 requestId: nextReqId,
-              }, [fetchSnapshot(nextReqId), fetchHealth(nextReqId), fetchReviewLane(nextReqId), fetchSuggestionLane(nextReqId)]];
+              }, [fetchSnapshot(nextReqId), fetchHealth(nextReqId), fetchNowLane(nextReqId), fetchReviewLane(nextReqId), fetchSuggestionLane(nextReqId)]];
             }
             case 'toggle-lane-view':
               if (currentPage(model).kind === 'doctor') return wakeScrollbar(cycleDoctorPageFilter(model), 'page');

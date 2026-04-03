@@ -675,6 +675,44 @@ describe('DashboardApp', () => {
     expect(plain).toContain('Review lane quest');
   });
 
+  it('renders the landing Now lane from targeted now-lane data', () => {
+    const app = buildApp({
+      quests: [],
+      submissions: [],
+      governanceArtifacts: [],
+      aiSuggestions: [],
+    });
+    const loaded = ready(app, makeSnapshot({
+      quests: [],
+      submissions: [],
+      governanceArtifacts: [],
+      aiSuggestions: [],
+    }));
+
+    const [withLaneData] = app.update({
+      type: 'now-lane-loaded',
+      requestId: loaded.requestId,
+      data: {
+        quests: [{
+          id: 'task:NOW-1',
+          title: 'Observer-backed queue item',
+          status: 'READY',
+          hours: 1,
+        }],
+        submissions: [],
+        reviews: [],
+        decisions: [],
+        governanceArtifacts: [],
+        aiSuggestions: [],
+      },
+    }, loaded);
+    const plain = strip(app.view(withLaneData) as string);
+
+    expect(plain).toContain('Observer-backed queue item');
+    expect(plain).toContain('QUEST');
+    expect(withLaneData.table.rows[0]).toEqual(['QUEST', 'NOW-1  Observer-backed queue item', 'READY', '1h']);
+  });
+
   it('renders the landing suggestions lane from targeted suggestion-lane data', () => {
     const app = buildApp({
       aiSuggestions: [],

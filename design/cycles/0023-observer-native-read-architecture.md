@@ -257,6 +257,10 @@ Implemented in this cycle so far:
   through its own `dashboard.view.landing.suggestions` observer and targeted
   suggestion-lane data instead of relying only on the omnibus landing snapshot
   for AI suggestion queue state
+- the landing cockpit `Now` lane now has the same observer-backed aggregate
+  seam: it reads through `dashboard.view.landing.now` and targeted now-lane
+  data for queue/activity semantics instead of deriving those views from the
+  omnibus landing snapshot
 - agent/service call sites now take explicit observation ports instead of
   quietly instantiating their own observation adapters
 - acceptance spec updated from placeholder failures to real seam assertions
@@ -268,11 +272,10 @@ Still intentionally transitional:
 - dashboard and broader operational snapshots still depend on the omnibus
   projection bridge
 - deeper control-plane substrate work still mixes old and new patterns
-- most dashboard landing/cockpit aggregate reads still use the broad
-  operational projection instead of one shared worldline plus targeted
-  per-view/per-lane observers; page reads are now observer-keyed, and the
-  review and suggestions lanes have first targeted slices, but the aggregate
-  landing shell is still the broadest remaining bridge consumer
+- the landing shell still boots from a broad operational snapshot for
+  cross-lane/meta state, even though the `Now`, `Review`, and `Suggestions`
+  lanes now read through targeted per-lane observers; the shell-level landing
+  snapshot remains the broadest remaining bridge consumer
 
 ## Implementation Notes
 

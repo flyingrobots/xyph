@@ -77,6 +77,7 @@ function makeModel(snapshot: GraphSnapshot | null): DashboardModel {
     observerWatermarks: emptyObserverWatermarks(),
     observerSeenItems: emptyObserverSeenItems(),
     pageScrollY: 0,
+    nowLaneData: null,
     reviewLaneData: null,
     suggestionLaneData: null,
     pageDetail: null,

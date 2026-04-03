@@ -5,6 +5,7 @@ import type {
   AiSuggestionNode,
   CampaignNode,
   ComparisonArtifactNode,
+  DashboardNowLaneData,
   DashboardReviewLaneData,
   DashboardSuggestionLaneData,
   GovernanceArtifactNode,
@@ -103,9 +104,17 @@ export interface AiSuggestionCockpitItem extends CockpitBaseItem {
 }
 
 export interface CockpitLaneOverrides {
+  nowLaneData?: DashboardNowLaneData | null;
   reviewLaneData?: DashboardReviewLaneData | null;
   suggestionLaneData?: DashboardSuggestionLaneData | null;
 }
+
+type NowLaneSource = Pick<
+  GraphSnapshot,
+  'quests' | 'submissions' | 'reviews' | 'decisions' | 'governanceArtifacts' | 'aiSuggestions'
+>;
+type QuestSource = Pick<GraphSnapshot, 'quests'>;
+type SubmissionSource = Pick<GraphSnapshot, 'quests' | 'submissions'>;
 
 interface AttentionDetail {
   state: CockpitAttentionState;
@@ -385,7 +394,7 @@ function buildSubmissionItemWithQuestTitle(submission: SubmissionNode, questTitl
   };
 }
 
-function buildSubmissionItem(submission: SubmissionNode, snapshot: GraphSnapshot): SubmissionCockpitItem {
+function buildSubmissionItem(submission: SubmissionNode, snapshot: QuestSource): SubmissionCockpitItem {
   const questTitle = snapshot.quests.find((quest) => quest.id === submission.questId)?.title ?? submission.questId;
   return buildSubmissionItemWithQuestTitle(submission, questTitle);
 }
@@ -443,7 +452,7 @@ function buildGovernanceItem(artifact: GovernanceArtifactNode): CockpitItem {
   }
 }
 
-function buildCampaignItem(campaign: CampaignNode, snapshot: GraphSnapshot): CampaignCockpitItem {
+function buildCampaignItem(campaign: CampaignNode, snapshot: QuestSource): CampaignCockpitItem {
   const related = snapshot.quests.filter((quest) => quest.campaignId === campaign.id);
   const done = related.filter((quest) => quest.status === 'DONE').length;
   const total = related.length;
@@ -691,7 +700,7 @@ function buildQuestActivityEvents(quest: QuestNode): ActivityEvent[] {
   return events;
 }
 
-function buildSubmissionActivityEvent(submission: SubmissionNode, snapshot: GraphSnapshot): ActivityEvent {
+function buildSubmissionActivityEvent(submission: SubmissionNode, snapshot: QuestSource): ActivityEvent {
   const questTitle = snapshot.quests.find((quest) => quest.id === submission.questId)?.title ?? submission.questId;
   return {
     id: `${submission.id}:submitted:${submission.submittedAt}`,
@@ -705,7 +714,7 @@ function buildSubmissionActivityEvent(submission: SubmissionNode, snapshot: Grap
   };
 }
 
-function buildReviewActivityEvent(review: ReviewNode, snapshot: GraphSnapshot): ActivityEvent {
+function buildReviewActivityEvent(review: ReviewNode, snapshot: SubmissionSource): ActivityEvent {
   const submission = snapshot.submissions.find((candidate) => candidate.tipPatchsetId === review.patchsetId);
   const quest = submission
     ? snapshot.quests.find((candidate) => candidate.id === submission.questId)
@@ -722,7 +731,7 @@ function buildReviewActivityEvent(review: ReviewNode, snapshot: GraphSnapshot): 
   };
 }
 
-function buildDecisionActivityEvent(decision: DecisionNode, snapshot: GraphSnapshot): ActivityEvent {
+function buildDecisionActivityEvent(decision: DecisionNode, snapshot: SubmissionSource): ActivityEvent {
   const submission = snapshot.submissions.find((candidate) => candidate.id === decision.submissionId);
   const quest = submission
     ? snapshot.quests.find((candidate) => candidate.id === submission.questId)
@@ -795,7 +804,7 @@ function buildAiSuggestionActivityEvent(suggestion: AiSuggestionNode): ActivityE
   };
 }
 
-function buildActivityItems(snapshot: GraphSnapshot): CockpitItem[] {
+function buildActivityItems(snapshot: NowLaneSource): CockpitItem[] {
   const items: ActivityCockpitItem[] = [];
   for (const quest of snapshot.quests) {
     items.push(...buildQuestActivityEvents(quest).map((event) => buildActivityItem(event)));
@@ -821,7 +830,7 @@ function buildActivityItems(snapshot: GraphSnapshot): CockpitItem[] {
   return items.sort(compareGovernanceItems);
 }
 
-function buildOperationItems(snapshot: GraphSnapshot, agentId?: string): CockpitItem[] {
+function buildOperationItems(snapshot: NowLaneSource, agentId?: string): CockpitItem[] {
   const items: CockpitItem[] = [];
 
   for (const artifact of snapshot.governanceArtifacts) {
@@ -1032,8 +1041,8 @@ export function laneItems(
   switch (lane) {
     case 'now':
       return nowView === 'activity'
-        ? buildActivityItems(snapshot)
-        : buildOperationItems(snapshot, agentId);
+        ? buildActivityItems(overrides.nowLaneData ?? snapshot)
+        : buildOperationItems(overrides.nowLaneData ?? snapshot, agentId);
     case 'plan':
       return snapshot.quests
         .filter((quest) => quest.status !== 'GRAVEYARD')

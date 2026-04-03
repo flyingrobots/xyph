@@ -1,4 +1,5 @@
 import type {
+  DashboardNowLaneData,
   DashboardReviewLaneData,
   DashboardReviewPageData,
   DashboardSuggestionLaneData,
@@ -16,6 +17,7 @@ import type {
 export interface DashboardReadPort {
   fetchOperationalSnapshot(view?: DashboardObservationView): Promise<GraphSnapshot>;
   fetchEntityDetail(view: DashboardObservationView, id: string): Promise<EntityDetail | null>;
+  fetchLandingNowLaneData(): Promise<DashboardNowLaneData>;
   fetchLandingReviewLaneData(): Promise<DashboardReviewLaneData>;
   fetchLandingSuggestionLaneData(): Promise<DashboardSuggestionLaneData>;
   fetchReviewPageData(submissionId: string, questId: string): Promise<DashboardReviewPageData | null>;

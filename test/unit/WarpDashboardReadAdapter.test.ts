@@ -143,6 +143,69 @@ describe('WarpDashboardReadAdapter', () => {
     expect(detail).toBeNull();
   });
 
+  it('uses a dedicated now observer for landing now-lane reads', async () => {
+    mocks.createObservedGraphProjectionFromGraph.mockReturnValue({
+      fetchSnapshot: vi.fn(),
+      fetchEntityDetail: vi.fn().mockResolvedValue(null),
+      filterSnapshot: vi.fn(),
+      invalidateCache: vi.fn(),
+    });
+
+    const observedHandle = {
+      query: vi.fn(() => ({
+        match: vi.fn().mockReturnThis(),
+        select: vi.fn().mockReturnThis(),
+        run: vi.fn().mockResolvedValue({ nodes: [] }),
+      })),
+      hasNode: vi.fn().mockResolvedValue(false),
+      getNodeProps: vi.fn().mockResolvedValue(null),
+      getEdges: vi.fn().mockResolvedValue([]),
+      traverse: {},
+    };
+    const worldline = {
+      observer: vi.fn().mockResolvedValue(observedHandle),
+    };
+    const graphPort = {
+      getGraph: vi.fn().mockResolvedValue({
+        writerId: 'agent.test',
+        worldline: vi.fn().mockReturnValue(worldline),
+        getStateSnapshot: vi.fn(),
+        getFrontier: vi.fn(),
+        getContentOid: vi.fn(),
+        getContent: vi.fn(),
+        compareCoordinates: vi.fn(),
+      }),
+      reset: vi.fn(),
+    };
+
+    const adapter = new WarpDashboardReadAdapter(graphPort as never);
+    const data = await adapter.fetchLandingNowLaneData();
+
+    expect(graphPort.getGraph).toHaveBeenCalled();
+    expect(worldline.observer).toHaveBeenCalledWith('dashboard.view.landing.now', {
+      match: [
+        'task:*',
+        'submission:*',
+        'patchset:*',
+        'review:*',
+        'decision:*',
+        'comparison-artifact:*',
+        'collapse-proposal:*',
+        'attestation:*',
+        'suggestion:*',
+        'case:*',
+      ],
+    });
+    expect(data).toEqual({
+      quests: [],
+      submissions: [],
+      reviews: [],
+      decisions: [],
+      governanceArtifacts: [],
+      aiSuggestions: [],
+    });
+  });
+
   it('uses a dedicated suggestions observer for landing suggestion-lane reads', async () => {
     mocks.createObservedGraphProjectionFromGraph.mockReturnValue({
       fetchSnapshot: vi.fn(),

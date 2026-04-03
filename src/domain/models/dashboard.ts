@@ -315,6 +315,15 @@ export interface DashboardReviewPageData {
   scroll?: ScrollNode;
 }
 
+export interface DashboardNowLaneData {
+  quests: QuestNode[];
+  submissions: SubmissionNode[];
+  reviews: ReviewNode[];
+  decisions: DecisionNode[];
+  governanceArtifacts: GovernanceArtifactNode[];
+  aiSuggestions: AiSuggestionNode[];
+}
+
 export interface DashboardReviewLaneData {
   submissions: SubmissionNode[];
   quests: QuestNode[];

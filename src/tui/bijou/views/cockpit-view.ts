@@ -519,7 +519,11 @@ export function describeCockpitInteractionMap(
     model.agentId,
     model.nowView,
     model.suggestionsView,
-    { reviewLaneData: model.reviewLaneData, suggestionLaneData: model.suggestionLaneData },
+    {
+      nowLaneData: model.nowLaneData,
+      reviewLaneData: model.reviewLaneData,
+      suggestionLaneData: model.suggestionLaneData,
+    },
   );
   const selected = worklistItems[model.table.focusRow];
   const worklistHeader = renderPaneHeader({
@@ -674,13 +678,15 @@ function renderHero(
 ): string {
   const accentToken = laneAccent(style, options.lane);
   const graphMeta = snapshot.graphMeta;
-  const active = snapshot.quests.filter((quest) => quest.status === 'IN_PROGRESS').length;
-  const ready = snapshot.quests.filter((quest) => quest.status === 'READY').length;
+  const nowQuests = model.nowLaneData?.quests ?? snapshot.quests;
+  const nowGovernance = model.nowLaneData?.governanceArtifacts ?? snapshot.governanceArtifacts;
+  const active = nowQuests.filter((quest) => quest.status === 'IN_PROGRESS').length;
+  const ready = nowQuests.filter((quest) => quest.status === 'READY').length;
   const reviewQueue = (model.reviewLaneData
     ? buildReviewLaneItemsFromData(model.reviewLaneData).map((item) => item.submission)
     : snapshot.submissions
   ).filter((submission) => submission.status === 'OPEN' || submission.status === 'CHANGES_REQUESTED').length;
-  const settlementQueue = snapshot.governanceArtifacts.filter((artifact) =>
+  const settlementQueue = nowGovernance.filter((artifact) =>
     artifact.type === 'collapse-proposal'
       && artifact.governance.series.latestInSeries
       && artifact.governance.freshness === 'fresh'
@@ -827,7 +833,11 @@ function buildLaneRailContent(
     model.agentId,
     model.nowView,
     model.suggestionsView,
-    { reviewLaneData: model.reviewLaneData, suggestionLaneData: model.suggestionLaneData },
+    {
+      nowLaneData: model.nowLaneData,
+      reviewLaneData: model.reviewLaneData,
+      suggestionLaneData: model.suggestionLaneData,
+    },
   );
   for (const lane of lanes) {
     const selected = lane.id === model.lane;
@@ -939,7 +949,11 @@ function renderWorklistPane(model: DashboardModel, snapshot: GraphSnapshot, styl
     model.agentId,
     model.nowView,
     model.suggestionsView,
-    { reviewLaneData: model.reviewLaneData, suggestionLaneData: model.suggestionLaneData },
+    {
+      nowLaneData: model.nowLaneData,
+      reviewLaneData: model.reviewLaneData,
+      suggestionLaneData: model.suggestionLaneData,
+    },
   );
   const selected = items[model.table.focusRow];
   const header = renderPaneHeader({

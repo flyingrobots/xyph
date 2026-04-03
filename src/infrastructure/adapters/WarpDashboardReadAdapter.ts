@@ -4,6 +4,7 @@ import type {
   DashboardReadPort,
 } from '../../ports/DashboardReadPort.js';
 import { liveObservation } from '../../ports/ObservationPort.js';
+import { readNowLaneData } from '../../domain/services/NowLaneReadService.js';
 import { readReviewLaneData } from '../../domain/services/ReviewLaneReadService.js';
 import { readReviewPageData } from '../../domain/services/ReviewPageReadService.js';
 import { readSuggestionLaneData } from '../../domain/services/SuggestionLaneReadService.js';
@@ -146,6 +147,24 @@ const DASHBOARD_LANDING_REVIEW_LANE_OBSERVER: { name: string; lens: { match: str
   },
 };
 
+const DASHBOARD_LANDING_NOW_LANE_OBSERVER: { name: string; lens: { match: string[] } } = {
+  name: 'dashboard.view.landing.now',
+  lens: {
+    match: [
+      'task:*',
+      'submission:*',
+      'patchset:*',
+      'review:*',
+      'decision:*',
+      'comparison-artifact:*',
+      'collapse-proposal:*',
+      'attestation:*',
+      'suggestion:*',
+      'case:*',
+    ],
+  },
+};
+
 const DASHBOARD_LANDING_SUGGESTION_LANE_OBSERVER: { name: string; lens: { match: string[] } } = {
   name: 'dashboard.view.landing.suggestions',
   lens: {
@@ -176,6 +195,13 @@ export class WarpDashboardReadAdapter implements DashboardReadPort {
   public async fetchEntityDetail(view: DashboardObservationView, id: string) {
     const session = await this.base.openSession(liveObservation(`dashboard.detail.${view}`, DASHBOARD_VIEW_OBSERVERS[view]));
     return await session.fetchEntityDetail(id);
+  }
+
+  public async fetchLandingNowLaneData() {
+    const session = await this.base.openSession(
+      liveObservation('dashboard.view.landing.now', DASHBOARD_LANDING_NOW_LANE_OBSERVER),
+    );
+    return await readNowLaneData(session);
   }
 
   public async fetchLandingReviewLaneData() {

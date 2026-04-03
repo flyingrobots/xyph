@@ -8,6 +8,7 @@
 
 import { vi } from 'vitest';
 import type {
+  DashboardNowLaneData,
   DashboardReviewLaneData,
   DashboardReviewPageData,
   DashboardSuggestionLaneData,
@@ -30,6 +31,14 @@ export function mockReadProjection(snapshotOverrides?: Partial<GraphSnapshot>): 
   const snap = makeSnapshot(snapshotOverrides);
   const fetchSnapshot = vi.fn().mockResolvedValue(snap);
   const invalidateCache = vi.fn();
+  const fetchLandingNowLaneData = vi.fn().mockResolvedValue({
+    quests: [],
+    submissions: [],
+    reviews: [],
+    decisions: [],
+    governanceArtifacts: [],
+    aiSuggestions: [],
+  } satisfies DashboardNowLaneData);
   const fetchLandingReviewLaneData = vi.fn().mockResolvedValue({ submissions: [], quests: [] } satisfies DashboardReviewLaneData);
   const fetchLandingSuggestionLaneData = vi.fn().mockResolvedValue({ aiSuggestions: [] } satisfies DashboardSuggestionLaneData);
   const fetchReviewPageData = vi.fn().mockResolvedValue(null as DashboardReviewPageData | null);
@@ -38,6 +47,7 @@ export function mockReadProjection(snapshotOverrides?: Partial<GraphSnapshot>): 
     fetchSnapshot,
     fetchOperationalSnapshot: vi.fn().mockResolvedValue(snap) as DashboardReadPort['fetchOperationalSnapshot'],
     fetchEntityDetail: vi.fn().mockResolvedValue(null) as DashboardReadPort['fetchEntityDetail'],
+    fetchLandingNowLaneData: fetchLandingNowLaneData as DashboardReadPort['fetchLandingNowLaneData'],
     fetchLandingReviewLaneData: fetchLandingReviewLaneData as DashboardReadPort['fetchLandingReviewLaneData'],
     fetchLandingSuggestionLaneData: fetchLandingSuggestionLaneData as DashboardReadPort['fetchLandingSuggestionLaneData'],
     fetchReviewPageData: fetchReviewPageData as DashboardReadPort['fetchReviewPageData'],
