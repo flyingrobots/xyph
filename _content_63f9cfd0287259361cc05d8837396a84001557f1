@@ -1,1 +1,0 @@
-Repo evidence exists for this capability in src/cli/commands/coordination.ts as the history command, but the graph still carries task:BX-009 as BACKLOG with no traceability packet. Treat this as implemented repo reality that needs graph reconciliation rather than untouched backlog.
