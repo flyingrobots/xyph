@@ -1,1 +1,0 @@
-Repo evidence exists for this capability in src/cli/commands/show.ts, but the graph still carries task:cli-show as BACKLOG with no traceability packet. Treat this as implemented repo reality that needs graph reconciliation rather than untouched backlog.
