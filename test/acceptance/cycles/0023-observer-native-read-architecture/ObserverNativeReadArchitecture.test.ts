@@ -4,7 +4,7 @@ import { registerShowCommands } from '../../../../src/cli/commands/show.js';
 import type { CliContext } from '../../../../src/cli/context.js';
 import { DoctorService } from '../../../../src/domain/services/DoctorService.js';
 import { makeSnapshot } from '../../../helpers/snapshot.js';
-import type { ObservationPort, ObservationSession } from '../../../../src/ports/ObservationPort.js';
+import type { ObservationSession } from '../../../../src/ports/ObservationPort.js';
 import { liveObservation } from '../../../../src/ports/ObservationPort.js';
 import { WarpObservationAdapter } from '../../../../src/infrastructure/adapters/WarpObservationAdapter.js';
 
@@ -92,10 +92,10 @@ describe('Cycle 0023: Observer-Native Read Architecture', () => {
         openInspectionSession: vi.fn(async () => session),
       },
       logger: {
-        debug() {},
-        info() {},
-        warn() {},
-        error() {},
+        debug(): void { return undefined; },
+        info(): void { return undefined; },
+        warn(): void { return undefined; },
+        error(): void { return undefined; },
         child() { return this; },
       },
       style: {},

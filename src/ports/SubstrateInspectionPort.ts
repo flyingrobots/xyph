@@ -1,6 +1,6 @@
 import type { ObservationRequest, ObservationSession } from './ObservationPort.js';
 
-export interface SubstrateInspectionSession extends ObservationSession {}
+export type SubstrateInspectionSession = ObservationSession;
 
 /**
  * Explicit deeper inspection seam for doctor/provenance/audit-style reads.

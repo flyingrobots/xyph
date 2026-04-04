@@ -3,7 +3,7 @@ import type {
   OperationalReadPort,
   OperationalReadSession,
 } from '../../ports/OperationalReadPort.js';
-import type { ObservationRequest } from '../../ports/ObservationPort.js';
+import type { ObservationRequest, ObservationSession } from '../../ports/ObservationPort.js';
 import { WarpObservationAdapter } from './WarpObservationAdapter.js';
 
 export class WarpOperationalReadAdapter implements OperationalReadPort {
@@ -22,7 +22,7 @@ export class WarpOperationalReadAdapter implements OperationalReadPort {
     };
   }
 
-  public async openSession(request: ObservationRequest) {
+  public async openSession(request: ObservationRequest): Promise<ObservationSession> {
     return await this.base.openSession(request);
   }
 }

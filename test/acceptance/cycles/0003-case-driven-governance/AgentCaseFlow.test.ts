@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Command } from 'commander';
 import { execSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -7,8 +7,11 @@ import path from 'node:path';
 import type { CliContext } from '../../../../src/cli/context.js';
 import { registerAgentCommands } from '../../../../src/cli/commands/agent.js';
 import { RecordService } from '../../../../src/domain/services/RecordService.js';
+import { WarpObservationAdapter } from '../../../../src/infrastructure/adapters/WarpObservationAdapter.js';
+import { WarpOperationalReadAdapter } from '../../../../src/infrastructure/adapters/WarpOperationalReadAdapter.js';
+import { WarpSubstrateInspectionAdapter } from '../../../../src/infrastructure/adapters/WarpSubstrateInspectionAdapter.js';
 import { WarpGraphAdapter } from '../../../../src/infrastructure/adapters/WarpGraphAdapter.js';
-import { createPlainStylePort } from '../../../../src/infrastructure/adapters/PlainStyleAdapter.js';
+import { makeJsonCliContext } from '../../../helpers/cliContext.js';
 
 describe('Cycle 0003: Case-Driven Governance', () => {
   let repoPath: string;
@@ -211,30 +214,17 @@ describe('Cycle 0003: Case-Driven Governance', () => {
 });
 
 function makeCliContext(graphPort: WarpGraphAdapter, repoPath: string): CliContext {
-  return {
+  return makeJsonCliContext({
     agentId: 'agent.tester',
     cwd: repoPath,
     repoPath,
     graphName: 'xyph',
     identity: { agentId: 'agent.tester', source: 'default', origin: null },
-    json: true,
     graphPort,
-    style: createPlainStylePort(),
-    ok: vi.fn(),
-    warn: vi.fn(),
-    muted: vi.fn(),
-    print: vi.fn(),
-    fail: vi.fn((msg: string) => {
-      throw new Error(msg);
-    }),
-    failWithData: vi.fn((msg: string) => {
-      throw new Error(msg);
-    }),
-    jsonEvent: vi.fn(),
-    jsonStart: vi.fn(),
-    jsonProgress: vi.fn(),
-    jsonOut: vi.fn(() => undefined) as CliContext['jsonOut'],
-  } as CliContext;
+    observation: new WarpObservationAdapter(graphPort),
+    operationalRead: new WarpOperationalReadAdapter(graphPort),
+    inspection: new WarpSubstrateInspectionAdapter(graphPort),
+  });
 }
 
 async function seedOpenCase(graphPort: WarpGraphAdapter): Promise<void> {

@@ -1,7 +1,5 @@
 import { Command } from 'commander';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { CliContext, JsonEnvelope } from '../../src/cli/context.js';
-import type { Diagnostic } from '../../src/domain/models/diagnostics.js';
 import type { EntityDetail } from '../../src/domain/models/dashboard.js';
 import {
   allowUnsignedScrollsForSettlement,
@@ -9,6 +7,7 @@ import {
   UNSIGNED_SCROLLS_OVERRIDE_ENV,
 } from '../../src/cli/commands/artifact.js';
 import { registerSubmissionCommands } from '../../src/cli/commands/submission.js';
+import { makeJsonCliContext, makeObservationSessionFake, makeReadPortsFromSession } from '../helpers/cliContext.js';
 
 const mocks = vi.hoisted(() => ({
   hasPrivateKey: vi.fn(),
@@ -121,14 +120,6 @@ vi.mock('../../src/infrastructure/adapters/GitWorkspaceAdapter.js', () => ({
   },
 }));
 
-vi.mock('../../src/infrastructure/ObservedGraphProjection.js', () => ({
-  createObservedGraphProjection: () => ({
-    fetchEntityDetail(id: string): Promise<EntityDetail | null> {
-      return mocks.fetchEntityDetail(id);
-    },
-  }),
-}));
-
 function makeQuestDetail(
   overrides?: Partial<NonNullable<EntityDetail['questDetail']>>,
 ): EntityDetail {
@@ -200,38 +191,39 @@ function defaultQuestNode(): NonNullable<EntityDetail['questDetail']>['quest'] {
   return detail.quest;
 }
 
-function createJsonCtx(overrides: Partial<CliContext> = {}): CliContext {
+function createPatchBuilder() {
   return {
-    agentId: 'agent.test',
-    json: true,
-    graphPort: {} as CliContext['graphPort'],
-    style: {} as CliContext['style'],
-    ok: () => undefined,
-    warn: () => undefined,
-    muted: () => undefined,
-    print: () => undefined,
-    fail(msg: string): never {
-      console.log(JSON.stringify({ success: false, error: msg }));
-      process.exit(1);
-      return undefined as never;
-    },
-    failWithData(msg: string, data: Record<string, unknown>, diagnostics?: Diagnostic[]): never {
-      console.log(JSON.stringify({
-        success: false,
-        error: msg,
-        data,
-        ...(diagnostics === undefined || diagnostics.length === 0
-          ? {}
-          : { diagnostics }),
-      }));
-      process.exit(1);
-      return undefined as never;
-    },
-    jsonOut(envelope: JsonEnvelope): void {
-      console.log(JSON.stringify(envelope));
-    },
-    ...overrides,
+    addNode: vi.fn().mockReturnThis(),
+    setProperty: vi.fn().mockReturnThis(),
+    addEdge: vi.fn().mockReturnThis(),
   };
+}
+
+function makeGraphPortForPatch(
+  patch: (fn: (builder: ReturnType<typeof createPatchBuilder>) => void) => Promise<string> = async (
+    apply,
+  ) => {
+    const builder = createPatchBuilder();
+    apply(builder);
+    return 'patch:graph';
+  },
+) {
+  return {
+    getGraph: async () => ({ patch }),
+  };
+}
+
+function createJsonCtx(overrides = {}) {
+  const session = makeObservationSessionFake({
+    fetchEntityDetail: vi.fn(async (id: string) => mocks.fetchEntityDetail(id)),
+  });
+  const readPorts = makeReadPortsFromSession(session);
+
+  return makeJsonCliContext({
+    graphPort: makeGraphPortForPatch() as never,
+    ...readPorts,
+    ...overrides,
+  }, { emitJson: true });
 }
 
 function clearEnv(name: string): void {
@@ -332,21 +324,15 @@ describe('signed settlement enforcement', () => {
     mocks.hasPrivateKey.mockReturnValue(false);
     mocks.sign.mockResolvedValue(null);
 
-    const patchBuilder = {
-      addNode: vi.fn().mockReturnThis(),
-      setProperty: vi.fn().mockReturnThis(),
-      addEdge: vi.fn().mockReturnThis(),
-    };
-    const graphPatch = vi.fn(async (fn: (builder: typeof patchBuilder) => void) => {
+    const patchBuilder = createPatchBuilder();
+    const graphPatch = vi.fn(async (fn: (builder: ReturnType<typeof createPatchBuilder>) => void) => {
       fn(patchBuilder);
       return 'patch:seal';
     });
 
     const program = new Command();
     registerArtifactCommands(program, createJsonCtx({
-      graphPort: {
-        getGraph: async () => ({ patch: graphPatch }),
-      } as CliContext['graphPort'],
+      graphPort: makeGraphPortForPatch(graphPatch) as never,
     }));
 
     await program.parseAsync(

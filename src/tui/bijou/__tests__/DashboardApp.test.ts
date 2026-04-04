@@ -144,7 +144,7 @@ describe('DashboardApp', () => {
     });
     const graphPort = {
       ...mockGraphPort(),
-      getGraph: vi.fn().mockImplementation(() => new Promise(() => {})),
+      getGraph: vi.fn().mockImplementation(() => new Promise<never>(() => undefined)),
     };
     const app = createDashboardApp({
       readPort: ctx,
@@ -164,7 +164,7 @@ describe('DashboardApp', () => {
     await cmds[0]?.((msg) => {
       emitted.push(msg);
     }, {
-      onPulse: () => ({ dispose() {} }),
+      onPulse: () => ({ dispose(): void { return undefined; } }),
       sleep: async () => undefined,
       defer: async () => undefined,
       now: () => Date.now(),
@@ -180,7 +180,7 @@ describe('DashboardApp', () => {
     await cmds[1]?.((msg) => {
       emitted.push(msg);
     }, {
-      onPulse: () => ({ dispose() {} }),
+      onPulse: () => ({ dispose(): void { return undefined; } }),
       sleep: async () => undefined,
       defer: async () => undefined,
       now: () => Date.now(),

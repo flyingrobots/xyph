@@ -38,9 +38,10 @@ describe('Cycle 0022: Durable Diagnostic Logging', () => {
 
   it('treats stray console calls in core app paths as errors', () => {
     const result = spawnSync(
-      'rg',
+      'grep',
       [
-        '-n',
+        '-rn',
+        '-E',
         'console\\.(log|info|warn|error|debug|trace)\\(',
         'src/domain',
         'src/infrastructure',

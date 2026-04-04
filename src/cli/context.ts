@@ -39,6 +39,24 @@ export interface JsonErrorEnvelope {
 
 export type JsonOutput = JsonStreamEvent | JsonEnvelope | JsonErrorEnvelope;
 
+const noopLogger: DiagnosticLogPort = {
+  debug(_message: string, _context?: Record<string, unknown>): void {
+    return undefined;
+  },
+  info(_message: string, _context?: Record<string, unknown>): void {
+    return undefined;
+  },
+  warn(_message: string, _context?: Record<string, unknown>): void {
+    return undefined;
+  },
+  error(_message: string, _context?: Record<string, unknown>): void {
+    return undefined;
+  },
+  child(_context: Record<string, unknown>): DiagnosticLogPort {
+    return noopLogger;
+  },
+};
+
 export interface CliContext {
   readonly agentId: string;
   readonly cwd: string;
@@ -126,7 +144,7 @@ export function createCliContext(
     observation,
     operationalRead,
     inspection,
-    logger: opts?.logger ?? { debug() {}, info() {}, warn() {}, error() {}, child() { return this; } },
+    logger: opts?.logger ?? noopLogger,
     style,
     ok(msg: string): void {
       if (jsonMode) return;

@@ -1,7 +1,9 @@
 import { Buffer } from 'node:buffer';
 import type { AggregateResult, QueryResultV1 } from '@git-stunts/git-warp';
+import type { EntityDetail, GraphSnapshot } from '../../domain/models/dashboard.js';
 import type { GraphPort } from '../../ports/GraphPort.js';
 import type {
+  ObservationNeighbor,
   ObservationNodeRecord,
   ObservationPort,
   ObservationRequest,
@@ -33,24 +35,28 @@ export class WarpObservationAdapter implements ObservationPort {
     const projection = createObservedGraphProjectionFromGraph(projectionGraph, { syncCoverage: false });
 
     return {
-      fetchSnapshot: (profile: SnapshotProfile = 'operational') =>
+      fetchSnapshot: (profile: SnapshotProfile = 'operational'): Promise<GraphSnapshot> =>
         projection.fetchSnapshot(undefined, { profile }),
-      fetchEntityDetail: (id: string) => projection.fetchEntityDetail(id),
-      getNodeProps: (id: string) => observedHandle.getNodeProps(id),
-      getContent: async (id: string) => {
+      fetchEntityDetail: (id: string): Promise<EntityDetail | null> => projection.fetchEntityDetail(id),
+      getNodeProps: (id: string): Promise<Record<string, unknown> | null> => observedHandle.getNodeProps(id),
+      getContent: async (id: string): Promise<string | undefined> => {
         if (!(await observedHandle.hasNode(id))) return undefined;
         const content = await graph.getContent(id);
         return content ? Buffer.from(content).toString('utf8') : undefined;
       },
-      getContentOid: async (id: string) => {
+      getContentOid: async (id: string): Promise<string | undefined> => {
         if (!(await observedHandle.hasNode(id))) return undefined;
         return (await graph.getContentOid(id)) ?? undefined;
       },
-      queryNodes: async (pattern: string) =>
+      queryNodes: async (pattern: string): Promise<ObservationNodeRecord[]> =>
         await observedHandle.query().match(pattern).select(['id', 'props']).run().then(extractNodes),
-      neighbors: async (nodeId, direction = 'outgoing', edgeLabel) =>
+      neighbors: async (
+        nodeId: string,
+        direction: 'outgoing' | 'incoming' | 'both' = 'outgoing',
+        edgeLabel?: string,
+      ): Promise<ObservationNeighbor[]> =>
         await projectionGraph.neighbors(nodeId, direction, edgeLabel),
-      hasNode: (id: string) => observedHandle.hasNode(id),
+      hasNode: (id: string): Promise<boolean> => observedHandle.hasNode(id),
     };
   }
 }
