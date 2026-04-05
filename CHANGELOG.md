@@ -4,6 +4,23 @@ All notable changes to XYPH will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **9 invariants seeded into the WARP graph as content-attached nodes** — graph-is-truth, principal-general-authority, deterministic-convergence, immutable-provenance, authorized-intent, substrate-boundary, policy-is-plastic, frontier-not-assignment, witness-before-done. Each carries the full METHOD structure (what must remain true / why it matters / how to check) and is readable from any branch via `xyph show invariant:*`.
+- **5 legends (WARP, GOV, SURF, PROV, FLOW) with `protects` edges to invariants** — eternal domains that span the project lifetime, replacing temporal campaign-based grouping. Each legend defines its sponsored human/agent roles, hills, and verification criteria.
+- **First bearing set as a graph-native signpost** — `bearing:current` captures direction, last shipped work, what's next, and what feels wrong. Updated at cycle boundaries.
+- **6 new schema prefixes** (`invariant`, `legend`, `cycle`, `design`, `retro`, `bearing`) and **3 new edge types** (`protects`, `contains`, `closes`) preparing the graph ontology for METHOD-aligned cycle discipline.
+
+### Changed
+
+- **Backlog triaged from 158 open quests to 53** — 11 quests sealed as already completed, ~88 graveyarded with full "WHAT IT WAS" intent reconstructions, 24 stubs merged into 6 consolidated cycle-worthy items, 18 rethought (12 graveyarded, 1 reset, 5 reframed with new titles and descriptions reflecting METHOD adoption).
+- **Doctor no longer flags BACKLOG, GRAVEYARD, or DONE quests for readiness and governed-completion gaps** — these scans now only check PLANNED/READY/IN_PROGRESS quests, eliminating 52 false diagnostics from graveyarded and sealed work. Doctor diagnostics went from 55 to 3 (all legitimate PLANNED quest work).
+- **DoctorService test fixture updated** — governed-quest-incomplete test now uses PLANNED status instead of BACKLOG, correctly reflecting that BACKLOG quests should not trigger governance checks.
+
+### Fixed
+
+- **Replaced `rg` with `grep` in diagnostic logging acceptance test** — the cycle 0022 test spawned `rg` (ripgrep) directly, which isn't guaranteed on CI runners. When missing, `spawnSync` returned `undefined` stdout causing a TypeError.
+
 ### Changed
 
 - **README rewritten from the ground up** — the README was a changelog masquerading as onboarding. It has been rewritten to lead with what XYPH is, move straight into a walkthrough, and present the full CLI/TUI/API surface grounded in what actually exists today. The 276-line worldlines substrate essay has been extracted to [`docs/WORLDLINES.md`](docs/WORLDLINES.md). The CLI reference table now covers all 61 commands across 18 groups. The milestone table reflects current reality. The TUI section describes what a user actually sees, not accumulated patch-note deltas.
