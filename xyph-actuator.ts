@@ -19,6 +19,7 @@ import { registerShowCommands } from './src/cli/commands/show.js';
 import { registerAgentCommands } from './src/cli/commands/agent.js';
 import { registerDoctorCommands } from './src/cli/commands/doctor.js';
 import { registerApiCommands } from './src/cli/commands/api.js';
+import { registerSearchCommands } from './src/cli/commands/search.js';
 import { DiagnosticLogger } from './src/infrastructure/logging/DiagnosticLogger.js';
 import { FileDiagnosticLogSink, resolveDiagnosticLogPath } from './src/infrastructure/logging/FileDiagnosticLogSink.js';
 
@@ -76,6 +77,7 @@ registerShowCommands(program, ctx);
 registerAgentCommands(program, ctx);
 registerDoctorCommands(program, ctx);
 registerApiCommands(program, ctx);
+registerSearchCommands(program, ctx);
 
 try {
   await program.parseAsync(process.argv);

@@ -6,6 +6,7 @@ All notable changes to XYPH will be documented in this file.
 
 ### Added
 
+- **`search` CLI command** — unified quest search with keyword matching (title, ID, description), `--status` filtering (including GRAVEYARD), and `--stats` mode for counts by status. Always includes graveyard quests so the full graph is searchable. Usage: `xyph search "MCP"`, `xyph search --status GRAVEYARD`, `xyph search --stats`.
 - **9 invariants seeded into the WARP graph as content-attached nodes** — graph-is-truth, principal-general-authority, deterministic-convergence, immutable-provenance, authorized-intent, substrate-boundary, policy-is-plastic, frontier-not-assignment, witness-before-done. Each carries the full METHOD structure (what must remain true / why it matters / how to check) and is readable from any branch via `xyph show invariant:*`.
 - **5 legends (WARP, GOV, SURF, PROV, FLOW) with `protects` edges to invariants** — eternal domains that span the project lifetime, replacing temporal campaign-based grouping. Each legend defines its sponsored human/agent roles, hills, and verification criteria.
 - **First bearing set as a graph-native signpost** — `bearing:current` captures direction, last shipped work, what's next, and what feels wrong. Updated at cycle boundaries.
