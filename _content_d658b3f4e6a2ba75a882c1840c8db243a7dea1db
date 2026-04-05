@@ -8,8 +8,8 @@
   "requestedBy": "agent.prime",
   "status": "queued",
   "suggestedBy": "agent.prime",
-  "summary": "we need a way to select a quest and assign it to a guild member",
+  "summary": "let's have a way to see who's in the guild!",
   "targetId": null,
-  "title": "assign flow",
+  "title": "guild view",
   "why": null
 }
