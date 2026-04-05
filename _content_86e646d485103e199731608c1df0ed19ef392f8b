@@ -1,0 +1,25 @@
+# deterministic-convergence
+
+## What must remain true?
+
+Under declared merge and policy rules, admissible mutations converge
+independent of arrival order.
+
+## Why does it matter?
+
+If two writers emit patches and the final state depends on which patches
+arrived first, then the graph is not a CRDT — it is a race condition
+with a nice API. Deterministic convergence is the mathematical property
+that makes multi-writer coordination trustworthy without locks,
+transactions, or a central coordinator.
+
+This is a substrate property inherited from git-warp. XYPH must not
+introduce domain logic that breaks it (e.g., order-dependent validation
+that rejects patches based on arrival sequence).
+
+## How do you check?
+
+- git-warp's own convergence tests pass.
+- XYPH domain validation runs before `graph.patch()`, not as a
+  centralized gatekeeper that could introduce order dependence.
+- No XYPH code inspects patch arrival order to make governance decisions.
