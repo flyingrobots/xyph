@@ -55,6 +55,77 @@ All 4 playback questions answered affirmatively with live evidence:
 - **Initially filed 4 separate backlog items then consolidated.** Should have
   thought through the design before filing granular items. The consolidation
   into one `task:cli-search` was correct but the churn was avoidable.
+- **Governance pipeline required 13 commands and 8 retries to ship 109 LOC.**
+  The full BACKLOG→DONE flow is documented below.
+
+## Friction Audit: Scripts Written to Parse CLI Output (8 instances)
+
+| # | What | Why |
+|---|---|---|
+| 1 | `status --view all --json \| python3` | Count quests by status — no stats command existed |
+| 2 | `doctor --json \| python3 json.load()` | Parse doctor output — **failed** because doctor emits multi-line JSONL, not single JSON. Had to `tail -1`. |
+| 3 | `status --view all --json \| python3` | Search for MCP-related tasks by keyword — no search existed |
+| 4 | `status --view lineage --json \| python3` | List intent IDs so I could pick one for `promote` |
+| 5 | `status --view all --json \| python3` | List campaign IDs so I could pick one for `move` |
+| 6 | `search --status GRAVEYARD --json \| python3` | Even AFTER building search, I piped through python to format the count |
+| 7 | `search "MCP" --json \| python3 -m json.tool` | Pretty-print search results |
+| 8 | `search --stats --json \| python3 -m json.tool` | Pretty-print stats |
+
+**Pattern:** The CLI has no built-in way to list valid values for reference
+fields (intents, campaigns). When a command needs `--intent <id>`, the agent
+must query the graph separately to discover valid IDs.
+
+## Friction Audit: Commands That Failed on First Try (8 instances)
+
+| # | What I tried | What went wrong |
+|---|---|---|
+| 1 | `doctor --json \| json.load()` | Multi-line JSONL, not single JSON object |
+| 2 | `link task:cli-search --to campaign:CLITOOL` | Wrong flag — `link` uses `--campaign`, not `--to` |
+| 3 | `promote ... --intent intent:agent-ergonomics` | Intent doesn't exist — no way to know without querying first |
+| 4 | `promote task:cli-search ...` (as agent.prime) | Promote requires `--as human.*` — discovered by error |
+| 5 | `promote ...` (without --description) | Required when quest has no description — discovered by error |
+| 6 | `story ...` (without --title) | Missing required arg — discovered by error |
+| 7 | `story ...` (without --persona) | Missing required arg — discovered by error on second try |
+| 8 | `merge ...` (without unsigned env var) | No guild seal key for human.james — needed `XYPH_ALLOW_UNSIGNED_SCROLLS=1` |
+
+**Pattern:** Almost every governance command required 1–2 failures before the
+right incantation was found. The CLI tells you what's wrong after you fail, but
+doesn't guide you through required fields upfront.
+
+## Friction Audit: Governance Pipeline (13 commands for 109 LOC)
+
+| Step | Command | Friction |
+|---|---|---|
+| 1 | `promote` | 3 friction points: human principal, description, valid intent |
+| 2 | `move` | Separate from promote — why? |
+| 3 | `story` | 5 required fields |
+| 4 | `decompose` | story→req edge |
+| 5 | `requirement` | 3 required fields |
+| 6 | `implement` | task→req edge |
+| 7 | `criterion` | 2 required fields |
+| 8 | `ready` | Gated on all of the above |
+| 9 | `claim` | Fine |
+| 10 | `submit` | Fine |
+| 11 | `evidence` | 5 required fields to say "tests pass" |
+| 12 | `review` | Needed human principal |
+| 13 | `merge` | Needed unsigned scroll workaround |
+
+## Friction Categories and Potential Fixes
+
+1. **Discoverability** — The CLI doesn't help discover valid values for
+   reference fields. When `promote` needs `--intent <id>`, you shouldn't need a
+   separate `status --view lineage` query. Tab completion, fuzzy search, or a
+   `--list-intents` flag would eliminate half the retries.
+
+2. **Atomicity mismatch** — The traceability chain (story→req→criterion→evidence)
+   models a multi-stakeholder review process, but for solo agent cycles it's
+   pure overhead. A "fast-track" command like `cycle start task:X` that
+   scaffolds the whole chain in one shot would preserve the graph structure
+   while eliminating the 5-command dance.
+
+3. **Error-driven discovery** — Required fields are only surfaced when you fail.
+   The wizard system (`registerWizardCommands`) already exists in the codebase —
+   interactive prompts could guide the flow instead of making you guess.
 
 ## Lessons
 
@@ -65,3 +136,8 @@ All 4 playback questions answered affirmatively with live evidence:
    around the CLI, that's a backlog item. Feedback memory saved for this.
 3. **Consolidate before filing.** Think about whether multiple items are really
    one implementation before creating separate graph nodes.
+4. **Dogfood the governance loop.** The 13-command overhead was invisible until
+   we actually ran it. Filed as `task:governance-friction-audit`.
+5. **CLI must guide, not interrogate.** Error-driven discovery (fail → read
+   error → retry) is the worst UX for an agent consumer. The CLI should either
+   prompt for missing fields or accept a single composite command.
