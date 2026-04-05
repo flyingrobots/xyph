@@ -1,0 +1,159 @@
+/**
+ * Seed or update the current XYPH bearing in the WARP graph.
+ *
+ * Usage: npx tsx scripts/seed-bearing.ts
+ */
+
+import { WarpCore as WarpGraph, GitGraphAdapter } from '@git-stunts/git-warp';
+import Plumbing from '@git-stunts/plumbing';
+import { resolveGraphRuntime } from '../src/cli/runtimeGraph.js';
+
+const WRITER_ID = 'human.james';
+const BEARING_ID = 'bearing:current';
+
+const BEARING_CONTENT = `# Bearing
+
+Updated at cycle boundaries. Not mid-cycle.
+
+## Invariants
+
+1. **graph-is-truth** — Nothing is governed or enforceable until it is
+   reified into graph-backed form.
+2. **principal-general-authority** — Authority flows from policy and
+   explicit grants, not species.
+3. **deterministic-convergence** — Admissible mutations converge
+   independent of arrival order.
+4. **immutable-provenance** — Every mutation is an attributed, immutable
+   patch with durable provenance.
+5. **authorized-intent** — Governed work requires intent lineage
+   traceable to an authorized principal.
+6. **substrate-boundary** — XYPH never reimplements substrate mechanics
+   owned by git-warp.
+7. **policy-is-plastic** — Policy is programmable, but policy changes
+   are themselves governed.
+8. **frontier-not-assignment** — The frontier exposes lawful next work;
+   assignment must be explicit.
+9. **witness-before-done** — Done-claims require reproducible witness
+   across human and agent lenses.
+
+## Where are we going?
+
+XYPH is adopting METHOD discipline. The graph has invariants, legends,
+and (soon) cycles, design docs, retros, and bearings — all as
+content-attached graph nodes visible from any branch.
+
+The immediate goal is to clean up the graph backlog and establish the
+first honest cycle under METHOD discipline. XYPH has been building
+features without the design→red→green→playback→retro loop, and the
+result is visible: 157 open quests, 123 with no description, stale
+claims, broken governance wiring, campaigns that conflate domain with
+milestone. The bearing is being set now so that all future work has
+a direction.
+
+After the backlog triage, the next real cycle should be within FLOW
+(workflow pipeline) — making the cycle entity itself a first-class
+graph object so XYPH can eat its own cooking.
+
+## What just shipped?
+
+**METHOD foundation (this session, 2026-04-04):**
+- 9 invariants seeded as content-attached graph nodes
+- 5 legends (WARP, GOV, SURF, PROV, FLOW) with protects edges
+- 6 new schema prefixes (invariant, legend, cycle, design, retro,
+  bearing) and 3 new edge types (protects, contains, closes)
+
+**Prior work (recent commits on main):**
+- Observer-native read architecture (cycle 0023)
+- Pre-push hook enforcement (cycle 0025)
+- Case-driven governance semantics
+- Suggestion adoption workflow (PR #55)
+- Dashboard "all" view as workflow census
+- Lint drift cleanup and CI hardening
+
+**Milestones completed:** Bedrock (M1), Heartbeat (M2), Submission (M6),
+Weaver (M7). These were campaigns — the concept is being retired in
+favor of legends.
+
+## What is next?
+
+1. **Backlog triage** — audit all 157 open quests. Seal completed work,
+   graveyard irrelevant stubs, doctor the rest with proper legend
+   assignment and descriptions.
+2. **BEARING committed** — this document, in the graph.
+3. **First FLOW cycle** — make \`cycle:*\` a first-class graph entity
+   with the full pull→design→red→green→playback→retro→close loop.
+
+## What feels wrong?
+
+- **157 open quests, 123 with no description.** Most are one-line stubs
+  dumped into the graph without context. You can't pull these into a
+  cycle because there's nothing to design from. METHOD says a backlog
+  item is a document, not a title.
+
+- **Campaigns conflate domain with milestone.** "Milestone 12: Agent
+  Protocol" is temporal — it ends. But the agent protocol domain
+  doesn't end. Legends fix this, but the 15+ existing campaigns need
+  to be reconciled: done ones become history, active ones map to
+  legends, orphan quests get reassigned.
+
+- **No cycle discipline.** Work goes: claim quest → write code → seal.
+  No design doc. No playback questions. No retro. No witness. This is
+  why TRC-010 was marked IN_PROGRESS with its blocker still PLANNED —
+  there was no forcing function to catch that.
+
+- **Governance wiring is heavy.** Getting a quest to READY required:
+  campaign, intent, requirement, criterion. That's 6+ actuator commands
+  to wire up a single piece of work. METHOD says the design doc is the
+  commitment artifact — the governance should flow from the cycle pull,
+  not from manual ceremony.
+
+- **No bearing until now.** Every session started with "what's next?"
+  and the answer was "check the graph, I guess." The bearing is the
+  missing north star that tells you where you are and where you're
+  going without running 5 status commands.
+`;
+
+async function main(): Promise<void> {
+  const runtime = resolveGraphRuntime({ cwd: process.cwd() });
+  const plumbing = Plumbing.createDefault({ cwd: runtime.repoPath });
+  const persistence = new GitGraphAdapter({ plumbing });
+
+  const graph = await WarpGraph.open({
+    persistence,
+    graphName: runtime.graphName,
+    writerId: WRITER_ID,
+    autoMaterialize: true,
+  });
+
+  await graph.syncCoverage();
+  await graph.materialize();
+
+  const exists = await graph.hasNode(BEARING_ID);
+
+  if (exists) {
+    const patch = await graph.createPatch();
+    await patch.attachContent(BEARING_ID, BEARING_CONTENT);
+    patch.setProperty(BEARING_ID, 'updated_at', Date.now());
+    patch.setProperty(BEARING_ID, 'set_date', '2026-04-04');
+    const sha = await patch.commit();
+    console.log(`UPDATED ${BEARING_ID} (${sha.slice(0, 8)})`);
+  } else {
+    const patch = await graph.createPatch();
+    patch.addNode(BEARING_ID);
+    patch.setProperty(BEARING_ID, 'title', 'XYPH Bearing');
+    patch.setProperty(BEARING_ID, 'type', 'bearing');
+    patch.setProperty(BEARING_ID, 'set_date', '2026-04-04');
+    patch.setProperty(BEARING_ID, 'created_at', Date.now());
+    patch.setProperty(BEARING_ID, 'created_by', WRITER_ID);
+    await patch.attachContent(BEARING_ID, BEARING_CONTENT);
+    const sha = await patch.commit();
+    console.log(`ADDED   ${BEARING_ID} (${sha.slice(0, 8)})`);
+  }
+
+  console.log('\nBearing set.');
+}
+
+main().catch((err: unknown) => {
+  console.error(err);
+  process.exit(1);
+});
