@@ -14,12 +14,13 @@ traceability, and settlement for a real feature.
 
 ## Session Statistics
 
-- **Backlog items filed:** 20
+- **Backlog items filed:** 23
 - **Throwaway scripts written:** 9
 - **Command failures/retries:** ~15
 - **Quests sealed:** 2 (task:cli-search, task:GRAPH-CLEANUP)
 - **Invariant violations found:** 1 (substrate-boundary)
-- **Bugs found:** 5
+- **Bugs found:** 6
+- **Full test suite runs triggered by graph-only pushes:** 4 (~3 min wasted)
 
 ---
 
@@ -112,6 +113,25 @@ The full BACKLOG → DONE pipeline for `task:cli-search`:
 | Merged/closed quests appear in TUI review tab | Filed | task:review-tab-stale-quests |
 | Graph sync blocks main thread, TUI hitches | Filed | task:sync-blocks-main-thread |
 | [ai] tag appears on human suggestions, not AI ones | Filed | task:ai-tag-wrong-source |
+| `xyph merge` bypasses CI gates — seals quest without GitHub Actions | Filed | task:merge-ci-gap |
+
+---
+
+## Friction Log: Pushing Graph Refs
+
+Pushing WARP graph refs (`refs/warp/xyph/*`) triggered the pre-push hook
+4 times during this session. Each run executes the full test suite (~48s)
+even though graph refs are CRDT patches on the empty tree — they don't
+touch the codebase.
+
+Additionally, `checkpoints/head` and `coverage/head` refs conflicted with
+stale remote refs from before the xyph/xyph-roadmap graph consolidation
+("the reckoning"). These are optimization artifacts, not source-of-truth
+data. Had to delete remote refs and re-push.
+
+Filed:
+- task:pre-push-skip-warp-refs — skip test suite for graph-only pushes
+- task:checkpoint-push-policy — who should push checkpoint refs at all?
 
 ---
 
@@ -147,6 +167,9 @@ Filed: task:snapshot-invariant-violation, task:snapshot-layer-audit
 | CLI next/frontier command | agent.claude | task:cli-next-command |
 | Doctor: flag stale IN_PROGRESS quests | agent.claude | task:doctor-stale-in-progress |
 | Bridge TUI ask-ai jobs to CLI agent visibility | agent.claude | task:tui-cli-bridge |
+| Pre-push: skip test suite for graph-only pushes | agent.claude | task:pre-push-skip-warp-refs |
+| Design: who should push checkpoint/coverage refs? | human.james | task:checkpoint-push-policy |
+| `xyph merge` should exercise CI gates | human.james | task:merge-ci-gap |
 
 ---
 
@@ -175,7 +198,7 @@ works end-to-end:
   in the graph (even if the CLI couldn't surface them yet).
 - **The graph is the truth:** Every piece of work, every decision, every
   rejection rationale is in the graph with provenance.
-- **Dogfooding produces signal:** 20 backlog items from one session. The
+- **Dogfooding produces signal:** 23 backlog items from one session. The
   friction IS the roadmap.
 
 ---
@@ -200,12 +223,17 @@ works end-to-end:
 11. task:tui-mark-all-seen — bulk mark-as-read
 12. task:ai-tag-wrong-source — inverted label
 
+### Medium-High (infrastructure)
+13. task:pre-push-skip-warp-refs — 4 needless test runs this session (~3 min)
+14. task:merge-ci-gap — merge seals without CI validation
+15. task:checkpoint-push-policy — who pushes optimization refs?
+
 ### Lower (enhancements)
-13. task:landing-spiral-animation — cosmetic bug
-14. task:tui-assign-flow — assign quests from TUI
-15. task:tui-guild-view — see guild members
-16. task:tui-incomplete-quest-indicator — visual indicator
-17. task:notification-feedback-improvements — better toast/feedback
-18. task:xyph-retrospectives — first-class retro entities
-19. task:mcp-api — MCP server (bigger effort, deferred)
-20. task:snapshot-layer-audit — deeper architectural analysis
+16. task:landing-spiral-animation — cosmetic bug
+17. task:tui-assign-flow — assign quests from TUI
+18. task:tui-guild-view — see guild members
+19. task:tui-incomplete-quest-indicator — visual indicator
+20. task:notification-feedback-improvements — better toast/feedback
+21. task:xyph-retrospectives — first-class retro entities
+22. task:mcp-api — MCP server (bigger effort, deferred)
+23. task:snapshot-layer-audit — deeper architectural analysis
