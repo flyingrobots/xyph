@@ -164,6 +164,7 @@ Use it — it was added for agent consumption and avoids parsing ANSI/table nois
 - `npx tsx xyph-actuator.ts reject <id> --rationale "..."`: Reject to GRAVEYARD.
 - `npx tsx xyph-actuator.ts reopen <id>`: Reopen a GRAVEYARD task back to INBOX (human authority required).
 - `npx tsx xyph-actuator.ts depend <from> <to>`: Declare that `<from>` depends on `<to>` (both must be `task:` nodes).
+- `npx tsx xyph-actuator.ts search [keyword] --status <STATUS> --stats`: Search quests by keyword/status or show summary stats. Always includes GRAVEYARD.
 - `npx tsx xyph-actuator.ts audit-sovereignty`: Audit quests for missing intent lineage.
 - `npx tsx xyph-actuator.ts generate-key`: Generate an Ed25519 Guild Seal keypair.
 
