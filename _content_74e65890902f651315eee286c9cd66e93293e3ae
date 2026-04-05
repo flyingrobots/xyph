@@ -1,0 +1,15 @@
+{
+  "audience": "agent",
+  "evidence": null,
+  "kind": "ask-ai",
+  "nextAction": "An agent should inspect this ask-AI job and publish one or more visible advisory suggestions in response.",
+  "origin": "request",
+  "relatedIds": [],
+  "requestedBy": "agent.prime",
+  "status": "queued",
+  "suggestedBy": "agent.prime",
+  "summary": "i've been firing off suggestions and while it's saving, the ui hitches and i can't type!",
+  "targetId": null,
+  "title": "sync blocks main thread",
+  "why": null
+}

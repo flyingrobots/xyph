@@ -1,0 +1,1 @@
+Repo truth landed in commit 403e8e7 on 2026-04-03. Added design/method-alignment.md plus prepared follow-on cycle note design/cycles/0024-graph-native-backlog-and-case-modeling.md, framing XYPH as METHOD-aligned, graph-native, and programmable rather than filesystem-prescriptive. This is committed repo progress; graph status and traceability still need formal settlement.

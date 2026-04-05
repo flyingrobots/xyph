@@ -1,0 +1,15 @@
+{
+  "audience": "agent",
+  "evidence": null,
+  "kind": "ask-ai",
+  "nextAction": "An agent should inspect this ask-AI job and publish one or more visible advisory suggestions in response.",
+  "origin": "request",
+  "relatedIds": [],
+  "requestedBy": "agent.prime",
+  "status": "queued",
+  "suggestedBy": "agent.prime",
+  "summary": "let's have a way to see who's in the guild!",
+  "targetId": null,
+  "title": "guild view",
+  "why": null
+}

@@ -1,0 +1,27 @@
+# witness-before-done
+
+## What must remain true?
+
+Done-claims require reproducible witness across human and agent lenses.
+
+## Why does it matter?
+
+If "done" means "someone said it's done," then done means nothing. A
+witness is reproducible proof — test output, playback transcripts,
+verification commands — that both the human and agent sponsors can
+independently validate.
+
+This is the invariant that imports METHOD's sharpest discipline into
+XYPH. METHOD says a result is not done unless it is legible, replayable,
+and jointly validated. XYPH says the witness lives in the graph as a
+content-attached `evidence:*` node, not as a file that might be on the
+wrong branch.
+
+## How do you check?
+
+- Sealed quests have at least one `evidence:*` node with a content
+  attachment linked via `verifies` edge.
+- The witness content is reproducible — running the described
+  verification produces the same result.
+- Both sponsor perspectives (human and agent) are represented in the
+  playback.

@@ -1,0 +1,50 @@
+# FLOW — Workflow Pipeline
+
+**Legend code:** FLOW
+
+## What it covers
+
+The programmable cycle pipeline: intake, triage, backlog lanes, cycle
+pull, design, red/green, playback, retro, close, settlement. Frontier
+computation, dependency DAG, bearings, and the full
+pull→design→red→green→playback→close loop.
+
+## Invariants guarded
+
+- [policy-is-plastic](invariant:policy-is-plastic) — the workflow
+  pipeline is programmable by authorized principals.
+- [frontier-not-assignment](invariant:frontier-not-assignment) — the
+  frontier exposes lawful next work; assignment must be explicit.
+
+## Sponsored human
+
+The practitioner choosing what to work on next. They care about calm
+process — no busywork, no prescribed order, no meetings-as-governance.
+The frontier should be a menu of available tasks derived from the
+dependency DAG. The cycle should be a natural rhythm of
+design→build→prove→reflect, not a bureaucratic gate.
+
+## Sponsored agent
+
+The agent navigating the cycle pipeline autonomously. It cares about
+inspectable state and programmatic pipeline steps. When the agent calls
+`xyph next`, it needs a clear frontier. When a cycle closes, the retro
+structure must be machine-writable. The pipeline steps themselves should
+be queryable graph state, not hardcoded sequences buried in source.
+
+## What success looks like
+
+Work flows through a calm, legible pipeline. The frontier tells you
+what is available. Cycles give work a natural shape: design it, test it,
+build it, prove it, reflect on it. The pipeline itself is graph state
+that authorized principals can reshape — add steps, remove steps,
+resequence — without touching source code.
+
+## How you know
+
+- `xyph next` returns frontier tasks derived from dependency DAG.
+- Active cycles are discoverable via `xyph status`.
+- Cycle close requires a retro. No silent completion.
+- Workflow steps are expressed as policy nodes, not hardcoded logic.
+- Bearings are updated at cycle boundaries, capturing direction and
+  felt tensions.

@@ -1,0 +1,15 @@
+{
+  "audience": "agent",
+  "evidence": null,
+  "kind": "ask-ai",
+  "nextAction": "An agent should inspect this ask-AI job and publish one or more visible advisory suggestions in response.",
+  "origin": "request",
+  "relatedIds": [],
+  "requestedBy": "agent.prime",
+  "status": "queued",
+  "suggestedBy": "agent.prime",
+  "summary": "the notifications around performing actions, like making a suggestion, just say 'ok suggesion is saving...' and the user never sees a confirmation that it worked.",
+  "targetId": null,
+  "title": "notification feedback improvements",
+  "why": null
+}
