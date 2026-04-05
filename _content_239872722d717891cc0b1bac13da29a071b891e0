@@ -1,0 +1,27 @@
+# principal-general-authority
+
+## What must remain true?
+
+Humans and agents are first-class principals under one capability model.
+Authority flows from policy and explicit grants, not species.
+
+## Why does it matter?
+
+If authority is species-based — "humans approve, agents execute" — then
+agents are second-class citizens regardless of what the docs say. A
+trusted agent with a guild seal and explicit grants should have the same
+authority as a human with the same grants. Conversely, a human without
+the right grants should not be able to bypass governance just because
+they are human.
+
+The capability model is principal-general: what you can do depends on
+who you are and what you have been granted, not what you are.
+
+## How do you check?
+
+- No command or gate checks for `human.*` vs `agent.*` prefix to
+  determine authority. Authority checks inspect grants and policy.
+- Interfaces are capability-complete for each principal type: anything
+  an agent can do via CLI/API, a human can do via TUI, and vice versa.
+- Not all principals must have identical permissions — governed
+  restrictions are not inequality.
