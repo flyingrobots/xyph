@@ -8,8 +8,8 @@
   "requestedBy": "agent.prime",
   "status": "queued",
   "suggestedBy": "agent.prime",
-  "summary": "i've been firing off suggestions and while it's saving, the ui hitches and i can't type!",
+  "summary": "the notifications around performing actions, like making a suggestion, just say 'ok suggesion is saving...' and the user never sees a confirmation that it worked.",
   "targetId": null,
-  "title": "sync blocks main thread",
+  "title": "notification feedback improvements",
   "why": null
 }
