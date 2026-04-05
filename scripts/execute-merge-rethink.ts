@@ -144,8 +144,8 @@ const RETHINKS: RethinkItem[] = [
 ];
 
 async function main(): Promise<void> {
-  const { resolveGraphRuntime } = await import('/Users/james/git/xyph/src/cli/runtimeGraph.js');
-  const runtime = resolveGraphRuntime({ cwd: '/Users/james/git/xyph' });
+  const { resolveGraphRuntime } = await import('../src/cli/runtimeGraph.js');
+  const runtime = resolveGraphRuntime({ cwd: process.cwd() });
   const plumbing = Plumbing.createDefault({ cwd: runtime.repoPath });
   const persistence = new GitGraphAdapter({ plumbing });
 

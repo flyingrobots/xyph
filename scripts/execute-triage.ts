@@ -2,7 +2,7 @@
  * Execute the triage decisions: SEAL done quests, CUT irrelevant ones.
  * KEEP/MERGE/RETHINK are left alone for now.
  *
- * Usage: npx tsx /tmp/execute-triage.ts [--dry-run]
+ * Usage: npx tsx scripts/execute-triage.ts [--dry-run]
  */
 
 import { WarpCore as WarpGraph, GitGraphAdapter } from '@git-stunts/git-warp';
@@ -98,8 +98,8 @@ const CUT: { id: string; rationale: string }[] = [
 ];
 
 async function main(): Promise<void> {
-  const { resolveGraphRuntime } = await import('/Users/james/git/xyph/src/cli/runtimeGraph.js');
-  const runtime = resolveGraphRuntime({ cwd: '/Users/james/git/xyph' });
+  const { resolveGraphRuntime } = await import('../src/cli/runtimeGraph.js');
+  const runtime = resolveGraphRuntime({ cwd: process.cwd() });
   const plumbing = Plumbing.createDefault({ cwd: runtime.repoPath });
   const persistence = new GitGraphAdapter({ plumbing });
 
