@@ -11,6 +11,7 @@ export const PREFIXES = [
   'story', 'req', 'criterion', 'evidence',
   'policy', 'config', 'suggestion', 'case', 'brief',
   'proposal', 'attestation', 'comparison-artifact', 'collapse-proposal',
+  'invariant', 'legend', 'cycle', 'design', 'retro', 'bearing',
 ] as const;
 
 export type Prefix = typeof PREFIXES[number];
@@ -25,6 +26,7 @@ export const EDGE_TYPES = [
   'decomposes-to', 'has-criterion', 'verifies',
   'governs', 'suggests',
   'opened-from', 'concerns', 'briefs', 'causes',
+  'protects', 'contains', 'closes',
 ] as const;
 
 export type EdgeType = typeof EDGE_TYPES[number];
