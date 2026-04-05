@@ -72,7 +72,7 @@ describe('DoctorService', () => {
         quest({
           id: 'task:GOV',
           title: 'Governed quest',
-          status: 'BACKLOG',
+          status: 'PLANNED',
           hours: 1,
           taskKind: 'delivery',
           computedCompletion: {
@@ -240,8 +240,8 @@ describe('DoctorService', () => {
     expect(report.summary.blockingIssueCount).toBe(report.summary.errorCount);
     expect(report.summary.danglingEdges).toBe(2);
     expect(report.summary.orphanNodes).toBeGreaterThanOrEqual(8);
-    expect(report.summary.readinessGaps).toBe(1);
-    expect(report.summary.sovereigntyViolations).toBe(1);
+    expect(report.summary.readinessGaps).toBe(2);
+    expect(report.summary.sovereigntyViolations).toBe(2);
     expect(report.summary.governedCompletionGaps).toBe(1);
     expect(report.summary.topRemediationBuckets).toEqual(expect.arrayContaining([
       expect.objectContaining({

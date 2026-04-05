@@ -967,7 +967,7 @@ export class DoctorService {
     }
 
     const candidates = snapshot.quests.filter((quest) =>
-      quest.status !== 'BACKLOG' && quest.status !== 'GRAVEYARD',
+      quest.status !== 'BACKLOG' && quest.status !== 'GRAVEYARD' && quest.status !== 'DONE',
     );
 
     for (const quest of candidates) {
@@ -1113,7 +1113,9 @@ export class DoctorService {
     snapshot: GraphSnapshot,
     pushIssue: (issue: DoctorIssue) => void,
   ): void {
-    for (const quest of snapshot.quests) {
+    for (const quest of snapshot.quests.filter((q) =>
+      q.status !== 'BACKLOG' && q.status !== 'GRAVEYARD',
+    )) {
       const completion = quest.computedCompletion;
       if (!completion?.policyId || completion.complete) continue;
       pushIssue({
