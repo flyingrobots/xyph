@@ -8,8 +8,8 @@
   "requestedBy": "agent.prime",
   "status": "queued",
   "suggestedBy": "agent.prime",
-  "summary": "we need a hotkey to just say 'mark all as seen' in these tui views",
+  "summary": "we need a way to select a quest and assign it to a guild member",
   "targetId": null,
-  "title": "need a mark all as seen",
+  "title": "assign flow",
   "why": null
 }
