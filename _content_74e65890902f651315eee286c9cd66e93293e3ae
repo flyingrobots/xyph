@@ -8,8 +8,8 @@
   "requestedBy": "agent.prime",
   "status": "queued",
   "suggestedBy": "agent.prime",
-  "summary": "let's have a way to see who's in the guild!",
+  "summary": "i've been firing off suggestions and while it's saving, the ui hitches and i can't type!",
   "targetId": null,
-  "title": "guild view",
+  "title": "sync blocks main thread",
   "why": null
 }
