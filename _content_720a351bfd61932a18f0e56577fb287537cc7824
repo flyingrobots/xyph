@@ -1,0 +1,3 @@
+# immutable-provenance
+
+Every mutation is an attributed, immutable patch with durable provenance.
