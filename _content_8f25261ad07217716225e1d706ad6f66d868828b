@@ -1,0 +1,29 @@
+# policy-is-plastic
+
+## What must remain true?
+
+Policy is programmable, but policy changes are themselves governed,
+attributable, and versioned. Policy can change. Invariants cannot.
+
+## Why does it matter?
+
+If policy is hardcoded, XYPH prescribes one way to work. If policy is
+changeable without governance, someone silently rewrites the constitution
+at 2 a.m. and no one notices until something breaks.
+
+The middle ground: policy lives in the graph as `policy:*` nodes.
+Authorized principals can propose, review, and adopt policy changes
+through the same governed workflow that applies to all other work. The
+policy change itself has provenance, rationale, and an audit trail.
+
+Invariants are the exception — they are the load-bearing properties that
+policy changes must not violate. Invariants are the ground rules;
+policy is the playbook.
+
+## How do you check?
+
+- Workflow steps, approval gates, readiness requirements, and process
+  rules are expressed as `policy:*` nodes, not hardcoded in source.
+- Policy changes produce patches with writerId attribution.
+- No policy change violates an invariant.
+- The distinction between policy and invariant is explicit in the schema.
