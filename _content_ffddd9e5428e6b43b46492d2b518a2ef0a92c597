@@ -8,8 +8,8 @@
   "requestedBy": "agent.prime",
   "status": "queued",
   "suggestedBy": "agent.prime",
-  "summary": "the notifications around performing actions, like making a suggestion, just say 'ok suggesion is saving...' and the user never sees a confirmation that it worked.",
-  "targetId": null,
-  "title": "notification feedback improvements",
+  "summary": "exactly what the title says",
+  "targetId": "suggestion:mnlqgut03b373159",
+  "title": "[ai] tag appears on human-generated suggestions, but not on ai-generated suggestions",
   "why": null
 }
