@@ -1,0 +1,1 @@
+The feedback documents from the first dogfood session were useful during recruiter prep, but they still behaved like branch-local markdown. Turning them into graph entities with attached content would make them queryable by task, topic, and affected surface during real work instead of only discoverable by grep.
