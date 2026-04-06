@@ -1,1 +1,0 @@
-A later recruiter-prep pass still exposed the same shape of friction. Getting a simple high-signal account of one feature and its graph history required multiple commands, raw ref inspection, and fallback to git plumbing. This is another example of the system teaching the operator through ceremony instead of giving one obvious workflow.

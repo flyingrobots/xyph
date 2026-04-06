@@ -1,0 +1,1 @@
+While inspecting the live graph, history for task cli-search worked and returned eight provenance patches, but show for the same task failed with a git command error. That points at entity-detail and projection fragility on real graph state, not just a theoretical architecture concern.
