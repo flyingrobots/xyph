@@ -22,4 +22,4 @@ Built on WARP (Structural Worldline Memory), Xyph ensures that every participant
 Trust is not granted; it is verified. Completed work is sealed with cryptographic signatures (Guild Seals) and emitted as immutable artifacts (Scrolls). Settlement is a final, auditable event in the graph.
 
 ---
-**The goal is to move coordination from a collection of disconnected tools to a professional application bedrock for high-output collaboration.**
+**The goal is to move coordination from a collection of disconnected tools to a professional application foundation for high-output collaboration.**

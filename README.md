@@ -1,6 +1,6 @@
 # Xyph
 
-An industrial-grade planning compiler and coordination bedrock for humans and agents. Xyph replaces scattered tickets and chat threads with a single, deterministic WARP graph that tracks the genealogy of intent from "why" to "shipped."
+An industrial-grade planning compiler and coordination foundation for humans and agents. Xyph replaces scattered tickets and chat threads with a single, deterministic WARP graph that tracks the genealogy of intent from "why" to "shipped."
 
 Xyph is designed for the high-output team that demands geometric lawfulness in their coordination. It scales from solo offline-first planning to multi-agent orchestrated execution with cryptographic settlement.
 

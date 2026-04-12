@@ -36,4 +36,4 @@ Xyph stores its plan in a **WARP graph**—a CRDT-backed bedrock that lives insi
 Xyph exposes a unified semantic layer across all surfaces. A "Blocker" or "Readiness" judgment is computed once in the domain layer and projected identically to the TUI cockpit and the agent-native CLI.
 
 ---
-**The goal is to move coordination from a collection of widgets to a professional application bedrock for high-output software work.**
+**The goal is to move coordination from a collection of widgets to a professional application foundation for high-output software work.**
