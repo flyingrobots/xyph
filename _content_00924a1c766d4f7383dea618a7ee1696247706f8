@@ -1,1 +1,0 @@
-Repro from the live graph: history for task cli-search succeeded and reported eight provenance patches, but show for the same task failed with a git command error during recruiter-prep inspection. This should be treated as a real live-state regression on the entity-detail path.
