@@ -4,7 +4,7 @@
 
 **XYPH's ontology is sovereign.** XYPH defines the public concepts of
 observation, worldlines, comparison, collapse, and lawful transformation.
-git-warp provides the versioned graph-state substrate. Alfred-derived
+git-warp provides the versioned graph-state bedrock. Alfred-derived
 components may be used internally for resilience, transport, audit, auth, or
 control-plane plumbing, but they are not part of XYPH's public ontology, API
 vocabulary, or type system.
@@ -170,7 +170,7 @@ Current foundation slice:
 - implemented now (hidden admin): `query`
 - reserved, hidden admin/debug concept: `rewind_worldline`
 
-Current `observe` projections include a substrate-backed `conflicts` view that
+Current `observe` projections include a bedrock-backed `conflicts` view that
 delegates directly to `git-warp`'s published `analyzeConflicts()` API. This is
 an intentional boundary: git-warp owns conflict facts, and XYPH exposes them as
 observer-facing read data without inventing parallel conflict provenance in its
@@ -179,15 +179,15 @@ worldline-aware for canonical derived worldlines: XYPH lowers those reads to
 the backing git-warp working-set tip rather than pretending the live frontier
 is the only reality.
 
-Current `fork_worldline` behavior is likewise substrate-thin. XYPH now maps the
+Current `fork_worldline` behavior is likewise bedrock-thin. XYPH now maps the
 command onto git-warp working-set creation, preserving XYPH worldline IDs in
-the public control plane while recording a separate substrate backing ID for the
+the public control plane while recording a separate bedrock backing ID for the
 working set. In this slice, forking is limited to `worldline:live` plus an
 optional tick ceiling that lowers to git-warp's current-frontier Lamport-ceiled
 working-set coordinate. Arbitrary historical frontier selection and
-derived-from-derived worldline forking remain future substrate work.
+derived-from-derived worldline forking remain future bedrock work.
 
-That substrate mapping is now materially useful rather than purely declarative.
+That bedrock mapping is now materially useful rather than purely declarative.
 For canonical derived worldlines backed by git-warp working sets, XYPH routes:
 
 - `observe(graph.summary)` / `observe(worldline.summary)` /
@@ -206,7 +206,7 @@ This keeps the reducer and conflict rules worldline-blind while letting the
 visible patch universe vary by worldline. Compatibility projections such as
 `briefing`, `context`, `next`, `submissions`, `diagnostics`, and
 `prescriptions` still read from the live or isolated graph services until
-git-warp exposes the right substrate query surfaces for broader working-set
+git-warp exposes the right bedrock query surfaces for broader working-set
 parity.
 
 `compare_worldlines` now uses that same boundary honestly. XYPH opens an
@@ -216,16 +216,16 @@ with:
 
 - left/right worldline metadata in XYPH terms
 - per-side observation coordinates
-- substrate divergence facts carried explicitly instead of re-derived in XYPH
+- bedrock divergence facts carried explicitly instead of re-derived in XYPH
 - the published git-warp scoped comparison-fact export carried through in the
-  substrate block as the operational freshness truth
+  bedrock block as the operational freshness truth
 - the published git-warp whole-graph comparison-fact export carried through
   alongside it for audit and provenance
 
 That keeps comparison factual while separating two jobs that were previously
 conflated:
 
-- raw substrate truth over the whole visible graph
+- raw bedrock truth over the whole visible graph
 - XYPH operational freshness truth over a scoped visible graph that excludes
   governance-only node families
 
@@ -244,13 +244,13 @@ Persisted governance artifacts now become first-class readable entities too.
 
 `braid_worldlines` is now the thin control-plane mapping for that composition
 step. XYPH keeps the public API in worldline terms while delegating the actual
-visible-patch-universe math to git-warp’s published braid substrate. Current
+visible-patch-universe math to git-warp’s published braid bedrock. Current
 behavior:
 
 - targets the effective canonical derived worldline
 - pins one or more canonical derived support worldlines as read-only overlays
 - accepts optional `readOnly` to freeze the target overlay too
-- returns XYPH-first braid metadata plus the substrate backing IDs
+- returns XYPH-first braid metadata plus the bedrock backing IDs
 
 That matters because the operation is not ordinary merge or rebase; it changes
 the visible patch universe without pretending one line replaced the other.
@@ -260,15 +260,15 @@ effects on that surface across `observe(graph.summary)`,
 `observe(worldline.summary)`, `observe(entity.detail)`, `history`, `diff`,
 `apply`, and `observe(conflicts)`. Compatibility projections remain future
 work, but the canonical derived-worldline control-plane slice is now
-explicitly braid-aware on the published substrate boundary.
+explicitly braid-aware on the published bedrock boundary.
 
-`collapse_worldline` now uses that same substrate boundary for the first
+`collapse_worldline` now uses that same bedrock boundary for the first
 governed settlement runway. XYPH:
 
 - requires a fresh XYPH `comparison-artifact` digest from `compare_worldlines`
-- recomputes the current operationally scoped substrate comparison to detect
+- recomputes the current operationally scoped bedrock comparison to detect
   drift
-- asks git-warp for a substrate-factual transfer plan from the source
+- asks git-warp for a bedrock-factual transfer plan from the source
   worldline’s visible state into the target coordinate
 - lowers that plan through the same mutation kernel used by `apply`
 - defaults to preview mode, but now accepts `dryRun: false` for live
@@ -280,7 +280,7 @@ governed settlement runway. XYPH:
   published clear-content patch helpers instead of treating them as a special
   collapse-only gap
 - carries the published git-warp comparison and transfer-fact exports through
-  to the substrate block instead of inventing a second XYPH-side substrate
+  to the bedrock block instead of inventing a second XYPH-side bedrock
   wrapper
 - may record the resulting preview or execution artifact as a durable
   `collapse-proposal:*` node on `worldline:live` when `persist: true` is
@@ -295,7 +295,7 @@ Because the execution actually mutates `worldline:live`, an executed
 That is intentional: execution is terminal state, not a promise that the
 proposal still describes the current live-vs-source delta.
 
-That keeps settlement planning factual at the substrate boundary while
+That keeps settlement planning factual at the bedrock boundary while
 preserving XYPH ownership of governance meaning, attestation policy, and
 execution semantics.
 

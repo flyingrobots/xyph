@@ -82,7 +82,7 @@ preserving suggestion, case, governance, and quest semantics.**
 This cycle must preserve:
 
 - The graph is the plan.
-- git-warp owns substrate facts; XYPH owns meaning.
+- git-warp owns bedrock facts; XYPH owns meaning.
 - Human and agent surfaces must share one reality.
 - `fetchSnapshot()` defaults to full truth-preserving behavior unless a caller
   explicitly opts into the operational profile.

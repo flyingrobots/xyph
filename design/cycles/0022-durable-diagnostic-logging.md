@@ -33,7 +33,7 @@ That exposed several problems at once:
 - actuator and CLI paths could wedge without leaving a useful forensic trail
 - logging assumed process-local callbacks and occasional console output instead
   of an explicit diagnostic boundary
-- debugging pressure risks scattering `console.log` and substrate-leaky probes
+- debugging pressure risks scattering `console.log` and bedrock-leaky probes
   through the codebase unless we replace the logging architecture deliberately
 
 The immediate product need is not a full observability platform. It is a
@@ -118,7 +118,7 @@ Out of scope:
 - instrumenting every method call
 - turning verbose debug traces into graph-native ontology
 - replacing git-warp receipts, provenance, or replay facts
-- the broader outbound effect-emission substrate slice
+- the broader outbound effect-emission bedrock slice
 - the full observer/worldline read refactor, except where this cycle must name
   logging hooks for that future architecture
 
@@ -188,7 +188,7 @@ Out of scope:
 3. Did we add a real architectural seam instead of sprinkling `console.log`
    calls through the codebase?
 4. Is the logging design still compatible with future observer/worldline-native
-   reads and substrate-level effect emission?
+   reads and bedrock-level effect emission?
 
 ## Exit Criteria
 
@@ -215,7 +215,7 @@ Until the graph/read architecture is fully stabilized, the next priorities are:
 2. **Read architecture: pivot away from `GraphContext`**
    - stop treating `GraphContext` as XYPH's default read seam
    - move toward observer/worldline-native reads over git-warp
-   - keep substrate inspection as an explicit deeper path rather than the
+   - keep bedrock inspection as an explicit deeper path rather than the
      default application model
    - the active design note for that next slice is
      [`0023-observer-native-read-architecture.md`](./0023-observer-native-read-architecture.md)

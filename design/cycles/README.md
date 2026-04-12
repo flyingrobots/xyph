@@ -120,7 +120,7 @@ around it.
 1. [Suggestion Adoption and Explainability](./0001-suggestion-adoption.md)
 2. [Agent CLI Hardening](./0002-agent-cli-hardening.md)
 3. [Case-Driven Governance](./0003-case-driven-governance.md)
-4. [git-warp Substrate Alignment](./0004-substrate-alignment.md)
+4. [git-warp Bedrock Alignment](./0004-bedrock-alignment.md)
 5. [Quest Detail Read Boundary](./0005-quest-detail-read-boundary.md)
 6. [README Onboarding Reset](./0006-readme-onboarding-reset.md)
 7. [Quest Detail Narrative Read Boundary](./0007-quest-detail-narrative-read-boundary.md)

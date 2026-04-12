@@ -4,8 +4,8 @@
 
 - [`/Users/james/git/xyph/design/cycles/0007-quest-detail-narrative-read-boundary.md`](../cycles/0007-quest-detail-narrative-read-boundary.md)
 - [`/Users/james/git/xyph/design/cycles/0005-quest-detail-read-boundary.md`](../cycles/0005-quest-detail-read-boundary.md)
-- [`/Users/james/git/xyph/design/cycles/0004-substrate-alignment.md`](../cycles/0004-substrate-alignment.md)
-- [`/Users/james/git/xyph/design/substrate-alignment.md`](../substrate-alignment.md)
+- [`/Users/james/git/xyph/design/cycles/0004-bedrock-alignment.md`](../cycles/0004-bedrock-alignment.md)
+- [`/Users/james/git/xyph/design/bedrock-alignment.md`](../bedrock-alignment.md)
 
 ## What Landed
 
@@ -47,5 +47,5 @@
 
 - Accept this slice as a real boundary improvement for entity-detail reads.
 - Carry forward the broader snapshot-path read-model debt under the continuing
-  substrate-alignment effort instead of pretending all read surfaces are now
+  bedrock-alignment effort instead of pretending all read surfaces are now
   equally honest.

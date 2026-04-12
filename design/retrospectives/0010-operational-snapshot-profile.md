@@ -5,7 +5,7 @@
 - [`/Users/james/git/xyph/design/cycles/0010-operational-snapshot-profile.md`](../cycles/0010-operational-snapshot-profile.md)
 - [`/Users/james/git/xyph/design/cycles/0009-snapshot-read-honesty.md`](../cycles/0009-snapshot-read-honesty.md)
 - [`/Users/james/git/xyph/design/cycles/0008-git-warp-v15-surface-migration.md`](../cycles/0008-git-warp-v15-surface-migration.md)
-- [`/Users/james/git/xyph/design/substrate-alignment.md`](../substrate-alignment.md)
+- [`/Users/james/git/xyph/design/bedrock-alignment.md`](../bedrock-alignment.md)
 
 ## What Landed
 

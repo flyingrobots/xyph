@@ -2,7 +2,7 @@
 
 ## Cycle Type
 
-Debt-reduction / substrate-alignment follow-on
+Debt-reduction / bedrock-alignment follow-on
 
 This cycle continues the quest-detail read-boundary work from
 `0005-quest-detail-read-boundary.md`.
@@ -66,7 +66,7 @@ narrative family.**
 This cycle must preserve:
 
 - The graph is the plan.
-- git-warp owns substrate facts; XYPH owns meaning.
+- git-warp owns bedrock facts; XYPH owns meaning.
 - Human and agent surfaces must share one reality.
 - Existing quest-detail narrative behavior must remain semantically intact.
 - Supersession chains for documents and reply chains for comments must still be

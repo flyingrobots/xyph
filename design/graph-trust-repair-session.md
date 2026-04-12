@@ -121,7 +121,7 @@ The session does not get to relax these:
 - humans and agents share one reality
 - provenance must stay inspectable
 - governance is first-class
-- git-warp owns substrate facts; XYPH owns meaning
+- git-warp owns bedrock facts; XYPH owns meaning
 
 If a proposed repair strategy violates one of those, reject it.
 

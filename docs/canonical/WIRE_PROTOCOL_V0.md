@@ -161,12 +161,12 @@ Every read returns a reproducible observation coordinate:
 - `graphMeta`
 - optional `comparisonPolicyVersion`
 
-`backing` makes the substrate truth explicit:
+`backing` makes the bedrock truth explicit:
 
 - live-backed reads report `kind: "live_frontier"` with
-  `substrate.kind: "git-warp-frontier"`
+  `bedrock.kind: "git-warp-frontier"`
 - working-set-backed derived reads report `kind: "derived_working_set"` with
-  substrate details for:
+  bedrock details for:
   - `workingSetId`
   - `baseLamportCeiling`
   - `overlayHeadPatchSha`
@@ -207,7 +207,7 @@ Current projection support by selector:
 Compatibility projections that remain backed by live services reject historical
 selectors with `not_implemented` rather than pretending historical support.
 
-Canonical derived worldlines are currently supported on a narrower substrate
+Canonical derived worldlines are currently supported on a narrower bedrock
 surface than `worldline:live`:
 
 - working-set-aware now: `observe(graph.summary)`,
@@ -217,7 +217,7 @@ surface than `worldline:live`:
   `briefing`, `context`, `next`, `submissions`, `diagnostics`, and
   `prescriptions`
 
-## Substrate Conflict Projection
+## Bedrock Conflict Projection
 
 `observe` with `projection: "conflicts"` exposes the published read-only
 git-warp conflict analyzer through the sovereign control plane.
@@ -239,17 +239,17 @@ Current behavior:
   - `scanBudget`
 - returns:
   - `requested` normalized analyzer inputs
-  - `analysis` as the substrate conflict-analysis payload
+  - `analysis` as the bedrock conflict-analysis payload
 
 When the selected derived worldline is braided, `observe(conflicts)` may also
 return XYPH diagnostics warning that singleton LWW property modeling is causing
 self-erasing co-presence under braid. This is an application-level warning
-derived from substrate conflict facts, not a second conflict engine.
+derived from bedrock conflict facts, not a second conflict engine.
 
 This projection is intentionally **tip-scoped** in v1. XYPH now supports
 live-frontier or derived-worldline tip conflict analysis through git-warp
 working sets, but arbitrary historical frontier conflict analysis remains
-substrate backlog work and must not be faked by XYPH.
+bedrock backlog work and must not be faked by XYPH.
 
 ## `fork_worldline` Current Slice
 
@@ -263,11 +263,11 @@ Current behavior:
 - currently supports only `worldline:live` as that source
 - accepts `at: "tip"` or omitted for live-frontier forks
 - accepts `at: <tick>` or `at: { "tick": <n> }`, which currently lowers to a
-  **current-frontier Lamport ceiling** in the substrate working-set API
+  **current-frontier Lamport ceiling** in the bedrock working-set API
 - accepts optional `owner`, `scope`, and `leaseExpiresAt`
 - returns:
   - the XYPH worldline descriptor payload
-  - a substrate backing block identifying the git-warp working set
+  - a bedrock backing block identifying the git-warp working set
 
 This is intentionally narrower than the long-term worldline model. Arbitrary
 historical frontiers, derived-from-derived forking, and worldline-local replay
@@ -296,11 +296,11 @@ Current behavior:
 - returns:
   - a typed XYPH `comparison-artifact` preview
   - per-side observation coordinates
-  - substrate-backed visible patch divergence
-  - substrate-backed visible node / edge / property deltas
+  - bedrock-backed visible patch divergence
+  - bedrock-backed visible node / edge / property deltas
   - optional target-local comparison details when `targetId` is provided
-  - an operationally scoped git-warp comparison fact in `data.substrate`
-  - the raw whole-graph git-warp comparison fact in `data.substrate.rawWholeGraph`
+  - an operationally scoped git-warp comparison fact in `data.bedrock`
+  - the raw whole-graph git-warp comparison fact in `data.bedrock.rawWholeGraph`
   - when `persist: true`, a `data.record` block describing the durable
     `comparison-artifact:*` node recorded on `worldline:live`
 
@@ -342,12 +342,12 @@ Current behavior:
 - returns:
   - a typed XYPH `collapse-proposal`
   - per-side observation coordinates for source and target
-  - substrate-backed transfer summary and sanitized transfer ops
+  - bedrock-backed transfer summary and sanitized transfer ops
   - either a dry-run mutation side-effect preview or a live mutation result
   - an operationally scoped git-warp comparison fact and transfer fact in
-    `data.substrate`
+    `data.bedrock`
   - the raw whole-graph git-warp comparison fact in
-    `data.substrate.rawWholeGraph`
+    `data.bedrock.rawWholeGraph`
   - when `persist: true`, a `data.record` block describing the durable
     `collapse-proposal:*` node recorded on `worldline:live`
   - when `dryRun: false`, a terminal `observation` over the resulting
@@ -399,7 +399,7 @@ visible and navigable before opening a broader query grammar.
 ## `braid_worldlines` Current Slice
 
 `braid_worldlines` is now implemented as a thin XYPH mapping over git-warp’s
-published braid working-set substrate.
+published braid working-set bedrock.
 
 This term is intentional:
 
@@ -416,12 +416,12 @@ Current behavior:
 - currently supports only canonical derived target/support worldlines backed by
   git-warp working sets
 - requires `supportWorldlineIds`
-- rejects `at`, `since`, and substrate working-set argument names
+- rejects `at`, `since`, and bedrock working-set argument names
 - accepts optional `readOnly`
 - returns:
   - XYPH-first braid metadata in worldline terms
   - the updated worldline descriptor payload
-  - a substrate backing block identifying the target/support working-set IDs
+  - a bedrock backing block identifying the target/support working-set IDs
 
 This slice intentionally establishes co-present composition without settlement.
 It does **not** merge, rebase, collapse, or otherwise decide what should

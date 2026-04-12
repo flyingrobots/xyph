@@ -56,7 +56,7 @@ Instead:
 - the graph is the coordination medium
 - the graph is the historical record
 
-## Why git-warp Is The Right Substrate
+## Why git-warp Is The Right Bedrock
 
 Most stacks force a tradeoff:
 
@@ -66,7 +66,7 @@ Most stacks force a tradeoff:
 - CRDT systems give convergence, but often not auditable Git transport,
   patch-level provenance, or durable integration into ordinary repositories
 
-git-warp is unusual because it combines all of those in one substrate.
+git-warp is unusual because it combines all of those in one bedrock.
 
 ### 1. The graph lives in Git without becoming your worktree
 
@@ -179,7 +179,7 @@ In XYPH, the graph can represent:
 - evidence
 - settlement
 
-inside one causal substrate.
+inside one causal bedrock.
 
 That is a different kind of application architecture.
 
@@ -262,7 +262,7 @@ Use a derived worldline for:
 - review lanes
 - offline continuation from a pinned observation
 
-Worldlines also create the substrate precondition for future **braided**
+Worldlines also create the bedrock precondition for future **braided**
 execution. Some plans are not just “branch and choose later.” Some are “carry
 one completed support line forward while another line continues.” A dungeon
 button that must remain pressed while another actor-path advances is the simple
@@ -293,7 +293,7 @@ With XYPH on git-warp:
 4. Humans or other agents review the candidate future.
 5. The change can later be accepted, compared, collapsed, or discarded.
 
-That workflow depends on git-warp’s substrate features being real:
+That workflow depends on git-warp’s bedrock features being real:
 
 - durable multi-writer patch history
 - replayable coordinates
@@ -306,7 +306,7 @@ Without those, “worldlines” would just be branding.
 ## Why This Is A Good Showcase For git-warp
 
 XYPH demonstrates that git-warp is not just a novel storage engine.
-It is a substrate for a different category of application:
+It is a bedrock for a different category of application:
 
 - offline-first
 - multi-writer

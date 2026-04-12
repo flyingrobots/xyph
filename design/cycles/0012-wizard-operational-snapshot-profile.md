@@ -66,7 +66,7 @@ compatibility surface.**
 This cycle must preserve:
 
 - The graph is the plan.
-- git-warp owns substrate facts; XYPH owns meaning.
+- git-warp owns bedrock facts; XYPH owns meaning.
 - Wizard flows continue to work with the same operational quest/campaign/intent
   and submission data they used before.
 - This slice narrows the shared helper; it does not redesign wizard UX.

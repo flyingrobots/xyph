@@ -140,8 +140,8 @@ not in reality.
 XYPH should not treat the graph as raw mutable storage and then reconstruct its
 own pseudo-database above it.
 
-Reads should prefer substrate-native worldline and observer semantics. Writes
-should lower through substrate-native intent, working-set, tick, and
+Reads should prefer bedrock-native worldline and observer semantics. Writes
+should lower through bedrock-native intent, working-set, tick, and
 transfer/collapse semantics before XYPH adds policy and governance meaning.
 
 The goal is:
@@ -251,7 +251,7 @@ Pages and queues should surface these shared judgments:
 - `claimability`
 - `attentionState`
 
-### Substrate Primitives
+### Bedrock Primitives
 
 These should belong to git-warp and be consumed by XYPH rather than rebuilt in
 application code:
@@ -265,7 +265,7 @@ application code:
 - **Transfer / collapse primitive**
 
 XYPH should layer policy, governance, and human/agent product semantics on top
-of those substrate facts.
+of those bedrock facts.
 
 ### Agent-Native Primitives
 

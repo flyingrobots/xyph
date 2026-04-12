@@ -82,7 +82,7 @@ profile instead of the raw full snapshot compatibility surface.**
 This cycle must preserve:
 
 - The graph is the plan.
-- git-warp owns substrate facts; XYPH owns meaning.
+- git-warp owns bedrock facts; XYPH owns meaning.
 - Doctor still audits workflow lineage, traceability lineage, readiness gaps,
   sovereignty issues, and governed completion gaps.
 - Doctor still computes governed completion from snapshot data.

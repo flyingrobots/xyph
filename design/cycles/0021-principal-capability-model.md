@@ -13,7 +13,7 @@ Halted before the spec checkpoint on 2026-03-31.
 
 The authority direction remains valid, but this cycle started at the wrong
 time. XYPH's read architecture and graph-debugging posture need a harder pivot
-first: observer/worldline-native reads, substrate-honest debugging, and
+first: observer/worldline-native reads, bedrock-honest debugging, and
 removal of `GraphContext` as the default read seam now take priority.
 
 ## Graph Anchor

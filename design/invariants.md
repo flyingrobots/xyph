@@ -52,20 +52,20 @@ Design implication:
 - `[AI]` labeling and explainability flows are required where AI is involved
 - silent automation that erases provenance is not acceptable
 
-## 5. git-warp Owns Substrate Facts; XYPH Owns Meaning
+## 5. git-warp Owns Bedrock Facts; XYPH Owns Meaning
 
 git-warp owns deterministic graph history, worldlines, observer-relative
 projections, observation coordinates, receipts, provenance, working sets,
-braids, and the substrate mechanics for speculative ticking and transfer.
+braids, and the bedrock mechanics for speculative ticking and transfer.
 XYPH owns ontology, policy, governance, human-facing surfaces, and the
 canonical machine control plane.
 
 Design implication:
 
 - do not leak XYPH governance or business semantics into git-warp
-- do not invent substrate truth in XYPH where git-warp should own it
+- do not invent bedrock truth in XYPH where git-warp should own it
 - do not rebuild worldline, observer, or working-set semantics in XYPH when the
-  substrate should expose them directly
+  bedrock should expose them directly
 
 ## 6. One Lawful Mutation Path
 

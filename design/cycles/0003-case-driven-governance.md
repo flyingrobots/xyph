@@ -142,8 +142,8 @@ must pin the agent path first.
 - Keep the first slice boring and inspectable in JSON before making it pretty
   anywhere else.
 - The first slice proved the product semantics. Further generalization should
-  now follow the substrate-alignment work in
-  [0004: git-warp Substrate Alignment](./0004-substrate-alignment.md) instead
+  now follow the bedrock-alignment work in
+  [0004: git-warp Bedrock Alignment](./0004-bedrock-alignment.md) instead
   of pushing more worldline/observer mechanics up into XYPH.
 
 ## Playback Questions

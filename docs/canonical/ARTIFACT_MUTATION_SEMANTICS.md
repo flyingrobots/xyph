@@ -94,7 +94,7 @@ the only sanctioned foundation for sovereign control-plane writes.
 `collapse_worldline` must not become a second mutation engine.
 
 The current slice now enforces that in preview mode: `collapse_worldline`
-lowers a substrate transfer plan to a validated dry-run mutation plan through
+lowers a bedrock transfer plan to a validated dry-run mutation plan through
 the same:
 
 - mutation validator
@@ -105,7 +105,7 @@ the same:
 used by `apply`.
 
 This preview path may carry explicit content-clear transfer ops internally so
-XYPH can represent substrate settlement truth honestly before live execution
+XYPH can represent bedrock settlement truth honestly before live execution
 support exists for that primitive.
 
 ## Lease Semantics
@@ -170,9 +170,9 @@ The current sovereign-control-plane foundation implements:
 - braid-aware singleton conflict warnings when co-present overlays compete on
   one LWW property winner
 - structured redaction for content-bearing `entity.detail` observations
-- substrate-backed worldline comparison previews that remain separate from
+- bedrock-backed worldline comparison previews that remain separate from
   attestation, approval, or collapse execution
-- `collapse_worldline` previews that lower substrate transfer plans through the
+- `collapse_worldline` previews that lower bedrock transfer plans through the
   shared mutation kernel without mutating live truth
 - governed live `collapse_worldline` execution when:
   - the comparison baseline was persisted as a `comparison-artifact:*`
@@ -184,7 +184,7 @@ The current sovereign-control-plane foundation implements:
   `collapse_worldline` is called with `persist: true`, for either preview or
   executed artifacts
 - published git-warp comparison/transfer fact exports carried through XYPH’s
-  substrate blocks so later governance can record the same fact without
+  bedrock blocks so later governance can record the same fact without
   re-serializing it in XYPH first
 - XYPH operational comparison scope over governance-only node families so
   durable comparison recording does not self-perturb the freshness token used

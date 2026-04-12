@@ -3,12 +3,12 @@
 **Status:** AUTHORITATIVE
 
 ## 0. One Sentence
-XYPH is a **causal computer**: a time-travelable, decentralized work + runtime substrate built on WARP graphs — with Git used only as a settlement/object-store layer.
+XYPH is a **causal computer**: a time-travelable, decentralized work + runtime bedrock built on WARP graphs — with Git used only as a settlement/object-store layer.
 
 ## 1. The Core Mission
 XYPH exists to solve the **Agentic Coordination Problem** *and then outgrow it*.
 
-As we move from human-led projects to agent-driven autonomous workflows, we need a substrate that ensures:
+As we move from human-led projects to agent-driven autonomous workflows, we need a bedrock that ensures:
 
 - **Deterministic Provenance** (history is the source of truth)
 - **Human Sovereignty** (laws, consent, and cryptographic authority)
@@ -36,7 +36,7 @@ XYPH may use Git today, but Git is not "the product."
 - **Ontology:** XYPH is sovereign. Worldlines, observation, comparison,
   collapse, lawful transformation, and authority are XYPH concepts.
 - **Settlement / Object Store (Today):** Git CAS as a ubiquitous, battle-tested content-addressed store.
-- **Causal Substrate:** WARP graph + multi-writer convergence.
+- **Causal Bedrock:** WARP graph + multi-writer convergence.
 - **Runtime:** JIT — Just-In-Time graph execution (SWS, promotion, collapse, receipts).
 - **Experience Layer:** XYPH CLI/TUI and observer views (status, diff, slice, provenance).
 

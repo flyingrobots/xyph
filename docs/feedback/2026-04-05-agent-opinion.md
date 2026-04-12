@@ -159,7 +159,7 @@ error, not one field at a time.
 ### 3. Kill ObservedGraphProjection
 
 This is 1700 lines of code that reimplements git-warp's read surface. It
-violates `invariant:substrate-boundary`. It caused the `aiSuggestions`
+violates `invariant:bedrock-boundary`. It caused the `aiSuggestions`
 blind spot. It will keep causing bugs every time a new entity type is
 added.
 

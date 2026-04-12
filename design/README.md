@@ -7,7 +7,7 @@ routing, suggestion transparency, page taxonomy, and design-review practice.
 
 ## Why This Directory Exists
 
-XYPH now has enough truthful substrate behavior and enough surface area that its
+XYPH now has enough truthful bedrock behavior and enough surface area that its
 design needs to be treated as a first-class artifact, not inferred from
 implementation drift.
 
@@ -60,7 +60,7 @@ constraints. The design process does **not** get to override these invariants:
   details.
 - **Provenance must stay inspectable**: who changed what, when, why, and by
   what mechanism must remain visible and auditable.
-- **git-warp owns substrate facts; XYPH owns meaning**: deterministic graph
+- **git-warp owns bedrock facts; XYPH owns meaning**: deterministic graph
   history, coordinates, receipts, provenance, working sets, and braids belong
   to git-warp; ontology, governance, human surfaces, and the canonical machine
   control plane belong to XYPH.
@@ -138,10 +138,10 @@ Start here, then use the focused design documents below:
 - [Product Model](./product-model.md)
   Product principles, shared primitives, attention model, page model, and
   immediate design program.
-- [Substrate Alignment](./substrate-alignment.md)
+- [Bedrock Alignment](./bedrock-alignment.md)
   The desired git-warp / XYPH boundary, current gaps, and the staged
   alignment program for moving worldline/observer/working-set behavior down
-  into the substrate.
+  into the bedrock.
 - [Effect Emission Alignment](./effect-emission-alignment.md)
   Cross-repo doctrine for outbound effect emission, delivery observation,
   replay-safe suppression, and debugger visibility across XYPH, git-warp, and

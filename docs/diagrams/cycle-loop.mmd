@@ -1,0 +1,9 @@
+stateDiagram-v2
+    direction LR
+    [*] --> Pull: asap/
+    Pull --> Branch: cycle/
+    Branch --> Red: failing tests
+    Red --> Green: passing tests
+    Green --> Retro: findings/debt
+    Retro --> Ship: PR to main
+    Ship --> [*]

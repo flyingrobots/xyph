@@ -397,7 +397,7 @@ graph node families.
 | Worldline ID | `worldline:live` | Implemented | [`/Users/james/git/xyph/docs/canonical/WIRE_PROTOCOL_V0.md`](./WIRE_PROTOCOL_V0.md) |
 | Derived worldline ID | `worldline:plan-rewrite` | Implemented | [`/Users/james/git/xyph/docs/WORLDLINES.md`](../WORLDLINES.md) |
 | Observer profile ID | `observer:default` | Implemented | [`/Users/james/git/xyph/docs/canonical/AUTHORITY_MODEL.md`](./AUTHORITY_MODEL.md) |
-| Working-set ID | substrate-specific | Implemented, non-public | git-warp substrate, not XYPH graph doctrine |
+| Working-set ID | bedrock-specific | Implemented, non-public | git-warp bedrock, not XYPH graph doctrine |
 
 Canonical rule:
 

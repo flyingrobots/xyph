@@ -4,7 +4,7 @@
 
 - [`/Users/james/git/xyph/design/cycles/0016-control-plane-summary-semantics.md`](../cycles/0016-control-plane-summary-semantics.md)
 - [`/Users/james/git/xyph/design/cycles/0015-doctor-audit-snapshot-profile.md`](../cycles/0015-doctor-audit-snapshot-profile.md)
-- [`/Users/james/git/xyph/design/substrate-alignment.md`](../substrate-alignment.md)
+- [`/Users/james/git/xyph/design/bedrock-alignment.md`](../bedrock-alignment.md)
 - [`/Users/james/git/xyph/design/sponsor-actors.md`](../sponsor-actors.md)
 
 ## What Landed

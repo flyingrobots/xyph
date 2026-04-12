@@ -4,7 +4,7 @@
 
 - [`/Users/james/git/xyph/design/cycles/0023-observer-native-read-architecture.md`](../cycles/0023-observer-native-read-architecture.md)
 - [`/Users/james/git/xyph/docs/canonical/ARCHITECTURE.md`](../../docs/canonical/ARCHITECTURE.md)
-- [`/Users/james/git/xyph/design/substrate-alignment.md`](../substrate-alignment.md)
+- [`/Users/james/git/xyph/design/bedrock-alignment.md`](../bedrock-alignment.md)
 
 ## What Landed
 
@@ -44,7 +44,7 @@
   drawer content.
 - `Plan`, `Settlement`, `Campaigns`, `Graveyard`, and some drawer/page
   fallbacks still depend on broad snapshot-shaped assembly.
-- Narrower substrate-native primitives for shell/meta reads still belong in
+- Narrower bedrock-native primitives for shell/meta reads still belong in
   future git-warp work, not another disguised XYPH-local graph engine.
 
 ## Why The Drift Happened
@@ -55,7 +55,7 @@
   product surfaces from deepening the compatibility bridge.
 - XYPH can narrow some dashboard flows locally, but fully replacing the
   remaining shell/meta snapshot dependence would either require a larger
-  dashboard lazy-load split or narrower substrate support from git-warp.
+  dashboard lazy-load split or narrower bedrock support from git-warp.
 
 ## Resolution
 
@@ -64,8 +64,8 @@
   follow-on work instead of keeping this cycle artificially open.
 - Carry that XYPH-side follow-on explicitly as `task:landing-shell-read-model`.
 - Keep the compatibility bridge marked transitional until git-warp exposes
-  narrower substrate-honest primitives.
+  narrower bedrock-honest primitives.
 - Carry forward:
   - landing-shell read-model narrowing in XYPH
-  - git-warp substrate fixes and narrower observer/worldline-native read
+  - git-warp bedrock fixes and narrower observer/worldline-native read
     support upstream

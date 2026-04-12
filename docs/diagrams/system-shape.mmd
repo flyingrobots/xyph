@@ -1,0 +1,19 @@
+flowchart TD
+    subgraph Ingress["Driving Adapters"]
+        CLI[xyph-actuator CLI]
+        TUI[xyph-dashboard TUI]
+        API[JSONL Control Plane]
+    end
+    subgraph Core["Domain Core"]
+        E[Entities: Quest, Intent, Submission]
+        S[Services: Coordinator, GuildSeal, Sovereignty]
+        M[Models: Dashboard, API Envelopes]
+    end
+    subgraph Storage["Driven Adapters"]
+        Warp[WarpGraphAdapter]
+        Git[GitWorkspaceAdapter]
+        Vault[VaultKeyringAdapter]
+    end
+
+    Ingress --> Core
+    Core --> Storage

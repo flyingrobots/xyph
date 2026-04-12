@@ -2,7 +2,7 @@
 
 ## Cycle Type
 
-Debt-reduction / substrate-alignment follow-on
+Debt-reduction / bedrock-alignment follow-on
 
 This cycle continues the read-boundary narrowing work from `0005`, `0007`, and
 `0008`.
@@ -17,7 +17,7 @@ projections already use live query, point-read, neighbor, and traversal APIs.
 ## Why This Cycle Exists
 
 The quest-detail cycles removed the most obvious whole-snapshot abuses, and the
-`git-warp` `v15` migration restored honest substrate usage for derived
+`git-warp` `v15` migration restored honest bedrock usage for derived
 worldlines.
 
 But `GraphContext` still contains one broad lie in its live read path:
@@ -44,7 +44,7 @@ snapshot/detail path.
 
 **Operator-Supervisor**
 
-Needs the dashboard and detail views to read directly from substrate truth
+Needs the dashboard and detail views to read directly from bedrock truth
 instead of paying an invisible "whole-state first" tax before every snapshot.
 
 ### Secondary sponsor actors
@@ -57,14 +57,14 @@ materializing a whole graph is the normal prerequisite for a dashboard read.
 **Application Integrator**
 
 Needs XYPH to keep demonstrating the boundary it expects from downstream apps:
-read with query/traversal/point helpers unless a real substrate task requires
+read with query/traversal/point helpers unless a real bedrock task requires
 materialization explicitly.
 
 ## Outcome Hill
 
 **As a human or agent reading the live dashboard or a live entity detail page,
 I can get the projection without XYPH first materializing a whole graph state,
-so the product's read model stays aligned with the substrate APIs it actually
+so the product's read model stays aligned with the bedrock APIs it actually
 uses.**
 
 ## Invariants
@@ -72,7 +72,7 @@ uses.**
 This cycle must preserve:
 
 - The graph is the plan.
-- git-warp owns substrate facts; XYPH owns meaning.
+- git-warp owns bedrock facts; XYPH owns meaning.
 - Human and agent surfaces must share one reality.
 - Live snapshot and entity-detail semantics must remain unchanged.
 - Historical tick reads must remain correct and may continue to materialize in

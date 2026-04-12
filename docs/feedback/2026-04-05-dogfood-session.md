@@ -18,7 +18,7 @@ traceability, and settlement for a real feature.
 - **Throwaway scripts written:** 9
 - **Command failures/retries:** ~15
 - **Quests sealed:** 2 (task:cli-search, task:GRAPH-CLEANUP)
-- **Invariant violations found:** 1 (substrate-boundary)
+- **Invariant violations found:** 1 (bedrock-boundary)
 - **Bugs found:** 6
 - **Full test suite runs triggered by graph-only pushes:** 4 (~3 min wasted)
 
@@ -137,10 +137,10 @@ Filed:
 
 ## Invariant Violation
 
-**invariant:substrate-boundary** — `ObservedGraphProjection.ts` (1700 LOC)
+**invariant:bedrock-boundary** — `ObservedGraphProjection.ts` (1700 LOC)
 reimplements git-warp's read surface. It re-queries every node type, builds
 typed arrays, re-resolves edges into denormalized fields, and maintains
-per-entity-type projection loops. This is XYPH owning substrate mechanics
+per-entity-type projection loops. This is XYPH owning bedrock mechanics
 that belong to git-warp.
 
 Direct consequence: the `aiSuggestions` blind spot. The projection builds
@@ -206,7 +206,7 @@ works end-to-end:
 ## Recommended Priority Sort
 
 ### Critical (invariant violations, data loss risk)
-1. task:snapshot-invariant-violation — substrate-boundary violation
+1. task:snapshot-invariant-violation — bedrock-boundary violation
 2. task:suggestion-visibility-fix — data exists but CLI can't see it
 3. task:sync-blocks-main-thread — UX-breaking hitch
 

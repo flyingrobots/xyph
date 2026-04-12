@@ -67,7 +67,7 @@ default while the trace-heavy views remain explicitly full.**
 This cycle must preserve:
 
 - The graph is the plan.
-- git-warp owns substrate facts; XYPH owns meaning.
+- git-warp owns bedrock facts; XYPH owns meaning.
 - Human and agent surfaces must share one reality.
 - CLI trace/suggestions/all views remain on the full snapshot.
 - CLI roadmap/lineage/inbox/submissions/deps views move to the operational

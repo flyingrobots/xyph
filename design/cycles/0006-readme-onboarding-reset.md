@@ -63,7 +63,7 @@ the deeper doctrine.**
 This cycle must preserve:
 
 - The graph is the plan.
-- git-warp owns substrate facts; XYPH owns meaning.
+- git-warp owns bedrock facts; XYPH owns meaning.
 - Human and agent surfaces must stay equally legible.
 - The README must stay honest about XYPH's real shipped surfaces.
 - WARP/worldline/doctrine language may remain present, but only after the file

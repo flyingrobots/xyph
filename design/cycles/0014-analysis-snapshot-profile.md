@@ -54,7 +54,7 @@ snapshot census.
 
 **Automation Agent**
 
-Needs `analyze` and batch suggestion acceptance to remain substrate-honest and
+Needs `analyze` and batch suggestion acceptance to remain bedrock-honest and
 cheap without rebuilding traceability reads ad hoc in each command.
 
 ## Outcome Hill
@@ -68,7 +68,7 @@ narrow analysis snapshot profile instead of the broad full snapshot path.**
 This cycle must preserve:
 
 - The graph is the plan.
-- git-warp owns substrate facts; XYPH owns meaning.
+- git-warp owns bedrock facts; XYPH owns meaning.
 - `analyze` still sees requirements, criteria, existing linked evidence, and
   rejected legacy suggestions.
 - `suggestion accept-all` still sees pending legacy suggestions.

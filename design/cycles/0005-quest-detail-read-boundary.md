@@ -2,9 +2,9 @@
 
 ## Cycle Type
 
-Debt-reduction / substrate-alignment follow-on
+Debt-reduction / bedrock-alignment follow-on
 
-This cycle takes the next bounded step after `0004-substrate-alignment.md`.
+This cycle takes the next bounded step after `0004-bedrock-alignment.md`.
 The target is narrow on purpose: stop `GraphContext.fetchEntityDetail(task:...)`
 from rebuilding the omnibus graph snapshot just to render one quest detail
 projection.
@@ -15,7 +15,7 @@ projection.
 
 ## Why This Cycle Exists
 
-XYPH still contains the exact boundary violation the substrate-alignment cycle
+XYPH still contains the exact boundary violation the bedrock-alignment cycle
 warned about:
 
 - `GraphContext.fetchSnapshot()` does `sync -> materialize -> query many node
@@ -47,14 +47,14 @@ first" before the agent can answer one local question.
 **Application Integrator**
 
 Needs XYPH to demonstrate the boundary it expects from downstream apps:
-targeted reads should stay targeted, and substrate-backed traversal should beat
+targeted reads should stay targeted, and bedrock-backed traversal should beat
 shadow app-local graph models.
 
 ## Outcome Hill
 
 **As a human or agent inspecting one quest, I can read that quest's detail
 projection without XYPH first rebuilding the omnibus graph snapshot, so the
-application starts behaving like a thin product layer over substrate truth
+application starts behaving like a thin product layer over bedrock truth
 instead of a second graph runtime.**
 
 ## Invariants
@@ -62,7 +62,7 @@ instead of a second graph runtime.**
 This cycle must preserve:
 
 - The graph is the plan.
-- git-warp owns substrate facts; XYPH owns meaning.
+- git-warp owns bedrock facts; XYPH owns meaning.
 - Human and agent surfaces must share one reality.
 - XYPH must not normalize "whole snapshot first" as the default read model.
 - Existing quest-detail behavior must remain semantically intact.
@@ -109,7 +109,7 @@ Out of scope:
 - Reuse existing quest/submission/traceability assembly logic where practical,
   but prefer direct subgraph reads over global snapshot dependencies.
 - Narrative loading may remain broader than ideal in this slice if the
-  substrate lacks a narrower primitive; call that out honestly in the retro.
+  bedrock lacks a narrower primitive; call that out honestly in the retro.
 
 ## Playback Questions
 

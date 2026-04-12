@@ -126,7 +126,7 @@ The canonical live collapse flow is:
 - `braid_worldlines` when one continuation needs another's effects to stay co-present.
 - `compare_worldlines` before governance or settlement decisions.
 - `collapse_worldline` for governed settlement.
-- Hand off explicit `worldlineId` values. Do not pass substrate working-set IDs as public handles.
+- Hand off explicit `worldlineId` values. Do not pass bedrock working-set IDs as public handles.
 
 ## Terminology
 

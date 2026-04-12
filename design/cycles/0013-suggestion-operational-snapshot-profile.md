@@ -58,7 +58,7 @@ the full snapshot compatibility surface.**
 This cycle must preserve:
 
 - The graph is the plan.
-- git-warp owns substrate facts; XYPH owns meaning.
+- git-warp owns bedrock facts; XYPH owns meaning.
 - `suggestion accept-all` still filters pending suggestions by confidence and
   writes the same linked evidence patches.
 - This slice narrows one legacy consumer; it does not redesign suggestion

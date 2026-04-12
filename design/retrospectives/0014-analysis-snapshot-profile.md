@@ -4,7 +4,7 @@
 
 - [`/Users/james/git/xyph/design/cycles/0014-analysis-snapshot-profile.md`](../cycles/0014-analysis-snapshot-profile.md)
 - [`/Users/james/git/xyph/design/cycles/0013-suggestion-operational-snapshot-profile.md`](../cycles/0013-suggestion-operational-snapshot-profile.md)
-- [`/Users/james/git/xyph/design/substrate-alignment.md`](../substrate-alignment.md)
+- [`/Users/james/git/xyph/design/bedrock-alignment.md`](../bedrock-alignment.md)
 
 ## What Landed
 

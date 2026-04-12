@@ -12,7 +12,7 @@ It exists because XYPH now has a concrete need for:
 
 The short version is:
 
-- git-warp should own generic substrate facts for emitted effects and delivery
+- git-warp should own generic bedrock facts for emitted effects and delivery
   observations
 - `warp-ttd` should inspect those facts through explicit protocol envelopes
 - XYPH should decide the domain meaning and policy of those effects
@@ -28,9 +28,9 @@ Today, outbound behavior is fractured:
   happen, and what was deliberately suppressed
 
 If XYPH invents a private output bus for this, it will create another layer of
-substrate behavior above git-warp. That would violate the current doctrine:
+bedrock behavior above git-warp. That would violate the current doctrine:
 
-- git-warp owns substrate facts
+- git-warp owns bedrock facts
 - XYPH owns meaning
 
 ## Core Doctrine
@@ -55,7 +55,7 @@ During replay or time-travel inspection:
 - the system should still surface the effect that was emitted or would be
   emitted
 - replay mode must be allowed to suppress external realization
-- suppression must itself be visible as a substrate fact, not hidden adapter
+- suppression must itself be visible as a bedrock fact, not hidden adapter
   behavior
 
 This lets the system be deterministic without accidentally re-sending live
@@ -66,7 +66,7 @@ traffic or mutating external systems during inspection.
 Observer remains a first-class concept, but observer alone should not govern
 side-effect realization.
 
-The substrate context for outbound behavior should be resolved from at least:
+The bedrock context for outbound behavior should be resolved from at least:
 
 - principal
 - observer profile
@@ -77,7 +77,7 @@ The substrate context for outbound behavior should be resolved from at least:
 That keeps the observer/perception boundary honest. Observer shapes perception.
 Delivery lens shapes how effects may or may not be externalized.
 
-### 4. XYPH should not invent a second replay substrate
+### 4. XYPH should not invent a second replay bedrock
 
 git-warp already owns:
 
@@ -85,30 +85,30 @@ git-warp already owns:
 - observer-relative reads
 - receipts
 - provenance
-- replayable substrate truth
+- replayable bedrock truth
 
-Outbound effect and delivery receipts should extend that substrate story rather
+Outbound effect and delivery receipts should extend that bedrock story rather
 than being rebuilt in XYPH.
 
 ## Canonical Split
 
 ### git-warp owns
 
-git-warp should own generic, host-agnostic substrate constructs for outbound
+git-warp should own generic, host-agnostic bedrock constructs for outbound
 effect emission and delivery observation:
 
 - effect emission records
 - delivery observations
 - replay-safe suppression facts
 - execution / delivery lens metadata
-- multiplexed sink / adapter fan-out at the substrate boundary
+- multiplexed sink / adapter fan-out at the bedrock boundary
 - durable append-only diagnostic/event streams where appropriate
 
-These must remain generic substrate facts, not XYPH-specific ontology.
+These must remain generic bedrock facts, not XYPH-specific ontology.
 
 ### warp-ttd owns
 
-`warp-ttd` should expose and inspect those substrate facts as first-class
+`warp-ttd` should expose and inspect those bedrock facts as first-class
 debugger payloads:
 
 - emitted effect summaries
@@ -130,12 +130,12 @@ XYPH should own:
 - how human and agent surfaces explain those effects
 - which effects remain advisory, governable, or human-bound
 
-XYPH should consume substrate effect receipts. It should not mint a private
+XYPH should consume bedrock effect receipts. It should not mint a private
 parallel effect ontology unless a concept is genuinely product-specific.
 
-## Substrate Model
+## Bedrock Model
 
-The substrate should distinguish at least three layers.
+The bedrock should distinguish at least three layers.
 
 ### Effect emission
 
@@ -171,7 +171,7 @@ into graph-native ontology.
 
 The clean model is:
 
-- a generic substrate event stream can include diagnostic events
+- a generic bedrock event stream can include diagnostic events
 - durable chunk logging is a sink over that stream
 - effect receipts are for semantically important outbound effects
 - verbose debug noise does not need to become first-class product truth
@@ -196,7 +196,7 @@ instead of pretending the effect never existed.
 
 ## What git-warp needs to build
 
-git-warp should add a substrate slice for outbound effect and delivery facts.
+git-warp should add a bedrock slice for outbound effect and delivery facts.
 
 Minimum expected capability:
 
@@ -219,7 +219,7 @@ Non-goals for git-warp:
 
 ## What warp-ttd needs to support
 
-`warp-ttd` should extend its protocol and adapters so effect/delivery substrate
+`warp-ttd` should extend its protocol and adapters so effect/delivery bedrock
 facts are inspectable instead of implicit.
 
 Minimum expected capability:
@@ -238,14 +238,14 @@ Minimum expected capability:
 Non-goals for `warp-ttd`:
 
 - deciding whether an effect is lawful for XYPH
-- inventing XYPH domain meaning above substrate receipts
+- inventing XYPH domain meaning above bedrock receipts
 - hiding delivery suppression behind host-specific heuristics
 
 ## What XYPH needs to support later
 
-Once the substrate and debugger support exist, XYPH should:
+Once the bedrock and debugger support exist, XYPH should:
 
-1. Lower important outbound actions into substrate effect emission instead of
+1. Lower important outbound actions into bedrock effect emission instead of
    private local adapter folklore.
 2. Keep the current product meaning in XYPH:
    - why this effect exists
@@ -264,7 +264,7 @@ This should be documented in all three repos.
 
 XYPH should keep this note as the product/doctrine contract for the split:
 
-- git-warp owns effect and delivery substrate facts
+- git-warp owns effect and delivery bedrock facts
 - `warp-ttd` inspects them
 - XYPH interprets them
 
@@ -272,8 +272,8 @@ XYPH should keep this note as the product/doctrine contract for the split:
 
 git-warp should add a design/plan note for:
 
-- emitted-effect substrate receipts
-- delivery-observation substrate receipts
+- emitted-effect bedrock receipts
+- delivery-observation bedrock receipts
 - execution / delivery lens
 - rotating chunk diagnostics as a sink, not as product meaning
 
@@ -289,10 +289,10 @@ git-warp should add a design/plan note for:
 
 The expected implementation order should be:
 
-1. design the substrate slice in docs
+1. design the bedrock slice in docs
 2. implement it in git-warp
 3. expose it in `warp-ttd`
 4. adopt it in XYPH
 
-That order preserves the substrate boundary and keeps replay/debug truth
+That order preserves the bedrock boundary and keeps replay/debug truth
 consistent across the stack.

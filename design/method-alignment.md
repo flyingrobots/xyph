@@ -83,7 +83,7 @@ That discipline matters even if the storage model changes.
 METHOD's phrase "the filesystem is the database" does not become literal truth
 inside XYPH.
 
-For XYPH, the authoritative workflow substrate is the graph. Files and repo
+For XYPH, the authoritative workflow bedrock is the graph. Files and repo
 docs may still exist, but they are:
 
 - signposts

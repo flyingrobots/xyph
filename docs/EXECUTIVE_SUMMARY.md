@@ -15,7 +15,7 @@ Every task, requirement, decision, and test result lives in a single data struct
 
 Software teams coordinate through disconnected tools: issue trackers, PRs, CI dashboards, chat threads, docs. The *actual* state of a project — what's done, what's blocked, what's tested, what's at risk — is scattered across systems and reconstructed by humans through meetings and status updates.
 
-AI agents make this worse. When five agents and three humans are working concurrently, "what's the current state?" becomes unanswerable without a shared, deterministic substrate.
+AI agents make this worse. When five agents and three humans are working concurrently, "what's the current state?" becomes unanswerable without a shared, deterministic bedrock.
 
 ## How XYPH Solves It
 
@@ -64,7 +64,7 @@ Git tracks file history. XYPH tracks *project* history — decisions, requiremen
 Test results in XYPH aren't just pass/fail logs — they're **evidence nodes** linked to specific acceptance criteria. A failing test doesn't just turn a badge red; it traces back to which human intent is now unmet.
 
 **From AI agent frameworks:**
-Most frameworks give agents tools and hope for the best. XYPH gives agents a *shared deterministic substrate* where their work is auditable, their conflicts are automatically resolved, and their contributions are cryptographically attributed.
+Most frameworks give agents tools and hope for the best. XYPH gives agents a *shared deterministic bedrock* where their work is auditable, their conflicts are automatically resolved, and their contributions are cryptographically attributed.
 
 ## Current State
 

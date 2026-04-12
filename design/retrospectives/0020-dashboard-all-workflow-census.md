@@ -4,7 +4,7 @@
 
 - [`/Users/james/git/xyph/design/cycles/0020-dashboard-all-workflow-census.md`](../cycles/0020-dashboard-all-workflow-census.md)
 - [`/Users/james/git/xyph/design/cycles/0019-dashboard-all-semantics.md`](../cycles/0019-dashboard-all-semantics.md)
-- [`/Users/james/git/xyph/design/substrate-alignment.md`](../substrate-alignment.md)
+- [`/Users/james/git/xyph/design/bedrock-alignment.md`](../bedrock-alignment.md)
 
 ## What Landed
 

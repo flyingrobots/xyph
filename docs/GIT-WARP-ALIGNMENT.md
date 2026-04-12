@@ -5,7 +5,7 @@
 and JSON schemas against the actual behavior of git-warp v13.1.0.
 **Motivation:** Multiple canonical design documents described a centralized
 transaction model (locks, DB transactions, snapshot preconditions, rollback)
-that does not exist in git-warp's CRDT substrate.
+that does not exist in git-warp's CRDT bedrock.
 
 ---
 
@@ -36,7 +36,7 @@ five properties is essential for anyone writing XYPH design documents:
      then patchSha, then opIndex).
 
 XYPH has two conceptual layers:
-- **Layer 1 — git-warp substrate:** The CRDT engine. No locks, no transactions.
+- **Layer 1 — git-warp bedrock:** The CRDT engine. No locks, no transactions.
 - **Layer 2 — Planning compiler:** Application-layer logic that validates
   domain rules, checks approval gates, and emits patches. This layer has
   opinions about what mutations are valid, but it enforces them *before*
@@ -221,7 +221,7 @@ as a transaction rollback — they would be emitted as new compensating patches.
 invertibility. Rename from `rollbackOperations` to `inverseOperations` to
 avoid the "rollback" connotation.
 
-### 4.3 Should XYPH enforce write policies in the substrate?
+### 4.3 Should XYPH enforce write policies in the bedrock?
 
 Currently, git-warp has no access control — any writer with repo access can
 emit any patch. XYPH enforces policies (approval gates, sovereignty checks)
@@ -229,7 +229,7 @@ in the actuator's command handlers *before* calling `graph.patch()`.
 
 This means a rogue writer could bypass the actuator and emit raw patches
 that violate XYPH's domain rules. The policies are enforced at the
-application layer, not the substrate layer.
+application layer, not the bedrock layer.
 
 **Question:** Is this acceptable?
 

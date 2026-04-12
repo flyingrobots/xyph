@@ -3,8 +3,8 @@
 ## Governing Design Docs
 
 - [`/Users/james/git/xyph/design/cycles/0005-quest-detail-read-boundary.md`](../cycles/0005-quest-detail-read-boundary.md)
-- [`/Users/james/git/xyph/design/cycles/0004-substrate-alignment.md`](../cycles/0004-substrate-alignment.md)
-- [`/Users/james/git/xyph/design/substrate-alignment.md`](../substrate-alignment.md)
+- [`/Users/james/git/xyph/design/cycles/0004-bedrock-alignment.md`](../cycles/0004-bedrock-alignment.md)
+- [`/Users/james/git/xyph/design/bedrock-alignment.md`](../bedrock-alignment.md)
 
 ## What Landed
 
@@ -39,12 +39,12 @@
 - This slice was intentionally bounded around the biggest lie in the current
   path: `fetchEntityDetail(task)` calling `fetchSnapshot()`.
 - Narrower narrative loading likely needs either more helper work in XYPH or a
-  better substrate primitive in git-warp, and that would have expanded the
+  better bedrock primitive in git-warp, and that would have expanded the
   slice substantially.
 
 ## Resolution
 
 - Accept the current narrowing as a valid bounded slice.
 - Carry forward the remaining narrative-query breadth as follow-on debt under
-  the broader substrate-alignment program rather than pretending the boundary is
+  the broader bedrock-alignment program rather than pretending the boundary is
   fully solved.

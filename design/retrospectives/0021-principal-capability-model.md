@@ -5,7 +5,7 @@
 - [`/Users/james/git/xyph/design/cycles/0021-principal-capability-model.md`](../cycles/0021-principal-capability-model.md)
 - [`/Users/james/git/xyph/docs/canonical/AUTHORITY_MODEL.md`](../../docs/canonical/AUTHORITY_MODEL.md)
 - [`/Users/james/git/xyph/docs/canonical/ARCHITECTURE.md`](../../docs/canonical/ARCHITECTURE.md)
-- [`/Users/james/git/xyph/design/substrate-alignment.md`](../substrate-alignment.md)
+- [`/Users/james/git/xyph/design/bedrock-alignment.md`](../bedrock-alignment.md)
 
 ## What Landed
 
@@ -30,7 +30,7 @@
 - XYPH's active graph-read path is still centered on
   [`/Users/james/git/xyph/src/infrastructure/GraphContext.ts`](../../src/infrastructure/GraphContext.ts),
   which acts like an app-local graph engine.
-- The default app seam still exposes raw substrate shape through
+- The default app seam still exposes raw bedrock shape through
   [`/Users/james/git/xyph/src/ports/GraphPort.ts`](../../src/ports/GraphPort.ts).
 - `briefing`, `status`, and the dashboard remain too dependent on broad
   snapshot-shaped assembly.
@@ -43,7 +43,7 @@
   deleting the broader snapshot-shaped seam.
 - We started the authority cycle after a correct doctrine discussion, but
   before paying down the more urgent observer/worldline boundary debt.
-- XYPH kept enough substrate orchestration in application code that the graph
+- XYPH kept enough bedrock orchestration in application code that the graph
   debugging crisis surfaced first.
 
 ## Resolution

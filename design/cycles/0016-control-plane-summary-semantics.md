@@ -139,7 +139,7 @@ truth without paying for unrelated snapshot assembly.**
 This cycle must preserve:
 
 - The graph is the plan.
-- git-warp owns substrate facts; XYPH owns product meaning.
+- git-warp owns bedrock facts; XYPH owns product meaning.
 - derived-worldline summaries must remain parity-honest with the selected lane
 - summary remains a protocol-safe projection, not an ad hoc debug blob
 - doctor and entity detail remain the richer surfaces for audit and diagnosis

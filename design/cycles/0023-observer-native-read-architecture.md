@@ -28,16 +28,16 @@ The remaining bridge is now narrower and more obviously temporary than when the
 cycle started. What remains is explicit follow-on work, not hidden cycle
 failure: the landing shell still boots from a broad operational snapshot for
 cross-lane/meta state, and `WarpObservationAdapter` still lowers many reads
-through `ObservedGraphProjection` until git-warp exposes narrower substrate
+through `ObservedGraphProjection` until git-warp exposes narrower bedrock
 primitives.
 
 ## Graph Anchor
 
-- Work item: `task:git-warp-substrate-alignment`
+- Work item: `task:git-warp-bedrock-alignment`
 
-This cycle is the XYPH-side companion to that broader substrate-alignment
+This cycle is the XYPH-side companion to that broader bedrock-alignment
 spike. It is specifically about the XYPH read boundary, not about shipping the
-entire git-warp substrate program in one slice.
+entire git-warp bedrock program in one slice.
 
 ## Why This Cycle Exists
 
@@ -76,7 +76,7 @@ The real design target is:
 **Application Integrator**
 
 Needs a read boundary that matches git-warp's actual model so higher-layer
-surfaces stay thin and honest instead of rebuilding substrate behavior behind
+surfaces stay thin and honest instead of rebuilding bedrock behavior behind
 ports with misleading names.
 
 ### Secondary sponsor actors
@@ -104,7 +104,7 @@ stops rebuilding graph semantics behind a disguised compatibility adapter.**
 This cycle must preserve:
 
 - The graph is the plan.
-- git-warp owns substrate facts; XYPH owns product meaning.
+- git-warp owns bedrock facts; XYPH owns product meaning.
 - Human and agent surfaces share one reality.
 - Normal product reads must not default to a broad omnibus census when a
   targeted read would do.
@@ -122,7 +122,7 @@ In scope:
 
 - define the intended XYPH read-side contract family after `GraphContext`
 - define what "normal observed read" means for TUI and agent surfaces
-- define what belongs in a separate substrate inspection seam
+- define what belongs in a separate bedrock inspection seam
 - define how explicit worldline selection and observer selection enter normal
   read sessions
 - define how targeted projections replace the omnibus `ObservedGraphProjection`
@@ -154,12 +154,12 @@ The intended shape is:
 2. **Targeted projections**
    - dashboard, briefing, show/detail, and similar surfaces build narrow
      projections from that session
-   - these projections are product-shaped, not substrate-manager-shaped
+   - these projections are product-shaped, not bedrock-manager-shaped
 
-3. **Substrate inspection**
+3. **Bedrock inspection**
    - doctor, provenance, audit, and deeper control-plane inspection go through
      a separate seam that can legitimately ask bigger questions of the
-     substrate
+     bedrock
 
 4. **Future advanced agent path**
    - worldline forks, Strands, speculative lanes, and deeper comparison work
@@ -192,7 +192,7 @@ Its limits are now explicit:
 
 - many surfaces still collapse into `ObservedGraphProjection` after opening an
   explicit session
-- the fake graph facade is still a substrate-shape compatibility trick
+- the fake graph facade is still a bedrock-shape compatibility trick
 - the projection engine is still wider than the normal read path should be
 - control-plane and dashboard bridges still materialize through the broad
   projection layer even though the surface seam is better
@@ -239,7 +239,7 @@ Implemented in this cycle so far:
 
 - explicit `ObservationPort` / `ObservationSession` request contract with
   `source`, optional `observer`, and `purpose`
-- explicit `SubstrateInspectionPort` for doctor-style deeper reads
+- explicit `BedrockInspectionPort` for doctor-style deeper reads
 - CLI root-owned observation, operational-read, and inspection adapters
 - generic `show` reads now use a targeted entity-detail reader over the
   observation session instead of always going through omnibus projected detail
@@ -279,7 +279,7 @@ Still intentionally transitional:
   `ObservedGraphProjection`
 - dashboard and broader operational snapshots still depend on the omnibus
   projection bridge
-- deeper control-plane substrate work still mixes old and new patterns
+- deeper control-plane bedrock work still mixes old and new patterns
 - the landing shell still boots from a broad operational snapshot for
   cross-lane/meta state, even though the `Now`, `Review`, and `Suggestions`
   lanes now read through targeted per-lane observers; the shell-level landing
@@ -294,7 +294,7 @@ Still intentionally transitional:
 - Keep product-shaped projections close to the surfaces that use them.
 - Do not invent a second app-local graph abstraction to replace the old one
   under a different name.
-- Keep normal read and substrate inspection contracts separate even if they
+- Keep normal read and bedrock inspection contracts separate even if they
   share some infrastructure initially.
 - If git-warp API pressure emerges, write it down explicitly instead of hiding
   it behind more XYPH glue.
@@ -320,5 +320,5 @@ This cycle closes when:
 - at least one meaningful targeted read path no longer routes through the
   omnibus projection bridge
 - the acceptance tests capture the new boundary honestly
-- the retrospective names what still depends on future git-warp substrate work
+- the retrospective names what still depends on future git-warp bedrock work
   instead of pretending the architectural reset is complete

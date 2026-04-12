@@ -1,0 +1,11 @@
+sequenceDiagram
+    participant Client
+    participant Server as Graft Server
+    participant Policy as Policy Engine
+    participant Parser as Tree-Sitter
+    Client->>Server: call tool(safe_read, path)
+    Server->>Policy: evaluate(path, session)
+    Policy-->>Server: ALLOW (outline)
+    Server->>Parser: extract outline
+    Parser-->>Server: Outline + JumpTable
+    Server-->>Client: respond(JSON + Receipt)

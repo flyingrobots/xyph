@@ -13,8 +13,8 @@ protect the product doctrine while making the system more capable.
 - Provenance matters.
 - Human and agent surfaces share one reality.
 - Suggestions are advisory, not sovereign.
-- The substrate may be sophisticated; the operator experience cannot feel
-  like substrate maintenance.
+- The bedrock may be sophisticated; the operator experience cannot feel
+  like bedrock maintenance.
 
 The highest-level rule is simple:
 
@@ -129,7 +129,7 @@ XYPH is currently following the sovereign-ontology redesign documented in `docs/
 Use that plan, plus the canonical docs in `docs/canonical/`, as the current direction of travel. In particular:
 - XYPH is moving toward an observer-native, worldline-native control plane
 - observer profiles do **not** grant authority by existing
-- conflict and counterfactual substrate facts are being pushed down into git-warp instead of being re-invented in XYPH
+- conflict and counterfactual bedrock facts are being pushed down into git-warp instead of being re-invented in XYPH
 
 If older workflow guidance in this file conflicts with the current redesign, the plan doc and canonical docs win.
 
@@ -451,7 +451,7 @@ Tests should pin:
 - governance semantics
 - provenance visibility
 - machine-readable agent behavior
-- substrate/application boundary honesty
+- bedrock/application boundary honesty
 
 They should not overfit:
 
@@ -493,7 +493,7 @@ The pre-commit hook catches inline mermaid blocks locally. The pre-push hook run
 
 XYPH's canonical design documents (`docs/canonical/`) describe the planning compiler pipeline and domain rules. When writing or updating these docs, remember:
 
-**git-warp is a CRDT, not a database.** The substrate has no locks, no transactions, no centralized snapshots, and no rollback. All writes go through `graph.patch()`, which produces a single atomic Git commit. Multiple writers can emit patches concurrently without coordination — convergence is deterministic.
+**git-warp is a CRDT, not a database.** The bedrock has no locks, no transactions, no centralized snapshots, and no rollback. All writes go through `graph.patch()`, which produces a single atomic Git commit. Multiple writers can emit patches concurrently without coordination — convergence is deterministic.
 
 - Use "emit a patch" or "call `graph.patch()`", not "commit a transaction".
 - Use "compensating patch" (new forward-only correction via LWW), not "rollback".

@@ -59,7 +59,7 @@ The live backlog contains a mix of:
 - still-valid future work
 - tasks already realized in a different shape
 - obsolete UI ideas from before the landing/page redesign
-- substrate or compatibility work that is intentionally deferred
+- bedrock or compatibility work that is intentionally deferred
 
 ### Clear Rejects
 

@@ -21,7 +21,7 @@ This spec defines:
 
 ---
 
-## 2) Substrate: git-warp CRDT Model
+## 2) Bedrock: git-warp CRDT Model
 
 XYPH's graph is a git-warp WARP graph — a CRDT database stored inside Git.
 

@@ -2,7 +2,7 @@
 > **Moving from fragile scripts to immutable, graph-based agency.**
 
 ## Abstract
-Current multi-agent systems rely on ephemeral message buses and fragile "orchestrator" scripts. These systems lack memory, provenance, and resilience. If the orchestrator dies, the swarm dies. XYPH is a decentralized operating system for agents where the **Graph is the State**. By utilizing Conflict-Free Replicated Data Types (CRDTs) over a Git substrate, XYPH allows agents to coordinate asynchronously, resolve race conditions deterministically, and build a cryptographic resume of their work.
+Current multi-agent systems rely on ephemeral message buses and fragile "orchestrator" scripts. These systems lack memory, provenance, and resilience. If the orchestrator dies, the swarm dies. XYPH is a decentralized operating system for agents where the **Graph is the State**. By utilizing Conflict-Free Replicated Data Types (CRDTs) over a Git bedrock, XYPH allows agents to coordinate asynchronously, resolve race conditions deterministically, and build a cryptographic resume of their work.
 
 ## 1. The Problem: Ephemeral Agency
 Agents today are stateless. They wake up, perform a task, and vanish. Their history is lost in log files.

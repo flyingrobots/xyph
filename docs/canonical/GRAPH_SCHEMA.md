@@ -521,7 +521,7 @@ carries both:
 
 **Bodies:** stored via `attachContent()` on the node as a deterministic JSON
 copy of the returned `comparison-artifact` payload, including both the raw
-whole-graph substrate fact and the XYPH-scoped operational substrate fact.
+whole-graph bedrock fact and the XYPH-scoped operational bedrock fact.
 
 **Edges:**
 - optional `supersedes` → older `comparison-artifact:*` in the same governance lane
