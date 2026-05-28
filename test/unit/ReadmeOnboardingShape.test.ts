@@ -6,15 +6,11 @@ describe('README onboarding shape', () => {
   const readmePath = path.resolve(process.cwd(), 'README.md');
   const readme = fs.readFileSync(readmePath, 'utf8');
 
-  it('introduces XYPH progressively before the deeper walkthrough', () => {
+  it('introduces Xyph with a quick-start section before documentation', () => {
     const sectionOrder = [
-      '## What Is XYPH?',
-      '## Why Use XYPH?',
-      '## Core Concepts',
-      '## How XYPH Works',
-      '## Getting Started',
-      '## Five-Minute Quick Start',
-      '## Walkthrough: Building a Feature Together',
+      '## Why Xyph?',
+      '## Quick Start',
+      '## Documentation',
     ];
 
     let previousIndex = -1;
@@ -33,9 +29,8 @@ describe('README onboarding shape', () => {
   });
 
   it('contains a truthful first-use flow', () => {
-    expect(readme).toContain('npx tsx xyph-actuator.ts intent intent:demo');
-    expect(readme).toContain('--campaign none');
-    expect(readme).toContain('npx tsx xyph-actuator.ts show task:demo-001');
-    expect(readme).toContain('npx tsx xyph-actuator.ts history task:demo-001');
+    expect(readme).toContain('npx tsx xyph-actuator.ts intent intent:setup');
+    expect(readme).toContain('npx tsx xyph-actuator.ts quest task:docs-001');
+    expect(readme).toContain('--intent intent:setup');
   });
 });
