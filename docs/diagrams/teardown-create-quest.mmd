@@ -1,0 +1,31 @@
+sequenceDiagram
+    participant CLI as xyph-actuator
+    participant CMD as ingest.ts
+    participant SCHEMA as schema.ts
+    participant ENTITY as Quest entity
+    participant MKS as MutationKernelService
+    participant GA as WarpGraphAdapter
+    participant WARP as WarpGraph
+
+    CLI->>CMD: Commander dispatches 'quest'
+    CMD->>SCHEMA: validateNodeId('task:api-v2')
+    SCHEMA-->>CMD: valid: true, prefix: 'task'
+    CMD->>SCHEMA: validateNodeId('intent:launch-2026')
+    SCHEMA-->>CMD: valid: true
+    CMD->>ENTITY: new Quest({id, status:'PLANNED', hours:12, ...})
+    ENTITY->>ENTITY: Object.freeze(this)
+    ENTITY-->>CMD: Quest instance
+    CMD->>MKS: execute({ops:[...], rationale:'Ingest quest task:api-v2'})
+    MKS->>GA: getGraph()
+    GA-->>MKS: WarpGraph (cached promise)
+    MKS->>MKS: validate(plan) — simulate ops on topology snapshot
+    MKS->>WARP: createPatchSession()
+    MKS->>WARP: patch.addNode('task:api-v2')
+    MKS->>WARP: patch.setProperty('task:api-v2', 'title', '...')
+    MKS->>WARP: patch.setProperty('task:api-v2', 'status', 'PLANNED')
+    MKS->>WARP: patch.addEdge('task:api-v2', 'intent:launch-2026', 'authorized-by')
+    MKS->>WARP: patch.commit()
+    WARP->>WARP: materialize() [autoMaterialize]
+    WARP-->>MKS: SHA '3f9a...'
+    MKS-->>CMD: {patch: '3f9a...', executed: true}
+    CMD->>CLI: ctx.ok('quest task:api-v2 created')

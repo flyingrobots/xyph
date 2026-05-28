@@ -1,0 +1,9 @@
+flowchart TD
+    A["computeFrontier(tasks, edges)"] --> B["Build executableTaskIds<br />READY | IN_PROGRESS | BLOCKED | DONE"]
+    B --> C["Build depsOf map<br />task → tasks it depends on"]
+    C --> D["For each non-DONE executable task"]
+    D --> E["incomplete = deps.filter<br />d not in doneSet"]
+    E --> F{incomplete<br />length?}
+    F -->|0| G["frontier.push(task)"]
+    F -->|> 0| H["blockedBy.set(task, incomplete)"]
+    G & H --> I["Return {frontier sorted, blockedBy}"]

@@ -1,0 +1,25 @@
+flowchart TD
+    subgraph Done["Completed"]
+        M1["M1 Bedrock ✅"]
+        M2["M2 Heartbeat ✅"]
+        M3["M3 Triage ✅"]
+        M4["M4 Sovereignty ✅"]
+        M5["M5 Dashboard ✅"]
+        M6["M6 Submission ✅"]
+        M7["M7 Weaver ✅"]
+        M11early["M11 Ph1-2 + Ph4 ✅"]
+    end
+
+    subgraph Active["Active"]
+        M10["M10 CLI Tooling 🔄<br />25/64 tasks (39%)"]
+    end
+
+    subgraph Planned["Queued"]
+        M11late["M11 Ph3<br />computed status"]
+        M12["M12 Agent Protocol<br />6/19 started"]
+        M8["M8 Oracle<br />intent classification"]
+        M9["M9 Forge<br />build integration"]
+        ECOSYSTEM["Ecosystem<br />external integrations"]
+    end
+
+    Done --> Active --> Planned

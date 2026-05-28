@@ -1,0 +1,16 @@
+flowchart TD
+    CMD["Command Handler"] --> OK["ctx.ok('msg')"]
+    CMD --> FAIL["ctx.fail('msg')"]
+    CMD --> JOUT["ctx.jsonOut(envelope)"]
+
+    OK --> M1{jsonMode?}
+    M1 -->|no| S1["style.styled(success, msg)<br />→ stdout"]
+    M1 -->|yes| NOP1["no-op (silent)"]
+
+    FAIL --> M2{jsonMode?}
+    M2 -->|no| S2["style.styled(error, msg)<br />→ stderr + exit(1)"]
+    M2 -->|yes| J2["JSON.stringify(JsonErrorEnvelope)<br />→ stdout + exit(1)"]
+
+    JOUT --> M3{jsonMode?}
+    M3 -->|yes| J3["JSON.stringify(envelope)<br />→ stdout"]
+    M3 -->|no| NOP3["no-op (silent)"]

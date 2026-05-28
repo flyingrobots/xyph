@@ -1,0 +1,19 @@
+flowchart TD
+    A["resolveGraphRuntime()"] --> B["Look for<br />.xyph.json in cwd"]
+    B --> C{Found &<br />has graph.name?}
+    C -->|yes| D["localLayer"]
+    C -->|no| E["Look for<br />~/.xyph/config"]
+    E --> F{Found &<br />has graph.name?}
+    F -->|yes| G["userLayer"]
+    F -->|no| H["selected = null"]
+    D & G & H --> I["git rev-parse<br />--show-toplevel<br />→ repoPath"]
+    I --> J["resolveGraphName()"]
+    J --> K{Explicit name<br />in config?}
+    K -->|yes| L["Use it directly"]
+    K -->|no| M["git for-each-ref<br />refs/warp/*"]
+    M --> N{Count of<br />found graphs?}
+    N -->|0| O["Default: 'xyph'"]
+    N -->|1 named 'xyph'| O
+    N -->|1 other name| P["ERROR: ambiguous —<br />set name explicitly"]
+    N -->|2+| Q["ERROR: multiple graphs —<br />set name explicitly"]
+    L & O --> R["ResolvedGraphRuntime<br />{cwd, repoPath, graphName, source}"]

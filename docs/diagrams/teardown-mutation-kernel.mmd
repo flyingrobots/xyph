@@ -1,0 +1,17 @@
+flowchart TD
+    A["execute(plan, opts)"] --> B{"ops empty<br />& allowEmptyPlan?"}
+    B -->|yes| C["Return: executed=false no-op"]
+    B -->|no| D["validate(plan)"]
+    D --> E["loadVisibleTopology()<br />getNodes() + getEdges()"]
+    E --> F["Build liveNodes + liveEdges sets"]
+    F --> G["Simulate ALL ops<br />against working copies"]
+    G --> H{Any violation?}
+    H -->|yes| I["Return: valid=false<br />code + reasons[]"]
+    H -->|no| J["Return: valid=true<br />sideEffects[]"]
+    J --> K{dryRun?}
+    K -->|yes| L["Return: executed=false<br />validation only"]
+    K -->|no| M["graph.getGraph()"]
+    M --> N{workingSetId?}
+    N -->|yes| O["graph.patchStrand(id, cb)<br />speculative branch"]
+    N -->|no| P["createPatchSession()<br />+ patch.commit()"]
+    O & P --> Q["Return: patch=SHA<br />executed=true"]

@@ -1,0 +1,12 @@
+flowchart TD
+    A["resolveIdentity()"] --> B{"--as flag<br />present?"}
+    B -->|yes| B1["agentId = flag value<br />source: 'flag'<br />origin: '--as'"]
+    B -->|no| C{"XYPH_AGENT_ID<br />env var set?"}
+    C -->|yes| C1["source: 'env'"]
+    C -->|no| D{"git config --local<br />xyph.identity"}
+    D -->|found| D1["source: 'git-local'<br />origin: .git/config path"]
+    D -->|missing| E{"~/.xyph/config<br />exists?"}
+    E -->|found| E1["source: 'user-config'<br />origin: file path"]
+    E -->|missing| F{"git config --global<br />xyph.identity"}
+    F -->|found| F1["source: 'git-global'"]
+    F -->|missing| G["source: 'default'<br />agentId: 'agent.prime'"]

@@ -1,0 +1,16 @@
+flowchart TD
+    S["submission:0mm4fvum<br />envelope node"]
+    P1["patchset:bju-001-ps-1<br />initial proposal"]
+    P2["patchset:bju-001-ps-2<br />revised after feedback"]
+    R1["review:rv-001<br />request-changes — alice"]
+    R2["review:rv-002<br />approve — bob"]
+    D["decision:dec-001<br />kind: merge"]
+    T["task:BJU-001"]
+
+    S -->|submits| T
+    S -->|has-patchset| P1
+    S -->|has-patchset| P2
+    P2 -->|supersedes| P1
+    P1 -->|reviews| R1
+    P2 -->|reviews| R2
+    S -->|decides| D

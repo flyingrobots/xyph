@@ -1,0 +1,32 @@
+classDiagram
+    class JsonStreamEvent {
+        +event: start | progress
+        +command: string
+        +at: number
+        +message?: string
+        +data?: Record
+    }
+
+    class JsonEnvelope {
+        +success: true
+        +command: string
+        +data: Record
+        +diagnostics?: Diagnostic[]
+    }
+
+    class JsonErrorEnvelope {
+        +success: false
+        +error: string
+        +data?: Record
+        +diagnostics?: Diagnostic[]
+    }
+
+    class Diagnostic {
+        +code: string
+        +message: string
+        +path?: string
+        +context?: Record
+    }
+
+    JsonEnvelope --> Diagnostic
+    JsonErrorEnvelope --> Diagnostic

@@ -142,3 +142,5 @@ around it.
 23. [Observer-Native Read Architecture](./0023-observer-native-read-architecture.md)
 24. [Graph-Native Backlog And Case Modeling](./0024-graph-native-backlog-and-case-modeling.md)
 25. [Pre-Push Enforcement](./0025-pre-push-enforcement.md)
+26. [CLI Search Command](./0026-cli-search-command.md)
+27. [Session Entity](./0027-session-entity.md)

@@ -1,0 +1,93 @@
+erDiagram
+    INTENT {
+        string id PK "intent:*"
+        string title "min 5 chars"
+        string requestedBy "must be human.*"
+        number createdAt "unix ms timestamp"
+        string description "optional"
+    }
+
+    QUEST {
+        string id PK "task:*"
+        string title "min 5 chars"
+        string status "BACKLOG|PLANNED|READY|IN_PROGRESS|BLOCKED|DONE|GRAVEYARD"
+        number hours "non-negative"
+        string priority "P0-P5 default P3"
+        string taskKind "delivery|spike|maintenance|ops"
+        string assignedTo "optional agent/human"
+        number claimedAt "optional"
+        number completedAt "optional"
+    }
+
+    STORY {
+        string id PK "story:*"
+        string title
+        string persona "who"
+        string goal "what"
+        string benefit "why"
+        string createdBy
+        number createdAt
+    }
+
+    REQUIREMENT {
+        string id PK "req:*"
+        string description
+        string kind "functional|non-functional"
+        string priority "must|should|could|wont"
+    }
+
+    CRITERION {
+        string id PK "criterion:*"
+        string description "min 5 chars"
+        boolean verifiable
+    }
+
+    EVIDENCE {
+        string id PK "evidence:*"
+        string kind "test|benchmark|manual|screenshot"
+        string result "pass|fail|linked"
+        number producedAt
+        string producedBy
+        string artifactHash "optional"
+    }
+
+    SUBMISSION {
+        string id PK "submission:*"
+        string questId FK "task:*"
+        string submittedBy
+        number submittedAt
+    }
+
+    PATCHSET {
+        string id PK "patchset:*"
+        string workspaceRef
+        string description "min 10 chars"
+        string authoredBy
+        number authoredAt
+    }
+
+    REVIEW {
+        string id PK "review:*"
+        string patchsetId FK
+        string verdict "approve|request-changes|comment"
+        string reviewedBy
+        number reviewedAt
+    }
+
+    DECISION {
+        string id PK "decision:*"
+        string submissionId FK
+        string kind "merge|close"
+        string decidedBy
+        string rationale
+    }
+
+    INTENT ||--o{ QUEST : "authorized-by"
+    QUEST }o--|| STORY : "implements"
+    STORY ||--o{ REQUIREMENT : "decomposes-to"
+    REQUIREMENT ||--o{ CRITERION : "has-criterion"
+    EVIDENCE }o--|| CRITERION : "verifies"
+    QUEST ||--o{ SUBMISSION : "submits"
+    SUBMISSION ||--o{ PATCHSET : "has-patchset"
+    PATCHSET ||--o{ REVIEW : "reviews"
+    SUBMISSION ||--o{ DECISION : "decides"

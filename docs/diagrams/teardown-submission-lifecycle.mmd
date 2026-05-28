@@ -1,0 +1,11 @@
+stateDiagram-v2
+    [*] --> OPEN : submit()
+    OPEN --> CHANGES_REQUESTED : review(request-changes)
+    CHANGES_REQUESTED --> OPEN : revise() — new patchset supersedes old
+    OPEN --> APPROVED : review(approve) — threshold met
+    APPROVED --> MERGED : decide(merge)
+    OPEN --> CLOSED : decide(close)
+    CHANGES_REQUESTED --> CLOSED : decide(close)
+    APPROVED --> CLOSED : decide(close)
+    MERGED --> [*]
+    CLOSED --> [*]

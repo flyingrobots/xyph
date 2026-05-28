@@ -1,0 +1,16 @@
+erDiagram
+    NODE {
+        string id PK "prefix:identifier format"
+        string prefix "one of 46 PREFIXES"
+        string identifier "arbitrary slug"
+    }
+
+    EDGE {
+        string source FK "must be valid node id"
+        string target FK "must be valid node id"
+        string type "one of 33 EDGE_TYPES"
+        float confidence "optional 0.0-1.0"
+    }
+
+    NODE ||--o{ EDGE : "source of"
+    NODE ||--o{ EDGE : "target of"

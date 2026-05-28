@@ -1,0 +1,16 @@
+flowchart TD
+    A["Submission envelope"] --> B["Patchset[]<br />what I'm proposing"]
+    A --> C["Review[]<br />per-reviewer verdicts"]
+    A --> D["Decision[]<br />terminal events"]
+
+    B --> E["computeTipPatchset()<br />→ head via supersedes chain"]
+    C --> F["computeEffectiveVerdicts()<br />→ latest per reviewer<br />comments excluded"]
+    F --> G["filterIndependentVerdicts()<br />→ exclude submitter's own vote"]
+    D & G --> H["computeStatus()"]
+
+    H --> I{Priority order}
+    I -->|any merge decision| J["MERGED"]
+    I -->|any close decision| K["CLOSED"]
+    I -->|any request-changes| L["CHANGES_REQUESTED"]
+    I -->|approvals ≥ required| M["APPROVED"]
+    I -->|otherwise| N["OPEN"]

@@ -1,0 +1,12 @@
+flowchart TD
+    A["process.argv"] --> B{"argv.includes\n'--json'?"}
+    B -->|yes| C["jsonFlag = true"]
+    B -->|no| D["jsonFlag = false"]
+    A --> E["parseAsOverrideFromArgv()"]
+    E --> F["asOverride: string | undefined"]
+    A --> G["resolveGraphRuntime()"]
+    G --> H["runtime: {cwd, repoPath, graphName}"]
+    C & D & F & H --> I["createCliContext(...)"]
+    I --> J["CliContext<br />(DI root)"]
+    J --> K["register*Commands × 19"]
+    K --> L["program.parseAsync(argv)"]

@@ -1,0 +1,54 @@
+mindmap
+  root((XYPH))
+    Interfaces
+      Human TUI
+        Bijou TEA framework
+        Title screen / Roadmap
+        Quest detail pane
+        Lineage view
+      AI Agent JSONL
+        xyph-actuator --json
+        Structured envelopes
+        start / progress / success / error
+        MCP server planned
+    Domain Core
+      Entities
+        Intent sovereign root
+        Quest unit of work
+        Submission review envelope
+        Story / Req / Criterion / Evidence
+        Policy gates
+        AiSuggestion
+      Services
+        MutationKernelService
+        DepAnalysis frontier + critical path
+        AnalysisOrchestrator 5 layers
+        SubmissionReadService
+        AgentBriefingService
+    Architecture
+      Hexagonal ports + adapters
+      17 ports 17 adapters
+      Pure domain no infra imports
+      Composition root CliContext
+    WARP Bedrock
+      Git as CRDT database
+      refs/warp namespace
+      CBOR patches
+      Per-writer Lamport clocks
+      5 writers 982 total patches
+      877 nodes 1201 edges
+    Graph Schema
+      46 node prefixes
+      33 edge types
+      Runtime validation
+      prefix colon identifier format
+    Lifecycle
+      Ingest intent + quest
+      Intake promote shape ready
+      Submission review decide
+      Traceability story req criterion evidence
+      Analysis 5-layer AI test linking
+    Milestones
+      DONE M1-M7 plus M11 Ph1-2 Ph4
+      IN PROGRESS M10 CLI Tooling
+      PLANNED M8 Oracle M9 Forge M12 Agent

@@ -1,0 +1,16 @@
+flowchart TD
+    A["xyph analyze<br />--test-glob 'test/**/*.test.ts'"] --> B["TsCompilerTestParserAdapter<br />→ TestDescriptor[] via TS AST"]
+    B --> C["ObservationSession<br />→ GraphTarget[] criteria + reqs"]
+    C --> D["analyzeTestTargetPairs()<br />for each test × target pair"]
+
+    D --> L1["Layer 1: FileNameLayer<br />Regex token matching<br />exact=0.8 partial=0.4<br />cheap · sync"]
+    D --> L2["Layer 2: ImportDescribeLayer<br />import path analysis<br />cheap · sync"]
+    D --> L3["Layer 3: AstLayer<br />function call graph<br />medium · sync"]
+    D --> L4["Layer 4: SemanticLayer<br />describe/it block text<br />medium · sync"]
+    D --> L5["Layer 5: LlmLayer<br />Claude API batch call<br />expensive · async · optional"]
+
+    L1 & L2 & L3 & L4 & L5 --> SC["ScoreCombiner<br />Weighted average<br />Renormalizes for absent layers"]
+    SC --> THRESH{confidence<br />threshold}
+    THRESH -->|≥ minAutoConfidence| AUTO["Auto-link<br />→ verifies edge + evidence node"]
+    THRESH -->|≥ suggestionFloor| SUGGEST["Suggestion node<br />→ awaits human review"]
+    THRESH -->|below floor| DISCARD["Discard"]

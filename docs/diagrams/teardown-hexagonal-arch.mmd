@@ -1,0 +1,82 @@
+classDiagram
+    class GraphPort {
+        <<interface>>
+        +getGraph() Promise~WarpGraph~
+        +openIsolatedGraph() Promise~WarpGraph~
+        +reset() void
+    }
+
+    class IntakePort {
+        <<interface>>
+        +promote(questId, intentId, campaignId) Promise~string~
+        +shape(questId, opts) Promise~string~
+        +ready(questId) Promise~string~
+        +reject(questId, rationale) Promise~string~
+        +reopen(questId) Promise~string~
+    }
+
+    class ObservationPort {
+        <<interface>>
+        +openSession(request) Promise~ObservationSession~
+    }
+
+    class SubmissionPort {
+        <<interface>>
+        +submit(args) Promise~PatchResult~
+        +revise(args) Promise~PatchResult~
+        +review(args) Promise~PatchResult~
+        +decide(args) Promise~PatchResult~
+    }
+
+    class LlmPort {
+        <<interface>>
+        +analyzeTestCoverage(request) Promise~LlmMatch[]~
+    }
+
+    class ConfigPort {
+        <<interface>>
+        +get~K~(key) Promise~XyphConfig[K]~
+        +getAll() Promise~XyphConfig~
+        +set~K~(key, value, target) Promise~void~
+    }
+
+    class WarpGraphAdapter {
+        +getGraph() Promise~WarpGraph~
+        +openIsolatedGraph() Promise~WarpGraph~
+        +reset() void
+    }
+
+    class WarpIntakeAdapter {
+        +promote(...) Promise~string~
+        +ready(...) Promise~string~
+    }
+
+    class WarpObservationAdapter {
+        +openSession(request) Promise~ObservationSession~
+    }
+
+    class WarpSubmissionAdapter {
+        +submit(...) Promise~PatchResult~
+        +decide(...) Promise~PatchResult~
+    }
+
+    class AnthropicLlmAdapter {
+        +analyzeTestCoverage(request) Promise~LlmMatch[]~
+    }
+
+    class NoOpLlmAdapter {
+        +analyzeTestCoverage(request) Promise~LlmMatch[]~
+    }
+
+    class ConfigAdapter {
+        +get~K~(key) Promise~XyphConfig[K]~
+        +set~K~(key, value, target) Promise~void~
+    }
+
+    GraphPort <|.. WarpGraphAdapter
+    IntakePort <|.. WarpIntakeAdapter
+    ObservationPort <|.. WarpObservationAdapter
+    SubmissionPort <|.. WarpSubmissionAdapter
+    LlmPort <|.. AnthropicLlmAdapter
+    LlmPort <|.. NoOpLlmAdapter
+    ConfigPort <|.. ConfigAdapter

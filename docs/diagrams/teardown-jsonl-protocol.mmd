@@ -1,0 +1,8 @@
+sequenceDiagram
+    participant AGENT as AI Agent (tool call)
+    participant XYPH as xyph-actuator --json
+
+    XYPH->>AGENT: {"event":"start","command":"quest","at":1716800000}
+    Note over XYPH: Graph I/O, validation
+    XYPH->>AGENT: {"event":"progress","command":"quest","at":1716800010,"message":"Validating plan"}
+    XYPH->>AGENT: {"success":true,"command":"quest","data":{"id":"task:api-v2","patch":"3f9a..."}}

@@ -1,0 +1,57 @@
+flowchart TD
+    subgraph Driving["Driving Adapters (Ingress)"]
+        CLI["xyph-actuator.ts\nCLI binary — 19 command groups"]
+        TUI["xyph-dashboard.ts\nBijou TUI — TEA architecture"]
+        AGENT["AI Agent\nJSONL tool calls via --json"]
+    end
+
+    subgraph CTXLayer["CLI Layer"]
+        CTX["CliContext\nComposition Root / DI Container"]
+        CMDS["Command Modules\ningest · sovereignty · submission\ntraceability · agent · analyze\nsearch · wizard · ..."]
+    end
+
+    subgraph Domain["Domain Core (pure TypeScript)"]
+        ENTS["Entities\nIntent · Quest · Submission\nStory · Req · Criterion · Evidence\nPolicy · AiSuggestion"]
+        SVCS["Domain Services\nMutationKernelService\nDepAnalysis · AnalysisOrchestrator\nSubmissionReadService\nAgentBriefingService · ..."]
+    end
+
+    subgraph Ports["Ports (interfaces only)"]
+        GP["GraphPort"]
+        IP["IntakePort"]
+        OP["ObservationPort"]
+        SP["SubmissionPort"]
+        LP["LlmPort"]
+        CP["ConfigPort"]
+    end
+
+    subgraph Infra["Infrastructure Adapters (17 total)"]
+        WGA["WarpGraphAdapter\nsingleton promise cache\nautoMaterialize · checkpoint/50"]
+        WOA["WarpObservationAdapter\nworldline sessions"]
+        WSA["WarpSubmissionAdapter\nevent sourced reads"]
+        ALA["AnthropicLlmAdapter\nClaude API · dynamic import"]
+        NOOP["NoOpLlmAdapter\ntest double"]
+        CA["ConfigAdapter\nENV → Local → Graph → Default"]
+    end
+
+    subgraph WARP["WARP Bedrock"]
+        WG["WarpCore git-warp\nCRDT · OR-Set · LWW\nautoMaterialize"]
+        GIT["Git Object Store\nrefs/warp/xyph/writers/*\nrefs/warp/xyph/checkpoints/*\nCBOR patches · empty-tree commits"]
+    end
+
+    CLI --> CTX
+    TUI --> CTX
+    AGENT -->|"JSONL tool calls"| CLI
+    CTX --> CMDS
+    CMDS --> SVCS
+    SVCS --> ENTS
+    SVCS --> GP & IP & OP & SP & LP & CP
+    WGA --> GP
+    WOA --> OP
+    WSA --> SP
+    ALA --> LP
+    NOOP --> LP
+    CA --> CP
+    WGA --> WG
+    WOA --> WGA
+    WSA --> WGA
+    WG --> GIT

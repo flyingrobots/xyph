@@ -1,0 +1,49 @@
+classDiagram
+    class CliContext {
+        +agentId: string
+        +cwd: string
+        +graphName: string
+        +identity: ResolvedIdentity
+        +json: boolean
+        +graphPort: WarpGraphAdapter
+        +observation: ObservationPort
+        +operationalRead: OperationalReadPort
+        +inspection: SubstrateInspectionPort
+        +logger: DiagnosticLogPort
+        +style: StylePort
+        +ok(msg) void
+        +warn(msg) void
+        +fail(msg) never
+        +failWithData(msg, data, diagnostics) never
+        +jsonStart(command, data) void
+        +jsonProgress(command, message, data) void
+        +jsonOut(envelope) void
+    }
+
+    class WarpGraphAdapter {
+        -graphPromise: Promise~WarpGraph~ | null
+        +getGraph() Promise~WarpGraph~
+        +openIsolatedGraph() Promise~WarpGraph~
+        +reset() void
+    }
+
+    class WarpObservationAdapter {
+        +openSession(request) Promise~ObservationSession~
+    }
+
+    class WarpOperationalReadAdapter {
+        +getBriefing(perspective) Promise~Briefing~
+        +getNext(criteria) Promise~ActionableItem[]~
+    }
+
+    class WarpSubstrateInspectionAdapter {
+        +inspectGraph() Promise~InspectionReport~
+    }
+
+    CliContext --> WarpGraphAdapter : graphPort
+    CliContext --> WarpObservationAdapter : observation
+    CliContext --> WarpOperationalReadAdapter : operationalRead
+    CliContext --> WarpSubstrateInspectionAdapter : inspection
+    WarpObservationAdapter --> WarpGraphAdapter : shared singleton
+    WarpOperationalReadAdapter --> WarpGraphAdapter : shared singleton
+    WarpSubstrateInspectionAdapter --> WarpGraphAdapter : shared singleton
