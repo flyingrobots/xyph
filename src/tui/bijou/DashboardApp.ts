@@ -1,4 +1,4 @@
-import type { App, Cmd, KeyMsg, MouseMsg, ResizeMsg } from '@flyingrobots/bijou-tui';
+import type { App, Cmd, KeyMsg, MouseMsg, ResizeMsg, ViewOutput } from '@flyingrobots/bijou-tui';
 import {
   animate,
   commandPalette,
@@ -29,7 +29,7 @@ import {
   type NavigableTableState,
 } from '@flyingrobots/bijou-tui';
 import { EASINGS } from '@flyingrobots/bijou-tui';
-import { type TokenValue } from '@flyingrobots/bijou';
+import { type TokenValue, parseAnsiToSurface } from '@flyingrobots/bijou';
 import type { StylePort } from '../../ports/StylePort.js';
 import type {
   AiSuggestionNode,
@@ -3520,11 +3520,11 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
       return [model, []];
     },
 
-    view(model: DashboardModel): string {
+    view(model: DashboardModel): ViewOutput {
       const { style } = deps;
 
       if (model.showLanding) {
-        return landingView(model, style);
+        return parseAnsiToSurface(landingView(model, style), model.cols, model.rows);
       }
 
       const controls = renderControlsLine(model);
@@ -3740,7 +3740,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         output = composite(output, [overlay]);
       }
 
-      return output;
+      return parseAnsiToSurface(output, model.cols, model.rows);
     },
   };
 }

@@ -7,19 +7,25 @@ For deep-track doctrine, worldline internals, and repository-wide engineering st
 ## Choose Your Lane
 
 ### 1. Repository Setup & First Intent
+
 Bootstrap your coordination bedrock and record the first declaration of why work should exist.
+
 - **Run**: `npm install && npx tsx xyph-actuator.ts login human.ada`
 - **Read**: [README Quick Start](./README.md#quick-start)
 
 ### 2. Fast Ingress (Human & Agent)
+
 Coordinate through the most efficient path for your current context.
+
 - **Human (TUI)**: Open the interactive cockpit via `npm run tui`.
 - **Human (CLI)**: Use `xyph-actuator.ts` for direct graph mutations.
 - **Agent (JSONL)**: Use the versioned control plane for speculative work.
 - **Agent (MCP)**: Join the graph as a native participant (Planned).
 
 ### 3. The Digital Guild Lifecycle
+
 Return to your archive through high-fidelity browse or context-aware recall.
+
 - **Intent**: Declare why work should exist.
 - **Quest**: Claim and execute a unit of work.
 - **Submission**: Submit work for review and revision.
@@ -35,11 +41,26 @@ Xyph is a tiered planning engine designed to move coordination from static lists
 
 ## Orientation Checklist
 
-- [ ] **I am setting up a new project**: Start with `README.md` Quick Start.
-- [ ] **I want to verify my identity**: Use `npx tsx xyph-actuator.ts whoami`.
-- [ ] **I need to audit my roadmap**: Use `npx tsx xyph-actuator.ts audit-sovereignty`.
-- [ ] **I am debugging the graph**: Start with `ADVANCED_GUIDE.md`.
-- [ ] **I am contributing to Xyph**: Read `METHOD.md` and `docs/BEARING.md`.
+```mermaid
+graph TD
+    %% Entry Point
+    Start{What is your goal?}
+
+    %% Branches
+    Start -->|Set up new project| NewProject["Start with README.md Quick Start"]
+    Start -->|Verify identity| Identity["Run: `npx tsx xyph-actuator.ts whoami`"]
+    Start -->|Audit roadmap| Audit["Run: npx tsx xyph-actuator.ts audit-sovereignty"]
+    Start -->|Debug the graph| Debug["Start with ADVANCED_GUIDE.md"]
+    Start -->|Contribute to Xyph| Contribute["Read METHOD.md & docs/BEARING.md"]
+
+    %% Styling
+    style Start fill:#f9f,stroke:#333,stroke-width:2px
+    style NewProject fill:#bbf,stroke:#333
+    style Identity fill:#dfd,stroke:#333
+    style Audit fill:#dfd,stroke:#333
+    style Debug fill:#fdd,stroke:#333
+    style Contribute fill:#fff4dd,stroke:#333
+```
 
 ## Rule of Thumb
 
@@ -50,4 +71,5 @@ If you need to know "what's true right now," use [docs/BEARING.md](./docs/BEARIN
 If you are just starting, use the [README.md](./README.md) and the orientation tracks above.
 
 ---
-**The goal is to move coordination from a collection of widgets to a professional application bedrock for high-output collaboration.**
+
+**The goal is to move coordination from a collection of widgets to the application's foundation, designed for high-output collaboration.**
