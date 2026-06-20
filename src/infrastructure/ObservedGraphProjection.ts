@@ -1476,7 +1476,7 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
       }
     }
     for (const n of suggestionNodes) {
-      if (n.props['type'] === 'ai_suggestion') {
+      if (n.props['type'] === 'ai_suggestion' || n.props['type'] === 'ai-suggestion') {
         const kind = n.props['suggestion_kind'];
         const title = n.props['title'];
         const summary = n.props['summary'];

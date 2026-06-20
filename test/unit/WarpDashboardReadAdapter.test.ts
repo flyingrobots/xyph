@@ -54,7 +54,7 @@ describe('WarpDashboardReadAdapter', () => {
 
     expect(graph.worldline).toHaveBeenCalledWith({ source: { kind: 'live' } });
     expect(worldline.observer).toHaveBeenCalledWith('dashboard.view.landing', expect.objectContaining({
-      match: expect.arrayContaining(['task:*', 'submission:*', 'ai-suggestion:*']),
+      match: expect.arrayContaining(['task:*', 'submission:*', 'suggestion:*']),
     }));
     expect(fetchSnapshot).toHaveBeenCalledWith(undefined, { profile: 'operational' });
     expect(snapshot.quests).toHaveLength(0);

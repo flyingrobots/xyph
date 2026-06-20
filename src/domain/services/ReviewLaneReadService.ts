@@ -6,10 +6,13 @@ export async function readReviewLaneData(
   session: ObservationSession,
 ): Promise<DashboardReviewLaneData> {
   const model = await readSubmissionModel(session);
-  const questIds = new Set(model.submissions.map((submission) => submission.questId));
+  const activeSubmissions = model.submissions.filter(
+    (submission) => submission.status !== 'MERGED' && submission.status !== 'CLOSED'
+  );
+  const questIds = new Set(activeSubmissions.map((submission) => submission.questId));
   const quests = Array.from(model.questsById.values()).filter((quest) => questIds.has(quest.id));
   return {
-    submissions: model.submissions,
+    submissions: activeSubmissions,
     quests,
   };
 }

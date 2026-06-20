@@ -40,7 +40,7 @@ export async function readAiSuggestions(
 
   const aiSuggestions: AiSuggestionNode[] = [];
   for (const node of suggestionNodes) {
-    if (node.props['type'] !== 'ai_suggestion') continue;
+    if (node.props['type'] !== 'ai_suggestion' && node.props['type'] !== 'ai-suggestion') continue;
 
     const kind = node.props['suggestion_kind'];
     const title = node.props['title'];

@@ -38,7 +38,6 @@ const DASHBOARD_VIEW_OBSERVERS: Record<DashboardObservationView, { name: string;
         'evidence:*',
         'policy:*',
         'suggestion:*',
-        'ai-suggestion:*',
         'comparison-artifact:*',
         'collapse-proposal:*',
         'attestation:*',
@@ -91,7 +90,7 @@ const DASHBOARD_VIEW_OBSERVERS: Record<DashboardObservationView, { name: string;
     name: 'dashboard.view.suggestion',
     lens: {
       match: [
-        'ai-suggestion:*',
+        'suggestion:*',
         'task:*',
         'case:*',
         'comment:*',
@@ -110,7 +109,7 @@ const DASHBOARD_VIEW_OBSERVERS: Record<DashboardObservationView, { name: string;
         'spec:*',
         'adr:*',
         'task:*',
-        'ai-suggestion:*',
+        'suggestion:*',
       ],
     },
   },
@@ -133,7 +132,6 @@ const DASHBOARD_VIEW_OBSERVERS: Record<DashboardObservationView, { name: string;
         'evidence:*',
         'policy:*',
         'suggestion:*',
-        'ai-suggestion:*',
         'comparison-artifact:*',
         'collapse-proposal:*',
         'attestation:*',
