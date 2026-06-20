@@ -1,5 +1,4 @@
-import { Buffer } from 'node:buffer';
-import type { AggregateResult, QueryResultV1 } from '@git-stunts/git-warp';
+import { type QueryBuilder } from '@git-stunts/git-warp';
 import type { EntityDetail, GraphSnapshot } from '../../domain/models/dashboard.js';
 import type { GraphPort } from '../../ports/GraphPort.js';
 import type {
@@ -13,9 +12,17 @@ import type {
 import { createObservedGraphProjectionFromGraph } from '../ObservedGraphProjection.js';
 import { adaptObservedHandleToObservedProjectionGraph } from './WorldlineObservedProjectionAdapter.js';
 
-function extractNodes(result: QueryResultV1 | AggregateResult): ObservationNodeRecord[] {
+type QueryResult = Extract<Awaited<ReturnType<QueryBuilder['run']>>, { nodes: unknown }>;
+type AggregateResult = Extract<Awaited<ReturnType<QueryBuilder['run']>>, { count?: number }>;
+
+interface QueryNodeLike {
+  id?: string;
+  props?: Record<string, unknown>;
+}
+
+function extractNodes(result: QueryResult | AggregateResult): ObservationNodeRecord[] {
   if (!('nodes' in result)) return [];
-  return result.nodes.filter(
+  return (result.nodes as QueryNodeLike[]).filter(
     (node): node is ObservationNodeRecord => typeof node.id === 'string' && node.props !== undefined,
   );
 }

@@ -14,11 +14,13 @@ export interface LoggedAdapterOperationOptions<T> {
   successContext?: (result: T) => Record<string, unknown>;
 }
 
+type LogContext = NonNullable<Parameters<LoggerPort['debug']>[1]>;
+
 function emit(
   logger: LoggerPort,
   level: DiagnosticLogLevel,
   message: string,
-  context?: Record<string, unknown>,
+  context?: LogContext,
 ): void {
   switch (level) {
     case 'debug':
@@ -42,7 +44,7 @@ export function graphAdapterLogger(
 ): LoggerPort {
   const logger = graphPort.getLogger?.();
   return logger
-    ? logger.child({ component })
+    ? logger.child({ component } as unknown as LogContext)
     : createNoopDiagnosticLogger({ component });
 }
 
@@ -53,7 +55,7 @@ export async function withLoggedAdapterOperation<T>(
 ): Promise<T> {
   const startedAt = Date.now();
   const level = options.level ?? 'debug';
-  emit(logger, level, options.start, options.context);
+  emit(logger, level, options.start, options.context as unknown as LogContext);
 
   try {
     const result = await operation();
@@ -61,7 +63,7 @@ export async function withLoggedAdapterOperation<T>(
       ...(options.context ?? {}),
       durationMs: Date.now() - startedAt,
       ...(options.successContext ? options.successContext(result) : {}),
-    });
+    } as unknown as LogContext);
     return result;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -69,7 +71,7 @@ export async function withLoggedAdapterOperation<T>(
       ...(options.context ?? {}),
       durationMs: Date.now() - startedAt,
       message,
-    });
+    } as unknown as LogContext);
     throw error;
   }
 }

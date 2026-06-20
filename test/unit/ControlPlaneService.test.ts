@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createHash } from 'node:crypto';
+import { SnapshotWarpState } from '@git-stunts/git-warp';
 import { CONTROL_PLANE_VERSION } from '../../src/domain/models/controlPlane.js';
 
 const XYPH_OPERATIONAL_COMPARISON_SCOPE_VERSION = 'xyph-operational-visible-state/v1' as const;
@@ -112,10 +113,11 @@ function buildCollapseArtifactDigest(
 
 function makeOrSet(elements: string[]) {
   return {
-    entries: new Map(
-      elements.map((element, index) => [element, new Set([`dot:${index}`])]),
-    ),
-    tombstones: new Set<string>(),
+    entries: () => elements.map((element, index) => ({
+      element,
+      dots: [`dot:${index}`],
+    })),
+    tombstones: () => [],
   };
 }
 
@@ -123,13 +125,15 @@ function makeWorkingSetState(
   nodes: string[],
   observedFrontier: [string, number][] = [['agent.prime', 12]],
 ) {
-  return {
+  const state = Object.create(SnapshotWarpState.prototype);
+  Object.assign(state, {
     nodeAlive: makeOrSet(nodes),
     edgeAlive: makeOrSet([]),
-    prop: new Map<string, unknown>(),
+    prop: new Map(),
     observedFrontier: new Map(observedFrontier),
-    edgeBirthEvent: new Map<string, unknown>(),
-  };
+    edgeBirthEvent: new Map(),
+  });
+  return state;
 }
 
 function makeWorkingSetDescriptor(

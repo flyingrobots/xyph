@@ -1,12 +1,20 @@
 import { createHash } from 'node:crypto';
-import type { VisibleStateScopeV1 } from '@git-stunts/git-warp';
+
+export interface VisibleStateScopePrefixFilter {
+  include?: string[];
+  exclude?: string[];
+}
+
+export interface VisibleStateScope {
+  nodeIdPrefixes?: VisibleStateScopePrefixFilter;
+}
 
 export type ObservationSelector =
   | { kind: 'tip' }
   | { kind: 'tick'; tick: number };
 
 export const XYPH_OPERATIONAL_COMPARISON_SCOPE_VERSION = 'xyph-operational-visible-state/v1' as const;
-export const XYPH_OPERATIONAL_COMPARISON_SCOPE: VisibleStateScopeV1 = {
+export const XYPH_OPERATIONAL_COMPARISON_SCOPE: VisibleStateScope = {
   nodeIdPrefixes: {
     exclude: [
       'attestation-record:',

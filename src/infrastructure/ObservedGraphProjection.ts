@@ -11,8 +11,10 @@
  *  #4  QueryResultV1.nodes[i].id and .props are optional even when select(['id','props']) was called
  */
 
-import type { WarpCore as WarpGraph } from '@git-stunts/git-warp';
-import type { QueryResultV1, AggregateResult, LoggerPort } from '@git-stunts/git-warp';
+import type { WarpCore as WarpGraph, QueryBuilder, LoggerPort, SnapshotVersionVector } from '@git-stunts/git-warp';
+
+type QueryResult = Extract<Awaited<ReturnType<QueryBuilder['run']>>, { nodes: unknown }>;
+type AggregateResult = Extract<Awaited<ReturnType<QueryBuilder['run']>>, { count?: number }>;
 import {
   normalizeQuestPriority,
   VALID_STATUSES as VALID_QUEST_STATUSES,
@@ -155,7 +157,7 @@ export interface ObservedGraphProjection {
 export type SnapshotProfile = 'full' | 'operational' | 'analysis' | 'audit';
 
 export interface ObservedProjectionState {
-  readonly observedFrontier: ReadonlyMap<string, number>;
+  readonly observedFrontier: SnapshotVersionVector | ReadonlyMap<string, number>;
 }
 
 export interface ObservedProjectionGraph {
@@ -223,9 +225,14 @@ function isNarrativeDocumentIdForType(id: string, type: NarrativeDocumentType): 
   return id.startsWith(`${type}:`);
 }
 
-function extractNodes(result: QueryResultV1 | AggregateResult): QNode[] {
+interface QueryNodeLike {
+  id?: string;
+  props?: Record<string, unknown>;
+}
+
+function extractNodes(result: QueryResult | AggregateResult): QNode[] {
   if (!('nodes' in result)) return [];
-  return result.nodes.filter(
+  return (result.nodes as QueryNodeLike[]).filter(
     (n): n is QNode => typeof n.id === 'string' && n.props !== undefined,
   );
 }
@@ -371,6 +378,28 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
     };
   }
 
+  private async ensureReadingBasis(graph: ObservedProjectionGraph): Promise<void> {
+    try {
+      await graph.getStateSnapshot();
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        const code = (err as { code?: string }).code;
+        if (
+          err.message.includes('basis is stale') ||
+          err.message.includes('basis is available') ||
+          code === 'E_NO_STATE' ||
+          code === 'E_STALE_STATE'
+        ) {
+          if ('materialize' in graph && typeof (graph as { materialize?: unknown }).materialize === 'function') {
+            await (graph as { materialize: () => Promise<unknown> }).materialize();
+          }
+          return;
+        }
+      }
+      throw err;
+    }
+  }
+
   async fetchSnapshot(
     onProgress?: (msg: string) => void,
     options: FetchSnapshotOptions = {},
@@ -412,6 +441,8 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
       await graph.syncCoverage();
       await yieldEventLoop();
     }
+
+    await this.ensureReadingBasis(graph);
 
     // Cache check: compare frontier key to detect both in-process writes
     // (via graph.patch()) and external writes (discovered by syncCoverage).
@@ -2075,6 +2106,8 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
       }
       await graph.syncCoverage();
     }
+
+    await this.ensureReadingBasis(graph);
 
     if (!await graph.hasNode(id)) {
       this.readOptions.logger?.warn('graph entity detail missing node', {

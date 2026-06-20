@@ -1,5 +1,33 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { SnapshotWarpState } from '@git-stunts/git-warp';
 import { MutationKernelService } from '../../src/domain/services/MutationKernelService.js';
+
+function makeOrSet(elements: string[]) {
+  return {
+    elements: () => elements,
+    contains: (el: string) => elements.includes(el),
+    entries: () => elements.map((element, index) => ({
+      element,
+      dots: [`dot:${index}`],
+    })),
+    tombstones: () => [],
+  };
+}
+
+function makeWorkingSetState(
+  nodes: string[],
+  observedFrontier: [string, number][] = [['agent.prime', 12], ['wl_review-auth', 0]],
+) {
+  const state = Object.create(SnapshotWarpState.prototype);
+  Object.assign(state, {
+    nodeAlive: makeOrSet(nodes),
+    edgeAlive: makeOrSet([]),
+    prop: new Map(),
+    observedFrontier: new Map(observedFrontier),
+    edgeBirthEvent: new Map(),
+  });
+  return state;
+}
 
 const mocks = vi.hoisted(() => ({
   createPatchSession: vi.fn(),
@@ -29,38 +57,8 @@ function makeGraph() {
   return {
     getNodes: vi.fn(async () => ['task:ONE', 'task:TWO']),
     getEdges: vi.fn(async () => [{ from: 'task:ONE', to: 'task:TWO', label: 'depends-on', props: {} }]),
-    materializeWorkingSet: vi.fn(async () => ({
-      nodeAlive: {
-        entries: new Map([
-          ['task:ONE', new Set(['dot:1'])],
-          ['task:TWO', new Set(['dot:2'])],
-        ]),
-        tombstones: new Set<string>(),
-      },
-      edgeAlive: {
-        entries: new Map(),
-        tombstones: new Set<string>(),
-      },
-      prop: new Map(),
-      observedFrontier: new Map([['agent.prime', 12], ['wl_review-auth', 0]]),
-      edgeBirthEvent: new Map(),
-    })),
-    materializeStrand: vi.fn(async () => ({
-      nodeAlive: {
-        entries: new Map([
-          ['task:ONE', new Set(['dot:1'])],
-          ['task:TWO', new Set(['dot:2'])],
-        ]),
-        tombstones: new Set<string>(),
-      },
-      edgeAlive: {
-        entries: new Map(),
-        tombstones: new Set<string>(),
-      },
-      prop: new Map(),
-      observedFrontier: new Map([['agent.prime', 12], ['wl_review-auth', 0]]),
-      edgeBirthEvent: new Map(),
-    })),
+    materializeWorkingSet: vi.fn(async () => makeWorkingSetState(['task:ONE', 'task:TWO'])),
+    materializeStrand: vi.fn(async () => makeWorkingSetState(['task:ONE', 'task:TWO'])),
     patchWorkingSet: vi.fn(async () => 'patch:working-set'),
     patchStrand: vi.fn(async () => 'patch:working-set'),
   };

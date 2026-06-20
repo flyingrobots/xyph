@@ -72,7 +72,7 @@ export class WarpGraphAdapter implements GraphPort {
       graphName: this.graphName,
       writerId: this.writerId,
     });
-    const plumbing = Plumbing.createDefault({ cwd: this.cwd });
+    const plumbing = await Plumbing.createDefault({ cwd: this.cwd });
     const persistence = new GitGraphAdapter({ plumbing });
     const graph = await WarpGraph.open({
       persistence,
@@ -82,6 +82,7 @@ export class WarpGraphAdapter implements GraphPort {
       checkpointPolicy: { every: 50 },
       logger: this.logger,
     });
+    await graph.materialize();
     this.logger?.info('warp graph opened', {
       graphName: this.graphName,
       writerId: this.writerId,

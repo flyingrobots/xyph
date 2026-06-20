@@ -469,8 +469,9 @@ describe('ControlPlaneService worldline parity', () => {
         worldlineId: 'worldline:braid-target',
       },
     });
+    if (!comparison.ok) console.error("COMPARISON ERROR DETAIL:", JSON.stringify(comparison.error, null, 2));
     expect(comparison.ok).toBe(true);
-    if (!comparison.ok) throw new Error(comparison.error.message);
+    if (!comparison.ok) throw new Error((comparison as any).error.message);
 
     const collapse = await service.execute({
       v: CONTROL_PLANE_VERSION,

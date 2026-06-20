@@ -6,7 +6,7 @@ const style = createPlainStylePort();
 
 /** Strip ANSI SGR escape codes so tests can assert on plain text. */
 export function strip(s: string | Surface): string {
-  const str = typeof s === 'string' ? s : surfaceToString(s, style);
+  const str = typeof s === 'string' ? s : surfaceToString(s, style as any);
   return str.replace(ANSI_RE, '');
 }
 

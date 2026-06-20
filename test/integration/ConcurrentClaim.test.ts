@@ -26,8 +26,8 @@ describe('Concurrent OCP Claim — LWW determinism', () => {
   const alice = 'agent.alice';
   const bob = 'agent.bob';
 
-  function openGraph(writerId: string): Promise<WarpGraph> {
-    const plumbing = Plumbing.createDefault({ cwd: repoPath });
+  async function openGraph(writerId: string): Promise<WarpGraph> {
+    const plumbing = await Plumbing.createDefault({ cwd: repoPath });
     const persistence = new GitGraphAdapter({ plumbing });
     return WarpGraph.open({
       persistence,

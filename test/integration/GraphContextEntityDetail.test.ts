@@ -304,7 +304,7 @@ describe('ObservedGraphProjection entity detail integration', () => {
     const ctx = createObservedGraphProjection(graphPort);
     const seenPatterns: string[] = [];
     const originalQuery = graph.query.bind(graph);
-    const querySpy = vi.spyOn(graph, 'query').mockImplementation(((...args: unknown[]) => {
+    const querySpy = vi.fn((...args: unknown[]) => {
       const builder = originalQuery(...(args as [])) as { match: (pattern: string) => unknown };
       const originalMatch = builder.match.bind(builder);
       builder.match = ((pattern: string) => {
@@ -312,7 +312,18 @@ describe('ObservedGraphProjection entity detail integration', () => {
         return originalMatch(pattern);
       }) as typeof builder.match;
       return builder;
-    }) as typeof graph.query);
+    });
+
+    const proxyGraph = new Proxy(graph, {
+      get(target, prop, receiver) {
+        if (prop === 'query') {
+          return querySpy;
+        }
+        return Reflect.get(target, prop, receiver);
+      },
+    });
+
+    const getGraphSpy = vi.spyOn(graphPort, 'getGraph').mockResolvedValue(proxyGraph);
 
     try {
       const detail = await ctx.fetchEntityDetail('task:SHOW-001');
@@ -322,7 +333,7 @@ describe('ObservedGraphProjection entity detail integration', () => {
       expect(seenPatterns).not.toContain('note:*');
       expect(seenPatterns).not.toContain('comment:*');
     } finally {
-      querySpy.mockRestore();
+      getGraphSpy.mockRestore();
     }
   });
 
