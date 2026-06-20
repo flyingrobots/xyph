@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { visibleLength, type App } from '@flyingrobots/bijou-tui';
-import { surfaceToString, type Surface } from '@flyingrobots/bijou';
+import { type Surface } from '@flyingrobots/bijou';
 import { createPlainStylePort, ensurePlainBijouContext } from '../../../infrastructure/adapters/PlainStyleAdapter.js';
 import { createDashboardApp, type DashboardModel, type DashboardMsg } from '../DashboardApp.js';
 import type { DashboardHealth, GraphSnapshot } from '../../../domain/models/dashboard.js';
@@ -1917,7 +1917,7 @@ describe('DashboardApp', () => {
       })),
     }));
     const [resized] = app.update({ type: 'resize', columns: 100, rows: 32 }, loaded);
-    const output = app.view(resized) as string;
+    const output = strip(app.view(resized) as Surface);
 
     for (const line of output.split('\n')) {
       expect(visibleLength(line)).toBeLessThanOrEqual(100);
@@ -1931,7 +1931,7 @@ describe('DashboardApp', () => {
     const loaded = ready(app, makeSnapshot({
       quests: [{ id: 'task:Q1', title: 'Quest One', status: 'IN_PROGRESS', hours: 1 }],
     }));
-    const output = strip(app.view(loaded) as string);
+    const output = strip(app.view(loaded) as Surface);
     const footer = output.split('\n').slice(-2);
 
     expect(footer[0]).not.toContain('PgUp/PgDn list');
@@ -1947,7 +1947,7 @@ describe('DashboardApp', () => {
       quests: [{ id: 'task:Q1', title: 'Quest One', status: 'READY', hours: 1 }],
     })), 120, 36);
 
-    const footer = strip(surfaceToString(app.view(loaded) as Surface)).split('\n').at(-1) ?? '';
+    const footer = strip(app.view(loaded) as Surface).split('\n').at(-1) ?? '';
     expect(footer).toContain('n ask ai');
     expect(footer).toContain('r refresh');
     expect(footer).not.toContain('? helpj/k');
@@ -1962,7 +1962,7 @@ describe('DashboardApp', () => {
     }));
 
     const [help] = app.update(key('?'), loaded);
-    const plain = strip(surfaceToString(app.view(help) as Surface));
+    const plain = strip(app.view(help) as Surface);
 
     expect(plain).toContain('Cockpit Controls');
     expect(plain).toContain('Current context');

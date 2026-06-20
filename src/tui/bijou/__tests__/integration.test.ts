@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import type { App, KeyMsg } from '@flyingrobots/bijou-tui';
-import { surfaceToString, type Surface } from '@flyingrobots/bijou';
 import { createPlainStylePort, ensurePlainBijouContext } from '../../../infrastructure/adapters/PlainStyleAdapter.js';
 import { createDashboardApp, type DashboardModel, type DashboardMsg } from '../DashboardApp.js';
 import type { DashboardHealth, GraphSnapshot } from '../../../domain/models/dashboard.js';
@@ -50,7 +49,7 @@ function ready(app: App<DashboardModel, DashboardMsg>, snap: GraphSnapshot): Das
 }
 
 function viewText(app: App<DashboardModel, DashboardMsg>, model: DashboardModel): string {
-  return surfaceToString(app.view(model) as Surface);
+  return strip(app.view(model));
 }
 
 function drive(
