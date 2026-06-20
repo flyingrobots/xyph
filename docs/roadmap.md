@@ -2,27 +2,8 @@
 
 This roadmap outlines the systematic path to resolve the architectural debt, workflow blockers, and governance integrity gaps in the XYPH codebase.
 
-```mermaid
-graph TD
-    A["Phase 1: Workflow & UX Blockers"] --> B["Phase 2: Architectural Alignment"]
-    B --> C["Phase 3: Operational Completeness"]
-    
-    subgraph "Phase 1"
-        A1["task:review-tab-stale-quests (Exclude closed/merged)"]
-        A2["task:suggestion-visibility-fix (Show ask-ai/suggestions)"]
-        A3["task:sync-blocks-main-thread (Optimistic sync/async TUI)"]
-    end
+![XYPH Restoration & Alignment Roadmap](diagrams/roadmap.svg)
 
-    subgraph "Phase 2"
-        B1["task:snapshot-invariant-violation (Kill redundant projections)"]
-        B2["task:snapshot-layer-audit (Streamline read boundary)"]
-    end
-
-    subgraph "Phase 3"
-        C1["Resolve doctor warnings (CLITOOL status features)"]
-        C2["Close out queued agent ask-ai jobs"]
-    end
-```
 
 ---
 
