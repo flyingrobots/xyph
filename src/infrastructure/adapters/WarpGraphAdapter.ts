@@ -1,5 +1,5 @@
 import type { GraphPort } from '../../ports/GraphPort.js';
-import { WarpCore as WarpGraph, GitGraphAdapter, type LoggerPort } from '@git-stunts/git-warp';
+import { WarpCore as WarpGraph, GitGraphAdapter, InMemoryGraphAdapter, type LoggerPort } from '@git-stunts/git-warp';
 import Plumbing from '@git-stunts/plumbing';
 
 /**
@@ -10,6 +10,7 @@ import Plumbing from '@git-stunts/plumbing';
  */
 export class WarpGraphAdapter implements GraphPort {
   private graphPromise: Promise<WarpGraph> | null = null;
+  private static readonly memoryBackends = new Map<string, InMemoryGraphAdapter>();
 
   constructor(
     private readonly cwd: string,
@@ -72,8 +73,20 @@ export class WarpGraphAdapter implements GraphPort {
       graphName: this.graphName,
       writerId: this.writerId,
     });
-    const plumbing = await Plumbing.createDefault({ cwd: this.cwd });
-    const persistence = new GitGraphAdapter({ plumbing });
+
+    let persistence;
+    if (process.env['XYPH_TEST_IN_MEMORY'] === 'true') {
+      let memPersistence = WarpGraphAdapter.memoryBackends.get(this.cwd);
+      if (!memPersistence) {
+        memPersistence = new InMemoryGraphAdapter();
+        WarpGraphAdapter.memoryBackends.set(this.cwd, memPersistence);
+      }
+      persistence = memPersistence;
+    } else {
+      const plumbing = await Plumbing.createDefault({ cwd: this.cwd });
+      persistence = new GitGraphAdapter({ plumbing });
+    }
+
     const graph = await WarpGraph.open({
       persistence,
       graphName: this.graphName,
