@@ -307,7 +307,7 @@ wrong branch.
 
 async function main(): Promise<void> {
   const runtime = resolveGraphRuntime({ cwd: process.cwd() });
-  const plumbing = Plumbing.createDefault({ cwd: runtime.repoPath });
+  const plumbing = await Plumbing.createDefault({ cwd: runtime.repoPath });
   const persistence = new GitGraphAdapter({ plumbing });
 
   const graph = await WarpGraph.open({

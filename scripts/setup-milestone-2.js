@@ -77,7 +77,7 @@ function resolveGraphRuntime() {
 }
 
 const runtime = resolveGraphRuntime();
-const plumbing = Plumbing.createDefault({ cwd: runtime.repoPath });
+const plumbing = await Plumbing.createDefault({ cwd: runtime.repoPath });
 const persistence = new GitGraphAdapter({ plumbing });
 
 async function setup() {
