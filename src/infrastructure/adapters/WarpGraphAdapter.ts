@@ -47,6 +47,12 @@ export class WarpGraphAdapter implements GraphPort {
     return this.graphPromise;
   }
 
+  public async getMutationGraph(): Promise<WarpGraph> {
+    const graph = await this.getGraph();
+    await graph.materialize();
+    return graph;
+  }
+
   public async openIsolatedGraph(): Promise<WarpGraph> {
     this.logger?.debug('warp graph openIsolatedGraph requested', {
       cwd: this.cwd,
@@ -111,7 +117,6 @@ export class WarpGraphAdapter implements GraphPort {
       checkpointPolicy: { every: 50 },
       logger: this.logger,
     });
-    await graph.materialize();
     this.logger?.info('warp graph opened', {
       graphName: this.graphName,
       writerId: this.writerId,
