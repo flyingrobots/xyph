@@ -692,4 +692,56 @@ describe('renderMyStuffDrawer', () => {
     expect(plain).toContain('task:TRC-010');
     expect(plain).toContain('task:ACT-001');
   });
+
+  describe('buildLaneTable review lane filtering', () => {
+    it('filters out MERGED and CLOSED submissions when falling back to snapshot.submissions', () => {
+      const snapshot = makeSnapshot({
+        submissions: [
+          {
+            id: 'submission:S1',
+            questId: 'task:Q1',
+            status: 'OPEN',
+            headsCount: 1,
+            approvalCount: 0,
+            submittedBy: 'agent.other',
+            submittedAt: 1000,
+            tipPatchsetId: 'patchset:P1',
+          },
+          {
+            id: 'submission:S2',
+            questId: 'task:Q2',
+            status: 'MERGED',
+            headsCount: 1,
+            approvalCount: 1,
+            submittedBy: 'agent.other',
+            submittedAt: 2000,
+            tipPatchsetId: 'patchset:P2',
+          },
+          {
+            id: 'submission:S3',
+            questId: 'task:Q3',
+            status: 'CLOSED',
+            headsCount: 1,
+            approvalCount: 0,
+            submittedBy: 'agent.other',
+            submittedAt: 3000,
+            tipPatchsetId: 'patchset:P3',
+          },
+        ],
+      });
+
+      const table = buildLaneTable(snapshot, 'review', 20, 0, 'agent.test');
+
+      // Table should only contain S1 (OPEN), and exclude S2 (MERGED) and S3 (CLOSED).
+      expect(table.rows).toHaveLength(1);
+      const firstRow = table.rows[0];
+      expect(firstRow).toBeDefined();
+      if (firstRow) {
+        expect(firstRow[1]).toContain('S1');
+        expect(firstRow[1]).not.toContain('S2');
+        expect(firstRow[1]).not.toContain('S3');
+      }
+    });
+  });
 });
+
