@@ -2572,7 +2572,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         return popPage(model, deps);
       case 'refresh': {
         const nextReqId = model.requestId + 1;
-        const expiresAt = Date.now() + 3000;
+        const expiresAt = Date.now() + 30000;
         return [{
           ...model,
           loading: true,
@@ -2587,7 +2587,6 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
           fetchReviewLane(nextReqId),
           fetchSuggestionLane(nextReqId),
           backgroundSync(nextReqId),
-          delayedDismissToast(expiresAt),
         ]];
       }
       case 'toggle-lane-view':
@@ -2869,7 +2868,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
       if (msg.type === 'remote-change') {
         if (model.loading) return [{ ...model, refreshPending: true }, []];
         const nextReqId = model.requestId + 1;
-        const expiresAt = Date.now() + 3000;
+        const expiresAt = Date.now() + 30000;
         return [{
           ...model,
           loading: true,
@@ -2884,7 +2883,6 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
           fetchReviewLane(nextReqId),
           fetchSuggestionLane(nextReqId),
           backgroundSync(nextReqId),
-          delayedDismissToast(expiresAt),
         ]];
       }
 
