@@ -96,15 +96,15 @@ npm run tui
 To orient yourself, follow the authoritative manifests in order:
 
 1. **The Entrance**:
-   * [GUIDE.md](file:///Users/james/git/xyph/GUIDE.md) — Orientation, Digital Guild nouns, and quick checklist.
+   * [GUIDE.md](./GUIDE.md) — Orientation, Digital Guild nouns, and quick checklist.
 2. **The Bedrock**:
-   * [ARCHITECTURE.md](file:///Users/james/git/xyph/docs/canonical/ARCHITECTURE.md) — Authoritative structural references (Hexagonal, Ports, WARP).
-   * [docs/VISION.md](file:///Users/james/git/xyph/docs/VISION.md) — Stigmergic tenets and the mission.
-   * [METHOD.md](file:///Users/james/git/xyph/docs/canonical/METHOD.md) — Work doctrine and cycle loops.
+   * [ARCHITECTURE.md](./docs/canonical/ARCHITECTURE.md) — Authoritative structural references (Hexagonal, Ports, WARP).
+   * [docs/VISION.md](./docs/VISION.md) — Stigmergic tenets and the mission.
+   * [METHOD.md](./docs/canonical/METHOD.md) — Work doctrine and cycle loops.
 3. **The Direction**:
-   * [docs/BEARING.md](file:///Users/james/git/xyph/docs/BEARING.md) — Current release posture and strategic target.
-   * [docs/xyph-git-warp-evolution.md](file:///Users/james/git/xyph/docs/xyph-git-warp-evolution.md) — Optical query and speculative strand roadmap.
-   * [docs/xyph-edict-integration.md](file:///Users/james/git/xyph/docs/xyph-edict-integration.md) — Sandbox boundaries and Edict target profiles.
+   * [docs/BEARING.md](./docs/BEARING.md) — Current release posture and strategic target.
+   * [docs/xyph-git-warp-evolution.md](./docs/xyph-git-warp-evolution.md) — Optical query and speculative strand roadmap.
+   * [docs/xyph-edict-integration.md](./docs/xyph-edict-integration.md) — Sandbox boundaries and Edict target profiles.
 
 ---
 

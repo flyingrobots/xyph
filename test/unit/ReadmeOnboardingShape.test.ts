@@ -33,4 +33,8 @@ describe('README onboarding shape', () => {
     expect(readme).toContain('npx tsx xyph-actuator.ts quest task:setup-001');
     expect(readme).toContain('--intent intent:setup');
   });
+
+  it('does not contain absolute file:// URLs', () => {
+    expect(readme).not.toContain('file:///Users/');
+  });
 });
