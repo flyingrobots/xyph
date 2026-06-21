@@ -521,7 +521,7 @@ export class RecordService {
   }> {
     const graph = await this.graphPort.getGraph();
     const props = await graph.getNodeProps(input.suggestionId);
-    if (!props || props['type'] !== 'ai_suggestion') {
+    if (!props || (props['type'] !== 'ai_suggestion' && props['type'] !== 'ai-suggestion')) {
       throw new Error(`[NOT_FOUND] AI suggestion ${input.suggestionId} not found in the graph`);
     }
 
@@ -644,7 +644,7 @@ export class RecordService {
   }> {
     const graph = await this.graphPort.getGraph();
     const props = await graph.getNodeProps(input.suggestionId);
-    if (!props || props['type'] !== 'ai_suggestion') {
+    if (!props || (props['type'] !== 'ai_suggestion' && props['type'] !== 'ai-suggestion')) {
       throw new Error(`[NOT_FOUND] AI suggestion ${input.suggestionId} not found in the graph`);
     }
     const status = props['status'];
@@ -680,7 +680,7 @@ export class RecordService {
   }> {
     const graph = await this.graphPort.getGraph();
     const props = await graph.getNodeProps(input.suggestionId);
-    if (!props || props['type'] !== 'ai_suggestion') {
+    if (!props || (props['type'] !== 'ai_suggestion' && props['type'] !== 'ai-suggestion')) {
       throw new Error(`[NOT_FOUND] AI suggestion ${input.suggestionId} not found in the graph`);
     }
     if (!await graph.hasNode(input.supersededById)) {
