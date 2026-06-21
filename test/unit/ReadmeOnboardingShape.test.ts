@@ -8,7 +8,7 @@ describe('README onboarding shape', () => {
 
   it('introduces Xyph with a quick-start section before documentation', () => {
     const sectionOrder = [
-      '## Why Xyph?',
+      '## Why XYPH?',
       '## Quick Start',
       '## Documentation',
     ];
@@ -30,7 +30,11 @@ describe('README onboarding shape', () => {
 
   it('contains a truthful first-use flow', () => {
     expect(readme).toContain('npx tsx xyph-actuator.ts intent intent:setup');
-    expect(readme).toContain('npx tsx xyph-actuator.ts quest task:docs-001');
+    expect(readme).toContain('npx tsx xyph-actuator.ts quest task:setup-001');
     expect(readme).toContain('--intent intent:setup');
+  });
+
+  it('does not contain absolute file:// URLs', () => {
+    expect(readme).not.toContain('file:///Users/');
   });
 });
