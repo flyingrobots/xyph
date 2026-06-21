@@ -106,6 +106,7 @@ import {
   DEFAULT_POLICY_REQUIRE_EVIDENCE,
 } from '../domain/entities/Policy.js';
 import type { GraphPort } from '../ports/GraphPort.js';
+import { WarpCampaignPolicyReadAdapter } from './warp/optics/WarpCampaignPolicyReadAdapter.js';
 import { toNeighborEntries, type NeighborEntry } from './helpers/isNeighborEntry.js';
 import {
   buildComparisonArtifactDigest,
@@ -3023,44 +3024,22 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
     reader: UnifiedStateReader,
     campaignId: string,
   ): Promise<PolicyNode[]> {
-    const incoming = await reader.neighbors(campaignId, 'incoming');
-    const policyIds = incoming
-      .filter((edge) => edge.label === 'governs' && edge.nodeId.startsWith('policy:'))
-      .map((edge) => edge.nodeId)
-      .sort((left, right) => left.localeCompare(right));
-    const policies = await Promise.all(policyIds.map(async (policyId): Promise<PolicyNode | null> => {
-      const props = await reader.getNodeProps(policyId);
-      if (!props || props['type'] !== 'policy') return null;
-      const coverageThresholdRaw = props['coverage_threshold'];
-      const requireAllCriteriaRaw = props['require_all_criteria'];
-      const requireEvidenceRaw = props['require_evidence'];
-      const allowManualSealRaw = props['allow_manual_seal'];
-      const coverageThreshold = (
-        typeof coverageThresholdRaw === 'number' &&
-        Number.isFinite(coverageThresholdRaw) &&
-        coverageThresholdRaw >= 0 &&
-        coverageThresholdRaw <= 1
-      )
-        ? coverageThresholdRaw
-        : DEFAULT_POLICY_COVERAGE_THRESHOLD;
-
-      return {
-        id: policyId,
-        campaignId,
-        coverageThreshold,
-        requireAllCriteria: typeof requireAllCriteriaRaw === 'boolean'
-          ? requireAllCriteriaRaw
-          : DEFAULT_POLICY_REQUIRE_ALL_CRITERIA,
-        requireEvidence: typeof requireEvidenceRaw === 'boolean'
-          ? requireEvidenceRaw
-          : DEFAULT_POLICY_REQUIRE_EVIDENCE,
-        allowManualSeal: typeof allowManualSealRaw === 'boolean'
-          ? allowManualSealRaw
-          : DEFAULT_POLICY_ALLOW_MANUAL_SEAL,
-      } satisfies PolicyNode;
+    const mockPort: GraphPort = {
+      getGraph: async () => reader as unknown as import('@git-stunts/git-warp').WarpCore,
+      reset: () => {
+        // no-op
+      },
+    };
+    const adapter = new WarpCampaignPolicyReadAdapter(mockPort, { accessorId: 'projection', role: 'agent' });
+    const boundedPolicies = await adapter.getPoliciesForCampaign(campaignId);
+    return boundedPolicies.value.map((p) => ({
+      id: p.id,
+      campaignId,
+      coverageThreshold: p.coverageThreshold,
+      requireAllCriteria: p.requireAllCriteria,
+      requireEvidence: p.requireEvidence,
+      allowManualSeal: p.allowManualSeal,
     }));
-
-    return policies.filter((entry): entry is PolicyNode => entry !== null);
   }
 
   private async buildCaseDetail(

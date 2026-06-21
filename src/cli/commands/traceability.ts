@@ -10,6 +10,7 @@ import {
   DEFAULT_POLICY_REQUIRE_ALL_CRITERIA,
   DEFAULT_POLICY_REQUIRE_EVIDENCE,
 } from '../../domain/entities/Policy.js';
+import { WarpCampaignPolicyCommandAdapter } from '../../infrastructure/warp/optics/WarpCampaignPolicyCommandAdapter.js';
 
 // ---------------------------------------------------------------------------
 // Prefix validation helpers
@@ -301,14 +302,14 @@ export function registerTraceabilityCommands(program: Command, ctx: CliContext):
 
       const allowManualSeal = opts.allowManualSeal ?? DEFAULT_POLICY_ALLOW_MANUAL_SEAL;
 
-      const sha = await graph.patch((p) => {
-        p.addNode(id)
-          .setProperty(id, 'coverage_threshold', opts.coverageThreshold)
-          .setProperty(id, 'require_all_criteria', opts.requireAllCriteria ?? DEFAULT_POLICY_REQUIRE_ALL_CRITERIA)
-          .setProperty(id, 'require_evidence', opts.requireEvidence ?? DEFAULT_POLICY_REQUIRE_EVIDENCE)
-          .setProperty(id, 'allow_manual_seal', allowManualSeal)
-          .setProperty(id, 'type', 'policy')
-          .addEdge(id, opts.campaign, 'governs');
+      const policyAdapter = new WarpCampaignPolicyCommandAdapter(ctx.graphPort);
+      const sha = await policyAdapter.createPolicy({
+        id,
+        campaignId: opts.campaign,
+        coverageThreshold: opts.coverageThreshold,
+        requireAllCriteria: opts.requireAllCriteria,
+        requireEvidence: opts.requireEvidence,
+        allowManualSeal,
       });
 
       if (ctx.json) {
@@ -344,9 +345,8 @@ export function registerTraceabilityCommands(program: Command, ctx: CliContext):
         assertNodeExists(graph, campaign, 'Campaign'),
       ]);
 
-      const sha = await graph.patch((p) => {
-        p.addEdge(policy, campaign, 'governs');
-      });
+      const policyAdapter = new WarpCampaignPolicyCommandAdapter(ctx.graphPort);
+      const sha = await policyAdapter.governCampaign(policy, campaign);
 
       if (ctx.json) {
         ctx.jsonOut({
