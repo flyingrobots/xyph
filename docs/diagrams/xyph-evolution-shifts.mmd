@@ -1,12 +1,19 @@
-graph TD
-    A["Current: Monolithic Graph DB"] --> B["Future: Causal History & Optics"]
-    C["Full Graph Materialization"] --> D["Quest Optics (Targeted Cones)"]
-    E["Ad-hoc Planning Nodes"] --> F["Speculative Strands (Counterfactuals)"]
-    G["Ad-hoc Scroll Documents"] --> H["verifiable BTRs & Wormholes"]
-    I["Central Git Collaboration"] --> J["Continuum P2P Agent Treaty"]
-    
-    style B fill:#1b3a4b,stroke:#00a8cc,stroke-width:2px
-    style D fill:#1b3a4b,stroke:#00a8cc,stroke-width:2px
-    style F fill:#1b3a4b,stroke:#00a8cc,stroke-width:2px
-    style H fill:#1b3a4b,stroke:#00a8cc,stroke-width:2px
-    style J fill:#1b3a4b,stroke:#00a8cc,stroke-width:2px
+flowchart TD
+    subgraph From ["Monolithic / Local (Present)"]
+        A1["Monolithic Materialization (Full GraphSnapshot)"]
+        A2["Direct Worldline Mutations (Planning Clutter)"]
+        A3["Walking Full Git History (Verifying Quest Scrolls)"]
+        A4["Centralized Git Sync (origin/main)"]
+    end
+
+    subgraph To ["Decentralized / Post-Unix (Target)"]
+        B1["Bounded Quest Optics (Causal Cone Subgraphs)"]
+        B2["Speculative Strands (Counterfactual Lanes)"]
+        B3["Boundary Transition Records (Cryptographic Scrolls)"]
+        B4["Continuum Protocol (P2P Agent Treaties)"]
+    end
+
+    A1 -->|Shift I| B1
+    A2 -->|Shift II| B2
+    A3 -->|Shift III| B3
+    A4 -->|Shift IV| B4

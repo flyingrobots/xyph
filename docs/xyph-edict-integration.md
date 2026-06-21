@@ -156,9 +156,8 @@ XYPH's present `ObservationSession` already restricts reads and separates observ
 3. **Resolve Claim Concurrency Semantics**: Under current `git-warp` behavior, two concurrent claims can commit locally and converge later via Last-Write-Wins (LWW). A synchronous `ClaimConflict` cannot detect an unseen concurrent claim without coordination. We must choose:
    - *Coordination-free*: Operation returns `ClaimSubmitted`; later observation of the converged graph determines the winning claimant.
    - *Exclusive claim*: Introduce sequenced admission, Compare-And-Swap (CAS), a lease authority, or another coordinating participant.
-4. **Start with Graph-Only Operations**: Operations like `claim`, `shape`, and bounded readings are reasonable initial targets. Operations like `submit`, `seal`, and `merge` cross graph, Git workspace, filesystem, and keyring boundaries, requiring a composite target that explicitly owns coordination and atomicity.
+4. **Make Production Claims Conditional**: Describe the system in future-conditional terms (e.g. "will close the ambient-authority gap for migrated operations") rather than declaring that it currently eliminates FIDLAR across XYPH.
 5. **Preserve Failure-Class Separation**: Keep expected domain failures (e.g. invalid quest state) distinct. Compiler failures, admission rejection, integrity faults, resource exhaustion, and internal runtime defects must be separate structured failure classes—not user-defined obstructions.
-6. **Make Production Claims Conditional**: Describe the system in future-conditional terms (e.g. "will close the ambient-authority gap for migrated operations") rather than declaring that it currently eliminates FIDLAR across XYPH.
 
 ---
 
