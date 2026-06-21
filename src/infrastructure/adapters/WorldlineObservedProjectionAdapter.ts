@@ -7,6 +7,7 @@ type ObservedProjectionHandle = Pick<Worldline, 'query' | 'hasNode' | 'getNodePr
 export function adaptObservedHandleToObservedProjectionGraph(
   graph: WarpGraph,
   handle: ObservedProjectionHandle,
+  lens?: { match: string | string[] },
 ): ObservedProjectionGraph {
   return {
     writerId: graph.writerId,
@@ -40,5 +41,6 @@ export function adaptObservedHandleToObservedProjectionGraph(
     },
     traverse: handle.traverse,
     compareCoordinates: graph.compareCoordinates.bind(graph),
+    lens,
   };
 }

@@ -38,7 +38,11 @@ export class WarpObservationAdapter implements ObservationPort {
         ? await worldline.observer(request.observer.name, request.observer.lens)
         : await worldline.observer(request.observer.lens)
       : worldline;
-    const projectionGraph = adaptObservedHandleToObservedProjectionGraph(graph, observedHandle);
+    const projectionGraph = adaptObservedHandleToObservedProjectionGraph(
+      graph,
+      observedHandle,
+      request.observer?.lens,
+    );
     const projection = createObservedGraphProjectionFromGraph(projectionGraph, { syncCoverage: false });
 
     return {
