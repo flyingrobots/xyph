@@ -19,6 +19,7 @@ Do not audit the repository by recursively walking the filesystem. Follow the au
 
 ### 2. The Bedrock
 - **`ARCHITECTURE.md`**: The authoritative structural reference (Hexagonal, Ports, WARP).
+- **[docs/TS_STANDARDS.md](file:///Users/james/git/xyph/docs/TS_STANDARDS.md)**: Bounded context, deterministic, and LLM-agent-aware TypeScript coding guidelines.
 - **`docs/VISION.md`**: Core tenets and the stigmergic mission.
 - **`METHOD.md`**: Repo work doctrine (Backlog lanes, Cycle loop).
 
