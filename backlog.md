@@ -11,6 +11,7 @@ This file tracks "BAD CODE" that needs to be refactored and "COOL IDEAS™" for 
 - **[REFACTOR] CLI command setup in root files:** The CLI command setup should be moved from the root files into the `src/cli` directory to improve separation of concerns.
 - **[SECURITY] Lack of input sanitization on CLI:** The CLI does not sanitize user input, which is a security risk.
 - **[SECURITY] Weak authentication scheme:** The `human.ada` login suggests a weak authentication scheme that should be replaced with a more secure method (e.g., public/private key pairs).
+- **[PERFORMANCE] Slow pre-commit/pre-push test execution:** Running the full test suite (taking >90s) on git hooks limits developer iteration speed. We should investigate optimizing test setup/teardown, utilizing test caching, or pruning hook-based test scope to modified files.
 
 ## COOL IDEAS™
 
