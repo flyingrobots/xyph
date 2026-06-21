@@ -489,6 +489,7 @@ describe('dashboard trace view JSON', () => {
           },
         },
         suggestions: snapshot.suggestions,
+        aiSuggestions: [],
         summary: {
           total: 1,
           pending: 1,

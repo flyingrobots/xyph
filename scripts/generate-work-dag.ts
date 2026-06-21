@@ -102,7 +102,7 @@ async function loadGraph(): Promise<{
   campaigns: Map<string, string>;
   sorted: string[];
 }> {
-  const plumbing = Plumbing.createDefault({ cwd: runtime.repoPath });
+  const plumbing = await Plumbing.createDefault({ cwd: runtime.repoPath });
   const persistence = new GitGraphAdapter({ plumbing });
 
   const graph = await WarpGraph.open({

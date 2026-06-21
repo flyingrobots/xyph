@@ -1,4 +1,4 @@
-import type { App, Cmd, KeyMsg, MouseMsg, ResizeMsg } from '@flyingrobots/bijou-tui';
+import type { App, Cmd, KeyMsg, MouseMsg, ResizeMsg, ViewOutput } from '@flyingrobots/bijou-tui';
 import {
   animate,
   commandPalette,
@@ -29,7 +29,7 @@ import {
   type NavigableTableState,
 } from '@flyingrobots/bijou-tui';
 import { EASINGS } from '@flyingrobots/bijou-tui';
-import { type TokenValue } from '@flyingrobots/bijou';
+import { type TokenValue, parseAnsiToSurface } from '@flyingrobots/bijou';
 import type { StylePort } from '../../ports/StylePort.js';
 import type {
   AiSuggestionNode,
@@ -210,6 +210,7 @@ export interface DashboardModel {
   snapshot: GraphSnapshot | null;
   health: DashboardHealth | null;
   loading: boolean;
+  syncing: boolean;
   error: string | null;
   showLanding: boolean;
   showHelp: boolean;
@@ -262,6 +263,7 @@ export type DashboardMsg =
   | { type: 'write-error'; message: string }
   | { type: 'dismiss-toast'; expiresAt: number }
   | { type: 'remote-change' }
+  | { type: 'sync-complete'; requestId: number; error?: string }
   | { type: 'drawer-frame'; value: number }
   | { type: 'scrollbar-visibility'; pane: 'worklist' | 'inspector' | 'page'; level: number; generation: number }
   | { type: 'page-detail-loaded'; entityId: string; detail: EntityDetail | null; requestId: number }
@@ -1640,7 +1642,7 @@ function renderStatusLine(model: DashboardModel): string {
   const left = [
     ` ${laneLabel}`,
     meta ? `· ${meta.tipSha}` : '',
-    model.loading ? '· syncing' : '',
+    model.syncing ? '· syncing' : '',
     model.pageLoading ? '· page' : '',
   ].join(' ');
   const center = page.kind === 'quest'
@@ -1995,7 +1997,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
     try {
       const outcome = await raceWithTimeout(new DoctorService(
         deps.graphPort,
-        new WarpRoadmapAdapter(deps.graphPort),
+        new WarpRoadmapAdapter(deps.graphPort, { syncOnQuery: false }),
       ).run(), timeoutMs);
       if (outcome.kind === 'timeout') {
         deps.logger?.warn('dashboard health load timed out', {
@@ -2187,6 +2189,29 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
     };
   }
 
+  function backgroundSync(requestId: number): Cmd<DashboardMsg> {
+    return async (emit) => {
+      try {
+        deps.logger?.debug('dashboard background sync started', { requestId });
+        const graph = await deps.graphPort.getGraph();
+        if (typeof graph.syncCoverage === 'function') {
+          await graph.syncCoverage();
+        }
+        if (typeof graph.materialize === 'function') {
+          await graph.materialize();
+        }
+        deps.logger?.info('dashboard background sync succeeded', { requestId });
+        emit({ type: 'sync-complete', requestId });
+      } catch (err: unknown) {
+        deps.logger?.warn('dashboard background sync failed', {
+          requestId,
+          ...serializeError(err),
+        });
+        emit({ type: 'sync-complete', requestId, error: err instanceof Error ? err.message : String(err) });
+      }
+    };
+  }
+
   function refreshAfterWrite(requestId: number): Cmd<DashboardMsg> {
     return async (emit, capabilities) => {
       deps.readPort.invalidate();
@@ -2224,7 +2249,8 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
 
   function delayedDismissToast(expiresAt: number): Cmd<DashboardMsg> {
     return async (emit) => {
-      await new Promise((resolve) => setTimeout(resolve, 3000));
+      const delay = Math.max(0, expiresAt - Date.now());
+      await new Promise((resolve) => setTimeout(resolve, delay));
       emit({ type: 'dismiss-toast', expiresAt });
     };
   }
@@ -2550,12 +2576,23 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         return popPage(model, deps);
       case 'refresh': {
         const nextReqId = model.requestId + 1;
+        const expiresAt = Date.now() + 30000;
         return [{
           ...model,
           loading: true,
+          syncing: true,
           error: null,
           requestId: nextReqId,
-        }, [fetchSnapshot(nextReqId), fetchHealth(nextReqId), fetchNowLane(nextReqId), fetchReviewLane(nextReqId), fetchSuggestionLane(nextReqId)]];
+          toast: { message: 'Syncing graph with remote...', variant: 'success', expiresAt },
+        }, [
+          fetchSnapshot(nextReqId),
+          fetchHealth(nextReqId),
+          fetchNowLane(nextReqId),
+          fetchReviewLane(nextReqId),
+          fetchSuggestionLane(nextReqId),
+          backgroundSync(nextReqId),
+          delayedDismissToast(expiresAt),
+        ]];
       }
       case 'toggle-lane-view':
         if (currentPage(model).kind === 'doctor') return wakeScrollbar(cycleDoctorPageFilter(model), 'page');
@@ -2636,6 +2673,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         snapshot: null,
         health: null,
         loading: true,
+        syncing: true,
         error: null,
         showLanding: true,
         showHelp: false,
@@ -2678,6 +2716,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         fetchNowLane(model.requestId),
         fetchReviewLane(model.requestId),
         fetchSuggestionLane(model.requestId),
+        backgroundSync(model.requestId),
         startWatching(),
         fadeScrollbar('worklist', model.scrollbars.worklist.generation),
         animate<DashboardMsg>({
@@ -2704,23 +2743,35 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
       if (msg.type === 'snapshot-loaded') {
         if (msg.requestId !== model.requestId) return [model, []];
         const pendingRefresh = model.refreshPending;
+        const nextToastExpiresAt = Date.now() + 30000;
         const updated = visitSelectedItem(rebuildForLane({
           ...model,
           snapshot: msg.snapshot,
           health: msg.health === undefined ? model.health : msg.health,
           loading: pendingRefresh,
+          syncing: pendingRefresh ? true : model.syncing,
           error: null,
           showLanding: false,
           loadingProgress: 100,
           refreshPending: false,
           watching: true,
           requestId: pendingRefresh ? model.requestId + 1 : model.requestId,
-          toast: model.toast,
+          toast: pendingRefresh
+            ? { message: 'Syncing remote changes...', variant: 'success', expiresAt: nextToastExpiresAt }
+            : model.toast,
         }, model.lane, msg.snapshot), deps);
         const clamped = clampDrawerScroll(updated, deps);
         const nextPage = currentPage(clamped);
         const cmds: Cmd<DashboardMsg>[] = pendingRefresh
-          ? [fetchSnapshot(clamped.requestId), fetchHealth(clamped.requestId), fetchNowLane(clamped.requestId), fetchReviewLane(clamped.requestId), fetchSuggestionLane(clamped.requestId)]
+          ? [
+              fetchSnapshot(clamped.requestId),
+              fetchHealth(clamped.requestId),
+              fetchNowLane(clamped.requestId),
+              fetchReviewLane(clamped.requestId),
+              fetchSuggestionLane(clamped.requestId),
+              backgroundSync(clamped.requestId),
+              delayedDismissToast(nextToastExpiresAt),
+            ]
           : [];
         const pageCmds = fetchPageContext(clamped.pageRequestId + 1, nextPage, deps);
         if (pageCmds.length > 0) {
@@ -2834,12 +2885,46 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
       if (msg.type === 'remote-change') {
         if (model.loading) return [{ ...model, refreshPending: true }, []];
         const nextReqId = model.requestId + 1;
+        const expiresAt = Date.now() + 30000;
         return [{
           ...model,
           loading: true,
+          syncing: true,
           requestId: nextReqId,
           refreshPending: false,
-        }, [fetchSnapshot(nextReqId), fetchHealth(nextReqId), fetchNowLane(nextReqId), fetchReviewLane(nextReqId), fetchSuggestionLane(nextReqId)]];
+          toast: { message: 'Syncing remote changes...', variant: 'success', expiresAt },
+        }, [
+          fetchSnapshot(nextReqId),
+          fetchHealth(nextReqId),
+          fetchNowLane(nextReqId),
+          fetchReviewLane(nextReqId),
+          fetchSuggestionLane(nextReqId),
+          backgroundSync(nextReqId),
+          delayedDismissToast(expiresAt),
+        ]];
+      }
+
+      if (msg.type === 'sync-complete') {
+        if (msg.requestId !== model.requestId) return [model, []];
+        const nextReqId = model.requestId + 1;
+        const expiresAt = Date.now() + 3000;
+        const syncMessage = msg.error ? `Sync failed: ${msg.error}` : 'Graph sync complete.';
+        const syncVariant = msg.error ? 'error' : 'success';
+        const showToast = !!(model.toast && model.toast.message.includes('Syncing'));
+
+        return [{
+          ...model,
+          syncing: false,
+          requestId: nextReqId,
+          toast: showToast ? { message: syncMessage, variant: syncVariant, expiresAt } : model.toast,
+        }, [
+          fetchSnapshot(nextReqId),
+          fetchHealth(nextReqId),
+          fetchNowLane(nextReqId),
+          fetchReviewLane(nextReqId),
+          fetchSuggestionLane(nextReqId),
+          ...(showToast ? [delayedDismissToast(expiresAt)] : [])
+        ]];
       }
 
       if (msg.type === 'loading-progress') {
@@ -2853,10 +2938,16 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         return [{
           ...model,
           loading: true,
+          syncing: true,
           requestId: nextReqId,
           writePending: false,
           toast: { message: msg.message, variant: 'success', expiresAt },
-        }, [refreshAfterWrite(nextReqId), fetchHealth(nextReqId), delayedDismissToast(expiresAt)]];
+        }, [
+          refreshAfterWrite(nextReqId),
+          fetchHealth(nextReqId),
+          backgroundSync(nextReqId),
+          delayedDismissToast(expiresAt)
+        ]];
       }
 
       if (msg.type === 'write-error') {
@@ -3520,11 +3611,11 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
       return [model, []];
     },
 
-    view(model: DashboardModel): string {
+    view(model: DashboardModel): ViewOutput {
       const { style } = deps;
 
       if (model.showLanding) {
-        return landingView(model, style);
+        return parseAnsiToSurface(landingView(model, style), model.cols, model.rows);
       }
 
       const controls = renderControlsLine(model);
@@ -3740,7 +3831,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         output = composite(output, [overlay]);
       }
 
-      return output;
+      return parseAnsiToSurface(output, model.cols, model.rows);
     },
   };
 }

@@ -336,11 +336,12 @@ export function registerDashboardCommands(program: Command, ctx: CliContext): vo
                 view: 'suggestions',
                 health,
                 suggestions: snapshot.suggestions,
+                aiSuggestions: snapshot.aiSuggestions,
                 summary: {
-                  total: snapshot.suggestions.length,
-                  pending: snapshot.suggestions.filter((s) => s.status === 'PENDING').length,
-                  accepted: snapshot.suggestions.filter((s) => s.status === 'ACCEPTED').length,
-                  rejected: snapshot.suggestions.filter((s) => s.status === 'REJECTED').length,
+                  total: snapshot.suggestions.length + snapshot.aiSuggestions.length,
+                  pending: snapshot.suggestions.filter((s) => s.status === 'PENDING').length + snapshot.aiSuggestions.filter((s) => s.status === 'suggested' || s.status === 'queued').length,
+                  accepted: snapshot.suggestions.filter((s) => s.status === 'ACCEPTED').length + snapshot.aiSuggestions.filter((s) => s.status === 'accepted' || s.status === 'implemented').length,
+                  rejected: snapshot.suggestions.filter((s) => s.status === 'REJECTED').length + snapshot.aiSuggestions.filter((s) => s.status === 'rejected').length,
                 },
               },
             });
@@ -348,7 +349,10 @@ export function registerDashboardCommands(program: Command, ctx: CliContext): vo
           }
 
           const { renderSuggestions } = await import('../../tui/render-status.js');
-          printWithDiagnostics(renderSuggestions({ suggestions: snapshot.suggestions }, ctx.style));
+          printWithDiagnostics(renderSuggestions({
+            suggestions: snapshot.suggestions,
+            aiSuggestions: snapshot.aiSuggestions,
+          }, ctx.style));
           break;
         }
 

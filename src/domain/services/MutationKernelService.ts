@@ -1,4 +1,4 @@
-import { projectStateV5 } from '@git-stunts/git-warp';
+import { projectState } from '@git-stunts/git-warp';
 import type { GraphPort } from '../../ports/GraphPort.js';
 import { createPatchSession } from '../../infrastructure/helpers/createPatchSession.js';
 import type { ControlPlaneErrorCode } from '../models/controlPlane.js';
@@ -263,7 +263,7 @@ export class MutationKernelService {
     }
 
     const state = await graph.materializeStrand(workingSetId);
-    const projection = projectStateV5(state);
+    const projection = projectState(state as unknown as Parameters<typeof projectState>[0]);
     return {
       nodes: projection.nodes,
       edges: projection.edges,

@@ -95,8 +95,19 @@ describe('ObservedGraphProjection read-path honesty and campaign derivation', ()
 
   it('fetchSnapshot does not create checkpoints or emit checkpoint warnings during reads', async () => {
     const graph = await graphPort.getGraph();
-    const checkpointSpy = vi.spyOn(graph, 'createCheckpoint');
+    const checkpointSpy = vi.fn();
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    const proxyGraph = new Proxy(graph, {
+      get(target, prop, receiver) {
+        if (prop === 'createCheckpoint') {
+          return checkpointSpy;
+        }
+        return Reflect.get(target, prop, receiver);
+      },
+    });
+
+    const getGraphSpy = vi.spyOn(graphPort, 'getGraph').mockResolvedValue(proxyGraph);
     const ctx = createObservedGraphProjection(graphPort);
     const progress: string[] = [];
 
@@ -112,14 +123,25 @@ describe('ObservedGraphProjection read-path honesty and campaign derivation', ()
       expect(checkpointSpy).not.toHaveBeenCalled();
       expect(warnSpy).not.toHaveBeenCalled();
     } finally {
-      checkpointSpy.mockRestore();
+      getGraphSpy.mockRestore();
       warnSpy.mockRestore();
     }
   });
 
   it('fetchEntityDetail does not materialize before targeted live reads', async () => {
     const graph = await graphPort.getGraph();
-    const materializeSpy = vi.spyOn(graph, 'materialize');
+    const materializeSpy = vi.fn();
+
+    const proxyGraph = new Proxy(graph, {
+      get(target, prop, receiver) {
+        if (prop === 'materialize') {
+          return materializeSpy;
+        }
+        return Reflect.get(target, prop, receiver);
+      },
+    });
+
+    const getGraphSpy = vi.spyOn(graphPort, 'getGraph').mockResolvedValue(proxyGraph);
     const ctx = createObservedGraphProjection(graphPort);
 
     try {
@@ -128,7 +150,7 @@ describe('ObservedGraphProjection read-path honesty and campaign derivation', ()
       expect(detail?.type).toBe('task');
       expect(materializeSpy).not.toHaveBeenCalled();
     } finally {
-      materializeSpy.mockRestore();
+      getGraphSpy.mockRestore();
     }
   });
 

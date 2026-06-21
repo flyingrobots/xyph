@@ -16,7 +16,7 @@ import { resolveGraphRuntime } from '../src/cli/runtimeGraph.js';
 
 const WRITER_ID = process.env['XYPH_AGENT_ID'] ?? 'human.james';
 const runtime = resolveGraphRuntime({ cwd: process.cwd() });
-const plumbing = Plumbing.createDefault({ cwd: runtime.repoPath });
+const plumbing = await Plumbing.createDefault({ cwd: runtime.repoPath });
 const persistence = new GitGraphAdapter({ plumbing });
 
 async function openGraph(): Promise<WarpGraph> {

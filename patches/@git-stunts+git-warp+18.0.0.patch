@@ -1,0 +1,76 @@
+diff --git a/node_modules/@git-stunts/git-warp/dist/src/domain/services/snapshot/SnapshotORSet.js b/node_modules/@git-stunts/git-warp/dist/src/domain/services/snapshot/SnapshotORSet.js
+index 3a6d248..a485038 100644
+--- a/node_modules/@git-stunts/git-warp/dist/src/domain/services/snapshot/SnapshotORSet.js
++++ b/node_modules/@git-stunts/git-warp/dist/src/domain/services/snapshot/SnapshotORSet.js
+@@ -1,3 +1,5 @@
++import ORSet from "../../crdt/ORSet.js";
++
+ function frozenStringArray(values) {
+     return Object.freeze([...values]);
+ }
+@@ -91,4 +93,14 @@ export default class SnapshotORSet {
+     tombstones() {
+         return frozenStringArray(this.#tombstones);
+     }
++    scopedClone(includeElement) {
++        const entries = new Map();
++        for (const [element, dots] of this.#entries) {
++            if (includeElement(element)) {
++                entries.set(element, new Set(dots));
++            }
++        }
++        const tombstones = new Set(this.#tombstones);
++        return new ORSet(entries, tombstones);
++    }
+ }
+diff --git a/node_modules/@git-stunts/git-warp/dist/src/domain/services/snapshot/SnapshotVersionVector.js b/node_modules/@git-stunts/git-warp/dist/src/domain/services/snapshot/SnapshotVersionVector.js
+index 6049a59..436cfa5 100644
+--- a/node_modules/@git-stunts/git-warp/dist/src/domain/services/snapshot/SnapshotVersionVector.js
++++ b/node_modules/@git-stunts/git-warp/dist/src/domain/services/snapshot/SnapshotVersionVector.js
+@@ -1,3 +1,5 @@
++import VersionVector from "../../crdt/VersionVector.js";
++
+ /**
+  * Read-side version-vector view for public immutable snapshots.
+  */
+@@ -7,6 +9,9 @@ export default class SnapshotVersionVector {
+         this.#entries = new Map(source.entries());
+         Object.freeze(this);
+     }
++    clone() {
++        return VersionVector.from(new Map(this.#entries));
++    }
+     get(writerId) {
+         return this.#entries.get(writerId);
+     }
+diff --git a/node_modules/@git-stunts/git-warp/dist/src/domain/services/snapshot/SnapshotWarpState.js b/node_modules/@git-stunts/git-warp/dist/src/domain/services/snapshot/SnapshotWarpState.js
+index 772da72..56826b7 100644
+--- a/node_modules/@git-stunts/git-warp/dist/src/domain/services/snapshot/SnapshotWarpState.js
++++ b/node_modules/@git-stunts/git-warp/dist/src/domain/services/snapshot/SnapshotWarpState.js
+@@ -1,3 +1,5 @@
++import { decodeEdgePropKey, decodePropKey, isEdgePropKey } from "../KeyCodec.js";
++
+ /**
+  * Public immutable read-side view of materialized graph state.
+  */
+@@ -15,4 +17,20 @@ export default class SnapshotWarpState {
+         this.edgeBirthEvent = fields.edgeBirthEvent;
+         Object.freeze(this);
+     }
++    *nodeProperties() {
++        for (const [encodedKey, register] of this.prop) {
++            if (!isEdgePropKey(encodedKey)) {
++                const decoded = decodePropKey(encodedKey);
++                yield { encodedKey, nodeId: decoded.nodeId, key: decoded.propKey, register };
++            }
++        }
++    }
++    *edgeProperties() {
++        for (const [encodedKey, register] of this.prop) {
++            if (isEdgePropKey(encodedKey)) {
++                const decoded = decodeEdgePropKey(encodedKey);
++                yield { encodedKey, from: decoded.from, to: decoded.to, label: decoded.label, key: decoded.propKey, register };
++            }
++        }
++    }
+ }

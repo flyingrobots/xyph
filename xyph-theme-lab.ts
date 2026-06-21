@@ -12,7 +12,7 @@
  *   q     — quit
  */
 
-import type { App, Cmd, KeyMsg, ResizeMsg } from '@flyingrobots/bijou-tui';
+import type { App, Cmd, KeyMsg, ResizeMsg, ViewOutput } from '@flyingrobots/bijou-tui';
 import { quit, run } from '@flyingrobots/bijou-tui';
 import { flex, statusBar, visibleLength } from '@flyingrobots/bijou-tui';
 import {
@@ -22,6 +22,7 @@ import {
   setDefaultContext,
   createBijou,
   type TokenValue,
+  parseAnsiToSurface,
 } from '@flyingrobots/bijou';
 import { nodeRuntime, nodeIO, chalkStyle } from '@flyingrobots/bijou-node';
 import {
@@ -295,7 +296,7 @@ function createThemeLab(): App<LabModel, LabMsg> {
       return [model, []];
     },
 
-    view(model: LabModel): string {
+    view(model: LabModel): ViewOutput {
       // Read theme from presets directly — NOT through the bridge
       const theme = getLabTheme(model);
       const ctx = getDefaultContext();
@@ -332,13 +333,13 @@ function createThemeLab(): App<LabModel, LabMsg> {
       const hints = labStyled(theme.semantic.muted, '  1-5 panels  t cycle theme  q quit');
       const hintLine = chromeLine(hints, model.cols, theme.surface.muted);
 
-      return flex(
+      return parseAnsiToSurface(flex(
         { direction: 'column', width: model.cols, height: model.rows },
         { basis: 1, content: tabLine },
         { flex: 1, content: contentRenderer },
         { basis: 1, content: statusBg },
         { basis: 1, content: hintLine },
-      );
+      ), model.cols, model.rows);
     },
   };
 }

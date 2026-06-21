@@ -1,6 +1,8 @@
 import type { GraphPort } from '../../ports/GraphPort.js';
-import { WarpCore as WarpGraph, GitGraphAdapter, type LoggerPort } from '@git-stunts/git-warp';
+import { WarpCore as WarpGraph, GitGraphAdapter, InMemoryGraphAdapter, type LoggerPort } from '@git-stunts/git-warp';
 import Plumbing from '@git-stunts/plumbing';
+import fs from 'node:fs';
+import path from 'node:path';
 
 /**
  * WarpGraphAdapter — single shared WarpGraph instance.
@@ -10,6 +12,7 @@ import Plumbing from '@git-stunts/plumbing';
  */
 export class WarpGraphAdapter implements GraphPort {
   private graphPromise: Promise<WarpGraph> | null = null;
+  private static readonly memoryBackends = new Map<string, InMemoryGraphAdapter>();
 
   constructor(
     private readonly cwd: string,
@@ -72,8 +75,34 @@ export class WarpGraphAdapter implements GraphPort {
       graphName: this.graphName,
       writerId: this.writerId,
     });
-    const plumbing = Plumbing.createDefault({ cwd: this.cwd });
-    const persistence = new GitGraphAdapter({ plumbing });
+
+    let persistence;
+    if (process.env['XYPH_TEST_IN_MEMORY'] === 'true') {
+      let backendKey = this.cwd;
+      try {
+        const gitDir = path.join(this.cwd, '.git');
+        if (fs.existsSync(gitDir)) {
+          const stat = fs.statSync(gitDir);
+          backendKey = `${this.cwd}:${stat.ino}:${stat.mtimeMs}`;
+        } else if (fs.existsSync(this.cwd)) {
+          const stat = fs.statSync(this.cwd);
+          backendKey = `${this.cwd}:${stat.ino}:${stat.mtimeMs}`;
+        }
+      } catch {
+        // Fallback to cwd if stat fails
+      }
+
+      let memPersistence = WarpGraphAdapter.memoryBackends.get(backendKey);
+      if (!memPersistence) {
+        memPersistence = new InMemoryGraphAdapter();
+        WarpGraphAdapter.memoryBackends.set(backendKey, memPersistence);
+      }
+      persistence = memPersistence;
+    } else {
+      const plumbing = await Plumbing.createDefault({ cwd: this.cwd });
+      persistence = new GitGraphAdapter({ plumbing });
+    }
+
     const graph = await WarpGraph.open({
       persistence,
       graphName: this.graphName,
@@ -82,6 +111,7 @@ export class WarpGraphAdapter implements GraphPort {
       checkpointPolicy: { every: 50 },
       logger: this.logger,
     });
+    await graph.materialize();
     this.logger?.info('warp graph opened', {
       graphName: this.graphName,
       writerId: this.writerId,

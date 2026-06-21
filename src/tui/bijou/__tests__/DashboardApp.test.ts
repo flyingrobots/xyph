@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { visibleLength, type App } from '@flyingrobots/bijou-tui';
+import { type Surface } from '@flyingrobots/bijou';
 import { createPlainStylePort, ensurePlainBijouContext } from '../../../infrastructure/adapters/PlainStyleAdapter.js';
 import { createDashboardApp, type DashboardModel, type DashboardMsg } from '../DashboardApp.js';
 import type { DashboardHealth, GraphSnapshot } from '../../../domain/models/dashboard.js';
@@ -64,7 +65,11 @@ function ready(app: App<DashboardModel, DashboardMsg>, snapshot: GraphSnapshot):
     { type: 'snapshot-loaded', snapshot, health: healthyDashboardHealth, requestId: initial.requestId },
     initial,
   );
-  return loaded;
+  const [synced] = app.update(
+    { type: 'sync-complete', requestId: initial.requestId },
+    loaded,
+  );
+  return synced;
 }
 
 function widen(app: App<DashboardModel, DashboardMsg>, model: DashboardModel, cols = 140, rows = 40): DashboardModel {
@@ -251,7 +256,7 @@ describe('DashboardApp', () => {
     }
 
     expect(state.laneState.now.railScrollY).toBeGreaterThan(0);
-    const plain = strip(app.view(state) as string);
+    const plain = strip(app.view(state) as Surface);
     expect(plain).toContain('Reality');
   });
 
@@ -305,7 +310,7 @@ describe('DashboardApp', () => {
 
     expect(plan.observerSeenItems['plan:quest:task:Q1']).toBe(200);
     expect(plan.observerSeenItems['plan:quest:task:Q2']).toBeUndefined();
-    const plain = strip(app.view(plan) as string);
+    const plain = strip(app.view(plan) as Surface);
     expect(plain).not.toContain('● QUEST');
   });
 
@@ -323,7 +328,7 @@ describe('DashboardApp', () => {
 
     expect(second.observerSeenItems['plan:quest:task:Q1']).toBe(200);
     expect(second.observerSeenItems['plan:quest:task:Q2']).toBe(100);
-    const plain = strip(app.view(second) as string);
+    const plain = strip(app.view(second) as Surface);
     expect(plain).not.toContain('● 1');
   });
 
@@ -340,7 +345,7 @@ describe('DashboardApp', () => {
     const [seen] = app.update(key('s', { shift: true }), plan);
 
     expect(seen.observerWatermarks.plan).toBe(200);
-    const plain = strip(app.view(seen) as string);
+    const plain = strip(app.view(seen) as Surface);
     expect(plain).not.toContain('● 2');
   });
 
@@ -363,7 +368,7 @@ describe('DashboardApp', () => {
     const [review] = app.update(key('3'), loaded);
     const [seen] = app.update(key('s', { shift: true }), review);
 
-    const plain = strip(app.view(seen) as string);
+    const plain = strip(app.view(seen) as Surface);
     expect(plain).toContain('! REVIEW');
   });
 
@@ -495,7 +500,7 @@ describe('DashboardApp', () => {
       requestId: opened.pageRequestId,
     }, opened);
 
-    const plain = strip(app.view(detailLoaded) as string);
+    const plain = strip(app.view(detailLoaded) as Surface);
     expect(plain).toContain('Collapse Proposal');
     expect(plain).toContain('Comment on this governance artifact');
     expect(plain).toContain('pending attestation');
@@ -613,7 +618,7 @@ describe('DashboardApp', () => {
       requestId: opened.pageRequestId,
     }, opened);
 
-    const plain = strip(app.view(detailLoaded) as string);
+    const plain = strip(app.view(detailLoaded) as Surface);
     expect(plain).toContain('Reviewable quest');
     expect(plain).toContain('Comment on this submission');
     expect(plain).toContain('Approve current tip patchset');
@@ -669,7 +674,7 @@ describe('DashboardApp', () => {
       },
     }, loaded);
     const [review] = app.update(key('3'), withLaneData);
-    const plain = strip(app.view(review) as string);
+    const plain = strip(app.view(review) as Surface);
 
     expect(plain).toContain('submission:REV-LANE-1'.replace('submission:', ''));
     expect(plain).toContain('Review lane quest');
@@ -706,7 +711,7 @@ describe('DashboardApp', () => {
         aiSuggestions: [],
       },
     }, loaded);
-    const plain = strip(app.view(withLaneData) as string);
+    const plain = strip(app.view(withLaneData) as Surface);
 
     expect(plain).toContain('Observer-backed queue item');
     expect(plain).toContain('QUEST');
@@ -742,7 +747,7 @@ describe('DashboardApp', () => {
       },
     }, loaded);
     const [suggestions] = app.update(key('5'), withLaneData);
-    const plain = strip(app.view(suggestions) as string);
+    const plain = strip(app.view(suggestions) as Surface);
 
     expect(plain).toContain('Adopt observer-per-view dashboard reads');
     expect(plain).toContain('prime');
@@ -903,7 +908,7 @@ describe('DashboardApp', () => {
     );
     const [drawer] = app.update(key('m'), loaded);
     const [opened] = app.update({ type: 'drawer-frame', value: 56 }, drawer);
-    const plain = strip(app.view(opened) as string);
+    const plain = strip(app.view(opened) as Surface);
 
     expect(plain).toContain('Graph Health (1)');
     expect(plain).toContain('task:TRC-010');
@@ -921,7 +926,7 @@ describe('DashboardApp', () => {
     const [drawer] = app.update(key('m'), loaded);
     const [opened] = app.update({ type: 'drawer-frame', value: 56 }, drawer);
     const [confirm] = app.update(key('q'), opened);
-    const plain = strip(app.view(confirm) as string);
+    const plain = strip(app.view(confirm) as Surface);
     const promptLine = plain.split('\n').find((line) => line.includes('Quit XYPH?'));
 
     expect(confirm.mode).toBe('confirm');
@@ -964,7 +969,7 @@ describe('DashboardApp', () => {
     );
     const wide = widen(app, loaded, 140, 60);
     const [doctor] = app.update(key('h'), wide);
-    const plain = strip(app.view(doctor) as string);
+    const plain = strip(app.view(doctor) as Surface);
 
     expect(doctor.pageStack[doctor.pageStack.length - 1]).toMatchObject({ kind: 'doctor', filter: 'all' });
     expect(plain).toContain('Doctor');
@@ -1008,7 +1013,7 @@ describe('DashboardApp', () => {
     const wide = widen(app, loaded, 140, 60);
     const [doctor] = app.update(key('h'), wide);
     const [blocking] = app.update(key('v'), doctor);
-    const plain = strip(app.view(blocking) as string);
+    const plain = strip(app.view(blocking) as Surface);
 
     expect(blocking.pageStack[blocking.pageStack.length - 1]).toMatchObject({ kind: 'doctor', filter: 'blocking' });
     expect(plain).toContain('artifact:campaign:SOVEREIGNTY');
@@ -1212,7 +1217,7 @@ describe('DashboardApp', () => {
 
     const [tree] = app.update(key('t'), loaded);
     expect(tree.mode).toBe('quest-tree');
-    expect(strip(app.view(tree) as string)).toContain('Lineage');
+    expect(strip(app.view(tree) as Surface)).toContain('Lineage');
 
     const [closed] = app.update(key('t'), tree);
     expect(closed.mode).toBe('normal');
@@ -1233,7 +1238,7 @@ describe('DashboardApp', () => {
     ]);
     expect(page.pageLoading).toBe(true);
 
-    const plain = strip(app.view(page) as string);
+    const plain = strip(app.view(page) as Surface);
     expect(plain).toContain('Landing / Plan / Q1');
     expect(plain).toContain('Quest page · Q1');
     expect(plain).toContain('Lifecycle');
@@ -1265,7 +1270,7 @@ describe('DashboardApp', () => {
     expect(graveyard.lane).toBe('graveyard');
     expect(graveyard.table.rows).toHaveLength(1);
 
-    const lanePlain = strip(app.view(graveyard) as string);
+    const lanePlain = strip(app.view(graveyard) as Surface);
     expect(lanePlain).toContain('Graveyard');
     expect(lanePlain).toContain('Rejected Quest');
 
@@ -1273,7 +1278,7 @@ describe('DashboardApp', () => {
     const widePage = widen(app, page, 140, 60);
     const [scrolledOnce] = app.update(key('pagedown'), widePage);
     const [scrolledPage] = app.update(key('pagedown'), scrolledOnce);
-    const pagePlain = strip(app.view(scrolledPage) as string);
+    const pagePlain = strip(app.view(scrolledPage) as Surface);
     expect(pagePlain).toContain('Landing / Graveyard / G1');
     expect(pagePlain).toContain('Quest retired to Graveyard.');
     expect(pagePlain).toContain('Actions');
@@ -1307,7 +1312,7 @@ describe('DashboardApp', () => {
     expect(suggestions.lane).toBe('suggestions');
     expect(suggestions.table.rows).toHaveLength(1);
 
-    const lanePlain = strip(app.view(suggestions) as string);
+    const lanePlain = strip(app.view(suggestions) as Surface);
     expect(lanePlain).toContain('Suggestions');
     expect(lanePlain).toContain('[AI]');
     expect(lanePlain).toContain('Create a traceability quest');
@@ -1318,7 +1323,7 @@ describe('DashboardApp', () => {
       { kind: 'suggestion', suggestionId: 'suggestion:S1', sourceLane: 'suggestions' },
     ]);
 
-    const pagePlain = strip(app.view(page) as string);
+    const pagePlain = strip(app.view(page) as Surface);
     expect(pagePlain).toContain('Landing / Suggestions / Incoming / S1');
     expect(pagePlain).toContain('Suggestions [AI]');
     expect(pagePlain).toContain('Comment on this suggestion');
@@ -1386,23 +1391,23 @@ describe('DashboardApp', () => {
 
     const [suggestions] = app.update(key('5'), loaded);
     expect(suggestions.suggestionsView).toBe('incoming');
-    expect(strip(app.view(suggestions) as string)).toContain('Incoming');
-    expect(strip(app.view(suggestions) as string)).toContain('Incoming suggestion');
+    expect(strip(app.view(suggestions) as Surface)).toContain('Incoming');
+    expect(strip(app.view(suggestions) as Surface)).toContain('Incoming suggestion');
 
     const [queued] = app.update(key('v'), suggestions);
     expect(queued.suggestionsView).toBe('queued');
-    expect(strip(app.view(queued) as string)).toContain('Queued');
-    expect(strip(app.view(queued) as string)).toContain('Queued job');
+    expect(strip(app.view(queued) as Surface)).toContain('Queued');
+    expect(strip(app.view(queued) as Surface)).toContain('Queued job');
 
     const [adopted] = app.update(key('v'), queued);
     expect(adopted.suggestionsView).toBe('adopted');
-    expect(strip(app.view(adopted) as string)).toContain('Adopted');
-    expect(strip(app.view(adopted) as string)).toContain('Adopted suggestion');
+    expect(strip(app.view(adopted) as Surface)).toContain('Adopted');
+    expect(strip(app.view(adopted) as Surface)).toContain('Adopted suggestion');
 
     const [dismissed] = app.update(key('v'), adopted);
     expect(dismissed.suggestionsView).toBe('dismissed');
-    expect(strip(app.view(dismissed) as string)).toContain('Dismissed');
-    expect(strip(app.view(dismissed) as string)).toContain('Dismissed suggestion');
+    expect(strip(app.view(dismissed) as Surface)).toContain('Dismissed');
+    expect(strip(app.view(dismissed) as Surface)).toContain('Dismissed suggestion');
   });
 
   it('opens the Ask-AI composer from the Suggestions lane and advances title to summary', () => {
@@ -1415,7 +1420,7 @@ describe('DashboardApp', () => {
     const [titleStep] = app.update(key('n'), suggestions);
     const titleInput = expectAskAiInput(titleStep, 'title');
     expect(titleInput.contextLabel).toBeUndefined();
-    const titlePlain = strip(app.view(titleStep) as string);
+    const titlePlain = strip(app.view(titleStep) as Surface);
     expect(titlePlain).toContain('Queue Ask-AI job');
     expect(titlePlain).toContain('Context: general');
     expect(titlePlain).toContain('Title:');
@@ -1424,7 +1429,7 @@ describe('DashboardApp', () => {
     const [summaryStep] = app.update(key('enter'), typedTitle);
     const summaryInput = expectAskAiInput(summaryStep, 'summary');
     expect(summaryInput.title).toBe('A');
-    const summaryPlain = strip(app.view(summaryStep) as string);
+    const summaryPlain = strip(app.view(summaryStep) as Surface);
     expect(summaryPlain).toContain('Queue Ask-AI job');
     expect(summaryPlain).toContain('Summary:');
   });
@@ -1491,7 +1496,7 @@ describe('DashboardApp', () => {
 
     const [suggestions] = app.update(key('5'), loaded);
     const [page] = app.update(key('enter'), suggestions);
-    const plain = strip(app.view(page) as string);
+    const plain = strip(app.view(page) as Surface);
     expect(plain).toContain('Adopt suggestion into quest or proposal');
     expect(plain).toContain('Dismiss suggestion with rationale');
     expect(plain).toContain('Mark suggestion superseded by another artifact');
@@ -1504,7 +1509,7 @@ describe('DashboardApp', () => {
     }
     expect(adopt.inputState.step).toBe('kind');
     expect(adopt.inputState.adoptedArtifactKind).toBe('proposal');
-    expect(strip(app.view(adopt) as string)).toContain('Adopt as (quest | proposal)');
+    expect(strip(app.view(adopt) as Surface)).toContain('Adopt as (quest | proposal)');
 
     const [adoptRationale] = app.update(key('enter'), adopt);
     expect(adoptRationale.mode).toBe('input');
@@ -1514,7 +1519,7 @@ describe('DashboardApp', () => {
     }
     expect(adoptRationale.inputState.step).toBe('rationale');
     expect(adoptRationale.inputState.adoptedArtifactKind).toBe('proposal');
-    expect(strip(app.view(adoptRationale) as string)).toContain('Rationale:');
+    expect(strip(app.view(adoptRationale) as Surface)).toContain('Rationale:');
 
     const [dismiss] = app.update(key('d', { shift: true }), page);
     const dismissInput = expectWriteInput(dismiss);
@@ -1528,7 +1533,7 @@ describe('DashboardApp', () => {
       throw new Error('Expected suggestion supersede input state');
     }
     expect(supersede.inputState.step).toBe('replacement');
-    expect(strip(app.view(supersede) as string)).toContain('Replacement artifact ID');
+    expect(strip(app.view(supersede) as Surface)).toContain('Replacement artifact ID');
   });
 
   it('does not submit suggestion adoption without a rationale', () => {
@@ -1625,9 +1630,9 @@ describe('DashboardApp', () => {
     const [explain] = app.update(key('e'), page);
     const [scrolled] = app.update(key('pagedown'), explain);
     const [scrolledAgain] = app.update(key('pagedown'), scrolled);
-    const plain = strip(app.view(explain) as string);
-    const scrolledPlain = strip(app.view(scrolled) as string);
-    const scrolledAgainPlain = strip(app.view(scrolledAgain) as string);
+    const plain = strip(app.view(explain) as Surface);
+    const scrolledPlain = strip(app.view(scrolled) as Surface);
+    const scrolledAgainPlain = strip(app.view(scrolledAgain) as Surface);
 
     expect(explain.mode).toBe('ai-explainability');
     expect(plain).toContain('[AI] Explainability');
@@ -1704,7 +1709,7 @@ describe('DashboardApp', () => {
     });
 
     const wideSuggestionPage = widen(app, suggestionDetailLoaded, 140, 60);
-    const suggestionPlain = strip(app.view(wideSuggestionPage) as string);
+    const suggestionPlain = strip(app.view(wideSuggestionPage) as Surface);
     expect(suggestionPlain).toContain('Shaping');
     expect(suggestionPlain).toContain('governed case');
     expect(suggestionPlain).toContain('Open linked governed case');
@@ -1772,7 +1777,7 @@ describe('DashboardApp', () => {
     }, casePage);
 
     const wideCasePage = widen(app, caseDetailLoaded, 140, 60);
-    const plain = strip(app.view(wideCasePage) as string);
+    const plain = strip(app.view(wideCasePage) as Surface);
     expect(plain).toContain('Governed Case');
     expect(plain).toContain('Should traceability become its own governed quest?');
     expect(plain).toContain('Recommendation: split the traceability work');
@@ -1789,7 +1794,7 @@ describe('DashboardApp', () => {
       throw new Error('Expected case-decision input state');
     }
     expect(decision.inputState.step).toBe('outcome');
-    expect(strip(app.view(decision) as string)).toContain('Decision (adopt | reject | defer | request-evidence)');
+    expect(strip(app.view(decision) as Surface)).toContain('Decision (adopt | reject | defer | request-evidence)');
 
     const [askAi] = app.update(key('n'), wideCasePage);
     const askAiInput = expectAskAiInput(askAi, 'title');
@@ -1867,7 +1872,7 @@ describe('DashboardApp', () => {
 
     const [activity] = app.update(key('v'), loaded);
     expect(activity.nowView).toBe('activity');
-    expect(strip(app.view(activity) as string)).toContain('Recent Activity');
+    expect(strip(app.view(activity) as Surface)).toContain('Recent Activity');
 
     const [queue] = app.update(key('v'), activity);
     expect(queue.nowView).toBe('queue');
@@ -1916,7 +1921,7 @@ describe('DashboardApp', () => {
       })),
     }));
     const [resized] = app.update({ type: 'resize', columns: 100, rows: 32 }, loaded);
-    const output = app.view(resized) as string;
+    const output = strip(app.view(resized) as Surface);
 
     for (const line of output.split('\n')) {
       expect(visibleLength(line)).toBeLessThanOrEqual(100);
@@ -1930,7 +1935,7 @@ describe('DashboardApp', () => {
     const loaded = ready(app, makeSnapshot({
       quests: [{ id: 'task:Q1', title: 'Quest One', status: 'IN_PROGRESS', hours: 1 }],
     }));
-    const output = strip(app.view(loaded) as string);
+    const output = strip(app.view(loaded) as Surface);
     const footer = output.split('\n').slice(-2);
 
     expect(footer[0]).not.toContain('PgUp/PgDn list');
@@ -1946,7 +1951,7 @@ describe('DashboardApp', () => {
       quests: [{ id: 'task:Q1', title: 'Quest One', status: 'READY', hours: 1 }],
     })), 120, 36);
 
-    const footer = strip(app.view(loaded) as string).split('\n').at(-1) ?? '';
+    const footer = strip(app.view(loaded) as Surface).split('\n').at(-1) ?? '';
     expect(footer).toContain('n ask ai');
     expect(footer).toContain('r refresh');
     expect(footer).not.toContain('? helpj/k');
@@ -1961,7 +1966,7 @@ describe('DashboardApp', () => {
     }));
 
     const [help] = app.update(key('?'), loaded);
-    const plain = strip(app.view(help) as string);
+    const plain = strip(app.view(help) as Surface);
 
     expect(plain).toContain('Cockpit Controls');
     expect(plain).toContain('Current context');

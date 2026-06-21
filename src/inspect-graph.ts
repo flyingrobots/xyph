@@ -5,12 +5,13 @@ import { toNeighborEntries } from './infrastructure/helpers/isNeighborEntry.js';
 import { resolveGraphRuntime } from './cli/runtimeGraph.js';
 
 const runtime = resolveGraphRuntime({ cwd: process.cwd() });
-const plumbing = Plumbing.createDefault({ cwd: runtime.repoPath });
-const persistence = new GitGraphAdapter({ plumbing });
 
 async function inspect(): Promise<void> {
   const style = createStylePort();
   const t = style.theme;
+
+  const plumbing = await Plumbing.createDefault({ cwd: runtime.repoPath });
+  const persistence = new GitGraphAdapter({ plumbing });
 
   const graph = await WarpGraph.open({
     persistence,

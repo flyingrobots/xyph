@@ -17,18 +17,25 @@ import { graphAdapterLogger, withLoggedAdapterOperation } from '../logging/Adapt
 
 const VALID_TYPES: ReadonlySet<string> = new Set(['task']);
 
+export interface WarpRoadmapAdapterOptions {
+  syncOnQuery?: boolean;
+}
+
 export class WarpRoadmapAdapter implements RoadmapPort {
   private readonly logger: LoggerPort;
+  private readonly syncOnQuery: boolean;
 
   constructor(
     private readonly graphPort: GraphPort,
+    options?: WarpRoadmapAdapterOptions,
   ) {
     this.logger = graphAdapterLogger(graphPort, 'WarpRoadmapAdapter');
+    this.syncOnQuery = options?.syncOnQuery ?? true;
   }
 
   private async getSyncedGraph(): Promise<WarpGraph> {
     const graph = await this.graphPort.getGraph();
-    if (typeof graph.syncCoverage === 'function') {
+    if (this.syncOnQuery && typeof graph.syncCoverage === 'function') {
       await graph.syncCoverage();
     }
     return graph;

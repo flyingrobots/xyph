@@ -146,7 +146,7 @@ const RETHINKS: RethinkItem[] = [
 async function main(): Promise<void> {
   const { resolveGraphRuntime } = await import('../src/cli/runtimeGraph.js');
   const runtime = resolveGraphRuntime({ cwd: process.cwd() });
-  const plumbing = Plumbing.createDefault({ cwd: runtime.repoPath });
+  const plumbing = await Plumbing.createDefault({ cwd: runtime.repoPath });
   const persistence = new GitGraphAdapter({ plumbing });
 
   const graph = await WarpGraph.open({

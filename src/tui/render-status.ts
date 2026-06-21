@@ -15,6 +15,7 @@ import type {
   RequirementNode,
   StoryNode,
   SuggestionNode,
+  AiSuggestionNode,
 } from '../domain/models/dashboard.js';
 import type { BlockerInfo } from '../domain/services/DepAnalysis.js';
 import type { UnmetRequirement, CoverageResult } from '../domain/services/TraceabilityAnalysis.js';
@@ -1056,6 +1057,7 @@ export function renderTrace(data: TraceViewData, style: StylePort): string {
 
 export interface SuggestionsViewData {
   suggestions: SuggestionNode[];
+  aiSuggestions?: AiSuggestionNode[];
 }
 
 /**
@@ -1163,13 +1165,48 @@ export function renderSuggestions(data: SuggestionsViewData, style: StylePort): 
     }));
   }
 
+  // --- AI & Ask-AI Suggestions ---
+  const aiSuggestions = [...(data.aiSuggestions ?? [])].sort(
+    (a, b) => b.suggestedAt - a.suggestedAt,
+  );
+  if (aiSuggestions.length > 0) {
+    lines.push('');
+    lines.push(separator({ label: 'AI & Ask-AI Suggestions', borderToken: style.theme.border.primary }));
+
+    const rows = aiSuggestions.map((s) => [
+      style.styled(style.theme.semantic.muted, s.id.slice(0, 28)),
+      s.kind,
+      s.title.slice(0, 36),
+      s.status,
+      s.suggestedBy,
+    ]);
+
+    lines.push(table({
+      columns: [
+        { header: 'ID', width: 30 },
+        { header: 'Kind', width: 15 },
+        { header: 'Title', width: 38 },
+        { header: 'Status', width: 12 },
+        { header: 'Suggested By', width: 18 },
+      ],
+      rows,
+      headerToken: style.theme.ui.tableHeader,
+      borderToken: style.theme.border.primary,
+    }));
+  }
+
   // --- Stats ---
   lines.push('');
   lines.push(separator({ label: 'Stats', borderToken: style.theme.border.primary }));
-  lines.push(`    ${style.styled(style.theme.semantic.muted, 'Total:')} ${data.suggestions.length}`);
-  lines.push(`    ${badge('PENDING', { variant: statusVariant('PENDING') })} ${pending.length}`);
-  lines.push(`    ${badge('ACCEPTED', { variant: statusVariant('ACCEPTED') })} ${accepted.length}`);
-  lines.push(`    ${badge('REJECTED', { variant: statusVariant('REJECTED') })} ${rejected.length}`);
+  const total = data.suggestions.length + aiSuggestions.length;
+  const pendingCount = pending.length + aiSuggestions.filter((s) => s.status === 'suggested' || s.status === 'queued').length;
+  const acceptedCount = accepted.length + aiSuggestions.filter((s) => s.status === 'accepted' || s.status === 'implemented').length;
+  const rejectedCount = rejected.length + aiSuggestions.filter((s) => s.status === 'rejected').length;
+
+  lines.push(`    ${style.styled(style.theme.semantic.muted, 'Total:')} ${total}`);
+  lines.push(`    ${badge('PENDING/QUEUED', { variant: statusVariant('PENDING') })} ${pendingCount}`);
+  lines.push(`    ${badge('ACCEPTED/DONE', { variant: statusVariant('ACCEPTED') })} ${acceptedCount}`);
+  lines.push(`    ${badge('REJECTED/DISMISSED', { variant: statusVariant('REJECTED') })} ${rejectedCount}`);
 
   return lines.join('\n');
 }

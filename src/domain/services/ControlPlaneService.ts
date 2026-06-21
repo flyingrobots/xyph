@@ -1,20 +1,32 @@
 import { createHash } from 'node:crypto';
 import type { WarpCore as WarpGraph } from '@git-stunts/git-warp';
-import type {
-  ConflictDiagnostic,
-  CoordinateComparisonSelectorV1,
-  CoordinateComparisonV1,
-  CoordinateTransferPlanV1,
-  VisibleStateTransferOperationV1,
-} from '@git-stunts/git-warp';
 import {
-  createStateReaderV5,
+  createStateReader,
   exportCoordinateComparisonFact,
   exportCoordinateTransferPlanFact,
-  type VisibleStateProjectionV5,
-  type VisibleStateReaderV5,
-  type WarpStateV5,
+  SnapshotWarpState,
 } from '@git-stunts/git-warp';
+
+export interface ConflictDiagnostic {
+  readonly code: string;
+  readonly severity: string;
+  readonly message: string;
+  readonly data?: Record<string, unknown>;
+}
+
+interface QueryNodeLike {
+  id?: string;
+  props?: Record<string, unknown>;
+}
+
+export type CoordinateComparisonSelectorV1 = Parameters<WarpGraph['compareCoordinates']>[0]['left'];
+export type CoordinateComparisonV1 = Awaited<ReturnType<WarpGraph['compareCoordinates']>>;
+export type CoordinateTransferPlanV1 = Awaited<ReturnType<WarpGraph['planCoordinateTransfer']>>;
+export type VisibleStateTransferOperationV1 = CoordinateTransferPlanV1['ops'][number];
+export type VisibleStateReaderV5 = ReturnType<typeof createStateReader>;
+export type VisibleStateProjectionV5 = ReturnType<VisibleStateReaderV5['project']>;
+export type WarpStateV5 = SnapshotWarpState;
+const createStateReaderV5 = createStateReader;
 import type { GraphPort } from '../../ports/GraphPort.js';
 import type { ControlPlaneHooks, ControlPlanePort } from '../../ports/ControlPlanePort.js';
 import {
@@ -298,7 +310,7 @@ function conflictDiagnosticSummary(code: string): string {
   }
 }
 
-function toConflictProjectionDiagnostics(diagnostics: ConflictDiagnostic[] | undefined): Diagnostic[] {
+function toConflictProjectionDiagnostics(diagnostics: readonly ConflictDiagnostic[] | undefined): Diagnostic[] {
   if (!diagnostics || diagnostics.length === 0) return [];
   return diagnostics.map((diagnostic) => ({
     code: diagnostic.code,
@@ -327,7 +339,7 @@ function workingSetErrorCode(err: unknown): string | null {
     : null;
 }
 
-function frontierDigestFromObservedFrontier(frontier: Map<string, unknown>): string {
+function frontierDigestFromObservedFrontier(frontier: { entries(): Iterable<[string, unknown]> }): string {
   return digest([...frontier.entries()].sort(([a], [b]) => a.localeCompare(b)));
 }
 
@@ -390,7 +402,7 @@ function workingSetObservationBackingFromResolved(workingSet: ResolvedWorkingSet
     overlayHeadPatchSha: workingSet.overlayHeadPatchSha,
     overlayPatchCount: workingSet.overlayPatchCount,
     overlayWritable: workingSet.overlayWritable,
-    supportWorkingSetIds: workingSet.braid.braidedStrandIds,
+    supportWorkingSetIds: workingSet.braid ? [...workingSet.braid.braidedStrandIds] : [],
   });
 }
 
@@ -731,6 +743,7 @@ export class ControlPlaneService implements ControlPlanePort {
   private async openLiveSummaryGraph(): Promise<WarpGraph> {
     const graph = await this.graphPort.getGraph();
     await graph.syncCoverage();
+    await graph.materialize();
     return graph;
   }
 
@@ -1287,7 +1300,7 @@ export class ControlPlaneService implements ControlPlanePort {
 
     const result = await graph.query().match(`${kind}:*`).select(['id', 'props']).run();
     const nodes = 'nodes' in result
-      ? result.nodes.filter(
+      ? (result.nodes as QueryNodeLike[]).filter(
         (node): node is { id: string; props: Record<string, unknown> } =>
           typeof node.id === 'string' && node.props !== undefined,
       )
@@ -1502,9 +1515,9 @@ export class ControlPlaneService implements ControlPlanePort {
     analysis: ConflictAnalysisResult,
   ): Diagnostic[] {
     const workingSet = analysis.resolvedCoordinate.strand;
-    if (!workingSet || workingSet.braid.readOverlayCount === 0) return [];
+    if (!workingSet || !workingSet.braid || workingSet.braid.readOverlayCount === 0) return [];
 
-    const supportWorldlineIds = mapSupportWorldlineIds(workingSet.braid.braidedStrandIds);
+    const supportWorldlineIds = mapSupportWorldlineIds([...workingSet.braid.braidedStrandIds]);
     return analysis.conflicts
       .filter((trace) => (
         (trace.target.targetKind === 'node_property' || trace.target.targetKind === 'edge_property')
@@ -2148,7 +2161,7 @@ export class ControlPlaneService implements ControlPlanePort {
     await graph.materialize();
     const result = await graph.query().match(`${kind}:*`).select(['id', 'props']).run();
     if (!('nodes' in result)) return [];
-    return result.nodes.filter(
+    return (result.nodes as QueryNodeLike[]).filter(
       (node): node is { id: string; props: Record<string, unknown> } =>
         typeof node.id === 'string' && node.props !== undefined,
     );
@@ -2743,6 +2756,7 @@ export class ControlPlaneService implements ControlPlanePort {
       },
     );
     await graph.syncCoverage();
+    await graph.materialize();
 
     const rawComparisonOptions = {
       left: this.buildComparisonSelector(leftWorldlineId, leftSelector, 'compare_worldlines'),
@@ -3017,6 +3031,7 @@ export class ControlPlaneService implements ControlPlanePort {
       },
     );
     await graph.syncCoverage();
+    await graph.materialize();
 
     const comparisonOptions = {
       left: this.buildComparisonSelector(sourceWorldlineId, sourceSelector, 'collapse_worldline'),

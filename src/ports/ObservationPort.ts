@@ -1,5 +1,24 @@
-import type { Lens, WorldlineSource } from '@git-stunts/git-warp';
+import type { Aperture } from '@git-stunts/git-warp';
 import type { EntityDetail, GraphSnapshot } from '../domain/models/dashboard.js';
+
+export type Lens = Aperture;
+
+export type WorldlineSource =
+  | {
+      kind: 'live';
+      ceiling?: number | null;
+    }
+  | {
+      kind: 'coordinate';
+      frontier: Map<string, string> | Record<string, string>;
+      ceiling?: number | null;
+      checkpointSha?: string;
+    }
+  | {
+      kind: 'strand';
+      strandId: string;
+      ceiling?: number | null;
+    };
 
 export type SnapshotProfile = 'full' | 'operational' | 'analysis' | 'audit';
 

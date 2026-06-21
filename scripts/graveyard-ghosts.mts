@@ -20,7 +20,7 @@ const GHOSTS: { id: string; rationale: string }[] = [
   { id: 'artifact:campaign:SOVEREIGNTY', rationale: 'Malformed scroll — attached to a campaign node rather than a quest, no fulfills target' },
 ];
 
-const plumbing = Plumbing.createDefault({ cwd: runtime.repoPath });
+const plumbing = await Plumbing.createDefault({ cwd: runtime.repoPath });
 const persistence = new GitGraphAdapter({ plumbing });
 
 const graph = await WarpGraph.open({

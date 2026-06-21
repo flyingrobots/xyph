@@ -233,6 +233,7 @@ const CYAN_MAGENTA_LIGHT_BASE: Theme = {
     logo:          tv('#0891b2'),
     tableHeader:   tv('#1e293b'),
     trackEmpty:    tv('#e2e8f0'),
+    focusGutter:   tv('#cbd5e1'),
   },
   surface: CYAN_MAGENTA_LIGHT_SURFACE,
 };
@@ -283,6 +284,7 @@ const TEAL_ORANGE_LIGHT_BASE: Theme = {
     logo:          tv('#0d9488'),
     tableHeader:   tv('#1e293b'),
     trackEmpty:    tv('#e2e8f0'),
+    focusGutter:   tv('#cbd5e1'),
   },
   surface: TEAL_ORANGE_LIGHT_SURFACE,
 };

@@ -21,7 +21,7 @@ const agentId = process.env['XYPH_AGENT_ID'] ?? 'human.james';
 const now = Date.now();
 const runtime = resolveGraphRuntime({ cwd: process.cwd() });
 
-const plumbing = Plumbing.createDefault({ cwd: runtime.repoPath });
+const plumbing = await Plumbing.createDefault({ cwd: runtime.repoPath });
 const persistence = new GitGraphAdapter({ plumbing });
 const graph = await WarpGraph.open({
   persistence,
