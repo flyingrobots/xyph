@@ -1,106 +1,181 @@
-# Edict Integration: Safe Optics & The YOLO Execution Model for XYPH
+# Edict Integration: Safe Optics & Bounded Execution Model for XYPH
 
-This document outlines how **Edict**—the safe, statically verifiable programming language for Optics—integrates into XYPH to eliminate **FIDLAR** (ambient authority risk) and establish secure, verified agent execution.
+> [!WARNING]
+> **ROADMAP DOCUMENT — NOT PRESENT IMPLEMENTATION TRUTH**
+> As of June 21, 2026, Edict is in early alpha. The first alpha issue is open and explicitly covers only parsing and source-AST validation. Core IR, target lowerers, bundle admission, and runtime execution are not yet implemented. This document establishes the target architecture, integration requirements, and conformance constraints for future implementation.
+
+This document outlines how **Edict**—the safe, statically verifiable programming language for Optics—will integrate into XYPH to close the ambient-authority gap for migrated operations, contain the blast radius of prompt injection, and establish secure, verified agent execution.
 
 ---
 
 ## 1. The Core Architecture
 
-Edict bridges the gap between GraphQL schema definitions and the underlying `git-warp` causal history runtime.
+Edict bridges the gap between schema definitions, governance lawpacks, and the underlying `git-warp` causal history runtime. 
+
+Unlike the initial proposal, GraphQL is treated as an adapter rather than XYPH’s sovereign top layer. XYPH's canonical machine interface is its versioned JSONL control plane. Edict is designed to be usable directly over the control plane without GraphQL.
 
 ```text
   ┌──────────────────────────────────────────────────────────┐
-  │                   GraphQL Surface                         │
-  │    Describes the types (Quest, Intent, Scroll, etc.)      │
+  │         Surface Adapters (GraphQL / CLI / TUI)           │
+  │    Presents views and captures structured inputs         │
+  └──────────────────────────┬───────────────────────────────┘
+                             ▼
+  ┌──────────────────────────────────────────────────────────┐
+  │         Canonical JSONL Control Plane (XYPH)             │
+  │    Sovereign interface for reading & submitting commands │
   └──────────────────────────┬───────────────────────────────┘
                              ▼
   ┌──────────────────────────────────────────────────────────┐
   │                 Edict Operations (Optics)                │
-  │    Defines what intents/readings are allowed to do       │
-  └──────────────────────────┬───────────────────────────────┘
-                             ▼
-  ┌──────────────────────────────────────────────────────────┐
-  │                   Continuum Spine                        │
-  │    Validates the contract bundle & checks credentials    │
+  │    Statically verified, capability-bound transactions    │
   └──────────────────────────┬───────────────────────────────┘
                              ▼
   ┌──────────────────────────────────────────────────────────┐
   │             git-warp Causal History Runtime              │
-  │    Admits changes and executes sandboxed operations      │
+  │    Evaluates admission policies, applies target rules   │
   └──────────────────────────────────────────────────────────┘
 ```
 
+### Path Separation: Cold vs. Hot
+
+We separate the cold compilation/registration path from the hot execution path. Routine agents do not compile fresh source for every action. They invoke pre-admitted law.
+
+```text
+AUTHORING / REGISTRATION (Cold Path)
+GraphQL Shape IR ─┐
+XYPH Lawpack ─────┼─> Edict Compiler -> Core IR -> git-warp Target IR
+Edict Source ─────┤                        -> Verifier Report
+Target Profile ───┘                        -> Contract Bundle
+                                            -> HOLMES Evidence
+                                            -> Participant Admission
+                                            │  (continuum.lane.lawful-autonomous/v1)
+                                            └> Operation Registry
+
+EXECUTION (Hot Path)
+Agent / TUI / XYPH API
+       │
+       │ { bundleDigest, typedInput, basis, capabilityRef, idempotencyKey }
+       ▼
+Pre-Admitted Operation Registry
+       │
+       ▼
+git-warp Target Executor
+       │
+       ▼
+Typed outcome + patch witness + admission receipt reference
+```
+
 ---
 
-## 2. Shift I: Planning Rules as Edict Intents
+## 2. Shift I: Planning Rules as Edict Intents (Governance Lawpacks)
 
-Currently, XYPH's graph-mutation constraints (e.g., verifying that claiming a Quest does not introduce cycles) are written in TypeScript inside services like `IntakeService.ts` or `SubmissionService.ts`. These services run with ambient system authority.
+XYPH currently separates validation and mutation, sometimes repeating checks inside adapters. By moving the rule, read, guard, and write into a target-owned atomic application, we improve coherence.
 
-### The Edict Approach
-We must rewrite XYPH planning rules as **Edict Intents**. 
+Domain rules live in `xyph.governance@1` as a **lawpack**, with an adapter to a generic `gitwarp.causal-graph@1` target. Lawpacks own typed constants, obstructions, operation profiles, budgets, semantic effects, and target adapters, preserving the rule: **XYPH owns product meaning; git-warp owns bedrock mechanics.**
 
-For example, the rules for claiming a Quest are defined in `xyph.governance@1`:
+### Conceptual Sample Surgery
+
+Below is the updated conceptual Edict operation for claiming a Quest, correcting previous semantic errors:
+* Respects the requirement that claiming requires `READY` status (not `BACKLOG`).
+* Permits unassigned quests or existing self-assignments.
+* Avoids introducing cycles (cycle prevention belongs to dependency mutation).
+* Requires an explicit basis.
+* Uses the normative grammar keyword `return` (not `reveal`).
+* Delegates the budget to the governance lawpack instead of hardcoding it at the intent layer.
+* Returns a minimal receipt rather than disclosing the entire updated entity.
 
 ```graphql
-package xyph.governance@1;
+package xyph.operations@1;
 
-use shape "schemas/planning.graphql" as shape;
-use target warp.dpo@1 digest "sha256:4d8..." as warp;
+use shape "schemas/planning.graphql" 
+  digest "sha256:8f4c..." as shape;
+use lawpack xyph.governance@1 
+  digest "sha256:d3e1..." as governance;
+use target gitwarp.causal-graph@1 
+  digest "sha256:a7b8..." as warp;
 
-intent claimQuest(input: shape.ClaimQuestInput)
-  returns shape.ClaimQuestReceipt | shape.ClaimQuestObstruction
-  profile warp.readWrite
-  budget <= shape.mediumBudget
+intent claimQuest(input: shape.ClaimQuestRequest)
+  returns shape.ClaimQuestReceipt
+  implements governance.claimQuest
+  basis input.basis
+  footprint <= governance.claimQuestFootprint
+  budget <= governance.claimQuestBudget
 {
-  let questRef = warp.ref<shape.Quest>(input.questId);
-  let quest = questRef.read() else shape.ClaimQuestObstruction.QuestMissing;
-
-  // Enforce state machine rules
-  require quest.status == "BACKLOG"
-    else shape.ClaimQuestObstruction.InvalidStatus { currentStatus: quest.status };
-
-  // Enforce assignment constraints
-  let agentRef = warp.ref<shape.Agent>(input.agentId);
-  let agent = agentRef.read() else shape.ClaimQuestObstruction.AgentMissing;
-
-  // Write the claim edge
-  let updatedQuest = questRef.write({
-    status: "IN_PROGRESS",
-    assignedTo: input.agentId
+  let receipt = governance.quest.claim({
+    questId: input.questId,
+    basis: input.basis,
+    grant: input.claimCapability
   }) else {
-    conflict => shape.ClaimQuestObstruction.ClaimConflict
+    missing => governance.QuestMissing,
+    invalidStatus(f) => governance.InvalidStatus(f),
+    alreadyAssigned(f) => governance.AlreadyAssigned(f),
+    staleGuard(f) => governance.StaleBasis(f)
   };
 
-  reveal updatedQuest;
+  return receipt;
 }
 ```
 
-### The Benefits
-* **Static Footprint Verification**: The compiler proves that `claimQuest` *only* reads and writes the targeted `Quest` and `Agent` nodes and has no capability to delete campaigns or read secrets.
-* **No Ambient Authority**: The operation cannot touch the network, access the local filesystem, or leak environment variables.
+*Note: The `xyph.governance` adapter—not the high-level intent—lowers `governance.quest.claim` into exact git-warp property operations and guards.*
 
 ---
 
-## 3. Shift II: The YOLO Agent Execution Model
+## 3. Shift II: The Bounded Autonomous Lane (Formerly "YOLO")
 
-Currently, XYPH agents run in **FIDLAR** mode: they run general TypeScript/JavaScript code, giving them ambient access to the host's files, processes, and credentials. 
+We retain "YOLO (You Only Lawfully Operate)" as human-facing branding. However, canonical artifacts must use `continuum.lane.lawful-autonomous/v1` in all hash-significant coordinates.
 
-### The YOLO Model in XYPH
-We will implement the **YOLO (You Only Lawfully Operate)** execution lane for all autonomous agent actions:
+We split agent operations into two lanes:
+1. **Lawful Execution**: Select a pre-compiled, admitted bundle, and supply inputs. Routine agents operate exclusively in this lane.
+2. **Lawful Extension**: Propose new Edict source, compile it, verify it, certify it, and seek admission.
 
-![Edict Integration Sequence](diagrams/xyph-edict-sequence.svg)
-
-### The Benefits
-* **Isolate Prompt Injection**: If a malicious prompt injection instructs the agent to delete the codebase or download secrets, the compiled Edict program will fail static validation because the target footprint and network access are unauthorized.
-* **Typed Failure Resolution**: Because all failures are returned as typed **Obstructions** rather than unhandled exceptions or arbitrary string errors, the agent can programmatically correct its inputs (e.g. basis refresh) and retry.
+### Containing Prompt Injection
+Edict **contains the authority blast radius of prompt injection**. It does not solve or prevent prompt injection. If an agent is compromised by an injection:
+* It cannot delete the repository or access external networks if its footprint and target profile forbid it.
+* However, it *can* still perform unauthorized actions within its permitted aperture (e.g. spamming lawful claims, choosing adversarial inputs, or disclosing data it has legitimate authority to read).
 
 ---
 
-## 4. Shift III: Zero-Side-Effect TUI Readings
+## 4. Shift III: Bounded TUI Readings
 
-Currently, the TUI dashboard queries the graph using arbitrary queries that could potentially trigger unexpected mutations or state locks.
+XYPH's present `ObservationSession` already restricts reads and separates observation from mutation authority. Edict enhances this by offering compile-time proofs of:
+* Provably bounded apertures.
+* Verified zero logical writes (no logical side-effects).
+* Explicit basis and read identity.
+* Bounded execution cost and output size.
+* Safe, deterministic cache keys.
+* Target-directed optic selection and causal slicing.
 
-### The Edict Approach
-We will express TUI queries as **Edict Readings**:
-* Every dashboard panel requests a reading governed by a read-only profile (`profile warp.readOnly`).
-* Because the compiler guarantees that the reading has zero write effects, the runtime can optimize execution using **holographic slicing** (reconstructing only the needed causal cones) with zero risk of concurrent locks or state corruption.
+*Note: We do not promise "zero locks". The compiler guarantees logical read-only effects, not that the runtime implementation avoids internal mutexes.*
+
+---
+
+## 5. Integration Mandates (MUST)
+
+1. **Build the git-warp Target Profile**: This is the primary integration project. We must define the target intrinsics, footprint and cost algebras, Target IR, named failures, verifier, sandbox identity, atomicity model, and conformance fixtures.
+2. **Bind Identity to Capability Evidence**: We cannot rely on unauthenticated inputs like `input.agentId`. Reading an Agent node only proves a record exists. We must use a scoped `CapabilityRef`, where participant admission binds the claimant, quest scope, basis, bounds, revocation policy, and policy epoch.
+3. **Resolve Claim Concurrency Semantics**: Under current `git-warp` behavior, two concurrent claims can commit locally and converge later via Last-Write-Wins (LWW). A synchronous `ClaimConflict` cannot detect an unseen concurrent claim without coordination. We must choose:
+   - *Coordination-free*: Operation returns `ClaimSubmitted`; later observation of the converged graph determines the winning claimant.
+   - *Exclusive claim*: Introduce sequenced admission, Compare-And-Swap (CAS), a lease authority, or another coordinating participant.
+4. **Start with Graph-Only Operations**: Operations like `claim`, `shape`, and bounded readings are reasonable initial targets. Operations like `submit`, `seal`, and `merge` cross graph, Git workspace, filesystem, and keyring boundaries, requiring a composite target that explicitly owns coordination and atomicity.
+5. **Preserve Failure-Class Separation**: Keep expected domain failures (e.g. invalid quest state) distinct. Compiler failures, admission rejection, integrity faults, resource exhaustion, and internal runtime defects must be separate structured failure classes—not user-defined obstructions.
+6. **Make Production Claims Conditional**: Describe the system in future-conditional terms (e.g. "will close the ambient-authority gap for migrated operations") rather than declaring that it currently eliminates FIDLAR across XYPH.
+
+---
+
+## 6. Guidelines & Adjustments (SHOULD / COULD)
+
+### SHOULD
+* **Bundle Registry**: Maintain a registry keyed by semantic digest, with human-readable aliases (e.g., `xyph.claimQuest@1`).
+* **Explicit Inputs**: Require every execution request to include an explicit basis, capability receipt digest, and idempotency key.
+* **Causal Provenance**: Replace ambient `Date.now()` and random IDs inside the lawful lane with causal coordinates, content-derived IDs, or participant-supplied provenance.
+* **Shadow Mode**: Run Edict beside existing TypeScript services in shadow mode, comparing outcomes before making Edict authoritative.
+* **Test Reuse**: Re-use existing XYPH concurrent-claim and state-transition tests as target-profile conformance fixtures.
+* **Reading Cache Key**: Cache reads based on: `bundleDigest + basisDigest + inputDigest + observerDigest`.
+
+### COULD / COOL IDEAS™
+* **Law Nutrition Labels**: Display reads, writes, basis, budget, capability scope, obstruction vocabulary, and bundle digest in the TUI prior to execution.
+* **Obstruction Strategies**: Annotate typed failures with recovery metadata (e.g. `retry-after-refresh`, `retry-with-backoff`, `requires-human`, or `terminal`).
+* **Footprint-Aware Scheduling**: Run operations with proven-disjoint write footprints in parallel.
+* **Law Diffs**: Show static analysis changes in PRs (e.g. "This revision adds one Quest read and widens output by 128 bytes").
+* **Historical Lawful Replay**: Reproduce an action against its original basis to verify deterministic outcomes.
+* **Aperture Heat Maps**: Visualize graph regions that registered operations are permitted to touch.
