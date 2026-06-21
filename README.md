@@ -1,6 +1,6 @@
 # XYPH
 
-A sovereign agentic planning substrate and Edict execution runtime designed for the [Continuum](https://github.com/flyingrobots/continuum) post-Unix platform. 
+A sovereign agentic planning substrate and Edict execution runtime designed for the [Continuum](https://github.com/flyingrobots/continuum) post-Unix platform.
 
 XYPH replaces traditional central-database ticketing systems with a distributed network of **Continuum Participants** that materialize project planning coordinates (Intents, Quests, Scrolls, and Policies) directly from an immutable, verifiable causal history.
 

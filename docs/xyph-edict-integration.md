@@ -10,7 +10,7 @@ This document outlines how **Edict**—the safe, statically verifiable programmi
 
 ## 1. The Core Architecture
 
-Edict bridges the gap between schema definitions, governance lawpacks, and the underlying `git-warp` causal history runtime. 
+Edict bridges the gap between schema definitions, governance lawpacks, and the underlying `git-warp` causal history runtime.
 
 Unlike the initial proposal, GraphQL is treated as an adapter rather than XYPH’s sovereign top layer. XYPH's canonical machine interface is its versioned JSONL control plane. Edict is designed to be usable directly over the control plane without GraphQL.
 

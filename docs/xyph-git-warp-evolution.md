@@ -4,7 +4,7 @@
 > **ROADMAP DOCUMENT — NOT PRESENT IMPLEMENTATION TRUTH**
 > This document outlines the planned evolutionary direction for XYPH's integration with `git-warp`. The structural shifts proposed here (e.g. counterfactual strands, BTR-style scrolls, and target-specific optics) represent future design gravity, not present-tense implementation.
 
-This document outlines how XYPH's design and runtime must evolve to leverage the core holographic, optic, and causal history capabilities of `git-warp`. 
+This document outlines how XYPH's design and runtime must evolve to leverage the core holographic, optic, and causal history capabilities of `git-warp`.
 
 Currently, XYPH treats the planning graph as a traditional database, loading monolithic state snapshots. To scale to large codebases and enable decentralized, offline-first agent coordination, we must shift to target-specific optics, speculative strands, and verifiable boundaries.
 
