@@ -4,7 +4,6 @@ This roadmap outlines the systematic path to resolve the architectural debt, wor
 
 ![XYPH Restoration & Alignment Roadmap](diagrams/roadmap.svg)
 
-
 ---
 
 ## Phase 1: Workflow & UX Blockers (Immediate Focus)

@@ -1166,7 +1166,9 @@ export function renderSuggestions(data: SuggestionsViewData, style: StylePort): 
   }
 
   // --- AI & Ask-AI Suggestions ---
-  const aiSuggestions = data.aiSuggestions ?? [];
+  const aiSuggestions = [...(data.aiSuggestions ?? [])].sort(
+    (a, b) => b.suggestedAt - a.suggestedAt,
+  );
   if (aiSuggestions.length > 0) {
     lines.push('');
     lines.push(separator({ label: 'AI & Ask-AI Suggestions', borderToken: style.theme.border.primary }));

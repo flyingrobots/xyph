@@ -2,9 +2,9 @@
 
 This file tracks "BAD CODE" that needs to be refactored and "COOL IDEAS™" for future development.
 
-##  BAD CODE
+## BAD CODE
 
-- **[REFACTOR] Quest.ts God Object:** The `Quest.ts` entity is too large and has multiple responsibilities (validation, normalization, business logic). It should be refactore to separate these concerns.
+- **[REFACTOR] Quest.ts God Object:** The `Quest.ts` entity is too large and has multiple responsibilities (validation, normalization, business logic). It should be refactored to separate these concerns.
 - **[REFACTOR] Tight coupling to @git-stunts/git-warp:** The codebase directly interacts with the `git-warp` library in multiple places. An abstraction layer (`WarpAdapter`) should be introduced to decouple the domain from the storage layer.
 - **[REFACTOR] Inconsistent validation logic:** Validation is sometimes done in entity constructors and sometimes in `normalize` functions. This should be standardized into dedicated validator classes.
 - **[REFACTOR] Inconsistent file naming conventions:** File naming should be standardized to PascalCase across the project.
