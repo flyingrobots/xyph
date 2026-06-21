@@ -111,8 +111,8 @@ async function loadGraph(): Promise<{
     writerId: WRITER_ID,
     autoMaterialize: true,
   });
-  // await graph.syncCoverage();
-  // await graph.materialize();
+  await graph.syncCoverage();
+  await graph.materialize();
 
   const allNodes = await graph.getNodes();
   const taskIds = allNodes.filter((n) => n.startsWith('task:'));
