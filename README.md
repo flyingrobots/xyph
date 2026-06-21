@@ -59,6 +59,7 @@ npm run tui
 - **[Architecture](./ARCHITECTURE.md)**: The authoritative structural reference (Hexagonal, Ports, WARP).
 - **[Vision](./docs/VISION.md)**: Core tenets and the stigmergic mission.
 - **[Method](./design/METHOD.md)**: Repo work doctrine and the cycle loop.
+- **[Contributing](./CONTRIBUTING.md)**: Topic-based contract-graph documentation rules, self-hosting dogfooding loop, quality gates, and initiate glossary.
 
 ---
 

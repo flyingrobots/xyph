@@ -185,7 +185,8 @@ export interface ObservedProjectionGraph {
   readonly traverse: WarpGraph['traverse'];
   readonly compareCoordinates: WarpGraph['compareCoordinates'];
   readonly syncCoverage?: WarpGraph['syncCoverage'];
-  readonly lens?: { match: string | string[] };
+  readonly lens?: { match?: string | string[] };
+  readonly isLive?: boolean;
 }
 
 export interface FetchSnapshotOptions {
@@ -373,10 +374,10 @@ class UnifiedStateReader {
       includeGovernanceArtifacts: boolean;
     },
   ): Promise<UnifiedStateReader> {
-    const state = await graph.getStateSnapshot();
+    const state = graph.isLive !== false ? await graph.getStateSnapshot() : null;
     if (isRealWarpState(state)) {
       let scopedState = state as unknown as MaterializedStateParam;
-      if (graph.lens) {
+      if (graph.lens && graph.lens.match) {
         const include = matchToPrefixes(graph.lens.match);
         scopedState = scopeMaterializedState(state as unknown as MaterializedStateParam, { nodeIdPrefixes: { include } });
       }
@@ -497,7 +498,7 @@ class UnifiedStateReader {
 
   async hasNode(nodeId: string): Promise<boolean> {
     if (this.reader) return this.reader.hasNode(nodeId);
-    if (this.fallbackNodes) return this.fallbackNodes.has(nodeId);
+    if (this.fallbackNodes && this.fallbackNodes.has(nodeId)) return true;
     return this.graph.hasNode(nodeId);
   }
 
@@ -511,7 +512,7 @@ class UnifiedStateReader {
     if (this.reader) return (this.reader.getNodeProps(nodeId) as Record<string, unknown>) ?? null;
     if (this.fallbackNodes) {
       const node = this.fallbackNodes.get(nodeId);
-      return node ? node.props : null;
+      if (node) return node.props;
     }
     return this.graph.getNodeProps(nodeId);
   }
@@ -526,7 +527,8 @@ class UnifiedStateReader {
       return raw.map((n) => ({ nodeId: n.nodeId, label: n.label }));
     }
     if (this.fallbackNeighbors && direction === 'outgoing' && !edgeLabel) {
-      return this.fallbackNeighbors.get(nodeId) ?? [];
+      const cached = this.fallbackNeighbors.get(nodeId);
+      if (cached) return cached;
     }
     const raw = await this.graph.neighbors(nodeId, direction, edgeLabel);
     return toNeighborEntries(raw);
@@ -2335,11 +2337,11 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
 
     await this.ensureReadingBasis(graph);
 
-    const state = await graph.getStateSnapshot();
+    const state = graph.isLive !== false ? await graph.getStateSnapshot() : null;
     let reader: UnifiedStateReader;
     if (isRealWarpState(state)) {
       let scopedState = state as unknown as MaterializedStateParam;
-      if (graph.lens) {
+      if (graph.lens && graph.lens.match) {
         const include = matchToPrefixes(graph.lens.match);
         scopedState = scopeMaterializedState(state as unknown as MaterializedStateParam, { nodeIdPrefixes: { include } });
       }
