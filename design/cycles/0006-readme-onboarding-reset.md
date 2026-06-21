@@ -4,7 +4,7 @@
 
 Docs/product-surface alignment
 
-This cycle resets the public onboarding path in [`/Users/james/git/xyph/README.md`](../../README.md)
+This cycle resets the public onboarding path in [`xyph/README.md`](../../README.md)
 so the repo introduces XYPH plainly before it leans on doctrine, lore, or
 internal vocabulary.
 

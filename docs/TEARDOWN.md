@@ -709,5 +709,5 @@ That loop — human intent → autonomous execution → cryptographic proof → 
 
 ---
 
-*Generated from source: `/Users/james/git/xyph` — live graph query: 2026-05-27*
+*Generated from source: `xyph` — live graph query: 2026-05-27*
 *Graph stats: 877 nodes · 1201 edges · 5 writers · agent.prime lamport 943*

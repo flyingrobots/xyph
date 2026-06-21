@@ -17,7 +17,7 @@ consumer:
 ## Why This Cycle Exists
 
 After `0015`, the last obvious raw `full` consumer is the control-plane summary
-projection in [`/Users/james/git/xyph/src/domain/services/ControlPlaneService.ts`](../../src/domain/services/ControlPlaneService.ts).
+projection in [`xyph/src/domain/services/ControlPlaneService.ts`](../../src/domain/services/ControlPlaneService.ts).
 
 Today that projection returns only:
 

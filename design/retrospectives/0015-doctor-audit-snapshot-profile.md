@@ -2,9 +2,9 @@
 
 ## Governing Design Docs
 
-- [`/Users/james/git/xyph/design/cycles/0015-doctor-audit-snapshot-profile.md`](../cycles/0015-doctor-audit-snapshot-profile.md)
-- [`/Users/james/git/xyph/design/cycles/0014-analysis-snapshot-profile.md`](../cycles/0014-analysis-snapshot-profile.md)
-- [`/Users/james/git/xyph/design/bedrock-alignment.md`](../bedrock-alignment.md)
+- [`xyph/design/cycles/0015-doctor-audit-snapshot-profile.md`](../cycles/0015-doctor-audit-snapshot-profile.md)
+- [`xyph/design/cycles/0014-analysis-snapshot-profile.md`](../cycles/0014-analysis-snapshot-profile.md)
+- [`xyph/design/bedrock-alignment.md`](../bedrock-alignment.md)
 
 ## What Landed
 

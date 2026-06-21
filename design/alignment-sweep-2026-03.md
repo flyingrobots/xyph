@@ -27,12 +27,12 @@ The current governing model is:
 
 These remain active sources of truth:
 
-- [`/Users/james/git/xyph/design/README.md`](./README.md)
-- [`/Users/james/git/xyph/design/product-model.md`](./product-model.md)
-- [`/Users/james/git/xyph/design/sponsor-actors.md`](./sponsor-actors.md)
-- [`/Users/james/git/xyph/design/hills.md`](./hills.md)
-- [`/Users/james/git/xyph/design/playbacks.md`](./playbacks.md)
-- [`/Users/james/git/xyph/docs/canonical/`](../docs/canonical)
+- [`xyph/design/README.md`](./README.md)
+- [`xyph/design/product-model.md`](./product-model.md)
+- [`xyph/design/sponsor-actors.md`](./sponsor-actors.md)
+- [`xyph/design/hills.md`](./hills.md)
+- [`xyph/design/playbacks.md`](./playbacks.md)
+- [`xyph/docs/canonical/`](../docs/canonical)
 - graph-backed roadmap, inbox, and dependencies via `xyph-actuator.ts status`
 
 ### Removed Or Demoted
@@ -43,7 +43,7 @@ their place in the active repo surface:
 - `TASKS.md` was removed entirely
 - `docs/PLAN.md` was removed entirely
 - `docs/TUI-plan.md` was removed entirely
-- the milestone spine in [`/Users/james/git/xyph/README.md`](../README.md)
+- the milestone spine in [`xyph/README.md`](../README.md)
   remains, but only as historical context rather than active planning truth
 
 ### Sweep Decision

@@ -27,7 +27,7 @@ But `all` is not merely “still broad.” It is currently **semantically split*
 
 ### 1. TUI `all` is not actually all
 
-[`renderAll()`](/Users/james/git/xyph/src/tui/render-status.ts) currently
+[`renderAll()`](../../src/tui/render-status.ts) currently
 renders only:
 
 - campaigns
@@ -52,7 +52,7 @@ So the current human-facing `all` view overclaims what it shows.
 
 ### 2. JSON `all` is a raw snapshot dump
 
-[`dashboard.ts`](/Users/james/git/xyph/src/cli/commands/dashboard.ts) currently
+[`dashboard.ts`](../../src/cli/commands/dashboard.ts) currently
 returns:
 
 ```ts

@@ -2,9 +2,9 @@
 
 ## Governing Design Docs
 
-- [`/Users/james/git/xyph/design/cycles/0023-observer-native-read-architecture.md`](../cycles/0023-observer-native-read-architecture.md)
-- [`/Users/james/git/xyph/docs/canonical/ARCHITECTURE.md`](../../docs/canonical/ARCHITECTURE.md)
-- [`/Users/james/git/xyph/design/bedrock-alignment.md`](../bedrock-alignment.md)
+- [`xyph/design/cycles/0023-observer-native-read-architecture.md`](../cycles/0023-observer-native-read-architecture.md)
+- [`xyph/docs/canonical/ARCHITECTURE.md`](../../docs/canonical/ARCHITECTURE.md)
+- [`xyph/design/bedrock-alignment.md`](../bedrock-alignment.md)
 
 ## What Landed
 
@@ -36,9 +36,9 @@
 
 ## Drift
 
-- [`/Users/james/git/xyph/src/infrastructure/adapters/WarpObservationAdapter.ts`](../../src/infrastructure/adapters/WarpObservationAdapter.ts)
+- [`xyph/src/infrastructure/adapters/WarpObservationAdapter.ts`](../../src/infrastructure/adapters/WarpObservationAdapter.ts)
   still lowers many reads through
-  [`/Users/james/git/xyph/src/infrastructure/ObservedGraphProjection.ts`](../../src/infrastructure/ObservedGraphProjection.ts).
+  [`xyph/src/infrastructure/ObservedGraphProjection.ts`](../../src/infrastructure/ObservedGraphProjection.ts).
 - The landing shell still boots from a broad operational snapshot for
   cross-lane counts, meta state, and compatibility with non-migrated lanes and
   drawer content.

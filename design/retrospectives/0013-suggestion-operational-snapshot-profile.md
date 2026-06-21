@@ -2,9 +2,9 @@
 
 ## Governing Design Docs
 
-- [`/Users/james/git/xyph/design/cycles/0013-suggestion-operational-snapshot-profile.md`](../cycles/0013-suggestion-operational-snapshot-profile.md)
-- [`/Users/james/git/xyph/design/cycles/0012-wizard-operational-snapshot-profile.md`](../cycles/0012-wizard-operational-snapshot-profile.md)
-- [`/Users/james/git/xyph/design/bedrock-alignment.md`](../bedrock-alignment.md)
+- [`xyph/design/cycles/0013-suggestion-operational-snapshot-profile.md`](../cycles/0013-suggestion-operational-snapshot-profile.md)
+- [`xyph/design/cycles/0012-wizard-operational-snapshot-profile.md`](../cycles/0012-wizard-operational-snapshot-profile.md)
+- [`xyph/design/bedrock-alignment.md`](../bedrock-alignment.md)
 
 ## What Landed
 

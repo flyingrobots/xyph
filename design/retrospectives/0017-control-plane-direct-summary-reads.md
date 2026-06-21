@@ -2,9 +2,9 @@
 
 ## Governing Design Docs
 
-- [`/Users/james/git/xyph/design/cycles/0017-control-plane-direct-summary-reads.md`](../cycles/0017-control-plane-direct-summary-reads.md)
-- [`/Users/james/git/xyph/design/cycles/0016-control-plane-summary-semantics.md`](../cycles/0016-control-plane-summary-semantics.md)
-- [`/Users/james/git/xyph/design/bedrock-alignment.md`](../bedrock-alignment.md)
+- [`xyph/design/cycles/0017-control-plane-direct-summary-reads.md`](../cycles/0017-control-plane-direct-summary-reads.md)
+- [`xyph/design/cycles/0016-control-plane-summary-semantics.md`](../cycles/0016-control-plane-summary-semantics.md)
+- [`xyph/design/bedrock-alignment.md`](../bedrock-alignment.md)
 
 ## What Landed
 

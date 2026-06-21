@@ -2,12 +2,12 @@
 
 ## Governing Design Docs
 
-- [`/Users/james/git/xyph/design/cycles/0006-readme-onboarding-reset.md`](../cycles/0006-readme-onboarding-reset.md)
-- [`/Users/james/git/xyph/design/README.md`](../README.md)
+- [`xyph/design/cycles/0006-readme-onboarding-reset.md`](../cycles/0006-readme-onboarding-reset.md)
+- [`xyph/design/README.md`](../README.md)
 
 ## What Landed
 
-- [`/Users/james/git/xyph/README.md`](../../README.md) now introduces XYPH in
+- [`xyph/README.md`](../../README.md) now introduces XYPH in
   plain product language before it leans on deeper ontology.
 - The older slogan-heavy opening was removed in favor of a calmer top section.
 - A compact quick-start path now lets a reader create and inspect real XYPH

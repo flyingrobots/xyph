@@ -2,10 +2,10 @@
 
 ## Governing Design Docs
 
-- [`/Users/james/git/xyph/design/cycles/0021-principal-capability-model.md`](../cycles/0021-principal-capability-model.md)
-- [`/Users/james/git/xyph/docs/canonical/AUTHORITY_MODEL.md`](../../docs/canonical/AUTHORITY_MODEL.md)
-- [`/Users/james/git/xyph/docs/canonical/ARCHITECTURE.md`](../../docs/canonical/ARCHITECTURE.md)
-- [`/Users/james/git/xyph/design/bedrock-alignment.md`](../bedrock-alignment.md)
+- [`xyph/design/cycles/0021-principal-capability-model.md`](../cycles/0021-principal-capability-model.md)
+- [`xyph/docs/canonical/AUTHORITY_MODEL.md`](../../docs/canonical/AUTHORITY_MODEL.md)
+- [`xyph/docs/canonical/ARCHITECTURE.md`](../../docs/canonical/ARCHITECTURE.md)
+- [`xyph/design/bedrock-alignment.md`](../bedrock-alignment.md)
 
 ## What Landed
 
@@ -28,10 +28,10 @@
 ## Drift
 
 - XYPH's active graph-read path is still centered on
-  [`/Users/james/git/xyph/src/infrastructure/GraphContext.ts`](../../src/infrastructure/GraphContext.ts),
+  [`xyph/src/infrastructure/GraphContext.ts`](../../src/infrastructure/GraphContext.ts),
   which acts like an app-local graph engine.
 - The default app seam still exposes raw bedrock shape through
-  [`/Users/james/git/xyph/src/ports/GraphPort.ts`](../../src/ports/GraphPort.ts).
+  [`xyph/src/ports/GraphPort.ts`](../../src/ports/GraphPort.ts).
 - `briefing`, `status`, and the dashboard remain too dependent on broad
   snapshot-shaped assembly.
 - The graph itself is currently not trustworthy enough as an operational

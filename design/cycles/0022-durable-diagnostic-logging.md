@@ -21,7 +21,7 @@ are healthy again.
 
 - Pending graph reconciliation after graph health recovery
 - Temporary fallback capture:
-  [`/Users/james/git/xyph/design/backlog-fallback.md`](../backlog-fallback.md)
+  [`xyph/design/backlog-fallback.md`](../backlog-fallback.md)
 
 ## Why This Cycle Exists
 

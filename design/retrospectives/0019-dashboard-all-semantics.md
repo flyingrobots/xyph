@@ -2,10 +2,10 @@
 
 ## Governing Design Docs
 
-- [`/Users/james/git/xyph/design/cycles/0019-dashboard-all-semantics.md`](../cycles/0019-dashboard-all-semantics.md)
-- [`/Users/james/git/xyph/design/cycles/0018-dashboard-trace-and-suggestion-profiles.md`](../cycles/0018-dashboard-trace-and-suggestion-profiles.md)
-- [`/Users/james/git/xyph/design/bedrock-alignment.md`](../bedrock-alignment.md)
-- [`/Users/james/git/xyph/design/sponsor-actors.md`](../sponsor-actors.md)
+- [`xyph/design/cycles/0019-dashboard-all-semantics.md`](../cycles/0019-dashboard-all-semantics.md)
+- [`xyph/design/cycles/0018-dashboard-trace-and-suggestion-profiles.md`](../cycles/0018-dashboard-trace-and-suggestion-profiles.md)
+- [`xyph/design/bedrock-alignment.md`](../bedrock-alignment.md)
+- [`xyph/design/sponsor-actors.md`](../sponsor-actors.md)
 
 ## What Landed
 

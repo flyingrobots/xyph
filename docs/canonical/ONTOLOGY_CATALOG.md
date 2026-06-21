@@ -15,16 +15,16 @@ This document defines the full intentional XYPH ontology catalog across:
 
 This is the product-wide ontology catalog.
 
-- [`/Users/james/git/xyph/docs/canonical/GRAPH_SCHEMA.md`](./GRAPH_SCHEMA.md)
+- [`xyph/docs/canonical/GRAPH_SCHEMA.md`](./GRAPH_SCHEMA.md)
   remains the concrete graph-contract document for current graph node/edge
   structure and property rules.
-- [`/Users/james/git/xyph/docs/canonical/WIRE_PROTOCOL_V0.md`](./WIRE_PROTOCOL_V0.md)
+- [`xyph/docs/canonical/WIRE_PROTOCOL_V0.md`](./WIRE_PROTOCOL_V0.md)
   remains the sovereign machine-interface contract for `worldline`, `observer`,
   and other control-plane coordinates.
-- [`/Users/james/git/xyph/docs/canonical/AUTHORITY_MODEL.md`](./AUTHORITY_MODEL.md)
+- [`xyph/docs/canonical/AUTHORITY_MODEL.md`](./AUTHORITY_MODEL.md)
   remains the authority/perception contract for observer profiles and
   capability resolution.
-- [`/Users/james/git/xyph/design/product-model.md`](../../design/product-model.md)
+- [`xyph/design/product-model.md`](../../design/product-model.md)
   remains the product-design explanation of how humans and agents consume the
   same ontology through different lenses.
 
@@ -165,7 +165,7 @@ design doctrine:
 ### `task:*`
 
 Canonical properties and readiness rules live in
-[`/Users/james/git/xyph/docs/canonical/GRAPH_SCHEMA.md`](./GRAPH_SCHEMA.md).
+[`xyph/docs/canonical/GRAPH_SCHEMA.md`](./GRAPH_SCHEMA.md).
 
 Human use:
 
@@ -394,9 +394,9 @@ graph node families.
 
 | Handle family | Example | Status | Source of truth |
 |---------------|---------|--------|-----------------|
-| Worldline ID | `worldline:live` | Implemented | [`/Users/james/git/xyph/docs/canonical/WIRE_PROTOCOL_V0.md`](./WIRE_PROTOCOL_V0.md) |
-| Derived worldline ID | `worldline:plan-rewrite` | Implemented | [`/Users/james/git/xyph/docs/WORLDLINES.md`](../WORLDLINES.md) |
-| Observer profile ID | `observer:default` | Implemented | [`/Users/james/git/xyph/docs/canonical/AUTHORITY_MODEL.md`](./AUTHORITY_MODEL.md) |
+| Worldline ID | `worldline:live` | Implemented | [`xyph/docs/canonical/WIRE_PROTOCOL_V0.md`](./WIRE_PROTOCOL_V0.md) |
+| Derived worldline ID | `worldline:plan-rewrite` | Implemented | [`xyph/docs/WORLDLINES.md`](../WORLDLINES.md) |
+| Observer profile ID | `observer:default` | Implemented | [`xyph/docs/canonical/AUTHORITY_MODEL.md`](./AUTHORITY_MODEL.md) |
 | Working-set ID | bedrock-specific | Implemented, non-public | git-warp bedrock, not XYPH graph doctrine |
 
 Canonical rule:

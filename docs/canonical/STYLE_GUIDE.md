@@ -49,7 +49,7 @@ b = round(  6 +  38 * t)    //   6 →  44
 
 ### 3.1 Status Colors
 
-Defined in [`/Users/james/git/xyph/src/tui/theme/xyph-presets.ts`](../../src/tui/theme/xyph-presets.ts). Consumed through the shared style port in both TUI and CLI surfaces.
+Defined in [`xyph/src/tui/theme/xyph-presets.ts`](../../src/tui/theme/xyph-presets.ts). Consumed through the shared style port in both TUI and CLI surfaces.
 
 | Status             | Color     | Hex/Note                    |
 |--------------------|-----------|-----------------------------|

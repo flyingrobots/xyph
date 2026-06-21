@@ -3,7 +3,7 @@
 This directory holds the design-first notes for XYPH's next bounded slices of
 work.
 
-The core design corpus under [`/Users/james/git/xyph/design`](../README.md)
+The core design corpus under [`xyph/design`](../README.md)
 defines enduring product truth:
 
 - sponsor actors

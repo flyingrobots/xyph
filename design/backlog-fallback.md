@@ -19,7 +19,7 @@ architecture is still being stabilized:
 1. Finish the logger.
 2. Read architecture: pivot away from `GraphContext`.
    Current cycle note:
-   [`/Users/james/git/xyph/design/cycles/0023-observer-native-read-architecture.md`](./cycles/0023-observer-native-read-architecture.md)
+   [`xyph/design/cycles/0023-observer-native-read-architecture.md`](./cycles/0023-observer-native-read-architecture.md)
 
 ### Export backlog and graph snapshots to Markdown
 

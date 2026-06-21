@@ -2,10 +2,10 @@
 
 ## Governing Design Docs
 
-- [`/Users/james/git/xyph/design/cycles/0008-git-warp-v15-surface-migration.md`](../cycles/0008-git-warp-v15-surface-migration.md)
-- [`/Users/james/git/xyph/design/cycles/0007-quest-detail-narrative-read-boundary.md`](../cycles/0007-quest-detail-narrative-read-boundary.md)
-- [`/Users/james/git/xyph/design/cycles/0004-bedrock-alignment.md`](../cycles/0004-bedrock-alignment.md)
-- [`/Users/james/git/xyph/design/bedrock-alignment.md`](../bedrock-alignment.md)
+- [`xyph/design/cycles/0008-git-warp-v15-surface-migration.md`](../cycles/0008-git-warp-v15-surface-migration.md)
+- [`xyph/design/cycles/0007-quest-detail-narrative-read-boundary.md`](../cycles/0007-quest-detail-narrative-read-boundary.md)
+- [`xyph/design/cycles/0004-bedrock-alignment.md`](../cycles/0004-bedrock-alignment.md)
+- [`xyph/design/bedrock-alignment.md`](../bedrock-alignment.md)
 
 ## What Landed
 

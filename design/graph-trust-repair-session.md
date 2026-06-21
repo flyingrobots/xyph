@@ -32,19 +32,19 @@ without first aligning on:
 
 This session is a doctrine and playback artifact, not a new cycle note.
 
-Per [`/Users/james/git/xyph/CONTRIBUTING.md`](../CONTRIBUTING.md), backlog
+Per [`xyph/CONTRIBUTING.md`](../CONTRIBUTING.md), backlog
 reconciliation comes before the next cycle note.
 
 ## Governing Inputs
 
 Use these sources during the session, in this order:
 
-1. [`/Users/james/git/xyph/docs/plans/sovereign-ontology-current.md`](../docs/plans/sovereign-ontology-current.md)
-2. [`/Users/james/git/xyph/docs/canonical/GRAPH_SCHEMA.md`](../docs/canonical/GRAPH_SCHEMA.md)
-3. [`/Users/james/git/xyph/docs/canonical/ROADMAP_PROTOCOL.md`](../docs/canonical/ROADMAP_PROTOCOL.md)
-4. [`/Users/james/git/xyph/design/README.md`](./README.md)
-5. [`/Users/james/git/xyph/design/invariants.md`](./invariants.md)
-6. [`/Users/james/git/xyph/design/playbacks.md`](./playbacks.md)
+1. [`xyph/docs/plans/sovereign-ontology-current.md`](../docs/plans/sovereign-ontology-current.md)
+2. [`xyph/docs/canonical/GRAPH_SCHEMA.md`](../docs/canonical/GRAPH_SCHEMA.md)
+3. [`xyph/docs/canonical/ROADMAP_PROTOCOL.md`](../docs/canonical/ROADMAP_PROTOCOL.md)
+4. [`xyph/design/README.md`](./README.md)
+5. [`xyph/design/invariants.md`](./invariants.md)
+6. [`xyph/design/playbacks.md`](./playbacks.md)
 7. live graph diagnostics from `xyph doctor`, `xyph doctor prescribe`,
    `xyph briefing`, and `xyph status --view roadmap`
 

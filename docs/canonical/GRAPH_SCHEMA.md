@@ -6,7 +6,7 @@
 contract for the current WARP graph. For the full product-wide ontology
 catalog, including partially implemented families and non-graph public handles
 such as `worldline:*` and `observer:*`, see
-[`/Users/james/git/xyph/docs/canonical/ONTOLOGY_CATALOG.md`](./ONTOLOGY_CATALOG.md).
+[`xyph/docs/canonical/ONTOLOGY_CATALOG.md`](./ONTOLOGY_CATALOG.md).
 
 ## 1. Node ID Grammar
 

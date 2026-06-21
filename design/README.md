@@ -163,18 +163,18 @@ Start here, then use the focused design documents below:
 
 ## Relationship To Other Docs
 
-- [`/Users/james/git/xyph/docs/canonical/ARCHITECTURE.md`](../docs/canonical/ARCHITECTURE.md)
+- [`xyph/docs/canonical/ARCHITECTURE.md`](../docs/canonical/ARCHITECTURE.md)
   remains the technical architecture source of truth.
-- [`/Users/james/git/xyph/docs/canonical/ONTOLOGY_CATALOG.md`](../docs/canonical/ONTOLOGY_CATALOG.md)
+- [`xyph/docs/canonical/ONTOLOGY_CATALOG.md`](../docs/canonical/ONTOLOGY_CATALOG.md)
   is the full product-wide ontology catalog for graph families, edge families,
   and adjacent public handles. [`GRAPH_SCHEMA.md`](../docs/canonical/GRAPH_SCHEMA.md)
   remains the concrete current graph-contract document.
-- [`/Users/james/git/xyph/docs/canonical/AGENT_PROTOCOL.md`](../docs/canonical/AGENT_PROTOCOL.md)
+- [`xyph/docs/canonical/AGENT_PROTOCOL.md`](../docs/canonical/AGENT_PROTOCOL.md)
   remains the protocol and command-contract source of truth.
-- [`/Users/james/git/xyph/docs/canonical/SYSTEM_STYLE_JAVASCRIPT.md`](../docs/canonical/SYSTEM_STYLE_JAVASCRIPT.md)
+- [`xyph/docs/canonical/SYSTEM_STYLE_JAVASCRIPT.md`](../docs/canonical/SYSTEM_STYLE_JAVASCRIPT.md)
   is the engineering doctrine for runtime-backed modeling, boundary parsing,
   and TypeScript's non-authoritative role inside XYPH.
-- [`/Users/james/git/xyph/CONTRIBUTING.md`](../CONTRIBUTING.md)
+- [`xyph/CONTRIBUTING.md`](../CONTRIBUTING.md)
   codifies the milestone development loop, acceptance-test-as-spec rule, and
   milestone closeout/backlog-reconciliation workflow.
 - [`docs/XYPH_PRODUCT_DESIGN.md`](../docs/XYPH_PRODUCT_DESIGN.md)
