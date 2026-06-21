@@ -648,7 +648,7 @@ export class AgentActionValidator {
       : undefined;
     const verifiable = request.args['verifiable'] === false ? false : true;
 
-    const graph = await this.graphPort.getGraph();
+    const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
     const [storyExists, requirementExists, criterionExists] = await Promise.all([
       graph.hasNode(storyId),
       graph.hasNode(requirementId),
@@ -819,7 +819,7 @@ export class AgentActionValidator {
       ]);
     }
 
-    const graph = await this.graphPort.getGraph();
+    const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
     if (!await graph.hasNode(request.targetId)) {
       return failAssessment(request, 'not-found', [
         `Target ${request.targetId} not found in the graph`,
@@ -900,7 +900,7 @@ export class AgentActionValidator {
       ]);
     }
 
-    const graph = await this.graphPort.getGraph();
+    const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
     const subjectIds = extractCaseSubjectIds(detail);
     const relatedIds = [...new Set([
       ...subjectIds,
@@ -1224,7 +1224,7 @@ export class AgentActionValidator {
     const rawRelatedIds = normalizeStringArray(request.args['relatedIds']);
     const relatedIds = [...new Set([request.targetId, ...rawRelatedIds])];
 
-    const graph = await this.graphPort.getGraph();
+    const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
     if (!await graph.hasNode(request.targetId)) {
       return failAssessment(request, 'not-found', [
         `Target ${request.targetId} not found in the graph`,
@@ -1671,7 +1671,7 @@ export class AgentActionService {
     assessment: ValidatedAssessment,
     action: ClaimAction,
   ): Promise<AgentActionOutcome> {
-    const graph = await this.graphPort.getGraph();
+    const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
     const now = Date.now();
     const sha = await graph.patch((p) => {
       p.setProperty(action.targetId, 'assigned_to', this.agentId)
@@ -1726,7 +1726,7 @@ export class AgentActionService {
       taskKind: action.taskKind,
       priority: action.priority,
     });
-    const graph = await this.graphPort.getGraph();
+    const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
     const props = await graph.getNodeProps(action.targetId);
 
     return {
@@ -1747,7 +1747,7 @@ export class AgentActionService {
     assessment: ValidatedAssessment,
     action: PacketAction,
   ): Promise<AgentActionOutcome> {
-    const graph = await this.graphPort.getGraph();
+    const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
     const [storyExists, requirementExists, criterionExists] = await Promise.all([
       graph.hasNode(action.storyId),
       graph.hasNode(action.requirementId),
@@ -1829,7 +1829,7 @@ export class AgentActionService {
   ): Promise<AgentActionOutcome> {
     const intake = new WarpIntakeAdapter(this.graphPort, this.agentId);
     const sha = await intake.ready(action.targetId);
-    const graph = await this.graphPort.getGraph();
+    const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
     const props = await graph.getNodeProps(action.targetId);
     const readyAt = typeof props?.['ready_at'] === 'number' ? props['ready_at'] : null;
 
@@ -1850,7 +1850,7 @@ export class AgentActionService {
     assessment: ValidatedAssessment,
     action: CommentAction,
   ): Promise<AgentActionOutcome> {
-    const graph = await this.graphPort.getGraph();
+    const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
     const patch = await createPatchSession(graph);
     const now = Date.now();
     patch
@@ -1886,7 +1886,7 @@ export class AgentActionService {
     assessment: ValidatedAssessment,
     action: BriefAction,
   ): Promise<AgentActionOutcome> {
-    const graph = await this.graphPort.getGraph();
+    const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
     const patch = await createPatchSession(graph);
     const now = Date.now();
     patch
@@ -1982,7 +1982,7 @@ export class AgentActionService {
     assessment: ValidatedAssessment,
     action: HandoffAction,
   ): Promise<AgentActionOutcome> {
-    const graph = await this.graphPort.getGraph();
+    const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
     const patch = await createPatchSession(graph);
     const now = Date.now();
     patch
@@ -2048,7 +2048,7 @@ export class AgentActionService {
     };
     const guildSeal = await sealService.sign(scrollPayload, this.agentId);
 
-    const graph = await this.graphPort.getGraph();
+    const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
     const scrollId = `artifact:${action.targetId}`;
     const sha = await graph.patch((p) => {
       p.addNode(scrollId)
@@ -2158,7 +2158,7 @@ export class AgentActionService {
         };
         const guildSeal = await sealService.sign(scrollPayload, this.agentId);
 
-        const sealGraph = await this.graphPort.getGraph();
+        const sealGraph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
         const scrollId = `artifact:${action.questId}`;
         await sealGraph.patch((p) => {
           p.addNode(scrollId)

@@ -37,6 +37,9 @@ export class WarpRoadmapAdapter implements RoadmapPort {
     const graph = await this.graphPort.getGraph();
     if (this.syncOnQuery && typeof graph.syncCoverage === 'function') {
       await graph.syncCoverage();
+      if (typeof graph.materialize === 'function') {
+        await graph.materialize();
+      }
     }
     return graph;
   }
@@ -140,7 +143,7 @@ export class WarpRoadmapAdapter implements RoadmapPort {
         successContext: (patchSha) => ({ patchSha }),
       },
       async () => {
-        const graph = await this.graphPort.getGraph();
+        const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
         const needsAdd = !await graph.hasNode(quest.id);
 
         return graph.patch((p) => {
@@ -181,7 +184,7 @@ export class WarpRoadmapAdapter implements RoadmapPort {
         successContext: (patchSha) => ({ patchSha }),
       },
       async () => {
-        const graph = await this.graphPort.getGraph();
+        const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
         return graph.patch((p) => {
           p.addEdge(from, to, type);
         });

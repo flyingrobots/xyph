@@ -228,7 +228,7 @@ export class MutationKernelService {
       };
     }
 
-    const graph = await this.graphPort.getGraph();
+    const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
     let sha: string;
     if (opts?.workingSetId) {
       sha = await graph.patchStrand(opts.workingSetId, async (patch) => {
@@ -253,7 +253,7 @@ export class MutationKernelService {
     nodes: string[];
     edges: { from: string; to: string; label: string }[];
   }> {
-    const graph = await this.graphPort.getGraph();
+    const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
     if (!workingSetId) {
       const [nodes, edges] = await Promise.all([
         graph.getNodes(),

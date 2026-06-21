@@ -199,7 +199,7 @@ export class RecordService {
     authoredAt: number;
     contentOid: string | null;
   }> {
-    const graph = await this.graphPort.getGraph();
+    const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
     if (!await graph.hasNode(input.targetId)) {
       throw new Error(`[NOT_FOUND] Target ${input.targetId} not found in the graph`);
     }
@@ -241,7 +241,7 @@ export class RecordService {
     proposedAt: number;
     contentOid: string | null;
   }> {
-    const graph = await this.graphPort.getGraph();
+    const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
     if (!await graph.hasNode(input.subjectId)) {
       throw new Error(`[NOT_FOUND] Subject ${input.subjectId} not found in the graph`);
     }
@@ -296,7 +296,7 @@ export class RecordService {
     suggestedAt: number;
     contentOid: string | null;
   }> {
-    const graph = await this.graphPort.getGraph();
+    const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
     if (input.targetId && !await graph.hasNode(input.targetId)) {
       throw new Error(`[NOT_FOUND] Target ${input.targetId} not found in the graph`);
     }
@@ -387,7 +387,7 @@ export class RecordService {
     patch: string;
     decidedAt: number;
   }> {
-    const graph = await this.graphPort.getGraph();
+    const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
     const caseProps = await graph.getNodeProps(input.caseId);
     if (!caseProps || caseProps['type'] !== 'case') {
       throw new Error(`[NOT_FOUND] Case ${input.caseId} not found in the graph`);
@@ -519,7 +519,7 @@ export class RecordService {
     patch: string;
     resolvedAt: number;
   }> {
-    const graph = await this.graphPort.getGraph();
+    const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
     const props = await graph.getNodeProps(input.suggestionId);
     if (!props || (props['type'] !== 'ai_suggestion' && props['type'] !== 'ai-suggestion')) {
       throw new Error(`[NOT_FOUND] AI suggestion ${input.suggestionId} not found in the graph`);
@@ -642,7 +642,7 @@ export class RecordService {
     patch: string;
     resolvedAt: number;
   }> {
-    const graph = await this.graphPort.getGraph();
+    const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
     const props = await graph.getNodeProps(input.suggestionId);
     if (!props || (props['type'] !== 'ai_suggestion' && props['type'] !== 'ai-suggestion')) {
       throw new Error(`[NOT_FOUND] AI suggestion ${input.suggestionId} not found in the graph`);
@@ -678,7 +678,7 @@ export class RecordService {
     patch: string;
     resolvedAt: number;
   }> {
-    const graph = await this.graphPort.getGraph();
+    const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
     const props = await graph.getNodeProps(input.suggestionId);
     if (!props || (props['type'] !== 'ai_suggestion' && props['type'] !== 'ai-suggestion')) {
       throw new Error(`[NOT_FOUND] AI suggestion ${input.suggestionId} not found in the graph`);
@@ -720,7 +720,7 @@ export class RecordService {
     attestedAt: number;
     contentOid: string | null;
   }> {
-    const graph = await this.graphPort.getGraph();
+    const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
     if (!await graph.hasNode(input.targetId)) {
       throw new Error(`[NOT_FOUND] Target ${input.targetId} not found in the graph`);
     }
@@ -767,7 +767,7 @@ export class RecordService {
     contentOid: string | null;
     existed: boolean;
   }> {
-    const graph = await this.graphPort.getGraph();
+    const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
     if (await graph.hasNode(input.id)) {
       const props = (await graph.getNodeProps(input.id)) ?? {};
       const existingType = typeof props['type'] === 'string' ? props['type'] : null;
