@@ -50,6 +50,7 @@ function makeModel(snapshot: GraphSnapshot | null): DashboardModel {
     snapshot,
     health: healthyDashboardHealth,
     loading: false,
+    syncing: false,
     error: null,
     showLanding: false,
     showHelp: false,

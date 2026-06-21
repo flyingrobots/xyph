@@ -65,7 +65,11 @@ function ready(app: App<DashboardModel, DashboardMsg>, snapshot: GraphSnapshot):
     { type: 'snapshot-loaded', snapshot, health: healthyDashboardHealth, requestId: initial.requestId },
     initial,
   );
-  return loaded;
+  const [synced] = app.update(
+    { type: 'sync-complete', requestId: initial.requestId },
+    loaded,
+  );
+  return synced;
 }
 
 function widen(app: App<DashboardModel, DashboardMsg>, model: DashboardModel, cols = 140, rows = 40): DashboardModel {

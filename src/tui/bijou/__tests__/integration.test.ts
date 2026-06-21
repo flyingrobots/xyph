@@ -46,7 +46,11 @@ function ready(app: App<DashboardModel, DashboardMsg>, snap: GraphSnapshot): Das
     health: healthyDashboardHealth,
     requestId: initial.requestId,
   }, initial);
-  return loaded;
+  const [synced] = app.update({
+    type: 'sync-complete',
+    requestId: initial.requestId,
+  }, loaded);
+  return synced;
 }
 
 function viewText(app: App<DashboardModel, DashboardMsg>, model: DashboardModel): string {
