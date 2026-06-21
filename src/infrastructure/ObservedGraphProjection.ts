@@ -341,6 +341,12 @@ type VisibleStateReader = ReturnType<typeof createStateReader>;
 type MaterializedStateParam = Parameters<typeof scopeMaterializedState>[0];
 type StateReaderParam = Parameters<typeof createStateReader>[0];
 
+function isRealWarpState(state: ObservedProjectionState | null): boolean {
+  if (!state) return false;
+  const stateObj = state as unknown as Record<string, unknown>;
+  return typeof stateObj['nodeAlive'] === 'object' && stateObj['nodeAlive'] !== null;
+}
+
 function matchToPrefixes(match: string | string[]): string[] {
   const patterns = Array.isArray(match) ? match : [match];
   return patterns.map((p) => (p.endsWith('*') ? p.slice(0, -1) : p));
@@ -368,9 +374,7 @@ class UnifiedStateReader {
     },
   ): Promise<UnifiedStateReader> {
     const state = await graph.getStateSnapshot();
-    const isRealWarpState = state && typeof (state as unknown as Record<string, unknown>)['nodeAlive'] === 'object' && (state as unknown as Record<string, unknown>)['nodeAlive'] !== null;
-
-    if (isRealWarpState) {
+    if (isRealWarpState(state)) {
       let scopedState = state as unknown as MaterializedStateParam;
       if (graph.lens) {
         const include = matchToPrefixes(graph.lens.match);
@@ -2333,8 +2337,7 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
 
     const state = await graph.getStateSnapshot();
     let reader: UnifiedStateReader;
-    const isRealWarpState = state && typeof (state as unknown as Record<string, unknown>)['nodeAlive'] === 'object' && (state as unknown as Record<string, unknown>)['nodeAlive'] !== null;
-    if (isRealWarpState) {
+    if (isRealWarpState(state)) {
       let scopedState = state as unknown as MaterializedStateParam;
       if (graph.lens) {
         const include = matchToPrefixes(graph.lens.match);

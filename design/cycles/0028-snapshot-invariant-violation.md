@@ -24,13 +24,13 @@ By keeping this low-level code in XYPH:
 
 ## Sponsor Actors
 
-### Primary sponsor actor
+### Primary Sponsor Actor
 
 **Application Integrator**
 
 Needs a thin, clean read boundary that matches `git-warp`'s actual model and doesn't duplicate core graph engine logic.
 
-### Secondary sponsor actor
+### Secondary Sponsor Actor
 
 **Operator-Supervisor**
 
@@ -49,14 +49,14 @@ This cycle must preserve:
 
 ## Scope
 
-In scope:
+### In Scope
 - Refactor `ObservedGraphProjection.ts` to replace manual node/edge/property iteration with `QueryBuilder` and `createStateReader`.
 - Migrate `fetchSnapshot` (for all profiles: `full`, `operational`, `analysis`, `audit`) to retrieve the state reader from the underlying `WarpGraph` and construct snapshots.
 - Migrate `fetchEntityDetail` to use the state reader for retrieving properties, content metadata, and neighbors.
 - Delete custom CRDT/OR-Set parsing code inside `ObservedGraphProjection.ts` that is now redundant.
 - Verify 100% regression parity using the existing test suite.
 
-Out of scope:
+### Out of Scope
 - Performance optimization beyond what `git-warp` natively provides.
 - Modifying write paths or persistence adapters.
 
