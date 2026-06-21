@@ -144,3 +144,5 @@ around it.
 25. [Pre-Push Enforcement](./0025-pre-push-enforcement.md)
 26. [CLI Search Command](./0026-cli-search-command.md)
 27. [Session Entity](./0027-session-entity.md)
+28. [Snapshot Invariant Violation (Bedrock Query Alignment)](./0028-snapshot-invariant-violation.md)
+
