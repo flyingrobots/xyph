@@ -1,0 +1,14 @@
+graph TD
+    docs["docs/"] --> README["README.md (The Spine / Index)"]
+    docs --> BEARING["BEARING.md (Current Posture)"]
+    docs --> topics["topics/"]
+    
+    topics --> topicA["sovereign-ontology/"]
+    topics --> topicB["traceability/"]
+    
+    topicA --> readmeA["README.md (Current Invariants)"]
+    topicA --> planA["test-plan.md (Verification Contract)"]
+    topicA --> archA["architecture.md (Structural Map)"]
+    topicA --> ratA["rationale.md (Tradeoffs)"]
+    
+    docs --> design["design/cycles/ (Historical Cycle RFCs)"]
