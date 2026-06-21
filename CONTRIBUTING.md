@@ -1,574 +1,156 @@
 # Contributing to XYPH
 
-XYPH is not a generic dashboard or a generic agent wrapper. It is a sovereign,
-graph-native control plane for humans and agents.
+We adapt the topic-based contract-graph documentation paradigm to XYPH. This revision ensures that documentation, code, and test verification remain in lockstep as a long-term living corpus, replacing transient files with durable topic boundaries.
 
-If you contribute here, the job is not just to land working code. The job is to
-protect the product doctrine while making the system more capable.
+---
 
-## Core Product Philosophy
+## 1. Dogfooding & Self-Tracking
 
-- The graph is the plan.
-- Governance is a first-class product surface.
-- Provenance matters.
-- Human and agent surfaces share one reality.
-- Suggestions are advisory, not sovereign.
-- The bedrock may be sophisticated; the operator experience cannot feel
-  like bedrock maintenance.
+XYPH is a self-hosting control plane. We do not maintain project backlogs, tasks, bugs, or milestones in external trackers (such as GitHub Issues or Jira) or parallel markdown lists. **All project coordination truth lives directly inside XYPH's own WARP graph database.**
 
-The highest-level rule is simple:
+- **Intents**: Every line of work must trace back to a sovereign `Intent` node (Constitutional Art. IV).
+- **Quests**: Backlog tasks and active work items are tracked as `Quest` nodes.
+- **Submissions**: The code review and settlement lifecycle is tracked via `Submission` and `Decision` nodes.
 
-If a change makes XYPH less truthful, less governable, less legible, or more
-dependent on hidden side channels, it is probably the wrong change.
+The graph is the plan. If a piece of work is not registered in the graph, it does not exist.
 
-## Development Philosophy
+---
 
-This project prefers:
+## 2. The Mental Model: Documentation as a Contract Graph
 
-- DX over ceremony
-- behavior over architecture theater
-- explicit boundaries over clever coupling
-- local-first operation over network dependency
-- boring default flows over impressive internals
-- explicit semantics at governance boundaries
+Documentation is part of the system contract. We separate four distinct kinds of information to maintain a strict boundary between what is true in `HEAD` right now, how we verify it, and how we got here.
 
-In practice, that means:
-
-- keep commands and pages small and obvious
-- keep default UX boring and legible
-- keep product language free of unnecessary Git / WARP jargon
-- keep AI advisory until it is explicitly adopted into governed work
-- keep UI and CLI behavior honest to the same graph truth
-
-## Human And Agent Design Rule
-
-XYPH has one product design corpus and two first-class operational lenses:
-
-- human-facing TUI/pages
-- agent-native CLI/protocol
-
-Design should be done equally from both perspectives. A cycle is not well
-designed if it only makes sense from one lens.
-
-Implementation should usually proceed in this order:
-
-1. define the shared semantic model
-2. make the agent-native CLI/protocol express it cleanly
-3. build the human-facing page or TUI flow on top of it
-
-Why:
-
-- agent-native surfaces expose missing building blocks quickly
-- human-facing surfaces tell us what must be understandable and governable
-
-So the working doctrine is:
-
-- **agent-first implementation**
-- **human-first judgment and explainability**
-
-Unless a cycle explicitly declares something human-only, a human-facing feature
-is not really done until the same underlying semantics exist in the agent
-surface too.
-
-For the repo's process posture, use
-[`/Users/james/git/xyph/design/method-alignment.md`](design/method-alignment.md):
-XYPH should absorb METHOD's discipline without turning the product or repo into
-a literal filesystem-native workflow system. The graph remains the plan.
-
-## Architectural Principles
-
-### Hexagonal architecture
-
-The product should have clear boundaries between:
-
-- domain behavior
-- application / use-case orchestration
-- ingress adapters such as CLI and TUI
-- infrastructure such as git-warp persistence and synchronization
-
-Do not let UI concerns leak into persistence.
-Do not let storage details leak into normal UX.
-Do not let XYPH meaning leak down into git-warp core.
-
-### SOLID, pragmatically applied
-
-Use SOLID as boundary discipline, not as a reason to create needless classes or
-abstractions.
-
-Good:
-
-- narrow modules
-- explicit seams
-- dependency inversion around important adapters
-
-Bad:
-
-- abstraction for its own sake
-- indirection before there is pressure for it
-- “clean architecture” rituals that slow delivery without protecting behavior
-
-### Runtime-backed modeling
-
-XYPH adopts System-Style JavaScript as its engineering doctrine for
-infrastructure code. See
-[`/Users/james/git/xyph/docs/canonical/SYSTEM_STYLE_JAVASCRIPT.md`](docs/canonical/SYSTEM_STYLE_JAVASCRIPT.md).
-
-Short version:
-
-- runtime truth outranks TypeScript
-- boundary parsing establishes trust
-- policy- and authority-sensitive code should prefer runtime-backed domain
-  types and typed failures
-- projections, packets, and render models may remain plain structured data when
-  they do not carry hidden invariants
-
-## Current Active Plan
-
-XYPH is currently following the sovereign-ontology redesign documented in `docs/plans/sovereign-ontology-current.md`.
-
-Use that plan, plus the canonical docs in `docs/canonical/`, as the current direction of travel. In particular:
-- XYPH is moving toward an observer-native, worldline-native control plane
-- observer profiles do **not** grant authority by existing
-- conflict and counterfactual bedrock facts are being pushed down into git-warp instead of being re-invented in XYPH
-
-If older workflow guidance in this file conflicts with the current redesign, the plan doc and canonical docs win.
-
-## Development Cycle Loop
-
-XYPH uses an explicit development-cycle loop inspired by IBM Design Thinking, but
-adapted to XYPH's actual invariants: hexagonal architecture, graph-as-plan,
-governance as a product surface, and provenance visibility.
-
-For bounded product or debt work, the default loop is:
-
-1. **Design docs first**
-2. **Acceptance tests as spec second**
-3. **Implementation third**
-4. **Retrospective**
-5. **Rewrite the root README to reflect reality**
-6. **Close the cycle**
-
-The slice is not done because code landed. It is done when:
-
-- the relevant human or agent sponsor actor can do their job better
-- the behavior is captured in executable tests
-- the docs reflect what is now true
-
-### Cycle Checkpoints
-
-Each meaningful cycle should normally move through four checkpoints:
-
-1. **Doctrine checkpoint**
-   - cycle note and design corpus are aligned
-   - the shared semantic model is explicit enough to build against
-
-2. **Spec checkpoint**
-   - acceptance tests exist and fail for the right reasons
-   - the red spec expresses the behavior we actually want
-
-3. **Semantic checkpoint**
-   - the shared packet / control-plane semantics go green
-   - the agent-native CLI or protocol can express the slice honestly
-
-4. **Surface checkpoint**
-   - the human-facing page, TUI flow, or narrative surface catches up
-   - the same underlying semantics are legible through the human lens
-
-These are not four separate milestones. They are the normal sequence for
-turning design intent into a working XYPH slice.
-
-### Tests Are The Spec
-
-XYPH follows a hard rule:
-
-- design docs define intent and invariants
-- executable tests define the behavioral spec
-- implementation follows
-
-There is no separate prose-spec layer between design and tests.
-
-For cycle-scale behavior:
-
-- acceptance tests live under `test/acceptance/`
-- reusable fixtures live under `test/fixtures/`
-- lower-level unit and integration tests remain organized by architecture
-
-Until older tests are migrated, existing unit/integration tests elsewhere in
-`test/` remain valid. New cycle-level behavioral spec should follow the
-acceptance hierarchy described in [`/Users/james/git/xyph/test/acceptance/README.md`](test/acceptance/README.md).
-
-### Red And Green Discipline
-
-Local red while iterating is acceptable and expected.
-
-That is especially true immediately after design, because the first useful step
-is often to write failing tests that define the slice.
-
-The rule is:
-
-- **local red is fine while iterating**
-- **pushed work must be green**
-
-In other words, red can exist as a local checkpoint in the middle of a cycle,
-but shared branch state should be brought back to passing before push and before
-submission for review or merge.
-
-### Cycle Closeout And Reset
-
-Closing a cycle does **not** mean immediately starting the next design doc.
-
-After the cycle is merged, released when appropriate, and closed, the **first**
-move before writing the next cycle design docs is:
-
-1. reconcile the graph backlog
-2. add work discovered during the cycle
-3. add retrospective fallout
-4. add worthwhile COOL IDEAS™
-5. triage and reconcile the backlog against current reality
-
-That reconciliation step may produce:
-
-- the next major outcome milestone
-- one or more smaller debt-reduction cycles
-- cleanup or simplification cycles between larger releases
-
-This is intentional. XYPH should not roll blindly from one cycle into the next
-while tech debt, product drift, or newly discovered work piles up off to the
-side.
-
-### Required Closeout Checklist
-
-For any meaningful cycle that is intended to merge to `main`, closeout should be
-treated as a required gate, not optional cleanup.
-
-Before calling the cycle closed, verify:
-
-1. **Behavior landed**
-   - acceptance tests for the cycle exist and pass
-   - implementation still matches the active cycle note
-
-2. **Docs reconciled**
-   - the root README reflects current user-facing reality when the surface changed
-   - the design corpus reflects any product-model or doctrine change
-   - stale planning docs have been updated, demoted, or deleted
-
-3. **Backlog reconciled**
-   - work discovered during the cycle has been added
-   - retrospective fallout has been added
-   - preserved COOL IDEAS™ have been added
-   - backlog items that no longer fit the product have been rejected or superseded
-
-4. **Graveyard reviewed**
-   - explicitly check whether any graveyarded work should be reopened under the
-     current doctrine
-   - if nothing should reopen, record that outcome anyway
-
-5. **Next cycle chosen intentionally**
-   - decide whether the next cycle is a new product cycle or a debt-reduction /
-     simplification cycle
-
-The closeout question is not "did the code land?" It is "did behavior, docs,
-backlog, and graveyard all reconcile to the same product truth?"
-
-### Development Standard
-
-When in doubt:
-
-- choose less structure
-- choose lower latency
-- choose fewer fields
-- choose local-first
-- choose behavior over architecture theater
-- keep it boring
-
-These defaults do **not** override XYPH's invariants. At governance and
-provenance boundaries, prefer explicit semantics over clever compression.
-
-## Product Management Philosophy
-
-XYPH uses IBM Design Thinking style framing for cycle design:
-
-- sponsor actors
-- hills
-- playbacks
-- explicit invariants and non-goals
-
-Apply that discipline to both humans and agents:
-
-- sponsor users for the human surface
-- sponsor actors for the agent surface
-- one shared semantic model underneath both
-
-Cycles should be grounded in operator and agent value, not backend vanity.
-
-Before promoting a new direction, ask:
-
-- which hill does this support?
-- which sponsor actor improves?
-- what trust, orientation, or lawful action gets easier?
-- does this preserve graph truth, governance, and provenance?
-
-If the answer is unclear, the work probably belongs in the backlog, not in the
-active cycle.
-
-### Formal Playbacks
-
-Playbacks are not optional demo theater. They are a required way to judge
-whether a cycle actually moved the relevant hill for the relevant sponsor
-actors.
-
-Each substantial cycle should normally include:
-
-- at least one **human playback**
-- at least one **agent playback**
-
-Those playbacks should be organized around the sponsor actors and hills named in
-the cycle note, not around a generic UI checklist.
-
-The point is to answer questions like:
-
-- did this cycle materially improve the hill it claimed to improve?
-- can the human sponsor actor do their job better now?
-- can the agent sponsor actor do its job better now?
-- do the human and agent surfaces still agree about what is true, what is
-  allowed, and what should happen next?
-
-Playbacks are where the sponsor perspectives and hills become operational.
-They are how XYPH checks product truth instead of merely shipping implementation
-momentum.
-
-## Project Planning
-
-XYPH plans and tracks its own development through the WARP graph. The `xyph-actuator.ts` CLI is the single source of truth for what's been done, what's next, and what's in the backlog.
-
-**Before you start working**, check the graph:
-
-```bash
-# What's the current roadmap?
-npx tsx xyph-actuator.ts status --view roadmap
-
-# What's in the triage inbox?
-npx tsx xyph-actuator.ts status --view inbox
-
-# See every node in the graph
-npx tsx xyph-actuator.ts status --view all
+```text
+current truth -> planned verification -> executable evidence -> historical reasoning
 ```
 
-**When you want to add work**, write it to the graph:
+| Tier | Artifact | Job | Location |
+| :--- | :--- | :--- | :--- |
+| **Current Truth** | Topic README | Describe what is true in `HEAD` right now. No future tense. | `docs/topics/<topic>/README.md` |
+| **Planned Verification** | Test Plan | Define requirements, test cases, and oracles before coding. | `docs/topics/<topic>/test-plan.md` |
+| **Executable Evidence** | Tests & Fixtures | Deterministic vitest checks, schemas, and cryptographic proofs. | `test/` / `test-plan.md` anchors |
+| **Historical Reasoning** | Cycle Proposals | Record the RFC-era tradeoffs and architectural cycles. | `design/cycles/` |
+
+> [!IMPORTANT]
+> **Living references must not describe future or intended behavior Speculatively.** 
+> If a feature is planned but not yet implemented and verified by tests, it belongs in a design doc, test plan, or backlog quest—never in a topic `README.md`.
+
+---
+
+## 3. Topic-Based Directory Structure
+
+Durable concepts that span multiple development cycles live in dedicated topic folders under `docs/topics/<topic>/`. This forms a modular reference manual.
+![Topic Directory Structure](docs/diagrams/docs-structure.svg)
+
+### Reference Map
+
+| Path | Purpose |
+| :--- | :--- |
+| `docs/README.md` | The documentation spine and topic index. |
+| `docs/BEARING.md` | Durable release posture, gravity, and active tensions. |
+| `docs/topics/<topic>/README.md` | Invariants, public interfaces, domain constraints, and usage guidelines. |
+| `docs/topics/<topic>/test-plan.md` | Requirements, planned cases, verified evidence, fixtures, and known gaps. |
+| `docs/topics/<topic>/architecture.md` | Data flow maps, dependency boundaries, and ports. |
+| `docs/topics/<topic>/rationale.md` | Tradeoffs made during implementation, and rejected alternatives. |
+| `design/cycles/` | Historical proposals (e.g., `0028-snapshot-invariant-violation.md`). |
+
+---
+
+## 4. How to Change Behavior (The Loop)
+
+Every modification to XYPH's behavior must progress through these steps:
+
+1. **Propose**: 
+   - Propose the change via a design doc in `design/cycles/<number>-<name>.md`.
+   - Register the task in the inbox using the CLI:
+     ```bash
+     npx tsx xyph-actuator.ts inbox task:<id> --title "My proposed task" --suggested-by human.<name>
+     ```
+2. **Promote**:
+   - Declare the parent intent node if not already present:
+     ```bash
+     npx tsx xyph-actuator.ts intent intent:<id> --title "Why this work matters" --requested-by human.<name>
+     ```
+   - Promote the task to the backlog:
+     ```bash
+     npx tsx xyph-actuator.ts promote task:<id> --intent intent:<id>
+     ```
+3. **Plan Verification**: Update or create `docs/topics/<topic>/test-plan.md`. Write planned cases with stable IDs, explicit oracles, and target requirement mappings.
+4. **Claim**: Volunteer for the Quest to begin implementation:
+   ```bash
+   npx tsx xyph-actuator.ts claim task:<id>
+   ```
+5. **Write Failing Test**: Implement the smallest possible failing acceptance test under `test/acceptance/` that matches the planned case.
+6. **Code**: Implement the changes in `src/`.
+7. **Verify & Update Truth**: Update `docs/topics/<topic>/README.md` to match the newly implemented behavior.
+8. **Seal Evidence**: Update the topic's `test-plan.md` to change the case status from `planned` to `implemented`, pointing directly to the test symbols and files.
+9. **Submit & Merge**:
+   - Submit the quest for review:
+     ```bash
+     npx tsx xyph-actuator.ts submit task:<id> --description "Completed the implementation"
+     ```
+   - Once reviewed and approved, merge the submission (which settles the graph and seals the quest):
+     ```bash
+     npx tsx xyph-actuator.ts merge <submission-id> --rationale "Review checks completed"
+     ```
+
+---
+
+## 5. Test Plans as Contracts
+
+Test plans in `docs/topics/<topic>/test-plan.md` are written for humans and checked by tools during verification pipelines.
+
+Each test case must explicitly answer:
+- **Case ID**: A stable, unique string (e.g. `CASE_SOVEREIGN_ONTOLOGY_001`).
+- **Requirement ID**: The backing business rule or constitutional article (e.g. `REQ_LINEAGE_INTENT`).
+- **Oracle**: What defines correct behavior (e.g., return value schema, specific error codes, state convergence hash).
+- **Evidence Type**: `vitest-unit`, `vitest-integration`, `acceptance-scenario`, or `static-schema`.
+- **Status**: ... planned | implemented | blocked | retired.
+- **Evidence Anchor**: The exact test file and function name (e.g. `test/integration/Sovereignty.test.ts#L105`).
+
+---
+
+## 6. Local Quality Gates
+
+Run local verification steps before committing or pushing:
 
 ```bash
-# Suggest a task for triage
-npx tsx xyph-actuator.ts inbox task:MY-001 \
-  --title "Proposed feature" --suggested-by human.yourname
+# Verify compilation
+npm run build
 
-# Declare a sovereign Intent (required root for all quests)
-npx tsx xyph-actuator.ts intent intent:MY-001 \
-  --title "Why this work matters" --requested-by human.yourname
+# Run formatting and lint checks (no inline overrides allowed)
+npm run lint
 
-# Promote an inbox task to the backlog
-npx tsx xyph-actuator.ts promote task:MY-001 --intent intent:MY-001
-```
+# Run the local vitest test suite
+npm run test:local
 
-All planning, prioritization, and progress tracking flows through the actuator. Don't plan outside the system — the graph is the plan.
-
-## Build Order
-
-The expected order of work is:
-
-1. write or revise design docs first
-2. encode behavior as executable tests second
-3. implement third
-
-Tests are the spec.
-
-Do not insert a second prose-spec layer between design and tests.
-Do not treat implementation details as the primary unit of correctness.
-
-## Quest Workflow
-
-1. **Check the graph** to find work or add new tasks.
-2. **Claim a quest** with `xyph-actuator.ts claim <id>`.
-3. **Do the work** on a feature branch.
-4. **Submit for review** with `xyph-actuator.ts submit <quest-id> --description "..."`.
-5. **Get reviewed** — reviewers use `xyph-actuator.ts review <patchset-id> --verdict approve --comment "..."`.
-6. **Merge** with `xyph-actuator.ts merge <submission-id> --rationale "..."` (auto-seals quest).
-
-For solo work without review, you can still **seal directly** with `xyph-actuator.ts seal <id> --artifact <hash> --rationale "..."`.
-
-![Development workflow](docs/diagrams/contribution-workflow.svg)
-
-## Quality Gates
-
-Before opening or updating a PR, or before pushing a working branch, **always** run:
-
-```bash
-npm run build    # Verify TypeScript compilation
-npm test         # Run full test suite
-```
-
-Never push code that doesn't pass both checks.
-
-- Do not use `--no-verify` to skip git hooks.
-- Do not use `eslint-disable` comments to silence lint rules.
-- Do not use `@ts-ignore` or `@ts-expect-error` to silence TypeScript.
-- If you encounter lint errors, test failures, or warnings — even pre-existing ones — fix them. Leave the codebase better than you found it.
-
-## Release Discipline
-
-Milestone closure and release discipline are coupled.
-
-Rules:
-
-- keep the root [`CHANGELOG.md`](CHANGELOG.md) current
-- when a milestone closes and results in a release, bump the package version on
-  the release commit
-- create a Git tag on the commit that lands on `main` for that milestone
-  release
-
-The version and tag should reflect milestone reality, not aspirational scope.
-
-## Testing Rules
-
-Tests must be deterministic.
-
-That means:
-
-- no real network dependency in the core suite
-- no ambient home-directory state assumptions
-- no ambient Git config assumptions
-- no interactive shell expectations
-- no timing-based flakes
-
-Prefer:
-
-- isolated temp graph state
-- fixed env and fixed IDs where practical
-- graph-backed scenarios that pin user-visible behavior
-
-Tests should pin:
-
-- user-visible behavior
-- governance semantics
-- provenance visibility
-- machine-readable agent behavior
-- bedrock/application boundary honesty
-
-They should not overfit:
-
-- class layout
-- file-private helpers
-- incidental implementation structure
-
-## Diagrams
-
-Documentation diagrams live in `docs/diagrams/` as Mermaid source (`.mmd`) pre-rendered to SVG. Markdown files reference the SVGs directly — no inline Mermaid code fences.
-
-**To add or edit a diagram:**
-
-```bash
-# Edit (or create) the Mermaid source
-vim docs/diagrams/my-diagram.mmd
-
-# Render all diagrams to SVG (writes .svg + .sha256 sidecar)
+# Validate diagram freshness
 ./scripts/render-diagrams.sh
-
-# Reference from markdown (path is relative to the .md file)
-# From docs/:           ![Alt text](diagrams/my-diagram.svg)
-# From docs/canonical/: ![Alt text](../diagrams/my-diagram.svg)
-# From project root:    ![Alt text](docs/diagrams/my-diagram.svg)
 ```
 
-**Why pre-rendered SVGs?** Inline Mermaid depends on the viewer's renderer — GitHub, Obsidian, and VS Code all have different Mermaid versions with different feature support. Pre-rendered SVGs look identical everywhere.
+---
 
-**Security note:** `@mermaid-js/mermaid-cli` is intentionally kept as a `devDependency` and is used only to render local `.mmd` sources into committed SVGs. If `npm audit` reports transitive Mermaid/Puppeteer ZIP-parsing findings, treat them as docs-tooling risk unless XYPH starts processing untrusted ZIP uploads through that path.
+## 7. What Not to Do
 
-**CI enforces:**
-- No inline Mermaid code fences in any `.md` file
-- Every `.mmd` has a corresponding `.svg` and `.mmd.sha256`
-- Source hash freshness — if you edit a `.mmd` without re-rendering, CI fails
+- **No split truth**: Do not write a second living document for an existing topic. Update the topic folder instead.
+- **No speculative READMEs**: Do not describe what you plan to build in the topic `README.md`. It must reflect `HEAD` exactly.
+- **No orphan specifications**: Do not hide contract behavior in PR descriptions or GitHub issues. Those disappear from checkable local history.
+- **No external backlogs**: Do not track tasks or plans outside of the XYPH actuator. The graph is the plan.
 
-The pre-commit hook catches inline mermaid blocks locally. The pre-push hook runs the full freshness check.
+---
 
-## Design Doc Accuracy
+## 8. Glossary of Terms for Initiates
 
-XYPH's canonical design documents (`docs/canonical/`) describe the planning compiler pipeline and domain rules. When writing or updating these docs, remember:
-
-**git-warp is a CRDT, not a database.** The bedrock has no locks, no transactions, no centralized snapshots, and no rollback. All writes go through `graph.patch()`, which produces a single atomic Git commit. Multiple writers can emit patches concurrently without coordination — convergence is deterministic.
-
-- Use "emit a patch" or "call `graph.patch()`", not "commit a transaction".
-- Use "compensating patch" (new forward-only correction via LWW), not "rollback".
-- Use "domain validation before `graph.patch()`", not "optimistic concurrency check" or "snapshot precondition".
-- Use `graph.traverse.weightedLongestPath()` for critical path, not Dijkstra (which finds shortest paths).
-- Never describe userland graph algorithms — reference `graph.traverse.*` primitives.
-
-If a design doc contradicts how git-warp actually works, the doc is wrong — fix it. Always cross-reference against the [git-warp README](https://github.com/git-stunts/git-warp) and ARCHITECTURE.md for ground truth.
-
-## Constitution
-
-Every mutation must obey the [CONSTITUTION.md](docs/canonical/CONSTITUTION.md). Key rules:
-
-- Every quest must trace back to a human-declared `intent:` node (Art. IV).
-- No cycles in the dependency graph (Art. II).
-- Critical path changes require an ApprovalGate signed by a human (Art. IV.2).
-
-## Command Reference
-
-| Command | Description |
-|---------|-------------|
-| `status --view <roadmap\|lineage\|all\|inbox\|submissions>` | View the roadmap state |
-| `quest <id> --title "..." --campaign <id> --intent <id>` | Initialize a Quest |
-| `intent <id> --title "..." --requested-by human.<name>` | Declare a sovereign Intent |
-| `claim <id>` | Volunteer for a task (OCP) |
-| `submit <quest-id> --description "..."` | Submit quest for review |
-| `revise <submission-id> --description "..."` | Push new patchset superseding tip |
-| `review <patchset-id> --verdict <v> --comment "..."` | Review: approve, request-changes, comment |
-| `merge <submission-id> --rationale "..."` | Merge (git settlement + auto-seal) |
-| `close <submission-id> --rationale "..."` | Close submission without merging |
-| `seal <id> --artifact <hash> --rationale "..."` | Mark as DONE directly (solo work) |
-| `inbox <id> --title "..." --suggested-by <principal>` | Suggest a task for triage |
-| `promote <id> --intent <id>` | Promote INBOX to BACKLOG |
-| `reject <id> --rationale "..."` | Reject to GRAVEYARD |
-| `audit-sovereignty` | Audit quests for missing intent lineage |
-| `generate-key` | Generate an Ed25519 Guild Seal keypair |
-
-All commands are run via `npx tsx xyph-actuator.ts <command>`.
-
-## What To Read First
-
-Before making non-trivial changes, read:
-
-- [`README.md`](README.md)
-- [`design/README.md`](design/README.md)
-- [`design/hills.md`](design/hills.md)
-- [`design/playbacks.md`](design/playbacks.md)
-- [`design/product-model.md`](design/product-model.md)
-- [`docs/canonical/ARCHITECTURE.md`](docs/canonical/ARCHITECTURE.md)
-- [`docs/canonical/AGENT_PROTOCOL.md`](docs/canonical/AGENT_PROTOCOL.md)
-- [`docs/plans/sovereign-ontology-current.md`](docs/plans/sovereign-ontology-current.md)
-
-Then inspect the graph via `status`, the dashboard, or the canonical API
-surface. XYPH planning truth lives in the graph, not in a parallel markdown
-backlog.
-
-## Git Workflow
-
-Prefer small, honest commits.
-
-Do not rewrite shared history casually.
-Prefer additive commits over history surgery.
-Prefer merges over rebases for shared collaboration unless there is a
-compelling, explicitly discussed reason otherwise.
-
-The point is not aesthetic Git history. The point is trustworthy collaboration.
-
-## Decision Rule
-
-When in doubt:
-
-- choose less structure
-- choose lower latency
-- choose fewer fields
-- choose local-first
-- choose behavior over architecture
-- keep it boring
-- choose explicit semantics at governance boundaries
+| Term | Definition |
+| :--- | :--- |
+| **WARP Graph** | The decentralized database layer stored as Git commits pointing to the empty tree. It resolves write conflicts deterministically without coordination using CRDT rules. |
+| **Intent** | A sovereign goal or requirement declared by a human creator. It acts as the root node of all development lineage. |
+| **Quest** | A tracked unit of work (backlog task) representing a single step to satisfy an Intent. |
+| **Scroll** | A signed artifact containing the cryptographic proof, metadata, and outcomes of a completed Quest. |
+| **Submission** | A package of patches proposing changes to satisfy a Quest, pending peer review. |
+| **Decision** | A signed peer review verdict (approve/reject) and accompanying rationale posted on a Submission. |
+| **Worldline** | A logical, versioned timeline representing a branch or counterfactual history of the planning graph. |
+| **Braiding** | The deterministic process of merging and reconciling diverging worldlines into a single converged state. |
+| **Genealogy of Intent** | The verifiable lineage linking every Quest back to a sovereign Intent node, proving the "why" of every commit. |
+| **OR-Set** | *Observed-Removed Set*. The conflict-free replicated data type (CRDT) used to track node and edge memberships in the graph without locks. |
+| **LWW Register** | *Last-Writer-Wins Register*. The CRDT mechanism used to resolve property updates, ensuring that the latest write converges identically on all nodes. |

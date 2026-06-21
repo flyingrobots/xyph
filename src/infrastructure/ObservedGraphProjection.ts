@@ -11,7 +11,15 @@
  *  #4  QueryResultV1.nodes[i].id and .props are optional even when select(['id','props']) was called
  */
 
-import type { WarpCore as WarpGraph, QueryBuilder, LoggerPort, SnapshotVersionVector } from '@git-stunts/git-warp';
+import {
+  createStateReader,
+  scopeMaterializedState,
+  type WarpCore as WarpGraph,
+  type QueryBuilder,
+  type LoggerPort,
+  type SnapshotVersionVector,
+  SnapshotWarpState,
+} from '@git-stunts/git-warp';
 
 type QueryResult = Extract<Awaited<ReturnType<QueryBuilder['run']>>, { nodes: unknown }>;
 type AggregateResult = Extract<Awaited<ReturnType<QueryBuilder['run']>>, { count?: number }>;
@@ -156,9 +164,9 @@ export interface ObservedGraphProjection {
 
 export type SnapshotProfile = 'full' | 'operational' | 'analysis' | 'audit';
 
-export interface ObservedProjectionState {
+export type ObservedProjectionState = SnapshotWarpState | {
   readonly observedFrontier: SnapshotVersionVector | ReadonlyMap<string, number>;
-}
+};
 
 export interface ObservedProjectionGraph {
   readonly writerId: WarpGraph['writerId'];
@@ -177,6 +185,8 @@ export interface ObservedProjectionGraph {
   readonly traverse: WarpGraph['traverse'];
   readonly compareCoordinates: WarpGraph['compareCoordinates'];
   readonly syncCoverage?: WarpGraph['syncCoverage'];
+  readonly lens?: { match?: string | string[] };
+  readonly isLive?: boolean;
 }
 
 export interface FetchSnapshotOptions {
@@ -325,6 +335,222 @@ function deriveCampaignStatusFromQuests(quests: QuestNode[]): CampaignStatus {
 }
 
 // ---------------------------------------------------------------------------
+// Unified State Reader for Real and Fallback Graph Paths
+// ---------------------------------------------------------------------------
+
+type VisibleStateReader = ReturnType<typeof createStateReader>;
+type MaterializedStateParam = Parameters<typeof scopeMaterializedState>[0];
+type StateReaderParam = Parameters<typeof createStateReader>[0];
+
+function isRealWarpState(state: ObservedProjectionState | null): boolean {
+  if (!state) return false;
+  const stateObj = state as unknown as Record<string, unknown>;
+  return typeof stateObj['nodeAlive'] === 'object' && stateObj['nodeAlive'] !== null;
+}
+
+function matchToPrefixes(match: string | string[]): string[] {
+  const patterns = Array.isArray(match) ? match : [match];
+  return patterns.map((p) => (p.endsWith('*') ? p.slice(0, -1) : p));
+}
+
+class UnifiedStateReader {
+  private constructor(
+    private readonly reader: VisibleStateReader | null,
+    public readonly graph: ObservedProjectionGraph,
+    private readonly fallbackNodes?: Map<string, QNode>,
+    private readonly fallbackNeighbors?: Map<string, NeighborEntry[]>,
+  ) {}
+
+  static async create(
+    graph: ObservedProjectionGraph,
+    _profile: SnapshotProfile,
+    includeFlags: {
+      includeStoryModels: boolean;
+      includeRequirementModels: boolean;
+      includeCriterionModels: boolean;
+      includeEvidenceModels: boolean;
+      includePolicyModels: boolean;
+      includeCaseNodes: boolean;
+      includeGovernanceArtifacts: boolean;
+    },
+  ): Promise<UnifiedStateReader> {
+    const state = graph.isLive !== false ? await graph.getStateSnapshot() : null;
+    if (isRealWarpState(state)) {
+      let scopedState = state as unknown as MaterializedStateParam;
+      if (graph.lens && graph.lens.match) {
+        const include = matchToPrefixes(graph.lens.match);
+        scopedState = scopeMaterializedState(state as unknown as MaterializedStateParam, { nodeIdPrefixes: { include } });
+      }
+      return new UnifiedStateReader(createStateReader(scopedState as unknown as StateReaderParam), graph);
+    }
+
+    // Fallback: parallel queries to build fallbackNodes and fallbackNeighbors
+    const [
+      taskNodes, campaignNodes, milestoneNodes, intentNodes,
+      scrollNodes, approvalNodes, submissionNodes,
+      patchsetNodes, reviewNodes, decisionNodes,
+      storyNodes, requirementNodes, criterionNodes, evidenceNodes, policyNodes,
+      suggestionNodes,
+      caseNodes,
+      comparisonArtifactNodes, collapseProposalNodes, attestationNodes,
+    ] = await Promise.all([
+      graph.query().match('task:*').select(['id', 'props']).run().then(extractNodes),
+      graph.query().match('campaign:*').select(['id', 'props']).run().then(extractNodes),
+      graph.query().match('milestone:*').select(['id', 'props']).run().then(extractNodes),
+      graph.query().match('intent:*').select(['id', 'props']).run().then(extractNodes),
+      graph.query().match('artifact:*').select(['id', 'props']).run().then(extractNodes),
+      graph.query().match('approval:*').select(['id', 'props']).run().then(extractNodes),
+      graph.query().match('submission:*').select(['id', 'props']).run().then(extractNodes),
+      graph.query().match('patchset:*').select(['id', 'props']).run().then(extractNodes),
+      graph.query().match('review:*').select(['id', 'props']).run().then(extractNodes),
+      graph.query().match('decision:*').select(['id', 'props']).run().then(extractNodes),
+      includeFlags.includeStoryModels
+        ? graph.query().match('story:*').select(['id', 'props']).run().then(extractNodes)
+        : Promise.resolve([]),
+      includeFlags.includeRequirementModels
+        ? graph.query().match('req:*').select(['id', 'props']).run().then(extractNodes)
+        : Promise.resolve([]),
+      includeFlags.includeCriterionModels
+        ? graph.query().match('criterion:*').select(['id', 'props']).run().then(extractNodes)
+        : Promise.resolve([]),
+      includeFlags.includeEvidenceModels
+        ? graph.query().match('evidence:*').select(['id', 'props']).run().then(extractNodes)
+        : Promise.resolve([]),
+      includeFlags.includePolicyModels
+        ? graph.query().match('policy:*').select(['id', 'props']).run().then(extractNodes)
+        : Promise.resolve([]),
+      graph.query().match('suggestion:*').select(['id', 'props']).run().then(extractNodes),
+      includeFlags.includeCaseNodes
+        ? graph.query().match('case:*').select(['id', 'props']).run().then(extractNodes)
+        : Promise.resolve([]),
+      includeFlags.includeGovernanceArtifacts
+        ? graph.query().match('comparison-artifact:*').select(['id', 'props']).run().then(extractNodes)
+        : Promise.resolve([]),
+      includeFlags.includeGovernanceArtifacts
+        ? graph.query().match('collapse-proposal:*').select(['id', 'props']).run().then(extractNodes)
+        : Promise.resolve([]),
+      includeFlags.includeGovernanceArtifacts
+        ? graph.query().match('attestation:*').select(['id', 'props']).run().then(extractNodes)
+        : Promise.resolve([]),
+    ]);
+
+    const allNodes = [
+      ...taskNodes, ...campaignNodes, ...milestoneNodes, ...intentNodes,
+      ...scrollNodes, ...approvalNodes, ...submissionNodes,
+      ...patchsetNodes, ...reviewNodes, ...decisionNodes,
+      ...storyNodes, ...requirementNodes, ...criterionNodes, ...evidenceNodes, ...policyNodes,
+      ...suggestionNodes, ...caseNodes,
+      ...comparisonArtifactNodes, ...collapseProposalNodes, ...attestationNodes,
+    ];
+
+    const fallbackNodes = new Map<string, QNode>();
+    for (const n of allNodes) {
+      fallbackNodes.set(n.id, n);
+    }
+
+    const neighborsNeeded = [
+      ...taskNodes.map((n) => n.id),
+      ...campaignNodes.map((n) => n.id),
+      ...milestoneNodes.map((n) => n.id),
+      ...scrollNodes.map((n) => n.id),
+      ...patchsetNodes.map((n) => n.id),
+      ...reviewNodes.map((n) => n.id),
+      ...decisionNodes.map((n) => n.id),
+      ...(includeFlags.includeStoryModels ? storyNodes.map((n) => n.id) : []),
+      ...(includeFlags.includeRequirementModels ? requirementNodes.map((n) => n.id) : []),
+      ...(includeFlags.includeEvidenceModels ? evidenceNodes.map((n) => n.id) : []),
+      ...(includeFlags.includePolicyModels ? policyNodes.map((n) => n.id) : []),
+      ...caseNodes.map((n) => n.id),
+    ];
+    const fallbackNeighbors = await batchNeighbors(graph, neighborsNeeded);
+
+    return new UnifiedStateReader(null, graph, fallbackNodes, fallbackNeighbors);
+  }
+
+  static createForEntityDetail(
+    reader: VisibleStateReader | null,
+    graph: ObservedProjectionGraph,
+  ): UnifiedStateReader {
+    return new UnifiedStateReader(reader, graph);
+  }
+
+  get writerId(): string {
+    return this.graph.writerId;
+  }
+
+  get traverse(): WarpGraph['traverse'] {
+    return this.graph.traverse;
+  }
+
+  async getContent(nodeId: string): Promise<Uint8Array | null> {
+    return this.graph.getContent(nodeId);
+  }
+
+  async getContentOid(nodeId: string): Promise<string | null> {
+    return this.graph.getContentOid(nodeId);
+  }
+
+  async compareCoordinates(
+    options: Parameters<ObservedProjectionGraph['compareCoordinates']>[0],
+  ): ReturnType<ObservedProjectionGraph['compareCoordinates']> {
+    return this.graph.compareCoordinates(options);
+  }
+
+  async hasNode(nodeId: string): Promise<boolean> {
+    if (this.reader) return this.reader.hasNode(nodeId);
+    if (this.fallbackNodes && this.fallbackNodes.has(nodeId)) return true;
+    return this.graph.hasNode(nodeId);
+  }
+
+  async getNodes(): Promise<string[]> {
+    if (this.reader) return this.reader.getNodes();
+    if (this.fallbackNodes) return [...this.fallbackNodes.keys()];
+    return [];
+  }
+
+  async getNodeProps(nodeId: string): Promise<Record<string, unknown> | null> {
+    if (this.reader) return (this.reader.getNodeProps(nodeId) as Record<string, unknown>) ?? null;
+    if (this.fallbackNodes) {
+      const node = this.fallbackNodes.get(nodeId);
+      if (node) return node.props;
+    }
+    return this.graph.getNodeProps(nodeId);
+  }
+
+  async neighbors(
+    nodeId: string,
+    direction: 'outgoing' | 'incoming' | 'both' = 'outgoing',
+    edgeLabel?: string,
+  ): Promise<NeighborEntry[]> {
+    if (this.reader) {
+      const raw = this.reader.neighbors(nodeId, direction, edgeLabel);
+      return raw.map((n) => ({ nodeId: n.nodeId, label: n.label }));
+    }
+    if (this.fallbackNeighbors && direction === 'outgoing' && !edgeLabel) {
+      const cached = this.fallbackNeighbors.get(nodeId);
+      if (cached) return cached;
+    }
+    const raw = await this.graph.neighbors(nodeId, direction, edgeLabel);
+    return toNeighborEntries(raw);
+  }
+
+  async queryNodesByPrefix(prefix: string): Promise<QNode[]> {
+    const reader = this.reader;
+    if (reader) {
+      return reader.getNodes()
+        .filter((id) => id.startsWith(`${prefix}:`))
+        .map((id) => ({ id, props: (reader.getNodeProps(id) as Record<string, unknown>) ?? {} }));
+    }
+    if (this.fallbackNodes) {
+      return [...this.fallbackNodes.values()]
+        .filter((n) => n.id.startsWith(`${prefix}:`));
+    }
+    const result = await this.graph.query().match(`${prefix}:*`).select(['id', 'props']).run();
+    return extractNodes(result);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Implementation
 // ---------------------------------------------------------------------------
 
@@ -460,8 +686,18 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
       }
     }
 
-    // --- Query each node type in parallel ---
+    // --- Query each node type in parallel via UnifiedStateReader ---
     log('Querying graph…');
+    const reader = await UnifiedStateReader.create(graph, profile, {
+      includeStoryModels,
+      includeRequirementModels,
+      includeCriterionModels,
+      includeEvidenceModels,
+      includePolicyModels,
+      includeCaseNodes,
+      includeGovernanceArtifacts,
+    });
+
     const [
       taskNodes, campaignNodes, milestoneNodes, intentNodes,
       scrollNodes, approvalNodes, submissionNodes,
@@ -471,44 +707,26 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
       caseNodes,
       comparisonArtifactNodes, collapseProposalNodes, attestationNodes,
     ] = await Promise.all([
-      graph.query().match('task:*').select(['id', 'props']).run().then(extractNodes),
-      graph.query().match('campaign:*').select(['id', 'props']).run().then(extractNodes),
-      graph.query().match('milestone:*').select(['id', 'props']).run().then(extractNodes),
-      graph.query().match('intent:*').select(['id', 'props']).run().then(extractNodes),
-      graph.query().match('artifact:*').select(['id', 'props']).run().then(extractNodes),
-      graph.query().match('approval:*').select(['id', 'props']).run().then(extractNodes),
-      graph.query().match('submission:*').select(['id', 'props']).run().then(extractNodes),
-      graph.query().match('patchset:*').select(['id', 'props']).run().then(extractNodes),
-      graph.query().match('review:*').select(['id', 'props']).run().then(extractNodes),
-      graph.query().match('decision:*').select(['id', 'props']).run().then(extractNodes),
-      includeStoryModels
-        ? graph.query().match('story:*').select(['id', 'props']).run().then(extractNodes)
-        : Promise.resolve([]),
-      includeRequirementModels
-        ? graph.query().match('req:*').select(['id', 'props']).run().then(extractNodes)
-        : Promise.resolve([]),
-      includeCriterionModels
-        ? graph.query().match('criterion:*').select(['id', 'props']).run().then(extractNodes)
-        : Promise.resolve([]),
-      includeEvidenceModels
-        ? graph.query().match('evidence:*').select(['id', 'props']).run().then(extractNodes)
-        : Promise.resolve([]),
-      includePolicyModels
-        ? graph.query().match('policy:*').select(['id', 'props']).run().then(extractNodes)
-        : Promise.resolve([]),
-      graph.query().match('suggestion:*').select(['id', 'props']).run().then(extractNodes),
-      includeCaseNodes
-        ? graph.query().match('case:*').select(['id', 'props']).run().then(extractNodes)
-        : Promise.resolve([]),
-      includeGovernanceArtifacts
-        ? graph.query().match('comparison-artifact:*').select(['id', 'props']).run().then(extractNodes)
-        : Promise.resolve([]),
-      includeGovernanceArtifacts
-        ? graph.query().match('collapse-proposal:*').select(['id', 'props']).run().then(extractNodes)
-        : Promise.resolve([]),
-      includeGovernanceArtifacts
-        ? graph.query().match('attestation:*').select(['id', 'props']).run().then(extractNodes)
-        : Promise.resolve([]),
+      reader.queryNodesByPrefix('task'),
+      reader.queryNodesByPrefix('campaign'),
+      reader.queryNodesByPrefix('milestone'),
+      reader.queryNodesByPrefix('intent'),
+      reader.queryNodesByPrefix('artifact'),
+      reader.queryNodesByPrefix('approval'),
+      reader.queryNodesByPrefix('submission'),
+      reader.queryNodesByPrefix('patchset'),
+      reader.queryNodesByPrefix('review'),
+      reader.queryNodesByPrefix('decision'),
+      includeStoryModels ? reader.queryNodesByPrefix('story') : Promise.resolve([]),
+      includeRequirementModels ? reader.queryNodesByPrefix('req') : Promise.resolve([]),
+      includeCriterionModels ? reader.queryNodesByPrefix('criterion') : Promise.resolve([]),
+      includeEvidenceModels ? reader.queryNodesByPrefix('evidence') : Promise.resolve([]),
+      includePolicyModels ? reader.queryNodesByPrefix('policy') : Promise.resolve([]),
+      reader.queryNodesByPrefix('suggestion'),
+      includeCaseNodes ? reader.queryNodesByPrefix('case') : Promise.resolve([]),
+      includeGovernanceArtifacts ? reader.queryNodesByPrefix('comparison-artifact') : Promise.resolve([]),
+      includeGovernanceArtifacts ? reader.queryNodesByPrefix('collapse-proposal') : Promise.resolve([]),
+      includeGovernanceArtifacts ? reader.queryNodesByPrefix('attestation') : Promise.resolve([]),
     ]);
 
     await yieldEventLoop();
@@ -530,7 +748,13 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
       ...(includePolicyModels ? policyNodes.map((n) => n.id) : []),
       ...caseNodes.map((n) => n.id),
     ];
-    const neighborsCache = await batchNeighbors(graph, neighborsNeeded);
+    const neighborsEntries = await Promise.all(
+      neighborsNeeded.map(async (id) => {
+        const nb = await reader.neighbors(id, 'outgoing');
+        return [id, nb] as const;
+      })
+    );
+    const neighborsCache = new Map<string, NeighborEntry[]>(neighborsEntries);
 
     await yieldEventLoop();
 
@@ -730,7 +954,13 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
         });
       }
 
-      const intentNeighbors = await batchNeighbors(graph, intentNodes.map((n) => n.id));
+      const intentNeighborsEntries = await Promise.all(
+        intentNodes.map(async (n) => {
+          const nb = await reader.neighbors(n.id, 'outgoing');
+          return [n.id, nb] as const;
+        })
+      );
+      const intentNeighbors = new Map<string, NeighborEntry[]>(intentNeighborsEntries);
       for (const intent of intentNodes) {
         const neighbors = intentNeighbors.get(intent.id) ?? [];
         for (const nb of neighbors) {
@@ -1178,7 +1408,13 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
         });
       }
 
-      const intentNeighbors = await batchNeighbors(graph, intentNodes.map((n) => n.id));
+      const intentNeighborsEntries = await Promise.all(
+        intentNodes.map(async (n) => {
+          const nb = await reader.neighbors(n.id, 'outgoing');
+          return [n.id, nb] as const;
+        })
+      );
+      const intentNeighbors = new Map<string, NeighborEntry[]>(intentNeighborsEntries);
       for (const intent of intentNodes) {
         const neighbors = intentNeighbors.get(intent.id) ?? [];
         for (const nb of neighbors) {
@@ -1681,7 +1917,7 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
     }
 
     const governanceArtifacts = includeGovernanceArtifacts
-      ? await this.buildGovernanceArtifacts(graph, [
+      ? await this.buildGovernanceArtifacts(reader, [
           ...comparisonArtifactNodes,
           ...collapseProposalNodes,
           ...attestationNodes,
@@ -1710,21 +1946,13 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
     return snap;
   }
 
-  private async queryNodesByPrefix(
-    graph: ObservedProjectionGraph,
-    prefix: 'comparison-artifact' | 'collapse-proposal' | 'attestation',
-  ): Promise<QNode[]> {
-    const result = await graph.query().match(`${prefix}:*`).select(['id', 'props']).run();
-    return extractNodes(result);
-  }
-
   private async summarizeAttestations(
-    graph: ObservedProjectionGraph,
+    reader: UnifiedStateReader,
     attestationIds: string[],
   ): Promise<GovernanceAttestationSummary> {
     const attestationEntries = (await Promise.all(
       [...new Set(attestationIds)].map(async (attestationId) => {
-        const props = await graph.getNodeProps(attestationId);
+        const props = await reader.getNodeProps(attestationId);
         if (!props || props['type'] !== 'attestation') return null;
         return {
           id: attestationId,
@@ -1762,7 +1990,7 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
   }
 
   private async computeComparisonArtifactFreshness(
-    graph: ObservedProjectionGraph,
+    reader: UnifiedStateReader,
     props: Record<string, unknown>,
     payload: Record<string, unknown> | null,
   ): Promise<'fresh' | 'stale' | 'unknown'> {
@@ -1804,7 +2032,7 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
     }
 
     try {
-      const comparison = await graph.compareCoordinates({
+      const comparison = await reader.compareCoordinates({
         left,
         right,
         ...(typeof props['target_id'] === 'string' ? { targetId: props['target_id'] } : {}),
@@ -1827,7 +2055,7 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
   }
 
   private async computeCollapseProposalFreshness(
-    graph: ObservedProjectionGraph,
+    reader: UnifiedStateReader,
     props: Record<string, unknown>,
   ): Promise<'fresh' | 'stale' | 'unknown'> {
     const comparisonArtifactDigest = asString(props['comparison_artifact_digest']);
@@ -1852,7 +2080,7 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
     }
 
     try {
-      const comparison = await graph.compareCoordinates({
+      const comparison = await reader.compareCoordinates({
         left,
         right,
         scope: XYPH_OPERATIONAL_COMPARISON_SCOPE,
@@ -1874,7 +2102,7 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
   }
 
   private async buildGovernanceDetail(
-    graph: ObservedProjectionGraph,
+    reader: UnifiedStateReader,
     type: string,
     props: Record<string, unknown>,
     content: string | undefined,
@@ -1898,11 +2126,11 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
 
     if (type === 'comparison-artifact') {
       const payload = parseJsonObject(content);
-      const attestation = await this.summarizeAttestations(graph, incomingAttestationIds);
-      const freshness = await this.computeComparisonArtifactFreshness(graph, props, payload);
+      const attestation = await this.summarizeAttestations(reader, incomingAttestationIds);
+      const freshness = await this.computeComparisonArtifactFreshness(reader, props, payload);
       const artifactDigest = asString(props['artifact_digest']);
       const collapseNodes = artifactDigest
-        ? (await this.queryNodesByPrefix(graph, 'collapse-proposal'))
+        ? (await reader.queryNodesByPrefix('collapse-proposal'))
           .filter((node) => node.props['comparison_artifact_digest'] === artifactDigest)
           .sort((left, right) => {
             const leftRecordedAt = typeof left.props['recorded_at'] === 'number' ? left.props['recorded_at'] : 0;
@@ -1945,8 +2173,8 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
     }
 
     if (type === 'collapse-proposal') {
-      const attestation = await this.summarizeAttestations(graph, incomingAttestationIds);
-      const freshness = await this.computeCollapseProposalFreshness(graph, props);
+      const attestation = await this.summarizeAttestations(reader, incomingAttestationIds);
+      const freshness = await this.computeCollapseProposalFreshness(reader, props);
       const comparisonArtifactDigest = asString(props['comparison_artifact_digest']);
       const comparisonArtifactId = comparisonArtifactDigest
         ? `comparison-artifact:${comparisonArtifactDigest}`
@@ -1958,11 +2186,11 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
         other: 0,
         state: 'unattested',
       };
-      if (comparisonArtifactId && await graph.hasNode(comparisonArtifactId)) {
-        const comparisonIncoming = toNeighborEntries(await graph.neighbors(comparisonArtifactId, 'incoming'))
+      if (comparisonArtifactId && await reader.hasNode(comparisonArtifactId)) {
+        const comparisonIncoming = (await reader.neighbors(comparisonArtifactId, 'incoming'))
           .filter((entry) => entry.label === 'attests' && entry.nodeId.startsWith('attestation:'))
           .map((entry) => entry.nodeId);
-        gateAttestation = await this.summarizeAttestations(graph, comparisonIncoming);
+        gateAttestation = await this.summarizeAttestations(reader, comparisonIncoming);
       }
 
       const executed = asBoolean(props['executed']) ?? false;
@@ -2003,9 +2231,9 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
       let targetType: string | undefined;
       let targetExists = false;
       if (targetId) {
-        targetExists = await graph.hasNode(targetId);
+        targetExists = await reader.hasNode(targetId);
         if (targetExists) {
-          const targetProps = await graph.getNodeProps(targetId);
+          const targetProps = await reader.getNodeProps(targetId);
           targetType = typeof targetProps?.['type'] === 'string' ? targetProps['type'] : undefined;
         }
       }
@@ -2024,7 +2252,7 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
   }
 
   private async buildGovernanceArtifacts(
-    graph: ObservedProjectionGraph,
+    reader: UnifiedStateReader,
     nodes: QNode[],
   ): Promise<GovernanceArtifactNode[]> {
     const artifacts = (await Promise.all(nodes.map(async (node) => {
@@ -2034,15 +2262,15 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
       }
 
       const [outgoingRaw, incomingRaw, rawContent] = await Promise.all([
-        graph.neighbors(node.id, 'outgoing'),
-        graph.neighbors(node.id, 'incoming'),
-        graph.getContent(node.id),
+        reader.neighbors(node.id, 'outgoing'),
+        reader.neighbors(node.id, 'incoming'),
+        reader.getContent(node.id),
       ]);
 
-      const outgoing = toNeighborEntries(outgoingRaw).map((entry) => ({ nodeId: entry.nodeId, label: entry.label }));
-      const incoming = toNeighborEntries(incomingRaw).map((entry) => ({ nodeId: entry.nodeId, label: entry.label }));
+      const outgoing = outgoingRaw;
+      const incoming = incomingRaw;
       const content = decodeNodeContent(rawContent);
-      const governance = await this.buildGovernanceDetail(graph, type, node.props, content, outgoing, incoming);
+      const governance = await this.buildGovernanceDetail(reader, type, node.props, content, outgoing, incoming);
       if (!governance) {
         return null;
       }
@@ -2109,7 +2337,20 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
 
     await this.ensureReadingBasis(graph);
 
-    if (!await graph.hasNode(id)) {
+    const state = graph.isLive !== false ? await graph.getStateSnapshot() : null;
+    let reader: UnifiedStateReader;
+    if (isRealWarpState(state)) {
+      let scopedState = state as unknown as MaterializedStateParam;
+      if (graph.lens && graph.lens.match) {
+        const include = matchToPrefixes(graph.lens.match);
+        scopedState = scopeMaterializedState(state as unknown as MaterializedStateParam, { nodeIdPrefixes: { include } });
+      }
+      reader = UnifiedStateReader.createForEntityDetail(createStateReader(scopedState as unknown as StateReaderParam), graph);
+    } else {
+      reader = UnifiedStateReader.createForEntityDetail(null, graph);
+    }
+
+    if (!await reader.hasNode(id)) {
       this.readOptions.logger?.warn('graph entity detail missing node', {
         id,
         durationMs: Date.now() - startedAt,
@@ -2124,27 +2365,27 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
       rawContent,
       contentOid,
     ] = await Promise.all([
-      graph.getNodeProps(id),
-      graph.neighbors(id, 'outgoing'),
-      graph.neighbors(id, 'incoming'),
-      graph.getContent(id),
-      graph.getContentOid(id),
+      reader.getNodeProps(id),
+      reader.neighbors(id, 'outgoing'),
+      reader.neighbors(id, 'incoming'),
+      reader.getContent(id),
+      reader.getContentOid(id),
     ]);
 
     const props = rawProps ?? {};
     const type = typeof props['type'] === 'string' ? props['type'] : 'unknown';
     const content = decodeNodeContent(rawContent);
-    const outgoing = toNeighborEntries(outgoingRaw).map((entry) => ({ nodeId: entry.nodeId, label: entry.label }));
-    const incoming = toNeighborEntries(incomingRaw).map((entry) => ({ nodeId: entry.nodeId, label: entry.label }));
+    const outgoing = outgoingRaw;
+    const incoming = incomingRaw;
 
     let questDetail: QuestDetail | undefined;
     if (id.startsWith('task:')) {
-      questDetail = await this.buildQuestDetailFromGraph(graph, id, props, outgoing, incoming) ?? undefined;
+      questDetail = await this.buildQuestDetailFromGraph(reader, id, props, outgoing, incoming) ?? undefined;
     }
 
     let caseDetail: CaseDetail | undefined;
     if (type === 'case') {
-      caseDetail = await this.buildCaseDetail(graph, id, props, outgoing, incoming) ?? undefined;
+      caseDetail = await this.buildCaseDetail(reader, id, props, outgoing, incoming) ?? undefined;
     }
 
     const detail = {
@@ -2157,7 +2398,7 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
       incoming,
       questDetail,
       caseDetail,
-      governanceDetail: await this.buildGovernanceDetail(graph, type, props, content, outgoing, incoming),
+      governanceDetail: await this.buildGovernanceDetail(reader, type, props, content, outgoing, incoming),
     };
     this.readOptions.logger?.info('graph entity detail fetch finished', {
       id,
@@ -2179,7 +2420,7 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
   }
 
   private async buildQuestDetailFromGraph(
-    graph: ObservedProjectionGraph,
+    reader: UnifiedStateReader,
     questId: string,
     props: Record<string, unknown>,
     outgoing: EntityDetail['outgoing'],
@@ -2189,11 +2430,11 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
     if (!quest) return null;
 
     const [campaign, intent, scroll, submissionBundle, traceability] = await Promise.all([
-      quest.campaignId ? this.loadCampaignNode(graph, quest.campaignId) : Promise.resolve(undefined),
-      quest.intentId ? this.loadIntentNode(graph, quest.intentId) : Promise.resolve(undefined),
-      this.loadScrollForQuest(graph, quest.id),
-      this.loadSubmissionBundleForQuest(graph, quest.id),
-      this.loadTraceabilityForQuest(graph, quest.id, quest.campaignId),
+      quest.campaignId ? this.loadCampaignNode(reader, quest.campaignId) : Promise.resolve(undefined),
+      quest.intentId ? this.loadIntentNode(reader, quest.intentId) : Promise.resolve(undefined),
+      this.loadScrollForQuest(reader, quest.id),
+      this.loadSubmissionBundleForQuest(reader, quest.id),
+      this.loadTraceabilityForQuest(reader, quest.id, quest.campaignId),
     ]);
 
     const submission = submissionBundle.submission;
@@ -2257,7 +2498,7 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
     if (submission) relevantIds.add(submission.id);
     if (scroll) relevantIds.add(scroll.id);
 
-    const { documents, comments } = await this.loadNarrativeForTargets(graph, relevantIds);
+    const { documents, comments } = await this.loadNarrativeForTargets(reader, relevantIds);
     const timeline = this.buildQuestTimeline({
       quest,
       scroll,
@@ -2343,13 +2584,13 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
   }
 
   private async loadCampaignNode(
-    graph: ObservedProjectionGraph,
+    reader: UnifiedStateReader,
     campaignId: string,
   ): Promise<CampaignNode | undefined> {
     const [props, outgoingRaw, incomingRaw] = await Promise.all([
-      graph.getNodeProps(campaignId),
-      graph.neighbors(campaignId, 'outgoing'),
-      graph.neighbors(campaignId, 'incoming'),
+      reader.getNodeProps(campaignId),
+      reader.neighbors(campaignId, 'outgoing'),
+      reader.neighbors(campaignId, 'incoming'),
     ]);
     if (!props || (props['type'] !== 'campaign' && props['type'] !== 'milestone')) return undefined;
     const title = props['title'];
@@ -2361,19 +2602,19 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
       ? rawStatus as CampaignStatus
       : 'UNKNOWN';
 
-    const outgoing = toNeighborEntries(outgoingRaw);
+    const outgoing = outgoingRaw;
     const dependsOnIds = outgoing
       .filter((edge) =>
         edge.label === 'depends-on' &&
         (edge.nodeId.startsWith('campaign:') || edge.nodeId.startsWith('milestone:')))
       .map((edge) => edge.nodeId);
 
-    const memberTaskIds = toNeighborEntries(incomingRaw)
+    const memberTaskIds = incomingRaw
       .filter((edge) => edge.label === 'belongs-to' && edge.nodeId.startsWith('task:'))
       .map((edge) => edge.nodeId);
     if (memberTaskIds.length > 0) {
       const members = (await Promise.all(memberTaskIds.map(async (taskId) => {
-        const taskProps = await graph.getNodeProps(taskId);
+        const taskProps = await reader.getNodeProps(taskId);
         if (!taskProps || typeof taskProps['status'] !== 'string') return null;
         const normalized = normalizeQuestStatus(taskProps['status']);
         if (!VALID_QUEST_STATUSES.has(normalized)) return null;
@@ -2399,10 +2640,10 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
   }
 
   private async loadIntentNode(
-    graph: ObservedProjectionGraph,
+    reader: UnifiedStateReader,
     intentId: string,
   ): Promise<IntentNode | undefined> {
-    const props = await graph.getNodeProps(intentId);
+    const props = await reader.getNodeProps(intentId);
     if (!props || props['type'] !== 'intent') return undefined;
     const title = props['title'];
     const requestedBy = props['requested_by'];
@@ -2420,17 +2661,17 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
   }
 
   private async loadScrollForQuest(
-    graph: ObservedProjectionGraph,
+    reader: UnifiedStateReader,
     questId: string,
   ): Promise<ScrollNode | undefined> {
-    const incoming = toNeighborEntries(await graph.neighbors(questId, 'incoming'));
+    const incoming = await reader.neighbors(questId, 'incoming');
     const scrollIds = incoming
       .filter((edge) => edge.label === 'fulfills' && edge.nodeId.startsWith('artifact:'))
       .map((edge) => edge.nodeId);
     if (scrollIds.length === 0) return undefined;
 
     const scrolls = (await Promise.all(scrollIds.map(async (scrollId) => {
-      const props = await graph.getNodeProps(scrollId);
+      const props = await reader.getNodeProps(scrollId);
       if (!props || props['type'] !== 'scroll') return null;
       const artifactHash = props['artifact_hash'];
       const sealedBy = props['sealed_by'];
@@ -2452,10 +2693,10 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
   }
 
   private async loadSubmissionBundleForQuest(
-    graph: ObservedProjectionGraph,
+    reader: UnifiedStateReader,
     questId: string,
   ): Promise<{ submission?: SubmissionNode; reviews: ReviewNode[]; decisions: DecisionNode[]; patchsetIds: Set<string> }> {
-    const incoming = toNeighborEntries(await graph.neighbors(questId, 'incoming'));
+    const incoming = await reader.neighbors(questId, 'incoming');
     const submissionIds = incoming
       .filter((edge) => edge.label === 'submits' && edge.nodeId.startsWith('submission:'))
       .map((edge) => edge.nodeId);
@@ -2469,29 +2710,29 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
       decisions: DecisionNode[];
       patchsetIds: Set<string>;
     } | null> => {
-      const props = await graph.getNodeProps(submissionId);
+      const props = await reader.getNodeProps(submissionId);
       if (!props || props['type'] !== 'submission') return null;
       const submittedBy = props['submitted_by'];
       const submittedAt = props['submitted_at'];
       if (typeof submittedBy !== 'string' || typeof submittedAt !== 'number') return null;
 
-      const patchsetIds = await this.findPatchsetIdsForSubmission(graph, submissionId);
+      const patchsetIds = await this.findPatchsetIdsForSubmission(reader, submissionId);
       const patchsetRefs: PatchsetRef[] = [];
       const reviewsByPatchset = new Map<string, ReviewRef[]>();
       const reviews: ReviewNode[] = [];
 
       for (const patchsetId of patchsetIds) {
         const [patchsetProps, patchsetOutgoingRaw, patchsetIncomingRaw] = await Promise.all([
-          graph.getNodeProps(patchsetId),
-          graph.neighbors(patchsetId, 'outgoing'),
-          graph.neighbors(patchsetId, 'incoming'),
+          reader.getNodeProps(patchsetId),
+          reader.neighbors(patchsetId, 'outgoing'),
+          reader.neighbors(patchsetId, 'incoming'),
         ]);
         if (!patchsetProps) continue;
         const authoredAt = patchsetProps['authored_at'];
         if (typeof authoredAt !== 'number') continue;
 
         let supersedesId: string | undefined;
-        for (const edge of toNeighborEntries(patchsetOutgoingRaw)) {
+        for (const edge of patchsetOutgoingRaw) {
           if (edge.label === 'supersedes') {
             supersedesId = edge.nodeId;
             break;
@@ -2500,11 +2741,11 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
         patchsetRefs.push({ id: patchsetId, authoredAt, supersedesId });
 
         const patchsetReviews: ReviewRef[] = [];
-        const reviewIds = toNeighborEntries(patchsetIncomingRaw)
+        const reviewIds = patchsetIncomingRaw
           .filter((edge) => edge.label === 'reviews' && edge.nodeId.startsWith('review:'))
           .map((edge) => edge.nodeId);
         for (const reviewId of reviewIds) {
-          const reviewProps = await graph.getNodeProps(reviewId);
+          const reviewProps = await reader.getNodeProps(reviewId);
           if (!reviewProps) continue;
           const verdict = reviewProps['verdict'];
           const comment = reviewProps['comment'];
@@ -2533,13 +2774,13 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
         reviewsByPatchset.set(patchsetId, patchsetReviews);
       }
 
-      const decisionIds = toNeighborEntries(await graph.neighbors(submissionId, 'incoming'))
+      const decisionIds = (await reader.neighbors(submissionId, 'incoming'))
         .filter((edge) => edge.label === 'decides' && edge.nodeId.startsWith('decision:'))
         .map((edge) => edge.nodeId);
       const decisionProps: DecisionProps[] = [];
       const decisions: DecisionNode[] = [];
       for (const decisionId of decisionIds) {
-        const decisionNodeProps = await graph.getNodeProps(decisionId);
+        const decisionNodeProps = await reader.getNodeProps(decisionId);
         if (!decisionNodeProps || decisionNodeProps['type'] !== 'decision') continue;
         const kind = decisionNodeProps['kind'];
         const decidedBy = decisionNodeProps['decided_by'];
@@ -2610,7 +2851,7 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
   }
 
   private async loadTraceabilityForQuest(
-    graph: ObservedProjectionGraph,
+    reader: UnifiedStateReader,
     questId: string,
     campaignId?: string,
   ): Promise<{
@@ -2620,7 +2861,7 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
     evidence: EvidenceNode[];
     policies: PolicyNode[];
   }> {
-    const questOutgoing = toNeighborEntries(await graph.neighbors(questId, 'outgoing'));
+    const questOutgoing = await reader.neighbors(questId, 'outgoing');
     const requirementIds = questOutgoing
       .filter((edge) => edge.label === 'implements' && edge.nodeId.startsWith('req:'))
       .map((edge) => edge.nodeId);
@@ -2630,9 +2871,9 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
     const criterionIds = new Set<string>();
     for (const requirementId of requirementIds) {
       const [requirementProps, outgoingRaw, incomingRaw] = await Promise.all([
-        graph.getNodeProps(requirementId),
-        graph.neighbors(requirementId, 'outgoing'),
-        graph.neighbors(requirementId, 'incoming'),
+        reader.getNodeProps(requirementId),
+        reader.neighbors(requirementId, 'outgoing'),
+        reader.neighbors(requirementId, 'incoming'),
       ]);
       if (!requirementProps || requirementProps['type'] !== 'requirement') continue;
       const description = requirementProps['description'];
@@ -2646,8 +2887,8 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
         continue;
       }
 
-      const outgoing = toNeighborEntries(outgoingRaw);
-      const incoming = toNeighborEntries(incomingRaw);
+      const outgoing = outgoingRaw;
+      const incoming = incomingRaw;
       const taskIds = incoming
         .filter((edge) => edge.label === 'implements' && edge.nodeId.startsWith('task:'))
         .map((edge) => edge.nodeId)
@@ -2674,8 +2915,8 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
 
     const stories = (await Promise.all([...storyIds].map(async (storyId): Promise<StoryNode | null> => {
       const [storyProps, incomingRaw] = await Promise.all([
-        graph.getNodeProps(storyId),
-        graph.neighbors(storyId, 'incoming'),
+        reader.getNodeProps(storyId),
+        reader.neighbors(storyId, 'incoming'),
       ]);
       if (!storyProps || storyProps['type'] !== 'story') return null;
       const title = storyProps['title'];
@@ -2694,7 +2935,7 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
       ) {
         return null;
       }
-      const intentId = toNeighborEntries(incomingRaw)
+      const intentId = incomingRaw
         .find((edge) => edge.label === 'decomposes-to' && edge.nodeId.startsWith('intent:'))?.nodeId;
       return {
         id: storyId,
@@ -2713,14 +2954,14 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
     const evidenceIds = new Set<string>();
     for (const criterionId of criterionIds) {
       const [criterionProps, incomingRaw] = await Promise.all([
-        graph.getNodeProps(criterionId),
-        graph.neighbors(criterionId, 'incoming'),
+        reader.getNodeProps(criterionId),
+        reader.neighbors(criterionId, 'incoming'),
       ]);
       if (!criterionProps || criterionProps['type'] !== 'criterion') continue;
       const description = criterionProps['description'];
       const verifiable = criterionProps['verifiable'];
       if (typeof description !== 'string') continue;
-      const incoming = toNeighborEntries(incomingRaw);
+      const incoming = incomingRaw;
       const requirementId = incoming.find((edge) => edge.label === 'has-criterion' && edge.nodeId.startsWith('req:'))?.nodeId;
       const linkedEvidenceIds = incoming
         .filter((edge) => edge.label === 'verifies' && edge.nodeId.startsWith('evidence:'))
@@ -2738,8 +2979,8 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
 
     const evidence = (await Promise.all([...evidenceIds].map(async (evidenceId): Promise<EvidenceNode | null> => {
       const [evidenceProps, outgoingRaw] = await Promise.all([
-        graph.getNodeProps(evidenceId),
-        graph.neighbors(evidenceId, 'outgoing'),
+        reader.getNodeProps(evidenceId),
+        reader.neighbors(evidenceId, 'outgoing'),
       ]);
       if (!evidenceProps || evidenceProps['type'] !== 'evidence') return null;
       const kind = evidenceProps['kind'];
@@ -2754,7 +2995,7 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
       ) {
         return null;
       }
-      const outgoing = toNeighborEntries(outgoingRaw);
+      const outgoing = outgoingRaw;
       const criterionId = outgoing.find((edge) => edge.label === 'verifies' && edge.nodeId.startsWith('criterion:'))?.nodeId;
       const requirementId = outgoing.find((edge) => edge.label === 'implements' && edge.nodeId.startsWith('req:'))?.nodeId;
       return {
@@ -2772,23 +3013,23 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
       .sort((left, right) => left.id.localeCompare(right.id));
 
     const policies = campaignId
-      ? await this.loadPoliciesForCampaign(graph, campaignId)
+      ? await this.loadPoliciesForCampaign(reader, campaignId)
       : [];
 
     return { stories, requirements, criteria, evidence, policies };
   }
 
   private async loadPoliciesForCampaign(
-    graph: ObservedProjectionGraph,
+    reader: UnifiedStateReader,
     campaignId: string,
   ): Promise<PolicyNode[]> {
-    const incoming = toNeighborEntries(await graph.neighbors(campaignId, 'incoming'));
+    const incoming = await reader.neighbors(campaignId, 'incoming');
     const policyIds = incoming
       .filter((edge) => edge.label === 'governs' && edge.nodeId.startsWith('policy:'))
       .map((edge) => edge.nodeId)
       .sort((left, right) => left.localeCompare(right));
     const policies = await Promise.all(policyIds.map(async (policyId): Promise<PolicyNode | null> => {
-      const props = await graph.getNodeProps(policyId);
+      const props = await reader.getNodeProps(policyId);
       if (!props || props['type'] !== 'policy') return null;
       const coverageThresholdRaw = props['coverage_threshold'];
       const requireAllCriteriaRaw = props['require_all_criteria'];
@@ -2823,7 +3064,7 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
   }
 
   private async buildCaseDetail(
-    graph: ObservedProjectionGraph,
+    reader: UnifiedStateReader,
     caseId: string,
     props: Record<string, unknown>,
     outgoing: EntityDetail['outgoing'],
@@ -2868,16 +3109,16 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
 
     const briefs = (await Promise.all(briefIds.map(async (briefId): Promise<CaseBriefNode | null> => {
       const [briefProps, rawContent, contentOid, briefOutgoingRaw] = await Promise.all([
-        graph.getNodeProps(briefId),
-        graph.getContent(briefId),
-        graph.getContentOid(briefId),
-        graph.neighbors(briefId, 'outgoing'),
+        reader.getNodeProps(briefId),
+        reader.getContent(briefId),
+        reader.getContentOid(briefId),
+        reader.neighbors(briefId, 'outgoing'),
       ]);
       if (!briefProps || briefProps['type'] !== 'brief') return null;
       const title = typeof briefProps['title'] === 'string' ? briefProps['title'] : briefId;
       const authoredBy = typeof briefProps['authored_by'] === 'string' ? briefProps['authored_by'] : 'unknown';
       const authoredAt = typeof briefProps['authored_at'] === 'number' ? briefProps['authored_at'] : 0;
-      const relatedIds = toNeighborEntries(briefOutgoingRaw)
+      const relatedIds = briefOutgoingRaw
         .filter((edge) => edge.label === 'documents' && edge.nodeId !== caseId)
         .map((edge) => edge.nodeId)
         .sort((left, right) => left.localeCompare(right));
@@ -2895,7 +3136,7 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
     }))).filter((entry): entry is CaseBriefNode => Boolean(entry));
 
     const decisions = (await Promise.all(decisionIds.map(async (decisionId): Promise<CaseDecisionNode | null> => {
-      const decisionProps = await graph.getNodeProps(decisionId);
+      const decisionProps = await reader.getNodeProps(decisionId);
       if (!decisionProps || decisionProps['type'] !== 'decision') return null;
       const decision = typeof decisionProps['kind'] === 'string' ? decisionProps['kind'] : undefined;
       const rationale = typeof decisionProps['rationale'] === 'string' ? decisionProps['rationale'] : undefined;
@@ -2909,7 +3150,7 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
         ? decisionProps['follow_on_artifact_kind']
         : undefined;
       let actualDelta: string | undefined;
-      if (followOnArtifactId && await graph.hasNode(followOnArtifactId)) {
+      if (followOnArtifactId && await reader.hasNode(followOnArtifactId)) {
         actualDelta = `Created ${followOnArtifactKind ?? 'artifact'} ${followOnArtifactId}`;
       } else if (decision === 'reject') {
         actualDelta = 'No follow-on work created.';
@@ -2941,7 +3182,7 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
       ...decisions.map((decision) => decision.id),
       ...decisions.map((decision) => decision.followOnArtifactId).filter((entry): entry is string => typeof entry === 'string'),
     ]);
-    const { documents, comments } = await this.loadNarrativeForTargets(graph, relevantIds);
+    const { documents, comments } = await this.loadNarrativeForTargets(reader, relevantIds);
 
     return {
       id: caseId,
@@ -2956,7 +3197,7 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
   }
 
   private async loadNarrativeForTargets(
-    graph: ObservedProjectionGraph,
+    reader: UnifiedStateReader,
     targetIds: Set<string>,
   ): Promise<{ documents: NarrativeNode[]; comments: CommentNode[] }> {
     if (targetIds.size === 0) {
@@ -2964,7 +3205,7 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
     }
 
     const seedResults = await Promise.all(
-      [...targetIds].map(async (targetId) => [targetId, toNeighborEntries(await graph.neighbors(targetId, 'incoming'))] as const),
+      [...targetIds].map(async (targetId) => [targetId, await reader.neighbors(targetId, 'incoming')] as const),
     );
 
     const seedDocumentIds = new Set<string>();
@@ -2999,7 +3240,7 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
     }>();
 
     const reachableDocIds = await this.collectTraversalNodeIds(
-      graph,
+      reader,
       seedDocumentIds,
       'supersedes',
       isNarrativeDocumentId,
@@ -3008,8 +3249,8 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
       if (!isNarrativeDocumentId(docId)) continue;
 
       const [props, rawOutgoing] = await Promise.all([
-        graph.getNodeProps(docId),
-        graph.neighbors(docId, 'outgoing'),
+        reader.getNodeProps(docId),
+        reader.neighbors(docId, 'outgoing'),
       ]);
       if (!props) continue;
 
@@ -3026,7 +3267,7 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
         continue;
       }
 
-      const outgoing = toNeighborEntries(rawOutgoing);
+      const outgoing = rawOutgoing;
       const targetRefs: string[] = [];
       let supersedesId: string | undefined;
 
@@ -3052,7 +3293,7 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
     }
 
     const reachableCommentIds = await this.collectTraversalNodeIds(
-      graph,
+      reader,
       seedCommentIds,
       'replies-to',
       (id): id is string => id.startsWith('comment:'),
@@ -3061,8 +3302,8 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
       if (!commentId.startsWith('comment:')) continue;
 
       const [props, rawOutgoing] = await Promise.all([
-        graph.getNodeProps(commentId),
-        graph.neighbors(commentId, 'outgoing'),
+        reader.getNodeProps(commentId),
+        reader.neighbors(commentId, 'outgoing'),
       ]);
       if (!props) continue;
 
@@ -3070,7 +3311,7 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
       const authoredAt = props['authored_at'];
       if (typeof authoredBy !== 'string' || typeof authoredAt !== 'number') continue;
 
-      const outgoing = toNeighborEntries(rawOutgoing);
+      const outgoing = rawOutgoing;
       let targetId: string | undefined;
       let replyToId: string | undefined;
 
@@ -3093,7 +3334,7 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
     const includedDocIds = this.expandDocumentIdsForTargets(docsById, targetIds);
     const includedCommentIds = this.expandCommentIdsForTargets(commentsById, targetIds);
     const contentIds = [...includedDocIds, ...includedCommentIds];
-    const contentMap = await this.loadContentMap(graph, contentIds);
+    const contentMap = await this.loadContentMap(reader, contentIds);
 
     const supersededBy = new Map<string, string[]>();
     for (const docId of includedDocIds) {
@@ -3158,7 +3399,7 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
   }
 
   private async collectTraversalNodeIds(
-    graph: ObservedProjectionGraph,
+    reader: UnifiedStateReader,
     seedIds: Set<string>,
     labelFilter: string,
     includeId: (id: string) => boolean,
@@ -3166,7 +3407,7 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
     const collected = new Set<string>();
     await Promise.all(
       [...seedIds].map(async (seedId) => {
-        const visited = await graph.traverse.bfs(seedId, {
+        const visited = await reader.traverse.bfs(seedId, {
           dir: 'both',
           labelFilter,
         });
@@ -3259,13 +3500,13 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
   }
 
   private async loadContentMap(
-    graph: ObservedProjectionGraph,
+    reader: UnifiedStateReader,
     ids: string[],
   ): Promise<Map<string, { body?: string; contentOid?: string }>> {
     const results = await Promise.all(ids.map(async (id) => {
       const [rawBody, contentOid] = await Promise.all([
-        graph.getContent(id),
-        graph.getContentOid(id),
+        reader.getContent(id),
+        reader.getContentOid(id),
       ]);
       return [id, {
         body: decodeNodeContent(rawBody),
@@ -3277,10 +3518,10 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
   }
 
   private async findPatchsetIdsForSubmission(
-    graph: ObservedProjectionGraph,
+    reader: UnifiedStateReader,
     submissionId: string,
   ): Promise<Set<string>> {
-    const incoming = toNeighborEntries(await graph.neighbors(submissionId, 'incoming'));
+    const incoming = await reader.neighbors(submissionId, 'incoming');
     return new Set(
       incoming
         .filter((entry) => entry.label === 'has-patchset' && entry.nodeId.startsWith('patchset:'))

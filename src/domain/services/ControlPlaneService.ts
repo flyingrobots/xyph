@@ -1687,6 +1687,7 @@ export class ControlPlaneService implements ControlPlanePort {
       },
       traverse: worldline.traverse,
       compareCoordinates: graph.compareCoordinates.bind(graph),
+      isLive: false,
     };
 
     return {
