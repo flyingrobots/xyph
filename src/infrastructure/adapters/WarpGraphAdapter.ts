@@ -1,6 +1,8 @@
 import type { GraphPort } from '../../ports/GraphPort.js';
 import { WarpCore as WarpGraph, GitGraphAdapter, InMemoryGraphAdapter, type LoggerPort } from '@git-stunts/git-warp';
 import Plumbing from '@git-stunts/plumbing';
+import fs from 'node:fs';
+import path from 'node:path';
 
 /**
  * WarpGraphAdapter — single shared WarpGraph instance.
@@ -76,10 +78,24 @@ export class WarpGraphAdapter implements GraphPort {
 
     let persistence;
     if (process.env['XYPH_TEST_IN_MEMORY'] === 'true') {
-      let memPersistence = WarpGraphAdapter.memoryBackends.get(this.cwd);
+      let backendKey = this.cwd;
+      try {
+        const gitDir = path.join(this.cwd, '.git');
+        if (fs.existsSync(gitDir)) {
+          const stat = fs.statSync(gitDir);
+          backendKey = `${this.cwd}:${stat.ino}:${stat.mtimeMs}`;
+        } else if (fs.existsSync(this.cwd)) {
+          const stat = fs.statSync(this.cwd);
+          backendKey = `${this.cwd}:${stat.ino}:${stat.mtimeMs}`;
+        }
+      } catch {
+        // Fallback to cwd if stat fails
+      }
+
+      let memPersistence = WarpGraphAdapter.memoryBackends.get(backendKey);
       if (!memPersistence) {
         memPersistence = new InMemoryGraphAdapter();
-        WarpGraphAdapter.memoryBackends.set(this.cwd, memPersistence);
+        WarpGraphAdapter.memoryBackends.set(backendKey, memPersistence);
       }
       persistence = memPersistence;
     } else {
