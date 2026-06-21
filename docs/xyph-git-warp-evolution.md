@@ -8,20 +8,8 @@ Currently, XYPH treats the planning graph as a traditional database, loading mon
 
 ## 1. The Core Shifts
 
-```mermaid
-graph TD
-    A["Current: Monolithic Graph DB"] --> B["Future: Causal History & Optics"]
-    C["Full Graph Materialization"] --> D["Quest Optics (Targeted Cones)"]
-    E["Ad-hoc Planning Nodes"] --> F["Speculative Strands (Counterfactuals)"]
-    G["Ad-hoc Scroll Documents"] --> H["verifiable BTRs & Wormholes"]
-    I["Central Git Collaboration"] --> J["Continuum P2P Agent Treaty"]
-    
-    style B fill:#1b3a4b,stroke:#00a8cc,stroke-width:2px
-    style D fill:#1b3a4b,stroke:#00a8cc,stroke-width:2px
-    style F fill:#1b3a4b,stroke:#00a8cc,stroke-width:2px
-    style H fill:#1b3a4b,stroke:#00a8cc,stroke-width:2px
-    style J fill:#1b3a4b,stroke:#00a8cc,stroke-width:2px
-```
+![XYPH Evolution Shifts](diagrams/xyph-evolution-shifts.svg)
+
 
 ### Shift I: From Monolithic Materialization to Bounded Optics
 * **The Problem**: Currently, `fetchSnapshot` loads the entire `GraphSnapshot` containing campaigns, quests, scrolls, and policies. As the graph grows to thousands of nodes, this causes high memory consumption and latency, especially during agent briefing loops.

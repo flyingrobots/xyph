@@ -88,22 +88,7 @@ Currently, XYPH agents run in **FIDLAR** mode: they run general TypeScript/JavaS
 ### The YOLO Model in XYPH
 We will implement the **YOLO (You Only Lawfully Operate)** execution lane for all autonomous agent actions:
 
-```mermaid
-sequenceDiagram
-    autonumber
-    participant Agent as Autonomous Agent
-    participant XYPH as XYPH Runtime
-    participant HOLMES as HOLMES (Assurance)
-    participant gitwarp as git-warp (Substrate)
-
-    Agent->>Agent: Generate Edict intent source code
-    Agent->>XYPH: Submit intent for compilation
-    XYPH->>XYPH: Compile to Core IR & verify bounds
-    XYPH->>HOLMES: Check verifier report & generate Lawfulness Certificate
-    HOLMES-->>XYPH: Certified Contract Bundle
-    XYPH->>gitwarp: Evaluate admission policy & execute in sandboxed WASM
-    gitwarp-->>Agent: Return typed obstruction or success receipt
-```
+![Edict Integration Sequence](diagrams/xyph-edict-sequence.svg)
 
 ### The Benefits
 * **Isolate Prompt Injection**: If a malicious prompt injection instructs the agent to delete the codebase or download secrets, the compiled Edict program will fail static validation because the target footprint and network access are unauthorized.

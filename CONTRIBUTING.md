@@ -40,23 +40,7 @@ current truth -> planned verification -> executable evidence -> historical reaso
 ## 3. Topic-Based Directory Structure
 
 Durable concepts that span multiple development cycles live in dedicated topic folders under `docs/topics/<topic>/`. This forms a modular reference manual.
-
-```mermaid
-graph TD
-    docs["docs/"] --> README["README.md (The Spine / Index)"]
-    docs --> BEARING["BEARING.md (Current Posture)"]
-    docs --> topics["topics/"]
-    
-    topics --> topicA["sovereign-ontology/"]
-    topics --> topicB["traceability/"]
-    
-    topicA --> readmeA["README.md (Current Invariants)"]
-    topicA --> planA["test-plan.md (Verification Contract)"]
-    topicA --> archA["architecture.md (Structural Map)"]
-    topicA --> ratA["rationale.md (Tradeoffs)"]
-    
-    docs --> design["design/cycles/ (Historical Cycle RFCs)"]
-```
+![Topic Directory Structure](docs/diagrams/docs-structure.svg)
 
 ### Reference Map
 
