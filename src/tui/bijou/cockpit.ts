@@ -1052,6 +1052,7 @@ export function laneItems(
       return overrides.reviewLaneData
         ? buildReviewLaneItemsFromData(overrides.reviewLaneData)
         : snapshot.submissions
+          .filter((submission) => submission.status !== 'MERGED' && submission.status !== 'CLOSED')
           .map((submission) => buildSubmissionItem(submission, snapshot))
           .sort(compareSubmissionItems);
     case 'settlement':
