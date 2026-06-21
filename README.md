@@ -103,8 +103,8 @@ To orient yourself, follow the authoritative manifests in order:
    * [METHOD.md](./docs/canonical/METHOD.md) — Work doctrine and cycle loops.
 3. **The Direction**:
    * [docs/BEARING.md](./docs/BEARING.md) — Current release posture and strategic target.
-   * [docs/xyph-git-warp-evolution.md](./docs/xyph-git-warp-evolution.md) — Optical query and speculative strand roadmap.
-   * [docs/xyph-edict-integration.md](./docs/xyph-edict-integration.md) — Sandbox boundaries and Edict target profiles.
+   * [docs/topics/git-warp-evolution/README.md](./docs/topics/git-warp-evolution/README.md) — Optical query and speculative strand roadmap.
+   * [docs/topics/edict-integration/README.md](./docs/topics/edict-integration/README.md) — Sandbox boundaries and Edict target profiles.
 
 ---
 

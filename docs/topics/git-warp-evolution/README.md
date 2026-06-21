@@ -12,7 +12,7 @@ Currently, XYPH treats the planning graph as a traditional database, loading mon
 
 ## 1. The Core Shifts
 
-![XYPH Evolution Shifts](diagrams/xyph-evolution-shifts.svg)
+![XYPH Evolution Shifts](../../diagrams/xyph-evolution-shifts.svg)
 
 
 ### Shift I: From Monolithic Materialization to Bounded Optics
