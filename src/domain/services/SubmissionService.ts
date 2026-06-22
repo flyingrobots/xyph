@@ -47,6 +47,12 @@ export interface SubmissionReadModel {
 
   /** Returns the principal who opened the submission. */
   getSubmissionSubmittedBy(submissionId: string): Promise<string | null>;
+
+  /** Returns the workspace ref for a patchset. */
+  getPatchsetWorkspaceRef(patchsetId: string): Promise<string | null>;
+
+  /** Returns the merge ref for a patchset. */
+  getPatchsetMergeRef(patchsetId: string): Promise<string | null>;
 }
 
 // ---------------------------------------------------------------------------

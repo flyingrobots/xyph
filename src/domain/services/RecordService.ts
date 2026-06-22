@@ -572,6 +572,7 @@ export class RecordService {
           input.idempotencyKey
             ? `${input.idempotencyKey}:quest`
             : `suggestion-adopt:${input.suggestionId}:quest`,
+          this.clock,
         ),
         title: questTitleFromSuggestion(title),
         status: 'BACKLOG',

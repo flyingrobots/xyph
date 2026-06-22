@@ -9,65 +9,6 @@ const readFile = vi.fn();
 const parseTestFile = vi.fn();
 const analyzeTestTargetPairs = vi.fn();
 
-vi.mock('../../src/infrastructure/adapters/ConfigAdapter.js', () => ({
-  ConfigAdapter: class MockConfigAdapter {
-    async getAll() {
-      return {
-        testGlob: 'test/**/*.ts',
-        minAutoConfidence: 0.85,
-        suggestionFloor: 0.5,
-        llm: { provider: 'none' },
-      };
-    }
-  },
-}));
-
-vi.mock('../../src/infrastructure/adapters/WarpObservationAdapter.js', () => ({
-  WarpObservationAdapter: class WarpObservationAdapter {
-    async openSession() {
-      return {
-        fetchSnapshot,
-        fetchEntityDetail: vi.fn(),
-        queryNodes: vi.fn(),
-        neighbors: vi.fn(),
-        hasNode: vi.fn(),
-      };
-    }
-  },
-}));
-
-vi.mock('node:fs', () => ({
-  globSync,
-}));
-
-vi.mock('node:fs/promises', () => ({
-  readFile,
-}));
-
-vi.mock('../../src/infrastructure/adapters/TsCompilerTestParserAdapter.js', () => ({
-  parseTestFile,
-}));
-
-vi.mock('../../src/domain/services/analysis/AnalysisOrchestrator.js', () => ({
-  analyzeTestTargetPairs,
-}));
-
-vi.mock('../../src/domain/services/analysis/layers/FileNameLayer.js', () => ({
-  scoreFileName: vi.fn(() => null),
-}));
-
-vi.mock('../../src/domain/services/analysis/layers/ImportDescribeLayer.js', () => ({
-  scoreImportDescribe: vi.fn(() => null),
-}));
-
-vi.mock('../../src/domain/services/analysis/layers/AstLayer.js', () => ({
-  scoreAst: vi.fn(() => null),
-}));
-
-vi.mock('../../src/domain/services/analysis/layers/SemanticLayer.js', () => ({
-  scoreSemantic: vi.fn(() => null),
-}));
-
 function createPatchBuilder() {
   return {
     addNode: vi.fn().mockReturnThis(),
@@ -101,6 +42,25 @@ function makeCtx(graph: {
       openInspectionSession: vi.fn(),
     } as CliContext['inspection'],
     style: {} as CliContext['style'],
+    configService: {
+      getAll: async () => ({
+        testGlob: 'test/**/*.ts',
+        minAutoConfidence: 0.85,
+        suggestionFloor: 0.5,
+        llm: { provider: 'none', model: '', maxTokens: 0 },
+        heuristicWeights: { fileName: 0, importDescribe: 0, ast: 0, semantic: 0, llm: 0 },
+      }),
+      get: vi.fn(),
+      set: vi.fn(),
+    },
+    globSync,
+    readFile,
+    parseTestFile,
+    analyzeTestTargetPairs,
+    scoreFileName: vi.fn(() => null),
+    scoreImportDescribe: vi.fn(() => null),
+    scoreAst: vi.fn(() => null),
+    scoreSemantic: vi.fn(() => null),
     ok: vi.fn(),
     warn: vi.fn(),
     muted: vi.fn(),

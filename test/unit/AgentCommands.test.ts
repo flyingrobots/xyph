@@ -9,49 +9,6 @@ const mocks = vi.hoisted(() => ({
   buildBriefing: vi.fn(),
   nextCandidates: vi.fn(),
   listSubmissions: vi.fn(),
-  WarpRoadmapAdapter: vi.fn(),
-}));
-
-vi.mock('../../src/domain/services/AgentActionService.js', () => ({
-  AgentActionService: class AgentActionService {
-    execute(request: unknown) {
-      return mocks.execute(request);
-    }
-  },
-}));
-
-vi.mock('../../src/domain/services/AgentContextService.js', () => ({
-  AgentContextService: class AgentContextService {
-    fetch(id: string) {
-      return mocks.fetchContext(id);
-    }
-  },
-}));
-
-vi.mock('../../src/domain/services/AgentBriefingService.js', () => ({
-  AgentBriefingService: class AgentBriefingService {
-    buildBriefing() {
-      return mocks.buildBriefing();
-    }
-
-    next(limit: number) {
-      return mocks.nextCandidates(limit);
-    }
-  },
-}));
-
-vi.mock('../../src/domain/services/AgentSubmissionService.js', () => ({
-  AgentSubmissionService: class AgentSubmissionService {
-    list(limit: number) {
-      return mocks.listSubmissions(limit);
-    }
-  },
-}));
-
-vi.mock('../../src/infrastructure/adapters/WarpRoadmapAdapter.js', () => ({
-  WarpRoadmapAdapter: function WarpRoadmapAdapter(graphPort: unknown) {
-    mocks.WarpRoadmapAdapter(graphPort);
-  },
 }));
 
 function makeCtx(): CliContext {
@@ -60,7 +17,25 @@ function makeCtx(): CliContext {
     identity: { agentId: 'agent.hal', source: 'default', origin: null },
     json: true,
     graphPort: {} as CliContext['graphPort'],
+    observation: {} as CliContext['observation'],
+    operationalRead: {} as CliContext['operationalRead'],
+    inspection: {} as CliContext['inspection'],
+    logger: {} as CliContext['logger'],
     style: {} as CliContext['style'],
+    roadmap: {} as any,
+    agentBriefingService: {
+      buildBriefing: () => mocks.buildBriefing(),
+      next: (limit: number) => mocks.nextCandidates(limit),
+    } as any,
+    agentSubmissionService: {
+      list: (limit: number) => mocks.listSubmissions(limit),
+    } as any,
+    agentContextService: {
+      fetch: (id: string) => mocks.fetchContext(id),
+    } as any,
+    agentActionService: {
+      execute: (req: any) => mocks.execute(req),
+    } as any,
     ok: vi.fn(),
     warn: vi.fn(),
     muted: vi.fn(),
@@ -1195,7 +1170,6 @@ describe('agent act command', () => {
 
     await program.parseAsync(['act', 'claim', 'task:AGT-001', '--dry-run'], { from: 'user' });
 
-    expect(mocks.WarpRoadmapAdapter).toHaveBeenCalledWith(ctx.graphPort);
     expect(mocks.execute).toHaveBeenCalledWith({
       kind: 'claim',
       targetId: 'task:AGT-001',

@@ -2457,6 +2457,7 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
 
     const fakeGraphPort: GraphPort = {
       getGraph: async () => reader as unknown as import('@git-stunts/git-warp').WarpCore,
+      reset(): void { /* noop */ },
     };
     const questReader = new WarpQuestReadAdapter(fakeGraphPort, {
       accessorId: 'system',

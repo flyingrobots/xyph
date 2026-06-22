@@ -11,6 +11,13 @@ import type { DiagnosticLogPort } from '../ports/DiagnosticLogPort.js';
 import type { ObservationPort } from '../ports/ObservationPort.js';
 import type { OperationalReadPort } from '../ports/OperationalReadPort.js';
 import type { SubstrateInspectionPort } from '../ports/SubstrateInspectionPort.js';
+import type { WarpRoadmapAdapter } from '../infrastructure/adapters/WarpRoadmapAdapter.js';
+import type { DoctorService } from '../domain/services/DoctorService.js';
+import type { AgentActionService } from '../domain/services/AgentActionService.js';
+import type { AgentContextService } from '../domain/services/AgentContextService.js';
+import type { AgentBriefingService } from '../domain/services/AgentBriefingService.js';
+import type { AgentSubmissionService } from '../domain/services/AgentSubmissionService.js';
+import type { ConfigPort } from '../ports/ConfigPort.js';
 
 export { DEFAULT_AGENT_ID } from './identity.js';
 
@@ -70,6 +77,21 @@ export interface CliContext {
   readonly inspection: SubstrateInspectionPort;
   readonly logger: DiagnosticLogPort;
   readonly style: StylePort;
+  readonly roadmap?: WarpRoadmapAdapter;
+  readonly doctorService?: DoctorService;
+  readonly agentActionService?: AgentActionService;
+  readonly agentContextService?: AgentContextService;
+  readonly agentBriefingService?: AgentBriefingService;
+  readonly agentSubmissionService?: AgentSubmissionService;
+  readonly configService?: ConfigPort;
+  readonly globSync?: typeof import('node:fs').globSync;
+  readonly readFile?: typeof import('node:fs/promises').readFile;
+  readonly parseTestFile?: typeof import('../infrastructure/adapters/TsCompilerTestParserAdapter.js').parseTestFile;
+  readonly analyzeTestTargetPairs?: typeof import('../domain/services/analysis/AnalysisOrchestrator.js').analyzeTestTargetPairs;
+  readonly scoreFileName?: typeof import('../domain/services/analysis/layers/FileNameLayer.js').scoreFileName;
+  readonly scoreImportDescribe?: typeof import('../domain/services/analysis/layers/ImportDescribeLayer.js').scoreImportDescribe;
+  readonly scoreAst?: typeof import('../domain/services/analysis/layers/AstLayer.js').scoreAst;
+  readonly scoreSemantic?: typeof import('../domain/services/analysis/layers/SemanticLayer.js').scoreSemantic;
   ok(msg: string): void;
   warn(msg: string): void;
   muted(msg: string): void;
