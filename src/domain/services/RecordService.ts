@@ -195,8 +195,9 @@ export class RecordService {
   constructor(
     private readonly graphPort: GraphPort,
     clock?: ClockPort,
+    kernel?: MutationKernelService,
   ) {
-    this.kernel = new MutationKernelService(graphPort);
+    this.kernel = kernel ?? new MutationKernelService(graphPort);
     this.clock = clock ?? new SystemClockAdapter();
   }
 

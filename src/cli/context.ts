@@ -84,6 +84,24 @@ export interface CliContext {
   readonly agentBriefingService?: AgentBriefingService;
   readonly agentSubmissionService?: AgentSubmissionService;
   readonly configService?: ConfigPort;
+  readonly sovereigntyService?: import('../domain/services/SovereigntyService.js').SovereigntyService;
+  readonly readinessService?: import('../domain/services/ReadinessService.js').ReadinessService;
+  readonly intakeAdapter?: import('../infrastructure/adapters/WarpIntakeAdapter.js').WarpIntakeAdapter;
+  readonly recordService?: import('../domain/services/RecordService.js').RecordService;
+  readonly guildSealService?: import('../domain/services/GuildSealService.js').GuildSealService;
+  readonly submissionAdapter?: import('../infrastructure/adapters/WarpSubmissionAdapter.js').WarpSubmissionAdapter;
+  readonly submissionService?: import('../domain/services/SubmissionService.js').SubmissionService;
+  readonly gitWorkspace?: import('../infrastructure/adapters/GitWorkspaceAdapter.js').GitWorkspaceAdapter;
+  readonly keyring?: import('../infrastructure/adapters/FsKeyringAdapter.js').FsKeyringAdapter;
+  readonly mutations?: import('../domain/services/MutationKernelService.js').MutationKernelService;
+  readonly createPatchSession?: typeof import('../infrastructure/helpers/createPatchSession.js').createPatchSession;
+  readonly bijou?: {
+    filter?: typeof import('@flyingrobots/bijou').filter;
+    select?: typeof import('@flyingrobots/bijou').select;
+    textarea?: typeof import('@flyingrobots/bijou').textarea;
+    confirm?: typeof import('@flyingrobots/bijou').confirm;
+    input?: typeof import('@flyingrobots/bijou').input;
+  };
   readonly globSync?: typeof import('node:fs').globSync;
   readonly readFile?: typeof import('node:fs/promises').readFile;
   readonly parseTestFile?: typeof import('../infrastructure/adapters/TsCompilerTestParserAdapter.js').parseTestFile;

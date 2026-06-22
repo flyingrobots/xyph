@@ -103,7 +103,10 @@ function opError(code: ControlPlaneErrorCode, ...reasons: string[]): MutationVal
 }
 
 export class MutationKernelService {
-  constructor(private readonly graphPort: GraphPort) {}
+  constructor(
+    private readonly graphPort: GraphPort,
+    private readonly createPatchSessionOverride?: typeof createPatchSession,
+  ) {}
 
   public async validate(
     plan: KernelMutationPlan,
@@ -235,7 +238,7 @@ export class MutationKernelService {
         await this.applyOps(patch, plan.ops);
       });
     } else {
-      const patch = await createPatchSession(graph);
+      const patch = await (this.createPatchSessionOverride ?? createPatchSession)(graph);
       await this.applyOps(patch, plan.ops);
       sha = await patch.commit();
     }

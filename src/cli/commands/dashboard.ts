@@ -110,11 +110,13 @@ export function registerDashboardCommands(program: Command, ctx: CliContext): vo
       );
       const raw = await readSession.fetchSnapshot(snapshotProfileForDashboardView(view));
       const snapshot = filterGraphSnapshot(raw, { includeGraveyard: opts.includeGraveyard ?? false });
-      const doctorReport = await new DoctorService(
+      const roadmap = ctx.roadmap ?? new WarpRoadmapAdapter(ctx.graphPort);
+      const doctorService = ctx.doctorService ?? new DoctorService(
         ctx.graphPort,
-        new WarpRoadmapAdapter(ctx.graphPort),
+        roadmap,
         ctx.inspection,
-      ).run();
+      );
+      const doctorReport = await doctorService.run();
       const diagnostics = summarizeDoctorReport(doctorReport);
       const health = {
         status: doctorReport.status,
@@ -401,8 +403,8 @@ export function registerDashboardCommands(program: Command, ctx: CliContext): vo
         SOVEREIGNTY_AUDIT_STATUSES,
       } = await import('../../domain/services/SovereigntyService.js');
 
-      const adapter = new WarpRoadmapAdapter(ctx.graphPort);
-      const service = new SovereigntyService(adapter);
+      const adapter = ctx.roadmap ?? new WarpRoadmapAdapter(ctx.graphPort);
+      const service = ctx.sovereigntyService ?? new SovereigntyService(adapter);
 
       const violations = await service.auditAuthorizedWork();
       const auditData = {
