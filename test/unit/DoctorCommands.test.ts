@@ -1,30 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Command } from 'commander';
 import type { CliContext } from '../../src/cli/context.js';
+import { registerDoctorCommands } from '../../src/cli/commands/doctor.js';
 
 const runDoctor = vi.fn();
 const prescribeDoctor = vi.fn();
-const doctorCtor = vi.fn();
-const roadmapCtor = vi.fn();
-
-vi.mock('../../src/domain/services/DoctorService.js', () => ({
-  DoctorService: vi.fn().mockImplementation(function MockDoctorService(graphPort, roadmap) {
-    doctorCtor(graphPort, roadmap);
-    return {
-      run: runDoctor,
-      prescribe: prescribeDoctor,
-    };
-  }),
-}));
-
-vi.mock('../../src/infrastructure/adapters/WarpRoadmapAdapter.js', () => ({
-  WarpRoadmapAdapter: vi.fn().mockImplementation(function MockWarpRoadmapAdapter(graphPort) {
-    roadmapCtor(graphPort);
-    return { mocked: true };
-  }),
-}));
-
-import { registerDoctorCommands } from '../../src/cli/commands/doctor.js';
 
 function makeCtx(json: boolean): CliContext {
   return {
@@ -33,6 +13,11 @@ function makeCtx(json: boolean): CliContext {
     json,
     graphPort: {} as CliContext['graphPort'],
     style: {} as CliContext['style'],
+    roadmap: { mocked: true } as any,
+    doctorService: {
+      run: runDoctor,
+      prescribe: prescribeDoctor,
+    } as any,
     ok: vi.fn(),
     warn: vi.fn(),
     muted: vi.fn(),
@@ -140,8 +125,6 @@ describe('doctor command', () => {
 
     await program.parseAsync(['doctor'], { from: 'user' });
 
-    expect(roadmapCtor).toHaveBeenCalledWith(ctx.graphPort);
-    expect(doctorCtor).toHaveBeenCalledWith(ctx.graphPort, { mocked: true });
     expect(ctx.jsonStart).toHaveBeenCalledWith('doctor');
     expect(ctx.jsonProgress).toHaveBeenCalledWith('doctor', 'Opening project graph…', {
       stage: 'snapshot',
