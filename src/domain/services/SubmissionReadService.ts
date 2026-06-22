@@ -1,3 +1,5 @@
+import type { ClockPort } from '../../ports/ClockPort.js';
+import { SystemClockAdapter } from '../../infrastructure/adapters/SystemClockAdapter.js';
 import {
   computeEffectiveVerdicts,
   computeStatus,
@@ -308,6 +310,7 @@ function buildSubmissionAssemblies(input: {
 
 export async function readSubmissionModel(
   session: ObservationSession,
+  clock: ClockPort = new SystemClockAdapter(),
 ): Promise<SubmissionReadModel> {
   const [
     taskNodes,
@@ -347,7 +350,7 @@ export async function readSubmissionModel(
   });
 
   return {
-    asOf: Date.now(),
+    asOf: clock.now(),
     questsById,
     ...assembled,
   };

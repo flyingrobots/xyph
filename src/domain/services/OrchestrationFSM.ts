@@ -8,9 +8,10 @@ export interface FSMContext {
   policyPackRef: string;
   configRef: string;
   clock?: () => string;
+  randomId?: () => string;
 }
 
-export interface TransitionResult {
+interface TransitionResult {
   nextState: OrchestrationState;
   artifact: OrchestrationArtifact;
   audit: AuditRecord;
@@ -39,9 +40,13 @@ function transitionToNormalize(
     outputDigest: computeDigest({ state: nextState, runId: context.runId })
   };
 
+  const suffix = context.randomId
+    ? context.randomId()
+    : Math.random().toString(36).slice(2, 8).toUpperCase();
+
   const audit: AuditRecord = {
     schemaVersion: 'v1.0',
-    eventId: `AEVT-${now.slice(0, 10).replace(/-/g, '')}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
+    eventId: `AEVT-${now.slice(0, 10).replace(/-/g, '')}-${suffix}`,
     runId: context.runId,
     sequence: 1,
     timestamp: outputArtifact.createdAt,

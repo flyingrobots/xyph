@@ -28,6 +28,8 @@ export type VisibleStateProjectionV5 = ReturnType<VisibleStateReaderV5['project'
 export type WarpStateV5 = SnapshotWarpState;
 const createStateReaderV5 = createStateReader;
 import type { GraphPort } from '../../ports/GraphPort.js';
+import type { ClockPort } from '../../ports/ClockPort.js';
+import { SystemClockAdapter } from '../../infrastructure/adapters/SystemClockAdapter.js';
 import type { ControlPlaneHooks, ControlPlanePort } from '../../ports/ControlPlanePort.js';
 import {
   CONTROL_PLANE_VERSION,
@@ -97,6 +99,7 @@ function buildEvent(
   id: string,
   cmd: string,
   event: 'start' | 'progress',
+  at: number,
   message?: string,
   data?: Record<string, unknown>,
 ): ControlPlaneEventRecordV1 {
@@ -105,7 +108,7 @@ function buildEvent(
     id,
     event,
     cmd,
-    at: Date.now(),
+    at,
     ...(message === undefined ? {} : { message }),
     ...(data === undefined ? {} : { data }),
   };
@@ -451,17 +454,20 @@ export class ControlPlaneService implements ControlPlanePort {
   private readonly capabilities: CapabilityResolverService;
   private readonly observation: WarpObservationAdapter;
   private readonly operationalRead: WarpOperationalReadAdapter;
+  private readonly clock: ClockPort;
 
   constructor(
     private readonly graphPort: GraphPort,
     agentId: string,
+    clock?: ClockPort,
   ) {
+    this.clock = clock ?? new SystemClockAdapter();
     this.roadmap = new WarpRoadmapAdapter(graphPort);
     this.observation = new WarpObservationAdapter(graphPort);
     this.operationalRead = new WarpOperationalReadAdapter(graphPort);
     this.doctor = new DoctorService(graphPort, this.roadmap, new WarpSubstrateInspectionAdapter(graphPort));
     this.mutations = new MutationKernelService(graphPort);
-    this.records = new RecordService(graphPort);
+    this.records = new RecordService(graphPort, this.clock);
     this.capabilities = new CapabilityResolverService(agentId);
   }
 
@@ -469,15 +475,15 @@ export class ControlPlaneService implements ControlPlanePort {
     request: ControlPlaneRequestV1,
     hooks?: ControlPlaneHooks,
   ): Promise<ControlPlaneTerminalRecordV1> {
-    const attemptedAt = Date.now();
+    const attemptedAt = this.clock.now();
     let capability: EffectiveCapabilityGrant | null = null;
-    hooks?.onEvent?.(buildEvent(request.id, request.cmd, 'start'));
+    hooks?.onEvent?.(buildEvent(request.id, request.cmd, 'start', attemptedAt));
 
     try {
       capability = this.capabilities.resolve(request);
       this.requireCapability(request.cmd, capability);
       const response = await this.dispatch(request, capability, hooks);
-      const completedAt = Date.now();
+      const completedAt = this.clock.now();
       return {
         v: CONTROL_PLANE_VERSION,
         id: request.id,
@@ -494,7 +500,7 @@ export class ControlPlaneService implements ControlPlanePort {
         ),
       };
     } catch (err) {
-      const completedAt = Date.now();
+      const completedAt = this.clock.now();
       const error = toControlPlaneError(err);
       return {
         v: CONTROL_PLANE_VERSION,
@@ -811,7 +817,7 @@ export class ControlPlaneService implements ControlPlanePort {
     ] = counts;
 
     return {
-      asOf: Date.now(),
+      asOf: this.clock.now(),
       counts: {
         campaigns: campaigns + milestones,
         quests,
@@ -955,7 +961,7 @@ export class ControlPlaneService implements ControlPlanePort {
           observation: await this.buildObservationCoordinate(
             request,
             capability,
-            Date.now(),
+            this.clock.now(),
             null,
             false,
             graph,
@@ -996,7 +1002,7 @@ export class ControlPlaneService implements ControlPlanePort {
           observation: await this.buildObservationCoordinate(
             request,
             capability,
-            Date.now(),
+            this.clock.now(),
             null,
             true,
             projectionReader.graph,
@@ -1030,7 +1036,7 @@ export class ControlPlaneService implements ControlPlanePort {
           observation: await this.buildObservationCoordinate(
             request,
             capability,
-            Date.now(),
+            this.clock.now(),
             null,
             false,
           ),
@@ -1046,7 +1052,7 @@ export class ControlPlaneService implements ControlPlanePort {
             briefing,
           },
           diagnostics: briefing.diagnostics,
-          observation: await this.buildObservationCoordinate(request, capability, Date.now(), briefing.graphMeta),
+          observation: await this.buildObservationCoordinate(request, capability, this.clock.now(), briefing.graphMeta),
         };
       }
       case 'next': {
@@ -1062,7 +1068,7 @@ export class ControlPlaneService implements ControlPlanePort {
             candidates: next.candidates,
           },
           diagnostics: next.diagnostics,
-          observation: await this.buildObservationCoordinate(request, capability, Date.now(), null),
+          observation: await this.buildObservationCoordinate(request, capability, this.clock.now(), null),
         };
       }
       case 'submissions': {
@@ -1085,7 +1091,7 @@ export class ControlPlaneService implements ControlPlanePort {
         this.requireTipOnlyProjection(selector, projection);
         const report = await this.doctor.run({
           onProgress: (progress) => hooks?.onEvent?.(
-            buildEvent(request.id, request.cmd, 'progress', progress.message, { stage: progress.stage }),
+            buildEvent(request.id, request.cmd, 'progress', this.clock.now(), progress.message, { stage: progress.stage }),
           ),
         });
         return {
@@ -1102,7 +1108,7 @@ export class ControlPlaneService implements ControlPlanePort {
         this.requireTipOnlyProjection(selector, projection);
         const report = await this.doctor.prescribe({
           onProgress: (progress) => hooks?.onEvent?.(
-            buildEvent(request.id, request.cmd, 'progress', progress.message, { stage: progress.stage }),
+            buildEvent(request.id, request.cmd, 'progress', this.clock.now(), progress.message, { stage: progress.stage }),
           ),
         });
         return {
@@ -1743,7 +1749,7 @@ export class ControlPlaneService implements ControlPlanePort {
         observation: await this.buildObservationCoordinate(
           request,
           capability,
-          Date.now(),
+          this.clock.now(),
           null,
           false,
           materialized.graph,
@@ -1766,7 +1772,7 @@ export class ControlPlaneService implements ControlPlanePort {
         patches,
       },
       diagnostics: [],
-      observation: await this.buildObservationCoordinate(request, capability, Date.now(), null, false, graph),
+      observation: await this.buildObservationCoordinate(request, capability, this.clock.now(), null, false, graph),
     };
   }
 
@@ -1809,7 +1815,7 @@ export class ControlPlaneService implements ControlPlanePort {
       const observation = await this.buildObservationCoordinate(
         request,
         capability,
-        Date.now(),
+        this.clock.now(),
         null,
         false,
         current.graph,
@@ -1860,7 +1866,7 @@ export class ControlPlaneService implements ControlPlanePort {
           },
         },
         capability,
-        Date.now(),
+        this.clock.now(),
         null,
         false,
         current.graph,
@@ -1888,7 +1894,7 @@ export class ControlPlaneService implements ControlPlanePort {
     }
 
     const graph = await this.openObservationGraph(selector);
-    const observation = await this.buildObservationCoordinate(request, capability, Date.now(), null, false, graph);
+    const observation = await this.buildObservationCoordinate(request, capability, this.clock.now(), null, false, graph);
     const targetId = typeof request.args['targetId'] === 'string'
       ? request.args['targetId']
       : null;
@@ -1922,7 +1928,7 @@ export class ControlPlaneService implements ControlPlanePort {
         },
       },
       capability,
-      Date.now(),
+      this.clock.now(),
       null,
       false,
       sinceGraph,
@@ -2078,7 +2084,7 @@ export class ControlPlaneService implements ControlPlanePort {
           recommendationRequests: result.recommendationRequests,
         },
         diagnostics: result.diagnostics,
-        observation: await this.buildObservationCoordinate(request, capability, Date.now(), null),
+        observation: await this.buildObservationCoordinate(request, capability, this.clock.now(), null),
       };
     }
 
@@ -2123,7 +2129,7 @@ export class ControlPlaneService implements ControlPlanePort {
         return {
           data,
           diagnostics: [],
-          observation: await this.buildObservationCoordinate(request, capability, Date.now(), null, false, graph),
+          observation: await this.buildObservationCoordinate(request, capability, this.clock.now(), null, false, graph),
         };
       }
       case 'governance.series': {
@@ -2132,7 +2138,7 @@ export class ControlPlaneService implements ControlPlanePort {
         return {
           data,
           diagnostics: [],
-          observation: await this.buildObservationCoordinate(request, capability, Date.now(), null, true, graph),
+          observation: await this.buildObservationCoordinate(request, capability, this.clock.now(), null, true, graph),
         };
       }
       default:
@@ -2201,7 +2207,7 @@ export class ControlPlaneService implements ControlPlanePort {
 
     return {
       view: 'governance.worklist',
-      asOf: Date.now(),
+      asOf: this.clock.now(),
       limit,
       summary: {
         freshComparisons: freshComparisons.length,
@@ -2485,7 +2491,7 @@ export class ControlPlaneService implements ControlPlanePort {
     const observation = await this.buildObservationCoordinate(
       request,
       { ...capability, worldlineId },
-      Date.now(),
+      this.clock.now(),
       null,
       false,
       graph,
@@ -2722,7 +2728,7 @@ export class ControlPlaneService implements ControlPlanePort {
       observation: await this.buildObservationCoordinate(
         request,
         capability,
-        Date.now(),
+        this.clock.now(),
         null,
         false,
         graph,
@@ -2777,7 +2783,7 @@ export class ControlPlaneService implements ControlPlanePort {
       this.rethrowComparisonError(err, leftWorldlineId, rightWorldlineId);
     }
 
-    const comparedAt = Date.now();
+    const comparedAt = this.clock.now();
     const leftObservation = await this.buildObservationCoordinate(
       {
         ...request,
@@ -3131,7 +3137,7 @@ export class ControlPlaneService implements ControlPlanePort {
       );
     }
 
-    const preparedAt = Date.now();
+    const preparedAt = this.clock.now();
     const sourceObservation = await this.buildObservationCoordinate(
       {
         ...request,
@@ -3334,7 +3340,7 @@ export class ControlPlaneService implements ControlPlanePort {
                 ...capability,
                 worldlineId: targetWorldlineId,
               },
-              Date.now(),
+              this.clock.now(),
               null,
             ),
           }
@@ -3410,7 +3416,7 @@ export class ControlPlaneService implements ControlPlanePort {
       observation: await this.buildObservationCoordinate(
         request,
         capability,
-        Date.now(),
+        this.clock.now(),
         null,
         false,
         graph,
@@ -3451,7 +3457,7 @@ export class ControlPlaneService implements ControlPlanePort {
         contentOid: result.contentOid,
       },
       diagnostics: [],
-      observation: await this.buildObservationCoordinate(request, capability, Date.now(), null),
+      observation: await this.buildObservationCoordinate(request, capability, this.clock.now(), null),
     };
   }
 
@@ -3492,7 +3498,7 @@ export class ControlPlaneService implements ControlPlanePort {
         contentOid: result.contentOid,
       },
       diagnostics: [],
-      observation: await this.buildObservationCoordinate(request, capability, Date.now(), null),
+      observation: await this.buildObservationCoordinate(request, capability, this.clock.now(), null),
     };
   }
 
@@ -3532,7 +3538,7 @@ export class ControlPlaneService implements ControlPlanePort {
         contentOid: result.contentOid,
       },
       diagnostics: [],
-      observation: await this.buildObservationCoordinate(request, capability, Date.now(), null),
+      observation: await this.buildObservationCoordinate(request, capability, this.clock.now(), null),
     };
   }
 

@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { GraphPort } from '../../ports/GraphPort.js';
+import type { ClockPort } from '../../ports/ClockPort.js';
+import { SystemClockAdapter } from '../../infrastructure/adapters/SystemClockAdapter.js';
 import {
   liveObservation,
   type ObservationPort,
@@ -217,8 +219,8 @@ type SupportedNormalizedAction =
   | SealAction
   | MergeAction;
 
-function autoId(prefix: string): string {
-  const ts = Date.now().toString(36).padStart(9, '0');
+function autoId(prefix: string, clock: ClockPort): string {
+  const ts = clock.now().toString(36).padStart(9, '0');
   const rand = randomUUID().replace(/-/g, '').slice(0, 8);
   return `${prefix}${ts}${rand}`;
 }
@@ -349,6 +351,7 @@ export class AgentActionValidator {
   private readonly readiness: ReadinessService;
   private readonly submissions: SubmissionService;
   private readonly doctor: Pick<DoctorService, 'run'>;
+  private readonly clock: ClockPort;
   private cachedRecommendationRequests?: Promise<RecommendationRequest[]>;
 
   constructor(
@@ -357,7 +360,9 @@ export class AgentActionValidator {
     private readonly agentId: string,
     private readonly readPort: ObservationPort,
     doctor?: Pick<DoctorService, 'run'>,
+    clock?: ClockPort,
   ) {
+    this.clock = clock ?? new SystemClockAdapter();
     this.intake = new IntakeService(roadmap);
     this.readiness = new ReadinessService(roadmap);
     this.submissions = new SubmissionService(
@@ -812,7 +817,7 @@ export class AgentActionValidator {
     const providedCommentId = typeof request.args['commentId'] === 'string' && request.args['commentId'].trim().length > 0
       ? request.args['commentId'].trim()
       : undefined;
-    const commentId = providedCommentId ?? autoId('comment:');
+    const commentId = providedCommentId ?? autoId('comment:', this.clock);
     if (!commentId.startsWith('comment:')) {
       return failAssessment(request, 'invalid-args', [
         `commentId must start with 'comment:', got '${commentId}'`,
@@ -908,7 +913,7 @@ export class AgentActionValidator {
     ])];
     for (const relatedId of relatedIds) {
       if (!await graph.hasNode(relatedId)) {
-        const briefId = autoId('brief:');
+        const briefId = autoId('brief:', this.clock);
         return failAssessment(request, 'not-found', [
           `Related target ${relatedId} not found in the graph`,
         ], {
@@ -943,7 +948,7 @@ export class AgentActionValidator {
       openedFromCount: extractCaseOpenedFromIds(detail).length,
     });
 
-    const briefId = autoId('brief:');
+    const briefId = autoId('brief:', this.clock);
     return successAssessment(
       request,
       {
@@ -1069,8 +1074,8 @@ export class AgentActionValidator {
       // Non-fatal: submission packets can omit workspace metadata beyond workspaceRef.
     }
 
-    const submissionId = autoId('submission:');
-    const patchsetId = autoId('patchset:');
+    const submissionId = autoId('submission:', this.clock);
+    const patchsetId = autoId('patchset:', this.clock);
 
     return successAssessment(
       request,
@@ -1178,7 +1183,7 @@ export class AgentActionValidator {
     );
     if (blockerFailure) return blockerFailure;
 
-    const reviewId = autoId('review:');
+    const reviewId = autoId('review:', this.clock);
     const verdict = verdictRaw as ReviewVerdict;
 
     return successAssessment(
@@ -1220,7 +1225,7 @@ export class AgentActionValidator {
       ? request.args['title'].trim()
       : `Handoff for ${request.targetId}`;
 
-    const noteId = autoId('note:');
+    const noteId = autoId('note:', this.clock);
     const rawRelatedIds = normalizeStringArray(request.args['relatedIds']);
     const relatedIds = [...new Set([request.targetId, ...rawRelatedIds])];
 
@@ -1575,6 +1580,7 @@ export class AgentActionValidator {
 
 export class AgentActionService {
   private readonly validator: AgentActionValidator;
+  private readonly clock: ClockPort;
 
   constructor(
     private readonly graphPort: GraphPort,
@@ -1582,8 +1588,10 @@ export class AgentActionService {
     private readonly agentId: string,
     readPort: ObservationPort,
     doctor?: Pick<DoctorService, 'run'>,
+    clock?: ClockPort,
   ) {
-    this.validator = new AgentActionValidator(graphPort, roadmap, agentId, readPort, doctor);
+    this.clock = clock ?? new SystemClockAdapter();
+    this.validator = new AgentActionValidator(graphPort, roadmap, agentId, readPort, doctor, this.clock);
   }
 
   public async execute(request: AgentActionRequest): Promise<AgentActionOutcome> {
@@ -1672,7 +1680,7 @@ export class AgentActionService {
     action: ClaimAction,
   ): Promise<AgentActionOutcome> {
     const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
-    const now = Date.now();
+    const now = this.clock.now();
     const sha = await graph.patch((p) => {
       p.setProperty(action.targetId, 'assigned_to', this.agentId)
         .setProperty(action.targetId, 'status', 'IN_PROGRESS')
@@ -1766,7 +1774,7 @@ export class AgentActionService {
     const hasStoryToRequirement = storyOutgoing.some((edge) => edge.type === 'decomposes-to' && edge.to === action.requirementId);
     const hasQuestToRequirement = questOutgoing.some((edge) => edge.type === 'implements' && edge.to === action.requirementId);
     const hasRequirementToCriterion = requirementOutgoing.some((edge) => edge.type === 'has-criterion' && edge.to === action.criterionId);
-    const now = Date.now();
+    const now = this.clock.now();
 
     const sha = await graph.patch((p) => {
       if (!storyExists) {
@@ -1852,7 +1860,7 @@ export class AgentActionService {
   ): Promise<AgentActionOutcome> {
     const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
     const patch = await createPatchSession(graph);
-    const now = Date.now();
+    const now = this.clock.now();
     patch
       .addNode(action.commentId)
       .setProperty(action.commentId, 'type', 'comment')
@@ -1888,7 +1896,7 @@ export class AgentActionService {
   ): Promise<AgentActionOutcome> {
     const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
     const patch = await createPatchSession(graph);
-    const now = Date.now();
+    const now = this.clock.now();
     patch
       .addNode(action.briefId)
       .setProperty(action.briefId, 'type', 'brief')
@@ -1984,7 +1992,7 @@ export class AgentActionService {
   ): Promise<AgentActionOutcome> {
     const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
     const patch = await createPatchSession(graph);
-    const now = Date.now();
+    const now = this.clock.now();
     patch
       .addNode(action.noteId)
       .setProperty(action.noteId, 'type', 'note')
@@ -2038,7 +2046,7 @@ export class AgentActionService {
       };
     }
 
-    const now = Date.now();
+    const now = this.clock.now();
     const scrollPayload = {
       artifactHash: action.artifactHash,
       questId: action.targetId,
@@ -2104,7 +2112,7 @@ export class AgentActionService {
     }
 
     const adapter = new WarpSubmissionAdapter(this.graphPort, this.agentId);
-    const decisionId = autoId('decision:');
+    const decisionId = autoId('decision:', this.clock);
     let patchSha: string | null = null;
     try {
       const decision = await adapter.decide({
@@ -2146,7 +2154,7 @@ export class AgentActionService {
     let partialFailure: { stage: string; message: string } | null = null;
     if (action.questId && action.shouldAutoSeal) {
       try {
-        const now = Date.now();
+        const now = this.clock.now();
         const keyring = new FsKeyringAdapter();
         const sealService = new GuildSealService(keyring);
         const scrollPayload = {
