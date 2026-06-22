@@ -6,43 +6,8 @@ import { registerShowCommands } from '../../src/cli/commands/show.js';
 const mocks = vi.hoisted(() => ({
   createPatchSession: vi.fn(),
   openSession: vi.fn(),
-  WarpRoadmapAdapter: vi.fn(),
   readinessAssess: vi.fn(),
   createComment: vi.fn(),
-}));
-
-vi.mock('../../src/infrastructure/helpers/createPatchSession.js', () => ({
-  createPatchSession: (graph: unknown) => mocks.createPatchSession(graph),
-}));
-
-vi.mock('../../src/infrastructure/adapters/WarpObservationAdapter.js', () => ({
-  WarpObservationAdapter: class WarpObservationAdapter {
-    openSession() {
-      return mocks.openSession();
-    }
-  },
-}));
-
-vi.mock('../../src/infrastructure/adapters/WarpRoadmapAdapter.js', () => ({
-  WarpRoadmapAdapter: function WarpRoadmapAdapter(graphPort: unknown) {
-    mocks.WarpRoadmapAdapter(graphPort);
-  },
-}));
-
-vi.mock('../../src/domain/services/ReadinessService.js', () => ({
-  ReadinessService: class ReadinessService {
-    assess(questId: string) {
-      return mocks.readinessAssess(questId);
-    }
-  },
-}));
-
-vi.mock('../../src/domain/services/RecordService.js', () => ({
-  RecordService: class RecordService {
-    createComment(input: unknown) {
-      return mocks.createComment(input);
-    }
-  },
 }));
 
 function makePatchSession() {
@@ -75,6 +40,14 @@ function makeCtx(graph: {
       openInspectionSession: mocks.openSession,
     } as CliContext['inspection'],
     style: {} as CliContext['style'],
+    createPatchSession: mocks.createPatchSession,
+    roadmap: { mocked: true } as any,
+    readinessService: {
+      assess: (questId: string) => mocks.readinessAssess(questId),
+    } as any,
+    recordService: {
+      createComment: (input: unknown) => mocks.createComment(input),
+    } as any,
     ok: vi.fn(),
     warn: vi.fn(),
     muted: vi.fn(),
