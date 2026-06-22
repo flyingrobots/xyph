@@ -106,6 +106,8 @@ import {
   DEFAULT_POLICY_REQUIRE_EVIDENCE,
 } from '../domain/entities/Policy.js';
 import type { GraphPort } from '../ports/GraphPort.js';
+import { WarpQuestReadAdapter } from './warp/optics/WarpQuestReadAdapter.js';
+import { QuestCompletionEvaluator } from '../domain/services/QuestCompletionEvaluator.js';
 import { WarpCampaignPolicyReadAdapter } from './warp/optics/WarpCampaignPolicyReadAdapter.js';
 import { toNeighborEntries, type NeighborEntry } from './helpers/isNeighborEntry.js';
 import {
@@ -2453,37 +2455,18 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
     if (scroll) quest.scrollId = scroll.id;
     if (submission) quest.submissionId = submission.id;
 
-    const appliedPolicy = quest.campaignId
-      ? policies.find((entry) => entry.campaignId === quest.campaignId)
-      : undefined;
-    quest.computedCompletion = computeCompletionSummary(
-      requirements.map((requirement) => ({
-        id: requirement.id,
-        criterionIds: requirement.criterionIds,
-      })),
-      criteria.map((criterion) => ({
-        id: criterion.id,
-        evidence: criterion.evidenceIds
-          .map((evidenceId) => evidence.find((entry) => entry.id === evidenceId))
-          .filter((entry): entry is EvidenceNode => Boolean(entry))
-          .map((entry) => ({
-            id: entry.id,
-            result: entry.result,
-            producedAt: entry.producedAt,
-          })),
-      })),
-      {
-        policy: appliedPolicy
-          ? {
-              id: appliedPolicy.id,
-              coverageThreshold: appliedPolicy.coverageThreshold,
-              requireAllCriteria: appliedPolicy.requireAllCriteria,
-              requireEvidence: appliedPolicy.requireEvidence,
-            }
-          : undefined,
-        manualComplete: quest.status === 'DONE',
-      },
-    );
+    const fakeGraphPort: GraphPort = {
+      getGraph: async () => reader as unknown as import('@git-stunts/git-warp').WarpCore,
+    };
+    const questReader = new WarpQuestReadAdapter(fakeGraphPort, {
+      accessorId: 'system',
+      role: 'agent',
+    });
+    const evaluator = new QuestCompletionEvaluator();
+    const coneResult = await questReader.getQuestCone(quest.id);
+    if (coneResult) {
+      quest.computedCompletion = evaluator.evaluate(coneResult.value);
+    }
 
     const reviewIds = new Set(reviews.map((entry) => entry.id));
     const relevantIds = new Set<string>([
