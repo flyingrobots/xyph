@@ -455,20 +455,47 @@ export class ControlPlaneService implements ControlPlanePort {
   private readonly observation: WarpObservationAdapter;
   private readonly operationalRead: WarpOperationalReadAdapter;
   private readonly clock: ClockPort;
+  private readonly briefingService?: AgentBriefingService;
+  private readonly contextService?: AgentContextService;
+  private readonly submissionService?: AgentSubmissionService;
+  private readonly actionService?: AgentActionService;
+  private readonly createProjection: typeof createObservedGraphProjection;
+  private readonly createProjectionFromGraph: typeof createObservedGraphProjectionFromGraph;
 
   constructor(
     private readonly graphPort: GraphPort,
     agentId: string,
     clock?: ClockPort,
+    overrides?: {
+      roadmap?: WarpRoadmapAdapter;
+      doctor?: DoctorService;
+      mutations?: MutationKernelService;
+      records?: RecordService;
+      capabilities?: CapabilityResolverService;
+      observation?: WarpObservationAdapter;
+      operationalRead?: WarpOperationalReadAdapter;
+      briefingService?: AgentBriefingService;
+      contextService?: AgentContextService;
+      submissionService?: AgentSubmissionService;
+      actionService?: AgentActionService;
+      createProjection?: typeof createObservedGraphProjection;
+      createProjectionFromGraph?: typeof createObservedGraphProjectionFromGraph;
+    }
   ) {
     this.clock = clock ?? new SystemClockAdapter();
-    this.roadmap = new WarpRoadmapAdapter(graphPort);
-    this.observation = new WarpObservationAdapter(graphPort);
-    this.operationalRead = new WarpOperationalReadAdapter(graphPort);
-    this.doctor = new DoctorService(graphPort, this.roadmap, new WarpSubstrateInspectionAdapter(graphPort));
-    this.mutations = new MutationKernelService(graphPort);
-    this.records = new RecordService(graphPort, this.clock);
-    this.capabilities = new CapabilityResolverService(agentId);
+    this.roadmap = overrides?.roadmap ?? new WarpRoadmapAdapter(graphPort);
+    this.observation = overrides?.observation ?? new WarpObservationAdapter(graphPort);
+    this.operationalRead = overrides?.operationalRead ?? new WarpOperationalReadAdapter(graphPort);
+    this.doctor = overrides?.doctor ?? new DoctorService(graphPort, this.roadmap, new WarpSubstrateInspectionAdapter(graphPort));
+    this.mutations = overrides?.mutations ?? new MutationKernelService(graphPort);
+    this.records = overrides?.records ?? new RecordService(graphPort, this.clock);
+    this.capabilities = overrides?.capabilities ?? new CapabilityResolverService(agentId);
+    this.briefingService = overrides?.briefingService;
+    this.contextService = overrides?.contextService;
+    this.submissionService = overrides?.submissionService;
+    this.actionService = overrides?.actionService;
+    this.createProjection = overrides?.createProjection ?? createObservedGraphProjection;
+    this.createProjectionFromGraph = overrides?.createProjectionFromGraph ?? createObservedGraphProjectionFromGraph;
   }
 
   public async execute(
@@ -620,16 +647,16 @@ export class ControlPlaneService implements ControlPlanePort {
     actions: AgentActionService;
   } {
     return {
-      briefing: new AgentBriefingService(
+      briefing: this.briefingService ?? new AgentBriefingService(
         this.graphPort,
         this.roadmap,
         principalId,
         this.operationalRead,
         this.doctor,
       ),
-      context: new AgentContextService(this.graphPort, this.roadmap, principalId, this.observation, this.doctor),
-      submissions: new AgentSubmissionService(principalId, this.observation),
-      actions: new AgentActionService(this.graphPort, this.roadmap, principalId, this.observation, this.doctor),
+      context: this.contextService ?? new AgentContextService(this.graphPort, this.roadmap, principalId, this.observation, this.doctor),
+      submissions: this.submissionService ?? new AgentSubmissionService(principalId, this.observation),
+      actions: this.actionService ?? new AgentActionService(this.graphPort, this.roadmap, principalId, this.observation, this.doctor),
     };
   }
 
@@ -976,8 +1003,8 @@ export class ControlPlaneService implements ControlPlanePort {
           : await this.createDerivedWorldlineProjection(capability, selector);
         const projectionReader = derived?.projection ?? (
           selector.kind === 'tip'
-            ? createObservedGraphProjection(this.graphPort)
-            : createObservedGraphProjectionFromGraph(await this.openObservationGraph(selector), { syncCoverage: false })
+            ? this.createProjection(this.graphPort)
+            : this.createProjectionFromGraph(await this.openObservationGraph(selector), { syncCoverage: false })
         );
         const targetId = this.requireString(request.args['targetId'], 'observe targetId');
         const detail = await projectionReader.fetchEntityDetail(targetId);
@@ -1700,7 +1727,7 @@ export class ControlPlaneService implements ControlPlanePort {
       graph: derivedGraph,
       frontierDigest,
       backing,
-      projection: createObservedGraphProjectionFromGraph(derivedGraph, { syncCoverage: false }),
+      projection: this.createProjectionFromGraph(derivedGraph, { syncCoverage: false }),
     };
   }
 
@@ -2182,7 +2209,7 @@ export class ControlPlaneService implements ControlPlanePort {
       this.listCanonicalArtifactNodes(graph, 'comparison-artifact'),
       this.listCanonicalArtifactNodes(graph, 'collapse-proposal'),
     ]);
-    const projectionReader = createObservedGraphProjectionFromGraph(graph, { syncCoverage: false });
+    const projectionReader = this.createProjectionFromGraph(graph, { syncCoverage: false });
 
     const comparisonDetails = (await Promise.all(
       comparisonNodes.map(async ({ id }) => projectionReader.fetchEntityDetail(id)),
@@ -2268,7 +2295,7 @@ export class ControlPlaneService implements ControlPlanePort {
     graph: WarpGraph,
     artifactId: string,
   ): Promise<Record<string, unknown>> {
-    const projectionReader = createObservedGraphProjectionFromGraph(graph, { syncCoverage: false });
+    const projectionReader = this.createProjectionFromGraph(graph, { syncCoverage: false });
     const detail = await projectionReader.fetchEntityDetail(artifactId);
     if (!detail) {
       throw controlPlaneFailure('not_found', `Entity ${artifactId} not found in the graph`);
