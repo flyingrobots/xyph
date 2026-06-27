@@ -34,8 +34,8 @@ export function registerArtifactCommands(program: Command, ctx: CliContext): voi
     .action(withErrorHandler(async (id: string, opts: { artifact: string; rationale: string }) => {
       const { GuildSealService } = await import('../../domain/services/GuildSealService.js');
       const { FsKeyringAdapter } = await import('../../infrastructure/adapters/FsKeyringAdapter.js');
-      const keyring = new FsKeyringAdapter();
-      const sealService = new GuildSealService(keyring);
+      const keyring = ctx.keyring ?? new FsKeyringAdapter();
+      const sealService = ctx.guildSealService ?? new GuildSealService(keyring);
       const allowUnsignedScrolls = allowUnsignedScrollsForSettlement();
 
       const readSession = await ctx.observation.openSession(

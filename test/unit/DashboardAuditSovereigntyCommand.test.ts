@@ -1,36 +1,24 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Command } from 'commander';
 import type { CliContext } from '../../src/cli/context.js';
+import { registerDashboardCommands } from '../../src/cli/commands/dashboard.js';
+import { SOVEREIGNTY_AUDIT_STATUSES } from '../../src/domain/services/SovereigntyService.js';
 
 const auditAuthorizedWork = vi.fn();
-const warpRoadmapAdapterCtor = vi.fn();
-
-vi.mock('../../src/infrastructure/adapters/WarpRoadmapAdapter.js', () => ({
-  WarpRoadmapAdapter: vi.fn().mockImplementation(function MockWarpRoadmapAdapter(graphPort) {
-    warpRoadmapAdapterCtor(graphPort);
-    return { mocked: true };
-  }),
-}));
-
-vi.mock('../../src/domain/services/SovereigntyService.js', () => ({
-  SOVEREIGNTY_AUDIT_STATUSES: ['PLANNED', 'READY', 'IN_PROGRESS', 'BLOCKED', 'DONE'],
-  SovereigntyService: vi.fn().mockImplementation(function MockSovereigntyService() {
-    return {
-      auditAuthorizedWork,
-    };
-  }),
-}));
-
-import { registerDashboardCommands } from '../../src/cli/commands/dashboard.js';
-
-const AUDITED_STATUSES = ['PLANNED', 'READY', 'IN_PROGRESS', 'BLOCKED', 'DONE'];
 
 function makeCtx(json: boolean): CliContext {
+  const mockRoadmap = { mocked: true } as any;
+  const mockSovereigntyService = {
+    auditAuthorizedWork,
+  } as any;
+
   return {
     agentId: 'human.test',
     json,
-    graphPort: {} as CliContext['graphPort'],
+    graphPort: { getGraph: vi.fn() } as unknown as CliContext['graphPort'],
     style: {} as CliContext['style'],
+    roadmap: mockRoadmap,
+    sovereigntyService: mockSovereigntyService,
     ok: vi.fn(),
     warn: vi.fn(),
     muted: vi.fn(),
@@ -73,14 +61,13 @@ describe('dashboard audit-sovereignty command', () => {
 
     await program.parseAsync(['node', 'xyph', 'audit-sovereignty']);
 
-    expect(warpRoadmapAdapterCtor).toHaveBeenCalledWith(ctx.graphPort);
     expect(ctx.jsonOut).toHaveBeenCalledWith({
       success: true,
       command: 'audit-sovereignty',
       data: {
         valid: true,
         scope: 'authorized-work',
-        auditedStatuses: AUDITED_STATUSES,
+        auditedStatuses: [...SOVEREIGNTY_AUDIT_STATUSES],
         violations: [],
       },
     });
@@ -119,7 +106,7 @@ describe('dashboard audit-sovereignty command', () => {
       {
         valid: false,
         scope: 'authorized-work',
-        auditedStatuses: AUDITED_STATUSES,
+        auditedStatuses: [...SOVEREIGNTY_AUDIT_STATUSES],
         violations,
       },
     );
