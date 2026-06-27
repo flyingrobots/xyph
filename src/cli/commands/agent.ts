@@ -704,6 +704,7 @@ export function registerAgentCommands(program: Command, ctx: CliContext): void {
         roadmap,
         ctx.agentId,
         ctx.operationalRead,
+        ctx.questReadPort,
         doctor,
       );
       const briefing = await service.buildBriefing();
@@ -736,6 +737,7 @@ export function registerAgentCommands(program: Command, ctx: CliContext): void {
         roadmap,
         ctx.agentId,
         ctx.operationalRead,
+        ctx.questReadPort,
         doctor,
       );
       const result = await service.next(limit);

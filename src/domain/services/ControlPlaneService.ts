@@ -58,6 +58,7 @@ import { WarpObservationAdapter } from '../../infrastructure/adapters/WarpObserv
 import { WarpOperationalReadAdapter } from '../../infrastructure/adapters/WarpOperationalReadAdapter.js';
 import { WarpRoadmapAdapter } from '../../infrastructure/adapters/WarpRoadmapAdapter.js';
 import { WarpSubstrateInspectionAdapter } from '../../infrastructure/adapters/WarpSubstrateInspectionAdapter.js';
+import { WarpQuestReadAdapter } from '../../infrastructure/warp/optics/WarpQuestReadAdapter.js';
 import { AgentBriefingService } from './AgentBriefingService.js';
 import { AgentContextService } from './AgentContextService.js';
 import { AgentSubmissionService } from './AgentSubmissionService.js';
@@ -454,6 +455,7 @@ export class ControlPlaneService implements ControlPlanePort {
   private readonly capabilities: CapabilityResolverService;
   private readonly observation: WarpObservationAdapter;
   private readonly operationalRead: WarpOperationalReadAdapter;
+  private readonly questReadPort: WarpQuestReadAdapter;
   private readonly clock: ClockPort;
   private readonly briefingService?: AgentBriefingService;
   private readonly contextService?: AgentContextService;
@@ -474,6 +476,7 @@ export class ControlPlaneService implements ControlPlanePort {
       capabilities?: CapabilityResolverService;
       observation?: WarpObservationAdapter;
       operationalRead?: WarpOperationalReadAdapter;
+      questReadPort?: WarpQuestReadAdapter;
       briefingService?: AgentBriefingService;
       contextService?: AgentContextService;
       submissionService?: AgentSubmissionService;
@@ -486,6 +489,7 @@ export class ControlPlaneService implements ControlPlanePort {
     this.roadmap = overrides?.roadmap ?? new WarpRoadmapAdapter(graphPort);
     this.observation = overrides?.observation ?? new WarpObservationAdapter(graphPort);
     this.operationalRead = overrides?.operationalRead ?? new WarpOperationalReadAdapter(graphPort);
+    this.questReadPort = overrides?.questReadPort ?? new WarpQuestReadAdapter(graphPort, { accessorId: agentId, role: agentId.startsWith('human.') ? 'human' : 'agent' });
     this.doctor = overrides?.doctor ?? new DoctorService(graphPort, this.roadmap, new WarpSubstrateInspectionAdapter(graphPort));
     this.mutations = overrides?.mutations ?? new MutationKernelService(graphPort);
     this.records = overrides?.records ?? new RecordService(graphPort, this.clock);
@@ -652,6 +656,7 @@ export class ControlPlaneService implements ControlPlanePort {
         this.roadmap,
         principalId,
         this.operationalRead,
+        this.questReadPort,
         this.doctor,
       ),
       context: this.contextService ?? new AgentContextService(this.graphPort, this.roadmap, principalId, this.observation, this.doctor),

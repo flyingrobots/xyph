@@ -5,9 +5,14 @@ import type {
   GraphMeta,
   GraphSnapshot,
   QuestNode,
+  RequirementNode,
+  CriterionNode,
+  EvidenceNode,
+  PolicyNode,
 } from '../models/dashboard.js';
 import type { GraphPort } from '../../ports/GraphPort.js';
 import type { OperationalReadPort, OperationalReadSession } from '../../ports/OperationalReadPort.js';
+import type { QuestReadPort } from '../../ports/QuestReadPort.js';
 import { liveObservation } from '../../ports/ObservationPort.js';
 import type { RoadmapQueryPort } from '../../ports/RoadmapPort.js';
 import { summarizeDoctorReport } from './DiagnosticService.js';
@@ -234,6 +239,7 @@ export class AgentBriefingService {
     roadmap: RoadmapQueryPort,
     private readonly agentId: string,
     private readonly readPort: OperationalReadPort,
+    private readonly questReadPort: QuestReadPort,
     doctor?: Pick<DoctorService, 'run'>,
   ) {
     this.readiness = new ReadinessService(roadmap);
@@ -357,6 +363,59 @@ export class AgentBriefingService {
       const readiness = await this.readiness.assess(quest.id, { transition: false });
       const dependency = buildAgentDependencyContext(snapshot, quest);
       const recommendations = await this.recommender.recommendForQuest(quest, readiness, dependency);
+      const cone = await this.questReadPort.getQuestCone(quest.id);
+      const requirements: RequirementNode[] = [];
+      const criteria: CriterionNode[] = [];
+      const evidence: EvidenceNode[] = [];
+      const policies: PolicyNode[] = [];
+
+      if (cone?.value) {
+        for (const reqEntry of cone.value.requirements) {
+          const critIds = reqEntry.criteria.map((c) => c.criterion.id);
+          requirements.push({
+            id: reqEntry.requirement.id,
+            description: reqEntry.requirement.description,
+            kind: reqEntry.requirement.kind,
+            priority: reqEntry.requirement.priority,
+            taskIds: [quest.id],
+            criterionIds: critIds,
+          });
+
+          for (const critEntry of reqEntry.criteria) {
+            const evIds = critEntry.evidence.map((e) => e.id);
+            criteria.push({
+              id: critEntry.criterion.id,
+              description: critEntry.criterion.description,
+              verifiable: critEntry.criterion.verifiable,
+              requirementId: reqEntry.requirement.id,
+              evidenceIds: evIds,
+            });
+
+            for (const ev of critEntry.evidence) {
+              evidence.push({
+                id: ev.id,
+                kind: ev.kind,
+                result: ev.result,
+                producedAt: ev.producedAt,
+                producedBy: ev.producedBy,
+                criterionId: critEntry.criterion.id,
+                artifactHash: ev.artifactHash,
+              });
+            }
+          }
+        }
+
+        for (const pol of cone.value.policies) {
+          policies.push({
+            id: pol.id,
+            coverageThreshold: pol.coverageThreshold,
+            requireAllCriteria: pol.requireAllCriteria,
+            requireEvidence: pol.requireEvidence,
+            allowManualSeal: pol.allowManualSeal,
+          });
+        }
+      }
+
       return {
         quest: toAgentQuestRef(quest),
         dependency,
@@ -368,10 +427,10 @@ export class AgentBriefingService {
             reviews: [],
             decisions: [],
             stories: [],
-            requirements: [],
-            criteria: [],
-            evidence: [],
-            policies: [],
+            requirements,
+            criteria,
+            evidence,
+            policies,
             documents: [],
             comments: [],
             timeline: [],
@@ -396,6 +455,59 @@ export class AgentBriefingService {
     const dependency = buildAgentDependencyContext(snapshot, quest);
     const source = determineSource(quest, dependency, this.agentId);
     const recommendations = await this.recommender.recommendForQuest(quest, readiness, dependency);
+    const cone = await this.questReadPort.getQuestCone(quest.id);
+    const requirements: RequirementNode[] = [];
+    const criteria: CriterionNode[] = [];
+    const evidence: EvidenceNode[] = [];
+    const policies: PolicyNode[] = [];
+
+    if (cone?.value) {
+      for (const reqEntry of cone.value.requirements) {
+        const critIds = reqEntry.criteria.map((c) => c.criterion.id);
+        requirements.push({
+          id: reqEntry.requirement.id,
+          description: reqEntry.requirement.description,
+          kind: reqEntry.requirement.kind,
+          priority: reqEntry.requirement.priority,
+          taskIds: [quest.id],
+          criterionIds: critIds,
+        });
+
+        for (const critEntry of reqEntry.criteria) {
+          const evIds = critEntry.evidence.map((e) => e.id);
+          criteria.push({
+            id: critEntry.criterion.id,
+            description: critEntry.criterion.description,
+            verifiable: critEntry.criterion.verifiable,
+            requirementId: reqEntry.requirement.id,
+            evidenceIds: evIds,
+          });
+
+          for (const ev of critEntry.evidence) {
+            evidence.push({
+              id: ev.id,
+              kind: ev.kind,
+              result: ev.result,
+              producedAt: ev.producedAt,
+              producedBy: ev.producedBy,
+              criterionId: critEntry.criterion.id,
+              artifactHash: ev.artifactHash,
+            });
+          }
+        }
+      }
+
+      for (const pol of cone.value.policies) {
+        policies.push({
+          id: pol.id,
+          coverageThreshold: pol.coverageThreshold,
+          requireAllCriteria: pol.requireAllCriteria,
+          requireEvidence: pol.requireEvidence,
+          allowManualSeal: pol.allowManualSeal,
+        });
+      }
+    }
+
     const semantics = buildQuestWorkSemantics({
       detail: {
         id: quest.id,
@@ -403,10 +515,10 @@ export class AgentBriefingService {
         reviews: [],
         decisions: [],
         stories: [],
-        requirements: [],
-        criteria: [],
-        evidence: [],
-        policies: [],
+        requirements,
+        criteria,
+        evidence,
+        policies,
         documents: [],
         comments: [],
         timeline: [],

@@ -5,6 +5,8 @@ import { WarpGraphAdapter } from '../infrastructure/adapters/WarpGraphAdapter.js
 import { WarpObservationAdapter } from '../infrastructure/adapters/WarpObservationAdapter.js';
 import { WarpOperationalReadAdapter } from '../infrastructure/adapters/WarpOperationalReadAdapter.js';
 import { WarpSubstrateInspectionAdapter } from '../infrastructure/adapters/WarpSubstrateInspectionAdapter.js';
+import { WarpQuestReadAdapter } from '../infrastructure/warp/optics/WarpQuestReadAdapter.js';
+import type { QuestReadPort } from '../ports/QuestReadPort.js';
 import { resolveIdentity, type ResolvedIdentity } from './identity.js';
 import type { Diagnostic } from '../domain/models/diagnostics.js';
 import type { DiagnosticLogPort } from '../ports/DiagnosticLogPort.js';
@@ -74,6 +76,7 @@ export interface CliContext {
   readonly graphPort: WarpGraphAdapter;
   readonly observation: ObservationPort;
   readonly operationalRead: OperationalReadPort;
+  readonly questReadPort: QuestReadPort;
   readonly inspection: SubstrateInspectionPort;
   readonly logger: DiagnosticLogPort;
   readonly style: StylePort;
@@ -149,6 +152,10 @@ export function createCliContext(
   const graphPort = new WarpGraphAdapter(repoPath, graphName, agentId, opts?.logger);
   const observation = new WarpObservationAdapter(graphPort);
   const operationalRead = new WarpOperationalReadAdapter(graphPort);
+  const questReadPort = new WarpQuestReadAdapter(graphPort, {
+    accessorId: agentId,
+    role: agentId.startsWith('human.') ? 'human' : 'agent',
+  });
   const inspection = new WarpSubstrateInspectionAdapter(graphPort);
   const jsonMode = opts?.json ?? false;
   const style = jsonMode ? createPlainStylePort() : createStylePort();
@@ -183,6 +190,7 @@ export function createCliContext(
     graphPort,
     observation,
     operationalRead,
+    questReadPort,
     inspection,
     logger: opts?.logger ?? noopLogger,
     style,

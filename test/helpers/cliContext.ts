@@ -102,6 +102,7 @@ export function makeJsonCliContext(
     graphPort: {} as GraphPort as CliContext['graphPort'],
     observation: readPorts.observation,
     operationalRead: readPorts.operationalRead,
+    questReadPort: { getQuestCone: vi.fn(async () => null) } as unknown as CliContext['questReadPort'],
     inspection: readPorts.inspection,
     logger: noopLogger,
     style: createPlainStylePort(),
