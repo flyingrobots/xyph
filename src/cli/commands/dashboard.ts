@@ -98,7 +98,9 @@ export function registerDashboardCommands(program: Command, ctx: CliContext): vo
     .description('Show a snapshot of the WARP graph')
     .option('--view <name>', 'roadmap | lineage | all | inbox | submissions | deps | trace | suggestions', 'roadmap')
     .option('--include-graveyard', 'include GRAVEYARD tasks in output (excluded by default)')
-    .action(withErrorHandler(async (opts: { view: string; includeGraveyard?: boolean }) => {
+    .option('--raw-status', 'show unnormalized status values as required by policy:CLITOOL')
+    .option('--backlog-only', 'filter status views to show only backlog items')
+    .action(withErrorHandler(async (opts: { view: string; includeGraveyard?: boolean; rawStatus?: boolean; backlogOnly?: boolean }) => {
       const view = opts.view;
       const validViews = ['roadmap', 'lineage', 'all', 'inbox', 'submissions', 'deps', 'trace', 'suggestions'] as const;
       if (!validViews.includes(view as typeof validViews[number])) {
@@ -109,7 +111,11 @@ export function registerDashboardCommands(program: Command, ctx: CliContext): vo
         liveObservation('dashboard.status'),
       );
       const raw = await readSession.fetchSnapshot(snapshotProfileForDashboardView(view));
-      const snapshot = filterGraphSnapshot(raw, { includeGraveyard: opts.includeGraveyard ?? false });
+      const snapshot = filterGraphSnapshot(raw, {
+        includeGraveyard: opts.includeGraveyard ?? false,
+        rawStatus: opts.rawStatus ?? false,
+        backlogOnly: opts.backlogOnly ?? false,
+      });
       const roadmap = ctx.roadmap ?? new WarpRoadmapAdapter(ctx.graphPort);
       const doctorService = ctx.doctorService ?? new DoctorService(
         ctx.graphPort,

@@ -16,8 +16,20 @@ export function adaptObservedHandleToObservedProjectionGraph(
     getNodeProps: (nodeId: string) => handle.getNodeProps(nodeId),
     getStateSnapshot: () => graph.getStateSnapshot(),
     getFrontier: () => graph.getFrontier(),
-    getContentOid: (nodeId: string) => graph.getContentOid(nodeId),
-    getContent: (nodeId: string) => graph.getContent(nodeId),
+    getContentOid: async (nodeId: string): Promise<string | null> => {
+      try {
+        return await graph.getContentOid(nodeId);
+      } catch {
+        return null;
+      }
+    },
+    getContent: async (nodeId: string): Promise<Uint8Array | null> => {
+      try {
+        return await graph.getContent(nodeId);
+      } catch {
+        return null;
+      }
+    },
     neighbors: async (
       nodeId: string,
       direction: 'outgoing' | 'incoming' | 'both' = 'outgoing',

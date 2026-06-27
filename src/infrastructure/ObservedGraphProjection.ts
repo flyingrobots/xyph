@@ -486,11 +486,21 @@ class UnifiedStateReader {
   }
 
   async getContent(nodeId: string): Promise<Uint8Array | null> {
-    return this.graph.getContent(nodeId);
+    try {
+      return await this.graph.getContent(nodeId);
+    } catch (err) {
+      this.graph.logger?.warn?.('getContent failed', { nodeId, error: err });
+      return null;
+    }
   }
 
   async getContentOid(nodeId: string): Promise<string | null> {
-    return this.graph.getContentOid(nodeId);
+    try {
+      return await this.graph.getContentOid(nodeId);
+    } catch (err) {
+      this.graph.logger?.warn?.('getContentOid failed', { nodeId, error: err });
+      return null;
+    }
   }
 
   async compareCoordinates(
@@ -833,6 +843,7 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
         id: n.id,
         title,
         status: rawStatus as QuestStatus,
+        rawStatus: rawStatusRaw,
         hours: typeof hours === 'number' && Number.isFinite(hours) && hours >= 0 ? hours : 0,
         priority: normalizeQuestPriority(priority),
         description: typeof description === 'string' ? description : undefined,

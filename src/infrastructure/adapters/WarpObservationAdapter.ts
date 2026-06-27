@@ -52,12 +52,20 @@ export class WarpObservationAdapter implements ObservationPort {
       getNodeProps: (id: string): Promise<Record<string, unknown> | null> => observedHandle.getNodeProps(id),
       getContent: async (id: string): Promise<string | undefined> => {
         if (!(await observedHandle.hasNode(id))) return undefined;
-        const content = await graph.getContent(id);
-        return content ? Buffer.from(content).toString('utf8') : undefined;
+        try {
+          const content = await graph.getContent(id);
+          return content ? Buffer.from(content).toString('utf8') : undefined;
+        } catch {
+          return undefined;
+        }
       },
       getContentOid: async (id: string): Promise<string | undefined> => {
         if (!(await observedHandle.hasNode(id))) return undefined;
-        return (await graph.getContentOid(id)) ?? undefined;
+        try {
+          return (await graph.getContentOid(id)) ?? undefined;
+        } catch {
+          return undefined;
+        }
       },
       queryNodes: async (pattern: string): Promise<ObservationNodeRecord[]> =>
         await observedHandle.query().match(pattern).select(['id', 'props']).run().then(extractNodes),

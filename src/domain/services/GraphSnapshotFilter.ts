@@ -1,11 +1,21 @@
 import type { GraphSnapshot } from '../models/dashboard.js';
+import type { QuestStatus } from '../entities/Quest.js';
 
 export function filterGraphSnapshot(
   snapshot: GraphSnapshot,
-  opts: { includeGraveyard: boolean },
+  opts: { includeGraveyard: boolean; backlogOnly?: boolean; rawStatus?: boolean },
 ): GraphSnapshot {
-  if (opts.includeGraveyard) return snapshot;
-  const quests = snapshot.quests.filter((q) => q.status !== 'GRAVEYARD');
+  let quests = snapshot.quests;
+  if (opts.rawStatus) {
+    quests = quests.map((q) => ({ ...q, status: (q.rawStatus ?? q.status) as QuestStatus }));
+  }
+  if (!opts.includeGraveyard) {
+    quests = quests.filter((q) => q.status !== 'GRAVEYARD');
+  }
+  if (opts.backlogOnly) {
+    quests = quests.filter((q) => q.status === 'BACKLOG' || q.status === ('INBOX' as QuestStatus));
+  }
+  if (quests === snapshot.quests) return snapshot;
   const questIds = new Set(quests.map((q) => q.id));
 
   const transitiveDownstream = new Map<string, number>();

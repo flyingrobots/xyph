@@ -1700,9 +1700,13 @@ export class ControlPlaneService implements ControlPlanePort {
         const props = await worldline.getNodeProps(nodeId);
         const derivedOid = typeof props?.['_content'] === 'string' ? props['_content'] : null;
         if (!derivedOid) return null;
-        const liveOid = await graph.getContentOid(nodeId);
-        if (liveOid !== derivedOid) return null;
-        return graph.getContent(nodeId);
+        try {
+          const liveOid = await graph.getContentOid(nodeId);
+          if (liveOid !== derivedOid) return null;
+          return await graph.getContent(nodeId);
+        } catch {
+          return null;
+        }
       },
       neighbors: async (
         nodeId: string,
