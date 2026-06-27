@@ -9,6 +9,7 @@ export function adaptObservedHandleToObservedProjectionGraph(
   handle: ObservedProjectionHandle,
   lens?: { match?: string | string[] },
 ): ObservedProjectionGraph {
+  let cachedEdgesPromise: ReturnType<ObservedProjectionHandle['getEdges']> | null = null;
   return {
     writerId: graph.writerId,
     query: () => handle.query(),
@@ -35,7 +36,10 @@ export function adaptObservedHandleToObservedProjectionGraph(
       direction: 'outgoing' | 'incoming' | 'both' = 'outgoing',
       edgeLabel?: string,
     ): ReturnType<ObservedProjectionGraph['neighbors']> => {
-      const edges = await handle.getEdges();
+      if (!cachedEdgesPromise) {
+        cachedEdgesPromise = handle.getEdges();
+      }
+      const edges = await cachedEdgesPromise;
       return edges.flatMap((edge) => {
         if (edgeLabel && edge.label !== edgeLabel) return [];
         if (direction === 'outgoing' && edge.from === nodeId) {
