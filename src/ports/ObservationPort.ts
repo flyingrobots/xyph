@@ -1,5 +1,7 @@
 import type { Aperture } from '@git-stunts/git-warp';
 import type { EntityDetail, GraphSnapshot } from '../domain/models/dashboard.js';
+import type { SubmissionLaneCone } from './SubmissionReadPort.js';
+import type { BoundedRead } from './ReadTypes.js';
 
 export type Lens = Aperture;
 
@@ -72,6 +74,7 @@ export interface ObservationSession {
     edgeLabel?: string,
   ): Promise<ObservationNeighbor[]>;
   hasNode(id: string): Promise<boolean>;
+  getSubmissionLaneCone?(questId: string): Promise<BoundedRead<SubmissionLaneCone> | null>;
 }
 
 /**

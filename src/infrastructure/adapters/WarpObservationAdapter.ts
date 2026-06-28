@@ -11,6 +11,7 @@ import type {
 } from '../../ports/ObservationPort.js';
 import { createObservedGraphProjectionFromGraph } from '../ObservedGraphProjection.js';
 import { adaptObservedHandleToObservedProjectionGraph } from './WorldlineObservedProjectionAdapter.js';
+import { WarpSubmissionReadAdapter } from '../warp/optics/WarpSubmissionReadAdapter.js';
 
 type QueryResult = Extract<Awaited<ReturnType<QueryBuilder['run']>>, { nodes: unknown }>;
 type AggregateResult = Extract<Awaited<ReturnType<QueryBuilder['run']>>, { count?: number }>;
@@ -76,6 +77,8 @@ export class WarpObservationAdapter implements ObservationPort {
       ): Promise<ObservationNeighbor[]> =>
         await projectionGraph.neighbors(nodeId, direction, edgeLabel),
       hasNode: (id: string): Promise<boolean> => observedHandle.hasNode(id),
+      getSubmissionLaneCone: (questId: string) =>
+        new WarpSubmissionReadAdapter(this.graphPort, { accessorId: 'observation', role: 'observer' }).getSubmissionLaneCone(questId),
     };
   }
 }

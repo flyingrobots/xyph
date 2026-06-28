@@ -29,6 +29,8 @@ import type {
   ObservationNodeRecord,
   ObservationSession,
 } from '../../ports/ObservationPort.js';
+import type { SubmissionReadPort, SubmissionLaneCone } from '../../ports/SubmissionReadPort.js';
+import type { BoundedRead } from '../../ports/ReadTypes.js';
 
 export interface SubmissionReadModel {
   asOf: number;
@@ -311,15 +313,122 @@ function buildSubmissionAssemblies(input: {
 export async function readSubmissionModel(
   session: ObservationSession,
   clock: ClockPort = new SystemClockAdapter(),
+  submissionReadPort?: SubmissionReadPort,
 ): Promise<SubmissionReadModel> {
+  const taskNodes = await session.queryNodes('task:*');
+  const taskNeighbors = await indexNeighbors(session, taskNodes);
+  const questsById = buildQuestIndex(taskNodes, taskNeighbors);
+
+  let port = submissionReadPort;
+  if (!port && session.getSubmissionLaneCone) {
+    const getCone = session.getSubmissionLaneCone.bind(session);
+    port = {
+      getSubmissionLaneCone: (id: string): Promise<BoundedRead<SubmissionLaneCone> | null> => getCone(id),
+    };
+  }
+
+  if (port) {
+    const submissions: SubmissionNode[] = [];
+    const reviews: ReviewNode[] = [];
+    const decisions: DecisionNode[] = [];
+    const submissionByQuest = new Map<string, string>();
+    const reviewsByPatchset = new Map<string, ReviewNode[]>();
+    const decisionsBySubmission = new Map<string, DecisionNode[]>();
+
+    const submittedAtByQuest = new Map<string, number>();
+
+    for (const [questId] of questsById) {
+      const coneRead = await port.getSubmissionLaneCone(questId);
+      if (!coneRead || !coneRead.value) continue;
+
+      const cone = coneRead.value;
+      for (const sub of cone.submissions) {
+        const subId = sub.id;
+        const patchsets = sub.patchsets;
+        const { tip, headsCount } = computeTipPatchset(patchsets);
+
+        const reviewRefsByPatchsetMap = new Map<string, ReviewRef[]>();
+        for (const ps of patchsets) {
+          const details = cone.patchsetDetails[ps.id];
+          const psReviews = details?.reviews ?? [];
+          reviewRefsByPatchsetMap.set(ps.id, psReviews);
+
+          const psReviewNodes: ReviewNode[] = psReviews.map((r) => ({
+            id: r.id,
+            patchsetId: ps.id,
+            verdict: r.verdict,
+            comment: r.comment ?? '',
+            reviewedBy: r.reviewedBy,
+            reviewedAt: r.reviewedAt,
+          }));
+          reviews.push(...psReviewNodes);
+          reviewsByPatchset.set(ps.id, psReviewNodes);
+        }
+
+        const effectiveVerdicts = tip
+          ? computeEffectiveVerdicts(reviewRefsByPatchsetMap.get(tip.id) ?? [])
+          : new Map<string, ReviewVerdict>();
+        const independentVerdicts = filterIndependentVerdicts(effectiveVerdicts, sub.submittedBy);
+
+        const subDecisions: DecisionNode[] = sub.decisions.map((d) => ({
+          id: d.id,
+          submissionId: subId,
+          kind: d.kind,
+          decidedBy: d.decidedBy,
+          decidedAt: d.decidedAt,
+          rationale: d.rationale,
+          mergeCommit: d.mergeCommit,
+        }));
+        decisions.push(...subDecisions);
+        decisionsBySubmission.set(subId, subDecisions);
+
+        const status = computeStatus({
+          decisions: sub.decisions,
+          effectiveVerdicts: independentVerdicts,
+        });
+
+        let approvalCount = 0;
+        for (const verdict of independentVerdicts.values()) {
+          if (verdict === 'approve') approvalCount++;
+        }
+
+        submissions.push({
+          id: subId,
+          questId,
+          status,
+          tipPatchsetId: tip?.id,
+          headsCount,
+          approvalCount,
+          submittedBy: sub.submittedBy,
+          submittedAt: sub.submittedAt,
+        });
+
+        const previousSubmittedAt = submittedAtByQuest.get(questId) ?? 0;
+        if (sub.submittedAt > previousSubmittedAt) {
+          submissionByQuest.set(questId, subId);
+          submittedAtByQuest.set(questId, sub.submittedAt);
+        }
+      }
+    }
+
+    return {
+      asOf: clock.now(),
+      submissions,
+      reviews,
+      decisions,
+      submissionByQuest,
+      questsById,
+      reviewsByPatchset,
+      decisionsBySubmission,
+    };
+  }
+
   const [
-    taskNodes,
     submissionNodes,
     patchsetNodes,
     reviewNodes,
     decisionNodes,
   ] = await Promise.all([
-    session.queryNodes('task:*'),
     session.queryNodes('submission:*'),
     session.queryNodes('patchset:*'),
     session.queryNodes('review:*'),
@@ -327,18 +436,15 @@ export async function readSubmissionModel(
   ]);
 
   const [
-    taskNeighbors,
     patchsetNeighbors,
     reviewNeighbors,
     decisionNeighbors,
   ] = await Promise.all([
-    indexNeighbors(session, taskNodes),
     indexNeighbors(session, patchsetNodes),
     indexNeighbors(session, reviewNodes),
     indexNeighbors(session, decisionNodes),
   ]);
 
-  const questsById = buildQuestIndex(taskNodes, taskNeighbors);
   const assembled = buildSubmissionAssemblies({
     submissionNodes,
     patchsetNodes,

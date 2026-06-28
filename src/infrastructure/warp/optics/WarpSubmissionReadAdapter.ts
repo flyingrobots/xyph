@@ -136,6 +136,7 @@ export class WarpSubmissionReadAdapter implements SubmissionReadPort {
           const verdict = revProps['verdict'];
           const reviewedBy = revProps['reviewed_by'];
           const reviewedAt = revProps['reviewed_at'];
+          const comment = revProps['comment'];
 
           if (
             typeof verdict === 'string' &&
@@ -148,6 +149,7 @@ export class WarpSubmissionReadAdapter implements SubmissionReadPort {
               verdict,
               reviewedBy,
               reviewedAt,
+              comment: typeof comment === 'string' ? comment : '',
             });
           }
         }
