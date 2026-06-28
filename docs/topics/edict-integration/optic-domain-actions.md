@@ -2,23 +2,7 @@
 
 To enforce Xyph's architectural rule that **application code should never interact with the Xyph graph-like data structure directly**, Xyph introduces `OpticDomainActionService`. This service serves as the optic-pure substrate for executing domain actions (such as quest claims and work submissions) entirely through unmaterialized intents.
 
-```mermaid
-flowchart TD
-    subgraph Client [TUI / Agent Client]
-        C1[Claim Quest / Submit Work] -->|Call Optic Service| S1[OpticDomainActionService]
-    end
-
-    subgraph XyphDomain [Xyph Optic Domain Layer]
-        S1 -->|Validate Footprint/Budget| L1[EdictWasmTargetLowererPort]
-        S1 -->|Lower Core IR| L1
-        L1 -->|Emits| I1[Canonical CBOR Intent & Report]
-    end
-
-    subgraph GitWarpSubstrate [Git-Warp Substrate]
-        I1 -->|admitWasmIntent| A1[WasmVerifiedAdmissionPort]
-        A1 -->|No Materialization| W1[WarpWorldline]
-    end
-```
+![Optic Domain Actions](../../diagrams/optic-domain-actions.svg)
 
 ## Architectural Contract
 

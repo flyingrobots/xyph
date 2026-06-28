@@ -2,25 +2,7 @@
 
 To achieve sovereign integration between Edict's compiler spine and Xyph's planning graph without hardcoding external target slices or maintaining fragile downstream code generators, Xyph implements Edict's WebAssembly target lowerer contract (`edict-target-lowerer.wit`).
 
-```mermaid
-flowchart TD
-    subgraph EdictCompiler [Edict Compiler Spine]
-        S1[Edict Source / AST] -->|Semantic Analysis| S2[Edict Core IR]
-        S2 -->|Calls Wasm Plugin| W1[xyph-target-lowerer.wasm]
-    end
-
-    subgraph WasmComponent [Xyph Rust Wasm Plugin]
-        W1 -->|export footprint-compare| W2[Footprint & Budget Validation]
-        W1 -->|export lower| W3[xyph.warp-intent-ir/v1 Canonical CBOR]
-        W1 -->|export verify| W4[Hash-Locked Verifier Report]
-    end
-
-    subgraph GitWarpSubstrate [Git-Warp Substrate]
-        W3 -->|Admitted via| G1[WasmVerifiedAdmissionPort]
-        W4 -->|Validates Digest| G1
-        G1 -->|Appends| G2[GitWarpWitnessedSuffixAdmissionShell]
-    end
-```
+![Wasm Target Lowerer](../../diagrams/wasm-target-lowerer.svg)
 
 ## The WebAssembly Component Contract
 
