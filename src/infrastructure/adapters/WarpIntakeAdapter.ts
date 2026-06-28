@@ -57,7 +57,7 @@ export class WarpIntakeAdapter implements IntakePort {
           );
         }
 
-        const graph = await this.graphPort.getGraph();
+        const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
 
         const props = await graph.getNodeProps(questId);
         if (props === null) {
@@ -145,7 +145,7 @@ export class WarpIntakeAdapter implements IntakePort {
         const intake = new IntakeService(roadmap);
         await intake.validateShape(questId);
 
-        const graph = await this.graphPort.getGraph();
+        const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
         const props = await graph.getNodeProps(questId);
         if (props === null) {
           throw new Error(`[NOT_FOUND] Quest ${questId} not found in the graph`);
@@ -192,7 +192,7 @@ export class WarpIntakeAdapter implements IntakePort {
           throw new Error(`[NOT_READY] ${reason}`);
         }
 
-        const graph = await this.graphPort.getGraph();
+        const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
         const now = Date.now();
         return graph.patch((p) => {
           p.setProperty(questId, 'status', 'READY')
@@ -219,7 +219,7 @@ export class WarpIntakeAdapter implements IntakePort {
           throw new Error(`[MISSING_ARG] --rationale is required and must be non-empty`);
         }
 
-        const graph = await this.graphPort.getGraph();
+        const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
 
         const props = await graph.getNodeProps(questId);
         if (props === null) {
@@ -261,7 +261,7 @@ export class WarpIntakeAdapter implements IntakePort {
           );
         }
 
-        const graph = await this.graphPort.getGraph();
+        const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
 
         const props = await graph.getNodeProps(questId);
         if (props === null) {

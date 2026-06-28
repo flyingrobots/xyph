@@ -25,7 +25,10 @@ export function registerWizardCommands(program: Command, ctx: CliContext): void 
     .action(withErrorHandler(async () => {
       if (ctx.json) return ctx.fail('Interactive mode not available with --json. Use quest command with flags.');
 
-      const { filter, input: bijouInput, confirm, select } = await import('@flyingrobots/bijou');
+      const filter = ctx.bijou?.filter ?? (await import('@flyingrobots/bijou')).filter;
+      const bijouInput = ctx.bijou?.input ?? (await import('@flyingrobots/bijou')).input;
+      const confirm = ctx.bijou?.confirm ?? (await import('@flyingrobots/bijou')).confirm;
+      const select = ctx.bijou?.select ?? (await import('@flyingrobots/bijou')).select;
       const snap = await fetchWizardSnapshot(ctx);
 
       // Pick campaign
@@ -165,7 +168,9 @@ export function registerWizardCommands(program: Command, ctx: CliContext): void 
     .action(withErrorHandler(async () => {
       if (ctx.json) return ctx.fail('Interactive mode not available with --json. Use review command with flags.');
 
-      const { filter, select, textarea } = await import('@flyingrobots/bijou');
+      const filter = ctx.bijou?.filter ?? (await import('@flyingrobots/bijou')).filter;
+      const select = ctx.bijou?.select ?? (await import('@flyingrobots/bijou')).select;
+      const textarea = ctx.bijou?.textarea ?? (await import('@flyingrobots/bijou')).textarea;
       const snap = await fetchWizardSnapshot(ctx);
 
       const openSubs = snap.submissions.filter(
@@ -210,8 +215,8 @@ export function registerWizardCommands(program: Command, ctx: CliContext): void 
       const { WarpSubmissionAdapter } = await import('../../infrastructure/adapters/WarpSubmissionAdapter.js');
       const { SubmissionService } = await import('../../domain/services/SubmissionService.js');
 
-      const adapter = new WarpSubmissionAdapter(ctx.graphPort, ctx.agentId);
-      const service = new SubmissionService(adapter);
+      const adapter = ctx.submissionAdapter ?? new WarpSubmissionAdapter(ctx.graphPort, ctx.agentId);
+      const service = ctx.submissionService ?? new SubmissionService(adapter);
       await service.validateReview(sub.tipPatchsetId, ctx.agentId);
 
       const reviewId = `review:${generateId()}`;
@@ -237,7 +242,10 @@ export function registerWizardCommands(program: Command, ctx: CliContext): void 
 
       assertPrefix(id, 'task:', 'Quest ID');
 
-      const { filter, confirm, input: bijouInput, select } = await import('@flyingrobots/bijou');
+      const filter = ctx.bijou?.filter ?? (await import('@flyingrobots/bijou')).filter;
+      const confirm = ctx.bijou?.confirm ?? (await import('@flyingrobots/bijou')).confirm;
+      const bijouInput = ctx.bijou?.input ?? (await import('@flyingrobots/bijou')).input;
+      const select = ctx.bijou?.select ?? (await import('@flyingrobots/bijou')).select;
       const snap = await fetchWizardSnapshot(ctx);
       const quest = snap.quests.find((q) => q.id === id);
       if (!quest) {
@@ -302,7 +310,7 @@ export function registerWizardCommands(program: Command, ctx: CliContext): void 
       }
 
       const { WarpIntakeAdapter } = await import('../../infrastructure/adapters/WarpIntakeAdapter.js');
-      const intake = new WarpIntakeAdapter(ctx.graphPort, ctx.agentId);
+      const intake = ctx.intakeAdapter ?? new WarpIntakeAdapter(ctx.graphPort, ctx.agentId);
       const sha = await intake.promote(id, intentId, campaignId ?? quest.campaignId, {
         description: description?.trim(),
         taskKind,
@@ -322,7 +330,10 @@ export function registerWizardCommands(program: Command, ctx: CliContext): void 
     .action(withErrorHandler(async () => {
       if (ctx.json) return ctx.fail('Triage is interactive-only. Use promote/reject with --json instead.');
 
-      const { filter, select, input: bijouInput, confirm } = await import('@flyingrobots/bijou');
+      const filter = ctx.bijou?.filter ?? (await import('@flyingrobots/bijou')).filter;
+      const select = ctx.bijou?.select ?? (await import('@flyingrobots/bijou')).select;
+      const bijouInput = ctx.bijou?.input ?? (await import('@flyingrobots/bijou')).input;
+      const confirm = ctx.bijou?.confirm ?? (await import('@flyingrobots/bijou')).confirm;
 
       const snap = await fetchWizardSnapshot(ctx);
       // INBOX items are normalized to BACKLOG in the snapshot.
@@ -337,7 +348,7 @@ export function registerWizardCommands(program: Command, ctx: CliContext): void 
       ctx.print(`\n  ${inboxQuests.length} item(s) in inbox.\n`);
 
       const { WarpIntakeAdapter } = await import('../../infrastructure/adapters/WarpIntakeAdapter.js');
-      const intake = new WarpIntakeAdapter(ctx.graphPort, ctx.agentId);
+      const intake = ctx.intakeAdapter ?? new WarpIntakeAdapter(ctx.graphPort, ctx.agentId);
 
       let processed = 0;
       let promoted = 0;

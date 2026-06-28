@@ -28,6 +28,8 @@ export type VisibleStateProjectionV5 = ReturnType<VisibleStateReaderV5['project'
 export type WarpStateV5 = SnapshotWarpState;
 const createStateReaderV5 = createStateReader;
 import type { GraphPort } from '../../ports/GraphPort.js';
+import type { ClockPort } from '../../ports/ClockPort.js';
+import { SystemClockAdapter } from '../../infrastructure/adapters/SystemClockAdapter.js';
 import type { ControlPlaneHooks, ControlPlanePort } from '../../ports/ControlPlanePort.js';
 import {
   CONTROL_PLANE_VERSION,
@@ -56,6 +58,7 @@ import { WarpObservationAdapter } from '../../infrastructure/adapters/WarpObserv
 import { WarpOperationalReadAdapter } from '../../infrastructure/adapters/WarpOperationalReadAdapter.js';
 import { WarpRoadmapAdapter } from '../../infrastructure/adapters/WarpRoadmapAdapter.js';
 import { WarpSubstrateInspectionAdapter } from '../../infrastructure/adapters/WarpSubstrateInspectionAdapter.js';
+import { WarpQuestReadAdapter } from '../../infrastructure/warp/optics/WarpQuestReadAdapter.js';
 import { AgentBriefingService } from './AgentBriefingService.js';
 import { AgentContextService } from './AgentContextService.js';
 import { AgentSubmissionService } from './AgentSubmissionService.js';
@@ -97,6 +100,7 @@ function buildEvent(
   id: string,
   cmd: string,
   event: 'start' | 'progress',
+  at: number,
   message?: string,
   data?: Record<string, unknown>,
 ): ControlPlaneEventRecordV1 {
@@ -105,7 +109,7 @@ function buildEvent(
     id,
     event,
     cmd,
-    at: Date.now(),
+    at,
     ...(message === undefined ? {} : { message }),
     ...(data === undefined ? {} : { data }),
   };
@@ -451,33 +455,66 @@ export class ControlPlaneService implements ControlPlanePort {
   private readonly capabilities: CapabilityResolverService;
   private readonly observation: WarpObservationAdapter;
   private readonly operationalRead: WarpOperationalReadAdapter;
+  private readonly questReadPort: WarpQuestReadAdapter;
+  private readonly clock: ClockPort;
+  private readonly briefingService?: AgentBriefingService;
+  private readonly contextService?: AgentContextService;
+  private readonly submissionService?: AgentSubmissionService;
+  private readonly actionService?: AgentActionService;
+  private readonly createProjection: typeof createObservedGraphProjection;
+  private readonly createProjectionFromGraph: typeof createObservedGraphProjectionFromGraph;
 
   constructor(
     private readonly graphPort: GraphPort,
     agentId: string,
+    clock?: ClockPort,
+    overrides?: {
+      roadmap?: WarpRoadmapAdapter;
+      doctor?: DoctorService;
+      mutations?: MutationKernelService;
+      records?: RecordService;
+      capabilities?: CapabilityResolverService;
+      observation?: WarpObservationAdapter;
+      operationalRead?: WarpOperationalReadAdapter;
+      questReadPort?: WarpQuestReadAdapter;
+      briefingService?: AgentBriefingService;
+      contextService?: AgentContextService;
+      submissionService?: AgentSubmissionService;
+      actionService?: AgentActionService;
+      createProjection?: typeof createObservedGraphProjection;
+      createProjectionFromGraph?: typeof createObservedGraphProjectionFromGraph;
+    }
   ) {
-    this.roadmap = new WarpRoadmapAdapter(graphPort);
-    this.observation = new WarpObservationAdapter(graphPort);
-    this.operationalRead = new WarpOperationalReadAdapter(graphPort);
-    this.doctor = new DoctorService(graphPort, this.roadmap, new WarpSubstrateInspectionAdapter(graphPort));
-    this.mutations = new MutationKernelService(graphPort);
-    this.records = new RecordService(graphPort);
-    this.capabilities = new CapabilityResolverService(agentId);
+    this.clock = clock ?? new SystemClockAdapter();
+    this.roadmap = overrides?.roadmap ?? new WarpRoadmapAdapter(graphPort);
+    this.observation = overrides?.observation ?? new WarpObservationAdapter(graphPort);
+    this.operationalRead = overrides?.operationalRead ?? new WarpOperationalReadAdapter(graphPort);
+    this.questReadPort = overrides?.questReadPort ?? new WarpQuestReadAdapter(graphPort, { accessorId: agentId, role: agentId.startsWith('human.') ? 'human' : 'agent' });
+    this.doctor = overrides?.doctor ?? new DoctorService(graphPort, this.roadmap, new WarpSubstrateInspectionAdapter(graphPort));
+    this.mutations = overrides?.mutations ?? new MutationKernelService(graphPort);
+    this.records = overrides?.records ?? new RecordService(graphPort, this.clock);
+    this.capabilities = overrides?.capabilities ?? new CapabilityResolverService(agentId);
+    this.briefingService = overrides?.briefingService;
+    this.contextService = overrides?.contextService;
+    this.submissionService = overrides?.submissionService;
+    this.actionService = overrides?.actionService;
+    this.createProjection = overrides?.createProjection ?? createObservedGraphProjection;
+    this.createProjectionFromGraph = overrides?.createProjectionFromGraph ?? createObservedGraphProjectionFromGraph;
   }
 
   public async execute(
     request: ControlPlaneRequestV1,
     hooks?: ControlPlaneHooks,
   ): Promise<ControlPlaneTerminalRecordV1> {
-    const attemptedAt = Date.now();
+    const attemptedAt = this.clock.now();
     let capability: EffectiveCapabilityGrant | null = null;
-    hooks?.onEvent?.(buildEvent(request.id, request.cmd, 'start'));
+    hooks?.onEvent?.(buildEvent(request.id, request.cmd, 'start', attemptedAt));
 
     try {
       capability = this.capabilities.resolve(request);
       this.requireCapability(request.cmd, capability);
       const response = await this.dispatch(request, capability, hooks);
-      const completedAt = Date.now();
+      const completedAt = this.clock.now();
       return {
         v: CONTROL_PLANE_VERSION,
         id: request.id,
@@ -494,7 +531,7 @@ export class ControlPlaneService implements ControlPlanePort {
         ),
       };
     } catch (err) {
-      const completedAt = Date.now();
+      const completedAt = this.clock.now();
       const error = toControlPlaneError(err);
       return {
         v: CONTROL_PLANE_VERSION,
@@ -614,16 +651,17 @@ export class ControlPlaneService implements ControlPlanePort {
     actions: AgentActionService;
   } {
     return {
-      briefing: new AgentBriefingService(
+      briefing: this.briefingService ?? new AgentBriefingService(
         this.graphPort,
         this.roadmap,
         principalId,
         this.operationalRead,
+        this.questReadPort,
         this.doctor,
       ),
-      context: new AgentContextService(this.graphPort, this.roadmap, principalId, this.observation, this.doctor),
-      submissions: new AgentSubmissionService(principalId, this.observation),
-      actions: new AgentActionService(this.graphPort, this.roadmap, principalId, this.observation, this.doctor),
+      context: this.contextService ?? new AgentContextService(this.graphPort, this.roadmap, principalId, this.observation, this.doctor),
+      submissions: this.submissionService ?? new AgentSubmissionService(principalId, this.observation),
+      actions: this.actionService ?? new AgentActionService(this.graphPort, this.roadmap, principalId, this.observation, this.doctor),
     };
   }
 
@@ -811,7 +849,7 @@ export class ControlPlaneService implements ControlPlanePort {
     ] = counts;
 
     return {
-      asOf: Date.now(),
+      asOf: this.clock.now(),
       counts: {
         campaigns: campaigns + milestones,
         quests,
@@ -955,7 +993,7 @@ export class ControlPlaneService implements ControlPlanePort {
           observation: await this.buildObservationCoordinate(
             request,
             capability,
-            Date.now(),
+            this.clock.now(),
             null,
             false,
             graph,
@@ -970,8 +1008,8 @@ export class ControlPlaneService implements ControlPlanePort {
           : await this.createDerivedWorldlineProjection(capability, selector);
         const projectionReader = derived?.projection ?? (
           selector.kind === 'tip'
-            ? createObservedGraphProjection(this.graphPort)
-            : createObservedGraphProjectionFromGraph(await this.openObservationGraph(selector), { syncCoverage: false })
+            ? this.createProjection(this.graphPort)
+            : this.createProjectionFromGraph(await this.openObservationGraph(selector), { syncCoverage: false })
         );
         const targetId = this.requireString(request.args['targetId'], 'observe targetId');
         const detail = await projectionReader.fetchEntityDetail(targetId);
@@ -996,7 +1034,7 @@ export class ControlPlaneService implements ControlPlanePort {
           observation: await this.buildObservationCoordinate(
             request,
             capability,
-            Date.now(),
+            this.clock.now(),
             null,
             true,
             projectionReader.graph,
@@ -1030,7 +1068,7 @@ export class ControlPlaneService implements ControlPlanePort {
           observation: await this.buildObservationCoordinate(
             request,
             capability,
-            Date.now(),
+            this.clock.now(),
             null,
             false,
           ),
@@ -1046,7 +1084,7 @@ export class ControlPlaneService implements ControlPlanePort {
             briefing,
           },
           diagnostics: briefing.diagnostics,
-          observation: await this.buildObservationCoordinate(request, capability, Date.now(), briefing.graphMeta),
+          observation: await this.buildObservationCoordinate(request, capability, this.clock.now(), briefing.graphMeta),
         };
       }
       case 'next': {
@@ -1062,7 +1100,7 @@ export class ControlPlaneService implements ControlPlanePort {
             candidates: next.candidates,
           },
           diagnostics: next.diagnostics,
-          observation: await this.buildObservationCoordinate(request, capability, Date.now(), null),
+          observation: await this.buildObservationCoordinate(request, capability, this.clock.now(), null),
         };
       }
       case 'submissions': {
@@ -1085,7 +1123,7 @@ export class ControlPlaneService implements ControlPlanePort {
         this.requireTipOnlyProjection(selector, projection);
         const report = await this.doctor.run({
           onProgress: (progress) => hooks?.onEvent?.(
-            buildEvent(request.id, request.cmd, 'progress', progress.message, { stage: progress.stage }),
+            buildEvent(request.id, request.cmd, 'progress', this.clock.now(), progress.message, { stage: progress.stage }),
           ),
         });
         return {
@@ -1102,7 +1140,7 @@ export class ControlPlaneService implements ControlPlanePort {
         this.requireTipOnlyProjection(selector, projection);
         const report = await this.doctor.prescribe({
           onProgress: (progress) => hooks?.onEvent?.(
-            buildEvent(request.id, request.cmd, 'progress', progress.message, { stage: progress.stage }),
+            buildEvent(request.id, request.cmd, 'progress', this.clock.now(), progress.message, { stage: progress.stage }),
           ),
         });
         return {
@@ -1662,9 +1700,13 @@ export class ControlPlaneService implements ControlPlanePort {
         const props = await worldline.getNodeProps(nodeId);
         const derivedOid = typeof props?.['_content'] === 'string' ? props['_content'] : null;
         if (!derivedOid) return null;
-        const liveOid = await graph.getContentOid(nodeId);
-        if (liveOid !== derivedOid) return null;
-        return graph.getContent(nodeId);
+        try {
+          const liveOid = await graph.getContentOid(nodeId);
+          if (liveOid !== derivedOid) return null;
+          return await graph.getContent(nodeId);
+        } catch {
+          return null;
+        }
       },
       neighbors: async (
         nodeId: string,
@@ -1694,7 +1736,7 @@ export class ControlPlaneService implements ControlPlanePort {
       graph: derivedGraph,
       frontierDigest,
       backing,
-      projection: createObservedGraphProjectionFromGraph(derivedGraph, { syncCoverage: false }),
+      projection: this.createProjectionFromGraph(derivedGraph, { syncCoverage: false }),
     };
   }
 
@@ -1743,7 +1785,7 @@ export class ControlPlaneService implements ControlPlanePort {
         observation: await this.buildObservationCoordinate(
           request,
           capability,
-          Date.now(),
+          this.clock.now(),
           null,
           false,
           materialized.graph,
@@ -1766,7 +1808,7 @@ export class ControlPlaneService implements ControlPlanePort {
         patches,
       },
       diagnostics: [],
-      observation: await this.buildObservationCoordinate(request, capability, Date.now(), null, false, graph),
+      observation: await this.buildObservationCoordinate(request, capability, this.clock.now(), null, false, graph),
     };
   }
 
@@ -1809,7 +1851,7 @@ export class ControlPlaneService implements ControlPlanePort {
       const observation = await this.buildObservationCoordinate(
         request,
         capability,
-        Date.now(),
+        this.clock.now(),
         null,
         false,
         current.graph,
@@ -1860,7 +1902,7 @@ export class ControlPlaneService implements ControlPlanePort {
           },
         },
         capability,
-        Date.now(),
+        this.clock.now(),
         null,
         false,
         current.graph,
@@ -1888,7 +1930,7 @@ export class ControlPlaneService implements ControlPlanePort {
     }
 
     const graph = await this.openObservationGraph(selector);
-    const observation = await this.buildObservationCoordinate(request, capability, Date.now(), null, false, graph);
+    const observation = await this.buildObservationCoordinate(request, capability, this.clock.now(), null, false, graph);
     const targetId = typeof request.args['targetId'] === 'string'
       ? request.args['targetId']
       : null;
@@ -1922,7 +1964,7 @@ export class ControlPlaneService implements ControlPlanePort {
         },
       },
       capability,
-      Date.now(),
+      this.clock.now(),
       null,
       false,
       sinceGraph,
@@ -2078,7 +2120,7 @@ export class ControlPlaneService implements ControlPlanePort {
           recommendationRequests: result.recommendationRequests,
         },
         diagnostics: result.diagnostics,
-        observation: await this.buildObservationCoordinate(request, capability, Date.now(), null),
+        observation: await this.buildObservationCoordinate(request, capability, this.clock.now(), null),
       };
     }
 
@@ -2123,7 +2165,7 @@ export class ControlPlaneService implements ControlPlanePort {
         return {
           data,
           diagnostics: [],
-          observation: await this.buildObservationCoordinate(request, capability, Date.now(), null, false, graph),
+          observation: await this.buildObservationCoordinate(request, capability, this.clock.now(), null, false, graph),
         };
       }
       case 'governance.series': {
@@ -2132,7 +2174,7 @@ export class ControlPlaneService implements ControlPlanePort {
         return {
           data,
           diagnostics: [],
-          observation: await this.buildObservationCoordinate(request, capability, Date.now(), null, true, graph),
+          observation: await this.buildObservationCoordinate(request, capability, this.clock.now(), null, true, graph),
         };
       }
       default:
@@ -2176,7 +2218,7 @@ export class ControlPlaneService implements ControlPlanePort {
       this.listCanonicalArtifactNodes(graph, 'comparison-artifact'),
       this.listCanonicalArtifactNodes(graph, 'collapse-proposal'),
     ]);
-    const projectionReader = createObservedGraphProjectionFromGraph(graph, { syncCoverage: false });
+    const projectionReader = this.createProjectionFromGraph(graph, { syncCoverage: false });
 
     const comparisonDetails = (await Promise.all(
       comparisonNodes.map(async ({ id }) => projectionReader.fetchEntityDetail(id)),
@@ -2201,7 +2243,7 @@ export class ControlPlaneService implements ControlPlanePort {
 
     return {
       view: 'governance.worklist',
-      asOf: Date.now(),
+      asOf: this.clock.now(),
       limit,
       summary: {
         freshComparisons: freshComparisons.length,
@@ -2262,7 +2304,7 @@ export class ControlPlaneService implements ControlPlanePort {
     graph: WarpGraph,
     artifactId: string,
   ): Promise<Record<string, unknown>> {
-    const projectionReader = createObservedGraphProjectionFromGraph(graph, { syncCoverage: false });
+    const projectionReader = this.createProjectionFromGraph(graph, { syncCoverage: false });
     const detail = await projectionReader.fetchEntityDetail(artifactId);
     if (!detail) {
       throw controlPlaneFailure('not_found', `Entity ${artifactId} not found in the graph`);
@@ -2485,7 +2527,7 @@ export class ControlPlaneService implements ControlPlanePort {
     const observation = await this.buildObservationCoordinate(
       request,
       { ...capability, worldlineId },
-      Date.now(),
+      this.clock.now(),
       null,
       false,
       graph,
@@ -2722,7 +2764,7 @@ export class ControlPlaneService implements ControlPlanePort {
       observation: await this.buildObservationCoordinate(
         request,
         capability,
-        Date.now(),
+        this.clock.now(),
         null,
         false,
         graph,
@@ -2777,7 +2819,7 @@ export class ControlPlaneService implements ControlPlanePort {
       this.rethrowComparisonError(err, leftWorldlineId, rightWorldlineId);
     }
 
-    const comparedAt = Date.now();
+    const comparedAt = this.clock.now();
     const leftObservation = await this.buildObservationCoordinate(
       {
         ...request,
@@ -3131,7 +3173,7 @@ export class ControlPlaneService implements ControlPlanePort {
       );
     }
 
-    const preparedAt = Date.now();
+    const preparedAt = this.clock.now();
     const sourceObservation = await this.buildObservationCoordinate(
       {
         ...request,
@@ -3334,7 +3376,7 @@ export class ControlPlaneService implements ControlPlanePort {
                 ...capability,
                 worldlineId: targetWorldlineId,
               },
-              Date.now(),
+              this.clock.now(),
               null,
             ),
           }
@@ -3410,7 +3452,7 @@ export class ControlPlaneService implements ControlPlanePort {
       observation: await this.buildObservationCoordinate(
         request,
         capability,
-        Date.now(),
+        this.clock.now(),
         null,
         false,
         graph,
@@ -3451,7 +3493,7 @@ export class ControlPlaneService implements ControlPlanePort {
         contentOid: result.contentOid,
       },
       diagnostics: [],
-      observation: await this.buildObservationCoordinate(request, capability, Date.now(), null),
+      observation: await this.buildObservationCoordinate(request, capability, this.clock.now(), null),
     };
   }
 
@@ -3492,7 +3534,7 @@ export class ControlPlaneService implements ControlPlanePort {
         contentOid: result.contentOid,
       },
       diagnostics: [],
-      observation: await this.buildObservationCoordinate(request, capability, Date.now(), null),
+      observation: await this.buildObservationCoordinate(request, capability, this.clock.now(), null),
     };
   }
 
@@ -3532,7 +3574,7 @@ export class ControlPlaneService implements ControlPlanePort {
         contentOid: result.contentOid,
       },
       diagnostics: [],
-      observation: await this.buildObservationCoordinate(request, capability, Date.now(), null),
+      observation: await this.buildObservationCoordinate(request, capability, this.clock.now(), null),
     };
   }
 

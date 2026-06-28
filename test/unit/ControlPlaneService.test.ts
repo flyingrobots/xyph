@@ -513,21 +513,50 @@ function makeCoordinateTransferPlan(
   };
 }
 
-vi.mock('../../src/infrastructure/ObservedGraphProjection.js', () => ({
-  createObservedGraphProjection: () => ({
+function createService(graphPort: any, agentId: string) {
+  const briefingService = {
+    buildBriefing: () => mocks.buildBriefing(agentId),
+    next: (limit?: number) => mocks.next(limit, agentId),
+  } as any;
+
+  const contextService = {
+    fetch: (id: string) => mocks.fetchContext(id, agentId),
+  } as any;
+
+  const submissionService = {
+    list: (limit?: number) => mocks.listSubmissions(limit, agentId),
+  } as any;
+
+  const actionService = {
+    execute: (request: unknown) => mocks.executeAction(request, agentId),
+  } as any;
+
+  const doctor = {
+    run: (opts?: any) => mocks.doctorRun(opts),
+    prescribe: (opts?: any) => mocks.doctorPrescribe(opts),
+  } as any;
+
+  const mutations = {
+    execute: (plan: unknown, opts?: any) => mocks.executeMutation(plan, opts),
+  } as any;
+
+  const records = {
+    createComment: (input: unknown) => mocks.createComment(input),
+    createProposal: (input: unknown) => mocks.createProposal(input),
+    createAttestation: (input: unknown) => mocks.createAttestation(input),
+    createCanonicalArtifact: (input: unknown) => mocks.createCanonicalArtifact(input),
+  } as any;
+
+  const createProjection = () => ({
     fetchSnapshot: mocks.fetchSnapshot,
     fetchEntityDetail: mocks.fetchEntityDetail,
     graph: {
       getStateSnapshot: mocks.getStateSnapshot,
       getFrontier: mocks.getFrontier,
     },
-  }),
-  createObservedGraphProjectionFromGraph: (graph: {
-    getStateSnapshot: typeof mocks.getStateSnapshot;
-    getFrontier: typeof mocks.getFrontier;
-  }, opts?: {
-    materializeGraph?: (graph: unknown) => Promise<void>;
-  }) => ({
+  }) as any;
+
+  const createProjectionFromGraph = (graph: any, opts?: any) => ({
     fetchSnapshot: async () => {
       await opts?.materializeGraph?.(graph);
       return mocks.fetchSnapshot();
@@ -540,104 +569,20 @@ vi.mock('../../src/infrastructure/ObservedGraphProjection.js', () => ({
       getStateSnapshot: graph.getStateSnapshot,
       getFrontier: graph.getFrontier,
     },
-  }),
-}));
+  }) as any;
 
-vi.mock('../../src/infrastructure/adapters/WarpRoadmapAdapter.js', () => ({
-  WarpRoadmapAdapter: function WarpRoadmapAdapter(...args: unknown[]) {
-    mocks.WarpRoadmapAdapter(...args);
-  },
-}));
-
-vi.mock('../../src/domain/services/DoctorService.js', () => ({
-  DoctorService: class DoctorService {
-    run(opts?: { onProgress?: (progress: { stage: string; message: string }) => void }) {
-      return mocks.doctorRun(opts);
-    }
-    prescribe(opts?: { onProgress?: (progress: { stage: string; message: string }) => void }) {
-      return mocks.doctorPrescribe(opts);
-    }
-  },
-}));
-
-vi.mock('../../src/domain/services/AgentBriefingService.js', () => ({
-  AgentBriefingService: class AgentBriefingService {
-    constructor(
-      _graphPort: unknown,
-      _roadmap: unknown,
-      private readonly agentId: string,
-    ) {}
-    buildBriefing() {
-      return mocks.buildBriefing(this.agentId);
-    }
-    next(limit?: number) {
-      return mocks.next(limit, this.agentId);
-    }
-  },
-}));
-
-vi.mock('../../src/domain/services/AgentContextService.js', () => ({
-  AgentContextService: class AgentContextService {
-    constructor(
-      _graphPort: unknown,
-      _roadmap: unknown,
-      private readonly agentId: string,
-    ) {}
-    fetch(id: string) {
-      return mocks.fetchContext(id, this.agentId);
-    }
-  },
-}));
-
-vi.mock('../../src/domain/services/AgentSubmissionService.js', () => ({
-  AgentSubmissionService: class AgentSubmissionService {
-    constructor(
-      _graphPort: unknown,
-      private readonly agentId: string,
-    ) {}
-    list(limit?: number) {
-      return mocks.listSubmissions(limit, this.agentId);
-    }
-  },
-}));
-
-vi.mock('../../src/domain/services/AgentActionService.js', () => ({
-  AgentActionService: class AgentActionService {
-    constructor(
-      _graphPort: unknown,
-      _roadmap: unknown,
-      private readonly agentId: string,
-    ) {}
-    execute(request: unknown) {
-      return mocks.executeAction(request, this.agentId);
-    }
-  },
-}));
-
-vi.mock('../../src/domain/services/MutationKernelService.js', () => ({
-  MutationKernelService: class MutationKernelService {
-    execute(plan: unknown, opts?: { dryRun?: boolean; allowEmptyPlan?: boolean }) {
-      return mocks.executeMutation(plan, opts);
-    }
-  },
-}));
-
-vi.mock('../../src/domain/services/RecordService.js', () => ({
-  RecordService: class RecordService {
-    createComment(input: unknown) {
-      return mocks.createComment(input);
-    }
-    createProposal(input: unknown) {
-      return mocks.createProposal(input);
-    }
-    createAttestation(input: unknown) {
-      return mocks.createAttestation(input);
-    }
-    createCanonicalArtifact(input: unknown) {
-      return mocks.createCanonicalArtifact(input);
-    }
-  },
-}));
+  return new ControlPlaneService(graphPort, agentId, undefined, {
+    doctor,
+    mutations,
+    records,
+    briefingService,
+    contextService,
+    submissionService,
+    actionService,
+    createProjection,
+    createProjectionFromGraph,
+  });
+}
 
 import { ControlPlaneService } from '../../src/domain/services/ControlPlaneService.js';
 
@@ -848,7 +793,7 @@ describe('ControlPlaneService', () => {
   });
 
   it('returns a versioned observe graph.summary success record with observation metadata', async () => {
-    const service = new ControlPlaneService({
+    const service = createService({
       getGraph: mocks.getGraph,
       openIsolatedGraph: mocks.openIsolatedGraph,
       reset: vi.fn(),
@@ -898,7 +843,7 @@ describe('ControlPlaneService', () => {
   });
 
   it('routes observe(worldline.summary) for derived worldlines through isolated working-set materialization', async () => {
-    const service = new ControlPlaneService({
+    const service = createService({
       getGraph: mocks.getGraph,
       openIsolatedGraph: mocks.openIsolatedGraph,
       reset: vi.fn(),
@@ -947,7 +892,7 @@ describe('ControlPlaneService', () => {
   });
 
   it('uses the request auth principal override for durable writes and audit metadata', async () => {
-    const service = new ControlPlaneService({
+    const service = createService({
       getGraph: mocks.getGraph,
       openIsolatedGraph: mocks.openIsolatedGraph,
       reset: vi.fn(),
@@ -1004,7 +949,7 @@ describe('ControlPlaneService', () => {
       details: null,
     });
 
-    const service = new ControlPlaneService({
+    const service = createService({
       getGraph: mocks.getGraph,
       openIsolatedGraph: mocks.openIsolatedGraph,
       reset: vi.fn(),
@@ -1036,7 +981,7 @@ describe('ControlPlaneService', () => {
   });
 
   it('creates a derived worldline by delegating to the substrate working-set API', async () => {
-    const service = new ControlPlaneService({
+    const service = createService({
       getGraph: mocks.getGraph,
       openIsolatedGraph: mocks.openIsolatedGraph,
       reset: vi.fn(),
@@ -1125,7 +1070,7 @@ describe('ControlPlaneService', () => {
       makeWorkingSetState(['task:ONE', 'task:TWO'], [['agent.prime', 12], ['wl_review-auth', 3], ['wl_hold-auth', 2]]),
     );
 
-    const service = new ControlPlaneService({
+    const service = createService({
       getGraph: mocks.getGraph,
       openIsolatedGraph: mocks.openIsolatedGraph,
       reset: vi.fn(),
@@ -1212,7 +1157,7 @@ describe('ControlPlaneService', () => {
   });
 
   it('rejects braid_worldlines when the target worldline is live', async () => {
-    const service = new ControlPlaneService({
+    const service = createService({
       getGraph: mocks.getGraph,
       openIsolatedGraph: mocks.openIsolatedGraph,
       reset: vi.fn(),
@@ -1237,7 +1182,7 @@ describe('ControlPlaneService', () => {
   });
 
   it('rejects duplicate or non-derived support ids for braid_worldlines instead of leaking substrate argument rules', async () => {
-    const service = new ControlPlaneService({
+    const service = createService({
       getGraph: mocks.getGraph,
       openIsolatedGraph: mocks.openIsolatedGraph,
       reset: vi.fn(),
@@ -1284,7 +1229,7 @@ describe('ControlPlaneService', () => {
     );
     mocks.patchesForWorkingSet.mockResolvedValueOnce(['patch:base', 'patch:overlay']);
 
-    const service = new ControlPlaneService({
+    const service = createService({
       getGraph: mocks.getGraph,
       openIsolatedGraph: mocks.openIsolatedGraph,
       reset: vi.fn(),
@@ -1339,7 +1284,7 @@ describe('ControlPlaneService', () => {
       }),
     );
 
-    const service = new ControlPlaneService({
+    const service = createService({
       getGraph: mocks.getGraph,
       openIsolatedGraph: mocks.openIsolatedGraph,
       reset: vi.fn(),
@@ -1459,7 +1404,7 @@ describe('ControlPlaneService', () => {
       }),
     );
 
-    const service = new ControlPlaneService({
+    const service = createService({
       getGraph: mocks.getGraph,
       openIsolatedGraph: mocks.openIsolatedGraph,
       reset: vi.fn(),
@@ -1531,7 +1476,7 @@ describe('ControlPlaneService', () => {
       existed: false,
     });
 
-    const service = new ControlPlaneService({
+    const service = createService({
       getGraph: mocks.getGraph,
       openIsolatedGraph: mocks.openIsolatedGraph,
       reset: vi.fn(),
@@ -1580,7 +1525,7 @@ describe('ControlPlaneService', () => {
   });
 
   it('requires againstWorldlineId when compare_worldlines starts from worldline:live', async () => {
-    const service = new ControlPlaneService({
+    const service = createService({
       getGraph: mocks.getGraph,
       openIsolatedGraph: mocks.openIsolatedGraph,
       reset: vi.fn(),
@@ -1641,7 +1586,7 @@ describe('ControlPlaneService', () => {
       executed: false,
     });
 
-    const service = new ControlPlaneService({
+    const service = createService({
       getGraph: mocks.getGraph,
       openIsolatedGraph: mocks.openIsolatedGraph,
       reset: vi.fn(),
@@ -1766,7 +1711,7 @@ describe('ControlPlaneService', () => {
       }),
     );
 
-    const service = new ControlPlaneService({
+    const service = createService({
       getGraph: mocks.getGraph,
       openIsolatedGraph: mocks.openIsolatedGraph,
       reset: vi.fn(),
@@ -1846,7 +1791,7 @@ describe('ControlPlaneService', () => {
       existed: false,
     });
 
-    const service = new ControlPlaneService({
+    const service = createService({
       getGraph: mocks.getGraph,
       openIsolatedGraph: mocks.openIsolatedGraph,
       reset: vi.fn(),
@@ -1962,7 +1907,7 @@ describe('ControlPlaneService', () => {
       return null;
     });
 
-    const service = new ControlPlaneService({
+    const service = createService({
       getGraph: mocks.getGraph,
       openIsolatedGraph: mocks.openIsolatedGraph,
       reset: vi.fn(),
@@ -2065,7 +2010,7 @@ describe('ControlPlaneService', () => {
       'worldline:live',
     );
 
-    const service = new ControlPlaneService({
+    const service = createService({
       getGraph: mocks.getGraph,
       openIsolatedGraph: mocks.openIsolatedGraph,
       reset: vi.fn(),
@@ -2145,7 +2090,7 @@ describe('ControlPlaneService', () => {
       return null;
     });
 
-    const service = new ControlPlaneService({
+    const service = createService({
       getGraph: mocks.getGraph,
       openIsolatedGraph: mocks.openIsolatedGraph,
       reset: vi.fn(),
@@ -2235,7 +2180,7 @@ describe('ControlPlaneService', () => {
       return null;
     });
 
-    const service = new ControlPlaneService({
+    const service = createService({
       getGraph: mocks.getGraph,
       openIsolatedGraph: mocks.openIsolatedGraph,
       reset: vi.fn(),
@@ -2302,7 +2247,7 @@ describe('ControlPlaneService', () => {
       .mockResolvedValueOnce(['patch:1', 'patch:2', 'patch:3'])
       .mockResolvedValueOnce(['patch:1']);
 
-    const service = new ControlPlaneService({
+    const service = createService({
       getGraph: mocks.getGraph,
       openIsolatedGraph: mocks.openIsolatedGraph,
       reset: vi.fn(),
@@ -2358,7 +2303,7 @@ describe('ControlPlaneService', () => {
       makeWorkingSetState(['task:ONE'], [['agent.prime', 12], ['wl_review-auth', 4]]),
     );
 
-    const service = new ControlPlaneService({
+    const service = createService({
       getGraph: mocks.getGraph,
       openIsolatedGraph: mocks.openIsolatedGraph,
       reset: vi.fn(),
@@ -2399,7 +2344,7 @@ describe('ControlPlaneService', () => {
   });
 
   it('routes durable record writes through the record service', async () => {
-    const service = new ControlPlaneService({
+    const service = createService({
       getGraph: mocks.getGraph,
       openIsolatedGraph: mocks.openIsolatedGraph,
       reset: vi.fn(),
@@ -2433,7 +2378,7 @@ describe('ControlPlaneService', () => {
   });
 
   it('denies attest for non-human principals via effective capability resolution', async () => {
-    const service = new ControlPlaneService({
+    const service = createService({
       getGraph: mocks.getGraph,
       openIsolatedGraph: mocks.openIsolatedGraph,
       reset: vi.fn(),
@@ -2464,7 +2409,7 @@ describe('ControlPlaneService', () => {
   });
 
   it('requires explicit human admin capability for hidden admin commands', async () => {
-    const service = new ControlPlaneService({
+    const service = createService({
       getGraph: mocks.getGraph,
       openIsolatedGraph: mocks.openIsolatedGraph,
       reset: vi.fn(),
@@ -2614,7 +2559,7 @@ describe('ControlPlaneService', () => {
         },
       });
 
-    const service = new ControlPlaneService({
+    const service = createService({
       getGraph: mocks.getGraph,
       openIsolatedGraph: mocks.openIsolatedGraph,
       reset: vi.fn(),
@@ -2766,7 +2711,7 @@ describe('ControlPlaneService', () => {
         },
       });
 
-    const service = new ControlPlaneService({
+    const service = createService({
       getGraph: mocks.getGraph,
       openIsolatedGraph: mocks.openIsolatedGraph,
       reset: vi.fn(),
@@ -2847,7 +2792,7 @@ describe('ControlPlaneService', () => {
       diagnostics: [],
     });
 
-    const service = new ControlPlaneService({
+    const service = createService({
       getGraph: mocks.getGraph,
       openIsolatedGraph: mocks.openIsolatedGraph,
       reset: vi.fn(),
@@ -2943,7 +2888,7 @@ describe('ControlPlaneService', () => {
       diagnostics: [],
     });
 
-    const service = new ControlPlaneService({
+    const service = createService({
       getGraph: mocks.getGraph,
       openIsolatedGraph: mocks.openIsolatedGraph,
       reset: vi.fn(),
@@ -2997,7 +2942,7 @@ describe('ControlPlaneService', () => {
   });
 
   it('explains control-plane capability denials for probe commands', async () => {
-    const service = new ControlPlaneService({
+    const service = createService({
       getGraph: mocks.getGraph,
       openIsolatedGraph: mocks.openIsolatedGraph,
       reset: vi.fn(),
@@ -3032,7 +2977,7 @@ describe('ControlPlaneService', () => {
   });
 
   it('supports observe at=tick for low-level projections via an isolated historical graph', async () => {
-    const service = new ControlPlaneService({
+    const service = createService({
       getGraph: mocks.getGraph,
       openIsolatedGraph: mocks.openIsolatedGraph,
       reset: vi.fn(),
@@ -3067,7 +3012,7 @@ describe('ControlPlaneService', () => {
   });
 
   it('rejects fork_worldline from a non-live source worldline instead of pretending nested substrate support', async () => {
-    const service = new ControlPlaneService({
+    const service = createService({
       getGraph: mocks.getGraph,
       openIsolatedGraph: mocks.openIsolatedGraph,
       reset: vi.fn(),
@@ -3098,7 +3043,7 @@ describe('ControlPlaneService', () => {
       { code: 'E_STRAND_ALREADY_EXISTS' },
     ));
 
-    const service = new ControlPlaneService({
+    const service = createService({
       getGraph: mocks.getGraph,
       openIsolatedGraph: mocks.openIsolatedGraph,
       reset: vi.fn(),
@@ -3188,7 +3133,7 @@ describe('ControlPlaneService', () => {
       }],
     });
 
-    const service = new ControlPlaneService({
+    const service = createService({
       getGraph: mocks.getGraph,
       openIsolatedGraph: mocks.openIsolatedGraph,
       reset: vi.fn(),
@@ -3276,7 +3221,7 @@ describe('ControlPlaneService', () => {
       conflicts: [],
     });
 
-    const service = new ControlPlaneService({
+    const service = createService({
       getGraph: mocks.getGraph,
       openIsolatedGraph: mocks.openIsolatedGraph,
       reset: vi.fn(),
@@ -3402,7 +3347,7 @@ describe('ControlPlaneService', () => {
       ],
     });
 
-    const service = new ControlPlaneService({
+    const service = createService({
       getGraph: mocks.getGraph,
       openIsolatedGraph: mocks.openIsolatedGraph,
       reset: vi.fn(),
@@ -3445,7 +3390,7 @@ describe('ControlPlaneService', () => {
   });
 
   it('rejects historical at=tick for observe(conflicts) instead of pretending frontier-local support', async () => {
-    const service = new ControlPlaneService({
+    const service = createService({
       getGraph: mocks.getGraph,
       openIsolatedGraph: mocks.openIsolatedGraph,
       reset: vi.fn(),
@@ -3476,7 +3421,7 @@ describe('ControlPlaneService', () => {
       { code: 'unsupported_target_selector' },
     ));
 
-    const service = new ControlPlaneService({
+    const service = createService({
       getGraph: mocks.getGraph,
       openIsolatedGraph: mocks.openIsolatedGraph,
       reset: vi.fn(),
@@ -3547,7 +3492,7 @@ describe('ControlPlaneService', () => {
       },
     });
 
-    const service = new ControlPlaneService({
+    const service = createService({
       getGraph: mocks.getGraph,
       openIsolatedGraph: mocks.openIsolatedGraph,
       reset: vi.fn(),
@@ -3608,7 +3553,7 @@ describe('ControlPlaneService', () => {
       },
     });
 
-    const service = new ControlPlaneService({
+    const service = createService({
       getGraph: mocks.getGraph,
       openIsolatedGraph: mocks.openIsolatedGraph,
       reset: vi.fn(),
@@ -3662,7 +3607,7 @@ describe('ControlPlaneService', () => {
     };
     mocks.openIsolatedGraph.mockResolvedValue(liveGraph);
 
-    const service = new ControlPlaneService({
+    const service = createService({
       getGraph: mocks.getGraph,
       openIsolatedGraph: mocks.openIsolatedGraph,
       reset: vi.fn(),
@@ -3713,7 +3658,7 @@ describe('ControlPlaneService', () => {
       .mockResolvedValueOnce(currentGraph)
       .mockResolvedValueOnce(historicalGraph);
 
-    const service = new ControlPlaneService({
+    const service = createService({
       getGraph: mocks.getGraph,
       openIsolatedGraph: mocks.openIsolatedGraph,
       reset: vi.fn(),

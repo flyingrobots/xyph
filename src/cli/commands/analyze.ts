@@ -14,6 +14,7 @@ import type { Command } from 'commander';
 import type { CliContext } from '../context.js';
 import { createErrorHandler } from '../errorHandler.js';
 import { liveObservation } from '../../ports/ObservationPort.js';
+import type { ConfigPort } from '../../ports/ConfigPort.js';
 
 /** Deterministic short hash of testFile+targetId to avoid slug truncation collisions. */
 function linkHash(testFile: string, targetId: string): string {
@@ -37,8 +38,10 @@ export function registerAnalyzeCommands(program: Command, ctx: CliContext): void
       glob?: string; dryRun?: boolean; layers?: string; minConfidence?: string;
     }) => {
       // --- Resolve config ---
-      const { ConfigAdapter } = await import('../../infrastructure/adapters/ConfigAdapter.js');
-      const configAdapter = new ConfigAdapter(ctx.graphPort, process.cwd());
+      const configAdapter = ctx.configService ?? await (async (): Promise<ConfigPort> => {
+        const { ConfigAdapter } = await import('../../infrastructure/adapters/ConfigAdapter.js');
+        return new ConfigAdapter(ctx.graphPort, process.cwd());
+      })();
       const config = await configAdapter.getAll();
 
       if (opts.glob) config.testGlob = opts.glob;
@@ -71,8 +74,7 @@ export function registerAnalyzeCommands(program: Command, ctx: CliContext): void
       const snapshot = await readSession.fetchSnapshot('analysis');
 
       // --- Glob test files ---
-      const { globSync } = await import('node:fs');
-      const files = globSync(config.testGlob, { cwd: process.cwd() });
+      const files = (ctx.globSync ?? (await import('node:fs')).globSync)(config.testGlob, { cwd: process.cwd() });
 
       if (files.length === 0) {
         if (ctx.json) {
@@ -84,12 +86,12 @@ export function registerAnalyzeCommands(program: Command, ctx: CliContext): void
       }
 
       // --- Parse test files ---
-      const { parseTestFile } = await import('../../infrastructure/adapters/TsCompilerTestParserAdapter.js');
-      const fs = await import('node:fs/promises');
+      const parseTestFile = ctx.parseTestFile ?? (await import('../../infrastructure/adapters/TsCompilerTestParserAdapter.js')).parseTestFile;
+      const readFile = ctx.readFile ?? (await import('node:fs/promises')).readFile;
 
       const tests = await Promise.all(
         files.map(async (filePath) => {
-          const content = await fs.readFile(filePath, 'utf-8');
+          const content = await readFile(filePath, 'utf-8');
           return parseTestFile(content, filePath);
         }),
       );
@@ -143,10 +145,10 @@ export function registerAnalyzeCommands(program: Command, ctx: CliContext): void
       }
 
       // --- Build heuristic layers ---
-      const { scoreFileName } = await import('../../domain/services/analysis/layers/FileNameLayer.js');
-      const { scoreImportDescribe } = await import('../../domain/services/analysis/layers/ImportDescribeLayer.js');
-      const { scoreAst } = await import('../../domain/services/analysis/layers/AstLayer.js');
-      const { scoreSemantic } = await import('../../domain/services/analysis/layers/SemanticLayer.js');
+      const scoreFileName = ctx.scoreFileName ?? (await import('../../domain/services/analysis/layers/FileNameLayer.js')).scoreFileName;
+      const scoreImportDescribe = ctx.scoreImportDescribe ?? (await import('../../domain/services/analysis/layers/ImportDescribeLayer.js')).scoreImportDescribe;
+      const scoreAst = ctx.scoreAst ?? (await import('../../domain/services/analysis/layers/AstLayer.js')).scoreAst;
+      const scoreSemantic = ctx.scoreSemantic ?? (await import('../../domain/services/analysis/layers/SemanticLayer.js')).scoreSemantic;
 
       type HeuristicLayer = import('../../domain/services/analysis/AnalysisOrchestrator.js').HeuristicLayer;
       const layers: HeuristicLayer[] = [];
@@ -217,8 +219,8 @@ export function registerAnalyzeCommands(program: Command, ctx: CliContext): void
       }
 
       // --- Run orchestrator ---
-      const { analyzeTestTargetPairs } = await import('../../domain/services/analysis/AnalysisOrchestrator.js');
-      const result = analyzeTestTargetPairs(tests, targets, layers, config);
+      const orchestrator = ctx.analyzeTestTargetPairs ?? (await import('../../domain/services/analysis/AnalysisOrchestrator.js')).analyzeTestTargetPairs;
+      const result = orchestrator(tests, targets, layers, config);
 
       // --- Filter existing edges and rejected suggestions ---
       const existingEdges = new Set<string>();

@@ -220,6 +220,7 @@ export interface ReviewRef {
   verdict: ReviewVerdict;
   reviewedBy: string;
   reviewedAt: number;
+  comment?: string;
 }
 
 /**

@@ -103,7 +103,10 @@ function opError(code: ControlPlaneErrorCode, ...reasons: string[]): MutationVal
 }
 
 export class MutationKernelService {
-  constructor(private readonly graphPort: GraphPort) {}
+  constructor(
+    private readonly graphPort: GraphPort,
+    private readonly createPatchSessionOverride?: typeof createPatchSession,
+  ) {}
 
   public async validate(
     plan: KernelMutationPlan,
@@ -228,14 +231,14 @@ export class MutationKernelService {
       };
     }
 
-    const graph = await this.graphPort.getGraph();
+    const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
     let sha: string;
     if (opts?.workingSetId) {
       sha = await graph.patchStrand(opts.workingSetId, async (patch) => {
         await this.applyOps(patch, plan.ops);
       });
     } else {
-      const patch = await createPatchSession(graph);
+      const patch = await (this.createPatchSessionOverride ?? createPatchSession)(graph);
       await this.applyOps(patch, plan.ops);
       sha = await patch.commit();
     }
@@ -253,7 +256,7 @@ export class MutationKernelService {
     nodes: string[];
     edges: { from: string; to: string; label: string }[];
   }> {
-    const graph = await this.graphPort.getGraph();
+    const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
     if (!workingSetId) {
       const [nodes, edges] = await Promise.all([
         graph.getNodes(),

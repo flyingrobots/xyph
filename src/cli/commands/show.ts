@@ -220,7 +220,7 @@ async function commitNarrativeNode(
     await assertNodeExists(graph, opts.supersedes, 'Superseded document');
   }
 
-  const patch = await createPatchSession(graph);
+  const patch = await (ctx.createPatchSession ?? createPatchSession)(graph);
   const now = Date.now();
   patch
     .addNode(id)
@@ -259,7 +259,9 @@ export function registerShowCommands(program: Command, ctx: CliContext): void {
       if (detail.questDetail) {
         const { WarpRoadmapAdapter } = await import('../../infrastructure/adapters/WarpRoadmapAdapter.js');
         const { ReadinessService } = await import('../../domain/services/ReadinessService.js');
-        readiness = await new ReadinessService(new WarpRoadmapAdapter(ctx.graphPort)).assess(id, { transition: false });
+        const roadmap = ctx.roadmap ?? new WarpRoadmapAdapter(ctx.graphPort);
+        const readinessService = ctx.readinessService ?? new ReadinessService(roadmap);
+        readiness = await readinessService.assess(id, { transition: false });
         diagnostics = collectQuestDiagnostics(detail.questDetail, readiness);
       }
 
@@ -301,7 +303,8 @@ export function registerShowCommands(program: Command, ctx: CliContext): void {
       if (opts.replyTo) {
         assertPrefix(opts.replyTo, 'comment:', '--reply-to');
       }
-      const result = await new RecordService(ctx.graphPort).createComment({
+      const recordService = ctx.recordService ?? new RecordService(ctx.graphPort);
+      const result = await recordService.createComment({
         id,
         targetId: opts.on,
         message: opts.message.trim(),

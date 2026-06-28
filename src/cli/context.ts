@@ -5,12 +5,21 @@ import { WarpGraphAdapter } from '../infrastructure/adapters/WarpGraphAdapter.js
 import { WarpObservationAdapter } from '../infrastructure/adapters/WarpObservationAdapter.js';
 import { WarpOperationalReadAdapter } from '../infrastructure/adapters/WarpOperationalReadAdapter.js';
 import { WarpSubstrateInspectionAdapter } from '../infrastructure/adapters/WarpSubstrateInspectionAdapter.js';
+import { WarpQuestReadAdapter } from '../infrastructure/warp/optics/WarpQuestReadAdapter.js';
+import type { QuestReadPort } from '../ports/QuestReadPort.js';
 import { resolveIdentity, type ResolvedIdentity } from './identity.js';
 import type { Diagnostic } from '../domain/models/diagnostics.js';
 import type { DiagnosticLogPort } from '../ports/DiagnosticLogPort.js';
 import type { ObservationPort } from '../ports/ObservationPort.js';
 import type { OperationalReadPort } from '../ports/OperationalReadPort.js';
 import type { SubstrateInspectionPort } from '../ports/SubstrateInspectionPort.js';
+import type { WarpRoadmapAdapter } from '../infrastructure/adapters/WarpRoadmapAdapter.js';
+import type { DoctorService } from '../domain/services/DoctorService.js';
+import type { AgentActionService } from '../domain/services/AgentActionService.js';
+import type { AgentContextService } from '../domain/services/AgentContextService.js';
+import type { AgentBriefingService } from '../domain/services/AgentBriefingService.js';
+import type { AgentSubmissionService } from '../domain/services/AgentSubmissionService.js';
+import type { ConfigPort } from '../ports/ConfigPort.js';
 
 export { DEFAULT_AGENT_ID } from './identity.js';
 
@@ -67,9 +76,43 @@ export interface CliContext {
   readonly graphPort: WarpGraphAdapter;
   readonly observation: ObservationPort;
   readonly operationalRead: OperationalReadPort;
+  readonly questReadPort: QuestReadPort;
   readonly inspection: SubstrateInspectionPort;
   readonly logger: DiagnosticLogPort;
   readonly style: StylePort;
+  readonly roadmap?: WarpRoadmapAdapter;
+  readonly doctorService?: DoctorService;
+  readonly agentActionService?: AgentActionService;
+  readonly agentContextService?: AgentContextService;
+  readonly agentBriefingService?: AgentBriefingService;
+  readonly agentSubmissionService?: AgentSubmissionService;
+  readonly configService?: ConfigPort;
+  readonly sovereigntyService?: import('../domain/services/SovereigntyService.js').SovereigntyService;
+  readonly readinessService?: import('../domain/services/ReadinessService.js').ReadinessService;
+  readonly intakeAdapter?: import('../infrastructure/adapters/WarpIntakeAdapter.js').WarpIntakeAdapter;
+  readonly recordService?: import('../domain/services/RecordService.js').RecordService;
+  readonly guildSealService?: import('../domain/services/GuildSealService.js').GuildSealService;
+  readonly submissionAdapter?: import('../infrastructure/adapters/WarpSubmissionAdapter.js').WarpSubmissionAdapter;
+  readonly submissionService?: import('../domain/services/SubmissionService.js').SubmissionService;
+  readonly gitWorkspace?: import('../infrastructure/adapters/GitWorkspaceAdapter.js').GitWorkspaceAdapter;
+  readonly keyring?: import('../infrastructure/adapters/FsKeyringAdapter.js').FsKeyringAdapter;
+  readonly mutations?: import('../domain/services/MutationKernelService.js').MutationKernelService;
+  readonly createPatchSession?: typeof import('../infrastructure/helpers/createPatchSession.js').createPatchSession;
+  readonly bijou?: {
+    filter?: typeof import('@flyingrobots/bijou').filter;
+    select?: typeof import('@flyingrobots/bijou').select;
+    textarea?: typeof import('@flyingrobots/bijou').textarea;
+    confirm?: typeof import('@flyingrobots/bijou').confirm;
+    input?: typeof import('@flyingrobots/bijou').input;
+  };
+  readonly globSync?: typeof import('node:fs').globSync;
+  readonly readFile?: typeof import('node:fs/promises').readFile;
+  readonly parseTestFile?: typeof import('../infrastructure/adapters/TsCompilerTestParserAdapter.js').parseTestFile;
+  readonly analyzeTestTargetPairs?: typeof import('../domain/services/analysis/AnalysisOrchestrator.js').analyzeTestTargetPairs;
+  readonly scoreFileName?: typeof import('../domain/services/analysis/layers/FileNameLayer.js').scoreFileName;
+  readonly scoreImportDescribe?: typeof import('../domain/services/analysis/layers/ImportDescribeLayer.js').scoreImportDescribe;
+  readonly scoreAst?: typeof import('../domain/services/analysis/layers/AstLayer.js').scoreAst;
+  readonly scoreSemantic?: typeof import('../domain/services/analysis/layers/SemanticLayer.js').scoreSemantic;
   ok(msg: string): void;
   warn(msg: string): void;
   muted(msg: string): void;
@@ -109,6 +152,10 @@ export function createCliContext(
   const graphPort = new WarpGraphAdapter(repoPath, graphName, agentId, opts?.logger);
   const observation = new WarpObservationAdapter(graphPort);
   const operationalRead = new WarpOperationalReadAdapter(graphPort);
+  const questReadPort = new WarpQuestReadAdapter(graphPort, {
+    accessorId: agentId,
+    role: agentId.startsWith('human.') ? 'human' : 'agent',
+  });
   const inspection = new WarpSubstrateInspectionAdapter(graphPort);
   const jsonMode = opts?.json ?? false;
   const style = jsonMode ? createPlainStylePort() : createStylePort();
@@ -143,6 +190,7 @@ export function createCliContext(
     graphPort,
     observation,
     operationalRead,
+    questReadPort,
     inspection,
     logger: opts?.logger ?? noopLogger,
     style,

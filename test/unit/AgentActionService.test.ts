@@ -33,119 +33,7 @@ const mocks = vi.hoisted(() => ({
   payloadDigest: vi.fn(),
 }));
 
-vi.mock('../../src/infrastructure/helpers/createPatchSession.js', () => ({
-  createPatchSession: (graph: unknown) => mocks.createPatchSession(graph),
-}));
 
-vi.mock('../../src/domain/services/SubmissionService.js', () => ({
-  SubmissionService: class SubmissionService {
-    validateSubmit(questId: string, actorId: string) {
-      return mocks.validateSubmit(questId, actorId);
-    }
-
-    validateReview(patchsetId: string, actorId: string) {
-      return mocks.validateReview(patchsetId, actorId);
-    }
-
-    validateMerge(submissionId: string, actorId: string, patchsetId?: string) {
-      return mocks.validateMerge(submissionId, actorId, patchsetId);
-    }
-  },
-}));
-
-vi.mock('../../src/domain/services/GuildSealService.js', () => ({
-  GuildSealService: class GuildSealService {
-    hasPrivateKey(agentId: string) {
-      return mocks.hasPrivateKey(agentId);
-    }
-
-    sign(payload: unknown, agentId: string) {
-      return mocks.sign(payload, agentId);
-    }
-
-    payloadDigest(payload: unknown) {
-      return mocks.payloadDigest(payload);
-    }
-  },
-}));
-
-vi.mock('../../src/infrastructure/adapters/FsKeyringAdapter.js', () => ({
-  FsKeyringAdapter: class FsKeyringAdapter {
-    readonly stub = true;
-  },
-}));
-
-vi.mock('../../src/infrastructure/adapters/WarpObservationAdapter.js', () => ({
-  WarpObservationAdapter: class WarpObservationAdapter {
-    openSession() {
-      return mocks.openSession();
-    }
-  },
-}));
-
-vi.mock('../../src/infrastructure/adapters/WarpSubmissionAdapter.js', () => ({
-  WarpSubmissionAdapter: class WarpSubmissionAdapter {
-    submit(args: unknown) {
-      return mocks.submit(args);
-    }
-
-    review(args: unknown) {
-      return mocks.review(args);
-    }
-
-    decide(args: unknown) {
-      return mocks.decide(args);
-    }
-
-    getSubmissionForPatchset(patchsetId: string) {
-      return mocks.getSubmissionForPatchset(patchsetId);
-    }
-
-    getOpenSubmissionsForQuest(questId: string) {
-      return mocks.getOpenSubmissionsForQuest(questId);
-    }
-
-    getPatchsetWorkspaceRef(patchsetId: string) {
-      return mocks.getPatchsetWorkspaceRef(patchsetId);
-    }
-
-    getPatchsetMergeRef(patchsetId: string) {
-      return mocks.getPatchsetMergeRef(patchsetId);
-    }
-
-    getSubmissionQuestId(submissionId: string) {
-      return mocks.getSubmissionQuestId(submissionId);
-    }
-
-    getQuestStatus(questId: string) {
-      return mocks.getQuestStatus(questId);
-    }
-  },
-}));
-
-vi.mock('../../src/infrastructure/adapters/GitWorkspaceAdapter.js', () => ({
-  GitWorkspaceAdapter: class GitWorkspaceAdapter {
-    getWorkspaceRef() {
-      return mocks.getWorkspaceRef();
-    }
-
-    getHeadCommit(ref: string) {
-      return mocks.getHeadCommit(ref);
-    }
-
-    getCommitsSince(base: string, ref?: string) {
-      return mocks.getCommitsSince(base, ref);
-    }
-
-    isMerged(ref: string, into: string) {
-      return mocks.isMerged(ref, into);
-    }
-
-    merge(ref: string, into: string) {
-      return mocks.merge(ref, into);
-    }
-  },
-}));
 
 function makeQuest(overrides?: Partial<ConstructorParameters<typeof Quest>[0]>): Quest {
   return new Quest({
@@ -172,9 +60,14 @@ function makeRoadmap(
   };
 }
 
-function makeGraphPort(graph: Record<string, unknown>): GraphPort {
+function makeGraphPort(graph: any): GraphPort {
+  const mockGraph = {
+    createPatch: vi.fn(async () => makePatchSession()),
+    ...graph,
+  };
   return {
-    getGraph: vi.fn(async () => graph),
+    getGraph: vi.fn(async () => mockGraph as any),
+    getMutationGraph: vi.fn(async () => mockGraph as any),
     reset: vi.fn(),
   };
 }
@@ -184,6 +77,8 @@ function makePatchSession() {
     addNode: vi.fn().mockReturnThis(),
     setProperty: vi.fn().mockReturnThis(),
     addEdge: vi.fn().mockReturnThis(),
+    clearContent: vi.fn().mockReturnThis(),
+    clearEdgeContent: vi.fn().mockReturnThis(),
     attachContent: vi.fn(async () => undefined),
     commit: vi.fn(async () => 'patch:comment'),
   };
@@ -338,6 +233,83 @@ function makeReadPort() {
   };
 }
 
+function createTestService(opts?: {
+  graph?: any;
+  roadmap?: any;
+  agentId?: string;
+  readPort?: any;
+  doctor?: any;
+  clock?: any;
+}) {
+  const agentId = opts?.agentId ?? 'agent.hal';
+  const graphPort = opts?.graph ?? makeGraphPort({});
+  const roadmap = opts?.roadmap ?? makeRoadmap(makeQuest());
+  const readPort = opts?.readPort ?? makeReadPort();
+  const doctor = opts?.doctor ?? makeDoctor();
+  const clock = opts?.clock;
+
+  const submissionsMock = {
+    validateSubmit: mocks.validateSubmit,
+    validateReview: mocks.validateReview,
+    validateMerge: mocks.validateMerge,
+  } as any;
+
+  const submissionAdapterMock = {
+    submit: mocks.submit,
+    review: mocks.review,
+    decide: mocks.decide,
+    getSubmissionForPatchset: mocks.getSubmissionForPatchset,
+    getOpenSubmissionsForQuest: mocks.getOpenSubmissionsForQuest,
+    getPatchsetWorkspaceRef: mocks.getPatchsetWorkspaceRef,
+    getPatchsetMergeRef: mocks.getPatchsetMergeRef,
+    getSubmissionQuestId: mocks.getSubmissionQuestId,
+    getQuestStatus: mocks.getQuestStatus,
+  } as any;
+
+  const workspaceMock = {
+    getWorkspaceRef: mocks.getWorkspaceRef,
+    getHeadCommit: mocks.getHeadCommit,
+    getCommitsSince: mocks.getCommitsSince,
+    isMerged: mocks.isMerged,
+    merge: mocks.merge,
+  } as any;
+
+  const keyringMock = {
+    hasPrivateKey: mocks.hasPrivateKey,
+    loadKeyring: () => ({ entries: new Map() }),
+    saveKeyring: () => { /* noop */ },
+    readPrivateKey: () => 'keyhex',
+    updateKeyring: (mutator: any) => {
+      const ops = {
+        writePrivateKey: () => { /* noop */ },
+        writePrivateKeyOverwrite: () => { /* noop */ },
+        retirePrivateKey: () => true,
+      };
+      mutator({ entries: new Map() }, ops);
+    },
+  } as any;
+
+  const sealServiceMock = {
+    hasPrivateKey: mocks.hasPrivateKey,
+    sign: mocks.sign,
+    payloadDigest: mocks.payloadDigest,
+  } as any;
+
+  return new AgentActionService(
+    graphPort,
+    roadmap,
+    agentId,
+    readPort,
+    doctor,
+    clock,
+    workspaceMock,
+    keyringMock,
+    submissionsMock,
+    submissionAdapterMock,
+    sealServiceMock,
+  );
+}
+
 describe('AgentActionService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -398,13 +370,7 @@ describe('AgentActionService', () => {
   });
 
   it('rejects human-only actions with an explicit machine-readable reason', async () => {
-    const service = new AgentActionService(
-      makeGraphPort({}),
-      makeRoadmap(makeQuest()),
-      'agent.hal',
-      makeReadPort(),
-      makeDoctor(),
-    );
+    const service = createTestService();
 
     const outcome = await service.execute({
       kind: 'promote',
@@ -427,13 +393,7 @@ describe('AgentActionService', () => {
   });
 
   it('rejects governance-only human judgment actions with the same machine-readable code', async () => {
-    const service = new AgentActionService(
-      makeGraphPort({}),
-      makeRoadmap(makeQuest()),
-      'agent.hal',
-      makeReadPort(),
-      makeDoctor(),
-    );
+    const service = createTestService();
 
     const outcome = await service.execute({
       kind: 'attest',
@@ -456,13 +416,7 @@ describe('AgentActionService', () => {
   });
 
   it('supports dry-run claim with normalized side effects', async () => {
-    const service = new AgentActionService(
-      makeGraphPort({}),
-      makeRoadmap(makeQuest({ status: 'READY' })),
-      'agent.hal',
-      makeReadPort(),
-      makeDoctor(),
-    );
+    const service = createTestService({ roadmap: makeRoadmap(makeQuest({ status: 'READY' })) });
 
     const outcome = await service.execute({
       kind: 'claim',
@@ -488,13 +442,7 @@ describe('AgentActionService', () => {
   });
 
   it('rejects claim when the READY quest is assigned to another principal', async () => {
-    const service = new AgentActionService(
-      makeGraphPort({}),
-      makeRoadmap(makeQuest({ status: 'READY', assignedTo: 'agent.other' })),
-      'agent.hal',
-      makeReadPort(),
-      makeDoctor(),
-    );
+    const service = createTestService({ roadmap: makeRoadmap(makeQuest({ assignedTo: 'agent.other' })) });
 
     const outcome = await service.execute({
       kind: 'claim',
@@ -520,16 +468,10 @@ describe('AgentActionService', () => {
     const graph = {
       hasNode: vi.fn(async (id: string) => id === 'task:AGT-001'),
     };
-    const service = new AgentActionService(
-      makeGraphPort(graph),
-      makeRoadmap(makeQuest({
+    const service = createTestService({ graph: makeGraphPort(graph), roadmap: makeRoadmap(makeQuest({
         status: 'PLANNED',
         title: 'Traceability packet quest',
-      })),
-      'agent.hal',
-      makeReadPort(),
-      makeDoctor(),
-    );
+      })) });
 
     const outcome = await service.execute({
       kind: 'packet',
@@ -565,20 +507,14 @@ describe('AgentActionService', () => {
   });
 
   it('writes append-only graph-native comments on successful execution', async () => {
+    const patch = makePatchSession();
     const graph = {
       hasNode: vi.fn(async (id: string) => id === 'task:AGT-001'),
       getContentOid: vi.fn(async () => 'oid:comment'),
+      createPatch: vi.fn(async () => patch),
     };
-    const patch = makePatchSession();
-    mocks.createPatchSession.mockResolvedValue(patch);
 
-    const service = new AgentActionService(
-      makeGraphPort(graph),
-      makeRoadmap(makeQuest()),
-      'agent.hal',
-      makeReadPort(),
-      makeDoctor(),
-    );
+    const service = createTestService({ graph: makeGraphPort(graph) });
 
     const outcome = await service.execute({
       kind: 'comment',
@@ -617,13 +553,7 @@ describe('AgentActionService', () => {
     const graph = {
       hasNode: vi.fn(async (id: string) => ['task:AGT-001', 'submission:AGT-001'].includes(id)),
     };
-    const service = new AgentActionService(
-      makeGraphPort(graph),
-      makeRoadmap(makeQuest()),
-      'agent.hal',
-      makeReadPort(),
-      makeDoctor(),
-    );
+    const service = createTestService({ graph: makeGraphPort(graph) });
 
     const outcome = await service.execute({
       kind: 'handoff',
@@ -657,13 +587,7 @@ describe('AgentActionService', () => {
     };
     mocks.fetchEntityDetail.mockResolvedValue(makeCaseDetail());
 
-    const service = new AgentActionService(
-      makeGraphPort(graph),
-      makeRoadmap(makeQuest()),
-      'agent.hal',
-      makeReadPort(),
-      makeDoctor(),
-    );
+    const service = createTestService({ graph: makeGraphPort(graph) });
 
     const outcome = await service.execute({
       kind: 'brief',
@@ -693,21 +617,15 @@ describe('AgentActionService', () => {
   });
 
   it('writes graph-native handoff notes with attached content and document links', async () => {
+    const patch = makePatchSession();
+    patch.commit = vi.fn(async () => 'patch:handoff');
     const graph = {
       hasNode: vi.fn(async (id: string) => ['task:AGT-001', 'submission:AGT-001'].includes(id)),
       getContentOid: vi.fn(async () => 'oid:handoff'),
+      createPatch: vi.fn(async () => patch),
     };
-    const patch = makePatchSession();
-    patch.commit = vi.fn(async () => 'patch:handoff');
-    mocks.createPatchSession.mockResolvedValue(patch);
 
-    const service = new AgentActionService(
-      makeGraphPort(graph),
-      makeRoadmap(makeQuest()),
-      'agent.hal',
-      makeReadPort(),
-      makeDoctor(),
-    );
+    const service = createTestService({ graph: makeGraphPort(graph) });
 
     const outcome = await service.execute({
       kind: 'handoff',
@@ -744,13 +662,7 @@ describe('AgentActionService', () => {
   });
 
   it('normalizes seal during dry-run when governed completion and key policy pass', async () => {
-    const service = new AgentActionService(
-      makeGraphPort({}),
-      makeRoadmap(makeQuest()),
-      'agent.hal',
-      makeReadPort(),
-      makeDoctor(),
-    );
+    const service = createTestService();
 
     const outcome = await service.execute({
       kind: 'seal',
@@ -789,13 +701,7 @@ describe('AgentActionService', () => {
       },
     }));
 
-    const service = new AgentActionService(
-      makeGraphPort({}),
-      makeRoadmap(makeQuest()),
-      'agent.hal',
-      makeReadPort(),
-      makeDoctor(),
-    );
+    const service = createTestService();
 
     const outcome = await service.execute({
       kind: 'seal',
@@ -833,13 +739,7 @@ describe('AgentActionService', () => {
       }),
     };
 
-    const service = new AgentActionService(
-      makeGraphPort(graph),
-      makeRoadmap(makeQuest()),
-      'agent.hal',
-      makeReadPort(),
-      makeDoctor(),
-    );
+    const service = createTestService({ graph: makeGraphPort(graph) });
 
     const outcome = await service.execute({
       kind: 'seal',
@@ -869,13 +769,7 @@ describe('AgentActionService', () => {
   });
 
   it('normalizes merge during dry-run with settlement metadata', async () => {
-    const service = new AgentActionService(
-      makeGraphPort({}),
-      makeRoadmap(makeQuest()),
-      'agent.hal',
-      makeReadPort(),
-      makeDoctor(),
-    );
+    const service = createTestService();
 
     const outcome = await service.execute({
       kind: 'merge',
@@ -923,13 +817,7 @@ describe('AgentActionService', () => {
       }),
     };
 
-    const service = new AgentActionService(
-      makeGraphPort(graph),
-      makeRoadmap(makeQuest()),
-      'agent.hal',
-      makeReadPort(),
-      makeDoctor(),
-    );
+    const service = createTestService({ graph: makeGraphPort(graph) });
 
     const outcome = await service.execute({
       kind: 'merge',
@@ -974,13 +862,7 @@ describe('AgentActionService', () => {
   it('reports merge-decision write failure as a partial failure with reconciliation details', async () => {
     mocks.decide.mockRejectedValue(new Error('graph write failed'));
 
-    const service = new AgentActionService(
-      makeGraphPort({}),
-      makeRoadmap(makeQuest()),
-      'agent.hal',
-      makeReadPort(),
-      makeDoctor(),
-    );
+    const service = createTestService();
 
     const outcome = await service.execute({
       kind: 'merge',
@@ -1023,13 +905,7 @@ describe('AgentActionService', () => {
       }),
     };
 
-    const service = new AgentActionService(
-      makeGraphPort(graph),
-      makeRoadmap(makeQuest()),
-      'agent.hal',
-      makeReadPort(),
-      makeDoctor(),
-    );
+    const service = createTestService({ graph: makeGraphPort(graph) });
 
     const outcome = await service.execute({
       kind: 'merge',
@@ -1066,13 +942,7 @@ describe('AgentActionService', () => {
   });
 
   it('normalizes submit during dry-run with workspace metadata and generated ids', async () => {
-    const service = new AgentActionService(
-      makeGraphPort({}),
-      makeRoadmap(makeQuest({ status: 'IN_PROGRESS' })),
-      'agent.hal',
-      makeReadPort(),
-      makeDoctor(),
-    );
+    const service = createTestService({ roadmap: makeRoadmap(makeQuest({ status: 'IN_PROGRESS' })) });
 
     const outcome = await service.execute({
       kind: 'submit',
@@ -1107,12 +977,9 @@ describe('AgentActionService', () => {
   });
 
   it('rejects submit when doctor reports a structural blocker on the target quest', async () => {
-    const service = new AgentActionService(
-      makeGraphPort({}),
-      makeRoadmap(makeQuest({ status: 'IN_PROGRESS', priority: 'P0' })),
-      'agent.hal',
-      makeReadPort(),
-      makeDoctor({
+    const service = createTestService({
+      roadmap: makeRoadmap(makeQuest({ status: 'IN_PROGRESS', priority: 'P0' })),
+      doctor: makeDoctor({
         status: 'error',
         healthy: false,
         blocking: true,
@@ -1137,7 +1004,7 @@ describe('AgentActionService', () => {
           sourceIssueCodes: ['orphan-submission'],
         }],
       }),
-    );
+    });
 
     const outcome = await service.execute({
       kind: 'submit',
@@ -1163,13 +1030,7 @@ describe('AgentActionService', () => {
   });
 
   it('executes review by writing a review node through the submission adapter', async () => {
-    const service = new AgentActionService(
-      makeGraphPort({}),
-      makeRoadmap(makeQuest()),
-      'agent.hal',
-      makeReadPort(),
-      makeDoctor(),
-    );
+    const service = createTestService();
 
     const outcome = await service.execute({
       kind: 'review',

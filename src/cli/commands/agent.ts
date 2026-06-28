@@ -692,18 +692,19 @@ function renderSubmissions(queues: {
 
 export function registerAgentCommands(program: Command, ctx: CliContext): void {
   const withErrorHandler = createErrorHandler(ctx);
-  const roadmap = new WarpRoadmapAdapter(ctx.graphPort);
-  const doctor = new DoctorService(ctx.graphPort, roadmap, ctx.inspection);
+  const roadmap = ctx.roadmap ?? new WarpRoadmapAdapter(ctx.graphPort);
+  const doctor = ctx.doctorService ?? new DoctorService(ctx.graphPort, roadmap, ctx.inspection);
 
   program
     .command('briefing')
     .description('Build a start-of-session agent briefing packet')
     .action(withErrorHandler(async () => {
-      const service = new AgentBriefingService(
+      const service = ctx.agentBriefingService ?? new AgentBriefingService(
         ctx.graphPort,
         roadmap,
         ctx.agentId,
         ctx.operationalRead,
+        ctx.questReadPort,
         doctor,
       );
       const briefing = await service.buildBriefing();
@@ -731,11 +732,12 @@ export function registerAgentCommands(program: Command, ctx: CliContext): void {
         throw new Error(`[INVALID_ARGS] --limit must be a positive integer, got '${opts.limit}'`);
       }
 
-      const service = new AgentBriefingService(
+      const service = ctx.agentBriefingService ?? new AgentBriefingService(
         ctx.graphPort,
         roadmap,
         ctx.agentId,
         ctx.operationalRead,
+        ctx.questReadPort,
         doctor,
       );
       const result = await service.next(limit);
@@ -766,7 +768,7 @@ export function registerAgentCommands(program: Command, ctx: CliContext): void {
         throw new Error(`[INVALID_ARGS] --limit must be a positive integer, got '${opts.limit}'`);
       }
 
-      const service = new AgentSubmissionService(ctx.agentId, ctx.observation);
+      const service = ctx.agentSubmissionService ?? new AgentSubmissionService(ctx.agentId, ctx.observation);
       const queues = await service.list(limit);
 
       if (ctx.json) {
@@ -785,7 +787,7 @@ export function registerAgentCommands(program: Command, ctx: CliContext): void {
     .command('context <id>')
     .description('Build an action-oriented work packet for an entity')
     .action(withErrorHandler(async (id: string) => {
-      const service = new AgentContextService(
+      const service = ctx.agentContextService ?? new AgentContextService(
         ctx.graphPort,
         roadmap,
         ctx.agentId,
@@ -877,7 +879,7 @@ export function registerAgentCommands(program: Command, ctx: CliContext): void {
     .option('--comment-id <id>', 'Explicit comment ID for comment')
     .option('--related <ids...>', 'Additional related IDs for handoff')
     .action(withErrorHandler(async (actionKind: string, targetId: string, opts: ActOptions) => {
-      const service = new AgentActionService(
+      const service = ctx.agentActionService ?? new AgentActionService(
         ctx.graphPort,
         roadmap,
         ctx.agentId,
@@ -930,7 +932,7 @@ export function registerAgentCommands(program: Command, ctx: CliContext): void {
     .option('--title <text>', 'Optional handoff title')
     .option('--related <ids...>', 'Additional related IDs to document with the handoff')
     .action(withErrorHandler(async (targetId: string, opts: Pick<ActOptions, 'message' | 'title' | 'related'>) => {
-      const service = new AgentActionService(
+      const service = ctx.agentActionService ?? new AgentActionService(
         ctx.graphPort,
         roadmap,
         ctx.agentId,

@@ -2,41 +2,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Command } from 'commander';
 import type { CliContext } from '../../src/cli/context.js';
 import { makeSnapshot } from '../helpers/snapshot.js';
+import { registerDashboardCommands } from '../../src/cli/commands/dashboard.js';
 
 const fetchSnapshot = vi.fn();
 const doctorRun = vi.fn();
-const roadmapCtor = vi.fn();
-
-vi.mock('../../src/domain/services/DoctorService.js', () => ({
-  DoctorService: vi.fn().mockImplementation(function MockDoctorService() {
-    return {
-      run: doctorRun,
-    };
-  }),
-}));
-
-vi.mock('../../src/infrastructure/adapters/WarpRoadmapAdapter.js', () => ({
-  WarpRoadmapAdapter: vi.fn().mockImplementation(function MockWarpRoadmapAdapter(graphPort: unknown) {
-    roadmapCtor(graphPort);
-    return { mocked: true };
-  }),
-}));
-
-vi.mock('../../src/infrastructure/adapters/WarpObservationAdapter.js', () => ({
-  WarpObservationAdapter: class WarpObservationAdapter {
-    async openSession() {
-      return {
-        fetchSnapshot,
-        fetchEntityDetail: vi.fn(),
-        queryNodes: vi.fn(),
-        neighbors: vi.fn(),
-        hasNode: vi.fn(),
-      };
-    }
-  },
-}));
-
-import { registerDashboardCommands } from '../../src/cli/commands/dashboard.js';
 
 function makeCtx(): CliContext {
   const observation = {
@@ -59,6 +28,10 @@ function makeCtx(): CliContext {
       openInspectionSession: vi.fn(),
     } as CliContext['inspection'],
     style: {} as CliContext['style'],
+    roadmap: { mocked: true } as any,
+    doctorService: {
+      run: doctorRun,
+    } as any,
     ok: vi.fn(),
     warn: vi.fn(),
     muted: vi.fn(),

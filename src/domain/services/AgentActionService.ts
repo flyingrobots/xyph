@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { GraphPort } from '../../ports/GraphPort.js';
+import type { ClockPort } from '../../ports/ClockPort.js';
+import { SystemClockAdapter } from '../../infrastructure/adapters/SystemClockAdapter.js';
 import {
   liveObservation,
   type ObservationPort,
@@ -42,6 +44,10 @@ import { FsKeyringAdapter } from '../../infrastructure/adapters/FsKeyringAdapter
 import { WarpIntakeAdapter } from '../../infrastructure/adapters/WarpIntakeAdapter.js';
 import { WarpSubmissionAdapter } from '../../infrastructure/adapters/WarpSubmissionAdapter.js';
 import { GitWorkspaceAdapter } from '../../infrastructure/adapters/GitWorkspaceAdapter.js';
+import type { WorkspacePort } from '../../ports/WorkspacePort.js';
+import type { KeyringStoragePort } from '../../ports/KeyringStoragePort.js';
+import type { SubmissionPort } from '../../ports/SubmissionPort.js';
+import type { SubmissionReadModel } from './SubmissionService.js';
 import type { ReviewVerdict } from '../entities/Submission.js';
 import {
   buildCaseWorkSemantics,
@@ -217,8 +223,8 @@ type SupportedNormalizedAction =
   | SealAction
   | MergeAction;
 
-function autoId(prefix: string): string {
-  const ts = Date.now().toString(36).padStart(9, '0');
+function autoId(prefix: string, clock: ClockPort): string {
+  const ts = clock.now().toString(36).padStart(9, '0');
   const rand = randomUUID().replace(/-/g, '').slice(0, 8);
   return `${prefix}${ts}${rand}`;
 }
@@ -349,6 +355,11 @@ export class AgentActionValidator {
   private readonly readiness: ReadinessService;
   private readonly submissions: SubmissionService;
   private readonly doctor: Pick<DoctorService, 'run'>;
+  private readonly clock: ClockPort;
+  private readonly workspace: WorkspacePort;
+  private readonly keyring: KeyringStoragePort;
+  private readonly sealService: GuildSealService;
+  private readonly submissionAdapter: SubmissionPort & SubmissionReadModel;
   private cachedRecommendationRequests?: Promise<RecommendationRequest[]>;
 
   constructor(
@@ -357,12 +368,21 @@ export class AgentActionValidator {
     private readonly agentId: string,
     private readonly readPort: ObservationPort,
     doctor?: Pick<DoctorService, 'run'>,
+    clock?: ClockPort,
+    workspace?: WorkspacePort,
+    keyring?: KeyringStoragePort,
+    submissions?: SubmissionService,
+    submissionAdapter?: SubmissionPort & SubmissionReadModel,
+    sealService?: GuildSealService,
   ) {
+    this.clock = clock ?? new SystemClockAdapter();
     this.intake = new IntakeService(roadmap);
     this.readiness = new ReadinessService(roadmap);
-    this.submissions = new SubmissionService(
-      new WarpSubmissionAdapter(graphPort, agentId),
-    );
+    this.workspace = workspace ?? new GitWorkspaceAdapter(process.cwd());
+    this.keyring = keyring ?? new FsKeyringAdapter();
+    this.sealService = sealService ?? new GuildSealService(this.keyring);
+    this.submissionAdapter = submissionAdapter ?? new WarpSubmissionAdapter(graphPort, agentId);
+    this.submissions = submissions ?? new SubmissionService(this.submissionAdapter);
     this.doctor = doctor ?? new DoctorService(graphPort, roadmap);
   }
 
@@ -648,7 +668,7 @@ export class AgentActionValidator {
       : undefined;
     const verifiable = request.args['verifiable'] === false ? false : true;
 
-    const graph = await this.graphPort.getGraph();
+    const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
     const [storyExists, requirementExists, criterionExists] = await Promise.all([
       graph.hasNode(storyId),
       graph.hasNode(requirementId),
@@ -812,14 +832,14 @@ export class AgentActionValidator {
     const providedCommentId = typeof request.args['commentId'] === 'string' && request.args['commentId'].trim().length > 0
       ? request.args['commentId'].trim()
       : undefined;
-    const commentId = providedCommentId ?? autoId('comment:');
+    const commentId = providedCommentId ?? autoId('comment:', this.clock);
     if (!commentId.startsWith('comment:')) {
       return failAssessment(request, 'invalid-args', [
         `commentId must start with 'comment:', got '${commentId}'`,
       ]);
     }
 
-    const graph = await this.graphPort.getGraph();
+    const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
     if (!await graph.hasNode(request.targetId)) {
       return failAssessment(request, 'not-found', [
         `Target ${request.targetId} not found in the graph`,
@@ -900,7 +920,7 @@ export class AgentActionValidator {
       ]);
     }
 
-    const graph = await this.graphPort.getGraph();
+    const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
     const subjectIds = extractCaseSubjectIds(detail);
     const relatedIds = [...new Set([
       ...subjectIds,
@@ -908,7 +928,7 @@ export class AgentActionValidator {
     ])];
     for (const relatedId of relatedIds) {
       if (!await graph.hasNode(relatedId)) {
-        const briefId = autoId('brief:');
+        const briefId = autoId('brief:', this.clock);
         return failAssessment(request, 'not-found', [
           `Related target ${relatedId} not found in the graph`,
         ], {
@@ -943,7 +963,7 @@ export class AgentActionValidator {
       openedFromCount: extractCaseOpenedFromIds(detail).length,
     });
 
-    const briefId = autoId('brief:');
+    const briefId = autoId('brief:', this.clock);
     return successAssessment(
       request,
       {
@@ -1039,7 +1059,7 @@ export class AgentActionValidator {
     );
     if (blockerFailure) return blockerFailure;
 
-    const workspace = new GitWorkspaceAdapter(process.cwd());
+    const workspace = this.workspace;
     let workspaceRef: string;
     try {
       workspaceRef = typeof request.args['workspaceRef'] === 'string' && request.args['workspaceRef'].trim().length > 0
@@ -1069,8 +1089,8 @@ export class AgentActionValidator {
       // Non-fatal: submission packets can omit workspace metadata beyond workspaceRef.
     }
 
-    const submissionId = autoId('submission:');
-    const patchsetId = autoId('patchset:');
+    const submissionId = autoId('submission:', this.clock);
+    const patchsetId = autoId('patchset:', this.clock);
 
     return successAssessment(
       request,
@@ -1130,7 +1150,7 @@ export class AgentActionValidator {
       ]);
     }
 
-    const adapter = new WarpSubmissionAdapter(this.graphPort, this.agentId);
+    const adapter = this.submissionAdapter;
     const submissionId = await adapter.getSubmissionForPatchset(request.targetId);
     if (submissionId === null) {
       return failAssessment(request, 'not-found', [
@@ -1178,7 +1198,7 @@ export class AgentActionValidator {
     );
     if (blockerFailure) return blockerFailure;
 
-    const reviewId = autoId('review:');
+    const reviewId = autoId('review:', this.clock);
     const verdict = verdictRaw as ReviewVerdict;
 
     return successAssessment(
@@ -1220,11 +1240,11 @@ export class AgentActionValidator {
       ? request.args['title'].trim()
       : `Handoff for ${request.targetId}`;
 
-    const noteId = autoId('note:');
+    const noteId = autoId('note:', this.clock);
     const rawRelatedIds = normalizeStringArray(request.args['relatedIds']);
     const relatedIds = [...new Set([request.targetId, ...rawRelatedIds])];
 
-    const graph = await this.graphPort.getGraph();
+    const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
     if (!await graph.hasNode(request.targetId)) {
       return failAssessment(request, 'not-found', [
         `Target ${request.targetId} not found in the graph`,
@@ -1344,8 +1364,7 @@ export class AgentActionValidator {
     );
     if (blockerFailure) return blockerFailure;
 
-    const keyring = new FsKeyringAdapter();
-    const sealService = new GuildSealService(keyring);
+    const sealService = this.sealService;
     if (!sealService.hasPrivateKey(this.agentId) && !allowUnsignedScrollsForSettlement()) {
       return failAssessment(request, 'missing-private-key', [
         formatMissingSettlementKeyMessage(this.agentId, 'seal'),
@@ -1400,7 +1419,7 @@ export class AgentActionValidator {
       : undefined;
     const semantics = await this.readSubmissionSemantics(request.targetId);
 
-    const adapter = new WarpSubmissionAdapter(this.graphPort, this.agentId);
+    const adapter = this.submissionAdapter;
     let tipPatchsetId: string;
     try {
       const result = await this.submissions.validateMerge(request.targetId, this.agentId, explicitPatchsetId);
@@ -1478,8 +1497,7 @@ export class AgentActionValidator {
         });
       }
 
-      const keyring = new FsKeyringAdapter();
-      const sealService = new GuildSealService(keyring);
+      const sealService = this.sealService;
       if (!sealService.hasPrivateKey(this.agentId) && !allowUnsignedScrollsForSettlement()) {
         return failAssessment(request, 'missing-private-key', [
           formatMissingSettlementKeyMessage(this.agentId, 'merge'),
@@ -1575,6 +1593,11 @@ export class AgentActionValidator {
 
 export class AgentActionService {
   private readonly validator: AgentActionValidator;
+  private readonly clock: ClockPort;
+  private readonly workspace: WorkspacePort;
+  private readonly keyring: KeyringStoragePort;
+  private readonly sealService: GuildSealService;
+  private readonly submissionAdapter: SubmissionPort & SubmissionReadModel;
 
   constructor(
     private readonly graphPort: GraphPort,
@@ -1582,8 +1605,31 @@ export class AgentActionService {
     private readonly agentId: string,
     readPort: ObservationPort,
     doctor?: Pick<DoctorService, 'run'>,
+    clock?: ClockPort,
+    workspace?: WorkspacePort,
+    keyring?: KeyringStoragePort,
+    submissions?: SubmissionService,
+    submissionAdapter?: SubmissionPort & SubmissionReadModel,
+    sealService?: GuildSealService,
   ) {
-    this.validator = new AgentActionValidator(graphPort, roadmap, agentId, readPort, doctor);
+    this.clock = clock ?? new SystemClockAdapter();
+    this.workspace = workspace ?? new GitWorkspaceAdapter(process.cwd());
+    this.keyring = keyring ?? new FsKeyringAdapter();
+    this.sealService = sealService ?? new GuildSealService(this.keyring);
+    this.submissionAdapter = submissionAdapter ?? new WarpSubmissionAdapter(graphPort, agentId);
+    this.validator = new AgentActionValidator(
+      graphPort,
+      roadmap,
+      agentId,
+      readPort,
+      doctor,
+      this.clock,
+      this.workspace,
+      this.keyring,
+      submissions,
+      this.submissionAdapter,
+      this.sealService,
+    );
   }
 
   public async execute(request: AgentActionRequest): Promise<AgentActionOutcome> {
@@ -1671,8 +1717,8 @@ export class AgentActionService {
     assessment: ValidatedAssessment,
     action: ClaimAction,
   ): Promise<AgentActionOutcome> {
-    const graph = await this.graphPort.getGraph();
-    const now = Date.now();
+    const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
+    const now = this.clock.now();
     const sha = await graph.patch((p) => {
       p.setProperty(action.targetId, 'assigned_to', this.agentId)
         .setProperty(action.targetId, 'status', 'IN_PROGRESS')
@@ -1726,7 +1772,7 @@ export class AgentActionService {
       taskKind: action.taskKind,
       priority: action.priority,
     });
-    const graph = await this.graphPort.getGraph();
+    const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
     const props = await graph.getNodeProps(action.targetId);
 
     return {
@@ -1747,7 +1793,7 @@ export class AgentActionService {
     assessment: ValidatedAssessment,
     action: PacketAction,
   ): Promise<AgentActionOutcome> {
-    const graph = await this.graphPort.getGraph();
+    const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
     const [storyExists, requirementExists, criterionExists] = await Promise.all([
       graph.hasNode(action.storyId),
       graph.hasNode(action.requirementId),
@@ -1766,7 +1812,7 @@ export class AgentActionService {
     const hasStoryToRequirement = storyOutgoing.some((edge) => edge.type === 'decomposes-to' && edge.to === action.requirementId);
     const hasQuestToRequirement = questOutgoing.some((edge) => edge.type === 'implements' && edge.to === action.requirementId);
     const hasRequirementToCriterion = requirementOutgoing.some((edge) => edge.type === 'has-criterion' && edge.to === action.criterionId);
-    const now = Date.now();
+    const now = this.clock.now();
 
     const sha = await graph.patch((p) => {
       if (!storyExists) {
@@ -1829,7 +1875,7 @@ export class AgentActionService {
   ): Promise<AgentActionOutcome> {
     const intake = new WarpIntakeAdapter(this.graphPort, this.agentId);
     const sha = await intake.ready(action.targetId);
-    const graph = await this.graphPort.getGraph();
+    const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
     const props = await graph.getNodeProps(action.targetId);
     const readyAt = typeof props?.['ready_at'] === 'number' ? props['ready_at'] : null;
 
@@ -1850,9 +1896,9 @@ export class AgentActionService {
     assessment: ValidatedAssessment,
     action: CommentAction,
   ): Promise<AgentActionOutcome> {
-    const graph = await this.graphPort.getGraph();
+    const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
     const patch = await createPatchSession(graph);
-    const now = Date.now();
+    const now = this.clock.now();
     patch
       .addNode(action.commentId)
       .setProperty(action.commentId, 'type', 'comment')
@@ -1886,9 +1932,9 @@ export class AgentActionService {
     assessment: ValidatedAssessment,
     action: BriefAction,
   ): Promise<AgentActionOutcome> {
-    const graph = await this.graphPort.getGraph();
+    const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
     const patch = await createPatchSession(graph);
-    const now = Date.now();
+    const now = this.clock.now();
     patch
       .addNode(action.briefId)
       .setProperty(action.briefId, 'type', 'brief')
@@ -1922,7 +1968,7 @@ export class AgentActionService {
     assessment: ValidatedAssessment,
     action: SubmitAction,
   ): Promise<AgentActionOutcome> {
-    const adapter = new WarpSubmissionAdapter(this.graphPort, this.agentId);
+    const adapter = this.submissionAdapter;
     const { patchSha } = await adapter.submit({
       questId: action.targetId,
       submissionId: action.submissionId,
@@ -1956,7 +2002,7 @@ export class AgentActionService {
     assessment: ValidatedAssessment,
     action: ReviewAction,
   ): Promise<AgentActionOutcome> {
-    const adapter = new WarpSubmissionAdapter(this.graphPort, this.agentId);
+    const adapter = this.submissionAdapter;
     const { patchSha } = await adapter.review({
       patchsetId: action.targetId,
       reviewId: action.reviewId,
@@ -1982,9 +2028,9 @@ export class AgentActionService {
     assessment: ValidatedAssessment,
     action: HandoffAction,
   ): Promise<AgentActionOutcome> {
-    const graph = await this.graphPort.getGraph();
+    const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
     const patch = await createPatchSession(graph);
-    const now = Date.now();
+    const now = this.clock.now();
     patch
       .addNode(action.noteId)
       .setProperty(action.noteId, 'type', 'note')
@@ -2019,8 +2065,7 @@ export class AgentActionService {
     assessment: ValidatedAssessment,
     action: SealAction,
   ): Promise<AgentActionOutcome> {
-    const keyring = new FsKeyringAdapter();
-    const sealService = new GuildSealService(keyring);
+    const sealService = this.sealService;
     const allowUnsignedScrolls = allowUnsignedScrollsForSettlement();
 
     if (!sealService.hasPrivateKey(this.agentId) && !allowUnsignedScrolls) {
@@ -2038,7 +2083,7 @@ export class AgentActionService {
       };
     }
 
-    const now = Date.now();
+    const now = this.clock.now();
     const scrollPayload = {
       artifactHash: action.artifactHash,
       questId: action.targetId,
@@ -2048,7 +2093,7 @@ export class AgentActionService {
     };
     const guildSeal = await sealService.sign(scrollPayload, this.agentId);
 
-    const graph = await this.graphPort.getGraph();
+    const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
     const scrollId = `artifact:${action.targetId}`;
     const sha = await graph.patch((p) => {
       p.addNode(scrollId)
@@ -2094,7 +2139,7 @@ export class AgentActionService {
     assessment: ValidatedAssessment,
     action: MergeAction,
   ): Promise<AgentActionOutcome> {
-    const workspace = new GitWorkspaceAdapter(process.cwd());
+    const workspace = this.workspace;
     let mergeCommit: string | undefined;
     const alreadyMerged = await workspace.isMerged(action.mergeRef, action.intoRef);
     if (alreadyMerged) {
@@ -2103,8 +2148,8 @@ export class AgentActionService {
       mergeCommit = await workspace.merge(action.mergeRef, action.intoRef);
     }
 
-    const adapter = new WarpSubmissionAdapter(this.graphPort, this.agentId);
-    const decisionId = autoId('decision:');
+    const adapter = this.submissionAdapter;
+    const decisionId = autoId('decision:', this.clock);
     let patchSha: string | null = null;
     try {
       const decision = await adapter.decide({
@@ -2146,9 +2191,8 @@ export class AgentActionService {
     let partialFailure: { stage: string; message: string } | null = null;
     if (action.questId && action.shouldAutoSeal) {
       try {
-        const now = Date.now();
-        const keyring = new FsKeyringAdapter();
-        const sealService = new GuildSealService(keyring);
+        const now = this.clock.now();
+        const sealService = this.sealService;
         const scrollPayload = {
           artifactHash: mergeCommit ?? 'unknown',
           questId: action.questId,
@@ -2158,7 +2202,7 @@ export class AgentActionService {
         };
         const guildSeal = await sealService.sign(scrollPayload, this.agentId);
 
-        const sealGraph = await this.graphPort.getGraph();
+        const sealGraph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
         const scrollId = `artifact:${action.questId}`;
         await sealGraph.patch((p) => {
           p.addNode(scrollId)

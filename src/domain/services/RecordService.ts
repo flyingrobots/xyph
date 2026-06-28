@@ -1,5 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { GraphPort } from '../../ports/GraphPort.js';
+import type { ClockPort } from '../../ports/ClockPort.js';
+import { SystemClockAdapter } from '../../infrastructure/adapters/SystemClockAdapter.js';
 import type { CanonicalArtifactKind } from '../models/controlPlane.js';
 import { MutationKernelService } from './MutationKernelService.js';
 import type {
@@ -106,13 +108,13 @@ interface CreateCaseDecisionInput {
   idempotencyKey?: string;
 }
 
-function deriveId(prefix: string, explicitId: string | undefined, idempotencyKey: string | undefined): string {
+function deriveId(prefix: string, explicitId: string | undefined, idempotencyKey: string | undefined, clock: ClockPort): string {
   if (explicitId) return explicitId;
   if (idempotencyKey) {
     const digest = createHash('sha256').update(idempotencyKey).digest('hex').slice(0, 16);
     return `${prefix}${digest}`;
   }
-  const ts = Date.now().toString(36);
+  const ts = clock.now().toString(36);
   return `${prefix}${ts}${randomUUID().replace(/-/g, '').slice(0, 8)}`;
 }
 
@@ -188,9 +190,15 @@ function caseDecisionExpectedDelta(
 
 export class RecordService {
   private readonly kernel: MutationKernelService;
+  private readonly clock: ClockPort;
 
-  constructor(private readonly graphPort: GraphPort) {
-    this.kernel = new MutationKernelService(graphPort);
+  constructor(
+    private readonly graphPort: GraphPort,
+    clock?: ClockPort,
+    kernel?: MutationKernelService,
+  ) {
+    this.kernel = kernel ?? new MutationKernelService(graphPort);
+    this.clock = clock ?? new SystemClockAdapter();
   }
 
   public async createComment(input: CreateCommentInput): Promise<{
@@ -199,7 +207,7 @@ export class RecordService {
     authoredAt: number;
     contentOid: string | null;
   }> {
-    const graph = await this.graphPort.getGraph();
+    const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
     if (!await graph.hasNode(input.targetId)) {
       throw new Error(`[NOT_FOUND] Target ${input.targetId} not found in the graph`);
     }
@@ -207,8 +215,8 @@ export class RecordService {
       throw new Error(`[NOT_FOUND] Reply target ${input.replyTo} not found in the graph`);
     }
 
-    const id = deriveId('comment:', input.id, input.idempotencyKey);
-    const authoredAt = Date.now();
+    const id = deriveId('comment:', input.id, input.idempotencyKey, this.clock);
+    const authoredAt = this.clock.now();
     const result = await this.kernel.execute({
       idempotencyKey: input.idempotencyKey,
       rationale: 'Record an append-only comment in the shared graph.',
@@ -241,7 +249,7 @@ export class RecordService {
     proposedAt: number;
     contentOid: string | null;
   }> {
-    const graph = await this.graphPort.getGraph();
+    const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
     if (!await graph.hasNode(input.subjectId)) {
       throw new Error(`[NOT_FOUND] Subject ${input.subjectId} not found in the graph`);
     }
@@ -249,8 +257,8 @@ export class RecordService {
       throw new Error(`[NOT_FOUND] Target ${input.targetId} not found in the graph`);
     }
 
-    const id = deriveId('proposal:', input.id, input.idempotencyKey);
-    const proposedAt = Date.now();
+    const id = deriveId('proposal:', input.id, input.idempotencyKey, this.clock);
+    const proposedAt = this.clock.now();
     const content = stringifyContent({
       rationale: input.rationale ?? null,
       payload: input.payload ?? null,
@@ -296,7 +304,7 @@ export class RecordService {
     suggestedAt: number;
     contentOid: string | null;
   }> {
-    const graph = await this.graphPort.getGraph();
+    const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
     if (input.targetId && !await graph.hasNode(input.targetId)) {
       throw new Error(`[NOT_FOUND] Target ${input.targetId} not found in the graph`);
     }
@@ -308,8 +316,8 @@ export class RecordService {
       }
     }
 
-    const id = deriveId('suggestion:', input.id, input.idempotencyKey);
-    const suggestedAt = Date.now();
+    const id = deriveId('suggestion:', input.id, input.idempotencyKey, this.clock);
+    const suggestedAt = this.clock.now();
     const content = stringifyDeterministicContent({
       title: input.title.trim(),
       summary: input.summary.trim(),
@@ -387,7 +395,7 @@ export class RecordService {
     patch: string;
     decidedAt: number;
   }> {
-    const graph = await this.graphPort.getGraph();
+    const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
     const caseProps = await graph.getNodeProps(input.caseId);
     if (!caseProps || caseProps['type'] !== 'case') {
       throw new Error(`[NOT_FOUND] Case ${input.caseId} not found in the graph`);
@@ -401,8 +409,8 @@ export class RecordService {
     const followOnKind: CaseFollowOnKind = input.decision === 'adopt'
       ? (input.followOnKind ?? 'quest')
       : 'none';
-    const decisionId = deriveId('decision:', input.id, input.idempotencyKey);
-    const decidedAt = Date.now();
+    const decisionId = deriveId('decision:', input.id, input.idempotencyKey, this.clock);
+    const decidedAt = this.clock.now();
     const title = typeof caseProps['title'] === 'string'
       ? caseProps['title']
       : typeof caseProps['question'] === 'string'
@@ -426,6 +434,7 @@ export class RecordService {
           'task:',
           undefined,
           input.idempotencyKey ? `${input.idempotencyKey}:quest` : `case-decision:${input.caseId}:quest`,
+          this.clock,
         ),
         title: questTitleFromSuggestion(title),
         status: 'BACKLOG',
@@ -519,7 +528,7 @@ export class RecordService {
     patch: string;
     resolvedAt: number;
   }> {
-    const graph = await this.graphPort.getGraph();
+    const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
     const props = await graph.getNodeProps(input.suggestionId);
     if (!props || (props['type'] !== 'ai_suggestion' && props['type'] !== 'ai-suggestion')) {
       throw new Error(`[NOT_FOUND] AI suggestion ${input.suggestionId} not found in the graph`);
@@ -564,6 +573,7 @@ export class RecordService {
           input.idempotencyKey
             ? `${input.idempotencyKey}:quest`
             : `suggestion-adopt:${input.suggestionId}:quest`,
+          this.clock,
         ),
         title: questTitleFromSuggestion(title),
         status: 'BACKLOG',
@@ -617,7 +627,7 @@ export class RecordService {
       adoptedArtifactId = proposal.id;
     }
 
-    const resolvedAt = Date.now();
+    const resolvedAt = this.clock.now();
     const patch = await graph.patch((p) => {
       p.setProperty(input.suggestionId, 'status', 'accepted')
         .setProperty(input.suggestionId, 'resolved_by', input.resolvedBy)
@@ -642,7 +652,7 @@ export class RecordService {
     patch: string;
     resolvedAt: number;
   }> {
-    const graph = await this.graphPort.getGraph();
+    const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
     const props = await graph.getNodeProps(input.suggestionId);
     if (!props || (props['type'] !== 'ai_suggestion' && props['type'] !== 'ai-suggestion')) {
       throw new Error(`[NOT_FOUND] AI suggestion ${input.suggestionId} not found in the graph`);
@@ -656,7 +666,7 @@ export class RecordService {
       throw new Error('[INVALID_INPUT] Rationale is required to dismiss an AI suggestion');
     }
 
-    const resolvedAt = Date.now();
+    const resolvedAt = this.clock.now();
     const patch = await graph.patch((p) => {
       p.setProperty(input.suggestionId, 'status', 'rejected')
         .setProperty(input.suggestionId, 'resolved_by', input.resolvedBy)
@@ -678,7 +688,7 @@ export class RecordService {
     patch: string;
     resolvedAt: number;
   }> {
-    const graph = await this.graphPort.getGraph();
+    const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
     const props = await graph.getNodeProps(input.suggestionId);
     if (!props || (props['type'] !== 'ai_suggestion' && props['type'] !== 'ai-suggestion')) {
       throw new Error(`[NOT_FOUND] AI suggestion ${input.suggestionId} not found in the graph`);
@@ -695,7 +705,7 @@ export class RecordService {
       throw new Error('[INVALID_INPUT] Rationale is required to supersede an AI suggestion');
     }
 
-    const resolvedAt = Date.now();
+    const resolvedAt = this.clock.now();
     const patch = await graph.patch((p) => {
       p.setProperty(input.suggestionId, 'status', 'rejected')
         .setProperty(input.suggestionId, 'resolved_by', input.resolvedBy)
@@ -720,13 +730,13 @@ export class RecordService {
     attestedAt: number;
     contentOid: string | null;
   }> {
-    const graph = await this.graphPort.getGraph();
+    const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
     if (!await graph.hasNode(input.targetId)) {
       throw new Error(`[NOT_FOUND] Target ${input.targetId} not found in the graph`);
     }
 
-    const id = deriveId('attestation:', input.id, input.idempotencyKey);
-    const attestedAt = Date.now();
+    const id = deriveId('attestation:', input.id, input.idempotencyKey, this.clock);
+    const attestedAt = this.clock.now();
     const content = stringifyContent({
       rationale: input.rationale,
       scope: input.scope ?? null,
@@ -767,7 +777,7 @@ export class RecordService {
     contentOid: string | null;
     existed: boolean;
   }> {
-    const graph = await this.graphPort.getGraph();
+    const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
     if (await graph.hasNode(input.id)) {
       const props = (await graph.getNodeProps(input.id)) ?? {};
       const existingType = typeof props['type'] === 'string' ? props['type'] : null;
@@ -781,13 +791,13 @@ export class RecordService {
       return {
         id: input.id,
         patch: null,
-        recordedAt: typeof props['recorded_at'] === 'number' ? props['recorded_at'] : Date.now(),
+        recordedAt: typeof props['recorded_at'] === 'number' ? props['recorded_at'] : this.clock.now(),
         contentOid: await graph.getContentOid(input.id),
         existed: true,
       };
     }
 
-    const recordedAt = Date.now();
+    const recordedAt = this.clock.now();
     const result = await this.kernel.execute({
       idempotencyKey: input.idempotencyKey,
       rationale: 'Record a canonical control-plane artifact in the shared graph.',

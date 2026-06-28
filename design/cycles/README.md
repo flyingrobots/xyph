@@ -145,4 +145,6 @@ around it.
 26. [CLI Search Command](./0026-cli-search-command.md)
 27. [Session Entity](./0027-session-entity.md)
 28. [Snapshot Invariant Violation (Bedrock Query Alignment)](./0028-snapshot-invariant-violation.md)
+29. [Policy Definitions (DoD Campaign Governance)](./0029-policy-definitions.md)
+
 

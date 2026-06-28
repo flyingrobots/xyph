@@ -106,6 +106,9 @@ import {
   DEFAULT_POLICY_REQUIRE_EVIDENCE,
 } from '../domain/entities/Policy.js';
 import type { GraphPort } from '../ports/GraphPort.js';
+import { WarpQuestReadAdapter } from './warp/optics/WarpQuestReadAdapter.js';
+import { QuestCompletionEvaluator } from '../domain/services/QuestCompletionEvaluator.js';
+import { WarpCampaignPolicyReadAdapter } from './warp/optics/WarpCampaignPolicyReadAdapter.js';
 import { toNeighborEntries, type NeighborEntry } from './helpers/isNeighborEntry.js';
 import {
   buildComparisonArtifactDigest,
@@ -483,11 +486,21 @@ class UnifiedStateReader {
   }
 
   async getContent(nodeId: string): Promise<Uint8Array | null> {
-    return this.graph.getContent(nodeId);
+    try {
+      return await this.graph.getContent(nodeId);
+    } catch (err) {
+      this.graph.logger?.warn?.('getContent failed', { nodeId, error: err });
+      return null;
+    }
   }
 
   async getContentOid(nodeId: string): Promise<string | null> {
-    return this.graph.getContentOid(nodeId);
+    try {
+      return await this.graph.getContentOid(nodeId);
+    } catch (err) {
+      this.graph.logger?.warn?.('getContentOid failed', { nodeId, error: err });
+      return null;
+    }
   }
 
   async compareCoordinates(
@@ -830,6 +843,7 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
         id: n.id,
         title,
         status: rawStatus as QuestStatus,
+        rawStatus: rawStatusRaw,
         hours: typeof hours === 'number' && Number.isFinite(hours) && hours >= 0 ? hours : 0,
         priority: normalizeQuestPriority(priority),
         description: typeof description === 'string' ? description : undefined,
@@ -2452,37 +2466,19 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
     if (scroll) quest.scrollId = scroll.id;
     if (submission) quest.submissionId = submission.id;
 
-    const appliedPolicy = quest.campaignId
-      ? policies.find((entry) => entry.campaignId === quest.campaignId)
-      : undefined;
-    quest.computedCompletion = computeCompletionSummary(
-      requirements.map((requirement) => ({
-        id: requirement.id,
-        criterionIds: requirement.criterionIds,
-      })),
-      criteria.map((criterion) => ({
-        id: criterion.id,
-        evidence: criterion.evidenceIds
-          .map((evidenceId) => evidence.find((entry) => entry.id === evidenceId))
-          .filter((entry): entry is EvidenceNode => Boolean(entry))
-          .map((entry) => ({
-            id: entry.id,
-            result: entry.result,
-            producedAt: entry.producedAt,
-          })),
-      })),
-      {
-        policy: appliedPolicy
-          ? {
-              id: appliedPolicy.id,
-              coverageThreshold: appliedPolicy.coverageThreshold,
-              requireAllCriteria: appliedPolicy.requireAllCriteria,
-              requireEvidence: appliedPolicy.requireEvidence,
-            }
-          : undefined,
-        manualComplete: quest.status === 'DONE',
-      },
-    );
+    const fakeGraphPort: GraphPort = {
+      getGraph: async () => reader as unknown as import('@git-stunts/git-warp').WarpCore,
+      reset(): void { /* noop */ },
+    };
+    const questReader = new WarpQuestReadAdapter(fakeGraphPort, {
+      accessorId: 'system',
+      role: 'agent',
+    });
+    const evaluator = new QuestCompletionEvaluator();
+    const coneResult = await questReader.getQuestCone(quest.id);
+    if (coneResult) {
+      quest.computedCompletion = evaluator.evaluate(coneResult.value);
+    }
 
     const reviewIds = new Set(reviews.map((entry) => entry.id));
     const relevantIds = new Set<string>([
@@ -3023,44 +3019,22 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
     reader: UnifiedStateReader,
     campaignId: string,
   ): Promise<PolicyNode[]> {
-    const incoming = await reader.neighbors(campaignId, 'incoming');
-    const policyIds = incoming
-      .filter((edge) => edge.label === 'governs' && edge.nodeId.startsWith('policy:'))
-      .map((edge) => edge.nodeId)
-      .sort((left, right) => left.localeCompare(right));
-    const policies = await Promise.all(policyIds.map(async (policyId): Promise<PolicyNode | null> => {
-      const props = await reader.getNodeProps(policyId);
-      if (!props || props['type'] !== 'policy') return null;
-      const coverageThresholdRaw = props['coverage_threshold'];
-      const requireAllCriteriaRaw = props['require_all_criteria'];
-      const requireEvidenceRaw = props['require_evidence'];
-      const allowManualSealRaw = props['allow_manual_seal'];
-      const coverageThreshold = (
-        typeof coverageThresholdRaw === 'number' &&
-        Number.isFinite(coverageThresholdRaw) &&
-        coverageThresholdRaw >= 0 &&
-        coverageThresholdRaw <= 1
-      )
-        ? coverageThresholdRaw
-        : DEFAULT_POLICY_COVERAGE_THRESHOLD;
-
-      return {
-        id: policyId,
-        campaignId,
-        coverageThreshold,
-        requireAllCriteria: typeof requireAllCriteriaRaw === 'boolean'
-          ? requireAllCriteriaRaw
-          : DEFAULT_POLICY_REQUIRE_ALL_CRITERIA,
-        requireEvidence: typeof requireEvidenceRaw === 'boolean'
-          ? requireEvidenceRaw
-          : DEFAULT_POLICY_REQUIRE_EVIDENCE,
-        allowManualSeal: typeof allowManualSealRaw === 'boolean'
-          ? allowManualSealRaw
-          : DEFAULT_POLICY_ALLOW_MANUAL_SEAL,
-      } satisfies PolicyNode;
+    const mockPort: GraphPort = {
+      getGraph: async () => reader as unknown as import('@git-stunts/git-warp').WarpCore,
+      reset: () => {
+        // no-op
+      },
+    };
+    const adapter = new WarpCampaignPolicyReadAdapter(mockPort, { accessorId: 'projection', role: 'agent' });
+    const boundedPolicies = await adapter.getPoliciesForCampaign(campaignId);
+    return boundedPolicies.value.map((p) => ({
+      id: p.id,
+      campaignId,
+      coverageThreshold: p.coverageThreshold,
+      requireAllCriteria: p.requireAllCriteria,
+      requireEvidence: p.requireEvidence,
+      allowManualSeal: p.allowManualSeal,
     }));
-
-    return policies.filter((entry): entry is PolicyNode => entry !== null);
   }
 
   private async buildCaseDetail(

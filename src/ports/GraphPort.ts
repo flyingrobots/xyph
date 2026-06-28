@@ -11,6 +11,9 @@ export interface GraphPort {
   /** Returns the shared, lazily-initialized WarpGraph instance. */
   getGraph(): Promise<WarpGraph>;
 
+  /** Returns the shared WarpGraph instance, ensuring a materialized basis for mutations. */
+  getMutationGraph?(): Promise<WarpGraph>;
+
   /** Returns an isolated graph handle for read-side work that must not perturb the shared singleton. */
   openIsolatedGraph?(): Promise<WarpGraph>;
 

@@ -19,6 +19,7 @@ Do not audit the repository by recursively walking the filesystem. Follow the au
 
 ### 2. The Bedrock
 - **`ARCHITECTURE.md`**: The authoritative structural reference (Hexagonal, Ports, WARP).
+- **[docs/TS_STANDARDS.md](file:///Users/james/git/xyph/docs/TS_STANDARDS.md)**: Bounded context, deterministic, and LLM-agent-aware TypeScript coding guidelines.
 - **`docs/VISION.md`**: Core tenets and the stigmergic mission.
 - **`METHOD.md`**: Repo work doctrine (Backlog lanes, Cycle loop).
 
@@ -46,8 +47,9 @@ After altering files:
 
 1. **Verify Truth**: Ensure documentation is updated if behavior or structure changed.
 2. **Log Debt**: Add follow-on backlog items to `bad-code/` or `cool-ideas/`.
-3. **Commit**: Use focused, conventional commit messages. Propose a draft before executing.
-4. **Validate**: Run `npm run lint` and `npm run test:local`.
+3. **Dogfood the Graph**: The graph IS the plan. Use the `xyph.ts` CLI actuator to formally record, move, authorize, and link your completed work as native graph nodes.
+4. **Commit**: Use focused, conventional commit messages. Propose a draft before executing.
+5. **Validate**: Run `npm run lint` and `npm run test:local`.
 
 ---
 **The goal is inevitably. Every feature is defined by its tests.**

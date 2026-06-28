@@ -114,9 +114,9 @@ export function registerDoctorCommands(program: Command, ctx: CliContext): void 
     .command('prescribe')
     .description('Derive deterministic remediation prescriptions from doctor findings')
     .action(withErrorHandler(async () => {
-      const service = new DoctorService(
+      const service = ctx.doctorService ?? new DoctorService(
         ctx.graphPort,
-        new WarpRoadmapAdapter(ctx.graphPort),
+        ctx.roadmap ?? new WarpRoadmapAdapter(ctx.graphPort),
         ctx.inspection,
       );
       if (ctx.json) ctx.jsonStart('doctor prescribe');
@@ -153,9 +153,9 @@ export function registerDoctorCommands(program: Command, ctx: CliContext): void 
 
   doctorCmd
     .action(withErrorHandler(async () => {
-      const service = new DoctorService(
+      const service = ctx.doctorService ?? new DoctorService(
         ctx.graphPort,
-        new WarpRoadmapAdapter(ctx.graphPort),
+        ctx.roadmap ?? new WarpRoadmapAdapter(ctx.graphPort),
         ctx.inspection,
       );
       if (ctx.json) ctx.jsonStart('doctor');

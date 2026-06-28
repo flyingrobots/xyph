@@ -5,21 +5,6 @@ import { registerIntakeCommands } from '../../src/cli/commands/intake.js';
 
 const mocks = vi.hoisted(() => ({
   readinessAssess: vi.fn(),
-  WarpRoadmapAdapter: vi.fn(),
-}));
-
-vi.mock('../../src/domain/services/ReadinessService.js', () => ({
-  ReadinessService: class ReadinessService {
-    assess(questId: string) {
-      return mocks.readinessAssess(questId);
-    }
-  },
-}));
-
-vi.mock('../../src/infrastructure/adapters/WarpRoadmapAdapter.js', () => ({
-  WarpRoadmapAdapter: function WarpRoadmapAdapter(graphPort: unknown) {
-    mocks.WarpRoadmapAdapter(graphPort);
-  },
 }));
 
 function makeCtx(): CliContext {
@@ -27,8 +12,21 @@ function makeCtx(): CliContext {
     agentId: 'human.architect',
     identity: { agentId: 'human.architect', source: 'default', origin: null },
     json: true,
-    graphPort: {} as CliContext['graphPort'],
+    graphPort: {
+      getGraph: vi.fn(async () => ({
+        getNodeProps: vi.fn(async () => ({
+          ready_at: 12345,
+        })),
+      })),
+    } as unknown as CliContext['graphPort'],
     style: {} as CliContext['style'],
+    roadmap: { mocked: true } as any,
+    readinessService: {
+      assess: (questId: string) => mocks.readinessAssess(questId),
+    } as any,
+    intakeAdapter: {
+      ready: vi.fn(async () => 'patch:ready'),
+    } as any,
     ok: vi.fn(),
     warn: vi.fn(),
     muted: vi.fn(),

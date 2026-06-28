@@ -5,8 +5,49 @@ A sovereign agentic planning substrate and Edict execution runtime designed for 
 XYPH replaces traditional central-database ticketing systems with a distributed network of **Continuum Participants** that materialize project planning coordinates (Intents, Quests, Scrolls, and Policies) directly from an immutable, verifiable causal history.
 
 > [!WARNING]
-> **ROADMAP ALIGNMENT**
+> **ROADMAP & IMPLEMENTATION ALIGNMENT**
 > While XYPH currently operates as a local-first TypeScript CLI and TUI over git-warp graphs, it is actively transitioning to a native Continuum Participant. The Edict compilation, capability-bound execution lanes, and peer-to-peer Continuum sync protocols described below represent our target architecture.
+
+---
+
+## The Plain-English Ontology Crosswalk
+
+XYPH rejects generic backlog nouns in favor of a richer Digital Guild ontology intended to preserve distinctions between intent, work, proof, governance, and settled history. Because vocabulary density can become an onboarding moat, use this definitive mapping to orient yourself:
+
+| Digital Guild Noun | Plain-English Infrastructure Equivalent | Core Operational Role in XYPH |
+| :--- | :--- | :--- |
+| **Quest** | Executable work unit | An atomic task node assigned to an agent or human within admitted boundaries. |
+| **Criterion** | Acceptance condition | A testable or reviewable condition required to satisfy a sovereign requirement. |
+| **Evidence** | Proof artifact | A verifiable cryptographic receipt, passing test run, or AST digest linked to a criterion. |
+| **Settlement** | Governed done | The evidentiary conclusion where work is proven, sealed, and merged into canonical history. |
+| **Worldline** | Causal branch / admitted reality | `worldline:live` is admitted truth; speculative worldlines are candidate continuations. |
+| **Intent** | Sovereign purpose | The unforgeable human justification defining why work exists (Genealogy of Intent). |
+| **Scroll** | Immutable transition record | A cryptographically signed Boundary Transition Record (BTR) proving settlement. |
+
+---
+
+## Reality Check: What is Real Today / What is Next / What is Horizon
+
+We refuse the usual hype shortcuts. To build trust, we are brutally clear about the boundary between our working codebase and our architectural destination:
+
+### 1. What is Real Today (~55–60% Complete)
+* **The Dual Human/Agent Product Model**: `xyph-dashboard.ts` (Bijou TUI cockpit) for human operators and `xyph-actuator.ts` (CLI/JSONL/MCP packets) for autonomous agents.
+* **Graph-Native Ontology & Storage**: Empty-tree Git commit storage (`git-warp`) ensuring zero filesystem pollution and state-based CRDT convergence.
+* **The Semantic Judgment Layer**: `WorkSemanticsService` centralizing derived operational meaning (`attentionState`, `expectedActor`, `nextLawfulActions`, `blockingReasons`) across all surfaces.
+* **The Agent Ingress Packets**: Structured machine-facing `briefing`, `next`, `context <id>`, and `submissions` commands.
+* **Real Dogfooding**: XYPH stores and reasons about its own development work directly inside its own causal graph.
+
+### 2. What is Next (The Active Clean Sequence)
+* **Complete GRAPH-CLEANUP**: Audit and clean up the live graph—seal completed quests, close irrelevant ones, doctor everything else.
+* **Modernize SubmissionReadService**: Move legacy monolithic graph materialization behind a bounded optic (`WarpSubmissionReadAdapter`).
+* **Scan Reduction**: Add graph-wide scan instrumentation and eradicate brute-force traversal patterns.
+* **Shadow graph.watch**: Run reactive streaming side-by-side with legacy timer polling in the dashboard before cutting over.
+* **Golden Packet Tests**: Anchor `briefing`, `next`, `context`, and `submissions` with deterministic golden contract tests.
+
+### 3. What is Horizon (The Hard Guarantees)
+* **Edict-Style Bounded Admission**: Mandating statically verified Edict nutrition labels before agent execution.
+* **Continuum Protocol Exposure**: Full peer-to-peer suffix transport (`continuum.participant.hello.v1`, `continuum.history.exchange.v1`).
+* **Cryptographically Hard Settlement**: Cryptographic binding of holographic witness receipts directly to criteria.
 
 ---
 
@@ -88,6 +129,20 @@ Boot the interactive Bijou-powered cockpit to manage work streams and inspect ac
 ```bash
 npm run tui
 ```
+
+---
+
+## The Next Clean Sequence
+
+Our immediate engineering execution strictly follows this 7-step sequence. Do not wander. Do not add more nouns. Do not turn the landing cockpit into the everything screen:
+
+1. **Complete GRAPH-CLEANUP**: Audit and clean up the XYPH graph: seal completed quests, close irrelevant ones, doctor the rest.
+2. **Modernize `SubmissionReadService`** behind a bounded optic.
+3. **Add graph-wide scan instrumentation** and kill the worst offenders.
+4. **Shadow `graph.watch`** beside polling in the dashboard.
+5. **Add golden packet tests** for `briefing`, `next`, `context`, and `submissions`.
+6. **Land one verified capability-bound action path** (action declares intended reads/writes/spend → kernel validates → execution records receipt → dashboard/briefing surfaces it).
+7. **Only then push the public XYPH narrative harder.**
 
 ---
 

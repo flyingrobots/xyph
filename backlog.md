@@ -21,3 +21,7 @@ This file tracks "BAD CODE" that needs to be refactored and "COOL IDEAS™" for 
 - **[OPERATIONS] Structured logging:** Replace all `console.log` calls with a structured logging library like `pino` or `winston`.
 - **[OPERATIONS] Health check endpoint:** Add a health check endpoint to the `coordinator-daemon.ts`.
 - **[OPERATIONS] Metrics for monitoring:** Add a system for exporting metrics about the health and performance of the system.
+- **[ARCHITECTURE] Git-Warp `IntentCapability` & `WarpIntentDescriptor`:** Decouple `git-warp` intents from imperative CRDT patches by implementing unmaterialized intent admission and optic-based precommit guard verification.
+- **[ARCHITECTURE] Edict Wasm Target Lowerer Plugin (`xyph-target-lowerer.wasm`):** Build a WebAssembly component implementing `edict-target-lowerer.wit` to perform Target IR lowering and footprint validation directly within Edict's compiler spine.
+- **[ARCHITECTURE] Git-Warp Wasm-Verified Admission Port:** Implement unmaterialized causal suffix admission in `git-warp` by verifying Wasm compiler nutrition labels and verifier reports.
+- **[REFACTOR] Domain Optic Purity in Xyph Services:** Replace imperative substrate mutations in `AgentActionService` and `RecordService` with invocations of generated TypeScript commit-reducer optics.

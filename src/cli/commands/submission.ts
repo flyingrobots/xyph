@@ -33,11 +33,11 @@ export function registerSubmissionCommands(program: Command, ctx: CliContext): v
       const { SubmissionService } = await import('../../domain/services/SubmissionService.js');
       const { GitWorkspaceAdapter } = await import('../../infrastructure/adapters/GitWorkspaceAdapter.js');
 
-      const adapter = new WarpSubmissionAdapter(ctx.graphPort, ctx.agentId);
-      const service = new SubmissionService(adapter);
+      const adapter = ctx.submissionAdapter ?? new WarpSubmissionAdapter(ctx.graphPort, ctx.agentId);
+      const service = ctx.submissionService ?? new SubmissionService(adapter);
       await service.validateSubmit(questId, ctx.agentId);
 
-      const workspace = new GitWorkspaceAdapter(process.cwd());
+      const workspace = ctx.gitWorkspace ?? new GitWorkspaceAdapter(process.cwd());
       const workspaceRef = opts.workspace ?? await workspace.getWorkspaceRef();
       let headRef: string | undefined;
       let commitShas: string[] | undefined;
@@ -93,8 +93,8 @@ export function registerSubmissionCommands(program: Command, ctx: CliContext): v
       const { GitWorkspaceAdapter } = await import('../../infrastructure/adapters/GitWorkspaceAdapter.js');
       const { computeTipPatchset } = await import('../../domain/entities/Submission.js');
 
-      const adapter = new WarpSubmissionAdapter(ctx.graphPort, ctx.agentId);
-      const service = new SubmissionService(adapter);
+      const adapter = ctx.submissionAdapter ?? new WarpSubmissionAdapter(ctx.graphPort, ctx.agentId);
+      const service = ctx.submissionService ?? new SubmissionService(adapter);
       await service.validateRevise(submissionId, ctx.agentId);
 
       // Find the current tip to supersede
@@ -104,7 +104,7 @@ export function registerSubmissionCommands(program: Command, ctx: CliContext): v
         return ctx.fail(`No existing patchsets found for ${submissionId}`);
       }
 
-      const workspace = new GitWorkspaceAdapter(process.cwd());
+      const workspace = ctx.gitWorkspace ?? new GitWorkspaceAdapter(process.cwd());
       const workspaceRef = opts.workspace ?? await workspace.getWorkspaceRef();
       let headRef: string | undefined;
       let commitShas: string[] | undefined;
@@ -158,8 +158,8 @@ export function registerSubmissionCommands(program: Command, ctx: CliContext): v
       const { WarpSubmissionAdapter } = await import('../../infrastructure/adapters/WarpSubmissionAdapter.js');
       const { SubmissionService } = await import('../../domain/services/SubmissionService.js');
 
-      const adapter = new WarpSubmissionAdapter(ctx.graphPort, ctx.agentId);
-      const service = new SubmissionService(adapter);
+      const adapter = ctx.submissionAdapter ?? new WarpSubmissionAdapter(ctx.graphPort, ctx.agentId);
+      const service = ctx.submissionService ?? new SubmissionService(adapter);
       await service.validateReview(patchsetId, ctx.agentId);
 
       const reviewId = `review:${generateId()}`;
@@ -199,10 +199,10 @@ export function registerSubmissionCommands(program: Command, ctx: CliContext): v
       const { GuildSealService } = await import('../../domain/services/GuildSealService.js');
       const { FsKeyringAdapter } = await import('../../infrastructure/adapters/FsKeyringAdapter.js');
 
-      const adapter = new WarpSubmissionAdapter(ctx.graphPort, ctx.agentId);
-      const service = new SubmissionService(adapter);
+      const adapter = ctx.submissionAdapter ?? new WarpSubmissionAdapter(ctx.graphPort, ctx.agentId);
+      const service = ctx.submissionService ?? new SubmissionService(adapter);
       const { tipPatchsetId } = await service.validateMerge(submissionId, ctx.agentId, opts.patchset);
-      const sealService = new GuildSealService(new FsKeyringAdapter());
+      const sealService = ctx.guildSealService ?? new GuildSealService(ctx.keyring ?? new FsKeyringAdapter());
       const allowUnsignedScrolls = allowUnsignedScrollsForSettlement();
       const questId = await adapter.getSubmissionQuestId(submissionId);
       const questStatus = questId ? await adapter.getQuestStatus(questId) : null;
@@ -244,7 +244,7 @@ export function registerSubmissionCommands(program: Command, ctx: CliContext): v
       }
 
       // Git settlement
-      const workspace = new GitWorkspaceAdapter(process.cwd());
+      const workspace = ctx.gitWorkspace ?? new GitWorkspaceAdapter(process.cwd());
       let mergeCommit: string | undefined;
       const alreadyMerged = await workspace.isMerged(mergeRef, opts.into);
       if (alreadyMerged) {
@@ -348,8 +348,8 @@ export function registerSubmissionCommands(program: Command, ctx: CliContext): v
       const { WarpSubmissionAdapter } = await import('../../infrastructure/adapters/WarpSubmissionAdapter.js');
       const { SubmissionService } = await import('../../domain/services/SubmissionService.js');
 
-      const adapter = new WarpSubmissionAdapter(ctx.graphPort, ctx.agentId);
-      const service = new SubmissionService(adapter);
+      const adapter = ctx.submissionAdapter ?? new WarpSubmissionAdapter(ctx.graphPort, ctx.agentId);
+      const service = ctx.submissionService ?? new SubmissionService(adapter);
       await service.validateClose(submissionId, ctx.agentId);
 
       const decisionId = `decision:${generateId()}`;

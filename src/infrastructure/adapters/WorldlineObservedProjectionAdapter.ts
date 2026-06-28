@@ -9,6 +9,7 @@ export function adaptObservedHandleToObservedProjectionGraph(
   handle: ObservedProjectionHandle,
   lens?: { match?: string | string[] },
 ): ObservedProjectionGraph {
+  let cachedEdgesPromise: ReturnType<ObservedProjectionHandle['getEdges']> | null = null;
   return {
     writerId: graph.writerId,
     query: () => handle.query(),
@@ -16,14 +17,29 @@ export function adaptObservedHandleToObservedProjectionGraph(
     getNodeProps: (nodeId: string) => handle.getNodeProps(nodeId),
     getStateSnapshot: () => graph.getStateSnapshot(),
     getFrontier: () => graph.getFrontier(),
-    getContentOid: (nodeId: string) => graph.getContentOid(nodeId),
-    getContent: (nodeId: string) => graph.getContent(nodeId),
+    getContentOid: async (nodeId: string): Promise<string | null> => {
+      try {
+        return await graph.getContentOid(nodeId);
+      } catch {
+        return null;
+      }
+    },
+    getContent: async (nodeId: string): Promise<Uint8Array | null> => {
+      try {
+        return await graph.getContent(nodeId);
+      } catch {
+        return null;
+      }
+    },
     neighbors: async (
       nodeId: string,
       direction: 'outgoing' | 'incoming' | 'both' = 'outgoing',
       edgeLabel?: string,
     ): ReturnType<ObservedProjectionGraph['neighbors']> => {
-      const edges = await handle.getEdges();
+      if (!cachedEdgesPromise) {
+        cachedEdgesPromise = handle.getEdges();
+      }
+      const edges = await cachedEdgesPromise;
       return edges.flatMap((edge) => {
         if (edgeLabel && edge.label !== edgeLabel) return [];
         if (direction === 'outgoing' && edge.from === nodeId) {

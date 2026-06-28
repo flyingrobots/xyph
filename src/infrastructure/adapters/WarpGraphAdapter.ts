@@ -13,6 +13,7 @@ import path from 'node:path';
 export class WarpGraphAdapter implements GraphPort {
   private graphPromise: Promise<WarpGraph> | null = null;
   private static readonly memoryBackends = new Map<string, InMemoryGraphAdapter>();
+  private materialized = false;
 
   constructor(
     private readonly cwd: string,
@@ -44,7 +45,18 @@ export class WarpGraphAdapter implements GraphPort {
         writerId: this.writerId,
       });
     }
-    return this.graphPromise;
+    const graph = await this.graphPromise;
+    if (!this.materialized) {
+      await graph.materialize();
+      this.materialized = true;
+    }
+    return graph;
+  }
+
+  public async getMutationGraph(): Promise<WarpGraph> {
+    const graph = await this.getGraph();
+    await graph.materialize();
+    return graph;
   }
 
   public async openIsolatedGraph(): Promise<WarpGraph> {
@@ -62,6 +74,7 @@ export class WarpGraphAdapter implements GraphPort {
       writerId: this.writerId,
     });
     this.graphPromise = null;
+    this.materialized = false;
   }
 
   public getLogger(): LoggerPort | undefined {
@@ -111,7 +124,6 @@ export class WarpGraphAdapter implements GraphPort {
       checkpointPolicy: { every: 50 },
       logger: this.logger,
     });
-    await graph.materialize();
     this.logger?.info('warp graph opened', {
       graphName: this.graphName,
       writerId: this.writerId,

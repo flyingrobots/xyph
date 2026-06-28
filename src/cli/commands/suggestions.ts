@@ -46,7 +46,7 @@ function aiSuggestionAudience(opts: { kind: string; audience: string }): AiSugge
 
 export function registerSuggestionCommands(program: Command, ctx: CliContext): void {
   const withErrorHandler = createErrorHandler(ctx);
-  const records = new RecordService(ctx.graphPort);
+  const records = ctx.recordService ?? new RecordService(ctx.graphPort);
 
   program
     .command('suggest')

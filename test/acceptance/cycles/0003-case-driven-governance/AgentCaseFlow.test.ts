@@ -11,6 +11,7 @@ import { WarpObservationAdapter } from '../../../../src/infrastructure/adapters/
 import { WarpOperationalReadAdapter } from '../../../../src/infrastructure/adapters/WarpOperationalReadAdapter.js';
 import { WarpSubstrateInspectionAdapter } from '../../../../src/infrastructure/adapters/WarpSubstrateInspectionAdapter.js';
 import { WarpGraphAdapter } from '../../../../src/infrastructure/adapters/WarpGraphAdapter.js';
+import { WarpQuestReadAdapter } from '../../../../src/infrastructure/warp/optics/WarpQuestReadAdapter.js';
 import { makeJsonCliContext } from '../../../helpers/cliContext.js';
 
 describe('Cycle 0003: Case-Driven Governance', () => {
@@ -223,6 +224,7 @@ function makeCliContext(graphPort: WarpGraphAdapter, repoPath: string): CliConte
     graphPort,
     observation: new WarpObservationAdapter(graphPort),
     operationalRead: new WarpOperationalReadAdapter(graphPort),
+    questReadPort: new WarpQuestReadAdapter(graphPort, { accessorId: 'agent.tester', role: 'agent' }),
     inspection: new WarpSubstrateInspectionAdapter(graphPort),
   });
 }

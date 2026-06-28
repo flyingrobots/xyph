@@ -101,7 +101,7 @@ export function registerIntakeCommands(program: Command, ctx: CliContext): void 
       const taskKind = resolveTaskKind(opts.kind);
       const priority = opts.priority !== undefined ? resolveQuestPriority(opts.priority) : undefined;
 
-      const intake = new WarpIntakeAdapter(ctx.graphPort, ctx.agentId);
+      const intake = ctx.intakeAdapter ?? new WarpIntakeAdapter(ctx.graphPort, ctx.agentId);
       const sha = await intake.promote(id, opts.intent, opts.campaign, {
         description: opts.description?.trim(),
         taskKind,
@@ -138,7 +138,8 @@ export function registerIntakeCommands(program: Command, ctx: CliContext): void 
       const { WarpRoadmapAdapter } = await import('../../infrastructure/adapters/WarpRoadmapAdapter.js');
       const { ReadinessService } = await import('../../domain/services/ReadinessService.js');
 
-      const readiness = new ReadinessService(new WarpRoadmapAdapter(ctx.graphPort));
+      const roadmap = ctx.roadmap ?? new WarpRoadmapAdapter(ctx.graphPort);
+      const readiness = ctx.readinessService ?? new ReadinessService(roadmap);
       const assessment = await readiness.assess(id);
       if (!assessment.valid) {
         const diagnostics = collectReadinessDiagnostics(assessment, id);
@@ -156,7 +157,7 @@ export function registerIntakeCommands(program: Command, ctx: CliContext): void 
         ctx.fail(`[NOT_READY] ${assessment.unmet.map((item) => item.message).join('\n  - ')}`);
       }
 
-      const intake = new WarpIntakeAdapter(ctx.graphPort, ctx.agentId);
+      const intake = ctx.intakeAdapter ?? new WarpIntakeAdapter(ctx.graphPort, ctx.agentId);
       const sha = await intake.ready(id);
       const graph = await ctx.graphPort.getGraph();
       const props = await graph.getNodeProps(id);
@@ -204,14 +205,14 @@ export function registerIntakeCommands(program: Command, ctx: CliContext): void 
       const taskKind = opts.kind !== undefined ? resolveTaskKind(opts.kind) : undefined;
       const priority = opts.priority !== undefined ? resolveQuestPriority(opts.priority) : undefined;
 
-      const intake = new WarpIntakeAdapter(ctx.graphPort, ctx.agentId);
+      const intake = ctx.intakeAdapter ?? new WarpIntakeAdapter(ctx.graphPort, ctx.agentId);
       const sha = await intake.shape(id, {
         description: opts.description?.trim(),
         taskKind,
         priority,
       });
 
-      const roadmap = new WarpRoadmapAdapter(ctx.graphPort);
+      const roadmap = ctx.roadmap ?? new WarpRoadmapAdapter(ctx.graphPort);
       const quest = await roadmap.getQuest(id);
 
       if (ctx.json) {
@@ -244,7 +245,7 @@ export function registerIntakeCommands(program: Command, ctx: CliContext): void 
     .action(withErrorHandler(async (id: string, opts: { rationale: string }) => {
       const { WarpIntakeAdapter } = await import('../../infrastructure/adapters/WarpIntakeAdapter.js');
 
-      const intake = new WarpIntakeAdapter(ctx.graphPort, ctx.agentId);
+      const intake = ctx.intakeAdapter ?? new WarpIntakeAdapter(ctx.graphPort, ctx.agentId);
       const sha = await intake.reject(id, opts.rationale);
 
       if (ctx.json) {
@@ -267,7 +268,7 @@ export function registerIntakeCommands(program: Command, ctx: CliContext): void 
     .action(withErrorHandler(async (id: string) => {
       const { WarpIntakeAdapter } = await import('../../infrastructure/adapters/WarpIntakeAdapter.js');
 
-      const intake = new WarpIntakeAdapter(ctx.graphPort, ctx.agentId);
+      const intake = ctx.intakeAdapter ?? new WarpIntakeAdapter(ctx.graphPort, ctx.agentId);
       const sha = await intake.reopen(id);
 
       if (ctx.json) {

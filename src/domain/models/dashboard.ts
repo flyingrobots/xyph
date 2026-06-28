@@ -55,6 +55,7 @@ export interface QuestNode {
   id: string;
   title: string;
   status: QuestStatus;
+  rawStatus?: string;
   hours: number;
   priority?: QuestPriority;
   description?: string;

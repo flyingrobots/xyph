@@ -6,6 +6,26 @@ import type { RoadmapQueryPort } from '../../src/ports/RoadmapPort.js';
 import { makeSnapshot, campaign, intent, quest, review, submission } from '../helpers/snapshot.js';
 import { makeObservationSessionDouble } from '../helpers/observation.js';
 import { AgentBriefingService } from '../../src/domain/services/AgentBriefingService.js';
+import type { QuestReadPort, QuestCone } from '../../src/ports/QuestReadPort.js';
+import { Requirement } from '../../src/domain/entities/Requirement.js';
+import { Criterion } from '../../src/domain/entities/Criterion.js';
+import { Evidence } from '../../src/domain/entities/Evidence.js';
+import { Policy } from '../../src/domain/entities/Policy.js';
+
+function makeQuestReadPortDouble(conesByQuestId: Record<string, QuestCone> = {}): QuestReadPort {
+  return {
+    getQuestCone: vi.fn(async (questId: string) => {
+      const cone = conesByQuestId[questId];
+      if (!cone) return null;
+      return {
+        value: cone,
+        completeness: 'complete',
+        cursor: null,
+        readIdentity: { accessorId: 'test', role: 'agent' },
+      };
+    }),
+  };
+}
 
 function makeGraphWithHandoffs(noteNodes: { id: string; props: Record<string, unknown> }[], outgoing: Record<string, { nodeId: string; label: string }[]> = {}): GraphPort {
   const graph = {
@@ -253,6 +273,7 @@ describe('AgentBriefingService', () => {
       ),
       'agent.hal',
       readPort.port,
+      makeQuestReadPortDouble(),
       makeDoctor(),
     );
 
@@ -374,6 +395,7 @@ describe('AgentBriefingService', () => {
       ),
       'agent.hal',
       readPort.port,
+      makeQuestReadPortDouble(),
       makeDoctor(),
     );
 
@@ -452,6 +474,7 @@ describe('AgentBriefingService', () => {
       ]),
       'agent.hal',
       makeOperationalReadPortDouble(snapshot).port,
+      makeQuestReadPortDouble(),
       doctor,
     );
 
@@ -555,6 +578,7 @@ describe('AgentBriefingService', () => {
       ]),
       'agent.hal',
       readPort.port,
+      makeQuestReadPortDouble(),
       makeDoctor(),
     );
 
@@ -623,6 +647,7 @@ describe('AgentBriefingService', () => {
       makeRoadmap([]),
       'agent.hal',
       readPort.port,
+      makeQuestReadPortDouble(),
       makeDoctor(),
     );
 
@@ -695,6 +720,7 @@ describe('AgentBriefingService', () => {
       makeRoadmap([]),
       'agent.hal',
       readPort.port,
+      makeQuestReadPortDouble(),
       makeDoctor(),
     );
 
@@ -763,6 +789,7 @@ describe('AgentBriefingService', () => {
       makeRoadmap([]),
       'agent.hal',
       readPort.port,
+      makeQuestReadPortDouble(),
       makeDoctor(),
     );
 
@@ -809,6 +836,7 @@ describe('AgentBriefingService', () => {
       makeRoadmap([]),
       'agent.hal',
       readPort.port,
+      makeQuestReadPortDouble(),
       makeDoctor(),
     );
 
@@ -882,6 +910,7 @@ describe('AgentBriefingService', () => {
       makeRoadmap([]),
       'agent.hal',
       readPort.port,
+      makeQuestReadPortDouble(),
       makeDoctor(),
     );
 
@@ -964,11 +993,119 @@ describe('AgentBriefingService', () => {
       ]),
       'agent.hal',
       readPort.port,
+      makeQuestReadPortDouble(),
       makeDoctor(),
     );
 
     const briefing = await service.buildBriefing();
 
     expect(briefing.reviewQueue).toEqual([]);
+  });
+
+  it('builds quest work semantics from the causal cone fetched via QuestReadPort', async () => {
+    const snapshot = makeSnapshot({
+      quests: [
+        quest({
+          id: 'task:AGT-CONE',
+          title: 'Quest with causal cone',
+          status: 'READY',
+          hours: 2,
+          description: 'Quest with causal cone',
+          taskKind: 'delivery',
+          assignedTo: 'agent.hal',
+        }),
+      ],
+      sortedTaskIds: ['task:AGT-CONE'],
+    });
+
+    const questEntity = makeQuestEntity({
+      id: 'task:AGT-CONE',
+      title: 'Quest with causal cone',
+      status: 'READY',
+      hours: 2,
+      description: 'Quest with causal cone',
+      assignedTo: 'agent.hal',
+    });
+
+    const requirement = new Requirement({
+      id: 'req:AGT-CONE',
+      description: 'Causal cone requirement',
+      kind: 'functional',
+      priority: 'must',
+    });
+
+    const criterion = new Criterion({
+      id: 'criterion:AGT-CONE',
+      description: 'Causal cone criterion',
+      verifiable: true,
+    });
+
+    const evidence = new Evidence({
+      id: 'evidence:AGT-CONE',
+      kind: 'test',
+      result: 'pass',
+      producedAt: 1000,
+      producedBy: 'agent.hal',
+    });
+
+    const policy = new Policy({
+      id: 'policy:AGT-CONE',
+      coverageThreshold: 1.0,
+    });
+
+    const questReadPort = makeQuestReadPortDouble({
+      'task:AGT-CONE': {
+        quest: questEntity,
+        requirements: [
+          {
+            requirement,
+            criteria: [
+              {
+                criterion,
+                evidence: [evidence],
+              },
+            ],
+          },
+        ],
+        policies: [policy],
+      },
+    });
+
+    const readPort = makeOperationalReadPortDouble(snapshot);
+
+    const service = new AgentBriefingService(
+      makeGraphWithHandoffs([]),
+      makeRoadmap([questEntity]),
+      'agent.hal',
+      readPort.port,
+      questReadPort,
+      makeDoctor(),
+    );
+
+    const briefing = await service.buildBriefing();
+
+    expect(questReadPort.getQuestCone).toHaveBeenCalledWith('task:AGT-CONE');
+    expect(briefing.assignments).toHaveLength(1);
+    expect(briefing.assignments[0]?.semantics.requirements).toEqual([
+      expect.objectContaining({
+        id: 'req:AGT-CONE',
+        description: 'Causal cone requirement',
+        kind: 'functional',
+        priority: 'must',
+        criterionCount: 1,
+      }),
+    ]);
+    expect(briefing.assignments[0]?.semantics.acceptanceCriteria).toEqual([
+      expect.objectContaining({
+        id: 'criterion:AGT-CONE',
+        description: 'Causal cone criterion',
+      }),
+    ]);
+    expect(briefing.assignments[0]?.semantics.evidenceSummary).toEqual(
+      expect.objectContaining({
+        totalEvidence: 1,
+        criterionCount: 1,
+      }),
+    );
   });
 });

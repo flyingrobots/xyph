@@ -141,6 +141,8 @@ export function renderLineage(snapshot: GraphSnapshot, style: StylePort): string
     `${snapshot.intents.length} intent(s)  ${snapshot.quests.length} quest(s)`,
     'secondary'
   ));
+  lines.push('');
+  lines.push(style.styled(style.theme.semantic.muted, `  Legend: ${style.styled(style.theme.semantic.success, '✓')} sealed scroll  ${style.styled(style.theme.semantic.warning, '○')} unsealed scroll`));
 
   // Collect orphan quests (no intentId) early so the zero-intents branch can render them
   // BACKLOG tasks genuinely lack an intent (not yet promoted) — exclude from orphan list

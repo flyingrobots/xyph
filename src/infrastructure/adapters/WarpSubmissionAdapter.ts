@@ -54,7 +54,7 @@ export class WarpSubmissionAdapter implements SubmissionPort, SubmissionReadMode
         successContext: (result) => ({ patchSha: result.patchSha }),
       },
       async () => {
-        const graph = await this.graphPort.getGraph();
+        const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
         const now = Date.now();
 
         const patchSha = await graph.patch((p) => {
@@ -117,7 +117,7 @@ export class WarpSubmissionAdapter implements SubmissionPort, SubmissionReadMode
         successContext: (result) => ({ patchSha: result.patchSha }),
       },
       async () => {
-        const graph = await this.graphPort.getGraph();
+        const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
         const now = Date.now();
 
         const patchSha = await graph.patch((p) => {
@@ -167,7 +167,7 @@ export class WarpSubmissionAdapter implements SubmissionPort, SubmissionReadMode
         successContext: (result) => ({ patchSha: result.patchSha }),
       },
       async () => {
-        const graph = await this.graphPort.getGraph();
+        const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
         const now = Date.now();
 
         const patchSha = await graph.patch((p) => {
@@ -207,7 +207,7 @@ export class WarpSubmissionAdapter implements SubmissionPort, SubmissionReadMode
         successContext: (result) => ({ patchSha: result.patchSha }),
       },
       async () => {
-        const graph = await this.graphPort.getGraph();
+        const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
         const now = Date.now();
 
         const patchSha = await graph.patch((p) => {
