@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { QuestCompletionEvaluator } from '../../src/domain/services/QuestCompletionEvaluator.js';
-import { Quest } from '../../src/domain/entities/Quest.js';
-import { Requirement } from '../../src/domain/entities/Requirement.js';
-import { Criterion } from '../../src/domain/entities/Criterion.js';
-import { Evidence } from '../../src/domain/entities/Evidence.js';
-import { Policy } from '../../src/domain/entities/Policy.js';
+import { QuestCompletionEvaluator } from '../../src/domain/services/QuestCompletionEvaluator.ts';
+import { Quest } from '../../src/domain/entities/Quest.ts';
+import { Requirement } from '../../src/domain/entities/Requirement.ts';
+import { Criterion } from '../../src/domain/entities/Criterion.ts';
+import { Evidence } from '../../src/domain/entities/Evidence.ts';
+import { Policy } from '../../src/domain/entities/Policy.ts';
 
 describe('QuestCompletionEvaluator', () => {
   const evaluator = new QuestCompletionEvaluator();

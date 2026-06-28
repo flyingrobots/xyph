@@ -41,13 +41,13 @@ function makeCtx(graph: {
     } as CliContext['inspection'],
     style: {} as CliContext['style'],
     createPatchSession: mocks.createPatchSession,
-    roadmap: { mocked: true } as any,
+    roadmap: { mocked: true } as unknown as CliContext['roadmap'],
     readinessService: {
       assess: (questId: string) => mocks.readinessAssess(questId),
-    } as any,
+    } as unknown as CliContext['readinessService'],
     recordService: {
       createComment: (input: unknown) => mocks.createComment(input),
-    } as any,
+    } as unknown as CliContext['recordService'],
     ok: vi.fn(),
     warn: vi.fn(),
     muted: vi.fn(),
