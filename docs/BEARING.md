@@ -29,4 +29,4 @@ Current direction and active tensions. Historical ship data is in `CHANGELOG.md`
 
 ## Next Target
 
-With **Edict Wasm Target Lowering and Optic-Pure Intent Admission** fully landed, the immediate focus is the **CLI Optic Mutation Kernel Migration** (`bad-code/cli-legacy-imperative-mutation-leak.md`)—deprecating legacy imperative `graph.patch` mutations across `src/cli/commands/*.ts` in favor of pure `IntentDescriptor` admission through `OpticDomainActionService` to guarantee complete domain encapsulation.
+With **CLI Optic Mutation Kernel Migration** fully complete, the immediate focus is **CQRS Intent-Based UI Architecture** (`design/cycles/0031-cqrs-intent-based-ui-architecture.md`)—pivoting the TUI to an immutable, unidirectional event stream where components subscribe to event channels (`channel:optics`) and submit pure `IntentDescriptor` objects to an `IntentBus`, guaranteeing zero business logic mixing and complete elimination of UI thread I/O.
