@@ -73,20 +73,34 @@ export function registerTraceabilityCommands(program: Command, ctx: CliContext):
         await assertNodeExists(graph, opts.intent, 'Intent');
       }
 
-      const sha = await graph.patch((p) => {
-        p.addNode(id)
-          .setProperty(id, 'title', opts.title)
-          .setProperty(id, 'persona', opts.persona)
-          .setProperty(id, 'goal', opts.goal)
-          .setProperty(id, 'benefit', opts.benefit)
-          .setProperty(id, 'created_by', ctx.agentId)
-          .setProperty(id, 'created_at', now)
-          .setProperty(id, 'type', 'story');
-
-        if (opts.intent) {
-          p.addEdge(opts.intent, id, 'decomposes-to');
+      // Deprecate direct graph.patch imperative builder in favor of OpticDomainActionService intent admission
+      let sha = '';
+      if (ctx.opticDomainActionService) {
+        const createStoryIntent = {
+          intentType: 'story',
+          payload: { id, title: opts.title, persona: opts.persona, goal: opts.goal, benefit: opts.benefit, agentId: ctx.agentId, now, intent: opts.intent },
+        };
+        const outcome = await ctx.opticDomainActionService.executeAction(null, createStoryIntent);
+        if (!outcome.admitted) {
+          throw new Error(`[FORBIDDEN] Intent rejected: ${outcome.obstruction?.tag}`);
         }
-      });
+        sha = outcome.sha ?? '';
+      } else {
+        sha = await graph.patch((p) => {
+          p.addNode(id)
+            .setProperty(id, 'title', opts.title)
+            .setProperty(id, 'persona', opts.persona)
+            .setProperty(id, 'goal', opts.goal)
+            .setProperty(id, 'benefit', opts.benefit)
+            .setProperty(id, 'created_by', ctx.agentId)
+            .setProperty(id, 'created_at', now)
+            .setProperty(id, 'type', 'story');
+
+          if (opts.intent) {
+            p.addEdge(opts.intent, id, 'decomposes-to');
+          }
+        });
+      }
 
       if (ctx.json) {
         ctx.jsonOut({
@@ -136,17 +150,31 @@ export function registerTraceabilityCommands(program: Command, ctx: CliContext):
         await assertNodeExists(graph, opts.story, 'Story');
       }
 
-      const sha = await graph.patch((p) => {
-        p.addNode(id)
-          .setProperty(id, 'description', opts.description)
-          .setProperty(id, 'kind', opts.kind)
-          .setProperty(id, 'priority', opts.priority)
-          .setProperty(id, 'type', 'requirement');
-
-        if (opts.story) {
-          p.addEdge(opts.story, id, 'decomposes-to');
+      // Deprecate direct graph.patch imperative builder in favor of OpticDomainActionService intent admission
+      let sha = '';
+      if (ctx.opticDomainActionService) {
+        const createRequirementIntent = {
+          intentType: 'requirement',
+          payload: { id, description: opts.description, kind: opts.kind, priority: opts.priority, story: opts.story },
+        };
+        const outcome = await ctx.opticDomainActionService.executeAction(null, createRequirementIntent);
+        if (!outcome.admitted) {
+          throw new Error(`[FORBIDDEN] Intent rejected: ${outcome.obstruction?.tag}`);
         }
-      });
+        sha = outcome.sha ?? '';
+      } else {
+        sha = await graph.patch((p) => {
+          p.addNode(id)
+            .setProperty(id, 'description', opts.description)
+            .setProperty(id, 'kind', opts.kind)
+            .setProperty(id, 'priority', opts.priority)
+            .setProperty(id, 'type', 'requirement');
+
+          if (opts.story) {
+            p.addEdge(opts.story, id, 'decomposes-to');
+          }
+        });
+      }
 
       if (ctx.json) {
         ctx.jsonOut({

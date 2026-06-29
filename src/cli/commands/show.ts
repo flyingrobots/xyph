@@ -220,20 +220,34 @@ async function commitNarrativeNode(
     await assertNodeExists(graph, opts.supersedes, 'Superseded document');
   }
 
-  const patch = await (ctx.createPatchSession ?? createPatchSession)(graph);
   const now = Date.now();
-  patch
-    .addNode(id)
-    .setProperty(id, 'type', kind)
-    .setProperty(id, 'title', title)
-    .setProperty(id, 'authored_by', ctx.agentId)
-    .setProperty(id, 'authored_at', now)
-    .addEdge(id, opts.on, 'documents');
-  if (opts.supersedes) {
-    patch.addEdge(id, opts.supersedes, 'supersedes');
+  // Deprecate direct patch session imperative builder in favor of OpticDomainActionService intent admission
+  let sha = '';
+  if (ctx.opticDomainActionService) {
+    const createNarrativeIntent = {
+      intentType: kind,
+      payload: { id, kind, title, agentId: ctx.agentId, now, on: opts.on, supersedes: opts.supersedes, body },
+    };
+    const outcome = await ctx.opticDomainActionService.executeAction(null, createNarrativeIntent);
+    if (!outcome.admitted) {
+      throw new Error(`[FORBIDDEN] Intent rejected: ${outcome.obstruction?.tag}`);
+    }
+    sha = outcome.sha ?? '';
+  } else {
+    const patch = await (ctx.createPatchSession ?? createPatchSession)(graph);
+    patch
+      .addNode(id)
+      .setProperty(id, 'type', kind)
+      .setProperty(id, 'title', title)
+      .setProperty(id, 'authored_by', ctx.agentId)
+      .setProperty(id, 'authored_at', now)
+      .addEdge(id, opts.on, 'documents');
+    if (opts.supersedes) {
+      patch.addEdge(id, opts.supersedes, 'supersedes');
+    }
+    await patch.attachContent(id, body);
+    sha = await patch.commit();
   }
-  await patch.attachContent(id, body);
-  const sha = await patch.commit();
   const contentOid = await graph.getContentOid(id) ?? undefined;
   return { patch: sha, contentOid };
 }

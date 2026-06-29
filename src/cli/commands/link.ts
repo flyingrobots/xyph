@@ -45,6 +45,19 @@ async function applyLink(
     }
   }
 
+  // Deprecate direct graph.patch imperative builder in favor of OpticDomainActionService intent admission
+  if (ctx.opticDomainActionService) {
+    const intentDescriptor = {
+      intentType: campaignId !== undefined && intentId !== undefined ? 'link' : campaignId !== undefined ? 'move' : 'authorize',
+      payload: { quest, campaignId, intentId, existingCampaignEdges, existingIntentEdges },
+    };
+    const outcome = await ctx.opticDomainActionService.executeAction(null, intentDescriptor);
+    if (!outcome.admitted) {
+      throw new Error(`[FORBIDDEN] Intent rejected: ${outcome.obstruction?.tag}`);
+    }
+    return { campaign: campaignId ?? null, intent: intentId ?? null, patch: outcome.sha ?? '' };
+  }
+
   const sha = await graph.patch((p) => {
     if (campaignId !== undefined) {
       // Remove any existing belongs-to edges first (single-campaign cardinality)
