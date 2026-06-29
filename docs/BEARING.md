@@ -29,4 +29,4 @@ Current direction and active tensions. Historical ship data is in `CHANGELOG.md`
 
 ## Next Target
 
-The immediate focus is **Requirements Traceability**—completing the loop from acceptance criteria to cryptographic evidence to ensure the graph proves "Done."
+With **Edict Wasm Target Lowering and Optic-Pure Intent Admission** fully landed, the immediate focus is the **CLI Optic Mutation Kernel Migration** (`bad-code/cli-legacy-imperative-mutation-leak.md`)—deprecating legacy imperative `graph.patch` mutations across `src/cli/commands/*.ts` in favor of pure `IntentDescriptor` admission through `OpticDomainActionService` to guarantee complete domain encapsulation.

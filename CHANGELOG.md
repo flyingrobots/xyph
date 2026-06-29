@@ -6,6 +6,10 @@ All notable changes to XYPH will be documented in this file.
 
 ### Added
 
+- **Edict Wasm Target Lowering & Optic-Pure Intent Admission** — implemented `EdictWasmTargetLowererAdapter` and `OpticDomainActionService` to verify unmaterialized `IntentDescriptor` objects against active worldline optics before admission. Added strict domain guards for declared footprint (`EDICT-XYPH-001`) and execution budget (`EDICT-XYPH-002`).
+- **`QuestCompletionEvaluator` integration** — robust evaluation of quest completion across `UNTRACKED`, `SATISFIED`, and `FAILED` states, fully matching criteria, evidence, and policy thresholds.
+- **Dogfooding Protocol institutionalized** — added mandatory `Dogfood the Graph` rule to `AGENTS.md` End of Turn Checklist, ensuring all agent tasks are formally recorded, moved, authorized, and linked as native WARP graph nodes.
+
 - **`search` CLI command** — unified quest search with keyword matching (title, ID, description), `--status` filtering (including GRAVEYARD), and `--stats` mode for counts by status. Always includes graveyard quests so the full graph is searchable. Usage: `xyph search "MCP"`, `xyph search --status GRAVEYARD`, `xyph search --stats`.
 - **9 invariants seeded into the WARP graph as content-attached nodes** — graph-is-truth, principal-general-authority, deterministic-convergence, immutable-provenance, authorized-intent, bedrock-boundary, policy-is-plastic, frontier-not-assignment, witness-before-done. Each carries the full METHOD structure (what must remain true / why it matters / how to check) and is readable from any branch via `xyph show invariant:*`.
 - **5 legends (WARP, GOV, SURF, PROV, FLOW) with `protects` edges to invariants** — eternal domains that span the project lifetime, replacing temporal campaign-based grouping. Each legend defines its sponsored human/agent roles, hills, and verification criteria.
