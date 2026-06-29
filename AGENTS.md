@@ -9,6 +9,12 @@ This guide is for AI agents and human operators recovering context in the Xyph r
 - **NEVER** push to `main` without explicit permission.
 - Always use standard commits and regular pushes.
 
+## Architectural Bedrock Boundary (The #1 Priority)
+
+- **XYPH MUST NOT DO GIT-WARP'S JOB.**
+- **Pure Domain Boundary**: Xyph should only know about Optics and Intents.
+- **Worldline Evolution**: Worldline forking/braiding is permissible, but Xyph must **NEVER** imperatively manage nodes, graphs, traversals, or materialization state machines.
+
 ## Documentation & Planning Map
 
 Do not audit the repository by recursively walking the filesystem. Follow the authoritative manifests:

@@ -29,4 +29,4 @@ Current direction and active tensions. Historical ship data is in `CHANGELOG.md`
 
 ## Next Target
 
-With **CLI Optic Mutation Kernel Migration** fully complete, the immediate focus is **CQRS Intent-Based UI Architecture** (`design/cycles/0031-cqrs-intent-based-ui-architecture.md`)—pivoting the TUI to an immutable, unidirectional event stream where components subscribe to event channels (`channel:optics`) and submit pure `IntentDescriptor` objects to an `IntentBus`, guaranteeing zero business logic mixing and complete elimination of UI thread I/O.
+With **CQRS Intent-Based UI Architecture** (`v1.0.0-alpha.16`) fully complete, the immediate `#1 priority` is **Substrate Decoupling & Bedrock Purity**—asserting the absolute architectural law that **XYPH MUST NOT DO GIT-WARP'S JOB**. Xyph should only know about Optics and Intents. Worldline forking/braiding is permissible, but Xyph must **NEVER** imperatively manage nodes, graphs, traversals, or materialization state machines.
