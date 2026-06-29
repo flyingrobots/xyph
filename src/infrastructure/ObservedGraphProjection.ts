@@ -190,6 +190,7 @@ export interface ObservedProjectionGraph {
   readonly syncCoverage?: WarpGraph['syncCoverage'];
   readonly lens?: { match?: string | string[] };
   readonly isLive?: boolean;
+  readonly logger?: { warn?: (msg: string, context?: unknown) => void };
 }
 
 export interface FetchSnapshotOptions {

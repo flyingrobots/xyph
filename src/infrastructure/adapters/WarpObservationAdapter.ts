@@ -78,7 +78,7 @@ export class WarpObservationAdapter implements ObservationPort {
         await projectionGraph.neighbors(nodeId, direction, edgeLabel),
       hasNode: (id: string): Promise<boolean> => observedHandle.hasNode(id),
       getSubmissionLaneCone: (questId: string) =>
-        new WarpSubmissionReadAdapter(this.graphPort, { accessorId: 'observation', role: 'observer' }).getSubmissionLaneCone(questId),
+        new WarpSubmissionReadAdapter(this.graphPort, { accessorId: 'observation', role: 'agent' }).getSubmissionLaneCone(questId),
     };
   }
 }

@@ -1,4 +1,4 @@
-import type { Observer, WarpCore as WarpGraph, Worldline } from '@git-stunts/git-warp';
+import type { Observer, WarpCore as WarpGraph, ProjectionHandle as Worldline } from '@git-stunts/git-warp';
 import type { ObservedProjectionGraph } from '../ObservedGraphProjection.js';
 
 type ObservedProjectionHandle = Pick<Worldline, 'query' | 'hasNode' | 'getNodeProps' | 'getEdges' | 'traverse'>
@@ -40,7 +40,7 @@ export function adaptObservedHandleToObservedProjectionGraph(
         cachedEdgesPromise = handle.getEdges();
       }
       const edges = await cachedEdgesPromise;
-      return edges.flatMap((edge) => {
+      return edges.flatMap((edge: { label: string; from: string; to: string }) => {
         if (edgeLabel && edge.label !== edgeLabel) return [];
         if (direction === 'outgoing' && edge.from === nodeId) {
           return [{ label: edge.label, nodeId: edge.to }];
