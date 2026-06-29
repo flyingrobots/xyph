@@ -1,0 +1,1 @@
+Asserted absolute architectural law: XYPH MUST NOT DO GIT-WARP'S JOB. Xyph should only know about Optics and Intents. Worldline forking is permissible, but Xyph must never imperatively manage nodes, graphs, traversals, or materialization state machines.
