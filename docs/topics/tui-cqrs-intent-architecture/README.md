@@ -54,13 +54,24 @@ When a TUI operator initiates an action (e.g., claiming a task), the UI block do
 
 ---
 
-## 3. Pioneer Implementation: The `claimQuest` Slice
+## 3. Full 100% TUI Migration: The Write Command Slices
 
-To prove this architecture end-to-end without risking regressions across Xyph's 1,028 passing tests, we establish a pioneer slice targeting `claimQuest` in `src/tui/bijou/write-cmds.ts`.
+Following the successful pioneer implementation of `claimQuest`, Xyph has executed a **100% full TUI migration** across all 11 write commands in `src/tui/bijou/write-cmds.ts`:
+- `claimQuest`
+- `promoteQuest`
+- `rejectQuest`
+- `reopenQuest`
+- `commentOnEntity`
+- `reviewSubmission`
+- `queueAskAiJob`
+- `decideCase`
+- `adoptSuggestion`
+- `dismissSuggestion`
+- `supersedeSuggestion`
 
 ### Legacy Imperative Anti-Pattern (Deprecated)
 ```typescript
-// LEAK: TUI directly manipulates raw graph CRDT properties
+// LEAK: TUI directly manipulates raw graph CRDT properties or port mutations imperatively
 await graph.patch((p) => {
   p.setProperty(questId, 'assigned_to', deps.agentId)
     .setProperty(questId, 'status', 'IN_PROGRESS')
@@ -70,24 +81,32 @@ await graph.patch((p) => {
 
 ### Modern CQRS Lowering Bridge (Canonical)
 ```typescript
-import { commandIntent, type CommandIntent } from '@flyingrobots/bijou';
-import { runtimeCommandIntentRoute, type RuntimeCommandIntentRoute } from '@flyingrobots/bijou-tui';
-import type { IntentDescriptor } from '../../domain/models/IntentDescriptor.js';
+import { commandIntent, defineBindingLifecycleOwner, type CommandIntent } from '@flyingrobots/bijou';
+import { runtimeCommandIntentRoute, runtimeCommandIntentEmission, type RuntimeCommandIntentRoute } from '@flyingrobots/bijou-tui';
 
 // 1. Pristine UI Intent Declaration
-export const claimQuestUiIntent: CommandIntent<{ questId: string }> = { id: 'ui:intent:claim' };
+export const claimQuestUiIntent: CommandIntent<{ questId: string }> = commandIntent('ui:intent:claim');
 
 // 2. Canonical Translation Route to Edict Causal Intent
-export const claimQuestIntentRoute: RuntimeCommandIntentRoute<{ questId: string }, IntentDescriptor> = runtimeCommandIntentRoute({
+export const claimQuestIntentRoute: RuntimeCommandIntentRoute<{ questId: string }, WasmIntentDescriptor> = runtimeCommandIntentRoute({
   intent: claimQuestUiIntent,
   toCommand: (emission) => ({
-    intentId: `intent:${crypto.randomUUID()}`,
-    type: 'CLAIM_QUEST',
-    actor: emission.owner?.id ?? 'operator:local',
-    questId: emission.payload.questId,
-    timestamp: Date.now(),
+    intentId: `intent:xyph:claimQuest:${Date.now()}`,
+    suffixTransform: {
+      op: 'claimQuest',
+      payload: {
+        questId: emission.payload.questId,
+        agentId: emission.owner?.id ?? 'operator:local',
+        basis: 'sha256:basis123',
+      },
+    },
   }),
 });
+
+// 3. Command Dispatch via defineBindingLifecycleOwner and OpticDomainActionService
+const owner = defineBindingLifecycleOwner({ id: deps.agentId, kind: 'view', label: deps.agentId });
+const emission = runtimeCommandIntentEmission(claimQuestUiIntent, { questId }, { owner });
+const descriptor = claimQuestIntentRoute.toCommand(emission);
 ```
 
 ---
