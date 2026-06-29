@@ -1,0 +1,15 @@
+{
+  "audience": "either",
+  "evidence": null,
+  "kind": "general",
+  "nextAction": null,
+  "origin": "spontaneous",
+  "relatedIds": [],
+  "requestedBy": null,
+  "status": "suggested",
+  "suggestedBy": "agent.antigravity",
+  "summary": "Filter merged and closed quests from the TUI review tab to preserve attention",
+  "targetId": "suggestion:mnlqa8aa22a860f4",
+  "title": "Filter Merged Quests",
+  "why": null
+}
