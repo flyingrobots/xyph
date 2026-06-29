@@ -67,7 +67,6 @@ export function registerCoordinationCommands(program: Command, ctx: CliContext):
 
       await assertNodeExists(graph, id, 'Node');
 
-      await graph.materialize();
       const patches = await graph.patchesFor(id);
 
       if (ctx.json) {

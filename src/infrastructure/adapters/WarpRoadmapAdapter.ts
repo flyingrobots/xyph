@@ -37,9 +37,6 @@ export class WarpRoadmapAdapter implements RoadmapPort {
     const graph = await this.graphPort.getGraph();
     if (this.syncOnQuery && typeof graph.syncCoverage === 'function') {
       await graph.syncCoverage();
-      if (typeof graph.materialize === 'function') {
-        await graph.materialize();
-      }
     }
     return graph;
   }

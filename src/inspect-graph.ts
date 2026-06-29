@@ -21,7 +21,6 @@ async function inspect(): Promise<void> {
   });
 
   await graph.syncCoverage();
-  await graph.materialize();
 
   const nodes = await graph.getNodes();
   console.log(style.styled(t.semantic.primary, `\n--- Current Graph State (${nodes.length} nodes) ---`));

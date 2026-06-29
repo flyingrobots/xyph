@@ -630,9 +630,6 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
           code === 'E_NO_STATE' ||
           code === 'E_STALE_STATE'
         ) {
-          if ('materialize' in graph && typeof (graph as { materialize?: unknown }).materialize === 'function') {
-            await (graph as { materialize: () => Promise<unknown> }).materialize();
-          }
           return;
         }
       }
@@ -667,7 +664,7 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
     const includeCaseNodes = profile === 'full' || profile === 'operational' || profile === 'analysis';
     const includeGovernanceArtifacts = profile === 'full';
 
-    // --- Lifecycle: open → sync → materialize ---
+    // --- Lifecycle: open → sync ---
     log('Opening project graph…');
     const graph = await this.graphProvider();
     this._graph = graph;

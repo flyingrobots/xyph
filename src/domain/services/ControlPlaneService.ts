@@ -759,7 +759,6 @@ export class ControlPlaneService implements ControlPlanePort {
       { selector },
     );
     await graph.syncCoverage();
-    await graph.materialize({ ceiling: selector.tick });
     return graph;
   }
 
@@ -781,7 +780,6 @@ export class ControlPlaneService implements ControlPlanePort {
   private async openLiveSummaryGraph(): Promise<WarpGraph> {
     const graph = await this.graphPort.getGraph();
     await graph.syncCoverage();
-    await graph.materialize();
     return graph;
   }
 
@@ -1334,7 +1332,6 @@ export class ControlPlaneService implements ControlPlanePort {
   ): Promise<string | null> {
     const graph = await this.graphPort.getGraph();
     await graph.syncCoverage?.();
-    await graph.materialize?.();
 
     const result = await graph.query().match(`${kind}:*`).select(['id', 'props']).run();
     const nodes = 'nodes' in result
@@ -2201,7 +2198,6 @@ export class ControlPlaneService implements ControlPlanePort {
     kind: 'comparison-artifact' | 'collapse-proposal',
   ): Promise<{ id: string; props: Record<string, unknown> }[]> {
     await graph.syncCoverage();
-    await graph.materialize();
     const result = await graph.query().match(`${kind}:*`).select(['id', 'props']).run();
     if (!('nodes' in result)) return [];
     return (result.nodes as QueryNodeLike[]).filter(
@@ -2799,7 +2795,6 @@ export class ControlPlaneService implements ControlPlanePort {
       },
     );
     await graph.syncCoverage();
-    await graph.materialize();
 
     const rawComparisonOptions = {
       left: this.buildComparisonSelector(leftWorldlineId, leftSelector, 'compare_worldlines'),
@@ -3074,7 +3069,6 @@ export class ControlPlaneService implements ControlPlanePort {
       },
     );
     await graph.syncCoverage();
-    await graph.materialize();
 
     const comparisonOptions = {
       left: this.buildComparisonSelector(sourceWorldlineId, sourceSelector, 'collapse_worldline'),

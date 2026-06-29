@@ -2200,9 +2200,6 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         if (typeof graph.syncCoverage === 'function') {
           await graph.syncCoverage();
         }
-        if (typeof graph.materialize === 'function') {
-          await graph.materialize();
-        }
         deps.logger?.info('dashboard background sync succeeded', { requestId });
         emit({ type: 'sync-complete', requestId });
       } catch (err: unknown) {

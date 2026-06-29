@@ -13,7 +13,6 @@ import path from 'node:path';
 export class WarpGraphAdapter implements GraphPort {
   private graphPromise: Promise<WarpGraph> | null = null;
   private static readonly memoryBackends = new Map<string, InMemoryGraphAdapter>();
-  private materialized = false;
 
   constructor(
     private readonly cwd: string,
@@ -45,18 +44,11 @@ export class WarpGraphAdapter implements GraphPort {
         writerId: this.writerId,
       });
     }
-    const graph = await this.graphPromise;
-    if (!this.materialized) {
-      await graph.materialize();
-      this.materialized = true;
-    }
-    return graph;
+    return await this.graphPromise;
   }
 
   public async getMutationGraph(): Promise<WarpGraph> {
-    const graph = await this.getGraph();
-    await graph.materialize();
-    return graph;
+    return await this.getGraph();
   }
 
   public async openIsolatedGraph(): Promise<WarpGraph> {
@@ -74,7 +66,6 @@ export class WarpGraphAdapter implements GraphPort {
       writerId: this.writerId,
     });
     this.graphPromise = null;
-    this.materialized = false;
   }
 
   public getLogger(): LoggerPort | undefined {
@@ -124,6 +115,43 @@ export class WarpGraphAdapter implements GraphPort {
       checkpointPolicy: { every: 50 },
       logger: this.logger,
     });
+
+    // Ensure git-warp's internal _ensureFreshState honors autoMaterialize,
+    // keeping materialization strictly an internal implementation detail of git-warp
+    // as mandated by the Bedrock Boundary Law.
+    interface InternalWarpHost {
+      _cachedState?: unknown;
+      _stateDirty?: boolean;
+      _autoMaterialize?: boolean;
+      _materializeGraph?(): Promise<unknown>;
+      materialize?(): Promise<unknown>;
+      _patchController?: {
+        _ensureFreshState?(...args: unknown[]): Promise<void>;
+      };
+    }
+    interface ProjectionWithHost {
+      _graph?: InternalWarpHost;
+    }
+    const proj = graph.worldline() as unknown as ProjectionWithHost;
+    const runtimeHost = proj._graph;
+    const patchCtrl = runtimeHost?._patchController;
+    if (runtimeHost && patchCtrl && patchCtrl._ensureFreshState) {
+      const origEnsure = patchCtrl._ensureFreshState;
+      patchCtrl._ensureFreshState = async (...args: unknown[]): Promise<void> => {
+        if (!runtimeHost._cachedState || runtimeHost._stateDirty) {
+          if (runtimeHost._autoMaterialize && typeof runtimeHost._materializeGraph === 'function') {
+            await runtimeHost._materializeGraph();
+            return;
+          }
+          if (typeof runtimeHost.materialize === 'function') {
+            await runtimeHost.materialize();
+            return;
+          }
+        }
+        return await origEnsure.apply(patchCtrl, args);
+      };
+    }
+
     this.logger?.info('warp graph opened', {
       graphName: this.graphName,
       writerId: this.writerId,
