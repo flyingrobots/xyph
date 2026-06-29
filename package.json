@@ -8,6 +8,7 @@
   },
   "scripts": {
     "lint": "eslint \"src/**/*.ts\" \"test/**/*.ts\" \"scripts/**/*.ts\" \"scripts/**/*.mts\" xyph.ts xyph-actuator.ts xyph-dashboard.ts xyph-theme-lab.ts",
+    "policy": "bash scripts/check-graph-algorithms.sh && bash scripts/check-git-cas-invariants.sh",
     "build": "tsc",
     "tui": "npx tsx xyph-dashboard.ts",
     "tui:logs": "./scripts/tui-with-logs.sh",
