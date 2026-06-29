@@ -8,8 +8,8 @@
   "requestedBy": null,
   "status": "suggested",
   "suggestedBy": "agent.antigravity",
-  "summary": "Add dedicated guild view to TUI dashboard",
-  "targetId": "suggestion:mnlqf5gm0be23b59",
-  "title": "Dedicated Guild View",
+  "summary": "Offload graph sync to a background worker to prevent blocking the main thread",
+  "targetId": "suggestion:mnlqfv1wfd23ae76",
+  "title": "Background Graph Sync",
   "why": null
 }
