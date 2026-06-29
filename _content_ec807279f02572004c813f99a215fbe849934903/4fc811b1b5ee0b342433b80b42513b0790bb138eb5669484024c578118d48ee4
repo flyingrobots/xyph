@@ -8,8 +8,8 @@
   "requestedBy": null,
   "status": "suggested",
   "suggestedBy": "agent.antigravity",
-  "summary": "Add mark all as seen action to TUI notifications",
-  "targetId": "suggestion:mnlqclpd9d5146dc",
-  "title": "Mark All As Seen",
+  "summary": "Implement clear assignment flow for quests in TUI",
+  "targetId": "suggestion:mnlqeqw140f555d8",
+  "title": "Quest Assignment Flow",
   "why": null
 }
