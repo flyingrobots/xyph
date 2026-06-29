@@ -220,6 +220,14 @@ export function createCliContext(
               p.addEdge(quest, intentId, 'authorized-by');
             }
           });
+        } else if (op === 'claimQuest') {
+          const questId = payload['questId'] as string;
+          const agent = payload['agentId'] as string;
+          sha = await graph.patch((p: WarpPatchBuilder) => {
+            p.setProperty(questId, 'assigned_to', agent)
+              .setProperty(questId, 'status', 'IN_PROGRESS')
+              .setProperty(questId, 'claimed_at', Date.now());
+          });
         } else if (op === 'story') {
           const id = payload['id'] as string;
           const title = payload['title'] as string;

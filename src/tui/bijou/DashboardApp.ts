@@ -48,6 +48,7 @@ import type {
 } from '../../domain/models/dashboard.js';
 import type { IntakePort } from '../../ports/IntakePort.js';
 import type { DashboardReadPort } from '../../ports/DashboardReadPort.js';
+import type { OpticDomainActionService } from '../../domain/services/OpticDomainActionService.js';
 import type { DashboardObservationView } from '../../ports/DashboardReadPort.js';
 import type { GraphPort } from '../../ports/GraphPort.js';
 import type { SubmissionPort } from '../../ports/SubmissionPort.js';
@@ -366,6 +367,7 @@ export interface DashboardDeps {
   logoText: string;
   observerWatermarkStore: ObserverWatermarkStore;
   observerWatermarkScope: ObserverWatermarkScope;
+  opticDomainActionService?: OpticDomainActionService;
   logger?: {
     debug(message: string, context?: Record<string, unknown>): void;
     info(message: string, context?: Record<string, unknown>): void;
@@ -1971,6 +1973,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
     intake: deps.intake,
     submissionPort: deps.submissionPort,
     agentId: deps.agentId,
+    opticDomainActionService: deps.opticDomainActionService,
   };
 
   let watcherUnsub: (() => void) | null = null;

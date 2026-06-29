@@ -9,12 +9,16 @@
 
 import { randomUUID } from 'crypto';
 import type { Cmd } from '@flyingrobots/bijou-tui';
+import { runtimeCommandIntentRoute, runtimeCommandIntentEmission, type RuntimeCommandIntentRoute } from '@flyingrobots/bijou-tui';
+import { commandIntent, defineBindingLifecycleOwner, type CommandIntent } from '@flyingrobots/bijou';
 import type { DashboardMsg } from './DashboardApp.js';
 import type { GraphPort } from '../../ports/GraphPort.js';
 import type { IntakePort } from '../../ports/IntakePort.js';
 import type { SubmissionPort } from '../../ports/SubmissionPort.js';
 import { RecordService } from '../../domain/services/RecordService.js';
 import type { AiSuggestionAdoptionKind } from '../../domain/entities/AiSuggestion.js';
+import { OpticDomainActionService } from '../../domain/services/OpticDomainActionService.js';
+import { EdictWasmTargetLowererAdapter } from '../../infrastructure/adapters/EdictWasmTargetLowererAdapter.js';
 
 /** Generate a lexicographically-sortable unique ID (matches actuator pattern). */
 export function generateId(): string {
@@ -28,6 +32,7 @@ export interface WriteDeps {
   intake: IntakePort;
   submissionPort: SubmissionPort;
   agentId: string;
+  opticDomainActionService?: OpticDomainActionService;
 }
 
 export interface AskAiJobInput {
@@ -50,9 +55,44 @@ export interface CaseDecisionInput {
   followOnKind?: 'quest' | 'proposal' | 'none';
 }
 
+interface WarpPatchBuilder {
+  addNode(id: string): WarpPatchBuilder;
+  setProperty(id: string, key: string, value: unknown): WarpPatchBuilder;
+  addEdge(from: string, to: string, rel: string): WarpPatchBuilder;
+  removeEdge(from: string, to: string, rel: string): WarpPatchBuilder;
+}
+
+interface WasmIntentDescriptor {
+  intentId: string;
+  suffixTransform?: {
+    op?: string;
+    payload?: Record<string, unknown>;
+  };
+}
+
+interface WasmVerifierReport {
+  verified?: boolean;
+}
+
+export const claimQuestUiIntent: CommandIntent<{ questId: string }> = commandIntent('ui:intent:claim');
+
+export const claimQuestIntentRoute: RuntimeCommandIntentRoute<{ questId: string }, WasmIntentDescriptor> = runtimeCommandIntentRoute({
+  intent: claimQuestUiIntent,
+  toCommand: (emission) => ({
+    intentId: `intent:xyph:claimQuest:${Date.now()}`,
+    suffixTransform: {
+      op: 'claimQuest',
+      payload: {
+        questId: emission.payload.questId,
+        agentId: emission.owner?.id ?? 'operator:local',
+        basis: 'sha256:basis123',
+      },
+    },
+  }),
+});
+
 /**
- * Claim a quest via direct graph patch (OCP — Optimistic Claiming Protocol).
- * Sets status to IN_PROGRESS, assigned_to to agentId, claimed_at to now.
+ * Claim a quest via CQRS Block Binding Intent Route and OpticDomainActionService.
  */
 export function claimQuest(deps: WriteDeps, questId: string): Cmd<DashboardMsg> {
   return async (emit) => {
@@ -64,11 +104,53 @@ export function claimQuest(deps: WriteDeps, questId: string): Cmd<DashboardMsg> 
         emit({ type: 'write-error', message: `Claim requires READY, ${questId} is ${statusBefore || 'unknown'}` });
         return;
       }
-      await graph.patch((p) => {
-        p.setProperty(questId, 'assigned_to', deps.agentId)
-          .setProperty(questId, 'status', 'IN_PROGRESS')
-          .setProperty(questId, 'claimed_at', Date.now());
+
+      const service = deps.opticDomainActionService ?? new OpticDomainActionService(
+        new EdictWasmTargetLowererAdapter(),
+        {
+          async admitWasmIntent(descriptor: unknown, report: unknown): Promise<import('../../domain/services/OpticDomainActionService.js').OpticActionOutcome> {
+            const desc = descriptor as WasmIntentDescriptor;
+            const rep = report as WasmVerifierReport;
+            if (!rep.verified) {
+              return {
+                admitted: false,
+                obstruction: { tag: 'UntrustedWasmVerifierReport', actual: 'invalid' },
+                intentId: desc.intentId,
+              };
+            }
+            const op = desc.suffixTransform?.op;
+            const payload = desc.suffixTransform?.payload ?? {};
+            let sha = '';
+            if (op === 'claimQuest') {
+              const qId = payload['questId'] as string;
+              const aId = payload['agentId'] as string;
+              sha = await graph.patch((p: WarpPatchBuilder) => {
+                p.setProperty(qId, 'assigned_to', aId)
+                  .setProperty(qId, 'status', 'IN_PROGRESS')
+                  .setProperty(qId, 'claimed_at', Date.now());
+              });
+            }
+            return { admitted: true, sha, intentId: desc.intentId };
+          },
+        },
+      );
+
+      // Lower UI command emission into Edict Causal Intent
+      const owner = defineBindingLifecycleOwner({ id: deps.agentId, kind: 'view', label: deps.agentId });
+      const emission = runtimeCommandIntentEmission(claimQuestUiIntent, { questId }, { owner });
+      const descriptor = claimQuestIntentRoute.toCommand(emission);
+
+      const outcome = await service.executeAction({}, {
+        op: descriptor.suffixTransform?.op ?? 'claimQuest',
+        payload: descriptor.suffixTransform?.payload ?? { questId, agentId: deps.agentId },
+        declaredFootprint: 1024,
+        declaredBudget: 50,
       });
+
+      if (!outcome.admitted) {
+        emit({ type: 'write-error', message: `Claim intent rejected by OpticDomainActionService: ${outcome.obstruction?.tag ?? 'Unknown'}` });
+        return;
+      }
 
       // OCP post-check: reads local state only (remote sync happens on next snapshot refresh).
       // True cross-writer verification requires a full materialize with remote patches.
