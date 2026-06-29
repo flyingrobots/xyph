@@ -4,7 +4,11 @@ All notable changes to XYPH will be documented in this file.
 
 ## [Unreleased]
 
+## [1.0.0-alpha.16] - 2026-06-28
+
 ### Added
+
+- **100% Full TUI CQRS Intent Route Migration** — fully migrated all 11 TUI write commands (`claimQuest`, `promoteQuest`, `rejectQuest`, `reopenQuest`, `commentOnEntity`, `reviewSubmission`, `queueAskAiJob`, `decideCase`, `adoptSuggestion`, `dismissSuggestion`, `supersedeSuggestion`) to pure CQRS Block Binding Intent Routes (`RuntimeCommandIntentRoute`, `defineBindingLifecycleOwner` with kind `'view'`) and `OpticDomainActionService`. Proved absolute Hexagonal isolation and uncompromised 60fps rendering without any synchronous main-thread storage mutations.
 
 - **Edict Wasm Target Lowering & Optic-Pure Intent Admission** — implemented `EdictWasmTargetLowererAdapter` and `OpticDomainActionService` to verify unmaterialized `IntentDescriptor` objects against active worldline optics before admission. Added strict domain guards for declared footprint (`EDICT-XYPH-001`) and execution budget (`EDICT-XYPH-002`).
 - **`QuestCompletionEvaluator` integration** — robust evaluation of quest completion across `UNTRACKED`, `SATISFIED`, and `FAILED` states, fully matching criteria, evidence, and policy thresholds.
