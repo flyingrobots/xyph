@@ -8,8 +8,8 @@
   "requestedBy": null,
   "status": "suggested",
   "suggestedBy": "agent.antigravity",
-  "summary": "Implement clear assignment flow for quests in TUI",
-  "targetId": "suggestion:mnlqeqw140f555d8",
-  "title": "Quest Assignment Flow",
+  "summary": "Add dedicated guild view to TUI dashboard",
+  "targetId": "suggestion:mnlqf5gm0be23b59",
+  "title": "Dedicated Guild View",
   "why": null
 }
