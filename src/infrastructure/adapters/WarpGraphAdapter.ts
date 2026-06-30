@@ -134,6 +134,14 @@ export class WarpGraphAdapter implements GraphPort {
     }
     const proj = graph.worldline() as unknown as ProjectionWithHost;
     const runtimeHost = proj._graph;
+
+    if (runtimeHost && typeof (runtimeHost as unknown as { createCheckpoint: () => Promise<void> }).createCheckpoint === 'function') {
+      try {
+        await (runtimeHost as unknown as { createCheckpoint: () => Promise<void> }).createCheckpoint();
+      } catch {
+        // ignore
+      }
+    }
     const patchCtrl = runtimeHost?._patchController;
     if (runtimeHost && patchCtrl && patchCtrl._ensureFreshState) {
       const origEnsure = patchCtrl._ensureFreshState;
@@ -141,6 +149,13 @@ export class WarpGraphAdapter implements GraphPort {
         if (!runtimeHost._cachedState || runtimeHost._stateDirty) {
           if (runtimeHost._autoMaterialize && typeof runtimeHost._materializeGraph === 'function') {
             await runtimeHost._materializeGraph();
+            if (typeof (runtimeHost as unknown as { createCheckpoint: () => Promise<void> }).createCheckpoint === 'function') {
+              try {
+                await (runtimeHost as unknown as { createCheckpoint: () => Promise<void> }).createCheckpoint();
+              } catch {
+                // ignore
+              }
+            }
             return;
           }
           if (typeof runtimeHost.materialize === 'function') {

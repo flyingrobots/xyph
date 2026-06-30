@@ -10,7 +10,7 @@ export async function readReviewLaneData(
     if (submission.status === 'MERGED' || submission.status === 'CLOSED') return false;
     const quest = model.questsById.get(submission.questId);
     if (!quest) return false;
-    if (quest.status === 'MERGED' || quest.status === 'CLOSED' || quest.status === 'GRAVEYARD') return false;
+    if (quest.status === 'DONE' || quest.status === 'GRAVEYARD') return false;
     return true;
   });
   const questIds = new Set(activeSubmissions.map((submission) => submission.questId));
