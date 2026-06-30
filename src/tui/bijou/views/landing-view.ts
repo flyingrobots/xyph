@@ -47,6 +47,15 @@ function renderLandingBackground(
   return rendered;
 }
 
+function getLoadingStatus(progress: number): string {
+  if (progress < 15) return 'Booting runtime environment\u2026';
+  if (progress < 35) return 'Materializing graph snapshot\u2026';
+  if (progress < 55) return 'Computing dependency closures\u2026';
+  if (progress < 75) return 'Resolving active heuristics\u2026';
+  if (progress < 90) return 'Mounting cockpit displays\u2026';
+  return 'Finalizing\u2026';
+}
+
 export function landingView(model: DashboardModel, style: StylePort): string {
   const muted = style.theme.semantic.muted;
   const border = style.theme.border.primary;
@@ -76,7 +85,8 @@ export function landingView(model: DashboardModel, style: StylePort): string {
 
   // Status text
   if (model.loading) {
-    // no status text — progress bar at bottom
+    const statusStr = getLoadingStatus(model.loadingProgress);
+    fg.push({ text: style.styled(muted, statusStr), width: statusStr.length });
   } else if (model.error) {
     const errText = `Error: ${model.error}`;
     fg.push({ text: style.styled(style.theme.semantic.error, errText), width: errText.length });
