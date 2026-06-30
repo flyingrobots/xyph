@@ -1,0 +1,14 @@
+{
+  "rationale": "sounds like something we want",
+  "payload": {
+    "suggestionId": "suggestion:mqzj48us5f1e1763",
+    "suggestionKind": "general",
+    "title": "Background Graph Sync",
+    "summary": "Offload graph sync to a background worker to prevent blocking the main thread",
+    "why": null,
+    "evidence": null,
+    "nextAction": null,
+    "relatedIds": [],
+    "adoptedArtifactKind": "proposal"
+  }
+}
