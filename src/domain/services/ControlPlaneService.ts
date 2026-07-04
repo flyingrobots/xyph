@@ -75,6 +75,9 @@ import { explainError, explainErrorCode, explainGovernanceTarget } from './Expla
 import { MutationKernelService } from './MutationKernelService.js';
 import { RecordService } from './RecordService.js';
 import { WarpCausalMutationAdapter } from '../../infrastructure/warp/CausalMutationAdapter.js';
+import { WarpRecordCommentIntentAdapter } from '../../infrastructure/warp/intents/WarpRecordCommentIntentAdapter.js';
+import { WarpXYPHWriterAdapter } from '../../infrastructure/warp/WarpXYPHWriterAdapter.js';
+import type { XYPHWriter } from '../../ports/XYPHWriter.js';
 import type { GraphMeta } from '../models/dashboard.js';
 import { CapabilityResolverService } from './CapabilityResolverService.js';
 import {
@@ -460,6 +463,7 @@ export class ControlPlaneService implements ControlPlanePort {
   private readonly doctor: DoctorService;
   private readonly mutations: MutationKernelService;
   private readonly records: RecordService;
+  private readonly writer: XYPHWriter;
   private readonly capabilities: CapabilityResolverService;
   private readonly observation: WarpObservationAdapter;
   private readonly operationalRead: WarpOperationalReadAdapter;
@@ -489,6 +493,7 @@ export class ControlPlaneService implements ControlPlanePort {
       contextService?: AgentContextService;
       submissionService?: AgentSubmissionService;
       actionService?: AgentActionService;
+      writer?: XYPHWriter;
       createProjection?: typeof createObservedGraphProjection;
       createProjectionFromGraph?: typeof createObservedGraphProjectionFromGraph;
     }
@@ -501,7 +506,9 @@ export class ControlPlaneService implements ControlPlanePort {
     this.doctor = overrides?.doctor ?? new DoctorService(graphPort, this.roadmap, new WarpSubstrateInspectionAdapter(graphPort));
     const causalMutations = new WarpCausalMutationAdapter(graphPort);
     this.mutations = overrides?.mutations ?? new MutationKernelService(causalMutations);
-    this.records = overrides?.records ?? new RecordService(graphPort, this.clock, this.mutations);
+    const recordCommentIntent = new WarpRecordCommentIntentAdapter(graphPort, this.clock, this.mutations);
+    this.writer = overrides?.writer ?? new WarpXYPHWriterAdapter(recordCommentIntent);
+    this.records = overrides?.records ?? new RecordService(graphPort, this.clock, this.mutations, recordCommentIntent);
     this.capabilities = overrides?.capabilities ?? new CapabilityResolverService(agentId);
     this.briefingService = overrides?.briefingService;
     this.contextService = overrides?.contextService;
@@ -670,7 +677,20 @@ export class ControlPlaneService implements ControlPlanePort {
       ),
       context: this.contextService ?? new AgentContextService(this.graphPort, this.roadmap, principalId, this.observation, this.doctor),
       submissions: this.submissionService ?? new AgentSubmissionService(principalId, this.observation),
-      actions: this.actionService ?? new AgentActionService(this.graphPort, this.roadmap, principalId, this.observation, this.doctor),
+      actions: this.actionService ?? new AgentActionService(
+        this.graphPort,
+        this.roadmap,
+        principalId,
+        this.observation,
+        this.doctor,
+        this.clock,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        this.writer,
+      ),
     };
   }
 

@@ -981,6 +981,70 @@ describe('ControlPlaneService', () => {
     }));
   });
 
+  it('wires the XYPHWriter into default principal action services', async () => {
+    const writer = {
+      write: vi.fn(async () => ({
+        value: {
+          id: 'comment:ONE',
+          targetId: 'task:ONE',
+          authoredAt: 456,
+          contentOid: 'oid:comment',
+        },
+        writing: 'xyph.write.recordComment',
+        recordedBy: 'agent.prime',
+        recordedAt: 456,
+        witness: {
+          id: 'comment:ONE',
+          patch: 'patch:comment',
+        },
+      })),
+    };
+    const service = new ControlPlaneService({
+      getGraph: mocks.getGraph,
+      reset: vi.fn(),
+    }, 'agent.prime', undefined, {
+      roadmap: {
+        getQuests: vi.fn(),
+        getQuest: vi.fn(),
+        getOutgoingEdges: vi.fn(),
+        getIncomingEdges: vi.fn(),
+      },
+      doctor: {
+        run: vi.fn(),
+      },
+      observation: {
+        openSession: vi.fn(),
+      },
+      writer,
+    } as any);
+    const principalServices = (service as unknown as {
+      createPrincipalServices(principalId: string): {
+        actions: {
+          execute(request: {
+            kind: string;
+            targetId: string;
+            args: Record<string, unknown>;
+          }): Promise<{ result: string; patch: string | null }>;
+        };
+      };
+    }).createPrincipalServices('agent.prime');
+
+    const outcome = await principalServices.actions.execute({
+      kind: 'comment',
+      targetId: 'task:ONE',
+      args: {
+        commentId: 'comment:ONE',
+        message: 'Writer should be wired.',
+      },
+    });
+
+    expect(writer.write).toHaveBeenCalled();
+    expect(outcome).toMatchObject({
+      result: 'success',
+      patch: 'patch:comment',
+    });
+  });
+
   it('creates a derived worldline by delegating to the substrate working-set API', async () => {
     const service = createService({
       getGraph: mocks.getGraph,
