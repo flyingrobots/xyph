@@ -287,7 +287,8 @@ function normalizeObservedProjectionGraph(graph: ObservedProjectionGraph): Obser
     query: () => reader.query(),
     hasNode: (nodeId: string) => reader.hasNode(nodeId),
     getNodeProps: (nodeId: string) => reader.getNodeProps(nodeId),
-    getStateSnapshot: () => graph.getStateSnapshot(),
+    getStateSnapshot: async (): Promise<ObservedProjectionState | null> =>
+      await graph.getStateSnapshot().catch(() => null),
     getFrontier: () => graph.getFrontier(),
     getContentOid: async (nodeId: string): Promise<string | null> =>
       await reader.getNodeProps(nodeId).then(contentOidFromReadableProps),
@@ -834,10 +835,10 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
     // Cache check: compare frontier key to detect both in-process writes
     // (via graph.patch()) and external writes (discovered by syncCoverage).
     // hasFrontierChanged() only detects external patches, missing same-instance mutations.
+    const currentFrontierKey = await this.frontierCommitKey(graph);
     const cachedSnapshot = this.cachedSnapshots.get(profile);
     if (cachedSnapshot !== undefined) {
-      const currentKey = this.frontierKeyFromState(await graph.getStateSnapshot());
-      if (currentKey === this.cachedFrontierKeys.get(profile)) {
+      if (currentFrontierKey === this.cachedFrontierKeys.get(profile)) {
         log('No changes detected — using cached snapshot');
         this.readOptions.logger?.info('graph snapshot cache hit', {
           profile,
@@ -2107,7 +2108,7 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
       transitiveDownstream,
     };
     this.cachedSnapshots.set(profile, snap);
-    this.cachedFrontierKeys.set(profile, this.frontierKeyFromState(state));
+    this.cachedFrontierKeys.set(profile, currentFrontierKey);
     this.readOptions.logger?.info('graph snapshot fetch finished', {
       profile,
       durationMs: Date.now() - startedAt,
@@ -2585,11 +2586,12 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
   // Cache helpers
   // -------------------------------------------------------------------------
 
-  /** Deterministic string key from the graph's observed frontier (writer:tick pairs). */
-  private frontierKeyFromState(state: ObservedProjectionState | null): string {
-    if (!state) return '';
-    const entries = [...state.observedFrontier.entries()].sort(([a], [b]) => a.localeCompare(b));
-    return entries.map(([w, t]) => `${w}:${t}`).join(',');
+  /** Deterministic cache key from the substrate frontier (writer:commit pairs). */
+  private async frontierCommitKey(graph: ObservedProjectionGraph): Promise<string> {
+    const frontier = await graph.getFrontier().catch(() => null);
+    if (!frontier) return '';
+    const entries = [...frontier.entries()].sort(([a], [b]) => a.localeCompare(b));
+    return entries.map(([writer, commit]) => `${writer}:${commit}`).join(',');
   }
 
   private async buildQuestDetailFromGraph(

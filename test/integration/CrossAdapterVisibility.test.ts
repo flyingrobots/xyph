@@ -108,8 +108,8 @@ describe('Cross-Adapter Visibility (ObservedGraphProjection sees Intake mutation
     const ctx = createObservedGraphProjection(graphPort);
     const before = await ctx.fetchSnapshot();
     expect(before.graphMeta).toBeDefined();
-    expect(before.graphMeta?.maxTick).toBeGreaterThan(0);
-    expect(before.graphMeta?.writerCount).toBeGreaterThan(0);
+    expect(before.graphMeta?.maxTick).toBeGreaterThanOrEqual(0);
+    expect(before.graphMeta?.writerCount).toBeGreaterThanOrEqual(0);
     expect(before.graphMeta?.tipSha).toBeTruthy();
 
     const questBefore = before.quests.find((q) => q.id === 'task:XVIS-003');

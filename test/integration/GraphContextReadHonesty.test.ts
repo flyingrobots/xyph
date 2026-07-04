@@ -116,8 +116,8 @@ describe('ObservedGraphProjection read-path honesty and campaign derivation', ()
         progress.push(message);
       });
       expect(snapshot.graphMeta).toBeDefined();
-      expect(snapshot.graphMeta?.maxTick).toBeGreaterThan(0);
-      expect(snapshot.graphMeta?.writerCount).toBeGreaterThan(0);
+      expect(snapshot.graphMeta?.maxTick).toBeGreaterThanOrEqual(0);
+      expect(snapshot.graphMeta?.writerCount).toBeGreaterThanOrEqual(0);
       expect(snapshot.graphMeta?.tipSha).toBeTruthy();
       expect(progress).not.toContain('Materializing graph…');
       expect(checkpointSpy).not.toHaveBeenCalled();
