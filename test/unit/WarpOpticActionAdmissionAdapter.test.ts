@@ -24,10 +24,10 @@ function makeGraphPort(nodeProps: Record<string, unknown> | null) {
     }),
     worldline: vi.fn(() => worldline),
   };
-  const graphPort = {
-    getGraph: vi.fn(async () => graph),
+  const graphPort: GraphPort = {
+    getGraph: vi.fn(async () => graph as never),
     reset: vi.fn(),
-  } as unknown as GraphPort;
+  };
   return { graphPort, graph, patchBuilder, worldline };
 }
 
