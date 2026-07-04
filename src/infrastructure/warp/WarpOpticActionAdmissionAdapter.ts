@@ -71,6 +71,17 @@ export class WarpOpticActionAdmissionAdapter {
     const op = desc.suffixTransform?.op;
     const payload = desc.suffixTransform?.payload ?? {};
 
+    if (!this.isSupportedOperation(op)) {
+      return {
+        admitted: false,
+        obstruction: {
+          tag: 'UnsupportedWasmIntent',
+          actual: op ?? 'missing-op',
+        },
+        intentId: desc.intentId,
+      };
+    }
+
     if (op === 'claimQuest') {
       const guardObstruction = await this.evaluatePrecommitGuards(graph, desc.precommitGuards ?? []);
       if (guardObstruction) {
@@ -182,6 +193,18 @@ export class WarpOpticActionAdmissionAdapter {
       sha,
       intentId: desc.intentId,
     };
+  }
+
+  private isSupportedOperation(op: string | undefined): boolean {
+    return op === 'move'
+      || op === 'authorize'
+      || op === 'link'
+      || op === 'claimQuest'
+      || op === 'story'
+      || op === 'requirement'
+      || op === 'note'
+      || op === 'spec'
+      || op === 'adr';
   }
 
   private async evaluatePrecommitGuards(

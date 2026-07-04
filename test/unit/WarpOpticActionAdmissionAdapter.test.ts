@@ -68,4 +68,33 @@ describe('WarpOpticActionAdmissionAdapter', () => {
       },
     });
   });
+
+  it('rejects unsupported verified intent operations instead of admitting no-ops', async () => {
+    const { graphPort, graph } = makeGraphPort({ status: 'READY' });
+    const adapter = new WarpOpticActionAdmissionAdapter(graphPort);
+
+    const outcome = await adapter.admitWasmIntent({
+      intentId: 'intent:xyph:submitWork:test',
+      suffixTransform: {
+        op: 'submitWork',
+        payload: {
+          questId: 'quest:one',
+          submissionId: 'submission:one',
+          agentId: 'agent.prime',
+        },
+      },
+    }, {
+      verified: true,
+    });
+
+    expect(graph.patch).not.toHaveBeenCalled();
+    expect(outcome).toEqual({
+      admitted: false,
+      intentId: 'intent:xyph:submitWork:test',
+      obstruction: {
+        tag: 'UnsupportedWasmIntent',
+        actual: 'submitWork',
+      },
+    });
+  });
 });
