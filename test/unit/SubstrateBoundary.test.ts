@@ -67,6 +67,21 @@ describe('substrate boundary', () => {
     expect(tuiWrites).not.toContain('getNodeProps');
   });
 
+  it('keeps the dashboard app on product ports instead of substrate runtime APIs', () => {
+    const dashboardApp = source('src/tui/bijou/DashboardApp.ts');
+
+    expect(dashboardApp).toContain('DashboardRuntimePort');
+    expect(dashboardApp).toContain('XYPHWriter');
+    expect(dashboardApp).not.toContain('GraphPort');
+    expect(dashboardApp).not.toContain('graphPort');
+    expect(dashboardApp).not.toContain('getGraph');
+    expect(dashboardApp).not.toContain('DoctorService');
+    expect(dashboardApp).not.toContain('WarpRoadmapAdapter');
+    expect(dashboardApp).not.toContain('syncCoverage');
+    expect(dashboardApp).not.toContain('worldline');
+    expect(dashboardApp).not.toContain('getNodeProps');
+  });
+
   it('keeps the domain mutation kernel behind a causal mutation port', () => {
     const kernel = source('src/domain/services/MutationKernelService.ts');
 
