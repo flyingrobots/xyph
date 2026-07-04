@@ -1,18 +1,18 @@
 # Documentation Product Standard: Reader-Task Edition
 
-This standard defines the philosophy and structure for all documentation in the Xyph repository. 
+This standard defines the philosophy and structure for all documentation in the Xyph repository.
 
 ## The Core Philosophy
 
-Documentation in Xyph is a **product**. It is not a diary of what was built, but a tool designed to accomplish a job. 
-In the "Reader-Task" paradigm, every document exists to serve a specific **Reader** who is trying to accomplish a specific **Task**. 
+Documentation in Xyph is a **product**. It is not a diary of what was built, but a tool designed to accomplish a job.
+In the "Reader-Task" paradigm, every document exists to serve a specific **Reader** who is trying to accomplish a specific **Task**.
 
 If a document does not clearly identify its reader and their task, it is defective.
 
 ## Principles
 
 1. **Agent and Human Equality:** Readers include both human operators and autonomous AI agents. Documents must be parsable, deterministic, and highly structured so that an AI can recover context without ambiguity.
-2. **Task-Driven:** Do not write "about" a topic. Write to "enable" a task. 
+2. **Task-Driven:** Do not write "about" a topic. Write to "enable" a task.
 3. **The Graph is Truth:** Documentation should reflect the graph. It should point to the verifiable truth in the code and the graph, rather than attempting to duplicate state.
 4. **Ruthless Brevity:** Eliminate filler. Use bullet points, bold text for key terms, and tables for structured data.
 
@@ -23,7 +23,7 @@ Every document must fit into one of these archetypes, defined by the task it ena
 ### 1. The Signpost (Orientation)
 * **Reader:** A newcomer (human or agent) or someone who has lost context.
 * **Task:** Understand "Where am I?", "What is this?", and "Where do I go next?".
-* **Traits:** Short, declarative, heavily linked. 
+* **Traits:** Short, declarative, heavily linked.
 * **Examples:** `README.md`, `GUIDE.md`, `AGENTS.md`.
 
 ### 2. The Doctrine (Rules & Methodology)
