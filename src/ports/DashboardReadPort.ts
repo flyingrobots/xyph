@@ -6,6 +6,7 @@ import type {
   EntityDetail,
   GraphSnapshot,
 } from '../domain/models/dashboard.js';
+import type { DashboardObservationView } from '../readings/DashboardReadings.js';
 
 /**
  * DashboardReadPort — observer/worldline-aligned read boundary for the TUI.
@@ -24,11 +25,4 @@ export interface DashboardReadPort {
   invalidate(): void;
 }
 
-export type DashboardObservationView =
-  | 'landing'
-  | 'quest-page'
-  | 'review-page'
-  | 'governance-page'
-  | 'suggestion-page'
-  | 'case-page'
-  | 'doctor-page';
+export type { DashboardObservationView } from '../readings/DashboardReadings.js';

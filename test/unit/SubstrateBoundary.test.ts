@@ -70,8 +70,20 @@ describe('substrate boundary', () => {
   it('keeps the dashboard app on product ports instead of substrate runtime APIs', () => {
     const dashboardApp = source('src/tui/bijou/DashboardApp.ts');
 
+    expect(dashboardApp).toContain('XYPHReader');
+    expect(dashboardApp).toContain('ReadDashboardOperationalSnapshot');
+    expect(dashboardApp).toContain('ReadDashboardEntityDetail');
     expect(dashboardApp).toContain('DashboardRuntimePort');
     expect(dashboardApp).toContain('XYPHWriter');
+    expect(dashboardApp).not.toContain('DashboardReadPort');
+    expect(dashboardApp).not.toContain('readPort');
+    expect(dashboardApp).not.toContain('GraphSnapshot');
+    expect(dashboardApp).not.toContain('fetchOperationalSnapshot');
+    expect(dashboardApp).not.toContain('fetchEntityDetail');
+    expect(dashboardApp).not.toContain('fetchLandingNowLaneData');
+    expect(dashboardApp).not.toContain('fetchLandingReviewLaneData');
+    expect(dashboardApp).not.toContain('fetchLandingSuggestionLaneData');
+    expect(dashboardApp).not.toContain('fetchReviewPageData');
     expect(dashboardApp).not.toContain('GraphPort');
     expect(dashboardApp).not.toContain('graphPort');
     expect(dashboardApp).not.toContain('getGraph');

@@ -45,7 +45,7 @@ function makeHealth(overrides?: Partial<DashboardHealth>): DashboardHealth {
 
 function buildApp(snapshotOverrides?: Partial<GraphSnapshot>, watermarks?: Partial<ObserverWatermarks>): App<DashboardModel, DashboardMsg> {
   return createDashboardApp({
-    readPort: mockReadProjection(snapshotOverrides),
+    reader: mockReadProjection(snapshotOverrides),
     intake: mockIntakePort(),
     runtime: mockDashboardRuntime(),
     submissionPort: mockSubmissionPort(),
@@ -136,7 +136,7 @@ describe('DashboardApp', () => {
   it('starts a background sync during initialization', async () => {
     const runtime = mockDashboardRuntime();
     const app = createDashboardApp({
-      readPort: mockReadProjection(),
+      reader: mockReadProjection(),
       intake: mockIntakePort(),
       runtime,
       submissionPort: mockSubmissionPort(),
@@ -153,11 +153,11 @@ describe('DashboardApp', () => {
     expect(cmds).toHaveLength(9);
   });
 
-  it('resets cached graph reads before refetching after sync completes', () => {
-    const readPort = mockReadProjection();
+  it('invalidates runtime state before refetching after sync completes', () => {
+    const reader = mockReadProjection();
     const runtime = mockDashboardRuntime();
     const app = createDashboardApp({
-      readPort,
+      reader,
       intake: mockIntakePort(),
       runtime,
       submissionPort: mockSubmissionPort(),
@@ -181,7 +181,6 @@ describe('DashboardApp', () => {
     );
 
     expect(runtime.invalidate).toHaveBeenCalledTimes(1);
-    expect(readPort.invalidate).toHaveBeenCalledTimes(1);
     expect(synced.syncing).toBe(false);
     expect(cmds).toHaveLength(5);
   });
@@ -205,7 +204,7 @@ describe('DashboardApp', () => {
       loadHealth: vi.fn().mockImplementation(() => new Promise<never>(() => undefined)),
     };
     const app = createDashboardApp({
-      readPort: ctx,
+      reader: ctx,
       intake: mockIntakePort(),
       runtime,
       submissionPort: mockSubmissionPort(),
@@ -327,7 +326,7 @@ describe('DashboardApp', () => {
   it('marks the current lane as seen when switching away from it', () => {
     const store = createMemoryObserverWatermarkStore();
     const app = createDashboardApp({
-      readPort: mockReadProjection(),
+      reader: mockReadProjection(),
       intake: mockIntakePort(),
       runtime: mockDashboardRuntime(),
       submissionPort: mockSubmissionPort(),
@@ -488,7 +487,7 @@ describe('DashboardApp', () => {
       },
     });
     const app = createDashboardApp({
-      readPort: ctx,
+      reader: ctx,
       intake: mockIntakePort(),
       runtime: mockDashboardRuntime(),
       submissionPort: mockSubmissionPort(),
@@ -606,7 +605,7 @@ describe('DashboardApp', () => {
       decisions: [],
     });
     const app = createDashboardApp({
-      readPort: ctx,
+      reader: ctx,
       intake: mockIntakePort(),
       runtime: mockDashboardRuntime(),
       submissionPort: mockSubmissionPort(),
@@ -1712,7 +1711,7 @@ describe('DashboardApp', () => {
     });
 
     const app = createDashboardApp({
-      readPort: ctx,
+      reader: ctx,
       intake: mockIntakePort(),
       runtime: mockDashboardRuntime(),
       submissionPort: mockSubmissionPort(),

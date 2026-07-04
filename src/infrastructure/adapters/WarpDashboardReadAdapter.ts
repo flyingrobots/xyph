@@ -11,6 +11,22 @@ import type {
   DashboardObservationView,
   DashboardReadPort,
 } from '../../ports/DashboardReadPort.js';
+import type {
+  ReadingFrame,
+  XYPHReader,
+  XYPHReading,
+  XYPHReadingValue,
+} from '../../ports/XYPHReader.js';
+import {
+  isDashboardReading,
+  READ_DASHBOARD_ENTITY_DETAIL,
+  READ_DASHBOARD_NOW_LANE,
+  READ_DASHBOARD_OPERATIONAL_SNAPSHOT,
+  READ_DASHBOARD_REVIEW_LANE,
+  READ_DASHBOARD_REVIEW_PAGE,
+  READ_DASHBOARD_SUGGESTION_LANE,
+  type DashboardReading,
+} from '../../readings/DashboardReadings.js';
 import { liveObservation } from '../../ports/ObservationPort.js';
 import { readNowLaneData } from '../../domain/services/NowLaneReadService.js';
 import { readReviewLaneData } from '../../domain/services/ReviewLaneReadService.js';
@@ -186,7 +202,21 @@ const DASHBOARD_LANDING_SUGGESTION_LANE_OBSERVER: { name: string; lens: { match:
  * surface layer. The adapter still reuses ObservedGraphProjection internally for the
  * existing projection builder while the broader read-architecture pivot lands.
  */
-export class WarpDashboardReadAdapter implements DashboardReadPort {
+function dashboardReadingFrame(
+  reading: DashboardReading,
+  value: unknown,
+): ReadingFrame<unknown> {
+  return {
+    value,
+    reading: reading.kind,
+    readAt: Date.now(),
+    coordinate: {
+      basis: 'current',
+    },
+  };
+}
+
+export class WarpDashboardReadAdapter implements DashboardReadPort, XYPHReader {
   private readonly base: WarpObservationAdapter;
 
   constructor(graphPort: GraphPort) {
@@ -237,5 +267,40 @@ export class WarpDashboardReadAdapter implements DashboardReadPort {
   public invalidate(): void {
     // No local cache yet; keep the dashboard read seam stateless while the
     // ObservedGraphProjection pivot is in progress.
+  }
+
+  public async read<R extends XYPHReading<string, unknown, unknown>>(
+    reading: R,
+  ): Promise<ReadingFrame<XYPHReadingValue<R>>> {
+    if (!isDashboardReading(reading)) {
+      throw new Error(`[UNSUPPORTED_READING] ${reading.kind}`);
+    }
+
+    if (reading.kind === READ_DASHBOARD_OPERATIONAL_SNAPSHOT) {
+      const value = await this.fetchOperationalSnapshot(reading.input.view);
+      return dashboardReadingFrame(reading, value) as ReadingFrame<XYPHReadingValue<R>>;
+    }
+    if (reading.kind === READ_DASHBOARD_ENTITY_DETAIL) {
+      const value = await this.fetchEntityDetail(reading.input.view, reading.input.id);
+      return dashboardReadingFrame(reading, value) as ReadingFrame<XYPHReadingValue<R>>;
+    }
+    if (reading.kind === READ_DASHBOARD_NOW_LANE) {
+      const value = await this.fetchLandingNowLaneData();
+      return dashboardReadingFrame(reading, value) as ReadingFrame<XYPHReadingValue<R>>;
+    }
+    if (reading.kind === READ_DASHBOARD_REVIEW_LANE) {
+      const value = await this.fetchLandingReviewLaneData();
+      return dashboardReadingFrame(reading, value) as ReadingFrame<XYPHReadingValue<R>>;
+    }
+    if (reading.kind === READ_DASHBOARD_SUGGESTION_LANE) {
+      const value = await this.fetchLandingSuggestionLaneData();
+      return dashboardReadingFrame(reading, value) as ReadingFrame<XYPHReadingValue<R>>;
+    }
+    if (reading.kind === READ_DASHBOARD_REVIEW_PAGE) {
+      const value = await this.fetchReviewPageData(reading.input.submissionId, reading.input.questId);
+      return dashboardReadingFrame(reading, value) as ReadingFrame<XYPHReadingValue<R>>;
+    }
+
+    throw new Error(`[UNSUPPORTED_READING] ${reading.kind}`);
   }
 }

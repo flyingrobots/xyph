@@ -41,18 +41,26 @@ import type {
   DashboardReviewPageData,
   DashboardSuggestionLaneData,
   EntityDetail,
-  GraphSnapshot,
   GovernanceArtifactNode,
   QuestNode,
   SubmissionNode,
 } from '../../domain/models/dashboard.js';
 import type { IntakePort } from '../../ports/IntakePort.js';
-import type { DashboardReadPort } from '../../ports/DashboardReadPort.js';
 import type { OpticDomainActionService } from '../../domain/services/OpticDomainActionService.js';
-import type { DashboardObservationView } from '../../ports/DashboardReadPort.js';
+import type { XYPHReader } from '../../ports/XYPHReader.js';
 import type { XYPHWriter } from '../../ports/XYPHWriter.js';
 import type { SubmissionPort } from '../../ports/SubmissionPort.js';
 import { noopDashboardRuntimePort, type DashboardRuntimePort } from '../../ports/DashboardRuntimePort.js';
+import {
+  ReadDashboardEntityDetail,
+  ReadDashboardNowLane,
+  ReadDashboardOperationalSnapshot,
+  ReadDashboardReviewLane,
+  ReadDashboardReviewPage,
+  ReadDashboardSuggestionLane,
+  type DashboardObservationView,
+  type DashboardOperationalSnapshot,
+} from '../../readings/DashboardReadings.js';
 import { cockpitView, describeCockpitInteractionMap, type CockpitRect } from './views/cockpit-view.js';
 import { landingView } from './views/landing-view.js';
 import { confirmOverlay, inputOverlay } from './overlays.js';
@@ -207,7 +215,7 @@ export interface DashboardModel {
   };
   table: NavigableTableState;
   inspectorOpen: boolean;
-  snapshot: GraphSnapshot | null;
+  snapshot: DashboardOperationalSnapshot | null;
   health: DashboardHealth | null;
   loading: boolean;
   syncing: boolean;
@@ -252,7 +260,7 @@ export type DashboardMsg =
   | KeyMsg
   | MouseMsg
   | ResizeMsg
-  | { type: 'snapshot-loaded'; snapshot: GraphSnapshot; health?: DashboardHealth | null; requestId: number }
+  | { type: 'snapshot-loaded'; snapshot: DashboardOperationalSnapshot; health?: DashboardHealth | null; requestId: number }
   | { type: 'health-loaded'; health: DashboardHealth | null; requestId: number }
   | { type: 'now-lane-loaded'; data: DashboardNowLaneData; requestId: number }
   | { type: 'review-lane-loaded'; data: DashboardReviewLaneData; requestId: number }
@@ -357,7 +365,7 @@ type DashboardInputState =
   | CaseDecisionInputState;
 
 export interface DashboardDeps {
-  readPort: DashboardReadPort;
+  reader: XYPHReader;
   intake: IntakePort;
   submissionPort: SubmissionPort;
   style: StylePort;
@@ -887,8 +895,8 @@ function fetchPageDetail(
 ): Cmd<DashboardMsg> {
   return async (emit) => {
     try {
-      const detail = await deps.readPort.fetchEntityDetail(view, entityId);
-      emit({ type: 'page-detail-loaded', entityId, detail, requestId });
+      const frame = await deps.reader.read(ReadDashboardEntityDetail({ view, id: entityId }));
+      emit({ type: 'page-detail-loaded', entityId, detail: frame.value, requestId });
     } catch (err: unknown) {
       emit({
         type: 'page-detail-error',
@@ -900,7 +908,7 @@ function fetchPageDetail(
   };
 }
 
-function fetchReviewPageData(
+function readReviewPageContext(
   requestId: number,
   submissionId: string,
   questId: string,
@@ -908,8 +916,8 @@ function fetchReviewPageData(
 ): Cmd<DashboardMsg> {
   return async (emit) => {
     try {
-      const data = await deps.readPort.fetchReviewPageData(submissionId, questId);
-      emit({ type: 'review-page-loaded', submissionId, questId, data, requestId });
+      const frame = await deps.reader.read(ReadDashboardReviewPage({ submissionId, questId }));
+      emit({ type: 'review-page-loaded', submissionId, questId, data: frame.value, requestId });
     } catch (err: unknown) {
       emit({
         type: 'review-page-error',
@@ -928,7 +936,7 @@ function fetchPageContext(
   deps: DashboardDeps,
 ): Cmd<DashboardMsg>[] {
   if (page.kind === 'review') {
-    return [fetchReviewPageData(requestId, page.submissionId, page.questId, deps)];
+    return [readReviewPageContext(requestId, page.submissionId, page.questId, deps)];
   }
   const entityId = pageEntityId(page);
   const view = pageObservationView(page);
@@ -952,7 +960,7 @@ function openReviewPage(
     pageLoading: true,
     pageError: null,
     pageRequestId: nextRequestId,
-  }, [fetchReviewPageData(nextRequestId, submissionId, questId, deps)]];
+  }, [readReviewPageContext(nextRequestId, submissionId, questId, deps)]];
 }
 
 function openQuestPage(model: DashboardModel, questId: string, sourceLane: CockpitLaneId, deps: DashboardDeps): [DashboardModel, Cmd<DashboardMsg>[]] {
@@ -2011,10 +2019,10 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
     }
   }
 
-  async function loadOperationalSnapshot(): Promise<GraphSnapshot> {
+  async function loadOperationalSnapshot(): Promise<DashboardOperationalSnapshot> {
     const startedAt = Date.now();
     deps.logger?.debug('dashboard state load started', { profile: 'operational' });
-    const snapshot = await deps.readPort.fetchOperationalSnapshot('landing');
+    const snapshot = (await deps.reader.read(ReadDashboardOperationalSnapshot({ view: 'landing' }))).value;
     deps.logger?.info('dashboard state load finished', {
       durationMs: Date.now() - startedAt,
       questCount: snapshot.quests.length,
@@ -2028,7 +2036,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
   async function loadNowLaneData(): Promise<DashboardNowLaneData> {
     const startedAt = Date.now();
     deps.logger?.debug('dashboard now lane load started');
-    const data = await deps.readPort.fetchLandingNowLaneData();
+    const data = (await deps.reader.read(ReadDashboardNowLane())).value;
     deps.logger?.info('dashboard now lane load finished', {
       durationMs: Date.now() - startedAt,
       questCount: data.quests.length,
@@ -2042,7 +2050,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
   async function loadReviewLaneData(): Promise<DashboardReviewLaneData> {
     const startedAt = Date.now();
     deps.logger?.debug('dashboard review lane load started');
-    const data = await deps.readPort.fetchLandingReviewLaneData();
+    const data = (await deps.reader.read(ReadDashboardReviewLane())).value;
     deps.logger?.info('dashboard review lane load finished', {
       durationMs: Date.now() - startedAt,
       submissionCount: data.submissions.length,
@@ -2054,7 +2062,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
   async function loadSuggestionLaneData(): Promise<DashboardSuggestionLaneData> {
     const startedAt = Date.now();
     deps.logger?.debug('dashboard suggestion lane load started');
-    const data = await deps.readPort.fetchLandingSuggestionLaneData();
+    const data = (await deps.reader.read(ReadDashboardSuggestionLane())).value;
     deps.logger?.info('dashboard suggestion lane load finished', {
       durationMs: Date.now() - startedAt,
       suggestionCount: data.aiSuggestions.length,
@@ -2178,7 +2186,6 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
 
   function refreshAfterWrite(requestId: number): Cmd<DashboardMsg> {
     return async (emit, capabilities) => {
-      deps.readPort.invalidate();
       await fetchSnapshot(requestId)(emit, capabilities);
       await fetchNowLane(requestId)(emit, capabilities);
       await fetchReviewLane(requestId)(emit, capabilities);
@@ -2871,7 +2878,6 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         const showToast = !!(model.toast && model.toast.message.includes('Syncing'));
         if (!msg.error) {
           runtime.invalidate();
-          deps.readPort.invalidate();
         }
 
         return [{

@@ -26,7 +26,7 @@ const healthyDashboardHealth: DashboardHealth = {
 
 function buildApp(snapshotOverrides?: Partial<GraphSnapshot>): App<DashboardModel, DashboardMsg> {
   return createDashboardApp({
-    readPort: mockReadProjection(snapshotOverrides),
+    reader: mockReadProjection(snapshotOverrides),
     intake: mockIntakePort(),
     runtime: mockDashboardRuntime(),
     submissionPort: mockSubmissionPort(),

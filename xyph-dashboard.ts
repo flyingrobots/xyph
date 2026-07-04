@@ -93,7 +93,7 @@ const logger = new DiagnosticLogger(
   { component: 'xyph-dashboard' },
 );
 const graphPort = new WarpGraphAdapter(runtime.repoPath, runtime.graphName, agentId, logger);
-const readPort = new WarpDashboardReadAdapter(graphPort);
+const reader = new WarpDashboardReadAdapter(graphPort);
 const dashboardRuntime = new WarpDashboardRuntimeAdapter(graphPort);
 const intake = new WarpIntakeAdapter(graphPort, agentId);
 const submissionPort = new WarpSubmissionAdapter(graphPort, agentId);
@@ -115,7 +115,7 @@ logger.info('dashboard session starting', {
 });
 
 const app = createDashboardApp({
-  readPort,
+  reader,
   intake,
   submissionPort,
   writer,
