@@ -40,5 +40,5 @@ We don't use folders for state. We use the WARP graph to represent work items an
 2. **Branch**: Create a branch for the cycle.
 3. **Red**: Write failing tests based on the intent's playback questions.
 4. **Green**: Implement the solution until tests pass.
-5. **Actuate**: Use the `xyph` CLI to formally record, authorize, and link the completed work as native graph nodes (e.g. submitting evidence).
+5. **Actuate**: Use the `xyph` CLI to submit the completed work as XYPH intents/evidence through git-warp-backed ports (e.g. evidence submission, authorization intent, or traceability link intent).
 6. **Ship**: Open a PR to `main`. Update `BEARING.md` and `CHANGELOG.md` after merge.
