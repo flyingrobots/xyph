@@ -768,6 +768,7 @@ export class ControlPlaneService implements ControlPlanePort {
       { selector },
     );
     await graph.syncCoverage();
+    await graph.materialize({ ceiling: selector.tick });
     return graph;
   }
 

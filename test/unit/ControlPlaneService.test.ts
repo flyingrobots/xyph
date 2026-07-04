@@ -2995,6 +2995,8 @@ describe('ControlPlaneService', () => {
     });
 
     expect(mocks.openIsolatedGraph).toHaveBeenCalledTimes(1);
+    const isolatedGraph = await mocks.openIsolatedGraph.mock.results[0]?.value;
+    expect(isolatedGraph?.materialize).toHaveBeenCalledWith({ ceiling: 42 });
     expect(mocks.fetchSnapshot).not.toHaveBeenCalled();
     expect(result).toEqual(expect.objectContaining({
       ok: true,
