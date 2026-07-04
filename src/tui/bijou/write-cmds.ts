@@ -98,10 +98,18 @@ async function executeTuiIntent(
         }
         const opName = desc.suffixTransform?.op;
         let sha = '';
-        if (opName === op) {
-          const res = await handler();
-          sha = typeof res === 'string' ? res : '';
+        if (opName !== op) {
+          return {
+            admitted: false,
+            obstruction: {
+              tag: 'IntentOperationMismatch',
+              actual: opName ?? 'missing-op',
+            },
+            intentId: desc.intentId,
+          };
         }
+        const res = await handler();
+        sha = typeof res === 'string' ? res : '';
         return { admitted: true, sha, intentId: desc.intentId };
       },
     },
