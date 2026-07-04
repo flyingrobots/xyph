@@ -18,6 +18,7 @@ import type { DashboardReadPort } from '../../src/ports/DashboardReadPort.js';
 import type { IntakePort } from '../../src/ports/IntakePort.js';
 import type { GraphPort } from '../../src/ports/GraphPort.js';
 import type { SubmissionPort } from '../../src/ports/SubmissionPort.js';
+import type { DashboardRuntimePort } from '../../src/ports/DashboardRuntimePort.js';
 import { makeSnapshot } from './snapshot.js';
 
 type MockReadProjection = DashboardReadPort & {
@@ -102,5 +103,14 @@ export function mockSubmissionPort(): SubmissionPort {
     revise: vi.fn().mockResolvedValue({ patchSha: 'sha-r' }) as SubmissionPort['revise'],
     review: vi.fn().mockResolvedValue({ patchSha: 'sha-v' }) as SubmissionPort['review'],
     decide: vi.fn().mockResolvedValue({ patchSha: 'sha-d' }) as SubmissionPort['decide'],
+  };
+}
+
+export function mockDashboardRuntime(): DashboardRuntimePort {
+  return {
+    loadHealth: vi.fn().mockResolvedValue(null) as DashboardRuntimePort['loadHealth'],
+    sync: vi.fn().mockResolvedValue(undefined) as DashboardRuntimePort['sync'],
+    watch: vi.fn().mockResolvedValue(null) as DashboardRuntimePort['watch'],
+    invalidate: vi.fn(),
   };
 }

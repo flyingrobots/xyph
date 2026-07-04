@@ -106,7 +106,7 @@ describe('cockpitView', () => {
     expect(plain).toContain('unplaced work');
   });
 
-  it('renders a warning health badge when graph health has non-blocking debt', () => {
+  it('renders a warning health badge when doctor findings have non-blocking debt', () => {
     const health: DashboardHealth = {
       status: 'warn',
       blocking: false,
@@ -653,7 +653,7 @@ describe('renderMyStuffDrawer', () => {
     expect(plain).toContain('governed case TRACE-1');
   });
 
-  it('renders graph health findings in the drawer drill-down', () => {
+  it('renders doctor findings in the drawer drill-down', () => {
     const snap = makeSnapshot({
       quests: [{ id: 'task:TRC-010', title: 'Trace completion', status: 'DONE', hours: 2 }],
     });
@@ -686,7 +686,7 @@ describe('renderMyStuffDrawer', () => {
 
     const plain = strip(renderMyStuffDrawer(snap, style, 'agent.test', 60, 24, 0, health));
 
-    expect(plain).toContain('Graph Health (2)');
+    expect(plain).toContain('Doctor (2)');
     expect(plain).toContain('readiness 0');
     expect(plain).toContain('governed 2');
     expect(plain).toContain('task:TRC-010');
@@ -744,4 +744,3 @@ describe('renderMyStuffDrawer', () => {
     });
   });
 });
-

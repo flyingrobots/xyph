@@ -137,7 +137,7 @@ export function buildDoctorPageContentData(
 
   pushWrappedText(
     lines,
-    'Doctor consolidates graph health so you can inspect structural blockers, readiness drift, and governance debt in one place.',
+    'Doctor consolidates XYPH health so you can inspect structural blockers, readiness drift, and governance debt in one place.',
     width,
     '',
     (line) => style.styled(style.theme.semantic.primary, line),
@@ -151,7 +151,7 @@ export function buildDoctorPageContentData(
 
   if (!health) {
     lines.push(style.styled(style.theme.semantic.warning, 'Doctor data is unavailable right now.'));
-    lines.push(style.styled(style.theme.semantic.muted, 'Refresh the snapshot to retry loading graph health.'));
+    lines.push(style.styled(style.theme.semantic.muted, 'Refresh the snapshot to retry loading the doctor report.'));
     return { content: lines.join('\n'), issues: [], issueStarts };
   }
 

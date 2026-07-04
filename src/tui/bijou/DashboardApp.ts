@@ -50,11 +50,9 @@ import type { IntakePort } from '../../ports/IntakePort.js';
 import type { DashboardReadPort } from '../../ports/DashboardReadPort.js';
 import type { OpticDomainActionService } from '../../domain/services/OpticDomainActionService.js';
 import type { DashboardObservationView } from '../../ports/DashboardReadPort.js';
-import type { GraphPort } from '../../ports/GraphPort.js';
 import type { XYPHWriter } from '../../ports/XYPHWriter.js';
 import type { SubmissionPort } from '../../ports/SubmissionPort.js';
-import { DoctorService } from '../../domain/services/DoctorService.js';
-import { WarpRoadmapAdapter } from '../../infrastructure/adapters/WarpRoadmapAdapter.js';
+import { noopDashboardRuntimePort, type DashboardRuntimePort } from '../../ports/DashboardRuntimePort.js';
 import { cockpitView, describeCockpitInteractionMap, type CockpitRect } from './views/cockpit-view.js';
 import { landingView } from './views/landing-view.js';
 import { confirmOverlay, inputOverlay } from './overlays.js';
@@ -361,11 +359,11 @@ type DashboardInputState =
 export interface DashboardDeps {
   readPort: DashboardReadPort;
   intake: IntakePort;
-  graphPort: GraphPort;
   submissionPort: SubmissionPort;
   style: StylePort;
   agentId: string;
   logoText: string;
+  runtime?: DashboardRuntimePort;
   observerWatermarkStore: ObserverWatermarkStore;
   observerWatermarkScope: ObserverWatermarkScope;
   opticDomainActionService?: OpticDomainActionService;
@@ -489,7 +487,7 @@ function healthTransitionToast(
 
   if (previousBlocking === 0 && nextBlocking > 0) {
     return {
-      message: `Blocking graph health alert: ${countLabel(nextBlocking, 'issue')} detected.`,
+      message: `Blocking doctor alert: ${countLabel(nextBlocking, 'issue')} detected.`,
       variant: 'error',
     };
   }
@@ -503,21 +501,21 @@ function healthTransitionToast(
 
   if (previousBlocking > 0 && nextBlocking === 0) {
     return {
-      message: 'Blocking graph health issues cleared.',
+      message: 'Blocking doctor issues cleared.',
       variant: 'success',
     };
   }
 
   if (previousIssues > 0 && nextIssues === 0) {
     return {
-      message: 'Graph health is clean.',
+      message: 'Doctor is clean.',
       variant: 'success',
     };
   }
 
   if (nextBlocking === 0 && nextIssues < previousIssues) {
     return {
-      message: `Graph health improved: ${previousIssues} -> ${nextIssues} issues.`,
+      message: `Doctor improved: ${previousIssues} -> ${nextIssues} issues.`,
       variant: 'success',
     };
   }
@@ -537,7 +535,7 @@ function buildGlobalKeys(): KeyMap<GlobalAction> {
       .bind('7', 'Graveyard lane', { type: 'jump-lane', lane: 'graveyard' })
       .bind('[', 'Previous lane', { type: 'prev-lane' })
       .bind(']', 'Next lane', { type: 'next-lane' })
-      .bind('h', 'Open graph health page', { type: 'open-doctor' })
+      .bind('h', 'Open doctor page', { type: 'open-doctor' })
       .bind('r', 'Refresh snapshot', { type: 'refresh' })
       .bind('v', 'Toggle lane view', { type: 'toggle-lane-view' })
       .bind('i', 'Toggle inspector', { type: 'toggle-inspector' })
@@ -1819,7 +1817,7 @@ function buildPaletteItems(model: DashboardModel): CommandPaletteItem[] {
     { id: 'lane:suggestions', label: 'Open Suggestions lane', category: 'Navigate', shortcut: '5' },
     { id: 'lane:campaigns', label: 'Open Campaigns lane', category: 'Navigate', shortcut: '6' },
     { id: 'lane:graveyard', label: 'Open Graveyard lane', category: 'Navigate', shortcut: '7' },
-    { id: 'open-doctor', label: 'Open graph health page', category: 'Inspect', shortcut: 'h' },
+    { id: 'open-doctor', label: 'Open doctor page', category: 'Inspect', shortcut: 'h' },
     { id: 'refresh', label: 'Refresh snapshot', category: 'Global', shortcut: 'r' },
     ...(isLandingPage(model) && model.lane === 'now'
       ? [{
@@ -1957,6 +1955,7 @@ function clampDrawerScroll(model: DashboardModel, deps: DashboardDeps): Dashboar
 }
 
 export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, DashboardMsg> {
+  const runtime = deps.runtime ?? noopDashboardRuntimePort;
   const globalKeys = buildGlobalKeys();
   const viewKeys = buildViewKeys();
 
@@ -1980,30 +1979,12 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
 
   let watcherUnsub: (() => void) | null = null;
 
-  function healthCategoryForBucket(bucket: string): DashboardHealthIssue['category'] {
-    switch (bucket) {
-      case 'dangling-edge':
-      case 'orphan-node':
-        return 'structural';
-      case 'readiness-gap':
-        return 'readiness';
-      case 'governed-completion-gap':
-      case 'sovereignty-violation':
-        return 'governance';
-      default:
-        return 'workflow';
-    }
-  }
-
   async function loadDashboardHealth(): Promise<DashboardHealth | null> {
     const startedAt = Date.now();
     const timeoutMs = resolveHealthTimeoutMs();
     deps.logger?.debug('dashboard health load started', { timeoutMs });
     try {
-      const outcome = await raceWithTimeout(new DoctorService(
-        deps.graphPort,
-        new WarpRoadmapAdapter(deps.graphPort, { syncOnQuery: false }),
-      ).run(), timeoutMs);
+      const outcome = await raceWithTimeout(runtime.loadHealth(), timeoutMs);
       if (outcome.kind === 'timeout') {
         deps.logger?.warn('dashboard health load timed out', {
           timeoutMs,
@@ -2011,32 +1992,16 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         });
         return null;
       }
-      const report = outcome.value;
+      const health = outcome.value;
       deps.logger?.info('dashboard health load finished', {
         durationMs: Date.now() - startedAt,
-        issueCount: report.summary.issueCount,
-        blockingIssueCount: report.summary.blockingIssueCount,
-        readinessGaps: report.summary.readinessGaps,
-        governedCompletionGaps: report.summary.governedCompletionGaps,
-        status: report.status,
+        issueCount: health?.summary.issueCount ?? 0,
+        blockingIssueCount: health?.summary.blockingIssueCount ?? 0,
+        readinessGaps: health?.summary.readinessGaps ?? 0,
+        governedCompletionGaps: health?.summary.governedCompletionGaps ?? 0,
+        status: health?.status ?? 'unknown',
       });
-      return {
-        status: report.status,
-        blocking: report.blocking,
-        summary: {
-          issueCount: report.summary.issueCount,
-          blockingIssueCount: report.summary.blockingIssueCount,
-          readinessGaps: report.summary.readinessGaps,
-          governedCompletionGaps: report.summary.governedCompletionGaps,
-        },
-        issues: report.issues.map((issue) => ({
-          severity: issue.severity,
-          category: healthCategoryForBucket(issue.bucket),
-          code: issue.code,
-          nodeId: issue.nodeId,
-          message: issue.message,
-        })),
-      };
+      return health;
     } catch (error: unknown) {
       deps.logger?.error('dashboard health load failed', {
         durationMs: Date.now() - startedAt,
@@ -2198,45 +2163,9 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
     return async (emit) => {
       try {
         deps.logger?.debug('dashboard background sync started', { requestId });
-        const graph = await deps.graphPort.getGraph();
-
-        if (typeof graph.syncCoverage === 'function') {
-          const { Worker } = await import('node:worker_threads');
-          const { fileURLToPath } = await import('node:url');
-          const path = await import('node:path');
-
-          const filename = fileURLToPath(import.meta.url);
-          const ext = path.extname(filename);
-          const workerPath = path.join(path.dirname(filename), 'syncWorker' + ext);
-
-          const worker = new Worker(workerPath, {
-            workerData: {
-              cwd: process.cwd(),
-              graphName: graph.graphName,
-              writerId: graph.writerId,
-            },
-            execArgv: process.execArgv
-          });
-
-          worker.on('message', (msg) => {
-            if (msg.status === 'done') {
-              deps.logger?.info('dashboard background sync succeeded', { requestId });
-              emit({ type: 'sync-complete', requestId });
-            } else {
-              deps.logger?.warn('dashboard background sync failed', { requestId, error: msg.error });
-              emit({ type: 'sync-complete', requestId, error: msg.error });
-            }
-          });
-
-          worker.on('error', (err: unknown) => {
-            const errMsg = err instanceof Error ? err.message : String(err);
-            deps.logger?.warn('dashboard background sync failed', { requestId, error: errMsg });
-            emit({ type: 'sync-complete', requestId, error: errMsg });
-          });
-        } else {
-          deps.logger?.info('dashboard background sync succeeded (no-op)', { requestId });
-          emit({ type: 'sync-complete', requestId });
-        }
+        await runtime.sync();
+        deps.logger?.info('dashboard background sync succeeded', { requestId });
+        emit({ type: 'sync-complete', requestId });
       } catch (err: unknown) {
         deps.logger?.warn('dashboard background sync failed', {
           requestId,
@@ -2260,13 +2189,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
   function startWatching(): Cmd<DashboardMsg> {
     return async (emit) => {
       try {
-        const graph = await deps.graphPort.getGraph();
-        if (typeof graph.watch !== 'function') return;
-        const { unsubscribe } = graph.watch('*', {
-          onChange: () => { emit({ type: 'remote-change' }); },
-          poll: 10000,
-        });
-        watcherUnsub = unsubscribe;
+        watcherUnsub = await runtime.watch(() => { emit({ type: 'remote-change' }); });
       } catch {
         // Best-effort polling only.
       }
@@ -2300,7 +2223,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
       const expiresAt = Date.now() + 3000;
       return [{
         ...model,
-        toast: { message: 'Selected doctor finding has no linked graph node.', variant: 'error', expiresAt },
+        toast: { message: 'Selected doctor finding has no linked entity.', variant: 'error', expiresAt },
       }, [delayedDismissToast(expiresAt)]];
     }
 
@@ -2618,7 +2541,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
           syncing: true,
           error: null,
           requestId: nextReqId,
-          toast: { message: 'Syncing graph with remote...', variant: 'success', expiresAt },
+          toast: { message: 'Syncing history with remote...', variant: 'success', expiresAt },
         }, [
           fetchSnapshot(nextReqId),
           fetchHealth(nextReqId),
@@ -2943,11 +2866,11 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         if (msg.requestId !== model.requestId) return [model, []];
         const nextReqId = model.requestId + 1;
         const expiresAt = Date.now() + 3000;
-        const syncMessage = msg.error ? `Sync failed: ${msg.error}` : 'Graph sync complete.';
+        const syncMessage = msg.error ? `Sync failed: ${msg.error}` : 'History sync complete.';
         const syncVariant = msg.error ? 'error' : 'success';
         const showToast = !!(model.toast && model.toast.message.includes('Syncing'));
         if (!msg.error) {
-          deps.graphPort.reset();
+          runtime.invalidate();
           deps.readPort.invalidate();
         }
 

@@ -8,7 +8,7 @@ import { createMemoryObserverWatermarkStore, observerWatermarkScopeKey, type Obs
 import { describeCockpitInteractionMap } from '../views/cockpit-view.js';
 import { makeSnapshot } from '../../../../test/helpers/snapshot.js';
 import { makeKey as key, makeMouse as mouse, makeResize as resize } from '../../../../test/helpers/keys.js';
-import { mockReadProjection, mockIntakePort, mockGraphPort, mockSubmissionPort } from '../../../../test/helpers/ports.js';
+import { mockReadProjection, mockIntakePort, mockDashboardRuntime, mockSubmissionPort } from '../../../../test/helpers/ports.js';
 import { strip } from '../../../../test/helpers/ansi.js';
 
 ensurePlainBijouContext();
@@ -47,7 +47,7 @@ function buildApp(snapshotOverrides?: Partial<GraphSnapshot>, watermarks?: Parti
   return createDashboardApp({
     readPort: mockReadProjection(snapshotOverrides),
     intake: mockIntakePort(),
-    graphPort: mockGraphPort(),
+    runtime: mockDashboardRuntime(),
     submissionPort: mockSubmissionPort(),
     style: createPlainStylePort(),
     agentId: 'agent.test',
@@ -134,11 +134,11 @@ describe('DashboardApp', () => {
   });
 
   it('starts a background sync during initialization', async () => {
-    const graphPort = mockGraphPort();
+    const runtime = mockDashboardRuntime();
     const app = createDashboardApp({
       readPort: mockReadProjection(),
       intake: mockIntakePort(),
-      graphPort,
+      runtime,
       submissionPort: mockSubmissionPort(),
       style: createPlainStylePort(),
       agentId: 'agent.test',
@@ -155,11 +155,11 @@ describe('DashboardApp', () => {
 
   it('resets cached graph reads before refetching after sync completes', () => {
     const readPort = mockReadProjection();
-    const graphPort = mockGraphPort();
+    const runtime = mockDashboardRuntime();
     const app = createDashboardApp({
       readPort,
       intake: mockIntakePort(),
-      graphPort,
+      runtime,
       submissionPort: mockSubmissionPort(),
       style: createPlainStylePort(),
       agentId: 'agent.test',
@@ -180,13 +180,13 @@ describe('DashboardApp', () => {
       loaded,
     );
 
-    expect(graphPort.reset).toHaveBeenCalledTimes(1);
+    expect(runtime.invalidate).toHaveBeenCalledTimes(1);
     expect(readPort.invalidate).toHaveBeenCalledTimes(1);
     expect(synced.syncing).toBe(false);
     expect(cmds).toHaveLength(5);
   });
 
-  it('does not block the first snapshot when graph health stalls', async () => {
+  it('does not block the first snapshot when the doctor report stalls', async () => {
     vi.stubEnv('XYPH_TUI_HEALTH_TIMEOUT_MS', '5');
     const logger = {
       debug: vi.fn(),
@@ -200,14 +200,14 @@ describe('DashboardApp', () => {
     const ctx = mockReadProjection({
       quests: [{ id: 'task:Q1', title: 'Quest One', status: 'READY', hours: 1 }],
     });
-    const graphPort = {
-      ...mockGraphPort(),
-      getGraph: vi.fn().mockImplementation(() => new Promise<never>(() => undefined)),
+    const runtime = {
+      ...mockDashboardRuntime(),
+      loadHealth: vi.fn().mockImplementation(() => new Promise<never>(() => undefined)),
     };
     const app = createDashboardApp({
       readPort: ctx,
       intake: mockIntakePort(),
-      graphPort,
+      runtime,
       submissionPort: mockSubmissionPort(),
       style: createPlainStylePort(),
       agentId: 'agent.test',
@@ -329,7 +329,7 @@ describe('DashboardApp', () => {
     const app = createDashboardApp({
       readPort: mockReadProjection(),
       intake: mockIntakePort(),
-      graphPort: mockGraphPort(),
+      runtime: mockDashboardRuntime(),
       submissionPort: mockSubmissionPort(),
       style: createPlainStylePort(),
       agentId: 'agent.test',
@@ -490,7 +490,7 @@ describe('DashboardApp', () => {
     const app = createDashboardApp({
       readPort: ctx,
       intake: mockIntakePort(),
-      graphPort: mockGraphPort(),
+      runtime: mockDashboardRuntime(),
       submissionPort: mockSubmissionPort(),
       style: createPlainStylePort(),
       agentId: 'agent.test',
@@ -608,7 +608,7 @@ describe('DashboardApp', () => {
     const app = createDashboardApp({
       readPort: ctx,
       intake: mockIntakePort(),
-      graphPort: mockGraphPort(),
+      runtime: mockDashboardRuntime(),
       submissionPort: mockSubmissionPort(),
       style: createPlainStylePort(),
       agentId: 'agent.test',
@@ -963,7 +963,7 @@ describe('DashboardApp', () => {
     const [opened] = app.update({ type: 'drawer-frame', value: 56 }, drawer);
     const plain = strip(app.view(opened) as Surface);
 
-    expect(plain).toContain('Graph Health (1)');
+    expect(plain).toContain('Doctor (1)');
     expect(plain).toContain('task:TRC-010');
   });
 
@@ -987,7 +987,7 @@ describe('DashboardApp', () => {
     expect(promptLine).toMatch(/│\s*Quit XYPH\?\s*│/);
   });
 
-  it('opens the doctor page with h and renders graph health findings', () => {
+  it('opens the doctor page with h and renders doctor findings', () => {
     const app = buildApp();
     const [initial] = app.init();
     const snapshot = makeSnapshot();
@@ -1150,7 +1150,7 @@ describe('DashboardApp', () => {
     expect(attempted.toast?.message).toBe('No doctor target page exists for artifact:campaign:SOVEREIGNTY.');
   });
 
-  it('shows a success toast when graph health improves after the first load', () => {
+  it('shows a success toast when doctor findings improve after the first load', () => {
     const app = buildApp();
     const [initial] = app.init();
     const snapshot = makeSnapshot();
@@ -1184,10 +1184,10 @@ describe('DashboardApp', () => {
     );
 
     expect(improved.toast?.variant).toBe('success');
-    expect(improved.toast?.message).toBe('Graph health improved: 46 -> 40 issues.');
+    expect(improved.toast?.message).toBe('Doctor improved: 46 -> 40 issues.');
   });
 
-  it('shows an error toast when blocking graph issues appear after a healthy snapshot', () => {
+  it('shows an error toast when blocking doctor issues appear after a healthy snapshot', () => {
     const app = buildApp();
     const loaded = ready(app, makeSnapshot());
     const blockingHealth = makeHealth({
@@ -1214,7 +1214,7 @@ describe('DashboardApp', () => {
     );
 
     expect(regressed.toast?.variant).toBe('error');
-    expect(regressed.toast?.message).toBe('Blocking graph health alert: 1 issue detected.');
+    expect(regressed.toast?.message).toBe('Blocking doctor alert: 1 issue detected.');
   });
 
   it('preserves an existing toast instead of overwriting it with a health transition toast', () => {
@@ -1714,7 +1714,7 @@ describe('DashboardApp', () => {
     const app = createDashboardApp({
       readPort: ctx,
       intake: mockIntakePort(),
-      graphPort: mockGraphPort(),
+      runtime: mockDashboardRuntime(),
       submissionPort: mockSubmissionPort(),
       style: createPlainStylePort(),
       agentId: 'agent.test',

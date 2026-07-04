@@ -8,7 +8,7 @@ import { createMemoryObserverWatermarkStore } from '../observer-watermarks.js';
 import { strip } from '../../../../test/helpers/ansi.js';
 import { makeSnapshot } from '../../../../test/helpers/snapshot.js';
 import { makeKey as key, makeResize as resize } from '../../../../test/helpers/keys.js';
-import { mockReadProjection, mockIntakePort, mockGraphPort, mockSubmissionPort } from '../../../../test/helpers/ports.js';
+import { mockReadProjection, mockIntakePort, mockDashboardRuntime, mockSubmissionPort } from '../../../../test/helpers/ports.js';
 
 ensurePlainBijouContext();
 
@@ -28,7 +28,7 @@ function buildApp(snapshotOverrides?: Partial<GraphSnapshot>): App<DashboardMode
   return createDashboardApp({
     readPort: mockReadProjection(snapshotOverrides),
     intake: mockIntakePort(),
-    graphPort: mockGraphPort(),
+    runtime: mockDashboardRuntime(),
     submissionPort: mockSubmissionPort(),
     style: createPlainStylePort(),
     agentId: 'agent.test',

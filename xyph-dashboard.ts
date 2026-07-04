@@ -45,6 +45,7 @@ import { WarpDashboardReadAdapter } from './src/infrastructure/adapters/WarpDash
 import { WarpGraphAdapter } from './src/infrastructure/adapters/WarpGraphAdapter.js';
 import { WarpIntakeAdapter } from './src/infrastructure/adapters/WarpIntakeAdapter.js';
 import { WarpSubmissionAdapter } from './src/infrastructure/adapters/WarpSubmissionAdapter.js';
+import { WarpDashboardRuntimeAdapter } from './src/infrastructure/adapters/WarpDashboardRuntimeAdapter.js';
 import { WarpRecordCommentIntentAdapter } from './src/infrastructure/warp/intents/WarpRecordCommentIntentAdapter.js';
 import { WarpXYPHWriterAdapter } from './src/infrastructure/warp/WarpXYPHWriterAdapter.js';
 import { EdictWasmTargetLowererAdapter } from './src/infrastructure/adapters/EdictWasmTargetLowererAdapter.js';
@@ -93,6 +94,7 @@ const logger = new DiagnosticLogger(
 );
 const graphPort = new WarpGraphAdapter(runtime.repoPath, runtime.graphName, agentId, logger);
 const readPort = new WarpDashboardReadAdapter(graphPort);
+const dashboardRuntime = new WarpDashboardRuntimeAdapter(graphPort);
 const intake = new WarpIntakeAdapter(graphPort, agentId);
 const submissionPort = new WarpSubmissionAdapter(graphPort, agentId);
 const recordCommentIntent = new WarpRecordCommentIntentAdapter(graphPort);
@@ -115,10 +117,10 @@ logger.info('dashboard session starting', {
 const app = createDashboardApp({
   readPort,
   intake,
-  graphPort,
   submissionPort,
   writer,
   opticDomainActionService,
+  runtime: dashboardRuntime,
   style,
   agentId,
   logoText: splash.text,
