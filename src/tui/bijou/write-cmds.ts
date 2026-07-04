@@ -2,7 +2,7 @@
  * Write command factories for TUI write operations.
  *
  * Each factory returns a Cmd<DashboardMsg> that:
- * 1. Performs the write via the appropriate port/graph
+ * 1. Performs the write via a XYPH-facing port
  * 2. Emits write-success or write-error
  * 3. The caller (DashboardApp update) handles refresh chaining
  */
@@ -12,15 +12,20 @@ import type { Cmd } from '@flyingrobots/bijou-tui';
 import { runtimeCommandIntentRoute, runtimeCommandIntentEmission, type RuntimeCommandIntentRoute } from '@flyingrobots/bijou-tui';
 import { commandIntent, defineBindingLifecycleOwner, type CommandIntent } from '@flyingrobots/bijou';
 import type { DashboardMsg } from './DashboardApp.js';
-import type { GraphPort } from '../../ports/GraphPort.js';
 import type { IntakePort } from '../../ports/IntakePort.js';
 import type { XYPHWriter } from '../../ports/XYPHWriter.js';
 import type { SubmissionPort } from '../../ports/SubmissionPort.js';
-import { RecordService } from '../../domain/services/RecordService.js';
 import type { AiSuggestionAdoptionKind } from '../../domain/entities/AiSuggestion.js';
 import { OpticDomainActionService } from '../../domain/services/OpticDomainActionService.js';
 import { EdictWasmTargetLowererAdapter } from '../../infrastructure/adapters/EdictWasmTargetLowererAdapter.js';
 import { RecordComment } from '../../writings/RecordComment.js';
+import {
+  AdoptAiSuggestion,
+  DecideCase,
+  DismissAiSuggestion,
+  RecordAiSuggestion,
+  SupersedeAiSuggestion,
+} from '../../writings/AiSuggestionWritings.js';
 
 /** Generate a lexicographically-sortable unique ID (matches actuator pattern). */
 export function generateId(): string {
@@ -30,7 +35,6 @@ export function generateId(): string {
 }
 
 export interface WriteDeps {
-  graphPort: GraphPort;
   intake: IntakePort;
   submissionPort: SubmissionPort;
   agentId: string;
@@ -58,13 +62,6 @@ export interface CaseDecisionInput {
   followOnKind?: 'quest' | 'proposal' | 'none';
 }
 
-interface WarpPatchBuilder {
-  addNode(id: string): WarpPatchBuilder;
-  setProperty(id: string, key: string, value: unknown): WarpPatchBuilder;
-  addEdge(from: string, to: string, rel: string): WarpPatchBuilder;
-  removeEdge(from: string, to: string, rel: string): WarpPatchBuilder;
-}
-
 interface WasmIntentDescriptor {
   intentId: string;
   suffixTransform?: {
@@ -83,7 +80,7 @@ async function executeTuiIntent(
   payload: Record<string, unknown>,
   handler: () => Promise<unknown>,
 ): Promise<void> {
-  const service = deps.opticDomainActionService ?? new OpticDomainActionService(
+  const fallbackService = new OpticDomainActionService(
     new EdictWasmTargetLowererAdapter(),
     {
       async admitWasmIntent(descriptor: unknown, report: unknown): Promise<import('../../domain/services/OpticDomainActionService.js').OpticActionOutcome> {
@@ -114,6 +111,9 @@ async function executeTuiIntent(
       },
     },
   );
+  const service = op === 'claimQuest' && deps.opticDomainActionService
+    ? deps.opticDomainActionService
+    : fallbackService;
 
   const outcome = await service.executeAction({}, {
     op,
@@ -125,6 +125,13 @@ async function executeTuiIntent(
   if (!outcome.admitted) {
     throw new Error(`Intent rejected by OpticDomainActionService: ${outcome.obstruction?.tag ?? 'Unknown'}`);
   }
+}
+
+function writerOrThrow(deps: WriteDeps): XYPHWriter {
+  if (!deps.writer) {
+    throw new Error('XYPHWriter is not configured');
+  }
+  return deps.writer;
 }
 
 export const claimQuestUiIntent: CommandIntent<{ questId: string }> = commandIntent('ui:intent:claim');
@@ -269,12 +276,8 @@ export const supersedeSuggestionIntentRoute: RuntimeCommandIntentRoute<{ input: 
 export function claimQuest(deps: WriteDeps, questId: string): Cmd<DashboardMsg> {
   return async (emit) => {
     try {
-      const graph = await deps.graphPort.getGraph();
-      const propsBefore = await graph.worldline().getNodeProps(questId);
-      const statusBefore = String(propsBefore?.['status'] ?? '');
-      if (statusBefore !== 'READY') {
-        emit({ type: 'write-error', message: `Claim requires READY, ${questId} is ${statusBefore || 'unknown'}` });
-        return;
+      if (!deps.opticDomainActionService) {
+        throw new Error('OpticDomainActionService is not configured');
       }
 
       const owner = defineBindingLifecycleOwner({ id: deps.agentId, kind: 'view', label: deps.agentId });
@@ -282,22 +285,9 @@ export function claimQuest(deps: WriteDeps, questId: string): Cmd<DashboardMsg> 
       const descriptor = claimQuestIntentRoute.toCommand(emission);
 
       await executeTuiIntent(deps, descriptor.suffixTransform?.op ?? 'claimQuest', descriptor.suffixTransform?.payload ?? { questId, agentId: deps.agentId }, async () => {
-        await graph.patch((p: WarpPatchBuilder) => {
-          p.setProperty(questId, 'assigned_to', deps.agentId)
-            .setProperty(questId, 'status', 'IN_PROGRESS')
-            .setProperty(questId, 'claimed_at', Date.now());
-        });
+        throw new Error('OpticDomainActionService is not configured');
       });
-
-      // OCP post-check: reads local state only (remote sync happens on next snapshot refresh).
-      // True cross-writer verification requires a full materialize with remote patches.
-      const props = await graph.worldline().getNodeProps(questId);
-      if (props && props['assigned_to'] === deps.agentId) {
-        emit({ type: 'write-success', message: `Claimed ${questId}` });
-      } else {
-        const winner = props ? String(props['assigned_to'] ?? 'unknown') : 'unknown';
-        emit({ type: 'write-error', message: `Lost claim race for ${questId}. Owner: ${winner}` });
-      }
+      emit({ type: 'write-success', message: `Claimed ${questId}` });
     } catch (err: unknown) {
       emit({ type: 'write-error', message: err instanceof Error ? err.message : String(err) });
     }
@@ -388,10 +378,7 @@ export function commentOnEntity(deps: WriteDeps, targetId: string, message: stri
       const descriptor = commentOnEntityIntentRoute.toCommand(emission);
 
       await executeTuiIntent(deps, descriptor.suffixTransform?.op ?? 'commentOnEntity', descriptor.suffixTransform?.payload ?? { targetId, message: trimmed, agentId: deps.agentId }, async () => {
-        if (!deps.writer) {
-          throw new Error('XYPHWriter is not configured');
-        }
-        await deps.writer.write(RecordComment({
+        await writerOrThrow(deps).write(RecordComment({
           targetId,
           message: trimmed,
           authoredBy: deps.agentId,
@@ -457,21 +444,15 @@ export function queueAskAiJob(
 
       let createdId = '';
       await executeTuiIntent(deps, descriptor.suffixTransform?.op ?? 'queueAskAiJob', descriptor.suffixTransform?.payload ?? { input, agentId: deps.agentId }, async () => {
-        const records = new RecordService(deps.graphPort);
-        const result = await records.createAiSuggestion({
-          kind: 'ask-ai',
+        const receipt = await writerOrThrow(deps).write(RecordAiSuggestion({
           title,
           summary,
-          suggestedBy: deps.agentId,
           requestedBy: deps.agentId,
-          audience: 'agent',
-          origin: 'request',
-          status: 'queued',
+          suggestedBy: deps.agentId,
           targetId: input.targetId,
           relatedIds: input.relatedIds ?? [],
-          nextAction: 'An agent should inspect this ask-AI job and publish one or more visible advisory suggestions in response.',
-        });
-        createdId = result.id;
+        }));
+        createdId = receipt.value.id;
       });
       emit({ type: 'write-success', message: `Queued ask-AI job ${createdId}` });
     } catch (err: unknown) {
@@ -500,18 +481,15 @@ export function decideCase(
 
       let msg = '';
       await executeTuiIntent(deps, descriptor.suffixTransform?.op ?? 'decideCase', descriptor.suffixTransform?.payload ?? { input, agentId: deps.agentId }, async () => {
-        const records = new RecordService(deps.graphPort);
-        const result = await records.createCaseDecision({
-          caseId: input.caseId,
-          decision: input.decision,
+        const receipt = await writerOrThrow(deps).write(DecideCase({
+          ...input,
           decidedBy: deps.agentId,
           rationale: trimmed,
-          followOnKind: input.followOnKind,
-        });
-        const followOn = result.followOnArtifactId
-          ? ` → ${result.followOnArtifactKind} ${result.followOnArtifactId}`
+        }));
+        const followOn = receipt.value.followOnArtifactId
+          ? ` → ${receipt.value.followOnArtifactKind} ${receipt.value.followOnArtifactId}`
           : '';
-        msg = `Decided ${result.caseId} as ${result.decision}${followOn}`;
+        msg = `Decided ${receipt.value.caseId} as ${receipt.value.decision}${followOn}`;
       });
       emit({ type: 'write-success', message: msg });
     } catch (err: unknown) {
@@ -542,14 +520,13 @@ export function adoptSuggestion(
 
       let msg = '';
       await executeTuiIntent(deps, descriptor.suffixTransform?.op ?? 'adoptSuggestion', descriptor.suffixTransform?.payload ?? { suggestionId, adoptedArtifactKind, rationale: trimmedRationale, agentId: deps.agentId }, async () => {
-        const records = new RecordService(deps.graphPort);
-        const result = await records.adoptAiSuggestion({
+        const receipt = await writerOrThrow(deps).write(AdoptAiSuggestion({
           suggestionId,
           resolvedBy: deps.agentId,
           adoptedArtifactKind,
           rationale: trimmedRationale,
-        });
-        msg = `Adopted ${result.suggestionId} into ${result.adoptedArtifactKind} ${result.adoptedArtifactId}`;
+        }));
+        msg = `Adopted ${receipt.value.suggestionId} into ${receipt.value.adoptedArtifactKind} ${receipt.value.adoptedArtifactId}`;
       });
       emit({ type: 'write-success', message: msg });
     } catch (err: unknown) {
@@ -579,13 +556,12 @@ export function dismissSuggestion(
 
       let msg = '';
       await executeTuiIntent(deps, descriptor.suffixTransform?.op ?? 'dismissSuggestion', descriptor.suffixTransform?.payload ?? { suggestionId, rationale: trimmed, agentId: deps.agentId }, async () => {
-        const records = new RecordService(deps.graphPort);
-        const result = await records.dismissAiSuggestion({
+        const receipt = await writerOrThrow(deps).write(DismissAiSuggestion({
           suggestionId,
           resolvedBy: deps.agentId,
           rationale: trimmed,
-        });
-        msg = `Dismissed ${result.suggestionId}`;
+        }));
+        msg = `Dismissed ${receipt.value.suggestionId}`;
       });
       emit({ type: 'write-success', message: msg });
     } catch (err: unknown) {
@@ -619,14 +595,13 @@ export function supersedeSuggestion(
 
       let msg = '';
       await executeTuiIntent(deps, descriptor.suffixTransform?.op ?? 'supersedeSuggestion', descriptor.suffixTransform?.payload ?? { input, agentId: deps.agentId }, async () => {
-        const records = new RecordService(deps.graphPort);
-        const result = await records.supersedeAiSuggestion({
+        const receipt = await writerOrThrow(deps).write(SupersedeAiSuggestion({
           suggestionId: input.suggestionId,
           supersededById: replacementId,
           resolvedBy: deps.agentId,
           rationale: trimmedRationale,
-        });
-        msg = `Superseded ${result.suggestionId} via ${result.supersededById}`;
+        }));
+        msg = `Superseded ${receipt.value.suggestionId} via ${receipt.value.supersededById}`;
       });
       emit({ type: 'write-success', message: msg });
     } catch (err: unknown) {

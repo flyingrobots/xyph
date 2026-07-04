@@ -49,9 +49,22 @@ describe('substrate boundary', () => {
       expect(body).not.toContain('recordCommentIntent');
     }
     for (const body of intentBodies) {
-      expect(body).toContain('writer.write');
+      expect(body).toContain('.write');
       expect(body).toContain('RecordComment');
     }
+  });
+
+  it('keeps TUI write commands on XYPH writings instead of graph-shaped substrate APIs', () => {
+    const tuiWrites = source('src/tui/bijou/write-cmds.ts');
+
+    expect(tuiWrites).toContain('XYPHWriter');
+    expect(tuiWrites).toContain('RecordComment');
+    expect(tuiWrites).toContain('RecordAiSuggestion');
+    expect(tuiWrites).not.toContain('GraphPort');
+    expect(tuiWrites).not.toContain('RecordService');
+    expect(tuiWrites).not.toContain('getGraph');
+    expect(tuiWrites).not.toContain('worldline');
+    expect(tuiWrites).not.toContain('getNodeProps');
   });
 
   it('keeps the domain mutation kernel behind a causal mutation port', () => {

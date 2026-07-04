@@ -507,8 +507,8 @@ export class ControlPlaneService implements ControlPlanePort {
     const causalMutations = new WarpCausalMutationAdapter(graphPort);
     this.mutations = overrides?.mutations ?? new MutationKernelService(causalMutations);
     const recordCommentIntent = new WarpRecordCommentIntentAdapter(graphPort, this.clock, this.mutations);
-    this.writer = overrides?.writer ?? new WarpXYPHWriterAdapter(recordCommentIntent);
     this.records = overrides?.records ?? new RecordService(graphPort, this.clock, this.mutations, recordCommentIntent);
+    this.writer = overrides?.writer ?? new WarpXYPHWriterAdapter(recordCommentIntent, this.records);
     this.capabilities = overrides?.capabilities ?? new CapabilityResolverService(agentId);
     this.briefingService = overrides?.briefingService;
     this.contextService = overrides?.contextService;

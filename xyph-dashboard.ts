@@ -47,6 +47,10 @@ import { WarpIntakeAdapter } from './src/infrastructure/adapters/WarpIntakeAdapt
 import { WarpSubmissionAdapter } from './src/infrastructure/adapters/WarpSubmissionAdapter.js';
 import { WarpRecordCommentIntentAdapter } from './src/infrastructure/warp/intents/WarpRecordCommentIntentAdapter.js';
 import { WarpXYPHWriterAdapter } from './src/infrastructure/warp/WarpXYPHWriterAdapter.js';
+import { EdictWasmTargetLowererAdapter } from './src/infrastructure/adapters/EdictWasmTargetLowererAdapter.js';
+import { WarpOpticActionAdmissionAdapter } from './src/infrastructure/warp/WarpOpticActionAdmissionAdapter.js';
+import { OpticDomainActionService } from './src/domain/services/OpticDomainActionService.js';
+import { RecordService } from './src/domain/services/RecordService.js';
 import { createDashboardApp } from './src/tui/bijou/DashboardApp.js';
 import { createFileObserverWatermarkStore } from './src/tui/bijou/observer-watermarks.js';
 import { loadRandomLogo, selectLogoSize } from './src/tui/logo-loader.js';
@@ -91,7 +95,13 @@ const graphPort = new WarpGraphAdapter(runtime.repoPath, runtime.graphName, agen
 const readPort = new WarpDashboardReadAdapter(graphPort);
 const intake = new WarpIntakeAdapter(graphPort, agentId);
 const submissionPort = new WarpSubmissionAdapter(graphPort, agentId);
-const writer = new WarpXYPHWriterAdapter(new WarpRecordCommentIntentAdapter(graphPort));
+const recordCommentIntent = new WarpRecordCommentIntentAdapter(graphPort);
+const recordService = new RecordService(graphPort, undefined, undefined, recordCommentIntent);
+const writer = new WarpXYPHWriterAdapter(recordCommentIntent, recordService);
+const opticDomainActionService = new OpticDomainActionService(
+  new EdictWasmTargetLowererAdapter(),
+  new WarpOpticActionAdmissionAdapter(graphPort),
+);
 const observerWatermarkStore = createFileObserverWatermarkStore();
 
 logger.info('dashboard session starting', {
@@ -108,6 +118,7 @@ const app = createDashboardApp({
   graphPort,
   submissionPort,
   writer,
+  opticDomainActionService,
   style,
   agentId,
   logoText: splash.text,

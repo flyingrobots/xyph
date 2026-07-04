@@ -165,8 +165,8 @@ export function createCliContext(
   const causalMutations = new WarpCausalMutationAdapter(graphPort);
   const mutationKernel = new MutationKernelService(causalMutations);
   const recordCommentIntent = new WarpRecordCommentIntentAdapter(graphPort, undefined, mutationKernel);
-  const writer = new WarpXYPHWriterAdapter(recordCommentIntent);
   const recordService = new RecordService(graphPort, undefined, mutationKernel, recordCommentIntent);
+  const writer = new WarpXYPHWriterAdapter(recordCommentIntent, recordService);
   const observation = new WarpObservationAdapter(graphPort);
   const operationalRead = new WarpOperationalReadAdapter(graphPort);
   const questReadPort = new WarpQuestReadAdapter(graphPort, {

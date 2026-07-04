@@ -1971,7 +1971,6 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
   });
 
   const writeDeps: WriteDeps = {
-    graphPort: deps.graphPort,
     intake: deps.intake,
     submissionPort: deps.submissionPort,
     agentId: deps.agentId,
