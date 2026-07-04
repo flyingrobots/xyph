@@ -97,4 +97,31 @@ describe('WarpOpticActionAdmissionAdapter', () => {
       },
     });
   });
+
+  it('rejects malformed verified intent payloads before mutating the graph', async () => {
+    const { graphPort, graph } = makeGraphPort({ status: 'READY' });
+    const adapter = new WarpOpticActionAdmissionAdapter(graphPort);
+
+    const outcome = await adapter.admitWasmIntent({
+      intentId: 'intent:xyph:claimQuest:malformed',
+      suffixTransform: {
+        op: 'claimQuest',
+        payload: {
+          agentId: 'agent.prime',
+        },
+      },
+    }, {
+      verified: true,
+    });
+
+    expect(graph.patch).not.toHaveBeenCalled();
+    expect(outcome).toEqual({
+      admitted: false,
+      intentId: 'intent:xyph:claimQuest:malformed',
+      obstruction: {
+        tag: 'InvalidWasmIntentPayload',
+        actual: 'missing questId',
+      },
+    });
+  });
 });

@@ -29,6 +29,17 @@ interface WasmVerifierReport {
   verified?: boolean;
 }
 
+type SupportedOperation =
+  | 'move'
+  | 'authorize'
+  | 'link'
+  | 'claimQuest'
+  | 'story'
+  | 'requirement'
+  | 'note'
+  | 'spec'
+  | 'adr';
+
 interface NodePropertyReader {
   getNodeProps(id: string): Promise<Record<string, unknown> | null>;
 }
@@ -38,12 +49,125 @@ interface WorldlineBackedGraph {
   worldline?: () => Partial<NodePropertyReader>;
 }
 
+interface EdgeRef {
+  readonly nodeId: string;
+}
+
+type ValidPayload =
+  | {
+      readonly op: 'move' | 'authorize' | 'link';
+      readonly quest: string;
+      readonly campaignId?: string;
+      readonly intentId?: string;
+      readonly existingCampaignEdges?: readonly EdgeRef[];
+      readonly existingIntentEdges?: readonly EdgeRef[];
+    }
+  | {
+      readonly op: 'claimQuest';
+      readonly questId: string;
+      readonly agentId: string;
+    }
+  | {
+      readonly op: 'story';
+      readonly id: string;
+      readonly title: string;
+      readonly persona: string;
+      readonly goal: string;
+      readonly benefit: string;
+      readonly agentId: string;
+      readonly now: number;
+      readonly intent?: string;
+    }
+  | {
+      readonly op: 'requirement';
+      readonly id: string;
+      readonly description: string;
+      readonly kind: string;
+      readonly priority: string;
+      readonly story?: string;
+    }
+  | {
+      readonly op: 'note' | 'spec' | 'adr';
+      readonly id: string;
+      readonly kind: string;
+      readonly title: string;
+      readonly agentId: string;
+      readonly now: number;
+      readonly on: string;
+      readonly supersedes?: string;
+      readonly body: string;
+    };
+
+type PayloadValidation =
+  | { readonly ok: true; readonly payload: ValidPayload }
+  | { readonly ok: false; readonly actual: string };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 function descriptorFrom(value: unknown): WasmIntentDescriptor {
-  return value as WasmIntentDescriptor;
+  if (!isRecord(value)) {
+    return { intentId: 'missing-intent-id' };
+  }
+
+  const suffix = isRecord(value['suffixTransform'])
+    ? {
+        op: stringField(value['suffixTransform'], 'op') ?? undefined,
+        payload: isRecord(value['suffixTransform']['payload'])
+          ? value['suffixTransform']['payload']
+          : undefined,
+      }
+    : undefined;
+  const precommitGuards = Array.isArray(value['precommitGuards'])
+    ? value['precommitGuards'].filter(isRecord).map((guard) => ({
+        op: stringField(guard, 'op') ?? undefined,
+        nodeId: stringField(guard, 'nodeId') ?? undefined,
+        expected: stringField(guard, 'expected') ?? undefined,
+        failureTag: stringField(guard, 'failureTag') ?? undefined,
+      }))
+    : undefined;
+
+  return {
+    intentId: stringField(value, 'intentId') ?? 'missing-intent-id',
+    precommitGuards,
+    suffixTransform: suffix,
+  };
 }
 
 function reportFrom(value: unknown): WasmVerifierReport {
-  return value as WasmVerifierReport;
+  if (!isRecord(value)) return {};
+  return { verified: value['verified'] === true };
+}
+
+function stringField(record: Record<string, unknown>, key: string): string | null {
+  const value = record[key];
+  return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
+function numberField(record: Record<string, unknown>, key: string): number | null {
+  const value = record[key];
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function optionalStringField(record: Record<string, unknown>, key: string): string | null | undefined {
+  const value = record[key];
+  if (value === undefined) return undefined;
+  return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
+function optionalEdgeRefs(record: Record<string, unknown>, key: string): readonly EdgeRef[] | null | undefined {
+  const value = record[key];
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) return null;
+  const refs: EdgeRef[] = [];
+  for (const entry of value) {
+    if (!isRecord(entry)) return null;
+    const nodeId = stringField(entry, 'nodeId');
+    if (nodeId === null) return null;
+    refs.push({ nodeId });
+  }
+  return refs;
 }
 
 export class WarpOpticActionAdmissionAdapter {
@@ -66,10 +190,8 @@ export class WarpOpticActionAdmissionAdapter {
       };
     }
 
-    const graph = await this.graphPort.getGraph();
-    let sha = '';
     const op = desc.suffixTransform?.op;
-    const payload = desc.suffixTransform?.payload ?? {};
+    const rawPayload = desc.suffixTransform?.payload ?? {};
 
     if (!this.isSupportedOperation(op)) {
       return {
@@ -82,6 +204,22 @@ export class WarpOpticActionAdmissionAdapter {
       };
     }
 
+    const validation = this.validatePayload(op, rawPayload);
+    if (!validation.ok) {
+      return {
+        admitted: false,
+        obstruction: {
+          tag: 'InvalidWasmIntentPayload',
+          actual: validation.actual,
+        },
+        intentId: desc.intentId,
+      };
+    }
+
+    const graph = await this.graphPort.getGraph();
+    let sha = '';
+    const payload = validation.payload;
+
     if (op === 'claimQuest') {
       const guardObstruction = await this.evaluatePrecommitGuards(graph, desc.precommitGuards ?? []);
       if (guardObstruction) {
@@ -93,12 +231,8 @@ export class WarpOpticActionAdmissionAdapter {
       }
     }
 
-    if (op === 'move' || op === 'authorize' || op === 'link') {
-      const quest = payload['quest'] as string;
-      const campaignId = payload['campaignId'] as string | undefined;
-      const intentId = payload['intentId'] as string | undefined;
-      const existingCampaignEdges = payload['existingCampaignEdges'] as { nodeId: string }[] | undefined;
-      const existingIntentEdges = payload['existingIntentEdges'] as { nodeId: string }[] | undefined;
+    if (payload.op === 'move' || payload.op === 'authorize' || payload.op === 'link') {
+      const { quest, campaignId, intentId, existingCampaignEdges, existingIntentEdges } = payload;
       sha = await graph.patch((patch: WarpPatchBuilder) => {
         if (campaignId !== undefined) {
           for (const old of existingCampaignEdges ?? []) {
@@ -113,24 +247,16 @@ export class WarpOpticActionAdmissionAdapter {
           patch.addEdge(quest, intentId, 'authorized-by');
         }
       });
-    } else if (op === 'claimQuest') {
-      const questId = payload['questId'] as string;
-      const agent = payload['agentId'] as string;
+    } else if (payload.op === 'claimQuest') {
+      const { questId, agentId } = payload;
       sha = await graph.patch((patch: WarpPatchBuilder) => {
         patch
-          .setProperty(questId, 'assigned_to', agent)
+          .setProperty(questId, 'assigned_to', agentId)
           .setProperty(questId, 'status', 'IN_PROGRESS')
           .setProperty(questId, 'claimed_at', this.clock.now());
       });
-    } else if (op === 'story') {
-      const id = payload['id'] as string;
-      const title = payload['title'] as string;
-      const persona = payload['persona'] as string;
-      const goal = payload['goal'] as string;
-      const benefit = payload['benefit'] as string;
-      const authorId = payload['agentId'] as string;
-      const now = payload['now'] as number;
-      const intent = payload['intent'] as string | undefined;
+    } else if (payload.op === 'story') {
+      const { id, title, persona, goal, benefit, agentId, now, intent } = payload;
       sha = await graph.patch((patch: WarpPatchBuilder) => {
         patch
           .addNode(id)
@@ -138,7 +264,7 @@ export class WarpOpticActionAdmissionAdapter {
           .setProperty(id, 'persona', persona)
           .setProperty(id, 'goal', goal)
           .setProperty(id, 'benefit', benefit)
-          .setProperty(id, 'created_by', authorId)
+          .setProperty(id, 'created_by', agentId)
           .setProperty(id, 'created_at', now)
           .setProperty(id, 'type', 'story');
 
@@ -146,12 +272,8 @@ export class WarpOpticActionAdmissionAdapter {
           patch.addEdge(intent, id, 'decomposes-to');
         }
       });
-    } else if (op === 'requirement') {
-      const id = payload['id'] as string;
-      const description = payload['description'] as string;
-      const kind = payload['kind'] as string;
-      const priority = payload['priority'] as string;
-      const story = payload['story'] as string | undefined;
+    } else if (payload.op === 'requirement') {
+      const { id, description, kind, priority, story } = payload;
       sha = await graph.patch((patch: WarpPatchBuilder) => {
         patch
           .addNode(id)
@@ -164,21 +286,14 @@ export class WarpOpticActionAdmissionAdapter {
           patch.addEdge(story, id, 'decomposes-to');
         }
       });
-    } else if (op === 'note' || op === 'spec' || op === 'adr') {
-      const id = payload['id'] as string;
-      const kind = payload['kind'] as string;
-      const title = payload['title'] as string;
-      const authorId = payload['agentId'] as string;
-      const now = payload['now'] as number;
-      const on = payload['on'] as string;
-      const supersedes = payload['supersedes'] as string | undefined;
-      const body = payload['body'] as string;
+    } else if (payload.op === 'note' || payload.op === 'spec' || payload.op === 'adr') {
+      const { id, kind, title, agentId, now, on, supersedes, body } = payload;
       const patch = await createPatchSession(graph);
       patch
         .addNode(id)
         .setProperty(id, 'type', kind)
         .setProperty(id, 'title', title)
-        .setProperty(id, 'authored_by', authorId)
+        .setProperty(id, 'authored_by', agentId)
         .setProperty(id, 'authored_at', now)
         .addEdge(id, on, 'documents');
       if (supersedes) {
@@ -186,6 +301,15 @@ export class WarpOpticActionAdmissionAdapter {
       }
       await patch.attachContent(id, body);
       sha = await patch.commit();
+    } else {
+      return {
+        admitted: false,
+        obstruction: {
+          tag: 'UnsupportedWasmIntent',
+          actual: payload.op,
+        },
+        intentId: desc.intentId,
+      };
     }
 
     return {
@@ -195,7 +319,7 @@ export class WarpOpticActionAdmissionAdapter {
     };
   }
 
-  private isSupportedOperation(op: string | undefined): boolean {
+  private isSupportedOperation(op: string | undefined): op is SupportedOperation {
     return op === 'move'
       || op === 'authorize'
       || op === 'link'
@@ -205,6 +329,90 @@ export class WarpOpticActionAdmissionAdapter {
       || op === 'note'
       || op === 'spec'
       || op === 'adr';
+  }
+
+  private validatePayload(op: SupportedOperation, payload: Record<string, unknown>): PayloadValidation {
+    if (op === 'move' || op === 'authorize' || op === 'link') {
+      const quest = stringField(payload, 'quest');
+      if (quest === null) return { ok: false, actual: 'missing quest' };
+      const campaignId = optionalStringField(payload, 'campaignId');
+      if (campaignId === null) return { ok: false, actual: 'invalid campaignId' };
+      const intentId = optionalStringField(payload, 'intentId');
+      if (intentId === null) return { ok: false, actual: 'invalid intentId' };
+      const existingCampaignEdges = optionalEdgeRefs(payload, 'existingCampaignEdges');
+      if (existingCampaignEdges === null) return { ok: false, actual: 'invalid existingCampaignEdges' };
+      const existingIntentEdges = optionalEdgeRefs(payload, 'existingIntentEdges');
+      if (existingIntentEdges === null) return { ok: false, actual: 'invalid existingIntentEdges' };
+      if (op === 'move' && campaignId === undefined) return { ok: false, actual: 'missing campaignId' };
+      if (op === 'authorize' && intentId === undefined) return { ok: false, actual: 'missing intentId' };
+      if (op === 'link' && (campaignId === undefined || intentId === undefined)) {
+        return { ok: false, actual: campaignId === undefined ? 'missing campaignId' : 'missing intentId' };
+      }
+      return {
+        ok: true,
+        payload: { op, quest, campaignId, intentId, existingCampaignEdges, existingIntentEdges },
+      };
+    }
+
+    if (op === 'claimQuest') {
+      const questId = stringField(payload, 'questId');
+      if (questId === null) return { ok: false, actual: 'missing questId' };
+      const agentId = stringField(payload, 'agentId');
+      if (agentId === null) return { ok: false, actual: 'missing agentId' };
+      return { ok: true, payload: { op, questId, agentId } };
+    }
+
+    if (op === 'story') {
+      const id = stringField(payload, 'id');
+      if (id === null) return { ok: false, actual: 'missing id' };
+      const title = stringField(payload, 'title');
+      if (title === null) return { ok: false, actual: 'missing title' };
+      const persona = stringField(payload, 'persona');
+      if (persona === null) return { ok: false, actual: 'missing persona' };
+      const goal = stringField(payload, 'goal');
+      if (goal === null) return { ok: false, actual: 'missing goal' };
+      const benefit = stringField(payload, 'benefit');
+      if (benefit === null) return { ok: false, actual: 'missing benefit' };
+      const agentId = stringField(payload, 'agentId');
+      if (agentId === null) return { ok: false, actual: 'missing agentId' };
+      const now = numberField(payload, 'now');
+      if (now === null) return { ok: false, actual: 'missing now' };
+      const intent = optionalStringField(payload, 'intent');
+      if (intent === null) return { ok: false, actual: 'invalid intent' };
+      return { ok: true, payload: { op, id, title, persona, goal, benefit, agentId, now, intent } };
+    }
+
+    if (op === 'requirement') {
+      const id = stringField(payload, 'id');
+      if (id === null) return { ok: false, actual: 'missing id' };
+      const description = stringField(payload, 'description');
+      if (description === null) return { ok: false, actual: 'missing description' };
+      const kind = stringField(payload, 'kind');
+      if (kind === null) return { ok: false, actual: 'missing kind' };
+      const priority = stringField(payload, 'priority');
+      if (priority === null) return { ok: false, actual: 'missing priority' };
+      const story = optionalStringField(payload, 'story');
+      if (story === null) return { ok: false, actual: 'invalid story' };
+      return { ok: true, payload: { op, id, description, kind, priority, story } };
+    }
+
+    const id = stringField(payload, 'id');
+    if (id === null) return { ok: false, actual: 'missing id' };
+    const kind = stringField(payload, 'kind');
+    if (kind === null) return { ok: false, actual: 'missing kind' };
+    const title = stringField(payload, 'title');
+    if (title === null) return { ok: false, actual: 'missing title' };
+    const agentId = stringField(payload, 'agentId');
+    if (agentId === null) return { ok: false, actual: 'missing agentId' };
+    const now = numberField(payload, 'now');
+    if (now === null) return { ok: false, actual: 'missing now' };
+    const on = stringField(payload, 'on');
+    if (on === null) return { ok: false, actual: 'missing on' };
+    const supersedes = optionalStringField(payload, 'supersedes');
+    if (supersedes === null) return { ok: false, actual: 'invalid supersedes' };
+    const body = stringField(payload, 'body');
+    if (body === null) return { ok: false, actual: 'missing body' };
+    return { ok: true, payload: { op, id, kind, title, agentId, now, on, supersedes, body } };
   }
 
   private async evaluatePrecommitGuards(
