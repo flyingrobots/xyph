@@ -133,6 +133,26 @@ describe('DashboardApp', () => {
     expect(loaded.showLanding).toBe(false);
   });
 
+  it('starts a background sync during initialization', async () => {
+    const graphPort = mockGraphPort();
+    const app = createDashboardApp({
+      readPort: mockReadProjection(),
+      intake: mockIntakePort(),
+      graphPort,
+      submissionPort: mockSubmissionPort(),
+      style: createPlainStylePort(),
+      agentId: 'agent.test',
+      logoText: 'XYPH',
+      observerWatermarkStore: createMemoryObserverWatermarkStore(),
+      observerWatermarkScope: TEST_SCOPE,
+    });
+
+    const [initial, cmds] = app.init();
+
+    expect(initial.syncing).toBe(true);
+    expect(cmds).toHaveLength(9);
+  });
+
   it('does not block the first snapshot when graph health stalls', async () => {
     vi.stubEnv('XYPH_TUI_HEALTH_TIMEOUT_MS', '5');
     const logger = {

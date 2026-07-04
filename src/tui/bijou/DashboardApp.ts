@@ -2709,7 +2709,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         snapshot: null,
         health: null,
         loading: true,
-        syncing: false,
+        syncing: true,
         error: null,
         showLanding: true,
         showHelp: false,
@@ -2752,6 +2752,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         fetchNowLane(model.requestId),
         fetchReviewLane(model.requestId),
         fetchSuggestionLane(model.requestId),
+        backgroundSync(model.requestId),
         startWatching(),
         fadeScrollbar('worklist', model.scrollbars.worklist.generation),
         animate<DashboardMsg>({
