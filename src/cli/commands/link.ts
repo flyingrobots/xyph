@@ -2,7 +2,7 @@ import type { Command } from 'commander';
 import type { CliContext } from '../context.js';
 import { createErrorHandler } from '../errorHandler.js';
 import { assertPrefix, assertPrefixOneOf, assertNodeExists } from '../validators.js';
-import { toNeighborEntries } from '../../infrastructure/helpers/isNeighborEntry.js';
+import { worldlineNeighbors } from '../../infrastructure/helpers/isNeighborEntry.js';
 
 /**
  * Shared validation + graph write for campaign and intent linking.
@@ -34,7 +34,8 @@ async function applyLink(
   const existingCampaignEdges: { nodeId: string }[] = [];
   const existingIntentEdges: { nodeId: string }[] = [];
   if (campaignId !== undefined || intentId !== undefined) {
-    const neighbors = toNeighborEntries(await graph.neighbors(quest, 'outgoing'));
+    const edgeReader = typeof graph.worldline === 'function' ? graph.worldline() : graph;
+    const neighbors = await worldlineNeighbors(edgeReader, quest, 'outgoing');
     for (const n of neighbors) {
       if (campaignId !== undefined && n.label === 'belongs-to') {
         existingCampaignEdges.push({ nodeId: n.nodeId });
