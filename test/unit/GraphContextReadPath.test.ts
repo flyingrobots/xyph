@@ -49,6 +49,38 @@ describe('ObservedGraphProjection read path', () => {
     expect(materialize).not.toHaveBeenCalled();
   });
 
+  it('does not synthesize graph ticks from live frontier SHAs', async () => {
+    const graph: ObservedProjectionGraph = {
+      writerId: 'writer.test',
+      syncCoverage: vi.fn(async () => undefined),
+      materialize: vi.fn(async () => null),
+      getStateSnapshot: vi.fn(async () => null),
+      getFrontier: vi.fn(async () => new Map([['writer.test', 'abcdef1234567']])),
+      query: vi.fn(() => makeQueryBuilder()),
+      neighbors: vi.fn(async () => []),
+      getNodeProps: vi.fn(async () => null),
+      getContent: vi.fn(async () => null),
+      getContentOid: vi.fn(async () => null),
+      hasNode: vi.fn(async () => false),
+      worldline: vi.fn(function(this: any) { return this; }),
+      traverse: {
+        topologicalSort: vi.fn(async () => ({ sorted: [] })),
+        bfs: vi.fn(async () => []),
+      },
+      compareCoordinates: vi.fn(),
+    };
+
+    const ctx = createObservedGraphProjectionFromGraph(graph, { syncCoverage: false });
+    const snapshot = await ctx.fetchSnapshot();
+
+    expect(snapshot.graphMeta).toEqual({
+      maxTick: 0,
+      myTick: 0,
+      writerCount: 0,
+      tipSha: 'abcdef1',
+    });
+  });
+
   it('does not call materialize() before a targeted entity detail read', async () => {
     const materialize = vi.fn(async () => null);
     const graph: ObservedProjectionGraph = {

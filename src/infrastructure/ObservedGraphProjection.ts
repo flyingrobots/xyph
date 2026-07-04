@@ -287,13 +287,7 @@ function normalizeObservedProjectionGraph(graph: ObservedProjectionGraph): Obser
     query: () => reader.query(),
     hasNode: (nodeId: string) => reader.hasNode(nodeId),
     getNodeProps: (nodeId: string) => reader.getNodeProps(nodeId),
-    getStateSnapshot: async (): Promise<ObservedProjectionState | null> => {
-      try {
-        return { observedFrontier: await graph.getFrontier() as unknown as SnapshotVersionVector };
-      } catch {
-        return null;
-      }
-    },
+    getStateSnapshot: () => graph.getStateSnapshot(),
     getFrontier: () => graph.getFrontier(),
     getContentOid: async (nodeId: string): Promise<string | null> =>
       await reader.getNodeProps(nodeId).then(contentOidFromReadableProps),
