@@ -33,6 +33,7 @@ describe('ObservedGraphProjection read path', () => {
       getContent: vi.fn(async () => null),
       getContentOid: vi.fn(async () => null),
       hasNode: vi.fn(async () => false),
+      worldline: vi.fn(function(this: any) { return this; }),
       traverse: {
         topologicalSort: vi.fn(async () => ({ sorted: [] })),
         bfs: vi.fn(async () => []),
@@ -55,6 +56,7 @@ describe('ObservedGraphProjection read path', () => {
       syncCoverage: vi.fn(async () => undefined),
       materialize,
       hasNode: vi.fn(async (id: string) => id === 'misc:ONE'),
+      worldline: vi.fn(function(this: any) { return this; }),
       getNodeProps: vi.fn(async (id: string) => id === 'misc:ONE'
         ? { type: 'misc', title: 'Misc node' }
         : null),
@@ -93,6 +95,7 @@ describe('ObservedGraphProjection read path', () => {
       syncCoverage: vi.fn(async () => undefined),
       materialize: vi.fn(async () => null),
       hasNode: vi.fn(async (id: string) => id === 'task:T-1'),
+      worldline: vi.fn(function(this: any) { return this; }),
       getNodeProps: vi.fn(async (id: string) => {
         switch (id) {
           case 'task:T-1':
@@ -219,6 +222,7 @@ describe('ObservedGraphProjection read path', () => {
       getContent: vi.fn(async () => null),
       getContentOid: vi.fn(async () => null),
       hasNode: vi.fn(async () => false),
+      worldline: vi.fn(function(this: any) { return this; }),
       traverse: {
         topologicalSort: vi.fn(async () => ({ sorted: [] })),
         bfs: vi.fn(async () => []),
@@ -342,6 +346,7 @@ describe('ObservedGraphProjection read path', () => {
       getContent: vi.fn(async () => null),
       getContentOid: vi.fn(async () => null),
       hasNode: vi.fn(async () => false),
+      worldline: vi.fn(function(this: any) { return this; }),
       traverse: {
         topologicalSort: vi.fn(async () => ({ sorted: [] })),
         bfs: vi.fn(async () => []),
@@ -450,6 +455,7 @@ describe('ObservedGraphProjection read path', () => {
       getContent: vi.fn(async () => null),
       getContentOid: vi.fn(async () => null),
       hasNode: vi.fn(async () => false),
+      worldline: vi.fn(function(this: any) { return this; }),
       traverse: {
         topologicalSort: vi.fn(async () => ({ sorted: [] })),
         bfs: vi.fn(async () => []),
@@ -615,6 +621,7 @@ describe('ObservedGraphProjection read path', () => {
       getContent: vi.fn(async () => null),
       getContentOid: vi.fn(async () => null),
       hasNode: vi.fn(async () => false),
+      worldline: vi.fn(function(this: any) { return this; }),
       traverse: {
         topologicalSort: vi.fn(async () => ({ sorted: [] })),
         bfs: vi.fn(async () => []),
@@ -690,6 +697,7 @@ describe('ObservedGraphProjection read path', () => {
       getContent: vi.fn(async () => null),
       getContentOid: vi.fn(async () => null),
       hasNode: vi.fn(async () => false),
+      worldline: vi.fn(function(this: any) { return this; }),
       traverse: {
         topologicalSort: vi.fn(async () => ({ sorted: [] })),
         bfs: vi.fn(async () => []),

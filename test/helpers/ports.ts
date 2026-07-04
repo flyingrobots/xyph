@@ -88,6 +88,7 @@ export function mockGraphPort(): GraphPort {
       getNodes: vi.fn().mockResolvedValue([]),
       getEdges: vi.fn().mockResolvedValue([]),
       hasNode: vi.fn().mockResolvedValue(true),
+      worldline: vi.fn(function (this: unknown): unknown { return this; }),
       getNodeProps: vi.fn().mockResolvedValue({ assigned_to: 'agent.test', status: 'READY' }),
       getContentOid: vi.fn().mockResolvedValue('oid-content'),
     }),

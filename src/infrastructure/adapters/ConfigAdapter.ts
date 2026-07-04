@@ -104,10 +104,10 @@ export class ConfigAdapter implements ConfigPort {
   private async readGraphNode(): Promise<Partial<XyphConfig>> {
     try {
       const graph = await this.graphPort.getGraph();
-      const exists = await graph.hasNode(CONFIG_NODE_ID);
+      const exists = await graph.worldline().hasNode(CONFIG_NODE_ID);
       if (!exists) return {};
 
-      const props = await graph.getNodeProps(CONFIG_NODE_ID);
+      const props = await graph.worldline().getNodeProps(CONFIG_NODE_ID);
       if (!props) return {};
 
       const result: Partial<XyphConfig> = {};

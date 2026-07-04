@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { InvalidArgumentError } from 'commander';
 import {
   assertNodeExists,
@@ -51,12 +51,12 @@ describe('assertPrefixOneOf', () => {
 
 describe('assertNodeExists', () => {
   it('passes when node exists', async () => {
-    const graph = { hasNode: async () => true };
+    const graph = { hasNode: vi.fn(async () => true), worldline: vi.fn(function(this: any) { return this; }) };
     await expect(assertNodeExists(graph, 'task:X', 'Quest')).resolves.toBeUndefined();
   });
 
   it('throws NOT_FOUND when node is missing', async () => {
-    const graph = { hasNode: async () => false };
+    const graph = { hasNode: vi.fn(async () => false), worldline: vi.fn(function(this: any) { return this; }) };
     await expect(assertNodeExists(graph, 'task:X', 'Quest'))
       .rejects.toThrow('[NOT_FOUND] Quest task:X not found');
   });

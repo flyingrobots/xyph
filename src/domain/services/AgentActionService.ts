@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { GraphPort } from '../../ports/GraphPort.js';
+import type { XYPHWriter } from '../../ports/XYPHWriter.js';
+import { RecordComment } from '../../writings/RecordComment.js';
 import type { ClockPort } from '../../ports/ClockPort.js';
 import { SystemClockAdapter } from '../../infrastructure/adapters/SystemClockAdapter.js';
 import {
@@ -670,9 +672,9 @@ export class AgentActionValidator {
 
     const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
     const [storyExists, requirementExists, criterionExists] = await Promise.all([
-      graph.hasNode(storyId),
-      graph.hasNode(requirementId),
-      graph.hasNode(criterionId),
+      graph.worldline().hasNode(storyId),
+      graph.worldline().hasNode(requirementId),
+      graph.worldline().hasNode(criterionId),
     ]);
 
     const reasons: string[] = [];
@@ -839,18 +841,6 @@ export class AgentActionValidator {
       ]);
     }
 
-    const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
-    if (!await graph.hasNode(request.targetId)) {
-      return failAssessment(request, 'not-found', [
-        `Target ${request.targetId} not found in the graph`,
-      ]);
-    }
-    if (replyTo !== undefined && !await graph.hasNode(replyTo)) {
-      return failAssessment(request, 'not-found', [
-        `Reply target ${replyTo} not found in the graph`,
-      ]);
-    }
-
     return successAssessment(
       request,
       {
@@ -927,7 +917,7 @@ export class AgentActionValidator {
       ...normalizeStringArray(request.args['relatedIds']),
     ])];
     for (const relatedId of relatedIds) {
-      if (!await graph.hasNode(relatedId)) {
+      if (!await graph.worldline().hasNode(relatedId)) {
         const briefId = autoId('brief:', this.clock);
         return failAssessment(request, 'not-found', [
           `Related target ${relatedId} not found in the graph`,
@@ -1245,14 +1235,14 @@ export class AgentActionValidator {
     const relatedIds = [...new Set([request.targetId, ...rawRelatedIds])];
 
     const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
-    if (!await graph.hasNode(request.targetId)) {
+    if (!await graph.worldline().hasNode(request.targetId)) {
       return failAssessment(request, 'not-found', [
         `Target ${request.targetId} not found in the graph`,
       ]);
     }
 
     for (const relatedId of rawRelatedIds) {
-      if (!await graph.hasNode(relatedId)) {
+      if (!await graph.worldline().hasNode(relatedId)) {
         return failAssessment(request, 'not-found', [
           `Related target ${relatedId} not found in the graph`,
         ], {
@@ -1611,6 +1601,7 @@ export class AgentActionService {
     submissions?: SubmissionService,
     submissionAdapter?: SubmissionPort & SubmissionReadModel,
     sealService?: GuildSealService,
+    private readonly writer?: XYPHWriter,
   ) {
     this.clock = clock ?? new SystemClockAdapter();
     this.workspace = workspace ?? new GitWorkspaceAdapter(process.cwd());
@@ -1725,7 +1716,7 @@ export class AgentActionService {
         .setProperty(action.targetId, 'claimed_at', now);
     });
 
-    const props = await graph.getNodeProps(action.targetId);
+    const props = await graph.worldline().getNodeProps(action.targetId);
     const confirmed = !!(
       props &&
       props['assigned_to'] === this.agentId &&
@@ -1773,7 +1764,7 @@ export class AgentActionService {
       priority: action.priority,
     });
     const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
-    const props = await graph.getNodeProps(action.targetId);
+    const props = await graph.worldline().getNodeProps(action.targetId);
 
     return {
       ...assessment,
@@ -1795,9 +1786,9 @@ export class AgentActionService {
   ): Promise<AgentActionOutcome> {
     const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
     const [storyExists, requirementExists, criterionExists] = await Promise.all([
-      graph.hasNode(action.storyId),
-      graph.hasNode(action.requirementId),
-      graph.hasNode(action.criterionId),
+      graph.worldline().hasNode(action.storyId),
+      graph.worldline().hasNode(action.requirementId),
+      graph.worldline().hasNode(action.criterionId),
     ]);
 
     const questOutgoing = await this.roadmap.getOutgoingEdges(action.targetId);
@@ -1876,7 +1867,7 @@ export class AgentActionService {
     const intake = new WarpIntakeAdapter(this.graphPort, this.agentId);
     const sha = await intake.ready(action.targetId);
     const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
-    const props = await graph.getNodeProps(action.targetId);
+    const props = await graph.worldline().getNodeProps(action.targetId);
     const readyAt = typeof props?.['ready_at'] === 'number' ? props['ready_at'] : null;
 
     return {
@@ -1896,34 +1887,31 @@ export class AgentActionService {
     assessment: ValidatedAssessment,
     action: CommentAction,
   ): Promise<AgentActionOutcome> {
-    const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
-    const patch = await createPatchSession(graph);
-    const now = this.clock.now();
-    patch
-      .addNode(action.commentId)
-      .setProperty(action.commentId, 'type', 'comment')
-      .setProperty(action.commentId, 'authored_by', this.agentId)
-      .setProperty(action.commentId, 'authored_at', now)
-      .addEdge(action.commentId, action.targetId, 'comments-on');
-    if (action.replyTo) {
-      patch.addEdge(action.commentId, action.replyTo, 'replies-to');
+    if (!this.writer) {
+      throw new Error('XYPHWriter is required for comment actions');
     }
-    await patch.attachContent(action.commentId, action.message);
-    const sha = await patch.commit();
-    const contentOid = await graph.getContentOid(action.commentId) ?? undefined;
+
+    const receipt = await this.writer.write(RecordComment({
+      id: action.commentId,
+      targetId: action.targetId,
+      message: action.message,
+      replyTo: action.replyTo,
+      authoredBy: this.agentId,
+    }));
+    const comment = receipt.value;
 
     return {
       ...assessment,
       result: 'success',
-      patch: sha,
+      patch: receipt.witness.patch,
       details: {
-        id: action.commentId,
-        on: action.targetId,
-        replyTo: action.replyTo ?? null,
+        id: comment.id,
+        on: comment.targetId,
+        replyTo: comment.replyTo ?? null,
         generatedId: action.generatedId,
         authoredBy: this.agentId,
-        authoredAt: now,
-        contentOid: contentOid ?? null,
+        authoredAt: comment.authoredAt,
+        contentOid: comment.contentOid ?? null,
       },
     };
   }

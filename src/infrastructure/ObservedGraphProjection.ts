@@ -17,6 +17,7 @@ import {
   type WarpCore as WarpGraph,
   type QueryBuilder,
   type LoggerPort,
+  type ProjectionHandle,
   type SnapshotVersionVector,
   SnapshotWarpState,
 } from '@git-stunts/git-warp';
@@ -109,7 +110,7 @@ import type { GraphPort } from '../ports/GraphPort.js';
 import { WarpQuestReadAdapter } from './warp/optics/WarpQuestReadAdapter.js';
 import { QuestCompletionEvaluator } from '../domain/services/QuestCompletionEvaluator.js';
 import { WarpCampaignPolicyReadAdapter } from './warp/optics/WarpCampaignPolicyReadAdapter.js';
-import { toNeighborEntries, type NeighborEntry } from './helpers/isNeighborEntry.js';
+import { toNeighborEntries, worldlineNeighbors, type NeighborEntry } from './helpers/isNeighborEntry.js';
 import {
   buildComparisonArtifactDigest,
   parseSelectorValue,
@@ -198,7 +199,7 @@ export interface FetchSnapshotOptions {
 }
 
 export function createObservedGraphProjection(graphPort: GraphPort): ObservedGraphProjection {
-  return new ObservedGraphProjectionImpl(() => graphPort.getGraph(), {
+  return new ObservedGraphProjectionImpl(async () => normalizeObservedProjectionGraph(await graphPort.getGraph()), {
     logger: graphPort.getLogger?.(),
   });
 }
@@ -211,9 +212,106 @@ export function createObservedGraphProjectionFromGraph(
   },
 ): ObservedGraphProjection {
   return new ObservedGraphProjectionImpl(
-    async () => graph,
+    async () => normalizeObservedProjectionGraph(graph),
     opts,
   );
+}
+
+function hasWorldlineProjection(graph: ObservedProjectionGraph): graph is ObservedProjectionGraph & {
+  worldline(options?: unknown): ProjectionHandle;
+} {
+  return typeof (graph as { worldline?: unknown }).worldline === 'function';
+}
+
+function contentOidFromReadableProps(props: unknown): string | null {
+  if (typeof props !== 'object' || props === null) return null;
+  const value = (props as Record<string, unknown>)['_content'];
+  return typeof value === 'string' ? value : null;
+}
+
+interface RuntimeBlobStorage {
+  retrieve?(oid: string): Promise<Uint8Array | null>;
+}
+
+const runtimeBlobStorageCache = new WeakMap<object, Promise<RuntimeBlobStorage | null>>();
+
+async function runtimeBlobStorageFor(source: unknown): Promise<RuntimeBlobStorage | null> {
+  const storageSource = source as {
+    persistence?: { createRuntimeBlobStorage?(): Promise<RuntimeBlobStorage> };
+  };
+  if (typeof storageSource.persistence?.createRuntimeBlobStorage !== 'function') {
+    return null;
+  }
+  if (typeof source !== 'object' || source === null) {
+    return null;
+  }
+  const key = source;
+  let cached = runtimeBlobStorageCache.get(key);
+  if (cached === undefined) {
+    cached = storageSource.persistence.createRuntimeBlobStorage().catch(() => null);
+    runtimeBlobStorageCache.set(key, cached);
+  }
+  return await cached;
+}
+
+export async function readObservedContentByOid(source: unknown, oid: string): Promise<Uint8Array | null> {
+  const storage = source as {
+    _blobStorage?: { retrieve?(oid: string): Promise<Uint8Array | null> };
+    _persistence?: { readBlob?(oid: string): Promise<Uint8Array | null> };
+    persistence?: { readBlob?(oid: string): Promise<Uint8Array | null> };
+  };
+  if (typeof storage._blobStorage?.retrieve === 'function') {
+    return await storage._blobStorage.retrieve(oid);
+  }
+  const runtimeStorage = await runtimeBlobStorageFor(source);
+  if (typeof runtimeStorage?.retrieve === 'function') {
+    return await runtimeStorage.retrieve(oid);
+  }
+  if (typeof storage._persistence?.readBlob === 'function') {
+    return await storage._persistence.readBlob(oid);
+  }
+  if (typeof storage.persistence?.readBlob === 'function') {
+    return await storage.persistence.readBlob(oid);
+  }
+  return null;
+}
+
+function normalizeObservedProjectionGraph(graph: ObservedProjectionGraph): ObservedProjectionGraph {
+  if (graph.isLive === false || !hasWorldlineProjection(graph)) {
+    return graph;
+  }
+
+  const reader = graph.worldline();
+  return {
+    writerId: graph.writerId,
+    query: () => reader.query(),
+    hasNode: (nodeId: string) => reader.hasNode(nodeId),
+    getNodeProps: (nodeId: string) => reader.getNodeProps(nodeId),
+    getStateSnapshot: async (): Promise<ObservedProjectionState | null> => {
+      try {
+        return { observedFrontier: await graph.getFrontier() as unknown as SnapshotVersionVector };
+      } catch {
+        return null;
+      }
+    },
+    getFrontier: () => graph.getFrontier(),
+    getContentOid: async (nodeId: string): Promise<string | null> =>
+      await reader.getNodeProps(nodeId).then(contentOidFromReadableProps),
+    getContent: async (nodeId: string): Promise<Uint8Array | null> => {
+      const oid = await reader.getNodeProps(nodeId).then(contentOidFromReadableProps);
+      return oid ? readObservedContentByOid(graph, oid) : null;
+    },
+    neighbors: (
+      nodeId: string,
+      direction: 'outgoing' | 'incoming' | 'both' = 'outgoing',
+      edgeLabel?: string,
+    ) => worldlineNeighbors(reader, nodeId, direction, edgeLabel),
+    traverse: reader.traverse,
+    compareCoordinates: graph.compareCoordinates.bind(graph),
+    syncCoverage: graph.syncCoverage?.bind(graph),
+    isLive: false,
+    logger: graph.logger,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -357,6 +455,12 @@ function matchToPrefixes(match: string | string[]): string[] {
   return patterns.map((p) => (p.endsWith('*') ? p.slice(0, -1) : p));
 }
 
+function contentOidFromProps(props: unknown): string | null {
+  if (typeof props !== 'object' || props === null) return null;
+  const value = (props as Record<string, unknown>)['_content'];
+  return typeof value === 'string' ? value : null;
+}
+
 class UnifiedStateReader {
   private constructor(
     private readonly reader: VisibleStateReader | null,
@@ -378,7 +482,12 @@ class UnifiedStateReader {
       includeGovernanceArtifacts: boolean;
     },
   ): Promise<UnifiedStateReader> {
-    const state = graph.isLive !== false ? await graph.getStateSnapshot() : null;
+    let state = null;
+    try {
+      state = graph.isLive !== false ? await graph.getStateSnapshot() : null;
+    } catch {
+      // E_NO_STATE is expected on live graphs now
+    }
     if (isRealWarpState(state)) {
       let scopedState = state as unknown as MaterializedStateParam;
       if (graph.lens && graph.lens.match) {
@@ -544,7 +653,7 @@ class UnifiedStateReader {
 
   async getContentOid(nodeId: string): Promise<string | null> {
     try {
-      return await this.graph.getContentOid(nodeId);
+      return await this.graph.getNodeProps(nodeId).then(contentOidFromProps);
     } catch (err) {
       this.graph.logger?.warn?.('getContentOid failed', { nodeId, error: err });
       return null;
@@ -1926,12 +2035,23 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
     // --- Build graph meta ---
     log('Reading graph metadata…');
     const [state, frontier] = await Promise.all([
-      graph.getStateSnapshot(),
+      graph.getStateSnapshot().catch(() => null),
       graph.getFrontier(),
     ]);
-    const maxTick = state ? Math.max(0, ...state.observedFrontier.values()) : 0;
-    const myTick = state ? (state.observedFrontier.get(graph.writerId) ?? 0) : 0;
-    const writerCount = state ? state.observedFrontier.size : 0;
+    const observedFrontier = state?.observedFrontier;
+    const frontierTick = (value: unknown): number => {
+      if (typeof value === 'number' && Number.isFinite(value)) return value;
+      if (typeof value === 'string') {
+        return value.length > 0 ? 1 : 0;
+      }
+      return 0;
+    };
+    const observedTicks = observedFrontier
+      ? [...observedFrontier.values()].map(frontierTick)
+      : [];
+    const maxTick = Math.max(0, ...observedTicks);
+    const myTick = frontierTick(observedFrontier?.get(graph.writerId));
+    const writerCount = observedFrontier?.size ?? 0;
     const tipSha = frontier.get(graph.writerId)?.slice(0, 7) ?? 'unknown';
     const graphMeta: GraphMeta = { maxTick, myTick, writerCount, tipSha };
 
@@ -2428,7 +2548,7 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
       reader.neighbors(id, 'outgoing'),
       reader.neighbors(id, 'incoming'),
       reader.getContent(id),
-      reader.getContentOid(id),
+      reader.getNodeProps(id).then(contentOidFromProps),
     ]);
 
     const props = rawProps ?? {};
@@ -2511,8 +2631,27 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
     if (scroll) quest.scrollId = scroll.id;
     if (submission) quest.submissionId = submission.id;
 
+    const questReadGraph = {
+      worldline: () => ({
+        getNodeProps: (nodeId: string): ReturnType<UnifiedStateReader['getNodeProps']> =>
+          reader.getNodeProps(nodeId),
+        hasNode: (nodeId: string): ReturnType<UnifiedStateReader['hasNode']> =>
+          reader.hasNode(nodeId),
+        neighbors: (
+          nodeId: string,
+          direction?: 'outgoing' | 'incoming' | 'both',
+          edgeLabel?: string,
+        ): ReturnType<UnifiedStateReader['neighbors']> =>
+          reader.neighbors(nodeId, direction, edgeLabel),
+      }),
+      neighbors: (
+        nodeId: string,
+        direction?: 'outgoing' | 'incoming' | 'both',
+        edgeLabel?: string,
+      ) => reader.neighbors(nodeId, direction, edgeLabel),
+    } as unknown as import('@git-stunts/git-warp').WarpCore;
     const fakeGraphPort: GraphPort = {
-      getGraph: async () => reader as unknown as import('@git-stunts/git-warp').WarpCore,
+      getGraph: async () => questReadGraph,
       reset(): void { /* noop */ },
     };
     const questReader = new WarpQuestReadAdapter(fakeGraphPort, {
@@ -3130,7 +3269,7 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
       const [briefProps, rawContent, contentOid, briefOutgoingRaw] = await Promise.all([
         reader.getNodeProps(briefId),
         reader.getContent(briefId),
-        reader.getContentOid(briefId),
+        reader.getNodeProps(briefId).then(contentOidFromProps),
         reader.neighbors(briefId, 'outgoing'),
       ]);
       if (!briefProps || briefProps['type'] !== 'brief') return null;
@@ -3525,7 +3664,7 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
     const results = await Promise.all(ids.map(async (id) => {
       const [rawBody, contentOid] = await Promise.all([
         reader.getContent(id),
-        reader.getContentOid(id),
+        reader.getNodeProps(id).then(contentOidFromProps),
       ]);
       return [id, {
         body: decodeNodeContent(rawBody),

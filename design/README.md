@@ -155,6 +155,14 @@ Start here, then use the focused design documents below:
 - [METHOD Alignment](./method-alignment.md)
   How XYPH should absorb METHOD's discipline without turning the product into a
   filesystem-native, prescriptive workflow tool.
+- [GraphQL Optics, Intent Declarations, and the Edict Bridge](./graphql-optics-intents-edict-bridge.md)
+  The substrate-decoupling doctrine for expressing domain optics and intents as
+  GraphQL plus XYPH lawpacks, compiled by Wesley today and positioned for Edict
+  tomorrow.
+- [Supported Outcome Settlement](./supported-outcome-settlement.md)
+  The canonical XYPH/Continuum/Jim/Echo settlement doctrine replacing the
+  temporary ULTRAGOLD working name: outcome kind times support tier, with XYPH
+  settling supported native consequences rather than foreign receipts.
 - [Cycles](./cycles/README.md)
   Design-first notes for the next bounded product or debt-reduction cycle.
 - [Alignment Sweep — 2026-03](./alignment-sweep-2026-03.md)
@@ -194,6 +202,8 @@ Start here, then use the focused design documents below:
   materially change
 - update [METHOD Alignment](./method-alignment.md) when XYPH's process posture
   changes or when more of the workflow becomes graph-native and programmable
+- update [GraphQL Optics, Intent Declarations, and the Edict Bridge](./graphql-optics-intents-edict-bridge.md)
+  when the GraphQL, Wesley, lawpack, or Edict migration boundary changes
 - update alignment language whenever the human and agent lenses start drifting,
   or whenever a new cycle intentionally privileges one surface first
 - add or update a note under [Cycles](./cycles/README.md) when a new bounded

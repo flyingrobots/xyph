@@ -22,11 +22,11 @@ async function inspect(): Promise<void> {
 
   await graph.syncCoverage();
 
-  const nodes = await graph.getNodes();
+  const nodes = await graph.worldline().getNodes();
   console.log(style.styled(t.semantic.primary, `\n--- Current Graph State (${nodes.length} nodes) ---`));
 
   for (const id of nodes) {
-    const props = await graph.getNodeProps(id);
+    const props = await graph.worldline().getNodeProps(id);
     if (!props) continue;
     console.log(style.styled(t.semantic.info, `\nNode: ${id}`));
     console.log(JSON.stringify(props, null, 2));

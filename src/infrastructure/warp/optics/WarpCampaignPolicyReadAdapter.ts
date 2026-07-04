@@ -2,7 +2,7 @@ import type { CampaignPolicyReadPort } from '../../../ports/CampaignPolicyReadPo
 import type { BoundedRead, ReadIdentity } from '../../../ports/ReadTypes.js';
 import { Policy } from '../../../domain/entities/Policy.js';
 import type { GraphPort } from '../../../ports/GraphPort.js';
-import { toNeighborEntries } from '../../helpers/isNeighborEntry.js';
+import { worldlineNeighbors } from '../../helpers/isNeighborEntry.js';
 
 export class WarpCampaignPolicyReadAdapter implements CampaignPolicyReadPort {
   constructor(
@@ -12,7 +12,10 @@ export class WarpCampaignPolicyReadAdapter implements CampaignPolicyReadPort {
 
   public async getPoliciesForCampaign(campaignId: string): Promise<BoundedRead<Policy[]>> {
     const graph = await this.graphPort.getGraph();
-    const incoming = toNeighborEntries(await graph.neighbors(campaignId, 'incoming', 'governs'));
+    const reader = typeof (graph as { worldline?: unknown }).worldline === 'function'
+      ? graph.worldline()
+      : graph;
+    const incoming = await worldlineNeighbors(reader, campaignId, 'incoming', 'governs');
     const policies: Policy[] = [];
 
     let nodeCount = 0;
@@ -25,7 +28,7 @@ export class WarpCampaignPolicyReadAdapter implements CampaignPolicyReadPort {
         break;
       }
       if (edge.nodeId.startsWith('policy:')) {
-        const props = await graph.getNodeProps(edge.nodeId);
+        const props = await reader.getNodeProps(edge.nodeId);
         if (props && props['type'] === 'policy') {
           nodeCount++;
           policies.push(this.buildPolicyFromProps(edge.nodeId, props));
@@ -43,7 +46,10 @@ export class WarpCampaignPolicyReadAdapter implements CampaignPolicyReadPort {
 
   public async getPolicy(policyId: string): Promise<BoundedRead<Policy | null>> {
     const graph = await this.graphPort.getGraph();
-    const props = await graph.getNodeProps(policyId);
+    const reader = typeof (graph as { worldline?: unknown }).worldline === 'function'
+      ? graph.worldline()
+      : graph;
+    const props = await reader.getNodeProps(policyId);
     if (!props || props['type'] !== 'policy') {
       return {
         value: null,

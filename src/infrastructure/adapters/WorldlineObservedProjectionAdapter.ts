@@ -1,8 +1,14 @@
 import type { Observer, WarpCore as WarpGraph, ProjectionHandle as Worldline } from '@git-stunts/git-warp';
-import type { ObservedProjectionGraph } from '../ObservedGraphProjection.js';
+import { readObservedContentByOid, type ObservedProjectionGraph } from '../ObservedGraphProjection.js';
 
 type ObservedProjectionHandle = Pick<Worldline, 'query' | 'hasNode' | 'getNodeProps' | 'getEdges' | 'traverse'>
   | Pick<Observer, 'query' | 'hasNode' | 'getNodeProps' | 'getEdges' | 'traverse'>;
+
+function contentOidFromProps(props: unknown): string | null {
+  if (typeof props !== 'object' || props === null) return null;
+  const value = (props as Record<string, unknown>)['_content'];
+  return typeof value === 'string' ? value : null;
+}
 
 export function adaptObservedHandleToObservedProjectionGraph(
   graph: WarpGraph,
@@ -19,14 +25,15 @@ export function adaptObservedHandleToObservedProjectionGraph(
     getFrontier: () => graph.getFrontier(),
     getContentOid: async (nodeId: string): Promise<string | null> => {
       try {
-        return await graph.getContentOid(nodeId);
+        return await handle.getNodeProps(nodeId).then(contentOidFromProps);
       } catch {
         return null;
       }
     },
     getContent: async (nodeId: string): Promise<Uint8Array | null> => {
       try {
-        return await graph.getContent(nodeId);
+        const oid = await handle.getNodeProps(nodeId).then(contentOidFromProps);
+        return oid ? await readObservedContentByOid(graph, oid) : null;
       } catch {
         return null;
       }
@@ -39,7 +46,7 @@ export function adaptObservedHandleToObservedProjectionGraph(
       if (!cachedEdgesPromise) {
         cachedEdgesPromise = handle.getEdges();
       }
-      const edges = await cachedEdgesPromise;
+      const edges = (await cachedEdgesPromise) ?? [];
       return edges.flatMap((edge: { label: string; from: string; to: string }) => {
         if (edgeLabel && edge.label !== edgeLabel) return [];
         if (direction === 'outgoing' && edge.from === nodeId) {

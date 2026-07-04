@@ -176,6 +176,7 @@ export function makeObservationSessionDouble(
     queryNodes: vi.fn(async (pattern: string) => nodesByPattern[pattern] ?? []),
     neighbors: vi.fn(async (id: string) => outgoing[id] ?? []),
     hasNode: vi.fn(async (id: string) => nodeIds.has(id)),
+      worldline: vi.fn(function(this: any) { return this; }),
     getNodeProps: vi.fn(async (id: string) => {
       for (const nodes of Object.values(nodesByPattern)) {
         const node = nodes.find((entry) => entry.id === id);

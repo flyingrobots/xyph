@@ -1,6 +1,6 @@
 import type { SubmissionPort } from '../../ports/SubmissionPort.js';
 import type { GraphPort } from '../../ports/GraphPort.js';
-import { toNeighborEntries } from '../helpers/isNeighborEntry.js';
+import { worldlineNeighbors } from '../helpers/isNeighborEntry.js';
 import type { SubmissionReadModel } from '../../domain/services/SubmissionService.js';
 import type { QuestStatus } from '../../domain/entities/Quest.js';
 import { VALID_STATUSES as VALID_QUEST_STATUSES } from '../../domain/entities/Quest.js';
@@ -236,7 +236,7 @@ export class WarpSubmissionAdapter implements SubmissionPort, SubmissionReadMode
 
   public async getQuestStatus(questId: string): Promise<QuestStatus | null> {
     const graph = await this.graphPort.getGraph();
-    const props = await graph.getNodeProps(questId);
+    const props = await graph.worldline().getNodeProps(questId);
     if (!props) return null;
     const status = props['status'];
     if (typeof status !== 'string' || !VALID_QUEST_STATUSES.has(status)) return null;
@@ -245,7 +245,7 @@ export class WarpSubmissionAdapter implements SubmissionPort, SubmissionReadMode
 
   public async getSubmissionQuestId(submissionId: string): Promise<string | null> {
     const graph = await this.graphPort.getGraph();
-    const props = await graph.getNodeProps(submissionId);
+    const props = await graph.worldline().getNodeProps(submissionId);
     if (!props) return null;
     const questId = props['quest_id'];
     return typeof questId === 'string' ? questId : null;
@@ -253,7 +253,7 @@ export class WarpSubmissionAdapter implements SubmissionPort, SubmissionReadMode
 
   public async getSubmissionSubmittedBy(submissionId: string): Promise<string | null> {
     const graph = await this.graphPort.getGraph();
-    const props = await graph.getNodeProps(submissionId);
+    const props = await graph.worldline().getNodeProps(submissionId);
     if (!props) return null;
     const submittedBy = props['submitted_by'];
     return typeof submittedBy === 'string' ? submittedBy : null;
@@ -270,13 +270,12 @@ export class WarpSubmissionAdapter implements SubmissionPort, SubmissionReadMode
       },
       async () => {
         const graph = await this.graphPort.getGraph();
-        const submissionNeighbors = toNeighborEntries(
-          await graph.neighbors(questId, 'incoming', 'submits'),
-        );
+        const reader = graph.worldline();
+        const submissionNeighbors = await worldlineNeighbors(reader, questId, 'incoming', 'submits');
 
         const open: string[] = [];
         for (const n of submissionNeighbors) {
-          const props = await graph.getNodeProps(n.nodeId);
+          const props = await graph.worldline().getNodeProps(n.nodeId);
           if (!props || props['type'] !== 'submission') continue;
 
           const decisions = await this._getDecisionsFromGraph(graph, n.nodeId);
@@ -302,19 +301,18 @@ export class WarpSubmissionAdapter implements SubmissionPort, SubmissionReadMode
       },
       async () => {
         const graph = await this.graphPort.getGraph();
-        const patchsetNeighbors = toNeighborEntries(
-          await graph.neighbors(submissionId, 'incoming', 'has-patchset'),
-        );
+        const reader = graph.worldline();
+        const patchsetNeighbors = await worldlineNeighbors(reader, submissionId, 'incoming', 'has-patchset');
 
         const refs: PatchsetRef[] = [];
         for (const n of patchsetNeighbors) {
-          const props = await graph.getNodeProps(n.nodeId);
+          const props = await graph.worldline().getNodeProps(n.nodeId);
           if (!props || props['type'] !== 'patchset') continue;
 
           const authoredAt = props['authored_at'];
           if (typeof authoredAt !== 'number') continue;
 
-          const outgoing = toNeighborEntries(await graph.neighbors(n.nodeId, 'outgoing', 'supersedes'));
+          const outgoing = await worldlineNeighbors(reader, n.nodeId, 'outgoing', 'supersedes');
           const ref: PatchsetRef = {
             id: n.nodeId,
             authoredAt,
@@ -330,7 +328,7 @@ export class WarpSubmissionAdapter implements SubmissionPort, SubmissionReadMode
 
   public async getSubmissionForPatchset(patchsetId: string): Promise<string | null> {
     const graph = await this.graphPort.getGraph();
-    const neighbors = toNeighborEntries(await graph.neighbors(patchsetId, 'outgoing'));
+    const neighbors = await worldlineNeighbors(graph.worldline(), patchsetId, 'outgoing');
     for (const n of neighbors) {
       if (n.label === 'has-patchset' && n.nodeId.startsWith('submission:')) {
         return n.nodeId;
@@ -341,7 +339,7 @@ export class WarpSubmissionAdapter implements SubmissionPort, SubmissionReadMode
 
   public async getPatchsetWorkspaceRef(patchsetId: string): Promise<string | null> {
     const graph = await this.graphPort.getGraph();
-    const props = await graph.getNodeProps(patchsetId);
+    const props = await graph.worldline().getNodeProps(patchsetId);
     if (!props) return null;
     const workspaceRef = props['workspace_ref'];
     return typeof workspaceRef === 'string' ? workspaceRef : null;
@@ -349,7 +347,7 @@ export class WarpSubmissionAdapter implements SubmissionPort, SubmissionReadMode
 
   public async getPatchsetMergeRef(patchsetId: string): Promise<string | null> {
     const graph = await this.graphPort.getGraph();
-    const props = await graph.getNodeProps(patchsetId);
+    const props = await graph.worldline().getNodeProps(patchsetId);
     if (!props) return null;
 
     const headRef = props['head_ref'];
@@ -382,13 +380,11 @@ export class WarpSubmissionAdapter implements SubmissionPort, SubmissionReadMode
       },
       async () => {
         const graph = await this.graphPort.getGraph();
-        const reviewNeighbors = toNeighborEntries(
-          await graph.neighbors(patchsetId, 'incoming', 'reviews'),
-        );
+        const reviewNeighbors = await worldlineNeighbors(graph.worldline(), patchsetId, 'incoming', 'reviews');
 
         const reviews: ReviewRef[] = [];
         for (const n of reviewNeighbors) {
-          const props = await graph.getNodeProps(n.nodeId);
+          const props = await graph.worldline().getNodeProps(n.nodeId);
           if (!props || props['type'] !== 'review') continue;
 
           const verdict = props['verdict'];
@@ -437,13 +433,12 @@ export class WarpSubmissionAdapter implements SubmissionPort, SubmissionReadMode
     graph: WarpGraph,
     submissionId: string,
   ): Promise<DecisionProps[]> {
-    const decisionNeighbors = toNeighborEntries(
-      await graph.neighbors(submissionId, 'incoming', 'decides'),
-    );
+    const reader = graph.worldline();
+    const decisionNeighbors = await worldlineNeighbors(reader, submissionId, 'incoming', 'decides');
 
     const decisions: DecisionProps[] = [];
     for (const n of decisionNeighbors) {
-      const props = await graph.getNodeProps(n.nodeId);
+      const props = await reader.getNodeProps(n.nodeId);
       if (!props || props['type'] !== 'decision') continue;
 
       const kind = props['kind'];

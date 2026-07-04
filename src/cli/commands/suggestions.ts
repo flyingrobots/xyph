@@ -269,7 +269,7 @@ export function registerSuggestionCommands(program: Command, ctx: CliContext): v
 
       await assertNodeExists(graph, id, 'Suggestion');
 
-      const props = await graph.getNodeProps(id);
+      const props = await graph.worldline().getNodeProps(id);
       if (!props) throw new Error(`[NOT_FOUND] Suggestion ${id} has no properties`);
 
       if (props['type'] === 'ai_suggestion') {
@@ -453,7 +453,7 @@ export function registerSuggestionCommands(program: Command, ctx: CliContext): v
 
       await assertNodeExists(graph, id, 'Suggestion');
 
-      const props = await graph.getNodeProps(id);
+      const props = await graph.worldline().getNodeProps(id);
       if (!props) throw new Error(`[NOT_FOUND] Suggestion ${id} has no properties`);
 
       const status = props['status'];

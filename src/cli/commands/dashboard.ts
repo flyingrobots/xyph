@@ -49,8 +49,8 @@ export function registerDashboardCommands(program: Command, ctx: CliContext): vo
 
       // Verify both nodes have valid types for dependency edges
       const [fromProps, toProps] = await Promise.all([
-        graph.getNodeProps(from),
-        graph.getNodeProps(to),
+        graph.worldline().getNodeProps(from),
+        graph.worldline().getNodeProps(to),
       ]);
       const fromType = String(fromProps?.['type'] ?? 'unknown');
       const toType = String(toProps?.['type'] ?? 'unknown');

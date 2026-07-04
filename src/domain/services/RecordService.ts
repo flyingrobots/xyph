@@ -1,9 +1,11 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { GraphPort } from '../../ports/GraphPort.js';
 import type { ClockPort } from '../../ports/ClockPort.js';
+import type { RecordCommentIntentPort } from '../../ports/RecordCommentIntentPort.js';
 import { SystemClockAdapter } from '../../infrastructure/adapters/SystemClockAdapter.js';
 import type { CanonicalArtifactKind } from '../models/controlPlane.js';
 import { MutationKernelService } from './MutationKernelService.js';
+import { WarpCausalMutationAdapter } from '../../infrastructure/warp/CausalMutationAdapter.js';
 import type {
   AiSuggestionAdoptionKind,
   AiSuggestionAudience,
@@ -188,6 +190,19 @@ function caseDecisionExpectedDelta(
   return 'Return the case to preparation for more evidence';
 }
 
+function contentOidFromProps(props: unknown): string | null {
+  if (typeof props !== 'object' || props === null) return null;
+  const value = (props as Record<string, unknown>)['_content'];
+  return typeof value === 'string' ? value : null;
+}
+
+async function readContentOid(
+  reader: { worldline(): { getNodeProps(nodeId: string): Promise<Record<string, unknown> | null> } },
+  nodeId: string,
+): Promise<string | null> {
+  return await reader.worldline().getNodeProps(nodeId).then(contentOidFromProps);
+}
+
 export class RecordService {
   private readonly kernel: MutationKernelService;
   private readonly clock: ClockPort;
@@ -196,22 +211,29 @@ export class RecordService {
     private readonly graphPort: GraphPort,
     clock?: ClockPort,
     kernel?: MutationKernelService,
+    private readonly recordCommentIntent?: RecordCommentIntentPort,
   ) {
-    this.kernel = kernel ?? new MutationKernelService(graphPort);
+    this.kernel = kernel ?? new MutationKernelService(new WarpCausalMutationAdapter(graphPort));
     this.clock = clock ?? new SystemClockAdapter();
   }
 
   public async createComment(input: CreateCommentInput): Promise<{
     id: string;
+    targetId: string;
+    replyTo?: string;
     patch: string;
     authoredAt: number;
     contentOid: string | null;
   }> {
+    if (this.recordCommentIntent) {
+      return await this.recordCommentIntent.recordComment(input);
+    }
+
     const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
-    if (!await graph.hasNode(input.targetId)) {
+    if (!await graph.worldline().hasNode(input.targetId)) {
       throw new Error(`[NOT_FOUND] Target ${input.targetId} not found in the graph`);
     }
-    if (input.replyTo && !await graph.hasNode(input.replyTo)) {
+    if (input.replyTo && !await graph.worldline().hasNode(input.replyTo)) {
       throw new Error(`[NOT_FOUND] Reply target ${input.replyTo} not found in the graph`);
     }
 
@@ -237,9 +259,11 @@ export class RecordService {
 
     return {
       id,
+      targetId: input.targetId,
+      ...(input.replyTo === undefined ? {} : { replyTo: input.replyTo }),
       patch: result.patch,
       authoredAt,
-      contentOid: await graph.getContentOid(id),
+      contentOid: await readContentOid(graph, id),
     };
   }
 
@@ -250,10 +274,10 @@ export class RecordService {
     contentOid: string | null;
   }> {
     const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
-    if (!await graph.hasNode(input.subjectId)) {
+    if (!await graph.worldline().hasNode(input.subjectId)) {
       throw new Error(`[NOT_FOUND] Subject ${input.subjectId} not found in the graph`);
     }
-    if (input.targetId && !await graph.hasNode(input.targetId)) {
+    if (input.targetId && !await graph.worldline().hasNode(input.targetId)) {
       throw new Error(`[NOT_FOUND] Target ${input.targetId} not found in the graph`);
     }
 
@@ -294,7 +318,7 @@ export class RecordService {
       id,
       patch: result.patch,
       proposedAt,
-      contentOid: await graph.getContentOid(id),
+      contentOid: await readContentOid(graph, id),
     };
   }
 
@@ -305,13 +329,13 @@ export class RecordService {
     contentOid: string | null;
   }> {
     const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
-    if (input.targetId && !await graph.hasNode(input.targetId)) {
+    if (input.targetId && !await graph.worldline().hasNode(input.targetId)) {
       throw new Error(`[NOT_FOUND] Target ${input.targetId} not found in the graph`);
     }
 
     const relatedIds = [...new Set((input.relatedIds ?? []).filter((entry) => entry.length > 0))];
     for (const relatedId of relatedIds) {
-      if (!await graph.hasNode(relatedId)) {
+      if (!await graph.worldline().hasNode(relatedId)) {
         throw new Error(`[NOT_FOUND] Related target ${relatedId} not found in the graph`);
       }
     }
@@ -382,7 +406,7 @@ export class RecordService {
       id,
       patch: result.patch,
       suggestedAt,
-      contentOid: await graph.getContentOid(id),
+      contentOid: await readContentOid(graph, id),
     };
   }
 
@@ -396,7 +420,7 @@ export class RecordService {
     decidedAt: number;
   }> {
     const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
-    const caseProps = await graph.getNodeProps(input.caseId);
+    const caseProps = await graph.worldline().getNodeProps(input.caseId);
     if (!caseProps || caseProps['type'] !== 'case') {
       throw new Error(`[NOT_FOUND] Case ${input.caseId} not found in the graph`);
     }
@@ -421,9 +445,10 @@ export class RecordService {
       : typeof caseProps['decision_question'] === 'string'
         ? caseProps['decision_question']
         : title;
-    const concernEdges = (await graph.neighbors(input.caseId, 'outgoing'))
-      .filter((edge) => edge.label === 'concerns');
-    const subjectIds = concernEdges.map((edge) => edge.nodeId);
+    const allEdges = await graph.worldline().getEdges();
+    const concernEdges = allEdges
+      .filter((edge) => edge.from === input.caseId && edge.label === 'concerns');
+    const subjectIds = concernEdges.map((edge) => edge.to);
     const primarySubjectId = subjectIds[0];
 
     let followOnArtifactId: string | undefined;
@@ -529,7 +554,7 @@ export class RecordService {
     resolvedAt: number;
   }> {
     const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
-    const props = await graph.getNodeProps(input.suggestionId);
+    const props = await graph.worldline().getNodeProps(input.suggestionId);
     if (!props || (props['type'] !== 'ai_suggestion' && props['type'] !== 'ai-suggestion')) {
       throw new Error(`[NOT_FOUND] AI suggestion ${input.suggestionId} not found in the graph`);
     }
@@ -653,7 +678,7 @@ export class RecordService {
     resolvedAt: number;
   }> {
     const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
-    const props = await graph.getNodeProps(input.suggestionId);
+    const props = await graph.worldline().getNodeProps(input.suggestionId);
     if (!props || (props['type'] !== 'ai_suggestion' && props['type'] !== 'ai-suggestion')) {
       throw new Error(`[NOT_FOUND] AI suggestion ${input.suggestionId} not found in the graph`);
     }
@@ -689,11 +714,11 @@ export class RecordService {
     resolvedAt: number;
   }> {
     const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
-    const props = await graph.getNodeProps(input.suggestionId);
+    const props = await graph.worldline().getNodeProps(input.suggestionId);
     if (!props || (props['type'] !== 'ai_suggestion' && props['type'] !== 'ai-suggestion')) {
       throw new Error(`[NOT_FOUND] AI suggestion ${input.suggestionId} not found in the graph`);
     }
-    if (!await graph.hasNode(input.supersededById)) {
+    if (!await graph.worldline().hasNode(input.supersededById)) {
       throw new Error(`[NOT_FOUND] Replacement artifact ${input.supersededById} not found in the graph`);
     }
     const status = props['status'];
@@ -731,7 +756,7 @@ export class RecordService {
     contentOid: string | null;
   }> {
     const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
-    if (!await graph.hasNode(input.targetId)) {
+    if (!await graph.worldline().hasNode(input.targetId)) {
       throw new Error(`[NOT_FOUND] Target ${input.targetId} not found in the graph`);
     }
 
@@ -766,7 +791,7 @@ export class RecordService {
       id,
       patch: result.patch,
       attestedAt,
-      contentOid: await graph.getContentOid(id),
+      contentOid: await readContentOid(graph, id),
     };
   }
 
@@ -778,8 +803,8 @@ export class RecordService {
     existed: boolean;
   }> {
     const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
-    if (await graph.hasNode(input.id)) {
-      const props = (await graph.getNodeProps(input.id)) ?? {};
+    if (await graph.worldline().hasNode(input.id)) {
+      const props = (await graph.worldline().getNodeProps(input.id)) ?? {};
       const existingType = typeof props['type'] === 'string' ? props['type'] : null;
       const existingDigest = typeof props['artifact_digest'] === 'string' ? props['artifact_digest'] : null;
       if (existingType !== input.kind || existingDigest !== input.artifactDigest) {
@@ -792,7 +817,7 @@ export class RecordService {
         id: input.id,
         patch: null,
         recordedAt: typeof props['recorded_at'] === 'number' ? props['recorded_at'] : this.clock.now(),
-        contentOid: await graph.getContentOid(input.id),
+        contentOid: contentOidFromProps(props),
         existed: true,
       };
     }
@@ -834,7 +859,7 @@ export class RecordService {
       id: input.id,
       patch: result.patch,
       recordedAt,
-      contentOid: await graph.getContentOid(input.id),
+      contentOid: await readContentOid(graph, input.id),
       existed: false,
     };
   }

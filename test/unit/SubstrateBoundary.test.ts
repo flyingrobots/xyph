@@ -1,0 +1,68 @@
+import { readFileSync } from 'node:fs';
+import { describe, expect, it } from 'vitest';
+
+function source(path: string): string {
+  return readFileSync(path, 'utf8');
+}
+
+function functionBody(contents: string, name: string): string {
+  let start = contents.indexOf(`private async ${name}`);
+  if (start < 0) start = contents.indexOf(`export function ${name}`);
+  if (start < 0) start = contents.indexOf(`function ${name}`);
+  if (start < 0) start = contents.indexOf(`${name}(`);
+  if (start < 0) throw new Error(`Function ${name} not found`);
+  const brace = contents.indexOf('{', start);
+  if (brace < 0) throw new Error(`Function ${name} has no body`);
+
+  let depth = 0;
+  for (let index = brace; index < contents.length; index += 1) {
+    const char = contents[index];
+    if (char === '{') depth += 1;
+    if (char === '}') depth -= 1;
+    if (depth === 0) return contents.slice(brace + 1, index);
+  }
+  throw new Error(`Function ${name} body is not closed`);
+}
+
+describe('substrate boundary', () => {
+  it('routes migrated comment writes through the XYPHWriter seam', () => {
+    const showCommand = source('src/cli/commands/show.ts');
+    const agentActions = source('src/domain/services/AgentActionService.ts');
+    const tuiWrites = source('src/tui/bijou/write-cmds.ts');
+
+    const validateComment = functionBody(agentActions, 'validateComment');
+    const intentBodies = [
+      functionBody(agentActions, 'executeComment'),
+      functionBody(tuiWrites, 'commentOnEntity'),
+      showCommand.slice(showCommand.indexOf(".command('comment <id>')")),
+    ];
+    const migratedBodies = [validateComment, ...intentBodies];
+
+    for (const body of migratedBodies) {
+      expect(body).not.toContain('new RecordService');
+      expect(body).not.toContain('graphPort');
+      expect(body).not.toContain('getGraph');
+      expect(body).not.toContain('worldline');
+      expect(body).not.toContain('getNodeProps');
+      expect(body).not.toContain('_content');
+      expect(body).not.toContain('graph.patch');
+      expect(body).not.toContain('recordCommentIntent');
+    }
+    for (const body of intentBodies) {
+      expect(body).toContain('writer.write');
+      expect(body).toContain('RecordComment');
+    }
+  });
+
+  it('keeps the domain mutation kernel behind a causal mutation port', () => {
+    const kernel = source('src/domain/services/MutationKernelService.ts');
+
+    expect(kernel).toContain('CausalMutationPort');
+    expect(kernel).not.toContain('GraphPort');
+    expect(kernel).not.toContain('getGraph');
+    expect(kernel).not.toContain('getMutationGraph');
+    expect(kernel).not.toContain('worldline');
+    expect(kernel).not.toContain('createPatchSession');
+    expect(kernel).not.toContain('projectState');
+  });
+});

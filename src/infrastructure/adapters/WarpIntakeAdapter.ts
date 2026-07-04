@@ -59,7 +59,7 @@ export class WarpIntakeAdapter implements IntakePort {
 
         const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
 
-        const props = await graph.getNodeProps(questId);
+        const props = await graph.worldline().getNodeProps(questId);
         if (props === null) {
           throw new Error(`[NOT_FOUND] Quest ${questId} not found in the graph`);
         }
@@ -87,10 +87,10 @@ export class WarpIntakeAdapter implements IntakePort {
           throw new Error('[MISSING_ARG] promote requires --description when the quest has no existing description');
         }
 
-        if (!await graph.hasNode(intentId)) {
+        if (!await graph.worldline().hasNode(intentId)) {
           throw new Error(`[NOT_FOUND] Intent ${intentId} not found in the graph`);
         }
-        if (campaignId !== undefined && !await graph.hasNode(campaignId)) {
+        if (campaignId !== undefined && !await graph.worldline().hasNode(campaignId)) {
           throw new Error(`[NOT_FOUND] Campaign ${campaignId} not found in the graph`);
         }
 
@@ -146,7 +146,7 @@ export class WarpIntakeAdapter implements IntakePort {
         await intake.validateShape(questId);
 
         const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
-        const props = await graph.getNodeProps(questId);
+        const props = await graph.worldline().getNodeProps(questId);
         if (props === null) {
           throw new Error(`[NOT_FOUND] Quest ${questId} not found in the graph`);
         }
@@ -221,7 +221,7 @@ export class WarpIntakeAdapter implements IntakePort {
 
         const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
 
-        const props = await graph.getNodeProps(questId);
+        const props = await graph.worldline().getNodeProps(questId);
         if (props === null) {
           throw new Error(`[NOT_FOUND] Quest ${questId} not found in the graph`);
         }
@@ -263,7 +263,7 @@ export class WarpIntakeAdapter implements IntakePort {
 
         const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
 
-        const props = await graph.getNodeProps(questId);
+        const props = await graph.worldline().getNodeProps(questId);
         if (props === null) {
           throw new Error(`[NOT_FOUND] Quest ${questId} not found in the graph`);
         }

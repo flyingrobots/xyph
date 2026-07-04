@@ -638,13 +638,17 @@ describe('ControlPlaneService', () => {
         count: counts[pattern ?? ''] ?? 0,
       };
     });
-    const makeWorldline = () => ({
-      query: vi.fn(() => makeQueryBuilder()),
+    mocks.getGraph.mockResolvedValue({
+      writerId: 'agent.prime',
+      getFrontier: mocks.getFrontier,
+      getStateSnapshot: mocks.getStateSnapshot,
       hasNode: vi.fn(async () => true),
+      worldline: vi.fn(function(this: any) { return this; }),
       getNodeProps: mocks.getNodeProps,
-      getContentOid: vi.fn(async () => null),
-      getContent: vi.fn(async () => null),
       getEdges: vi.fn(async () => []),
+      syncCoverage: vi.fn(async () => null),
+      materialize: vi.fn(async () => null),
+      query: vi.fn(() => makeQueryBuilder()),
       traverse: {
         topologicalSort: vi.fn(async (ids: string | string[]) => ({
           sorted: Array.isArray(ids) ? ids : [ids],
@@ -652,16 +656,6 @@ describe('ControlPlaneService', () => {
         })),
         bfs: vi.fn(async () => []),
       },
-    });
-    mocks.getGraph.mockResolvedValue({
-      writerId: 'agent.prime',
-      getFrontier: mocks.getFrontier,
-      getStateSnapshot: mocks.getStateSnapshot,
-      hasNode: vi.fn(async () => true),
-      getNodeProps: mocks.getNodeProps,
-      syncCoverage: vi.fn(async () => null),
-      materialize: vi.fn(async () => null),
-      query: vi.fn(() => makeQueryBuilder()),
       patchesFor: vi.fn(async () => ['patch:1', 'patch:2']),
       createWorkingSet: mocks.createWorkingSet,
       createStrand: mocks.createWorkingSet,
@@ -676,17 +670,25 @@ describe('ControlPlaneService', () => {
       patchesForStrand: mocks.patchesForWorkingSet,
       compareCoordinates: mocks.compareCoordinates,
       planCoordinateTransfer: mocks.planCoordinateTransfer,
-      worldline: vi.fn(async () => makeWorldline()),
     });
     mocks.openIsolatedGraph.mockResolvedValue({
       writerId: 'agent.prime',
       getFrontier: mocks.getFrontier,
       getStateSnapshot: mocks.getStateSnapshot,
       hasNode: vi.fn(async () => true),
+      worldline: vi.fn(function(this: any) { return this; }),
       getNodeProps: mocks.getNodeProps,
+      getEdges: vi.fn(async () => []),
       syncCoverage: vi.fn(async () => null),
       materialize: vi.fn(async () => null),
       query: vi.fn(() => makeQueryBuilder()),
+      traverse: {
+        topologicalSort: vi.fn(async (ids: string | string[]) => ({
+          sorted: Array.isArray(ids) ? ids : [ids],
+          hasCycle: false,
+        })),
+        bfs: vi.fn(async () => []),
+      },
       patchesFor: vi.fn(async () => ['patch:1']),
       materializeWorkingSet: mocks.materializeWorkingSet,
       materializeStrand: mocks.materializeWorkingSet,
@@ -701,7 +703,6 @@ describe('ControlPlaneService', () => {
       analyzeConflicts: mocks.analyzeConflicts,
       compareCoordinates: mocks.compareCoordinates,
       planCoordinateTransfer: mocks.planCoordinateTransfer,
-      worldline: vi.fn(async () => makeWorldline()),
     });
     mocks.analyzeConflicts.mockResolvedValue({
       analysisVersion: 'conflict-analyzer/v2',
@@ -3591,6 +3592,7 @@ describe('ControlPlaneService', () => {
     const worldline = {
       query: vi.fn(() => makeQueryBuilder()),
       hasNode: vi.fn(async () => true),
+      worldline: vi.fn(function(this: any) { return this; }),
       getNodeProps: worldlineGetNodeProps,
       getEdges: vi.fn(async () => []),
       traverse: {
@@ -3603,7 +3605,7 @@ describe('ControlPlaneService', () => {
       ...(await mocks.openIsolatedGraph()),
       getContentOid: vi.fn(async () => 'oid:live-tip'),
       getContent: vi.fn(async () => new TextEncoder().encode('live tip body')),
-      worldline: vi.fn(async () => worldline),
+      worldline: vi.fn(() => worldline),
     };
     mocks.openIsolatedGraph.mockResolvedValue(liveGraph);
 
@@ -3642,6 +3644,7 @@ describe('ControlPlaneService', () => {
       getFrontier: mocks.getFrontier,
       getStateSnapshot: mocks.getStateSnapshot,
       hasNode: vi.fn(async () => true),
+      worldline: vi.fn(function(this: any) { return this; }),
       syncCoverage: vi.fn(async () => null),
       materialize: vi.fn(async () => null),
       patchesFor: vi.fn(async () => ['patch:1', 'patch:2', 'patch:3']),
@@ -3650,6 +3653,7 @@ describe('ControlPlaneService', () => {
       getFrontier: mocks.getFrontier,
       getStateSnapshot: vi.fn(async () => ({ observedFrontier: new Map([['agent.prime', 10]]) })),
       hasNode: vi.fn(async () => true),
+      worldline: vi.fn(function(this: any) { return this; }),
       syncCoverage: vi.fn(async () => null),
       materialize: vi.fn(async () => null),
       patchesFor: vi.fn(async () => ['patch:1']),

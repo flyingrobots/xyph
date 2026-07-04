@@ -51,6 +51,7 @@ import type { DashboardReadPort } from '../../ports/DashboardReadPort.js';
 import type { OpticDomainActionService } from '../../domain/services/OpticDomainActionService.js';
 import type { DashboardObservationView } from '../../ports/DashboardReadPort.js';
 import type { GraphPort } from '../../ports/GraphPort.js';
+import type { XYPHWriter } from '../../ports/XYPHWriter.js';
 import type { SubmissionPort } from '../../ports/SubmissionPort.js';
 import { DoctorService } from '../../domain/services/DoctorService.js';
 import { WarpRoadmapAdapter } from '../../infrastructure/adapters/WarpRoadmapAdapter.js';
@@ -368,6 +369,7 @@ export interface DashboardDeps {
   observerWatermarkStore: ObserverWatermarkStore;
   observerWatermarkScope: ObserverWatermarkScope;
   opticDomainActionService?: OpticDomainActionService;
+  writer?: XYPHWriter;
   logger?: {
     debug(message: string, context?: Record<string, unknown>): void;
     info(message: string, context?: Record<string, unknown>): void;
@@ -1974,6 +1976,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
     submissionPort: deps.submissionPort,
     agentId: deps.agentId,
     opticDomainActionService: deps.opticDomainActionService,
+    writer: deps.writer,
   };
 
   let watcherUnsub: (() => void) | null = null;
@@ -2197,11 +2200,44 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
       try {
         deps.logger?.debug('dashboard background sync started', { requestId });
         const graph = await deps.graphPort.getGraph();
+
         if (typeof graph.syncCoverage === 'function') {
-          await graph.syncCoverage();
+          const { Worker } = await import('node:worker_threads');
+          const { fileURLToPath } = await import('node:url');
+          const path = await import('node:path');
+
+          const filename = fileURLToPath(import.meta.url);
+          const ext = path.extname(filename);
+          const workerPath = path.join(path.dirname(filename), 'syncWorker' + ext);
+
+          const worker = new Worker(workerPath, {
+            workerData: {
+              cwd: process.cwd(),
+              graphName: graph.graphName,
+              writerId: graph.writerId,
+            },
+            execArgv: process.execArgv
+          });
+
+          worker.on('message', (msg) => {
+            if (msg.status === 'done') {
+              deps.logger?.info('dashboard background sync succeeded', { requestId });
+              emit({ type: 'sync-complete', requestId });
+            } else {
+              deps.logger?.warn('dashboard background sync failed', { requestId, error: msg.error });
+              emit({ type: 'sync-complete', requestId, error: msg.error });
+            }
+          });
+
+          worker.on('error', (err: unknown) => {
+            const errMsg = err instanceof Error ? err.message : String(err);
+            deps.logger?.warn('dashboard background sync failed', { requestId, error: errMsg });
+            emit({ type: 'sync-complete', requestId, error: errMsg });
+          });
+        } else {
+          deps.logger?.info('dashboard background sync succeeded (no-op)', { requestId });
+          emit({ type: 'sync-complete', requestId });
         }
-        deps.logger?.info('dashboard background sync succeeded', { requestId });
-        emit({ type: 'sync-complete', requestId });
       } catch (err: unknown) {
         deps.logger?.warn('dashboard background sync failed', {
           requestId,

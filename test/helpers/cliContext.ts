@@ -42,6 +42,7 @@ export function makeObservationSessionFake(
     getContentOid: vi.fn(async () => undefined),
     neighbors: vi.fn(async () => []),
     hasNode: vi.fn(async () => false),
+      worldline: vi.fn(function(this: any) { return this; }),
     ...overrides,
   };
 }
@@ -104,6 +105,18 @@ export function makeJsonCliContext(
     operationalRead: readPorts.operationalRead,
     questReadPort: { getQuestCone: vi.fn(async () => null) } as unknown as CliContext['questReadPort'],
     inspection: readPorts.inspection,
+    writer: {
+      write: vi.fn(async () => ({
+        value: {},
+        writing: 'test.write',
+        recordedBy: 'agent.test',
+        recordedAt: Date.now(),
+        witness: {
+          id: 'test:write',
+          patch: null,
+        },
+      })),
+    } as unknown as CliContext['writer'],
     logger: noopLogger,
     style: createPlainStylePort(),
     ok: vi.fn(),

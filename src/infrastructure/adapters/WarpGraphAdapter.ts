@@ -1,5 +1,12 @@
 import type { GraphPort } from '../../ports/GraphPort.js';
-import { WarpCore as WarpGraph, GitGraphAdapter, InMemoryGraphAdapter, type LoggerPort } from '@git-stunts/git-warp';
+import {
+  WarpCore as WarpGraph,
+  GitGraphAdapter,
+  InMemoryBlobStorageAdapter,
+  InMemoryGraphAdapter,
+  type BlobStoragePort,
+  type LoggerPort,
+} from '@git-stunts/git-warp';
 import Plumbing from '@git-stunts/plumbing';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -13,6 +20,7 @@ import path from 'node:path';
 export class WarpGraphAdapter implements GraphPort {
   private graphPromise: Promise<WarpGraph> | null = null;
   private static readonly memoryBackends = new Map<string, InMemoryGraphAdapter>();
+  private static readonly memoryBlobBackends = new Map<string, BlobStoragePort>();
 
   constructor(
     private readonly cwd: string,
@@ -101,6 +109,14 @@ export class WarpGraphAdapter implements GraphPort {
         memPersistence = new InMemoryGraphAdapter();
         WarpGraphAdapter.memoryBackends.set(backendKey, memPersistence);
       }
+      let memBlobStorage = WarpGraphAdapter.memoryBlobBackends.get(backendKey);
+      if (!memBlobStorage) {
+        memBlobStorage = new InMemoryBlobStorageAdapter();
+        WarpGraphAdapter.memoryBlobBackends.set(backendKey, memBlobStorage);
+      }
+      Object.assign(memPersistence, {
+        createRuntimeBlobStorage: async (): Promise<BlobStoragePort> => memBlobStorage,
+      });
       persistence = memPersistence;
     } else {
       const plumbing = await Plumbing.createDefault({ cwd: this.cwd });
@@ -115,57 +131,6 @@ export class WarpGraphAdapter implements GraphPort {
       checkpointPolicy: { every: 50 },
       logger: this.logger,
     });
-
-    // Ensure git-warp's internal _ensureFreshState honors autoMaterialize,
-    // keeping materialization strictly an internal implementation detail of git-warp
-    // as mandated by the Bedrock Boundary Law.
-    interface InternalWarpHost {
-      _cachedState?: unknown;
-      _stateDirty?: boolean;
-      _autoMaterialize?: boolean;
-      _materializeGraph?(): Promise<unknown>;
-      materialize?(): Promise<unknown>;
-      _patchController?: {
-        _ensureFreshState?(...args: unknown[]): Promise<void>;
-      };
-    }
-    interface ProjectionWithHost {
-      _graph?: InternalWarpHost;
-    }
-    const proj = graph.worldline() as unknown as ProjectionWithHost;
-    const runtimeHost = proj._graph;
-
-    if (runtimeHost && typeof (runtimeHost as unknown as { createCheckpoint: () => Promise<void> }).createCheckpoint === 'function') {
-      try {
-        await (runtimeHost as unknown as { createCheckpoint: () => Promise<void> }).createCheckpoint();
-      } catch {
-        // ignore
-      }
-    }
-    const patchCtrl = runtimeHost?._patchController;
-    if (runtimeHost && patchCtrl && patchCtrl._ensureFreshState) {
-      const origEnsure = patchCtrl._ensureFreshState;
-      patchCtrl._ensureFreshState = async (...args: unknown[]): Promise<void> => {
-        if (!runtimeHost._cachedState || runtimeHost._stateDirty) {
-          if (runtimeHost._autoMaterialize && typeof runtimeHost._materializeGraph === 'function') {
-            await runtimeHost._materializeGraph();
-            if (typeof (runtimeHost as unknown as { createCheckpoint: () => Promise<void> }).createCheckpoint === 'function') {
-              try {
-                await (runtimeHost as unknown as { createCheckpoint: () => Promise<void> }).createCheckpoint();
-              } catch {
-                // ignore
-              }
-            }
-            return;
-          }
-          if (typeof runtimeHost.materialize === 'function') {
-            await runtimeHost.materialize();
-            return;
-          }
-        }
-        return await origEnsure.apply(patchCtrl, args);
-      };
-    }
 
     this.logger?.info('warp graph opened', {
       graphName: this.graphName,

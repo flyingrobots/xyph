@@ -110,7 +110,7 @@ describe('Cycle 0001: Suggestion Adoption and Explainability', () => {
     }
 
     const graph = await graphPort.getGraph();
-    const questProps = await graph.getNodeProps(adoptedQuestId);
+    const questProps = await graph.worldline().getNodeProps(adoptedQuestId);
     expect(questProps).toMatchObject({
       type: 'task',
       title: 'Create a traceability quest',
@@ -194,7 +194,7 @@ describe('Cycle 0001: Suggestion Adoption and Explainability', () => {
     }
 
     const graph = await graphPort.getGraph();
-    const proposalProps = await graph.getNodeProps(proposalId);
+    const proposalProps = await graph.worldline().getNodeProps(proposalId);
     expect(proposalProps).toMatchObject({
       type: 'proposal',
       proposal_kind: 'ai-suggestion-adoption',

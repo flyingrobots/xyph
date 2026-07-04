@@ -29,9 +29,14 @@ function createPatchBuilder() {
 
 function makeCtx(graph: {
   hasNode?: (id: string) => Promise<boolean>;
+  worldline?: () => any;
   getNodeProps?: (id: string) => Promise<Record<string, unknown> | undefined>;
   patch: (fn: (builder: ReturnType<typeof createPatchBuilder>) => void) => Promise<string>;
 }): CliContext {
+  const graphWithWorldline = {
+    ...graph,
+    worldline: graph.worldline ?? (() => graph),
+  };
   const observation = {
     openSession: vi.fn(async () => ({
       fetchSnapshot,
@@ -46,7 +51,7 @@ function makeCtx(graph: {
     identity: { agentId: 'agent.trace', source: 'default', origin: null },
     json: true,
     graphPort: {
-      getGraph: async () => graph,
+      getGraph: async () => graphWithWorldline,
     } as CliContext['graphPort'],
     observation: observation as CliContext['observation'],
     operationalRead: observation as CliContext['operationalRead'],

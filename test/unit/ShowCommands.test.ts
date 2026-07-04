@@ -22,6 +22,7 @@ function makePatchSession() {
 
 function makeCtx(graph: {
   hasNode: (id: string) => Promise<boolean>;
+  worldline: () => any;
   getContentOid?: (id: string) => Promise<string | null>;
 }): CliContext {
   const observation = {
@@ -48,6 +49,27 @@ function makeCtx(graph: {
     recordService: {
       createComment: (input: unknown) => mocks.createComment(input),
     } as unknown as CliContext['recordService'],
+    writer: {
+      write: async (writing: { input: unknown }) => {
+        const result = await mocks.createComment(writing.input);
+        return {
+          value: {
+            id: result.id,
+            targetId: result.targetId,
+            replyTo: result.replyTo,
+            authoredAt: result.authoredAt,
+            contentOid: result.contentOid,
+          },
+          writing: 'xyph.write.recordComment',
+          recordedBy: 'agent.test',
+          recordedAt: result.authoredAt,
+          witness: {
+            id: result.id,
+            patch: result.patch,
+          },
+        };
+      },
+    } as unknown as CliContext['writer'],
     ok: vi.fn(),
     warn: vi.fn(),
     muted: vi.fn(),

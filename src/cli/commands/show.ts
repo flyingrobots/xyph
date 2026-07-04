@@ -15,8 +15,8 @@ import type {
 import type { Diagnostic } from '../../domain/models/diagnostics.js';
 import { collectQuestDiagnostics } from '../../domain/services/DiagnosticService.js';
 import { readGenericEntityDetail } from '../../domain/services/EntityDetailReadService.js';
-import { RecordService } from '../../domain/services/RecordService.js';
 import { liveObservation } from '../../ports/ObservationPort.js';
+import { RecordComment } from '../../writings/RecordComment.js';
 
 interface NarrativeWriteOptions {
   on: string;
@@ -306,7 +306,7 @@ export function registerShowCommands(program: Command, ctx: CliContext): void {
 
   program
     .command('comment <id>')
-    .description('Attach an append-only comment to a graph entity')
+    .description('Attach an append-only comment to an entity')
     .requiredOption('--on <node>', 'Target node ID')
     .requiredOption('--message <text>', 'Comment body')
     .option('--reply-to <commentId>', 'Reply to an existing comment')
@@ -317,14 +317,14 @@ export function registerShowCommands(program: Command, ctx: CliContext): void {
       if (opts.replyTo) {
         assertPrefix(opts.replyTo, 'comment:', '--reply-to');
       }
-      const recordService = ctx.recordService ?? new RecordService(ctx.graphPort);
-      const result = await recordService.createComment({
+      const receipt = await ctx.writer.write(RecordComment({
         id,
         targetId: opts.on,
         message: opts.message.trim(),
         replyTo: opts.replyTo,
         authoredBy: ctx.agentId,
-      });
+      }));
+      const comment = receipt.value;
 
       if (ctx.json) {
         ctx.jsonOut({
@@ -335,16 +335,16 @@ export function registerShowCommands(program: Command, ctx: CliContext): void {
             on: opts.on,
             replyTo: opts.replyTo ?? null,
             authoredBy: ctx.agentId,
-            authoredAt: result.authoredAt,
-            contentOid: result.contentOid ?? null,
-            patch: result.patch,
+            authoredAt: comment.authoredAt,
+            contentOid: comment.contentOid ?? null,
+            patch: receipt.witness.patch,
           },
         });
         return;
       }
 
       ctx.ok(`[OK] Comment ${id} attached to ${opts.on}.`);
-      ctx.muted(`  Patch: ${result.patch}`);
+      ctx.muted(`  Patch: ${receipt.witness.patch}`);
     }));
 
   program

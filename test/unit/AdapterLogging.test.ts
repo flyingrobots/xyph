@@ -21,8 +21,14 @@ function makeLogger() {
 }
 
 function makeGraphPort(graph: object, logger: DiagnosticLogger): GraphPort {
+  const graphWithWorldline = typeof (graph as { worldline?: unknown }).worldline === 'function'
+    ? graph
+    : {
+        ...graph,
+        worldline: () => graph,
+      };
   return {
-    getGraph: vi.fn().mockResolvedValue(graph),
+    getGraph: vi.fn().mockResolvedValue(graphWithWorldline),
     getLogger: vi.fn(() => logger),
     reset: vi.fn(),
   };

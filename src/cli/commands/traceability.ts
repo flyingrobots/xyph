@@ -522,9 +522,9 @@ export function registerTraceabilityCommands(program: Command, ctx: CliContext):
       }
 
       const [storyExists, requirementExists, criterionExists] = await Promise.all([
-        graph.hasNode(storyId),
-        graph.hasNode(requirementId),
-        graph.hasNode(criterionId),
+        graph.worldline().hasNode(storyId),
+        graph.worldline().hasNode(requirementId),
+        graph.worldline().hasNode(criterionId),
       ]);
 
       const storyTitle = opts.storyTitle?.trim() || quest.title;
@@ -685,7 +685,7 @@ export function registerTraceabilityCommands(program: Command, ctx: CliContext):
       // Validate all criteria exist, collect valid ones
       const validCriteria: [string, { filePath: string; lineNumber: number }[]][] = [];
       for (const [criterionId, locations] of byCriterion) {
-        const criterionExists = await graph.hasNode(criterionId);
+        const criterionExists = await graph.worldline().hasNode(criterionId);
         if (!criterionExists) {
           if (!ctx.json) {
             ctx.warn(`  [SKIP] ${criterionId} — criterion node not found in graph`);

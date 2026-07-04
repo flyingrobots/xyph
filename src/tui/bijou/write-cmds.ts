@@ -14,11 +14,13 @@ import { commandIntent, defineBindingLifecycleOwner, type CommandIntent } from '
 import type { DashboardMsg } from './DashboardApp.js';
 import type { GraphPort } from '../../ports/GraphPort.js';
 import type { IntakePort } from '../../ports/IntakePort.js';
+import type { XYPHWriter } from '../../ports/XYPHWriter.js';
 import type { SubmissionPort } from '../../ports/SubmissionPort.js';
 import { RecordService } from '../../domain/services/RecordService.js';
 import type { AiSuggestionAdoptionKind } from '../../domain/entities/AiSuggestion.js';
 import { OpticDomainActionService } from '../../domain/services/OpticDomainActionService.js';
 import { EdictWasmTargetLowererAdapter } from '../../infrastructure/adapters/EdictWasmTargetLowererAdapter.js';
+import { RecordComment } from '../../writings/RecordComment.js';
 
 /** Generate a lexicographically-sortable unique ID (matches actuator pattern). */
 export function generateId(): string {
@@ -33,6 +35,7 @@ export interface WriteDeps {
   submissionPort: SubmissionPort;
   agentId: string;
   opticDomainActionService?: OpticDomainActionService;
+  writer?: XYPHWriter;
 }
 
 export interface AskAiJobInput {
@@ -259,7 +262,7 @@ export function claimQuest(deps: WriteDeps, questId: string): Cmd<DashboardMsg> 
   return async (emit) => {
     try {
       const graph = await deps.graphPort.getGraph();
-      const propsBefore = await graph.getNodeProps(questId);
+      const propsBefore = await graph.worldline().getNodeProps(questId);
       const statusBefore = String(propsBefore?.['status'] ?? '');
       if (statusBefore !== 'READY') {
         emit({ type: 'write-error', message: `Claim requires READY, ${questId} is ${statusBefore || 'unknown'}` });
@@ -280,7 +283,7 @@ export function claimQuest(deps: WriteDeps, questId: string): Cmd<DashboardMsg> 
 
       // OCP post-check: reads local state only (remote sync happens on next snapshot refresh).
       // True cross-writer verification requires a full materialize with remote patches.
-      const props = await graph.getNodeProps(questId);
+      const props = await graph.worldline().getNodeProps(questId);
       if (props && props['assigned_to'] === deps.agentId) {
         emit({ type: 'write-success', message: `Claimed ${questId}` });
       } else {
@@ -362,7 +365,7 @@ export function reopenQuest(deps: WriteDeps, questId: string): Cmd<DashboardMsg>
 }
 
 /**
- * Add a graph-native comment to an entity via CQRS Block Binding Intent Route.
+ * Add a comment to an entity via CQRS Block Binding Intent Route.
  */
 export function commentOnEntity(deps: WriteDeps, targetId: string, message: string): Cmd<DashboardMsg> {
   return async (emit) => {
@@ -377,12 +380,14 @@ export function commentOnEntity(deps: WriteDeps, targetId: string, message: stri
       const descriptor = commentOnEntityIntentRoute.toCommand(emission);
 
       await executeTuiIntent(deps, descriptor.suffixTransform?.op ?? 'commentOnEntity', descriptor.suffixTransform?.payload ?? { targetId, message: trimmed, agentId: deps.agentId }, async () => {
-        const records = new RecordService(deps.graphPort);
-        await records.createComment({
+        if (!deps.writer) {
+          throw new Error('XYPHWriter is not configured');
+        }
+        await deps.writer.write(RecordComment({
           targetId,
           message: trimmed,
           authoredBy: deps.agentId,
-        });
+        }));
       });
       emit({ type: 'write-success', message: `Commented on ${targetId}` });
     } catch (err: unknown) {
