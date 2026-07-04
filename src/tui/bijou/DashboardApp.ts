@@ -2947,6 +2947,10 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
         const syncMessage = msg.error ? `Sync failed: ${msg.error}` : 'Graph sync complete.';
         const syncVariant = msg.error ? 'error' : 'success';
         const showToast = !!(model.toast && model.toast.message.includes('Syncing'));
+        if (!msg.error) {
+          deps.graphPort.reset();
+          deps.readPort.invalidate();
+        }
 
         return [{
           ...model,
