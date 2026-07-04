@@ -1,5 +1,4 @@
 import { describe, it, expect } from 'vitest';
-// @ts-expect-error -- intentional red test before adapter implementation
 import { EdictWasmTargetLowererAdapter } from '../../src/infrastructure/adapters/EdictWasmTargetLowererAdapter.js';
 
 describe('Edict Wasm Target Lowerer Plugin (xyph-target-lowerer.wasm)', () => {
