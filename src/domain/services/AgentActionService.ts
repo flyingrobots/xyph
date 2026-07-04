@@ -150,6 +150,19 @@ interface CommentAction {
   generatedId: boolean;
 }
 
+interface CommentTargetReadPort {
+  hasNode(id: string): Promise<boolean>;
+}
+
+class GraphCommentTargetReadAdapter implements CommentTargetReadPort {
+  constructor(private readonly graphPort: GraphPort) {}
+
+  async hasNode(id: string): Promise<boolean> {
+    const graph = await this.graphPort.getGraph();
+    return await graph.worldline().hasNode(id);
+  }
+}
+
 interface BriefAction {
   kind: 'brief';
   targetId: string;
@@ -376,6 +389,7 @@ export class AgentActionValidator {
     submissions?: SubmissionService,
     submissionAdapter?: SubmissionPort & SubmissionReadModel,
     sealService?: GuildSealService,
+    private readonly commentTargets: CommentTargetReadPort = new GraphCommentTargetReadAdapter(graphPort),
   ) {
     this.clock = clock ?? new SystemClockAdapter();
     this.intake = new IntakeService(roadmap);
@@ -828,6 +842,16 @@ export class AgentActionValidator {
     if (replyTo !== undefined && !replyTo.startsWith('comment:')) {
       return failAssessment(request, 'invalid-args', [
         `replyTo must start with 'comment:', got '${replyTo}'`,
+      ]);
+    }
+    if (!await this.commentTargets.hasNode(request.targetId)) {
+      return failAssessment(request, 'not-found', [
+        `Target ${request.targetId} not found in the graph`,
+      ]);
+    }
+    if (replyTo !== undefined && !await this.commentTargets.hasNode(replyTo)) {
+      return failAssessment(request, 'not-found', [
+        `Reply target ${replyTo} not found in the graph`,
       ]);
     }
 

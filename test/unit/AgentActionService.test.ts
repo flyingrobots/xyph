@@ -570,6 +570,64 @@ describe('AgentActionService', () => {
     });
   });
 
+  it('rejects missing comment targets during dry-run validation', async () => {
+    const graph = {
+      hasNode: vi.fn(async () => false),
+    };
+    const service = createTestService({ graph: makeGraphPort(graph) });
+
+    const outcome = await service.execute({
+      kind: 'comment',
+      targetId: 'task:MISSING',
+      dryRun: true,
+      args: {
+        message: 'This should not validate against a missing node.',
+      },
+    });
+
+    expect(graph.hasNode).toHaveBeenCalledWith('task:MISSING');
+    expect(outcome).toMatchObject({
+      kind: 'comment',
+      targetId: 'task:MISSING',
+      allowed: false,
+      result: 'rejected',
+      validation: {
+        code: 'not-found',
+        reasons: ['Target task:MISSING not found in the graph'],
+      },
+    });
+  });
+
+  it('rejects missing comment reply targets during dry-run validation', async () => {
+    const graph = {
+      hasNode: vi.fn(async (id: string) => id === 'task:AGT-001'),
+    };
+    const service = createTestService({ graph: makeGraphPort(graph) });
+
+    const outcome = await service.execute({
+      kind: 'comment',
+      targetId: 'task:AGT-001',
+      dryRun: true,
+      args: {
+        message: 'This should not validate against a missing reply target.',
+        replyTo: 'comment:MISSING',
+      },
+    });
+
+    expect(graph.hasNode).toHaveBeenCalledWith('task:AGT-001');
+    expect(graph.hasNode).toHaveBeenCalledWith('comment:MISSING');
+    expect(outcome).toMatchObject({
+      kind: 'comment',
+      targetId: 'task:AGT-001',
+      allowed: false,
+      result: 'rejected',
+      validation: {
+        code: 'not-found',
+        reasons: ['Reply target comment:MISSING not found in the graph'],
+      },
+    });
+  });
+
   it('normalizes handoff during dry-run with target and related document links', async () => {
     const graph = {
       hasNode: vi.fn(async (id: string) => ['task:AGT-001', 'submission:AGT-001'].includes(id)),
