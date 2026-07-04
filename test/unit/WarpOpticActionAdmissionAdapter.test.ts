@@ -1,0 +1,71 @@
+import { describe, expect, it, vi } from 'vitest';
+import { WarpOpticActionAdmissionAdapter } from '../../src/infrastructure/warp/WarpOpticActionAdmissionAdapter.js';
+import type { GraphPort } from '../../src/ports/GraphPort.js';
+
+function makePatchBuilder() {
+  const builder = {
+    addNode: vi.fn(() => builder),
+    setProperty: vi.fn(() => builder),
+    addEdge: vi.fn(() => builder),
+    removeEdge: vi.fn(() => builder),
+  };
+  return builder;
+}
+
+function makeGraphPort(nodeProps: Record<string, unknown> | null) {
+  const patchBuilder = makePatchBuilder();
+  const worldline = {
+    getNodeProps: vi.fn(async () => nodeProps),
+  };
+  const graph = {
+    patch: vi.fn(async (fn: (patch: ReturnType<typeof makePatchBuilder>) => void) => {
+      fn(patchBuilder);
+      return 'sha:patch';
+    }),
+    worldline: vi.fn(() => worldline),
+  };
+  const graphPort = {
+    getGraph: vi.fn(async () => graph),
+    reset: vi.fn(),
+  } as unknown as GraphPort;
+  return { graphPort, graph, patchBuilder, worldline };
+}
+
+describe('WarpOpticActionAdmissionAdapter', () => {
+  it('rejects claimQuest when the nodeStatus precommit guard fails', async () => {
+    const { graphPort, graph, worldline } = makeGraphPort({ status: 'BACKLOG' });
+    const adapter = new WarpOpticActionAdmissionAdapter(graphPort);
+
+    const outcome = await adapter.admitWasmIntent({
+      intentId: 'intent:xyph:claimQuest:test',
+      precommitGuards: [
+        {
+          op: 'nodeStatus',
+          nodeId: 'quest:one',
+          expected: 'READY',
+          failureTag: 'QuestNotReady',
+        },
+      ],
+      suffixTransform: {
+        op: 'claimQuest',
+        payload: {
+          questId: 'quest:one',
+          agentId: 'agent.prime',
+        },
+      },
+    }, {
+      verified: true,
+    });
+
+    expect(worldline.getNodeProps).toHaveBeenCalledWith('quest:one');
+    expect(graph.patch).not.toHaveBeenCalled();
+    expect(outcome).toEqual({
+      admitted: false,
+      intentId: 'intent:xyph:claimQuest:test',
+      obstruction: {
+        tag: 'QuestNotReady',
+        actual: 'BACKLOG',
+      },
+    });
+  });
+});

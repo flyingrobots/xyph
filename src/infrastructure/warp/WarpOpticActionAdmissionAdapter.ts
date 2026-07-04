@@ -13,6 +13,12 @@ interface WarpPatchBuilder {
 
 interface WasmIntentDescriptor {
   intentId: string;
+  precommitGuards?: readonly {
+    op?: string;
+    nodeId?: string;
+    expected?: string;
+    failureTag?: string;
+  }[];
   suffixTransform?: {
     op?: string;
     payload?: Record<string, unknown>;
@@ -21,6 +27,15 @@ interface WasmIntentDescriptor {
 
 interface WasmVerifierReport {
   verified?: boolean;
+}
+
+interface NodePropertyReader {
+  getNodeProps(id: string): Promise<Record<string, unknown> | null>;
+}
+
+interface WorldlineBackedGraph {
+  getNodeProps?: NodePropertyReader['getNodeProps'];
+  worldline?: () => Partial<NodePropertyReader>;
 }
 
 function descriptorFrom(value: unknown): WasmIntentDescriptor {
@@ -55,6 +70,17 @@ export class WarpOpticActionAdmissionAdapter {
     let sha = '';
     const op = desc.suffixTransform?.op;
     const payload = desc.suffixTransform?.payload ?? {};
+
+    if (op === 'claimQuest') {
+      const guardObstruction = await this.evaluatePrecommitGuards(graph, desc.precommitGuards ?? []);
+      if (guardObstruction) {
+        return {
+          admitted: false,
+          obstruction: guardObstruction,
+          intentId: desc.intentId,
+        };
+      }
+    }
 
     if (op === 'move' || op === 'authorize' || op === 'link') {
       const quest = payload['quest'] as string;
@@ -156,5 +182,50 @@ export class WarpOpticActionAdmissionAdapter {
       sha,
       intentId: desc.intentId,
     };
+  }
+
+  private async evaluatePrecommitGuards(
+    graph: WorldlineBackedGraph,
+    guards: NonNullable<WasmIntentDescriptor['precommitGuards']>,
+  ): Promise<OpticActionOutcome['obstruction'] | null> {
+    for (const guard of guards) {
+      if (guard.op !== 'nodeStatus') continue;
+      if (!guard.nodeId) {
+        return {
+          tag: guard.failureTag ?? 'InvalidPrecommitGuard',
+          actual: 'missing-nodeId',
+        };
+      }
+
+      const props = await this.readNodeProps(graph, guard.nodeId);
+      const actual = this.statusString(props?.['status']);
+      if (actual !== guard.expected) {
+        return {
+          tag: guard.failureTag ?? 'NodeStatusMismatch',
+          actual,
+        };
+      }
+    }
+    return null;
+  }
+
+  private async readNodeProps(
+    graph: WorldlineBackedGraph,
+    nodeId: string,
+  ): Promise<Record<string, unknown> | null> {
+    const worldline = graph.worldline?.();
+    if (typeof worldline?.getNodeProps === 'function') {
+      return await worldline.getNodeProps(nodeId);
+    }
+    if (typeof graph.getNodeProps === 'function') {
+      return await graph.getNodeProps(nodeId);
+    }
+    return null;
+  }
+
+  private statusString(value: unknown): string {
+    if (typeof value === 'string') return value;
+    if (value === undefined || value === null) return 'missing';
+    return String(value);
   }
 }
