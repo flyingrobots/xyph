@@ -6,6 +6,7 @@ All notable changes to XYPH will be documented in this file.
 
 ### Changed
 
+- **CLI composition keeps WARP admission mechanics behind an infrastructure adapter** — `createCliContext` now wires a named WARP optic-action admission adapter instead of embedding graph patching and patch-session mechanics in CLI bootstrap code. Boundary tests now guard that seam.
 - **Bedrock floor raised to `@git-stunts/git-warp@^18.2.1`** — XYPH now consumes the published patch release that fixes WARP-owned live materialization state-cache behavior. The local `patch-package` overlay has also been regenerated against `18.2.1`, and an obsolete `node-pre-gyp` patch was removed so normal `npm install` can complete.
 
 ## [1.0.0-alpha.16] - 2026-06-28

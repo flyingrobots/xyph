@@ -65,4 +65,14 @@ describe('substrate boundary', () => {
     expect(kernel).not.toContain('createPatchSession');
     expect(kernel).not.toContain('projectState');
   });
+
+  it('keeps WARP admission mutation mechanics out of CLI context composition', () => {
+    const cliContext = source('src/cli/context.ts');
+    const body = functionBody(cliContext, 'createCliContext');
+
+    expect(body).not.toContain('interface WarpPatchBuilder');
+    expect(body).not.toContain('admitWasmIntent(descriptor');
+    expect(body).not.toContain('graph.patch(');
+    expect(body).not.toContain('createPatchSession');
+  });
 });
