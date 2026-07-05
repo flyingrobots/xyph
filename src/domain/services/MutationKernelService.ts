@@ -78,7 +78,7 @@ export class MutationKernelService {
     plan: KernelMutationPlan,
     opts?: Pick<MutationExecutionOptions, 'workingSetId'>,
   ): Promise<MutationValidation> {
-    if (!Array.isArray(plan.ops)) {
+    if (!Array.isArray(plan.ops) || plan.ops.length === 0) {
       return opError('invalid_args', 'apply requires at least one operation');
     }
     if (plan.rationale.trim().length < 11) {

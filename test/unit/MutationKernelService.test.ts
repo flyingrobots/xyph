@@ -23,6 +23,39 @@ describe('MutationKernelService', () => {
     vi.clearAllMocks();
   });
 
+  it('rejects empty mutation plans unless empty plans are explicitly allowed', async () => {
+    const mutations = makeCausalMutationPort();
+    const service = new MutationKernelService(mutations);
+
+    const result = await service.execute({
+      rationale: 'Reject empty plans before creating no-op history.',
+      ops: [],
+    });
+
+    expect(result.valid).toBe(false);
+    expect(result.code).toBe('invalid_args');
+    expect(result.reasons).toEqual(['apply requires at least one operation']);
+    expect(result.executed).toBe(false);
+    expect(result.patch).toBeNull();
+    expect(mutations.loadVisibleTopology).not.toHaveBeenCalled();
+    expect(mutations.commit).not.toHaveBeenCalled();
+
+    const allowed = await service.execute({
+      rationale: 'Allow an explicitly empty preview or collapse plan.',
+      ops: [],
+    }, { allowEmptyPlan: true });
+
+    expect(allowed).toEqual({
+      valid: true,
+      code: null,
+      reasons: [],
+      sideEffects: [],
+      patch: null,
+      executed: false,
+    });
+    expect(mutations.commit).not.toHaveBeenCalled();
+  });
+
   it('dry-runs a valid primitive op batch without committing', async () => {
     const mutations = makeCausalMutationPort();
     const service = new MutationKernelService(mutations);
