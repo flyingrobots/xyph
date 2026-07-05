@@ -1,8 +1,6 @@
+import type { OpticDomainActionService } from '../../domain/services/OpticDomainActionService.js';
 import type {
-  OpticActionOutcome,
-  OpticDomainActionService,
-} from '../../domain/services/OpticDomainActionService.js';
-import type {
+  CommandIntentExecutionOutcome,
   CommandIntentExecutionInput,
   CommandIntentExecutorPort,
 } from '../../ports/CommandIntentExecutorPort.js';
@@ -12,7 +10,7 @@ export class TuiCommandIntentExecutorAdapter implements CommandIntentExecutorPor
     private readonly opticDomainActionService?: Pick<OpticDomainActionService, 'executeAction'>,
   ) {}
 
-  public async execute(input: CommandIntentExecutionInput): Promise<OpticActionOutcome> {
+  public async execute(input: CommandIntentExecutionInput): Promise<CommandIntentExecutionOutcome> {
     const actualOperation = input.descriptor.suffixTransform?.op;
     if (actualOperation !== input.expectedOperation) {
       return {

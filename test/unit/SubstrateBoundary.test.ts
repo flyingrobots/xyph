@@ -78,6 +78,30 @@ describe('substrate boundary', () => {
     expect(tuiWrites).not.toMatch(/intentId:\s*`[^`]*\$\{Date\.now\(\)\}/);
   });
 
+  it('keeps command intent outcome contracts owned by the port boundary', () => {
+    const commandIntentExecutorPort = source('src/ports/CommandIntentExecutorPort.ts');
+
+    expect(commandIntentExecutorPort).toContain('CommandIntentExecutionOutcome');
+    expect(commandIntentExecutorPort).not.toContain('../domain/services/OpticDomainActionService');
+  });
+
+  it('keeps TUI CQRS docs aligned with the transitional command-intent seam', () => {
+    const topic = source('docs/topics/tui-cqrs-intent-architecture/README.md');
+    const readmeAudit = source('docs/audit/readme-completeness-audit-2026-06-28.md');
+
+    expect(topic).toContain('CommandIntentDescriptor');
+    expect(topic).toContain('command-intent executor');
+    expect(topic).not.toContain('Bijou v1.6.0');
+    expect(topic).not.toContain('Full 100%');
+    expect(topic).not.toContain('WasmIntentDescriptor');
+    expect(topic).not.toContain('sha256:basis123');
+    expect(topic).not.toMatch(/intentId:\s*`[^`]*\$\{Date\.now\(\)\}/);
+    expect(topic).not.toContain('cryptographically verifiable');
+    expect(topic).not.toContain('immutable Edict Emitter patches');
+    expect(readmeAudit).not.toContain('100% TUI Block CQRS Intent Route migration');
+    expect(readmeAudit).not.toContain('WasmIntentDescriptor payloads');
+  });
+
   it('keeps dashboard reading ports from exposing graph-shaped snapshots', () => {
     const dashboardReadings = source('src/readings/DashboardReadings.ts');
     const dashboardReadPort = source('src/ports/DashboardReadPort.ts');

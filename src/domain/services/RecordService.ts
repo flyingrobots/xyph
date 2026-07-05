@@ -7,7 +7,7 @@ import type { CanonicalArtifactKind } from '../models/controlPlane.js';
 import { MutationKernelService } from './MutationKernelService.js';
 import { WarpCausalMutationAdapter } from '../../infrastructure/warp/CausalMutationAdapter.js';
 import { contentOidFromProps } from '../../infrastructure/ObservedGraphProjection.js';
-import { toNeighborEntries } from '../../infrastructure/helpers/isNeighborEntry.js';
+import { worldlineNeighbors } from '../../infrastructure/helpers/isNeighborEntry.js';
 import type {
   AiSuggestionAdoptionKind,
   AiSuggestionAudience,
@@ -197,14 +197,6 @@ async function readContentOid(
   nodeId: string,
 ): Promise<string | null> {
   return await reader.worldline().getNodeProps(nodeId).then(contentOidFromProps);
-}
-
-interface BoundedNeighborReader {
-  neighbors?: (
-    nodeId: string,
-    direction?: 'outgoing' | 'incoming' | 'both',
-    edgeLabel?: string,
-  ) => Promise<unknown>;
 }
 
 export class RecordService {
@@ -449,10 +441,7 @@ export class RecordService {
       : typeof caseProps['decision_question'] === 'string'
         ? caseProps['decision_question']
         : title;
-    const worldline = graph.worldline() as BoundedNeighborReader;
-    const concernNeighbors = typeof worldline.neighbors === 'function'
-      ? toNeighborEntries(await worldline.neighbors(input.caseId, 'outgoing', 'concerns'))
-      : [];
+    const concernNeighbors = await worldlineNeighbors(graph.worldline(), input.caseId, 'outgoing', 'concerns');
     const subjectIds = concernNeighbors.map((edge) => edge.nodeId);
     const primarySubjectId = subjectIds[0];
 

@@ -1,5 +1,3 @@
-import type { OpticActionOutcome } from '../domain/services/OpticDomainActionService.js';
-
 export interface CommandIntentDescriptor {
   readonly intentId: string;
   readonly suffixTransform?: {
@@ -15,6 +13,16 @@ export interface CommandIntentExecutionInput {
   readonly run: () => Promise<unknown>;
 }
 
+export interface CommandIntentExecutionOutcome {
+  readonly admitted: boolean;
+  readonly sha?: string;
+  readonly intentId: string;
+  readonly obstruction?: {
+    readonly tag: string;
+    readonly actual: string;
+  };
+}
+
 export interface CommandIntentExecutorPort {
-  execute(input: CommandIntentExecutionInput): Promise<OpticActionOutcome>;
+  execute(input: CommandIntentExecutionInput): Promise<CommandIntentExecutionOutcome>;
 }

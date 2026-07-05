@@ -3,6 +3,7 @@
  */
 
 import type { EdictWasmTargetLowererPort, EdictCoreIR } from '../../ports/EdictWasmTargetLowererPort.js';
+import type { CommandIntentExecutionOutcome } from '../../ports/CommandIntentExecutorPort.js';
 
 export interface ClaimQuestRequest {
   readonly questId: string;
@@ -22,15 +23,7 @@ export interface SubmitWorkRequest {
   readonly declaredBudget?: number;
 }
 
-export interface OpticActionOutcome {
-  readonly admitted: boolean;
-  readonly sha?: string;
-  readonly intentId: string;
-  readonly obstruction?: {
-    readonly tag: string;
-    readonly actual: string;
-  };
-}
+export type OpticActionOutcome = CommandIntentExecutionOutcome;
 
 export class OpticDomainActionService {
   constructor(
@@ -122,4 +115,3 @@ export class OpticDomainActionService {
     return await this.executeOpticAction(ir);
   }
 }
-

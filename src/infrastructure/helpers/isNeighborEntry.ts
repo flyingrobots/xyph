@@ -44,10 +44,10 @@ export async function worldlineNeighbors(
   direction: 'outgoing' | 'incoming' | 'both' = 'outgoing',
   edgeLabel?: string,
 ): Promise<NeighborEntry[]> {
-  if (reader.getEdges === undefined) {
-    if (reader.neighbors === undefined) return [];
+  if (reader.neighbors !== undefined) {
     return toNeighborEntries(await reader.neighbors(nodeId, direction, edgeLabel));
   }
+  if (reader.getEdges === undefined) return [];
 
   const edges = await reader.getEdges();
   return edges.flatMap((edge) => {

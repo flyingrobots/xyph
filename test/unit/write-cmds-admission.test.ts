@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { runtimeCommandIntentEmission } from '@flyingrobots/bijou-tui';
 import { defineBindingLifecycleOwner } from '@flyingrobots/bijou';
 import type { IntakePort } from '../../src/ports/IntakePort.js';
@@ -80,6 +81,14 @@ describe('write-cmds admission honesty', () => {
         message: 'Rejected task:Q1',
       },
     ]);
+  });
+
+  it('uses literal expected operations instead of trusting the route descriptor operation', () => {
+    const source = readFileSync('src/tui/bijou/write-cmds.ts', 'utf8');
+
+    expect(source).not.toContain('descriptor.suffixTransform?.op ??');
+    expect(source).toContain("executeTuiIntent(deps, descriptor, 'rejectQuest'");
+    expect(source).toContain("executeTuiIntent(deps, descriptor, 'claimQuest'");
   });
 
   it('does not emit fake claim basis support and keeps claim intent ids unique', () => {

@@ -2,7 +2,7 @@
 
 > [!TIP]
 > **DEFINITIVE SYSTEM BLUEPRINT**
-> This topic guide establishes the canonical architecture for Xyph's next-generation TUI. It covers the complete decoupling of the view layer using Bijou v1.6.0 Blocks, unidirectional `ViewDataContract` bindings, immutable event streams, and the `RuntimeCommandIntentRoute` lowering bridge to `git-warp` Causal Intents.
+> This topic guide establishes the canonical architecture for Xyph's next-generation TUI. It covers the decoupled view layer using Bijou Blocks, unidirectional `ViewDataContract` bindings, command-intent routes, and the transitional command-intent executor seam.
 
 ---
 
@@ -12,7 +12,7 @@ In legacy TUI architectures, view layout logic is frequently coupled with direct
 - **Synchronous Snapshot Loading**: Executing `loadOperationalSnapshot()` directly on the UI event loop, freezing terminal rendering and dropping operator keystrokes.
 - **Imperative Graph Mutations**: Write commands (e.g., `claimQuest`) directly invoking `graph.patch`, leaking Edict CRDT property knowledge into the view layer.
 
-To achieve uncompromised 60fps rendering, absolute Hexagonal isolation, and strict domain purity, Xyph adopts a pure **CQRS (Command Query Responsibility Segregation) Block Binding Architecture** powered by `@flyingrobots/bijou` v1.6.0.
+To achieve uncompromised 60fps rendering, absolute Hexagonal isolation, and strict domain purity, Xyph adopts a pure **CQRS (Command Query Responsibility Segregation) Block Binding Architecture** powered by the current `@flyingrobots/bijou` packages.
 
 ---
 
@@ -40,23 +40,23 @@ When a TUI operator initiates an action (e.g., claiming a task), the UI block do
                                │
 ┌──────────────────────────────▼───────────────────────────────┐
 │        Bridge / Action Route (RuntimeCommandIntentRoute)     │
-│  toCommand: (emission) => EdictIntentDescriptor              │
+│  toCommand: (emission) => CommandIntentDescriptor            │
 └──────────────────────────────┬───────────────────────────────┘
                                │
 ┌──────────────────────────────▼───────────────────────────────┐
 │            Domain Core / Storage (Optic Pure)                │
-│  OpticDomainActionService.submitIntent(intentDescriptor)     │
+│  CommandIntentExecutorPort.execute(commandIntentDescriptor)  │
 └──────────────────────────────────────────────────────────────┘
 ```
 
-- **`RuntimeCommandIntentRoute`**: Acts as our explicit Hexagonal translation bridge. It intercepts generic UI emissions (e.g., `ui:intent:claim`) and lowers them into concrete, cryptographically verifiable Edict `IntentDescriptor` objects.
-- **`OpticDomainActionService`**: Receives the pure `IntentDescriptor`, runs pure Edict precommit guards, and applies immutable Edict Emitter patches to `git-warp`.
+- **`RuntimeCommandIntentRoute`**: Acts as our explicit Hexagonal translation bridge. It intercepts generic UI emissions (for example, `ui:intent:claim`) and lowers them into concrete `CommandIntentDescriptor` objects.
+- **`CommandIntentExecutorPort`**: Receives the descriptor, checks that the descriptor operation matches the expected command operation, and delegates accepted commands to the configured writer or domain action seam.
 
 ---
 
-## 3. Full 100% TUI Migration: The Write Command Slices
+## 3. TUI Command Migration: The Write Command Slices
 
-Following the successful pioneer implementation of `claimQuest`, Xyph has executed a **100% full TUI migration** across all 11 write commands in `src/tui/bijou/write-cmds.ts`:
+Following the pioneer implementation of `claimQuest`, Xyph routes the current TUI write commands through `src/tui/bijou/write-cmds.ts` and the command-intent executor seam:
 - `claimQuest`
 - `promoteQuest`
 - `rejectQuest`
@@ -87,23 +87,22 @@ import { runtimeCommandIntentRoute, runtimeCommandIntentEmission, type RuntimeCo
 // 1. Pristine UI Intent Declaration
 export const claimQuestUiIntent: CommandIntent<{ questId: string }> = commandIntent('ui:intent:claim');
 
-// 2. Canonical Translation Route to Edict Causal Intent
-export const claimQuestIntentRoute: RuntimeCommandIntentRoute<{ questId: string }, WasmIntentDescriptor> = runtimeCommandIntentRoute({
+// 2. Translation route to a command-intent descriptor
+export const claimQuestIntentRoute: RuntimeCommandIntentRoute<{ questId: string }, CommandIntentDescriptor> = runtimeCommandIntentRoute({
   intent: claimQuestUiIntent,
   toCommand: (emission) => ({
-    intentId: `intent:xyph:claimQuest:${Date.now()}`,
+    intentId: `intent:xyph:claimQuest:${generateId()}`,
     suffixTransform: {
       op: 'claimQuest',
       payload: {
         questId: emission.payload.questId,
         agentId: emission.owner?.id ?? 'operator:local',
-        basis: 'sha256:basis123',
       },
     },
   }),
 });
 
-// 3. Command Dispatch via defineBindingLifecycleOwner and OpticDomainActionService
+// 3. Command dispatch via defineBindingLifecycleOwner and the command-intent executor
 const owner = defineBindingLifecycleOwner({ id: deps.agentId, kind: 'view', label: deps.agentId });
 const emission = runtimeCommandIntentEmission(claimQuestUiIntent, { questId }, { owner });
 const descriptor = claimQuestIntentRoute.toCommand(emission);
@@ -114,6 +113,6 @@ const descriptor = claimQuestIntentRoute.toCommand(emission);
 ## 4. Architectural Verification & Invariants
 
 To maintain absolute system integrity, all future TUI development must abide by the following invariants:
-1. **Zero Raw `graph.patch` Calls**: TUI write commands must never directly mutate graph properties. All mutations must pass through `RuntimeCommandIntentRoute` lowering into `OpticDomainActionService`.
+1. **Zero Raw `graph.patch` Calls**: TUI write commands must never directly mutate graph properties. All mutations must pass through `RuntimeCommandIntentRoute` lowering into `CommandIntentExecutorPort`.
 2. **Zero Main-Thread I/O**: `DashboardApp.ts` must never invoke synchronous Git packfile or Edict parsing on the main thread.
 3. **Pure Unidirectional Flow**: View blocks must consume immutable `BindingSnapshot` structures exclusively.

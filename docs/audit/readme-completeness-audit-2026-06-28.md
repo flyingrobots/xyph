@@ -9,7 +9,7 @@
 ## 1. ACCURACY & EFFECTIVENESS ASSESSMENT
 
 - **1.1. Core Mismatch:**
-  - The single most critical piece of inaccurate information in `README.md` is the statement in `What is Real Today (~55–60% Complete)` and `The Next Clean Sequence` claiming that `SubmissionReadService` still needs to be modernized and that the TUI relies on legacy polling. In reality, Xyph just completed the **100% TUI Block CQRS Intent Route migration** (`v1.0.0-alpha.16`), where all TUI write commands are lowered to `WasmIntentDescriptor` payloads and `WarpSubmissionReadAdapter` is fully operational. Furthermore, `xyph.ts` is now the canonical entrypoint for graph dogfooding (`xyph.ts note ...`), but the Quick Start only mentions `xyph-actuator.ts`.
+  - The single most critical piece of inaccurate information in `README.md` is the statement in `What is Real Today (~55-60% Complete)` and `The Next Clean Sequence` claiming that `SubmissionReadService` still needs to be modernized and that the TUI relies on legacy polling. In reality, Xyph has moved the current TUI write path behind `RuntimeCommandIntentRoute` and `CommandIntentExecutorPort`, and `WarpSubmissionReadAdapter` is operational. Furthermore, `xyph.ts` is now the canonical entrypoint for graph dogfooding (`xyph.ts note ...`), but the Quick Start only mentions `xyph-actuator.ts`.
 
 - **1.2. Audience & Goal Alignment:**
   - **Audience:** Autonomous AI agents (actuator/MCP packets), human operators (Bijou TUI cockpit), and core framework developers.
@@ -24,7 +24,7 @@
 ## 2. REQUIRED UPDATES & COMPLETENESS CHECK
 
 - **2.1. README.md Priority Fixes:**
-  1. **What is Real Today:** Update the section to reflect the completed 100% TUI CQRS block migration, the `v1.0.0-alpha.16` release, and the fully modernized `WarpSubmissionReadAdapter`.
+  1. **What is Real Today:** Update the section to reflect the current command-intent executor seam, the active release posture, and the operational `WarpSubmissionReadAdapter`.
   2. **The Next Clean Sequence:** Remove landed items and set the next genuine strategic goals: implementing durable disk-backed CAS memoization in `git-cas` and establishing long-lived projection sessions in `WarpDashboardReadAdapter`.
   3. **Quick Start:** Rewrite the instructions to feature `xyph.ts` for graph dogfooding and explicitly document essential environment variables and configuration files (`.xyph.json`).
 
@@ -47,8 +47,8 @@
 
 - **3.3. Mitigation Prompt:**
   ```text
-  Execute an incremental documentation overhaul to achieve 100% accuracy and completeness for Xyph v1.0.0-alpha.16:
-  1. Update README.md: (a) Modify "What is Real Today" to highlight the completed 100% TUI Block CQRS Intent Route migration and fully operational WarpSubmissionReadAdapter; (b) Update "The Next Clean Sequence" to target durable disk-backed CAS memoization in git-cas and long-lived projection sessions in WarpDashboardReadAdapter; and (c) Enhance the "Quick Start" to document essential environment variables (XYPH_WORLDLINE_ID, XYPH_TEST_IN_MEMORY) and feature xyph.ts for graph dogfooding.
+  Execute an incremental documentation overhaul for Xyph v1.0.0-alpha.16:
+  1. Update README.md: (a) Modify "What is Real Today" to highlight the current command-intent executor seam and operational WarpSubmissionReadAdapter; (b) Update "The Next Clean Sequence" to target durable disk-backed CAS memoization in git-cas and long-lived projection sessions in WarpDashboardReadAdapter; and (c) Enhance the "Quick Start" to document essential environment variables (XYPH_WORLDLINE_ID, XYPH_TEST_IN_MEMORY) and feature xyph.ts for graph dogfooding.
   2. Create CODE_OF_CONDUCT.md: Adopt the Contributor Covenant v2.1 tailored to sovereign digital guild participants.
   3. Create SECURITY.md: Define vulnerability disclosure procedures, Edict WASM sandbox security boundaries, and dependency override monitoring policies.
   Verify the changes by ensuring markdown formatting is pristine and committing with "docs(audit): overhaul README and establish standard community manifests".

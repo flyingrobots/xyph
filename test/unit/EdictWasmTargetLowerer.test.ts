@@ -17,11 +17,22 @@ describe('Edict Wasm Target Lowerer Plugin (xyph-target-lowerer.wasm)', () => {
     declaredBudget: 50,
   };
 
-  it('should lower Edict Core IR into xyph.warp-intent-ir/v1 canonical CBOR bytes', async () => {
+  it('should lower Edict Core IR into deterministic xyph.warp-intent-ir/v1 bytes', async () => {
     const lowerer = new EdictWasmTargetLowererAdapter();
     const cborBytes = await lowerer.lower(validCoreIR);
     expect(cborBytes).toBeInstanceOf(Uint8Array);
     expect(cborBytes.length).toBeGreaterThan(0);
+  });
+
+  it('should lower identical Edict Core IR into byte-identical descriptors without placeholder hashes', async () => {
+    const lowerer = new EdictWasmTargetLowererAdapter();
+    const first = new TextDecoder().decode(await lowerer.lower(validCoreIR));
+    const second = new TextDecoder().decode(await lowerer.lower(validCoreIR));
+
+    expect(first).toBe(second);
+    expect(first).not.toContain('sha256:bundle123');
+    expect(first).not.toContain('sha256:core123');
+    expect(first).not.toContain(String(Date.now()));
   });
 
   it('should validate declared footprint against Xyph governance lawpack allocation', async () => {
@@ -46,11 +57,13 @@ describe('Edict Wasm Target Lowerer Plugin (xyph-target-lowerer.wasm)', () => {
     expect(invalidResult.code).toBe('EDICT-XYPH-002');
   });
 
-  it('should produce a signed, hash-locked verifier report proving optic preservation', async () => {
+  it('should produce a deterministic verifier report for identical Core IR', async () => {
     const lowerer = new EdictWasmTargetLowererAdapter();
-    const report = await lowerer.verify(validCoreIR);
-    expect(report.verified).toBe(true);
-    expect(report.reportDigest).toMatch(/^sha256:/);
-    expect(report.wasmDigest).toMatch(/^sha256:/);
+    const first = await lowerer.verify(validCoreIR);
+    const second = await lowerer.verify(validCoreIR);
+    expect(first).toEqual(second);
+    expect(first.verified).toBe(true);
+    expect(first.reportDigest).toMatch(/^sha256:/);
+    expect(first.wasmDigest).toMatch(/^sha256:/);
   });
 });

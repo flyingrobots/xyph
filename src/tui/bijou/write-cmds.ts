@@ -244,7 +244,7 @@ export function claimQuest(deps: WriteDeps, questId: string): Cmd<DashboardMsg> 
       const emission = runtimeCommandIntentEmission(claimQuestUiIntent, { questId }, { owner });
       const descriptor = claimQuestIntentRoute.toCommand(emission);
 
-      await executeTuiIntent(deps, descriptor, descriptor.suffixTransform?.op ?? 'claimQuest', descriptor.suffixTransform?.payload ?? { questId, agentId: deps.agentId }, async () => {
+      await executeTuiIntent(deps, descriptor, 'claimQuest', descriptor.suffixTransform?.payload ?? { questId, agentId: deps.agentId }, async () => {
         throw new Error('Command intent executor is not configured');
       });
       emit({ type: 'write-success', message: `Claimed ${questId}` });
@@ -268,7 +268,7 @@ export function promoteQuest(deps: WriteDeps, questId: string, intentId: string,
       const emission = runtimeCommandIntentEmission(promoteQuestUiIntent, { questId, intentId, campaignId }, { owner });
       const descriptor = promoteQuestIntentRoute.toCommand(emission);
 
-      await executeTuiIntent(deps, descriptor, descriptor.suffixTransform?.op ?? 'promoteQuest', descriptor.suffixTransform?.payload ?? { questId, intentId, campaignId, agentId: deps.agentId }, async () => {
+      await executeTuiIntent(deps, descriptor, 'promoteQuest', descriptor.suffixTransform?.payload ?? { questId, intentId, campaignId, agentId: deps.agentId }, async () => {
         await deps.intake.promote(questId, intentId, campaignId);
       });
       emit({ type: 'write-success', message: `Promoted ${questId} → PLANNED` });
@@ -292,7 +292,7 @@ export function rejectQuest(deps: WriteDeps, questId: string, rationale: string)
       const emission = runtimeCommandIntentEmission(rejectQuestUiIntent, { questId, rationale }, { owner });
       const descriptor = rejectQuestIntentRoute.toCommand(emission);
 
-      await executeTuiIntent(deps, descriptor, descriptor.suffixTransform?.op ?? 'rejectQuest', descriptor.suffixTransform?.payload ?? { questId, rationale, agentId: deps.agentId }, async () => {
+      await executeTuiIntent(deps, descriptor, 'rejectQuest', descriptor.suffixTransform?.payload ?? { questId, rationale, agentId: deps.agentId }, async () => {
         await deps.intake.reject(questId, rationale);
       });
       emit({ type: 'write-success', message: `Rejected ${questId}` });
@@ -312,7 +312,7 @@ export function reopenQuest(deps: WriteDeps, questId: string): Cmd<DashboardMsg>
       const emission = runtimeCommandIntentEmission(reopenQuestUiIntent, { questId }, { owner });
       const descriptor = reopenQuestIntentRoute.toCommand(emission);
 
-      await executeTuiIntent(deps, descriptor, descriptor.suffixTransform?.op ?? 'reopenQuest', descriptor.suffixTransform?.payload ?? { questId, agentId: deps.agentId }, async () => {
+      await executeTuiIntent(deps, descriptor, 'reopenQuest', descriptor.suffixTransform?.payload ?? { questId, agentId: deps.agentId }, async () => {
         await deps.intake.reopen(questId);
       });
       emit({ type: 'write-success', message: `Reopened ${questId}` });
@@ -337,7 +337,7 @@ export function commentOnEntity(deps: WriteDeps, targetId: string, message: stri
       const emission = runtimeCommandIntentEmission(commentOnEntityUiIntent, { targetId, message: trimmed }, { owner });
       const descriptor = commentOnEntityIntentRoute.toCommand(emission);
 
-      await executeTuiIntent(deps, descriptor, descriptor.suffixTransform?.op ?? 'commentOnEntity', descriptor.suffixTransform?.payload ?? { targetId, message: trimmed, agentId: deps.agentId }, async () => {
+      await executeTuiIntent(deps, descriptor, 'commentOnEntity', descriptor.suffixTransform?.payload ?? { targetId, message: trimmed, agentId: deps.agentId }, async () => {
         await writerOrThrow(deps).write(RecordComment({
           targetId,
           message: trimmed,
@@ -366,7 +366,7 @@ export function reviewSubmission(
       const emission = runtimeCommandIntentEmission(reviewSubmissionUiIntent, { patchsetId, verdict, comment }, { owner });
       const descriptor = reviewSubmissionIntentRoute.toCommand(emission);
 
-      await executeTuiIntent(deps, descriptor, descriptor.suffixTransform?.op ?? 'reviewSubmission', descriptor.suffixTransform?.payload ?? { patchsetId, verdict, comment, agentId: deps.agentId }, async () => {
+      await executeTuiIntent(deps, descriptor, 'reviewSubmission', descriptor.suffixTransform?.payload ?? { patchsetId, verdict, comment, agentId: deps.agentId }, async () => {
         const reviewId = `review:${generateId()}`;
         await deps.submissionPort.review({ patchsetId, reviewId, verdict, comment });
       });
@@ -403,7 +403,7 @@ export function queueAskAiJob(
       const descriptor = queueAskAiJobIntentRoute.toCommand(emission);
 
       let createdId = '';
-      await executeTuiIntent(deps, descriptor, descriptor.suffixTransform?.op ?? 'queueAskAiJob', descriptor.suffixTransform?.payload ?? { input, agentId: deps.agentId }, async () => {
+      await executeTuiIntent(deps, descriptor, 'queueAskAiJob', descriptor.suffixTransform?.payload ?? { input, agentId: deps.agentId }, async () => {
         const receipt = await writerOrThrow(deps).write(RecordAiSuggestion({
           title,
           summary,
@@ -440,7 +440,7 @@ export function decideCase(
       const descriptor = decideCaseIntentRoute.toCommand(emission);
 
       let msg = '';
-      await executeTuiIntent(deps, descriptor, descriptor.suffixTransform?.op ?? 'decideCase', descriptor.suffixTransform?.payload ?? { input, agentId: deps.agentId }, async () => {
+      await executeTuiIntent(deps, descriptor, 'decideCase', descriptor.suffixTransform?.payload ?? { input, agentId: deps.agentId }, async () => {
         const receipt = await writerOrThrow(deps).write(DecideCase({
           ...input,
           decidedBy: deps.agentId,
@@ -479,7 +479,7 @@ export function adoptSuggestion(
       const descriptor = adoptSuggestionIntentRoute.toCommand(emission);
 
       let msg = '';
-      await executeTuiIntent(deps, descriptor, descriptor.suffixTransform?.op ?? 'adoptSuggestion', descriptor.suffixTransform?.payload ?? { suggestionId, adoptedArtifactKind, rationale: trimmedRationale, agentId: deps.agentId }, async () => {
+      await executeTuiIntent(deps, descriptor, 'adoptSuggestion', descriptor.suffixTransform?.payload ?? { suggestionId, adoptedArtifactKind, rationale: trimmedRationale, agentId: deps.agentId }, async () => {
         const receipt = await writerOrThrow(deps).write(AdoptAiSuggestion({
           suggestionId,
           resolvedBy: deps.agentId,
@@ -515,7 +515,7 @@ export function dismissSuggestion(
       const descriptor = dismissSuggestionIntentRoute.toCommand(emission);
 
       let msg = '';
-      await executeTuiIntent(deps, descriptor, descriptor.suffixTransform?.op ?? 'dismissSuggestion', descriptor.suffixTransform?.payload ?? { suggestionId, rationale: trimmed, agentId: deps.agentId }, async () => {
+      await executeTuiIntent(deps, descriptor, 'dismissSuggestion', descriptor.suffixTransform?.payload ?? { suggestionId, rationale: trimmed, agentId: deps.agentId }, async () => {
         const receipt = await writerOrThrow(deps).write(DismissAiSuggestion({
           suggestionId,
           resolvedBy: deps.agentId,
@@ -554,7 +554,7 @@ export function supersedeSuggestion(
       const descriptor = supersedeSuggestionIntentRoute.toCommand(emission);
 
       let msg = '';
-      await executeTuiIntent(deps, descriptor, descriptor.suffixTransform?.op ?? 'supersedeSuggestion', descriptor.suffixTransform?.payload ?? { input, agentId: deps.agentId }, async () => {
+      await executeTuiIntent(deps, descriptor, 'supersedeSuggestion', descriptor.suffixTransform?.payload ?? { input, agentId: deps.agentId }, async () => {
         const receipt = await writerOrThrow(deps).write(SupersedeAiSuggestion({
           suggestionId: input.suggestionId,
           supersededById: replacementId,
