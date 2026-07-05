@@ -127,6 +127,7 @@ export function mockReadProjection(snapshotOverrides?: Partial<GraphSnapshot>): 
 
 export function mockIntakePort(): IntakePort {
   return {
+    claim: vi.fn().mockResolvedValue('sha-claim') as IntakePort['claim'],
     promote: vi.fn().mockResolvedValue('sha-1') as IntakePort['promote'],
     shape: vi.fn().mockResolvedValue('sha-shape') as IntakePort['shape'],
     ready: vi.fn().mockResolvedValue('sha-ready') as IntakePort['ready'],

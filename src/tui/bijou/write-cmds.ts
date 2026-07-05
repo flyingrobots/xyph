@@ -244,9 +244,9 @@ export function claimQuest(deps: WriteDeps, questId: string): Cmd<DashboardMsg> 
       const emission = runtimeCommandIntentEmission(claimQuestUiIntent, { questId }, { owner });
       const descriptor = claimQuestIntentRoute.toCommand(emission);
 
-      await executeTuiIntent(deps, descriptor, 'claimQuest', descriptor.suffixTransform?.payload ?? { questId, agentId: deps.agentId }, async () => {
-        throw new Error('Command intent executor is not configured');
-      });
+      await executeTuiIntent(deps, descriptor, 'claimQuest', descriptor.suffixTransform?.payload ?? { questId, agentId: deps.agentId }, async () =>
+        await deps.intake.claim(questId, deps.agentId)
+      );
       emit({ type: 'write-success', message: `Claimed ${questId}` });
     } catch (err: unknown) {
       emit({ type: 'write-error', message: err instanceof Error ? err.message : String(err) });

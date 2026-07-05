@@ -48,10 +48,7 @@ import { WarpSubmissionAdapter } from './src/infrastructure/adapters/WarpSubmiss
 import { WarpDashboardRuntimeAdapter } from './src/infrastructure/adapters/WarpDashboardRuntimeAdapter.js';
 import { WarpRecordCommentIntentAdapter } from './src/infrastructure/warp/intents/WarpRecordCommentIntentAdapter.js';
 import { WarpXYPHWriterAdapter } from './src/infrastructure/warp/WarpXYPHWriterAdapter.js';
-import { EdictWasmTargetLowererAdapter } from './src/infrastructure/adapters/EdictWasmTargetLowererAdapter.js';
-import { WarpOpticActionAdmissionAdapter } from './src/infrastructure/warp/WarpOpticActionAdmissionAdapter.js';
 import { TuiCommandIntentExecutorAdapter } from './src/infrastructure/warp/TuiCommandIntentExecutorAdapter.js';
-import { OpticDomainActionService } from './src/domain/services/OpticDomainActionService.js';
 import { RecordService } from './src/domain/services/RecordService.js';
 import { createDashboardApp } from './src/tui/bijou/DashboardApp.js';
 import { createFileObserverWatermarkStore } from './src/tui/bijou/observer-watermarks.js';
@@ -101,11 +98,7 @@ const submissionPort = new WarpSubmissionAdapter(graphPort, agentId);
 const recordCommentIntent = new WarpRecordCommentIntentAdapter(graphPort);
 const recordService = new RecordService(graphPort, undefined, undefined, recordCommentIntent);
 const writer = new WarpXYPHWriterAdapter(recordCommentIntent, recordService);
-const opticDomainActionService = new OpticDomainActionService(
-  new EdictWasmTargetLowererAdapter(),
-  new WarpOpticActionAdmissionAdapter(graphPort),
-);
-const commandIntentExecutor = new TuiCommandIntentExecutorAdapter(opticDomainActionService);
+const commandIntentExecutor = new TuiCommandIntentExecutorAdapter();
 const observerWatermarkStore = createFileObserverWatermarkStore();
 
 logger.info('dashboard session starting', {

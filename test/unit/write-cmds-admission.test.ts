@@ -6,6 +6,7 @@ import type { IntakePort } from '../../src/ports/IntakePort.js';
 import type { SubmissionPort } from '../../src/ports/SubmissionPort.js';
 import { TuiCommandIntentExecutorAdapter } from '../../src/infrastructure/warp/TuiCommandIntentExecutorAdapter.js';
 import {
+  claimQuest,
   claimQuestIntentRoute,
   claimQuestUiIntent,
   rejectQuest,
@@ -81,6 +82,73 @@ describe('write-cmds admission honesty', () => {
         message: 'Rejected task:Q1',
       },
     ]);
+  });
+
+  it('executes claimQuest through the generic command executor run handler', async () => {
+    const claim = vi.fn(async () => 'sha:claim');
+    const execute = vi.fn(async ({ run }: { run: () => Promise<unknown> }) => {
+      const sha = await run();
+      return {
+        admitted: true,
+        intentId: 'intent:xyph:claimQuest:test',
+        sha: typeof sha === 'string' ? sha : '',
+      };
+    });
+    const emitted: unknown[] = [];
+
+    await claimQuest({
+      intake: { claim } as unknown as IntakePort,
+      submissionPort: {} as SubmissionPort,
+      commandIntentExecutor: { execute },
+      agentId: 'agent.test',
+    }, 'task:Q1')((msg) => {
+      emitted.push(msg);
+    });
+
+    expect(execute).toHaveBeenCalledWith(expect.objectContaining({
+      expectedOperation: 'claimQuest',
+      intent: expect.objectContaining({
+        op: 'claimQuest',
+        payload: {
+          questId: 'task:Q1',
+          agentId: 'agent.test',
+        },
+      }),
+    }));
+    expect(claim).toHaveBeenCalledWith('task:Q1', 'agent.test');
+    expect(emitted).toEqual([
+      {
+        type: 'write-success',
+        message: 'Claimed task:Q1',
+      },
+    ]);
+  });
+
+  it('does not special-case claimQuest inside the generic command executor', async () => {
+    const executor = new TuiCommandIntentExecutorAdapter();
+    const run = vi.fn(async () => 'sha:claim');
+
+    const outcome = await executor.execute({
+      descriptor: {
+        intentId: 'intent:xyph:claimQuest:test',
+        suffixTransform: {
+          op: 'claimQuest',
+        },
+      },
+      expectedOperation: 'claimQuest',
+      intent: {
+        op: 'claimQuest',
+        payload: { questId: 'task:Q1', agentId: 'agent.test' },
+      },
+      run,
+    });
+
+    expect(run).toHaveBeenCalledOnce();
+    expect(outcome).toEqual({
+      admitted: true,
+      intentId: 'intent:xyph:claimQuest:test',
+      sha: 'sha:claim',
+    });
   });
 
   it('uses literal expected operations instead of trusting the route descriptor operation', () => {
