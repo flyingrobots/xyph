@@ -6,7 +6,12 @@ import { WarpObservationAdapter } from '../infrastructure/adapters/WarpObservati
 import { WarpOperationalReadAdapter } from '../infrastructure/adapters/WarpOperationalReadAdapter.js';
 import { WarpSubstrateInspectionAdapter } from '../infrastructure/adapters/WarpSubstrateInspectionAdapter.js';
 import { WarpQuestReadAdapter } from '../infrastructure/warp/optics/WarpQuestReadAdapter.js';
+import { WarpRecordCommentIntentAdapter } from '../infrastructure/warp/intents/WarpRecordCommentIntentAdapter.js';
+import { WarpCausalMutationAdapter } from '../infrastructure/warp/CausalMutationAdapter.js';
+import { WarpXYPHWriterAdapter } from '../infrastructure/warp/WarpXYPHWriterAdapter.js';
+import { WarpOpticActionAdmissionAdapter } from '../infrastructure/warp/WarpOpticActionAdmissionAdapter.js';
 import type { QuestReadPort } from '../ports/QuestReadPort.js';
+import type { XYPHWriter } from '../ports/XYPHWriter.js';
 import { resolveIdentity, type ResolvedIdentity } from './identity.js';
 import type { Diagnostic } from '../domain/models/diagnostics.js';
 import type { DiagnosticLogPort } from '../ports/DiagnosticLogPort.js';
@@ -20,6 +25,10 @@ import type { AgentContextService } from '../domain/services/AgentContextService
 import type { AgentBriefingService } from '../domain/services/AgentBriefingService.js';
 import type { AgentSubmissionService } from '../domain/services/AgentSubmissionService.js';
 import type { ConfigPort } from '../ports/ConfigPort.js';
+import { OpticDomainActionService } from '../domain/services/OpticDomainActionService.js';
+import { EdictWasmTargetLowererAdapter } from '../infrastructure/adapters/EdictWasmTargetLowererAdapter.js';
+import { RecordService } from '../domain/services/RecordService.js';
+import { MutationKernelService } from '../domain/services/MutationKernelService.js';
 
 export { DEFAULT_AGENT_ID } from './identity.js';
 
@@ -91,6 +100,7 @@ export interface CliContext {
   readonly readinessService?: import('../domain/services/ReadinessService.js').ReadinessService;
   readonly intakeAdapter?: import('../infrastructure/adapters/WarpIntakeAdapter.js').WarpIntakeAdapter;
   readonly recordService?: import('../domain/services/RecordService.js').RecordService;
+  readonly writer: XYPHWriter;
   readonly guildSealService?: import('../domain/services/GuildSealService.js').GuildSealService;
   readonly submissionAdapter?: import('../infrastructure/adapters/WarpSubmissionAdapter.js').WarpSubmissionAdapter;
   readonly submissionService?: import('../domain/services/SubmissionService.js').SubmissionService;
@@ -113,6 +123,7 @@ export interface CliContext {
   readonly scoreImportDescribe?: typeof import('../domain/services/analysis/layers/ImportDescribeLayer.js').scoreImportDescribe;
   readonly scoreAst?: typeof import('../domain/services/analysis/layers/AstLayer.js').scoreAst;
   readonly scoreSemantic?: typeof import('../domain/services/analysis/layers/SemanticLayer.js').scoreSemantic;
+  readonly opticDomainActionService?: OpticDomainActionService;
   ok(msg: string): void;
   warn(msg: string): void;
   muted(msg: string): void;
@@ -140,6 +151,7 @@ export function createCliContext(
     homeDir?: string;
     identity?: ResolvedIdentity;
     logger?: DiagnosticLogPort;
+    opticDomainActionService?: OpticDomainActionService;
   },
 ): CliContext {
   const identity = opts?.identity ?? resolveIdentity({
@@ -150,6 +162,11 @@ export function createCliContext(
   });
   const agentId = identity.agentId;
   const graphPort = new WarpGraphAdapter(repoPath, graphName, agentId, opts?.logger);
+  const causalMutations = new WarpCausalMutationAdapter(graphPort);
+  const mutationKernel = new MutationKernelService(causalMutations);
+  const recordCommentIntent = new WarpRecordCommentIntentAdapter(graphPort, undefined, mutationKernel);
+  const recordService = new RecordService(graphPort, undefined, mutationKernel, recordCommentIntent);
+  const writer = new WarpXYPHWriterAdapter(recordCommentIntent, recordService);
   const observation = new WarpObservationAdapter(graphPort);
   const operationalRead = new WarpOperationalReadAdapter(graphPort);
   const questReadPort = new WarpQuestReadAdapter(graphPort, {
@@ -159,6 +176,11 @@ export function createCliContext(
   const inspection = new WarpSubstrateInspectionAdapter(graphPort);
   const jsonMode = opts?.json ?? false;
   const style = jsonMode ? createPlainStylePort() : createStylePort();
+
+  const opticDomainActionService = opts?.opticDomainActionService ?? new OpticDomainActionService(
+    new EdictWasmTargetLowererAdapter(),
+    new WarpOpticActionAdmissionAdapter(graphPort),
+  );
 
   const emitJsonError = (
     error: string,
@@ -188,6 +210,10 @@ export function createCliContext(
     identity,
     json: jsonMode,
     graphPort,
+    opticDomainActionService,
+    writer,
+    recordService,
+    mutations: mutationKernel,
     observation,
     operationalRead,
     questReadPort,

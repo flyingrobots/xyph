@@ -2,7 +2,42 @@
  * EdictWasmTargetLowererAdapter — WebAssembly target lowerer plugin implementation.
  */
 
+import { createHash } from 'node:crypto';
 import type { EdictWasmTargetLowererPort, EdictCoreIR } from '../../ports/EdictWasmTargetLowererPort.js';
+import { canonicalize, type Json } from '../../validation/crypto.js';
+
+function jsonValue(value: unknown): Json {
+  if (value === null) return null;
+  if (typeof value === 'string' || typeof value === 'boolean') return value;
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) {
+      throw new Error('Edict Core IR contains a non-finite number');
+    }
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value.map(jsonValue);
+  }
+  if (typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .filter(([, entry]) => entry !== undefined)
+        .map(([key, entry]) => [key, jsonValue(entry)]),
+    );
+  }
+  throw new Error(`Edict Core IR contains unsupported value type: ${typeof value}`);
+}
+
+function sha256Digest(value: Json): string {
+  return `sha256:${createHash('sha256').update(canonicalize(value)).digest('hex')}`;
+}
+
+function coreHashFor(ir: EdictCoreIR): string {
+  return sha256Digest({
+    schema: 'edict.core-ir/v1',
+    ir: jsonValue(ir),
+  });
+}
 
 export class EdictWasmTargetLowererAdapter implements EdictWasmTargetLowererPort {
   private static readonly MAX_FOOTPRINT = 500000;
@@ -10,11 +45,17 @@ export class EdictWasmTargetLowererAdapter implements EdictWasmTargetLowererPort
   private static readonly WASM_DIGEST = 'sha256:7f8a9b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a';
 
   async lower(ir: EdictCoreIR): Promise<Uint8Array> {
+    const coreHash = coreHashFor(ir);
+    const bundleHash = sha256Digest({
+      schema: 'xyph.warp-intent-ir.bundle/v1',
+      coreHash,
+      profile: 'continuum.lane.lawful-autonomous/v1',
+    });
     const warpIntentDescriptor = {
-      intentId: `intent:xyph:${ir.op}:${Date.now()}`,
+      intentId: `intent:xyph:${ir.op}:${coreHash.slice('sha256:'.length, 'sha256:'.length + 16)}`,
       nutritionLabel: {
-        bundleHash: 'sha256:bundle123',
-        coreHash: 'sha256:core123',
+        bundleHash,
+        coreHash,
         profile: 'continuum.lane.lawful-autonomous/v1',
         budget: String(ir.declaredBudget),
       },
@@ -25,9 +66,7 @@ export class EdictWasmTargetLowererAdapter implements EdictWasmTargetLowererPort
       },
     };
 
-    // Serialize to canonical representation (simulating edict.canonical-cbor/v1)
-    const jsonString = JSON.stringify(warpIntentDescriptor);
-    return new TextEncoder().encode(jsonString);
+    return new TextEncoder().encode(canonicalize(jsonValue(warpIntentDescriptor)));
   }
 
   async footprintCompare(ir: EdictCoreIR): Promise<{ valid: boolean; code?: string }> {
@@ -44,11 +83,23 @@ export class EdictWasmTargetLowererAdapter implements EdictWasmTargetLowererPort
     return { valid: true };
   }
 
-  async verify(ir: EdictCoreIR): Promise<{ reportDigest: string; wasmDigest: string; verified: boolean }> {
-    const reportPayload = JSON.stringify({ ir, verifiedAt: Date.now() });
-    return {
-      reportDigest: `sha256:report:${Buffer.from(reportPayload).toString('base64').substring(0, 32)}`,
+  async verify(ir: EdictCoreIR): Promise<{
+    reportDigest: string;
+    wasmDigest: string;
+    coreHash: string;
+    verified: boolean;
+  }> {
+    const coreHash = coreHashFor(ir);
+    const reportPayload = {
+      schema: 'xyph.edict-lowering-report/v1',
+      coreHash,
       wasmDigest: EdictWasmTargetLowererAdapter.WASM_DIGEST,
+      result: 'verified',
+    };
+    return {
+      reportDigest: sha256Digest(reportPayload),
+      wasmDigest: EdictWasmTargetLowererAdapter.WASM_DIGEST,
+      coreHash,
       verified: true,
     };
   }

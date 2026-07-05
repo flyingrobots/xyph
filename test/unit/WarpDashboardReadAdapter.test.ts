@@ -10,6 +10,7 @@ vi.mock('../../src/infrastructure/ObservedGraphProjection.js', () => ({
 }));
 
 import { WarpDashboardReadAdapter } from '../../src/infrastructure/adapters/WarpDashboardReadAdapter.js';
+import { ReadDashboardOperationalSnapshot } from '../../src/readings/DashboardReadings.js';
 
 describe('WarpDashboardReadAdapter', () => {
   beforeEach(() => {
@@ -58,6 +59,47 @@ describe('WarpDashboardReadAdapter', () => {
     }));
     expect(fetchSnapshot).toHaveBeenCalledWith(undefined, { profile: 'operational' });
     expect(snapshot.quests).toHaveLength(0);
+  });
+
+  it('serves dashboard readings through the XYPHReader seam', async () => {
+    const snapshot = makeSnapshot({
+      quests: [{ id: 'task:R1', title: 'Read seam', status: 'READY', hours: 1 }],
+    });
+    const fetchSnapshot = vi.fn().mockResolvedValue(snapshot);
+    mocks.createObservedGraphProjectionFromGraph.mockReturnValue({
+      fetchSnapshot,
+      fetchEntityDetail: vi.fn(),
+      filterSnapshot: vi.fn(),
+      invalidateCache: vi.fn(),
+    });
+
+    const graphPort = {
+      getGraph: vi.fn().mockResolvedValue({
+        writerId: 'agent.test',
+        worldline: vi.fn().mockReturnValue({
+          observer: vi.fn().mockResolvedValue({
+            query: vi.fn(),
+            hasNode: vi.fn(),
+            getNodeProps: vi.fn(),
+            getEdges: vi.fn().mockResolvedValue([]),
+            traverse: {},
+          }),
+        }),
+        getStateSnapshot: vi.fn(),
+        getFrontier: vi.fn(),
+        getContentOid: vi.fn(),
+        getContent: vi.fn(),
+        compareCoordinates: vi.fn(),
+      }),
+      reset: vi.fn(),
+    };
+
+    const adapter = new WarpDashboardReadAdapter(graphPort as never);
+    const frame = await adapter.read(ReadDashboardOperationalSnapshot({ view: 'landing' }));
+
+    expect(frame.reading).toBe('xyph.read.dashboard.operationalSnapshot');
+    expect(frame.coordinate).toEqual({ basis: 'current' });
+    expect(frame.value.quests).toEqual(snapshot.quests);
   });
 
   it('delegates entity detail reads through the worldline-backed graph context', async () => {

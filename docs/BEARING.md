@@ -29,4 +29,15 @@ Current direction and active tensions. Historical ship data is in `CHANGELOG.md`
 
 ## Next Target
 
-With **Edict Wasm Target Lowering and Optic-Pure Intent Admission** fully landed, the immediate focus is the **CLI Optic Mutation Kernel Migration** (`bad-code/cli-legacy-imperative-mutation-leak.md`)—deprecating legacy imperative `graph.patch` mutations across `src/cli/commands/*.ts` in favor of pure `IntentDescriptor` admission through `OpticDomainActionService` to guarantee complete domain encapsulation.
+With **CQRS Intent-Based UI Architecture** (`v1.0.0-alpha.16`) fully complete,
+the immediate `#1 priority` is **Substrate Decoupling & Bedrock Purity** -
+asserting the absolute architectural law that **XYPH MUST NOT DO GIT-WARP'S
+JOB**. Xyph should only know about Optics and Intents. Worldline
+forking/braiding is permissible, but Xyph must **NEVER** imperatively manage
+nodes, graphs, traversals, or materialization state machines.
+
+The current design topic is [GraphQL Optics, Intent Declarations, and the Edict
+Bridge](../design/graphql-optics-intents-edict-bridge.md): domain GraphQL plus
+XYPH lawpacks compiled by Wesley now, with Edict as the future execution/law
+substrate. The active kill list is [Substrate Decoupling Boundary
+Audit](audit/2026-07-01-substrate-decoupling-boundary-audit.md).

@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import type { EdictWasmTargetLowererPort, EdictCoreIR } from '../../src/ports/EdictWasmTargetLowererPort.js';
-// @ts-expect-error -- intentional red test before service implementation
 import { OpticDomainActionService } from '../../src/domain/services/OpticDomainActionService.js';
 
 describe('OpticDomainActionService — Optic-Pure Domain Execution', () => {

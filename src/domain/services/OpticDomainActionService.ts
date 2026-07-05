@@ -3,6 +3,7 @@
  */
 
 import type { EdictWasmTargetLowererPort, EdictCoreIR } from '../../ports/EdictWasmTargetLowererPort.js';
+import type { CommandIntentExecutionOutcome } from '../../ports/CommandIntentExecutorPort.js';
 
 export interface ClaimQuestRequest {
   readonly questId: string;
@@ -22,15 +23,7 @@ export interface SubmitWorkRequest {
   readonly declaredBudget?: number;
 }
 
-export interface OpticActionOutcome {
-  readonly admitted: boolean;
-  readonly sha?: string;
-  readonly intentId: string;
-  readonly obstruction?: {
-    readonly tag: string;
-    readonly actual: string;
-  };
-}
+export type OpticActionOutcome = CommandIntentExecutionOutcome;
 
 export class OpticDomainActionService {
   constructor(
@@ -109,5 +102,16 @@ export class OpticDomainActionService {
     const descriptor = JSON.parse(new TextDecoder().decode(cborBytes));
     return await this.admissionPort.admitWasmIntent(descriptor, report);
   }
-}
 
+  async executeAction(_optic: unknown, intent: Record<string, unknown>): Promise<OpticActionOutcome> {
+    const ir: EdictCoreIR = {
+      op: (intent['op'] ?? intent['intentType'] ?? 'intentAction') as string,
+      payload: (intent['payload'] ?? intent) as Record<string, unknown>,
+      precommitGuards: (intent['precommitGuards'] ?? []) as EdictCoreIR['precommitGuards'],
+      declaredFootprint: (intent['declaredFootprint'] ?? 1024) as number,
+      declaredBudget: (intent['declaredBudget'] ?? 50) as number,
+    };
+
+    return await this.executeOpticAction(ir);
+  }
+}

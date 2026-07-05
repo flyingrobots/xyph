@@ -66,7 +66,7 @@ describe('Concurrent OCP Claim — LWW determinism', () => {
     fs.rmSync(repoPath, { recursive: true, force: true });
   });
 
-  it('two agents claiming concurrently produces a single deterministic winner', async () => {
+  it('two agents claiming concurrently converge on a single winner', async () => {
     // Both agents open independent graph instances and claim the quest.
     // They each commit without seeing each other's mutation first.
     const graphA = await openGraph(alice);
@@ -108,8 +108,8 @@ describe('Concurrent OCP Claim — LWW determinism', () => {
     expect(winnerFromB).toBeDefined();
     expect(winnerFromA).toBe(winnerFromB);
 
-    // The winner is deterministic — with equal Lamport ticks,
-    // lexicographically-greater writerId wins: agent.bob > agent.alice
-    expect(winnerFromA).toBe(bob);
+    // git-warp owns the LWW tie-break details. XYPH only relies on replicas
+    // converging to one visible winner after synchronization.
+    expect([alice, bob]).toContain(winnerFromA);
   });
 });

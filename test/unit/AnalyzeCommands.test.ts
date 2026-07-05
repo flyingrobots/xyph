@@ -27,6 +27,7 @@ function makeCtx(graph: {
       queryNodes: vi.fn(),
       neighbors: vi.fn(),
       hasNode: vi.fn(),
+      worldline: vi.fn(function(this: any) { return this; }),
     })),
   };
   return {

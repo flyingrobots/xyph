@@ -96,7 +96,7 @@ describe('Cycle 0003: Human Case Flow', () => {
     expect(result.followOnArtifactId).toMatch(/^task:/);
 
     const graph = await graphPort.getGraph();
-    const decisionProps = await graph.getNodeProps(result.decisionId);
+    const decisionProps = await graph.worldline().getNodeProps(result.decisionId);
     expect(decisionProps).toMatchObject({
       type: 'decision',
       kind: 'adopt',

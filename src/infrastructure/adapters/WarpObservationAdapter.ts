@@ -9,7 +9,7 @@ import type {
   ObservationSession,
   SnapshotProfile,
 } from '../../ports/ObservationPort.js';
-import { createObservedGraphProjectionFromGraph } from '../ObservedGraphProjection.js';
+import { createObservedGraphProjectionFromGraph, readObservedContentByOid } from '../ObservedGraphProjection.js';
 import { adaptObservedHandleToObservedProjectionGraph } from './WorldlineObservedProjectionAdapter.js';
 import { WarpSubmissionReadAdapter } from '../warp/optics/WarpSubmissionReadAdapter.js';
 
@@ -19,6 +19,12 @@ type AggregateResult = Extract<Awaited<ReturnType<QueryBuilder['run']>>, { count
 interface QueryNodeLike {
   id?: string;
   props?: Record<string, unknown>;
+}
+
+function contentOidFromProps(props: unknown): string | null {
+  if (typeof props !== 'object' || props === null) return null;
+  const value = (props as Record<string, unknown>)['_content'];
+  return typeof value === 'string' ? value : null;
 }
 
 function extractNodes(result: QueryResult | AggregateResult): ObservationNodeRecord[] {
@@ -54,7 +60,9 @@ export class WarpObservationAdapter implements ObservationPort {
       getContent: async (id: string): Promise<string | undefined> => {
         if (!(await observedHandle.hasNode(id))) return undefined;
         try {
-          const content = await graph.getContent(id);
+          const oid = await observedHandle.getNodeProps(id).then(contentOidFromProps);
+          if (!oid) return undefined;
+          const content = await readObservedContentByOid(graph, oid);
           return content ? Buffer.from(content).toString('utf8') : undefined;
         } catch {
           return undefined;
@@ -63,7 +71,7 @@ export class WarpObservationAdapter implements ObservationPort {
       getContentOid: async (id: string): Promise<string | undefined> => {
         if (!(await observedHandle.hasNode(id))) return undefined;
         try {
-          return (await graph.getContentOid(id)) ?? undefined;
+          return (await observedHandle.getNodeProps(id).then(contentOidFromProps)) ?? undefined;
         } catch {
           return undefined;
         }
@@ -78,7 +86,7 @@ export class WarpObservationAdapter implements ObservationPort {
         await projectionGraph.neighbors(nodeId, direction, edgeLabel),
       hasNode: (id: string): Promise<boolean> => observedHandle.hasNode(id),
       getSubmissionLaneCone: (questId: string) =>
-        new WarpSubmissionReadAdapter(this.graphPort, { accessorId: 'observation', role: 'observer' }).getSubmissionLaneCone(questId),
+        new WarpSubmissionReadAdapter(this.graphPort, { accessorId: 'observation', role: 'agent' }).getSubmissionLaneCone(questId),
     };
   }
 }

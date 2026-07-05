@@ -45,6 +45,11 @@ import { WarpDashboardReadAdapter } from './src/infrastructure/adapters/WarpDash
 import { WarpGraphAdapter } from './src/infrastructure/adapters/WarpGraphAdapter.js';
 import { WarpIntakeAdapter } from './src/infrastructure/adapters/WarpIntakeAdapter.js';
 import { WarpSubmissionAdapter } from './src/infrastructure/adapters/WarpSubmissionAdapter.js';
+import { WarpDashboardRuntimeAdapter } from './src/infrastructure/adapters/WarpDashboardRuntimeAdapter.js';
+import { WarpRecordCommentIntentAdapter } from './src/infrastructure/warp/intents/WarpRecordCommentIntentAdapter.js';
+import { WarpXYPHWriterAdapter } from './src/infrastructure/warp/WarpXYPHWriterAdapter.js';
+import { TuiCommandIntentExecutorAdapter } from './src/infrastructure/warp/TuiCommandIntentExecutorAdapter.js';
+import { RecordService } from './src/domain/services/RecordService.js';
 import { createDashboardApp } from './src/tui/bijou/DashboardApp.js';
 import { createFileObserverWatermarkStore } from './src/tui/bijou/observer-watermarks.js';
 import { loadRandomLogo, selectLogoSize } from './src/tui/logo-loader.js';
@@ -86,9 +91,14 @@ const logger = new DiagnosticLogger(
   { component: 'xyph-dashboard' },
 );
 const graphPort = new WarpGraphAdapter(runtime.repoPath, runtime.graphName, agentId, logger);
-const readPort = new WarpDashboardReadAdapter(graphPort);
+const reader = new WarpDashboardReadAdapter(graphPort);
+const dashboardRuntime = new WarpDashboardRuntimeAdapter(graphPort);
 const intake = new WarpIntakeAdapter(graphPort, agentId);
 const submissionPort = new WarpSubmissionAdapter(graphPort, agentId);
+const recordCommentIntent = new WarpRecordCommentIntentAdapter(graphPort);
+const recordService = new RecordService(graphPort, undefined, undefined, recordCommentIntent);
+const writer = new WarpXYPHWriterAdapter(recordCommentIntent, recordService);
+const commandIntentExecutor = new TuiCommandIntentExecutorAdapter();
 const observerWatermarkStore = createFileObserverWatermarkStore();
 
 logger.info('dashboard session starting', {
@@ -100,10 +110,12 @@ logger.info('dashboard session starting', {
 });
 
 const app = createDashboardApp({
-  readPort,
+  reader,
   intake,
-  graphPort,
   submissionPort,
+  writer,
+  commandIntentExecutor,
+  runtime: dashboardRuntime,
   style,
   agentId,
   logoText: splash.text,

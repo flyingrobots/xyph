@@ -4,7 +4,19 @@ All notable changes to XYPH will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- **Self-review hardening for command and admission boundaries** — verifier reports now bind to descriptor `coreHash` and deterministic report digests before WARP admission can mutate state, empty mutation plans are rejected unless explicitly allowed, TUI `claimQuest` now executes through the generic command-intent `run` handler via `IntakePort.claim`, and causal mutation topology projection now uses git-warp's snapshot reader instead of a double-cast boundary bypass.
+- **Command-intent and Edict admission seams are now deterministic and boundary-owned** — TUI write commands now pass literal expected operations into the command-intent executor, case decisions preserve concern subjects through the shared bounded-neighbor helper, Edict lowering derives stable descriptor/report hashes from canonical IR instead of timestamps/placeholders, and the command execution outcome contract now lives on the port boundary.
+- **TUI fallback admission now rejects operation mismatches** — the local `OpticDomainActionService` fallback used by TUI write commands now returns a typed `IntentOperationMismatch` obstruction when a verified descriptor names a different operation than the requested write. This prevents success/no-op admissions from bypassing the handler.
+- **CLI composition keeps WARP admission mechanics behind an infrastructure adapter** — `createCliContext` now wires a named WARP optic-action admission adapter instead of embedding graph patching and patch-session mechanics in CLI bootstrap code. Boundary tests now guard that seam.
+- **Bedrock floor raised to `@git-stunts/git-warp@^18.2.1`** — XYPH now consumes the published patch release that fixes WARP-owned live materialization state-cache behavior. The local `patch-package` overlay has also been regenerated against `18.2.1`, and an obsolete `node-pre-gyp` patch was removed so normal `npm install` can complete.
+
+## [1.0.0-alpha.16] - 2026-06-28
+
 ### Added
+
+- **TUI write commands now emit CQRS intent routes through a transitional executor seam** — all 11 TUI write commands (`claimQuest`, `promoteQuest`, `rejectQuest`, `reopenQuest`, `commentOnEntity`, `reviewSubmission`, `queueAskAiJob`, `decideCase`, `adoptSuggestion`, `dismissSuggestion`, `supersedeSuggestion`) now construct `RuntimeCommandIntentRoute` descriptors with a view-scoped lifecycle owner. The execution path is still intentionally transitional: a command-intent executor owns operation admission while legacy intake/submission/writer handlers remain behind that seam until each write has a fully native intent implementation.
 
 - **Edict Wasm Target Lowering & Optic-Pure Intent Admission** — implemented `EdictWasmTargetLowererAdapter` and `OpticDomainActionService` to verify unmaterialized `IntentDescriptor` objects against active worldline optics before admission. Added strict domain guards for declared footprint (`EDICT-XYPH-001`) and execution budget (`EDICT-XYPH-002`).
 - **`QuestCompletionEvaluator` integration** — robust evaluation of quest completion across `UNTRACKED`, `SATISFIED`, and `FAILED` states, fully matching criteria, evidence, and policy thresholds.

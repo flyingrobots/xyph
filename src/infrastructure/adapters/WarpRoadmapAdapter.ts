@@ -12,7 +12,7 @@ import {
 } from '../../domain/entities/Quest.js';
 import { EdgeType } from '../../schema.js';
 import type { GraphPort } from '../../ports/GraphPort.js';
-import { toNeighborEntries } from '../helpers/isNeighborEntry.js';
+import { worldlineNeighbors } from '../helpers/isNeighborEntry.js';
 import { graphAdapterLogger, withLoggedAdapterOperation } from '../logging/AdapterLogging.js';
 
 const VALID_TYPES: ReadonlySet<string> = new Set(['task']);
@@ -37,9 +37,6 @@ export class WarpRoadmapAdapter implements RoadmapPort {
     const graph = await this.graphPort.getGraph();
     if (this.syncOnQuery && typeof graph.syncCoverage === 'function') {
       await graph.syncCoverage();
-      if (typeof graph.materialize === 'function') {
-        await graph.materialize();
-      }
     }
     return graph;
   }
@@ -97,7 +94,7 @@ export class WarpRoadmapAdapter implements RoadmapPort {
       },
       async () => {
         const graph = await this.getSyncedGraph();
-        const result = await graph.query().match('task:*').select(['id', 'props']).run();
+        const result = await graph.worldline().query().match('task:*').select(['id', 'props']).run();
         if (!('nodes' in result)) return [];
 
         const quests: Quest[] = [];
@@ -122,9 +119,9 @@ export class WarpRoadmapAdapter implements RoadmapPort {
       },
       async () => {
         const graph = await this.getSyncedGraph();
-        if (!await graph.hasNode(id)) return null;
+        if (!await graph.worldline().hasNode(id)) return null;
 
-        const props = await graph.getNodeProps(id);
+        const props = await graph.worldline().getNodeProps(id);
         if (!props) return null;
 
         return this.buildQuestFromProps(id, props);
@@ -144,7 +141,7 @@ export class WarpRoadmapAdapter implements RoadmapPort {
       },
       async () => {
         const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
-        const needsAdd = !await graph.hasNode(quest.id);
+        const needsAdd = !await graph.worldline().hasNode(quest.id);
 
         return graph.patch((p) => {
           if (needsAdd) {
@@ -203,7 +200,7 @@ export class WarpRoadmapAdapter implements RoadmapPort {
       },
       async () => {
         const graph = await this.getSyncedGraph();
-        const neighbors = toNeighborEntries(await graph.neighbors(nodeId, 'outgoing'));
+        const neighbors = await worldlineNeighbors(graph.worldline(), nodeId, 'outgoing');
         return neighbors.map(n => ({ to: n.nodeId, type: n.label }));
       },
     );
@@ -220,7 +217,7 @@ export class WarpRoadmapAdapter implements RoadmapPort {
       },
       async () => {
         const graph = await this.getSyncedGraph();
-        const neighbors = toNeighborEntries(await graph.neighbors(nodeId, 'incoming'));
+        const neighbors = await worldlineNeighbors(graph.worldline(), nodeId, 'incoming');
         return neighbors.map(n => ({ from: n.nodeId, type: n.label }));
       },
     );

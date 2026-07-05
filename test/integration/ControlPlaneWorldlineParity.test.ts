@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { CONTROL_PLANE_VERSION } from '../../src/domain/models/controlPlane.js';
 import { ControlPlaneService } from '../../src/domain/services/ControlPlaneService.js';
+import { createObservedGraphProjection } from '../../src/infrastructure/ObservedGraphProjection.js';
 import { WarpGraphAdapter } from '../../src/infrastructure/adapters/WarpGraphAdapter.js';
 
 describe('ControlPlaneService worldline parity', () => {
@@ -939,9 +940,9 @@ describe('ControlPlaneService worldline parity', () => {
         }),
       }),
     }));
-    const graph = await graphPort.getGraph();
-    const rawCollapseContent = await graph.getContent(collapseData['artifactId'] as string);
-    const collapseContent = rawCollapseContent ? Buffer.from(rawCollapseContent).toString('utf8') : '{}';
+    const persistedCollapseDetail = await createObservedGraphProjection(graphPort)
+      .fetchEntityDetail(collapseData['artifactId'] as string);
+    const collapseContent = persistedCollapseDetail?.content ?? '{}';
     expect(JSON.parse(collapseContent)).toEqual(expect.objectContaining({
       kind: 'collapse-proposal',
       artifactId: collapseData['artifactId'],

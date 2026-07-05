@@ -12,25 +12,63 @@ import type {
   DashboardReviewLaneData,
   DashboardReviewPageData,
   DashboardSuggestionLaneData,
+  EntityDetail,
   GraphSnapshot,
 } from '../../src/domain/models/dashboard.js';
-import type { DashboardReadPort } from '../../src/ports/DashboardReadPort.js';
 import type { IntakePort } from '../../src/ports/IntakePort.js';
 import type { GraphPort } from '../../src/ports/GraphPort.js';
 import type { SubmissionPort } from '../../src/ports/SubmissionPort.js';
+import type { DashboardRuntimePort } from '../../src/ports/DashboardRuntimePort.js';
+import type {
+  ReadingFrame,
+  XYPHReader,
+  XYPHReading,
+  XYPHReadingValue,
+} from '../../src/ports/XYPHReader.js';
+import {
+  isDashboardReading,
+  READ_DASHBOARD_ENTITY_DETAIL,
+  READ_DASHBOARD_NOW_LANE,
+  READ_DASHBOARD_OPERATIONAL_SNAPSHOT,
+  READ_DASHBOARD_REVIEW_LANE,
+  READ_DASHBOARD_REVIEW_PAGE,
+  READ_DASHBOARD_SUGGESTION_LANE,
+  type DashboardObservationView,
+  type DashboardReading,
+} from '../../src/readings/DashboardReadings.js';
 import { makeSnapshot } from './snapshot.js';
 
-type MockReadProjection = DashboardReadPort & {
+type MockReadProjection = XYPHReader & {
   readonly graph: never;
   fetchSnapshot: (profile?: string) => Promise<GraphSnapshot>;
+  fetchOperationalSnapshot: (view?: DashboardObservationView) => Promise<GraphSnapshot>;
+  fetchEntityDetail: (view: DashboardObservationView, id: string) => Promise<EntityDetail | null>;
+  fetchLandingNowLaneData: () => Promise<DashboardNowLaneData>;
+  fetchLandingReviewLaneData: () => Promise<DashboardReviewLaneData>;
+  fetchLandingSuggestionLaneData: () => Promise<DashboardSuggestionLaneData>;
+  fetchReviewPageData: (submissionId: string, questId: string) => Promise<DashboardReviewPageData | null>;
   filterSnapshot: (snapshot: GraphSnapshot) => GraphSnapshot;
-  invalidateCache: () => void;
 };
+
+function readingFrame<R extends DashboardReading>(
+  reading: R,
+  value: XYPHReadingValue<R>,
+): ReadingFrame<XYPHReadingValue<R>> {
+  return {
+    value,
+    reading: reading.kind,
+    readAt: Date.now(),
+    coordinate: {
+      basis: 'current',
+    },
+  };
+}
 
 export function mockReadProjection(snapshotOverrides?: Partial<GraphSnapshot>): MockReadProjection {
   const snap = makeSnapshot(snapshotOverrides);
   const fetchSnapshot = vi.fn().mockResolvedValue(snap);
-  const invalidateCache = vi.fn();
+  const fetchOperationalSnapshot = vi.fn().mockResolvedValue(snap);
+  const fetchEntityDetail = vi.fn().mockResolvedValue(null);
   const fetchLandingNowLaneData = vi.fn().mockResolvedValue({
     quests: [],
     submissions: [],
@@ -44,21 +82,52 @@ export function mockReadProjection(snapshotOverrides?: Partial<GraphSnapshot>): 
   const fetchReviewPageData = vi.fn().mockResolvedValue(null as DashboardReviewPageData | null);
   return {
     get graph(): never { throw new Error('not initialized'); },
+    read: vi.fn(async <R extends XYPHReading<string, unknown, unknown>>(
+      reading: R,
+    ): Promise<ReadingFrame<XYPHReadingValue<R>>> => {
+      if (!isDashboardReading(reading)) {
+        throw new Error(`[UNSUPPORTED_READING] ${reading.kind}`);
+      }
+      if (reading.kind === READ_DASHBOARD_OPERATIONAL_SNAPSHOT) {
+        const value = await fetchOperationalSnapshot(reading.input.view);
+        return readingFrame(reading, value) as ReadingFrame<XYPHReadingValue<R>>;
+      }
+      if (reading.kind === READ_DASHBOARD_ENTITY_DETAIL) {
+        const value = await fetchEntityDetail(reading.input.view, reading.input.id);
+        return readingFrame(reading, value) as ReadingFrame<XYPHReadingValue<R>>;
+      }
+      if (reading.kind === READ_DASHBOARD_NOW_LANE) {
+        const value = await fetchLandingNowLaneData();
+        return readingFrame(reading, value) as ReadingFrame<XYPHReadingValue<R>>;
+      }
+      if (reading.kind === READ_DASHBOARD_REVIEW_LANE) {
+        const value = await fetchLandingReviewLaneData();
+        return readingFrame(reading, value) as ReadingFrame<XYPHReadingValue<R>>;
+      }
+      if (reading.kind === READ_DASHBOARD_SUGGESTION_LANE) {
+        const value = await fetchLandingSuggestionLaneData();
+        return readingFrame(reading, value) as ReadingFrame<XYPHReadingValue<R>>;
+      }
+      if (reading.kind === READ_DASHBOARD_REVIEW_PAGE) {
+        const value = await fetchReviewPageData(reading.input.submissionId, reading.input.questId);
+        return readingFrame(reading, value) as ReadingFrame<XYPHReadingValue<R>>;
+      }
+      throw new Error(`[UNSUPPORTED_READING] ${reading.kind}`);
+    }) as XYPHReader['read'],
     fetchSnapshot,
-    fetchOperationalSnapshot: vi.fn().mockResolvedValue(snap) as DashboardReadPort['fetchOperationalSnapshot'],
-    fetchEntityDetail: vi.fn().mockResolvedValue(null) as DashboardReadPort['fetchEntityDetail'],
-    fetchLandingNowLaneData: fetchLandingNowLaneData as DashboardReadPort['fetchLandingNowLaneData'],
-    fetchLandingReviewLaneData: fetchLandingReviewLaneData as DashboardReadPort['fetchLandingReviewLaneData'],
-    fetchLandingSuggestionLaneData: fetchLandingSuggestionLaneData as DashboardReadPort['fetchLandingSuggestionLaneData'],
-    fetchReviewPageData: fetchReviewPageData as DashboardReadPort['fetchReviewPageData'],
+    fetchOperationalSnapshot,
+    fetchEntityDetail,
+    fetchLandingNowLaneData,
+    fetchLandingReviewLaneData,
+    fetchLandingSuggestionLaneData,
+    fetchReviewPageData,
     filterSnapshot: vi.fn((s: GraphSnapshot) => s),
-    invalidateCache,
-    invalidate: invalidateCache,
   };
 }
 
 export function mockIntakePort(): IntakePort {
   return {
+    claim: vi.fn().mockResolvedValue('sha-claim') as IntakePort['claim'],
     promote: vi.fn().mockResolvedValue('sha-1') as IntakePort['promote'],
     shape: vi.fn().mockResolvedValue('sha-shape') as IntakePort['shape'],
     ready: vi.fn().mockResolvedValue('sha-ready') as IntakePort['ready'],
@@ -88,6 +157,7 @@ export function mockGraphPort(): GraphPort {
       getNodes: vi.fn().mockResolvedValue([]),
       getEdges: vi.fn().mockResolvedValue([]),
       hasNode: vi.fn().mockResolvedValue(true),
+      worldline: vi.fn(function (this: unknown): unknown { return this; }),
       getNodeProps: vi.fn().mockResolvedValue({ assigned_to: 'agent.test', status: 'READY' }),
       getContentOid: vi.fn().mockResolvedValue('oid-content'),
     }),
@@ -101,5 +171,14 @@ export function mockSubmissionPort(): SubmissionPort {
     revise: vi.fn().mockResolvedValue({ patchSha: 'sha-r' }) as SubmissionPort['revise'],
     review: vi.fn().mockResolvedValue({ patchSha: 'sha-v' }) as SubmissionPort['review'],
     decide: vi.fn().mockResolvedValue({ patchSha: 'sha-d' }) as SubmissionPort['decide'],
+  };
+}
+
+export function mockDashboardRuntime(): DashboardRuntimePort {
+  return {
+    loadHealth: vi.fn().mockResolvedValue(null) as DashboardRuntimePort['loadHealth'],
+    sync: vi.fn().mockResolvedValue(undefined) as DashboardRuntimePort['sync'],
+    watch: vi.fn().mockResolvedValue(null) as DashboardRuntimePort['watch'],
+    invalidate: vi.fn(),
   };
 }

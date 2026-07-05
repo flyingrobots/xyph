@@ -885,6 +885,13 @@ export function registerAgentCommands(program: Command, ctx: CliContext): void {
         ctx.agentId,
         ctx.observation,
         doctor,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        ctx.writer,
       );
 
       const outcome = await service.execute({

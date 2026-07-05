@@ -11,7 +11,7 @@ interface ActivityEvent {
 }
 
 /**
- * Render the operations drawer content — graph health, scoped work, and recent activity.
+ * Render the operations drawer content: doctor findings, scoped work, and recent activity.
  *
  * This is a global drawer available from any screen via the 'm' keybinding.
  * Content is agent-scoped when agentId is set, project-wide otherwise.
@@ -240,13 +240,13 @@ function pushGraphHealthSection(
   const blockingCount = health.summary.blockingIssueCount;
   const warningCount = Math.max(0, issueCount - blockingCount);
   lines.push(separator({
-    label: issueCount > 0 ? `Graph Health (${issueCount})` : 'Graph Health',
+    label: issueCount > 0 ? `Doctor (${issueCount})` : 'Doctor',
     borderToken: style.theme.border.secondary,
     width,
   }));
 
   if (issueCount === 0) {
-    lines.push(style.styled(style.theme.semantic.success, '  graph healthy'));
+    lines.push(style.styled(style.theme.semantic.success, '  doctor clean'));
     return;
   }
 

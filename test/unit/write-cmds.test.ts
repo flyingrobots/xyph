@@ -1,13 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { adoptSuggestion, supersedeSuggestion } from '../../src/tui/bijou/write-cmds.js';
-import type { GraphPort } from '../../src/ports/GraphPort.js';
 
 describe('write-cmds suggestion resolutions', () => {
   it('requires a rationale before adopting a suggestion', async () => {
     const emitted: unknown[] = [];
 
     await adoptSuggestion(
-      { graphPort: {} as GraphPort, agentId: 'agent.test' },
+      { agentId: 'agent.test' },
       'suggestion:S1',
       'proposal',
       '   ',
@@ -24,7 +23,7 @@ describe('write-cmds suggestion resolutions', () => {
     const emitted: unknown[] = [];
 
     await supersedeSuggestion(
-      { graphPort: {} as GraphPort, agentId: 'agent.test' },
+      { agentId: 'agent.test' },
       {
         suggestionId: 'suggestion:S1',
         supersededById: 'task:Q2',

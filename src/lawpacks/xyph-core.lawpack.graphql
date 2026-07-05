@@ -1,0 +1,25 @@
+directive @intent(
+  kind: String!
+  authority: Authority!
+  idempotentBy: [String!]!
+) on FIELD_DEFINITION
+
+directive @requiresVisibleTarget(path: String!) on FIELD_DEFINITION
+directive @reads(types: [String!]!) on FIELD_DEFINITION
+directive @writes(types: [String!]!) on FIELD_DEFINITION
+directive @emitsWitness(kind: String!) on FIELD_DEFINITION
+
+enum Authority {
+  HUMAN
+  AGENT
+  SYSTEM
+}
+
+type Mutation {
+  recordComment(input: RecordCommentInput!): RecordCommentPayload!
+    @intent(kind: "xyph.comment.record", authority: AGENT, idempotentBy: ["input.id", "input.idempotencyKey"])
+    @requiresVisibleTarget(path: "input.targetId")
+    @reads(types: ["Entity", "Comment"])
+    @writes(types: ["Comment"])
+    @emitsWitness(kind: "CommentRecorded")
+}

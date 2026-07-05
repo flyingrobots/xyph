@@ -12,7 +12,7 @@ import {
   normalizeQuestKind,
   normalizeQuestStatus,
 } from '../../../domain/entities/Quest.js';
-import { toNeighborEntries } from '../../helpers/isNeighborEntry.js';
+import { worldlineNeighbors } from '../../helpers/isNeighborEntry.js';
 
 const VALID_QUEST_TYPES: ReadonlySet<string> = new Set(['task']);
 
@@ -24,7 +24,10 @@ export class WarpQuestReadAdapter implements QuestReadPort {
 
   public async getQuestCone(questId: string): Promise<BoundedRead<QuestCone> | null> {
     const graph = await this.graphPort.getGraph();
-    const questProps = await graph.getNodeProps(questId);
+    const reader = typeof (graph as { worldline?: unknown }).worldline === 'function'
+      ? graph.worldline()
+      : graph;
+    const questProps = await reader.getNodeProps(questId);
     if (!questProps) {
       return null;
     }
@@ -72,9 +75,7 @@ export class WarpQuestReadAdapter implements QuestReadPort {
     let completeness: 'complete' | 'truncated' = 'complete';
 
     // 1. Walk implemented requirements
-    const requirementNeighbors = toNeighborEntries(
-      await graph.neighbors(questId, 'outgoing', 'implements')
-    );
+    const requirementNeighbors = await worldlineNeighbors(reader, questId, 'outgoing', 'implements');
 
     const requirements: QuestCone['requirements'] = [];
     for (const reqNeighbor of requirementNeighbors) {
@@ -86,7 +87,7 @@ export class WarpQuestReadAdapter implements QuestReadPort {
       const reqId = reqNeighbor.nodeId;
       if (!reqId.startsWith('req:')) continue;
 
-      const reqProps = await graph.getNodeProps(reqId);
+      const reqProps = await reader.getNodeProps(reqId);
       if (!reqProps) continue;
       nodeCount++;
 
@@ -98,9 +99,7 @@ export class WarpQuestReadAdapter implements QuestReadPort {
       });
 
       // Walk criteria for requirement
-      const criteriaNeighbors = toNeighborEntries(
-        await graph.neighbors(reqId, 'outgoing', 'has-criterion')
-      );
+      const criteriaNeighbors = await worldlineNeighbors(reader, reqId, 'outgoing', 'has-criterion');
 
       const criteria: QuestCone['requirements'][0]['criteria'] = [];
       for (const critNeighbor of criteriaNeighbors) {
@@ -112,7 +111,7 @@ export class WarpQuestReadAdapter implements QuestReadPort {
         const critId = critNeighbor.nodeId;
         if (!critId.startsWith('criterion:')) continue;
 
-        const critProps = await graph.getNodeProps(critId);
+        const critProps = await reader.getNodeProps(critId);
         if (!critProps) continue;
         nodeCount++;
 
@@ -123,9 +122,7 @@ export class WarpQuestReadAdapter implements QuestReadPort {
         });
 
         // Walk evidence verifying this criterion
-        const evidenceNeighbors = toNeighborEntries(
-          await graph.neighbors(critId, 'incoming', 'verifies')
-        );
+        const evidenceNeighbors = await worldlineNeighbors(reader, critId, 'incoming', 'verifies');
 
         const evidence: Evidence[] = [];
         for (const evNeighbor of evidenceNeighbors) {
@@ -137,7 +134,7 @@ export class WarpQuestReadAdapter implements QuestReadPort {
           const evId = evNeighbor.nodeId;
           if (!evId.startsWith('evidence:')) continue;
 
-          const evProps = await graph.getNodeProps(evId);
+          const evProps = await reader.getNodeProps(evId);
           if (!evProps) continue;
           nodeCount++;
 
@@ -161,17 +158,13 @@ export class WarpQuestReadAdapter implements QuestReadPort {
 
     // 2. Load governing policies
     const policies: Policy[] = [];
-    const belongsToNeighbors = toNeighborEntries(
-      await graph.neighbors(questId, 'outgoing', 'belongs-to')
-    );
+    const belongsToNeighbors = await worldlineNeighbors(reader, questId, 'outgoing', 'belongs-to');
 
     for (const bNeighbor of belongsToNeighbors) {
       const campaignId = bNeighbor.nodeId;
       if (!campaignId.startsWith('campaign:') && !campaignId.startsWith('milestone:')) continue;
 
-      const governsNeighbors = toNeighborEntries(
-        await graph.neighbors(campaignId, 'incoming', 'governs')
-      );
+      const governsNeighbors = await worldlineNeighbors(reader, campaignId, 'incoming', 'governs');
 
       for (const govNeighbor of governsNeighbors) {
         if (nodeCount >= maxNodes) {
@@ -182,7 +175,7 @@ export class WarpQuestReadAdapter implements QuestReadPort {
         const policyId = govNeighbor.nodeId;
         if (!policyId.startsWith('policy:')) continue;
 
-        const polProps = await graph.getNodeProps(policyId);
+        const polProps = await reader.getNodeProps(policyId);
         if (!polProps || polProps['type'] !== 'policy') continue;
         nodeCount++;
 

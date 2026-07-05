@@ -11,7 +11,7 @@ export function registerCoordinationCommands(program: Command, ctx: CliContext):
     .action(withErrorHandler(async (id: string) => {
       assertPrefix(id, 'task:', 'Quest ID');
       const graph = await ctx.graphPort.getGraph();
-      const before = await graph.getNodeProps(id);
+      const before = await graph.worldline().getNodeProps(id);
       if (before === null) {
         throw new Error(`[NOT_FOUND] Quest ${id} not found in the graph`);
       }
@@ -35,7 +35,7 @@ export function registerCoordinationCommands(program: Command, ctx: CliContext):
       });
 
       // Verify claim post-materialization (The OCP Verification Step)
-      const props = await graph.getNodeProps(id);
+      const props = await graph.worldline().getNodeProps(id);
 
       const confirmed = !!(props && props['assigned_to'] === ctx.agentId);
 
@@ -67,7 +67,6 @@ export function registerCoordinationCommands(program: Command, ctx: CliContext):
 
       await assertNodeExists(graph, id, 'Node');
 
-      await graph.materialize();
       const patches = await graph.patchesFor(id);
 
       if (ctx.json) {

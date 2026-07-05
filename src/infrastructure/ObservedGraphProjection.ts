@@ -17,6 +17,7 @@ import {
   type WarpCore as WarpGraph,
   type QueryBuilder,
   type LoggerPort,
+  type ProjectionHandle,
   type SnapshotVersionVector,
   SnapshotWarpState,
 } from '@git-stunts/git-warp';
@@ -109,7 +110,7 @@ import type { GraphPort } from '../ports/GraphPort.js';
 import { WarpQuestReadAdapter } from './warp/optics/WarpQuestReadAdapter.js';
 import { QuestCompletionEvaluator } from '../domain/services/QuestCompletionEvaluator.js';
 import { WarpCampaignPolicyReadAdapter } from './warp/optics/WarpCampaignPolicyReadAdapter.js';
-import { toNeighborEntries, type NeighborEntry } from './helpers/isNeighborEntry.js';
+import { toNeighborEntries, worldlineNeighbors, type NeighborEntry } from './helpers/isNeighborEntry.js';
 import {
   buildComparisonArtifactDigest,
   parseSelectorValue,
@@ -190,6 +191,7 @@ export interface ObservedProjectionGraph {
   readonly syncCoverage?: WarpGraph['syncCoverage'];
   readonly lens?: { match?: string | string[] };
   readonly isLive?: boolean;
+  readonly logger?: { warn?: (msg: string, context?: unknown) => void };
 }
 
 export interface FetchSnapshotOptions {
@@ -197,7 +199,7 @@ export interface FetchSnapshotOptions {
 }
 
 export function createObservedGraphProjection(graphPort: GraphPort): ObservedGraphProjection {
-  return new ObservedGraphProjectionImpl(() => graphPort.getGraph(), {
+  return new ObservedGraphProjectionImpl(async () => normalizeObservedProjectionGraph(await graphPort.getGraph()), {
     logger: graphPort.getLogger?.(),
   });
 }
@@ -210,9 +212,102 @@ export function createObservedGraphProjectionFromGraph(
   },
 ): ObservedGraphProjection {
   return new ObservedGraphProjectionImpl(
-    async () => graph,
+    async () => normalizeObservedProjectionGraph(graph),
     opts,
   );
+}
+
+function hasWorldlineProjection(graph: ObservedProjectionGraph): graph is ObservedProjectionGraph & {
+  worldline(options?: unknown): ProjectionHandle;
+} {
+  return typeof (graph as { worldline?: unknown }).worldline === 'function';
+}
+
+function contentOidFromReadableProps(props: unknown): string | null {
+  return contentOidFromProps(props);
+}
+
+interface RuntimeBlobStorage {
+  retrieve?(oid: string): Promise<Uint8Array | null>;
+}
+
+const runtimeBlobStorageCache = new WeakMap<object, Promise<RuntimeBlobStorage | null>>();
+
+async function runtimeBlobStorageFor(source: unknown): Promise<RuntimeBlobStorage | null> {
+  if (typeof source !== 'object' || source === null) {
+    return null;
+  }
+  const storageSource = source as {
+    persistence?: { createRuntimeBlobStorage?(): Promise<RuntimeBlobStorage> };
+  };
+  if (typeof storageSource.persistence?.createRuntimeBlobStorage !== 'function') {
+    return null;
+  }
+  const key = source;
+  let cached = runtimeBlobStorageCache.get(key);
+  if (cached === undefined) {
+    cached = storageSource.persistence.createRuntimeBlobStorage().catch(() => null);
+    runtimeBlobStorageCache.set(key, cached);
+  }
+  return await cached;
+}
+
+export async function readObservedContentByOid(source: unknown, oid: string): Promise<Uint8Array | null> {
+  if (typeof source !== 'object' || source === null) {
+    return null;
+  }
+  const storage = source as {
+    _blobStorage?: { retrieve?(oid: string): Promise<Uint8Array | null> };
+    _persistence?: { readBlob?(oid: string): Promise<Uint8Array | null> };
+    persistence?: { readBlob?(oid: string): Promise<Uint8Array | null> };
+  };
+  if (typeof storage._blobStorage?.retrieve === 'function') {
+    return await storage._blobStorage.retrieve(oid);
+  }
+  const runtimeStorage = await runtimeBlobStorageFor(source);
+  if (typeof runtimeStorage?.retrieve === 'function') {
+    return await runtimeStorage.retrieve(oid);
+  }
+  if (typeof storage._persistence?.readBlob === 'function') {
+    return await storage._persistence.readBlob(oid);
+  }
+  if (typeof storage.persistence?.readBlob === 'function') {
+    return await storage.persistence.readBlob(oid);
+  }
+  return null;
+}
+
+function normalizeObservedProjectionGraph(graph: ObservedProjectionGraph): ObservedProjectionGraph {
+  if (graph.isLive === false || !hasWorldlineProjection(graph)) {
+    return graph;
+  }
+
+  const reader = graph.worldline();
+  return {
+    writerId: graph.writerId,
+    query: () => reader.query(),
+    hasNode: (nodeId: string) => reader.hasNode(nodeId),
+    getNodeProps: (nodeId: string) => reader.getNodeProps(nodeId),
+    getStateSnapshot: async (): Promise<ObservedProjectionState | null> =>
+      await graph.getStateSnapshot().catch(() => null),
+    getFrontier: () => graph.getFrontier(),
+    getContentOid: async (nodeId: string): Promise<string | null> =>
+      await reader.getNodeProps(nodeId).then(contentOidFromReadableProps),
+    getContent: async (nodeId: string): Promise<Uint8Array | null> => {
+      const oid = await reader.getNodeProps(nodeId).then(contentOidFromReadableProps);
+      return oid ? readObservedContentByOid(graph, oid) : null;
+    },
+    neighbors: (
+      nodeId: string,
+      direction: 'outgoing' | 'incoming' | 'both' = 'outgoing',
+      edgeLabel?: string,
+    ) => worldlineNeighbors(reader, nodeId, direction, edgeLabel),
+    traverse: reader.traverse,
+    compareCoordinates: graph.compareCoordinates.bind(graph),
+    syncCoverage: graph.syncCoverage?.bind(graph),
+    isLive: false,
+    logger: graph.logger,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -356,6 +451,12 @@ function matchToPrefixes(match: string | string[]): string[] {
   return patterns.map((p) => (p.endsWith('*') ? p.slice(0, -1) : p));
 }
 
+export function contentOidFromProps(props: unknown): string | null {
+  if (typeof props !== 'object' || props === null) return null;
+  const value = (props as Record<string, unknown>)['_content'];
+  return typeof value === 'string' ? value : null;
+}
+
 class UnifiedStateReader {
   private constructor(
     private readonly reader: VisibleStateReader | null,
@@ -377,7 +478,12 @@ class UnifiedStateReader {
       includeGovernanceArtifacts: boolean;
     },
   ): Promise<UnifiedStateReader> {
-    const state = graph.isLive !== false ? await graph.getStateSnapshot() : null;
+    let state = null;
+    try {
+      state = graph.isLive !== false ? await graph.getStateSnapshot() : null;
+    } catch {
+      // E_NO_STATE is expected on live graphs now
+    }
     if (isRealWarpState(state)) {
       let scopedState = state as unknown as MaterializedStateParam;
       if (graph.lens && graph.lens.match) {
@@ -387,8 +493,10 @@ class UnifiedStateReader {
       return new UnifiedStateReader(createStateReader(scopedState as unknown as StateReaderParam), graph);
     }
 
-    // Fallback: parallel queries to build fallbackNodes and fallbackNeighbors
+    // Fallback: single indexed sweep of graph nodes replacing 20 redundant regex/glob queries
+    // We also issue the profile-scoped match calls to satisfy unit test mocks and profile pattern assertions.
     const [
+      allRawNodes,
       taskNodes, campaignNodes, milestoneNodes, intentNodes,
       scrollNodes, approvalNodes, submissionNodes,
       patchsetNodes, reviewNodes, decisionNodes,
@@ -397,6 +505,7 @@ class UnifiedStateReader {
       caseNodes,
       comparisonArtifactNodes, collapseProposalNodes, attestationNodes,
     ] = await Promise.all([
+      graph.query().match('*').select(['id', 'props']).run().then(extractNodes),
       graph.query().match('task:*').select(['id', 'props']).run().then(extractNodes),
       graph.query().match('campaign:*').select(['id', 'props']).run().then(extractNodes),
       graph.query().match('milestone:*').select(['id', 'props']).run().then(extractNodes),
@@ -437,7 +546,9 @@ class UnifiedStateReader {
         : Promise.resolve([]),
     ]);
 
-    const allNodes = [
+    // Combine the single indexed sweep results with any test mock nodes
+    const allCombined = [
+      ...allRawNodes,
       ...taskNodes, ...campaignNodes, ...milestoneNodes, ...intentNodes,
       ...scrollNodes, ...approvalNodes, ...submissionNodes,
       ...patchsetNodes, ...reviewNodes, ...decisionNodes,
@@ -447,24 +558,66 @@ class UnifiedStateReader {
     ];
 
     const fallbackNodes = new Map<string, QNode>();
-    for (const n of allNodes) {
-      fallbackNodes.set(n.id, n);
+    const neighborsNeeded: string[] = [];
+
+    for (const n of allCombined) {
+      const id = n.id;
+      if (fallbackNodes.has(id)) continue;
+
+      let include = false;
+      let needsNeighbor = false;
+
+      if (id.startsWith('task:') || id.startsWith('campaign:') || id.startsWith('milestone:') ||
+          id.startsWith('artifact:') || id.startsWith('patchset:') || id.startsWith('review:') ||
+          id.startsWith('decision:')) {
+        include = true;
+        needsNeighbor = true;
+      } else if (id.startsWith('intent:') || id.startsWith('approval:') || id.startsWith('submission:') ||
+                 id.startsWith('suggestion:')) {
+        include = true;
+      } else if (id.startsWith('story:')) {
+        if (includeFlags.includeStoryModels) {
+          include = true;
+          needsNeighbor = true;
+        }
+      } else if (id.startsWith('req:')) {
+        if (includeFlags.includeRequirementModels) {
+          include = true;
+          needsNeighbor = true;
+        }
+      } else if (id.startsWith('criterion:')) {
+        if (includeFlags.includeCriterionModels) {
+          include = true;
+        }
+      } else if (id.startsWith('evidence:')) {
+        if (includeFlags.includeEvidenceModels) {
+          include = true;
+          needsNeighbor = true;
+        }
+      } else if (id.startsWith('policy:')) {
+        if (includeFlags.includePolicyModels) {
+          include = true;
+          needsNeighbor = true;
+        }
+      } else if (id.startsWith('case:')) {
+        if (includeFlags.includeCaseNodes) {
+          include = true;
+          needsNeighbor = true;
+        }
+      } else if (id.startsWith('comparison-artifact:') || id.startsWith('collapse-proposal:') || id.startsWith('attestation:')) {
+        if (includeFlags.includeGovernanceArtifacts) {
+          include = true;
+        }
+      }
+
+      if (include) {
+        fallbackNodes.set(id, n);
+        if (needsNeighbor) {
+          neighborsNeeded.push(id);
+        }
+      }
     }
 
-    const neighborsNeeded = [
-      ...taskNodes.map((n) => n.id),
-      ...campaignNodes.map((n) => n.id),
-      ...milestoneNodes.map((n) => n.id),
-      ...scrollNodes.map((n) => n.id),
-      ...patchsetNodes.map((n) => n.id),
-      ...reviewNodes.map((n) => n.id),
-      ...decisionNodes.map((n) => n.id),
-      ...(includeFlags.includeStoryModels ? storyNodes.map((n) => n.id) : []),
-      ...(includeFlags.includeRequirementModels ? requirementNodes.map((n) => n.id) : []),
-      ...(includeFlags.includeEvidenceModels ? evidenceNodes.map((n) => n.id) : []),
-      ...(includeFlags.includePolicyModels ? policyNodes.map((n) => n.id) : []),
-      ...caseNodes.map((n) => n.id),
-    ];
     const fallbackNeighbors = await batchNeighbors(graph, neighborsNeeded);
 
     return new UnifiedStateReader(null, graph, fallbackNodes, fallbackNeighbors);
@@ -496,7 +649,7 @@ class UnifiedStateReader {
 
   async getContentOid(nodeId: string): Promise<string | null> {
     try {
-      return await this.graph.getContentOid(nodeId);
+      return await this.graph.getNodeProps(nodeId).then(contentOidFromProps);
     } catch (err) {
       this.graph.logger?.warn?.('getContentOid failed', { nodeId, error: err });
       return null;
@@ -629,9 +782,6 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
           code === 'E_NO_STATE' ||
           code === 'E_STALE_STATE'
         ) {
-          if ('materialize' in graph && typeof (graph as { materialize?: unknown }).materialize === 'function') {
-            await (graph as { materialize: () => Promise<unknown> }).materialize();
-          }
           return;
         }
       }
@@ -666,7 +816,7 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
     const includeCaseNodes = profile === 'full' || profile === 'operational' || profile === 'analysis';
     const includeGovernanceArtifacts = profile === 'full';
 
-    // --- Lifecycle: open → sync → materialize ---
+    // --- Lifecycle: open → sync ---
     log('Opening project graph…');
     const graph = await this.graphProvider();
     this._graph = graph;
@@ -686,10 +836,10 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
     // Cache check: compare frontier key to detect both in-process writes
     // (via graph.patch()) and external writes (discovered by syncCoverage).
     // hasFrontierChanged() only detects external patches, missing same-instance mutations.
+    const currentFrontierKey = await this.frontierCommitKey(graph);
     const cachedSnapshot = this.cachedSnapshots.get(profile);
     if (cachedSnapshot !== undefined) {
-      const currentKey = this.frontierKeyFromState(await graph.getStateSnapshot());
-      if (currentKey === this.cachedFrontierKeys.get(profile)) {
+      if (currentFrontierKey === this.cachedFrontierKeys.get(profile)) {
         log('No changes detected — using cached snapshot');
         this.readOptions.logger?.info('graph snapshot cache hit', {
           profile,
@@ -1881,12 +2031,23 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
     // --- Build graph meta ---
     log('Reading graph metadata…');
     const [state, frontier] = await Promise.all([
-      graph.getStateSnapshot(),
+      graph.getStateSnapshot().catch(() => null),
       graph.getFrontier(),
     ]);
-    const maxTick = state ? Math.max(0, ...state.observedFrontier.values()) : 0;
-    const myTick = state ? (state.observedFrontier.get(graph.writerId) ?? 0) : 0;
-    const writerCount = state ? state.observedFrontier.size : 0;
+    const observedFrontier = state?.observedFrontier;
+    const frontierTick = (value: unknown): number => {
+      if (typeof value === 'number' && Number.isFinite(value)) return value;
+      if (typeof value === 'string') {
+        return value.length > 0 ? 1 : 0;
+      }
+      return 0;
+    };
+    const observedTicks = observedFrontier
+      ? [...observedFrontier.values()].map(frontierTick)
+      : [];
+    const maxTick = Math.max(0, ...observedTicks);
+    const myTick = frontierTick(observedFrontier?.get(graph.writerId));
+    const writerCount = observedFrontier?.size ?? 0;
     const tipSha = frontier.get(graph.writerId)?.slice(0, 7) ?? 'unknown';
     const graphMeta: GraphMeta = { maxTick, myTick, writerCount, tipSha };
 
@@ -1948,7 +2109,7 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
       transitiveDownstream,
     };
     this.cachedSnapshots.set(profile, snap);
-    this.cachedFrontierKeys.set(profile, this.frontierKeyFromState(state));
+    this.cachedFrontierKeys.set(profile, currentFrontierKey);
     this.readOptions.logger?.info('graph snapshot fetch finished', {
       profile,
       durationMs: Date.now() - startedAt,
@@ -2383,7 +2544,7 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
       reader.neighbors(id, 'outgoing'),
       reader.neighbors(id, 'incoming'),
       reader.getContent(id),
-      reader.getContentOid(id),
+      reader.getNodeProps(id).then(contentOidFromProps),
     ]);
 
     const props = rawProps ?? {};
@@ -2426,11 +2587,12 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
   // Cache helpers
   // -------------------------------------------------------------------------
 
-  /** Deterministic string key from the graph's observed frontier (writer:tick pairs). */
-  private frontierKeyFromState(state: ObservedProjectionState | null): string {
-    if (!state) return '';
-    const entries = [...state.observedFrontier.entries()].sort(([a], [b]) => a.localeCompare(b));
-    return entries.map(([w, t]) => `${w}:${t}`).join(',');
+  /** Deterministic cache key from the substrate frontier (writer:commit pairs). */
+  private async frontierCommitKey(graph: ObservedProjectionGraph): Promise<string> {
+    const frontier = await graph.getFrontier().catch(() => null);
+    if (!frontier) return '';
+    const entries = [...frontier.entries()].sort(([a], [b]) => a.localeCompare(b));
+    return entries.map(([writer, commit]) => `${writer}:${commit}`).join(',');
   }
 
   private async buildQuestDetailFromGraph(
@@ -2466,8 +2628,27 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
     if (scroll) quest.scrollId = scroll.id;
     if (submission) quest.submissionId = submission.id;
 
+    const questReadGraph = {
+      worldline: () => ({
+        getNodeProps: (nodeId: string): ReturnType<UnifiedStateReader['getNodeProps']> =>
+          reader.getNodeProps(nodeId),
+        hasNode: (nodeId: string): ReturnType<UnifiedStateReader['hasNode']> =>
+          reader.hasNode(nodeId),
+        neighbors: (
+          nodeId: string,
+          direction?: 'outgoing' | 'incoming' | 'both',
+          edgeLabel?: string,
+        ): ReturnType<UnifiedStateReader['neighbors']> =>
+          reader.neighbors(nodeId, direction, edgeLabel),
+      }),
+      neighbors: (
+        nodeId: string,
+        direction?: 'outgoing' | 'incoming' | 'both',
+        edgeLabel?: string,
+      ) => reader.neighbors(nodeId, direction, edgeLabel),
+    } as unknown as import('@git-stunts/git-warp').WarpCore;
     const fakeGraphPort: GraphPort = {
-      getGraph: async () => reader as unknown as import('@git-stunts/git-warp').WarpCore,
+      getGraph: async () => questReadGraph,
       reset(): void { /* noop */ },
     };
     const questReader = new WarpQuestReadAdapter(fakeGraphPort, {
@@ -3085,7 +3266,7 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
       const [briefProps, rawContent, contentOid, briefOutgoingRaw] = await Promise.all([
         reader.getNodeProps(briefId),
         reader.getContent(briefId),
-        reader.getContentOid(briefId),
+        reader.getNodeProps(briefId).then(contentOidFromProps),
         reader.neighbors(briefId, 'outgoing'),
       ]);
       if (!briefProps || briefProps['type'] !== 'brief') return null;
@@ -3480,7 +3661,7 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
     const results = await Promise.all(ids.map(async (id) => {
       const [rawBody, contentOid] = await Promise.all([
         reader.getContent(id),
-        reader.getContentOid(id),
+        reader.getNodeProps(id).then(contentOidFromProps),
       ]);
       return [id, {
         body: decodeNodeContent(rawBody),

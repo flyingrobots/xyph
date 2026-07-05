@@ -4,7 +4,7 @@ import type { GraphPort } from '../../../ports/GraphPort.js';
 import type { QuestStatus } from '../../../domain/entities/Quest.js';
 import type { PatchsetRef, ReviewRef, DecisionProps } from '../../../domain/entities/Submission.js';
 import { VALID_STATUSES as VALID_QUEST_STATUSES } from '../../../domain/entities/Quest.js';
-import { toNeighborEntries } from '../../helpers/isNeighborEntry.js';
+import { worldlineNeighbors } from '../../helpers/isNeighborEntry.js';
 
 export class WarpSubmissionReadAdapter implements SubmissionReadPort {
   constructor(
@@ -14,7 +14,10 @@ export class WarpSubmissionReadAdapter implements SubmissionReadPort {
 
   public async getSubmissionLaneCone(questId: string): Promise<BoundedRead<SubmissionLaneCone> | null> {
     const graph = await this.graphPort.getGraph();
-    const questProps = await graph.getNodeProps(questId);
+    const reader = typeof (graph as { worldline?: unknown }).worldline === 'function'
+      ? graph.worldline()
+      : graph;
+    const questProps = await reader.getNodeProps(questId);
     if (!questProps) {
       return null;
     }
@@ -30,9 +33,7 @@ export class WarpSubmissionReadAdapter implements SubmissionReadPort {
     let completeness: 'complete' | 'truncated' = 'complete';
 
     // Walk submission nodes (incoming 'submits' edges)
-    const submissionNeighbors = toNeighborEntries(
-      await graph.neighbors(questId, 'incoming', 'submits')
-    );
+    const submissionNeighbors = await worldlineNeighbors(reader, questId, 'incoming', 'submits');
 
     const submissions: SubmissionLaneCone['submissions'] = [];
     const openSubmissionIds: string[] = [];
@@ -49,7 +50,7 @@ export class WarpSubmissionReadAdapter implements SubmissionReadPort {
       }
 
       const subId = subNeighbor.nodeId;
-      const subProps = await graph.getNodeProps(subId);
+      const subProps = await reader.getNodeProps(subId);
       if (!subProps || subProps['type'] !== 'submission') {
         continue;
       }
@@ -59,9 +60,7 @@ export class WarpSubmissionReadAdapter implements SubmissionReadPort {
       const submittedAt = typeof subProps['submitted_at'] === 'number' ? subProps['submitted_at'] : 0;
 
       // Walk patchset nodes (incoming 'has-patchset' edges)
-      const patchsetNeighbors = toNeighborEntries(
-        await graph.neighbors(subId, 'incoming', 'has-patchset')
-      );
+      const patchsetNeighbors = await worldlineNeighbors(reader, subId, 'incoming', 'has-patchset');
 
       const patchsets: PatchsetRef[] = [];
       for (const patchNeighbor of patchsetNeighbors) {
@@ -71,7 +70,7 @@ export class WarpSubmissionReadAdapter implements SubmissionReadPort {
         }
 
         const patchId = patchNeighbor.nodeId;
-        const patchProps = await graph.getNodeProps(patchId);
+        const patchProps = await reader.getNodeProps(patchId);
         if (!patchProps || patchProps['type'] !== 'patchset') {
           continue;
         }
@@ -82,9 +81,7 @@ export class WarpSubmissionReadAdapter implements SubmissionReadPort {
           continue;
         }
 
-        const supersedesNeighbors = toNeighborEntries(
-          await graph.neighbors(patchId, 'outgoing', 'supersedes')
-        );
+        const supersedesNeighbors = await worldlineNeighbors(reader, patchId, 'outgoing', 'supersedes');
         const supersedesId = supersedesNeighbors[0]?.nodeId;
 
         patchsets.push({
@@ -115,9 +112,7 @@ export class WarpSubmissionReadAdapter implements SubmissionReadPort {
         }
 
         // Walk review nodes (incoming 'reviews' edges to this patchset)
-        const reviewNeighbors = toNeighborEntries(
-          await graph.neighbors(patchId, 'incoming', 'reviews')
-        );
+        const reviewNeighbors = await worldlineNeighbors(reader, patchId, 'incoming', 'reviews');
 
         const reviews: ReviewRef[] = [];
         for (const revNeighbor of reviewNeighbors) {
@@ -127,7 +122,7 @@ export class WarpSubmissionReadAdapter implements SubmissionReadPort {
           }
 
           const revId = revNeighbor.nodeId;
-          const revProps = await graph.getNodeProps(revId);
+          const revProps = await reader.getNodeProps(revId);
           if (!revProps || revProps['type'] !== 'review') {
             continue;
           }
@@ -162,9 +157,7 @@ export class WarpSubmissionReadAdapter implements SubmissionReadPort {
       }
 
       // Walk decision nodes (incoming 'decides' edges to this submission)
-      const decisionNeighbors = toNeighborEntries(
-        await graph.neighbors(subId, 'incoming', 'decides')
-      );
+      const decisionNeighbors = await worldlineNeighbors(reader, subId, 'incoming', 'decides');
 
       const decisions: DecisionProps[] = [];
       let isTerminal = false;
@@ -175,7 +168,7 @@ export class WarpSubmissionReadAdapter implements SubmissionReadPort {
         }
 
         const decId = decNeighbor.nodeId;
-        const decProps = await graph.getNodeProps(decId);
+        const decProps = await reader.getNodeProps(decId);
         if (!decProps || decProps['type'] !== 'decision') {
           continue;
         }

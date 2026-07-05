@@ -65,6 +65,7 @@ function makeGraphPort(graph: any): GraphPort {
     createPatch: vi.fn(async () => makePatchSession()),
     ...graph,
   };
+  mockGraph.worldline ??= vi.fn(() => mockGraph);
   return {
     getGraph: vi.fn(async () => mockGraph as any),
     getMutationGraph: vi.fn(async () => mockGraph as any),
@@ -240,6 +241,7 @@ function createTestService(opts?: {
   readPort?: any;
   doctor?: any;
   clock?: any;
+  writer?: any;
 }) {
   const agentId = opts?.agentId ?? 'agent.hal';
   const graphPort = opts?.graph ?? makeGraphPort({});
@@ -307,6 +309,7 @@ function createTestService(opts?: {
     submissionsMock,
     submissionAdapterMock,
     sealServiceMock,
+    opts?.writer,
   );
 }
 
@@ -506,15 +509,30 @@ describe('AgentActionService', () => {
     expect(graph.hasNode).toHaveBeenCalledWith('criterion:AGT-001');
   });
 
-  it('writes append-only graph-native comments on successful execution', async () => {
-    const patch = makePatchSession();
+  it('writes append-only comments through the XYPHWriter on successful execution', async () => {
+    const writer = {
+      write: vi.fn(async () => ({
+        value: {
+          id: 'comment:AGT-001-1',
+          targetId: 'task:AGT-001',
+          authoredAt: 123,
+          contentOid: 'oid:comment',
+        },
+        writing: 'xyph.write.recordComment',
+        recordedBy: 'agent.hal',
+        recordedAt: 123,
+        witness: {
+          id: 'comment:AGT-001-1',
+          patch: 'patch:comment',
+        },
+      })),
+    };
     const graph = {
       hasNode: vi.fn(async (id: string) => id === 'task:AGT-001'),
       getContentOid: vi.fn(async () => 'oid:comment'),
-      createPatch: vi.fn(async () => patch),
     };
 
-    const service = createTestService({ graph: makeGraphPort(graph) });
+    const service = createTestService({ graph: makeGraphPort(graph), writer });
 
     const outcome = await service.execute({
       kind: 'comment',
@@ -525,13 +543,16 @@ describe('AgentActionService', () => {
       },
     });
 
-    expect(patch.addNode).toHaveBeenCalledWith('comment:AGT-001-1');
-    expect(patch.setProperty).toHaveBeenCalledWith('comment:AGT-001-1', 'type', 'comment');
-    expect(patch.addEdge).toHaveBeenCalledWith('comment:AGT-001-1', 'task:AGT-001', 'comments-on');
-    expect(patch.attachContent).toHaveBeenCalledWith(
-      'comment:AGT-001-1',
-      'Leaving a durable note through the action kernel.',
-    );
+    expect(writer.write).toHaveBeenCalledWith({
+      kind: 'xyph.write.recordComment',
+      input: {
+        id: 'comment:AGT-001-1',
+        targetId: 'task:AGT-001',
+        message: 'Leaving a durable note through the action kernel.',
+        replyTo: undefined,
+        authoredBy: 'agent.hal',
+      },
+    });
     expect(outcome).toMatchObject({
       kind: 'comment',
       targetId: 'task:AGT-001',
@@ -545,6 +566,64 @@ describe('AgentActionService', () => {
         generatedId: false,
         authoredBy: 'agent.hal',
         contentOid: 'oid:comment',
+      },
+    });
+  });
+
+  it('rejects missing comment targets during dry-run validation', async () => {
+    const graph = {
+      hasNode: vi.fn(async () => false),
+    };
+    const service = createTestService({ graph: makeGraphPort(graph) });
+
+    const outcome = await service.execute({
+      kind: 'comment',
+      targetId: 'task:MISSING',
+      dryRun: true,
+      args: {
+        message: 'This should not validate against a missing node.',
+      },
+    });
+
+    expect(graph.hasNode).toHaveBeenCalledWith('task:MISSING');
+    expect(outcome).toMatchObject({
+      kind: 'comment',
+      targetId: 'task:MISSING',
+      allowed: false,
+      result: 'rejected',
+      validation: {
+        code: 'not-found',
+        reasons: ['Target task:MISSING not found in the graph'],
+      },
+    });
+  });
+
+  it('rejects missing comment reply targets during dry-run validation', async () => {
+    const graph = {
+      hasNode: vi.fn(async (id: string) => id === 'task:AGT-001'),
+    };
+    const service = createTestService({ graph: makeGraphPort(graph) });
+
+    const outcome = await service.execute({
+      kind: 'comment',
+      targetId: 'task:AGT-001',
+      dryRun: true,
+      args: {
+        message: 'This should not validate against a missing reply target.',
+        replyTo: 'comment:MISSING',
+      },
+    });
+
+    expect(graph.hasNode).toHaveBeenCalledWith('task:AGT-001');
+    expect(graph.hasNode).toHaveBeenCalledWith('comment:MISSING');
+    expect(outcome).toMatchObject({
+      kind: 'comment',
+      targetId: 'task:AGT-001',
+      allowed: false,
+      result: 'rejected',
+      validation: {
+        code: 'not-found',
+        reasons: ['Reply target comment:MISSING not found in the graph'],
       },
     });
   });

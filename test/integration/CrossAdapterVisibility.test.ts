@@ -108,8 +108,9 @@ describe('Cross-Adapter Visibility (ObservedGraphProjection sees Intake mutation
     const ctx = createObservedGraphProjection(graphPort);
     const before = await ctx.fetchSnapshot();
     expect(before.graphMeta).toBeDefined();
-    expect(before.graphMeta?.maxTick).toBeGreaterThan(0);
-    expect(before.graphMeta?.writerCount).toBeGreaterThan(0);
+    const beforeMeta = before.graphMeta;
+    expect(beforeMeta?.maxTick).toBe(0);
+    expect(beforeMeta?.writerCount).toBe(0);
     expect(before.graphMeta?.tipSha).toBeTruthy();
 
     const questBefore = before.quests.find((q) => q.id === 'task:XVIS-003');
@@ -120,7 +121,9 @@ describe('Cross-Adapter Visibility (ObservedGraphProjection sees Intake mutation
 
     const after = await ctx.fetchSnapshot();
     expect(after.graphMeta).toBeDefined();
-    expect(after.graphMeta?.maxTick).toBeGreaterThanOrEqual(before.graphMeta?.maxTick ?? 0);
+    expect(after.graphMeta?.maxTick).toBe(0);
+    expect(after.graphMeta?.writerCount).toBe(0);
+    expect(after.graphMeta?.tipSha).not.toBe(beforeMeta?.tipSha);
 
     const questAfter = after.quests.find((q) => q.id === 'task:XVIS-003');
     expect(questAfter?.status).toBe('GRAVEYARD');

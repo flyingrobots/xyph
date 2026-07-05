@@ -1,0 +1,51 @@
+mutation RecordComment($input: RecordCommentInput!) {
+  recordComment(input: $input) {
+    comment {
+      id
+      targetId
+      replyTo
+      authoredBy
+      authoredAt
+      contentOid
+    }
+    witness {
+      patch
+      admittedAt
+    }
+  }
+}
+
+input RecordCommentInput {
+  id: CommentId
+  targetId: EntityId!
+  message: String!
+  replyTo: CommentId
+  authoredBy: PrincipalId!
+  idempotencyKey: String
+}
+
+type RecordCommentPayload {
+  comment: RecordedComment!
+  witness: IntentWitness!
+}
+
+type RecordedComment {
+  id: CommentId!
+  targetId: EntityId!
+  replyTo: CommentId
+  authoredBy: PrincipalId!
+  authoredAt: Timestamp!
+  contentOid: ContentOid
+}
+
+type IntentWitness {
+  patch: PatchId!
+  admittedAt: Timestamp!
+}
+
+scalar CommentId
+scalar EntityId
+scalar PrincipalId
+scalar Timestamp
+scalar ContentOid
+scalar PatchId

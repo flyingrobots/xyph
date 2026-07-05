@@ -1,66 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { SnapshotWarpState } from '@git-stunts/git-warp';
 import { MutationKernelService } from '../../src/domain/services/MutationKernelService.js';
+import type { CausalMutationOp, VisibleCausalTopology } from '../../src/ports/CausalMutationPort.js';
 
-function makeOrSet(elements: string[]) {
+function defaultTopology(): VisibleCausalTopology {
   return {
-    elements: () => elements,
-    contains: (el: string) => elements.includes(el),
-    entries: () => elements.map((element, index) => ({
-      element,
-      dots: [`dot:${index}`],
-    })),
-    tombstones: () => [],
+    entities: ['task:ONE', 'task:TWO'],
+    relations: [{ from: 'task:ONE', to: 'task:TWO', label: 'depends-on' }],
   };
 }
 
-function makeWorkingSetState(
-  nodes: string[],
-  observedFrontier: [string, number][] = [['agent.prime', 12], ['wl_review-auth', 0]],
-) {
-  const state = Object.create(SnapshotWarpState.prototype);
-  Object.assign(state, {
-    nodeAlive: makeOrSet(nodes),
-    edgeAlive: makeOrSet([]),
-    prop: new Map(),
-    observedFrontier: new Map(observedFrontier),
-    edgeBirthEvent: new Map(),
-  });
-  return state;
-}
-
-const mocks = vi.hoisted(() => ({
-  createPatchSession: vi.fn(),
-}));
-
-vi.mock('../../src/infrastructure/helpers/createPatchSession.js', () => ({
-  createPatchSession: (graph: unknown) => mocks.createPatchSession(graph),
-}));
-
-function makePatchSession() {
+function makeCausalMutationPort(topology: VisibleCausalTopology = defaultTopology()) {
   return {
-    addNode: vi.fn().mockReturnThis(),
-    removeNode: vi.fn().mockReturnThis(),
-    setProperty: vi.fn().mockReturnThis(),
-    addEdge: vi.fn().mockReturnThis(),
-    removeEdge: vi.fn().mockReturnThis(),
-    setEdgeProperty: vi.fn().mockReturnThis(),
-    clearContent: vi.fn().mockReturnThis(),
-    clearEdgeContent: vi.fn().mockReturnThis(),
-    attachContent: vi.fn(async () => undefined),
-    attachEdgeContent: vi.fn(async () => undefined),
-    commit: vi.fn(async () => 'patch:apply'),
-  };
-}
-
-function makeGraph() {
-  return {
-    getNodes: vi.fn(async () => ['task:ONE', 'task:TWO']),
-    getEdges: vi.fn(async () => [{ from: 'task:ONE', to: 'task:TWO', label: 'depends-on', props: {} }]),
-    materializeWorkingSet: vi.fn(async () => makeWorkingSetState(['task:ONE', 'task:TWO'])),
-    materializeStrand: vi.fn(async () => makeWorkingSetState(['task:ONE', 'task:TWO'])),
-    patchWorkingSet: vi.fn(async () => 'patch:working-set'),
-    patchStrand: vi.fn(async () => 'patch:working-set'),
+    loadVisibleTopology: vi.fn(async () => topology),
+    commit: vi.fn(async (_ops: readonly CausalMutationOp[], options?: { workingSetId?: string }) =>
+      options?.workingSetId ? 'patch:working-set' : 'patch:apply'
+    ),
   };
 }
 
@@ -69,15 +23,45 @@ describe('MutationKernelService', () => {
     vi.clearAllMocks();
   });
 
-  it('dry-runs a valid primitive op batch without committing', async () => {
-    const graph = makeGraph();
-    const service = new MutationKernelService({
-      getGraph: async () => graph,
-      reset: vi.fn(),
-    });
+  it('rejects empty mutation plans unless empty plans are explicitly allowed', async () => {
+    const mutations = makeCausalMutationPort();
+    const service = new MutationKernelService(mutations);
 
     const result = await service.execute({
-      rationale: 'Backfill a property and preserve graph legality.',
+      rationale: 'Reject empty plans before creating no-op history.',
+      ops: [],
+    });
+
+    expect(result.valid).toBe(false);
+    expect(result.code).toBe('invalid_args');
+    expect(result.reasons).toEqual(['apply requires at least one operation']);
+    expect(result.executed).toBe(false);
+    expect(result.patch).toBeNull();
+    expect(mutations.loadVisibleTopology).not.toHaveBeenCalled();
+    expect(mutations.commit).not.toHaveBeenCalled();
+
+    const allowed = await service.execute({
+      rationale: 'Allow an explicitly empty preview or collapse plan.',
+      ops: [],
+    }, { allowEmptyPlan: true });
+
+    expect(allowed).toEqual({
+      valid: true,
+      code: null,
+      reasons: [],
+      sideEffects: [],
+      patch: null,
+      executed: false,
+    });
+    expect(mutations.commit).not.toHaveBeenCalled();
+  });
+
+  it('dry-runs a valid primitive op batch without committing', async () => {
+    const mutations = makeCausalMutationPort();
+    const service = new MutationKernelService(mutations);
+
+    const result = await service.execute({
+      rationale: 'Backfill a property and preserve causal legality.',
       ops: [
         { op: 'set_node_property', nodeId: 'task:ONE', key: 'description', value: 'hello' },
         { op: 'attach_edge_content', from: 'task:ONE', to: 'task:TWO', label: 'depends-on', content: 'reason' },
@@ -91,15 +75,13 @@ describe('MutationKernelService', () => {
       'set task:ONE.description',
       'attach content to edge task:ONE -[depends-on]-> task:TWO',
     ]);
-    expect(mocks.createPatchSession).not.toHaveBeenCalled();
+    expect(mutations.loadVisibleTopology).toHaveBeenCalledWith(undefined);
+    expect(mutations.commit).not.toHaveBeenCalled();
   });
 
   it('dry-runs collapse ops including binary attachments and content clears', async () => {
-    const graph = makeGraph();
-    const service = new MutationKernelService({
-      getGraph: async () => graph,
-      reset: vi.fn(),
-    });
+    const mutations = makeCausalMutationPort();
+    const service = new MutationKernelService(mutations);
 
     const result = await service.execute({
       rationale: 'Preview a collapse transfer plan without mutating live truth.',
@@ -122,15 +104,12 @@ describe('MutationKernelService', () => {
       'attach content to task:ONE',
       'clear content from edge task:ONE -[depends-on]-> task:TWO',
     ]);
-    expect(mocks.createPatchSession).not.toHaveBeenCalled();
+    expect(mutations.commit).not.toHaveBeenCalled();
   });
 
   it('rejects operations that reference missing nodes or edges', async () => {
-    const graph = makeGraph();
-    const service = new MutationKernelService({
-      getGraph: async () => graph,
-      reset: vi.fn(),
-    });
+    const mutations = makeCausalMutationPort();
+    const service = new MutationKernelService(mutations);
 
     const result = await service.execute({
       rationale: 'Attempt an illegal mutation for coverage.',
@@ -143,82 +122,68 @@ describe('MutationKernelService', () => {
     expect(result.code).toBe('not_found');
     expect(result.executed).toBe(false);
     expect(result.patch).toBeNull();
+    expect(mutations.commit).not.toHaveBeenCalled();
   });
 
-  it('commits a valid op batch through one patch session', async () => {
-    const graph = makeGraph();
-    const patch = makePatchSession();
-    mocks.createPatchSession.mockResolvedValue(patch);
-
-    const service = new MutationKernelService({
-      getGraph: async () => graph,
-      reset: vi.fn(),
-    });
+  it('commits a valid op batch through the causal mutation port', async () => {
+    const mutations = makeCausalMutationPort();
+    const service = new MutationKernelService(mutations);
+    const ops: CausalMutationOp[] = [
+      { op: 'add_node', nodeId: 'proposal:1' },
+      { op: 'set_node_property', nodeId: 'proposal:1', key: 'type', value: 'proposal' },
+      { op: 'add_edge', from: 'proposal:1', to: 'task:ONE', label: 'proposes' },
+    ];
 
     const result = await service.execute({
-      rationale: 'Add a proposal node and link it to the subject safely.',
-      ops: [
-        { op: 'add_node', nodeId: 'proposal:1' },
-        { op: 'set_node_property', nodeId: 'proposal:1', key: 'type', value: 'proposal' },
-        { op: 'add_edge', from: 'proposal:1', to: 'task:ONE', label: 'proposes' },
-      ],
+      rationale: 'Add a proposal entity and link it to the subject safely.',
+      ops,
     });
 
     expect(result.valid).toBe(true);
     expect(result.executed).toBe(true);
     expect(result.patch).toBe('patch:apply');
-    expect(patch.addNode).toHaveBeenCalledWith('proposal:1');
-    expect(patch.setProperty).toHaveBeenCalledWith('proposal:1', 'type', 'proposal');
-    expect(patch.addEdge).toHaveBeenCalledWith('proposal:1', 'task:ONE', 'proposes');
+    expect(mutations.commit).toHaveBeenCalledWith(ops, undefined);
   });
 
-  it('commits clear-content ops through the shared patch session', async () => {
-    const graph = makeGraph();
-    const patch = makePatchSession();
-    mocks.createPatchSession.mockResolvedValue(patch);
-    const service = new MutationKernelService({
-      getGraph: async () => graph,
-      reset: vi.fn(),
-    });
+  it('commits clear-content ops through the causal mutation port', async () => {
+    const mutations = makeCausalMutationPort();
+    const service = new MutationKernelService(mutations);
+    const ops: CausalMutationOp[] = [
+      { op: 'clear_node_content', nodeId: 'task:ONE' },
+      { op: 'clear_edge_content', from: 'task:ONE', to: 'task:TWO', label: 'depends-on' },
+    ];
 
     const result = await service.execute({
       rationale: 'Commit clear-content transfer ops through the shared mutation kernel.',
-      ops: [
-        { op: 'clear_node_content', nodeId: 'task:ONE' },
-        { op: 'clear_edge_content', from: 'task:ONE', to: 'task:TWO', label: 'depends-on' },
-      ],
+      ops,
     });
 
     expect(result.valid).toBe(true);
     expect(result.executed).toBe(true);
     expect(result.patch).toBe('patch:apply');
-    expect(patch.clearContent).toHaveBeenCalledWith('task:ONE');
-    expect(patch.clearEdgeContent).toHaveBeenCalledWith('task:ONE', 'task:TWO', 'depends-on');
+    expect(mutations.commit).toHaveBeenCalledWith(ops, undefined);
   });
 
-  it('validates and commits a valid op batch through a working-set overlay patch', async () => {
-    const graph = makeGraph();
-    const service = new MutationKernelService({
-      getGraph: async () => graph,
-      reset: vi.fn(),
-    });
+  it('validates and commits a valid op batch through a working-set overlay', async () => {
+    const mutations = makeCausalMutationPort();
+    const service = new MutationKernelService(mutations);
+    const ops: CausalMutationOp[] = [
+      { op: 'add_node', nodeId: 'proposal:1' },
+      { op: 'set_node_property', nodeId: 'proposal:1', key: 'type', value: 'proposal' },
+      { op: 'add_edge', from: 'proposal:1', to: 'task:ONE', label: 'proposes' },
+    ];
 
     const result = await service.execute({
-      rationale: 'Advance speculative work inside the derived worldline overlay.',
-      ops: [
-        { op: 'add_node', nodeId: 'proposal:1' },
-        { op: 'set_node_property', nodeId: 'proposal:1', key: 'type', value: 'proposal' },
-        { op: 'add_edge', from: 'proposal:1', to: 'task:ONE', label: 'proposes' },
-      ],
+      rationale: 'Advance speculative work inside the derived working-set overlay.',
+      ops,
     }, { workingSetId: 'wl_review-auth' });
 
-    expect(graph.materializeStrand).toHaveBeenCalledWith('wl_review-auth');
-    expect(graph.patchStrand).toHaveBeenCalledTimes(1);
+    expect(mutations.loadVisibleTopology).toHaveBeenCalledWith({ workingSetId: 'wl_review-auth' });
+    expect(mutations.commit).toHaveBeenCalledWith(ops, { workingSetId: 'wl_review-auth' });
     expect(result).toEqual(expect.objectContaining({
       valid: true,
       executed: true,
       patch: 'patch:working-set',
     }));
-    expect(mocks.createPatchSession).not.toHaveBeenCalled();
   });
 });

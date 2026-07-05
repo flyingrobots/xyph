@@ -24,16 +24,21 @@ function createPatchBuilder() {
 
 function makeCtx(graph: {
   hasNode: (id: string) => Promise<boolean>;
+  worldline?: () => any;
   patch: (fn: (builder: ReturnType<typeof createPatchBuilder>) => void) => Promise<string>;
   getNodeProps?: (id: string) => Promise<Record<string, unknown> | null>;
   neighbors?: (id: string, dir: 'outgoing' | 'incoming') => Promise<{ nodeId: string; label: string }[]>;
 }): CliContext {
+  const graphWithWorldline = {
+    ...graph,
+    worldline: graph.worldline ?? (() => graph),
+  };
   return {
     agentId: 'human.trace',
     identity: { agentId: 'human.trace', source: 'default', origin: null },
     json: true,
     graphPort: {
-      getGraph: async () => graph,
+      getGraph: async () => graphWithWorldline,
     } as CliContext['graphPort'],
     style: {} as CliContext['style'],
     ok: vi.fn(),

@@ -3,19 +3,20 @@ import type {
   DashboardReviewLaneData,
   DashboardReviewPageData,
   DashboardSuggestionLaneData,
+  DashboardOperationalView,
   EntityDetail,
-  GraphSnapshot,
 } from '../domain/models/dashboard.js';
+import type { DashboardObservationView } from '../readings/DashboardReadings.js';
 
 /**
- * DashboardReadPort — observer/worldline-aligned read boundary for the TUI.
+ * DashboardReadPort — observer-aligned read boundary for the TUI.
  *
  * The dashboard should depend on a narrow read-model contract instead of the
  * full observed projection engine. This keeps the TUI at the product-read
- * level while the substrate seam pivots toward worldlines and observers.
+ * level while substrate-specific storage and replay machinery stay behind adapters.
  */
 export interface DashboardReadPort {
-  fetchOperationalSnapshot(view?: DashboardObservationView): Promise<GraphSnapshot>;
+  fetchOperationalSnapshot(view?: DashboardObservationView): Promise<DashboardOperationalView>;
   fetchEntityDetail(view: DashboardObservationView, id: string): Promise<EntityDetail | null>;
   fetchLandingNowLaneData(): Promise<DashboardNowLaneData>;
   fetchLandingReviewLaneData(): Promise<DashboardReviewLaneData>;
@@ -24,11 +25,4 @@ export interface DashboardReadPort {
   invalidate(): void;
 }
 
-export type DashboardObservationView =
-  | 'landing'
-  | 'quest-page'
-  | 'review-page'
-  | 'governance-page'
-  | 'suggestion-page'
-  | 'case-page'
-  | 'doctor-page';
+export type { DashboardObservationView } from '../readings/DashboardReadings.js';

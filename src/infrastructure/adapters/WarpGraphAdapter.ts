@@ -1,5 +1,12 @@
 import type { GraphPort } from '../../ports/GraphPort.js';
-import { WarpCore as WarpGraph, GitGraphAdapter, InMemoryGraphAdapter, type LoggerPort } from '@git-stunts/git-warp';
+import {
+  WarpCore as WarpGraph,
+  GitGraphAdapter,
+  InMemoryBlobStorageAdapter,
+  InMemoryGraphAdapter,
+  type BlobStoragePort,
+  type LoggerPort,
+} from '@git-stunts/git-warp';
 import Plumbing from '@git-stunts/plumbing';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -13,7 +20,10 @@ import path from 'node:path';
 export class WarpGraphAdapter implements GraphPort {
   private graphPromise: Promise<WarpGraph> | null = null;
   private static readonly memoryBackends = new Map<string, InMemoryGraphAdapter>();
-  private materialized = false;
+  private static readonly memoryBlobBackends = new Map<string, BlobStoragePort>();
+  private static readonly memoryRuntimeBackends = new Map<string, InMemoryGraphAdapter & {
+    createRuntimeBlobStorage(): Promise<BlobStoragePort>;
+  }>();
 
   constructor(
     private readonly cwd: string,
@@ -45,18 +55,11 @@ export class WarpGraphAdapter implements GraphPort {
         writerId: this.writerId,
       });
     }
-    const graph = await this.graphPromise;
-    if (!this.materialized) {
-      await graph.materialize();
-      this.materialized = true;
-    }
-    return graph;
+    return await this.graphPromise;
   }
 
   public async getMutationGraph(): Promise<WarpGraph> {
-    const graph = await this.getGraph();
-    await graph.materialize();
-    return graph;
+    return await this.getGraph();
   }
 
   public async openIsolatedGraph(): Promise<WarpGraph> {
@@ -74,7 +77,6 @@ export class WarpGraphAdapter implements GraphPort {
       writerId: this.writerId,
     });
     this.graphPromise = null;
-    this.materialized = false;
   }
 
   public getLogger(): LoggerPort | undefined {
@@ -110,7 +112,25 @@ export class WarpGraphAdapter implements GraphPort {
         memPersistence = new InMemoryGraphAdapter();
         WarpGraphAdapter.memoryBackends.set(backendKey, memPersistence);
       }
-      persistence = memPersistence;
+      let memBlobStorage = WarpGraphAdapter.memoryBlobBackends.get(backendKey);
+      if (!memBlobStorage) {
+        memBlobStorage = new InMemoryBlobStorageAdapter();
+        WarpGraphAdapter.memoryBlobBackends.set(backendKey, memBlobStorage);
+      }
+      let runtimePersistence = WarpGraphAdapter.memoryRuntimeBackends.get(backendKey);
+      if (!runtimePersistence) {
+        runtimePersistence = Object.create(memPersistence) as InMemoryGraphAdapter & {
+          createRuntimeBlobStorage(): Promise<BlobStoragePort>;
+        };
+        Object.defineProperty(runtimePersistence, 'createRuntimeBlobStorage', {
+          value: async (): Promise<BlobStoragePort> => memBlobStorage,
+          enumerable: false,
+          configurable: false,
+          writable: false,
+        });
+        WarpGraphAdapter.memoryRuntimeBackends.set(backendKey, runtimePersistence);
+      }
+      persistence = runtimePersistence;
     } else {
       const plumbing = await Plumbing.createDefault({ cwd: this.cwd });
       persistence = new GitGraphAdapter({ plumbing });
@@ -124,6 +144,7 @@ export class WarpGraphAdapter implements GraphPort {
       checkpointPolicy: { every: 50 },
       logger: this.logger,
     });
+
     this.logger?.info('warp graph opened', {
       graphName: this.graphName,
       writerId: this.writerId,

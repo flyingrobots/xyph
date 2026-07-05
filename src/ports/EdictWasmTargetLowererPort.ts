@@ -17,7 +17,7 @@ export interface EdictCoreIR {
 }
 
 export interface EdictWasmTargetLowererPort {
-  /** Lower Core IR into xyph.warp-intent-ir/v1 canonical CBOR bytes */
+  /** Lower Core IR into deterministic xyph.warp-intent-ir/v1 bytes. */
   lower(ir: EdictCoreIR): Promise<Uint8Array>;
 
   /** Compare declared footprint against Xyph governance lawpack allocation */
@@ -26,6 +26,11 @@ export interface EdictWasmTargetLowererPort {
   /** Compare execution budget against maximum allowable intent cost */
   costCompare(ir: EdictCoreIR): Promise<{ valid: boolean; code?: string }>;
 
-  /** Produce a signed, hash-locked verifier report proving optic preservation */
-  verify(ir: EdictCoreIR): Promise<{ reportDigest: string; wasmDigest: string; verified: boolean }>;
+  /** Produce a deterministic verifier report for the lowered intent descriptor. */
+  verify(ir: EdictCoreIR): Promise<{
+    reportDigest: string;
+    wasmDigest: string;
+    coreHash: string;
+    verified: boolean;
+  }>;
 }

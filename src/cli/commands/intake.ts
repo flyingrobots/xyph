@@ -160,7 +160,7 @@ export function registerIntakeCommands(program: Command, ctx: CliContext): void 
       const intake = ctx.intakeAdapter ?? new WarpIntakeAdapter(ctx.graphPort, ctx.agentId);
       const sha = await intake.ready(id);
       const graph = await ctx.graphPort.getGraph();
-      const props = await graph.getNodeProps(id);
+      const props = await graph.worldline().getNodeProps(id);
       const readyAt = typeof props?.['ready_at'] === 'number' ? props['ready_at'] : null;
 
       if (ctx.json) {

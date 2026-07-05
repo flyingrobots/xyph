@@ -26,11 +26,15 @@ export function assertPrefixOneOf(value: string, prefixes: readonly string[], la
  * Eliminates the repeated `hasNode() + throw` pattern in CLI commands.
  */
 export async function assertNodeExists(
-  graph: { hasNode(id: string): Promise<boolean> },
+  graph: {
+    hasNode(id: string): Promise<boolean>;
+    worldline?(): { hasNode(id: string): Promise<boolean> };
+  },
   id: string,
   label: string,
 ): Promise<void> {
-  if (!await graph.hasNode(id)) {
+  const reader = typeof graph.worldline === 'function' ? graph.worldline() : graph;
+  if (!await reader.hasNode(id)) {
     throw new Error(`[NOT_FOUND] ${label} ${id} not found in the graph`);
   }
 }

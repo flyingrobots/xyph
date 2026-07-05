@@ -43,6 +43,7 @@ function makeGraphPort(options: {
       options.neighborsByDirectionAndId?.[`${direction}:${id}`] ?? []
     )),
     hasNode: vi.fn(async (id: string) => existingIds.has(id)),
+      worldline: vi.fn(function(this: any) { return this; }),
   };
 
   return {

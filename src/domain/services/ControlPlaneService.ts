@@ -19,6 +19,12 @@ interface QueryNodeLike {
   props?: Record<string, unknown>;
 }
 
+function contentOidFromProps(props: unknown): string | null {
+  if (typeof props !== 'object' || props === null) return null;
+  const value = (props as Record<string, unknown>)['_content'];
+  return typeof value === 'string' ? value : null;
+}
+
 export type CoordinateComparisonSelectorV1 = Parameters<WarpGraph['compareCoordinates']>[0]['left'];
 export type CoordinateComparisonV1 = Awaited<ReturnType<WarpGraph['compareCoordinates']>>;
 export type CoordinateTransferPlanV1 = Awaited<ReturnType<WarpGraph['planCoordinateTransfer']>>;
@@ -52,6 +58,7 @@ import type { EntityDetail } from '../models/dashboard.js';
 import {
   createObservedGraphProjection,
   createObservedGraphProjectionFromGraph,
+  readObservedContentByOid,
   type ObservedProjectionGraph,
 } from '../../infrastructure/ObservedGraphProjection.js';
 import { WarpObservationAdapter } from '../../infrastructure/adapters/WarpObservationAdapter.js';
@@ -67,6 +74,10 @@ import { AgentActionService } from './AgentActionService.js';
 import { explainError, explainErrorCode, explainGovernanceTarget } from './ExplainService.js';
 import { MutationKernelService } from './MutationKernelService.js';
 import { RecordService } from './RecordService.js';
+import { WarpCausalMutationAdapter } from '../../infrastructure/warp/CausalMutationAdapter.js';
+import { WarpRecordCommentIntentAdapter } from '../../infrastructure/warp/intents/WarpRecordCommentIntentAdapter.js';
+import { WarpXYPHWriterAdapter } from '../../infrastructure/warp/WarpXYPHWriterAdapter.js';
+import type { XYPHWriter } from '../../ports/XYPHWriter.js';
 import type { GraphMeta } from '../models/dashboard.js';
 import { CapabilityResolverService } from './CapabilityResolverService.js';
 import {
@@ -452,6 +463,7 @@ export class ControlPlaneService implements ControlPlanePort {
   private readonly doctor: DoctorService;
   private readonly mutations: MutationKernelService;
   private readonly records: RecordService;
+  private readonly writer: XYPHWriter;
   private readonly capabilities: CapabilityResolverService;
   private readonly observation: WarpObservationAdapter;
   private readonly operationalRead: WarpOperationalReadAdapter;
@@ -481,6 +493,7 @@ export class ControlPlaneService implements ControlPlanePort {
       contextService?: AgentContextService;
       submissionService?: AgentSubmissionService;
       actionService?: AgentActionService;
+      writer?: XYPHWriter;
       createProjection?: typeof createObservedGraphProjection;
       createProjectionFromGraph?: typeof createObservedGraphProjectionFromGraph;
     }
@@ -491,8 +504,11 @@ export class ControlPlaneService implements ControlPlanePort {
     this.operationalRead = overrides?.operationalRead ?? new WarpOperationalReadAdapter(graphPort);
     this.questReadPort = overrides?.questReadPort ?? new WarpQuestReadAdapter(graphPort, { accessorId: agentId, role: agentId.startsWith('human.') ? 'human' : 'agent' });
     this.doctor = overrides?.doctor ?? new DoctorService(graphPort, this.roadmap, new WarpSubstrateInspectionAdapter(graphPort));
-    this.mutations = overrides?.mutations ?? new MutationKernelService(graphPort);
-    this.records = overrides?.records ?? new RecordService(graphPort, this.clock);
+    const causalMutations = new WarpCausalMutationAdapter(graphPort);
+    this.mutations = overrides?.mutations ?? new MutationKernelService(causalMutations);
+    const recordCommentIntent = new WarpRecordCommentIntentAdapter(graphPort, this.clock, this.mutations);
+    this.records = overrides?.records ?? new RecordService(graphPort, this.clock, this.mutations, recordCommentIntent);
+    this.writer = overrides?.writer ?? new WarpXYPHWriterAdapter(recordCommentIntent, this.records);
     this.capabilities = overrides?.capabilities ?? new CapabilityResolverService(agentId);
     this.briefingService = overrides?.briefingService;
     this.contextService = overrides?.contextService;
@@ -661,7 +677,20 @@ export class ControlPlaneService implements ControlPlanePort {
       ),
       context: this.contextService ?? new AgentContextService(this.graphPort, this.roadmap, principalId, this.observation, this.doctor),
       submissions: this.submissionService ?? new AgentSubmissionService(principalId, this.observation),
-      actions: this.actionService ?? new AgentActionService(this.graphPort, this.roadmap, principalId, this.observation, this.doctor),
+      actions: this.actionService ?? new AgentActionService(
+        this.graphPort,
+        this.roadmap,
+        principalId,
+        this.observation,
+        this.doctor,
+        this.clock,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        this.writer,
+      ),
     };
   }
 
@@ -781,24 +810,35 @@ export class ControlPlaneService implements ControlPlanePort {
   private async openLiveSummaryGraph(): Promise<WarpGraph> {
     const graph = await this.graphPort.getGraph();
     await graph.syncCoverage();
-    await graph.materialize();
     return graph;
   }
 
   private async readGraphMeta(graph: ObservedProjectionGraph): Promise<GraphMeta> {
     const [state, frontier] = await Promise.all([
-      graph.getStateSnapshot(),
+      graph.getStateSnapshot().catch(() => null),
       graph.getFrontier(),
     ]);
-    const maxTick = state ? Math.max(0, ...state.observedFrontier.values()) : 0;
-    const myTick = state ? (state.observedFrontier.get(graph.writerId) ?? 0) : 0;
-    const writerCount = state ? state.observedFrontier.size : 0;
+    const frontierTick = (value: unknown): number => {
+      if (typeof value === 'number' && Number.isFinite(value)) return value;
+      if (typeof value === 'string') return value.length > 0 ? 1 : 0;
+      return 0;
+    };
+    const observedFrontier = state?.observedFrontier;
+    const observedTicks = observedFrontier
+      ? [...observedFrontier.values()].map(frontierTick)
+      : [];
+    const maxTick = Math.max(0, ...observedTicks);
+    const myTick = frontierTick(observedFrontier?.get(graph.writerId));
+    const writerCount = observedFrontier?.size ?? 0;
     const tipSha = frontier.get(graph.writerId)?.slice(0, 7) ?? 'unknown';
     return { maxTick, myTick, writerCount, tipSha };
   }
 
   private async countNodeFamily(graph: ObservedProjectionGraph, pattern: string): Promise<number> {
-    const result = await graph.query().match(pattern).aggregate({ count: true }).run();
+    const query = typeof (graph as { worldline?: unknown }).worldline === 'function'
+      ? (graph as unknown as { worldline(): { query: ObservedProjectionGraph['query'] } }).worldline().query()
+      : graph.query();
+    const result = await query.match(pattern).aggregate({ count: true }).run();
     return 'count' in result && typeof result.count === 'number'
       ? result.count
       : 0;
@@ -1334,9 +1374,8 @@ export class ControlPlaneService implements ControlPlanePort {
   ): Promise<string | null> {
     const graph = await this.graphPort.getGraph();
     await graph.syncCoverage?.();
-    await graph.materialize?.();
 
-    const result = await graph.query().match(`${kind}:*`).select(['id', 'props']).run();
+    const result = await graph.worldline().query().match(`${kind}:*`).select(['id', 'props']).run();
     const nodes = 'nodes' in result
       ? (result.nodes as QueryNodeLike[]).filter(
         (node): node is { id: string; props: Record<string, unknown> } =>
@@ -1693,17 +1732,14 @@ export class ControlPlaneService implements ControlPlanePort {
       getFrontier: () => graph.getFrontier(),
       getContentOid: async (nodeId: string) => {
         const props = await worldline.getNodeProps(nodeId);
-        const oid = props?.['_content'];
-        return typeof oid === 'string' ? oid : null;
+        return contentOidFromProps(props);
       },
       getContent: async (nodeId: string) => {
         const props = await worldline.getNodeProps(nodeId);
-        const derivedOid = typeof props?.['_content'] === 'string' ? props['_content'] : null;
+        const derivedOid = contentOidFromProps(props);
         if (!derivedOid) return null;
         try {
-          const liveOid = await graph.getContentOid(nodeId);
-          if (liveOid !== derivedOid) return null;
-          return await graph.getContent(nodeId);
+          return await readObservedContentByOid(graph, derivedOid);
         } catch {
           return null;
         }
@@ -1796,7 +1832,7 @@ export class ControlPlaneService implements ControlPlanePort {
     }
 
     const graph = await this.openObservationGraph(selector);
-    if (!await graph.hasNode(targetId)) {
+    if (!await graph.worldline().hasNode(targetId)) {
       throw controlPlaneFailure('not_found', `Entity ${targetId} not found in the graph`);
     }
     const patches = await graph.patchesFor(targetId);
@@ -1934,7 +1970,7 @@ export class ControlPlaneService implements ControlPlanePort {
     const targetId = typeof request.args['targetId'] === 'string'
       ? request.args['targetId']
       : null;
-    const patches = targetId && await graph.hasNode(targetId)
+    const patches = targetId && await graph.worldline().hasNode(targetId)
       ? await graph.patchesFor(targetId)
       : [];
 
@@ -1969,7 +2005,7 @@ export class ControlPlaneService implements ControlPlanePort {
       false,
       sinceGraph,
     );
-    const sincePatches = targetId && await sinceGraph.hasNode(targetId)
+    const sincePatches = targetId && await sinceGraph.worldline().hasNode(targetId)
       ? await sinceGraph.patchesFor(targetId)
       : [];
     const sincePatchSet = new Set(sincePatches);
@@ -2201,8 +2237,7 @@ export class ControlPlaneService implements ControlPlanePort {
     kind: 'comparison-artifact' | 'collapse-proposal',
   ): Promise<{ id: string; props: Record<string, unknown> }[]> {
     await graph.syncCoverage();
-    await graph.materialize();
-    const result = await graph.query().match(`${kind}:*`).select(['id', 'props']).run();
+    const result = await graph.worldline().query().match(`${kind}:*`).select(['id', 'props']).run();
     if (!('nodes' in result)) return [];
     return (result.nodes as QueryNodeLike[]).filter(
       (node): node is { id: string; props: Record<string, unknown> } =>
@@ -2799,7 +2834,6 @@ export class ControlPlaneService implements ControlPlanePort {
       },
     );
     await graph.syncCoverage();
-    await graph.materialize();
 
     const rawComparisonOptions = {
       left: this.buildComparisonSelector(leftWorldlineId, leftSelector, 'compare_worldlines'),
@@ -3074,7 +3108,6 @@ export class ControlPlaneService implements ControlPlanePort {
       },
     );
     await graph.syncCoverage();
-    await graph.materialize();
 
     const comparisonOptions = {
       left: this.buildComparisonSelector(sourceWorldlineId, sourceSelector, 'collapse_worldline'),
@@ -3583,7 +3616,8 @@ export class ControlPlaneService implements ControlPlanePort {
     attestationIds: string[],
   ): Promise<ApprovedAttestationRecord[]> {
     const graph = await this.graphPort.getGraph();
-    if (!await graph.hasNode(comparisonArtifactId)) {
+    const reader = graph.worldline();
+    if (!await reader.hasNode(comparisonArtifactId)) {
       throw controlPlaneFailure(
         'attestation_missing',
         'collapse_worldline live execution requires the comparison-artifact to exist on worldline:live so approvals can bind to a durable target. Re-run compare_worldlines with persist:true before attesting/executing.',
@@ -3607,7 +3641,7 @@ export class ControlPlaneService implements ControlPlanePort {
       }
       seen.add(attestationId);
 
-      const props = await graph.getNodeProps(attestationId);
+      const props = await reader.getNodeProps(attestationId);
       if (!props) {
         throw controlPlaneFailure(
           'attestation_missing',
@@ -3724,8 +3758,8 @@ export class ControlPlaneService implements ControlPlanePort {
     let frontierDigest = frontierDigestOverride;
     if (!frontierDigest) {
       const graph = graphOverride ?? await this.graphPort.getGraph();
-      const state = await graph.getStateSnapshot();
-        frontierDigest = state
+      const state = await graph.getStateSnapshot().catch(() => null);
+      frontierDigest = state
         ? frontierDigestFromObservedFrontier(new Map(state.observedFrontier))
         : digest(
           [...(await graph.getFrontier()).entries()].sort(([a], [b]) => a.localeCompare(b)),

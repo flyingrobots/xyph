@@ -20,6 +20,7 @@ vi.mock('../../src/infrastructure/adapters/WarpObservationAdapter.js', () => ({
         queryNodes: vi.fn(),
         neighbors: vi.fn(),
         hasNode: vi.fn(),
+      worldline: vi.fn(function(this: any) { return this; }),
       };
     }
   },
@@ -59,6 +60,7 @@ function makeCtx(): CliContext {
       queryNodes: vi.fn(),
       neighbors: vi.fn(),
       hasNode: vi.fn(),
+      worldline: vi.fn(function(this: any) { return this; }),
     })),
   };
   return {

@@ -15,8 +15,8 @@ import type {
 import type { Diagnostic } from '../../domain/models/diagnostics.js';
 import { collectQuestDiagnostics } from '../../domain/services/DiagnosticService.js';
 import { readGenericEntityDetail } from '../../domain/services/EntityDetailReadService.js';
-import { RecordService } from '../../domain/services/RecordService.js';
 import { liveObservation } from '../../ports/ObservationPort.js';
+import { RecordComment } from '../../writings/RecordComment.js';
 
 interface NarrativeWriteOptions {
   on: string;
@@ -220,20 +220,34 @@ async function commitNarrativeNode(
     await assertNodeExists(graph, opts.supersedes, 'Superseded document');
   }
 
-  const patch = await (ctx.createPatchSession ?? createPatchSession)(graph);
   const now = Date.now();
-  patch
-    .addNode(id)
-    .setProperty(id, 'type', kind)
-    .setProperty(id, 'title', title)
-    .setProperty(id, 'authored_by', ctx.agentId)
-    .setProperty(id, 'authored_at', now)
-    .addEdge(id, opts.on, 'documents');
-  if (opts.supersedes) {
-    patch.addEdge(id, opts.supersedes, 'supersedes');
+  // Deprecate direct patch session imperative builder in favor of OpticDomainActionService intent admission
+  let sha = '';
+  if (ctx.opticDomainActionService) {
+    const createNarrativeIntent = {
+      intentType: kind,
+      payload: { id, kind, title, agentId: ctx.agentId, now, on: opts.on, supersedes: opts.supersedes, body },
+    };
+    const outcome = await ctx.opticDomainActionService.executeAction(null, createNarrativeIntent);
+    if (!outcome.admitted) {
+      throw new Error(`[FORBIDDEN] Intent rejected: ${outcome.obstruction?.tag}`);
+    }
+    sha = outcome.sha ?? '';
+  } else {
+    const patch = await (ctx.createPatchSession ?? createPatchSession)(graph);
+    patch
+      .addNode(id)
+      .setProperty(id, 'type', kind)
+      .setProperty(id, 'title', title)
+      .setProperty(id, 'authored_by', ctx.agentId)
+      .setProperty(id, 'authored_at', now)
+      .addEdge(id, opts.on, 'documents');
+    if (opts.supersedes) {
+      patch.addEdge(id, opts.supersedes, 'supersedes');
+    }
+    await patch.attachContent(id, body);
+    sha = await patch.commit();
   }
-  await patch.attachContent(id, body);
-  const sha = await patch.commit();
   const contentOid = await graph.getContentOid(id) ?? undefined;
   return { patch: sha, contentOid };
 }
@@ -292,7 +306,7 @@ export function registerShowCommands(program: Command, ctx: CliContext): void {
 
   program
     .command('comment <id>')
-    .description('Attach an append-only comment to a graph entity')
+    .description('Attach an append-only comment to an entity')
     .requiredOption('--on <node>', 'Target node ID')
     .requiredOption('--message <text>', 'Comment body')
     .option('--reply-to <commentId>', 'Reply to an existing comment')
@@ -303,14 +317,14 @@ export function registerShowCommands(program: Command, ctx: CliContext): void {
       if (opts.replyTo) {
         assertPrefix(opts.replyTo, 'comment:', '--reply-to');
       }
-      const recordService = ctx.recordService ?? new RecordService(ctx.graphPort);
-      const result = await recordService.createComment({
+      const receipt = await ctx.writer.write(RecordComment({
         id,
         targetId: opts.on,
         message: opts.message.trim(),
         replyTo: opts.replyTo,
         authoredBy: ctx.agentId,
-      });
+      }));
+      const comment = receipt.value;
 
       if (ctx.json) {
         ctx.jsonOut({
@@ -321,16 +335,16 @@ export function registerShowCommands(program: Command, ctx: CliContext): void {
             on: opts.on,
             replyTo: opts.replyTo ?? null,
             authoredBy: ctx.agentId,
-            authoredAt: result.authoredAt,
-            contentOid: result.contentOid ?? null,
-            patch: result.patch,
+            authoredAt: comment.authoredAt,
+            contentOid: comment.contentOid ?? null,
+            patch: receipt.witness.patch,
           },
         });
         return;
       }
 
       ctx.ok(`[OK] Comment ${id} attached to ${opts.on}.`);
-      ctx.muted(`  Patch: ${result.patch}`);
+      ctx.muted(`  Patch: ${receipt.witness.patch}`);
     }));
 
   program

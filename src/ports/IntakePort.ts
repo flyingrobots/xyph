@@ -13,6 +13,7 @@ export interface ShapeOptions {
 }
 
 export interface IntakePort {
+  claim(questId: string, agentId: string): Promise<string>;
   promote(questId: string, intentId: string, campaignId?: string, opts?: PromoteOptions): Promise<string>;
   shape(questId: string, opts: ShapeOptions): Promise<string>;
   ready(questId: string): Promise<string>;

@@ -34,6 +34,55 @@ export class WarpIntakeAdapter implements IntakePort {
     }
   }
 
+  public async claim(questId: string, agentId: string): Promise<string> {
+    return withLoggedAdapterOperation(
+      this.logger,
+      {
+        start: 'intake claim started',
+        success: 'intake claim finished',
+        level: 'info',
+        context: { questId, agentId },
+        successContext: (patchSha) => ({ patchSha }),
+      },
+      async () => {
+        this.validateQuestId(questId);
+
+        const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
+        const props = await graph.worldline().getNodeProps(questId);
+        if (props === null) {
+          throw new Error(`[NOT_FOUND] Quest ${questId} not found in the graph`);
+        }
+        const status = props['status'];
+        if (status !== 'READY') {
+          throw new Error(`[INVALID_FROM] claim requires status READY, quest ${questId} is ${String(status)}`);
+        }
+        const assignedTo = typeof props['assigned_to'] === 'string' ? props['assigned_to'] : undefined;
+        if (assignedTo !== undefined && assignedTo !== agentId) {
+          throw new Error(`[CONFLICT] claim requires an unassigned quest or an existing self-assignment, quest ${questId} is assigned to ${assignedTo}`);
+        }
+
+        const now = Date.now();
+        const sha = await graph.patch((p) => {
+          p.setProperty(questId, 'assigned_to', agentId)
+            .setProperty(questId, 'status', 'IN_PROGRESS')
+            .setProperty(questId, 'claimed_at', now);
+        });
+
+        const confirmed = await graph.worldline().getNodeProps(questId);
+        if (
+          confirmed === null
+          || confirmed['assigned_to'] !== agentId
+          || confirmed['claimed_at'] !== now
+        ) {
+          const winner = confirmed ? String(confirmed['assigned_to']) : 'unknown';
+          throw new Error(`[CONFLICT] Lost claim race for ${questId}. Current owner: ${winner}`);
+        }
+
+        return sha;
+      },
+    );
+  }
+
   public async promote(questId: string, intentId: string, campaignId?: string, opts?: PromoteOptions): Promise<string> {
     return withLoggedAdapterOperation(
       this.logger,
@@ -59,7 +108,7 @@ export class WarpIntakeAdapter implements IntakePort {
 
         const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
 
-        const props = await graph.getNodeProps(questId);
+        const props = await graph.worldline().getNodeProps(questId);
         if (props === null) {
           throw new Error(`[NOT_FOUND] Quest ${questId} not found in the graph`);
         }
@@ -87,10 +136,10 @@ export class WarpIntakeAdapter implements IntakePort {
           throw new Error('[MISSING_ARG] promote requires --description when the quest has no existing description');
         }
 
-        if (!await graph.hasNode(intentId)) {
+        if (!await graph.worldline().hasNode(intentId)) {
           throw new Error(`[NOT_FOUND] Intent ${intentId} not found in the graph`);
         }
-        if (campaignId !== undefined && !await graph.hasNode(campaignId)) {
+        if (campaignId !== undefined && !await graph.worldline().hasNode(campaignId)) {
           throw new Error(`[NOT_FOUND] Campaign ${campaignId} not found in the graph`);
         }
 
@@ -146,7 +195,7 @@ export class WarpIntakeAdapter implements IntakePort {
         await intake.validateShape(questId);
 
         const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
-        const props = await graph.getNodeProps(questId);
+        const props = await graph.worldline().getNodeProps(questId);
         if (props === null) {
           throw new Error(`[NOT_FOUND] Quest ${questId} not found in the graph`);
         }
@@ -221,7 +270,7 @@ export class WarpIntakeAdapter implements IntakePort {
 
         const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
 
-        const props = await graph.getNodeProps(questId);
+        const props = await graph.worldline().getNodeProps(questId);
         if (props === null) {
           throw new Error(`[NOT_FOUND] Quest ${questId} not found in the graph`);
         }
@@ -263,7 +312,7 @@ export class WarpIntakeAdapter implements IntakePort {
 
         const graph = await (this.graphPort.getMutationGraph?.() ?? this.graphPort.getGraph());
 
-        const props = await graph.getNodeProps(questId);
+        const props = await graph.worldline().getNodeProps(questId);
         if (props === null) {
           throw new Error(`[NOT_FOUND] Quest ${questId} not found in the graph`);
         }

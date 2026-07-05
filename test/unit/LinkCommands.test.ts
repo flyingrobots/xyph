@@ -71,7 +71,7 @@ describe('link commands', () => {
 
     expect(graph.hasNode).toHaveBeenCalledWith('task:MOVE-1');
     expect(graph.hasNode).toHaveBeenCalledWith('campaign:NEW');
-    expect(graph.neighbors).toHaveBeenCalledWith('task:MOVE-1', 'outgoing');
+    expect(graph.neighbors).toHaveBeenCalledWith('task:MOVE-1', 'outgoing', undefined);
     expect(patchOps.removeEdge).toHaveBeenCalledWith('task:MOVE-1', 'campaign:OLD', 'belongs-to');
     expect(patchOps.addEdge).toHaveBeenCalledWith('task:MOVE-1', 'campaign:NEW', 'belongs-to');
     expect(ctx.jsonOut).toHaveBeenCalledWith({
@@ -82,6 +82,60 @@ describe('link commands', () => {
         campaign: 'campaign:NEW',
         intent: null,
         patch: 'patch:move',
+      },
+    });
+  });
+
+  it('passes current worldline edges to optic admission when reassigning a quest', async () => {
+    const executeAction = vi.fn().mockResolvedValue({
+      admitted: true,
+      sha: 'patch:optic-move',
+    });
+    const reader = {
+      hasNode: vi.fn().mockResolvedValue(true),
+      getEdges: vi.fn().mockResolvedValue([
+        { from: 'task:MOVE-1', to: 'campaign:OLD', label: 'belongs-to' },
+        { from: 'task:MOVE-1', to: 'intent:TRACE', label: 'authorized-by' },
+      ]),
+    };
+    const graph = {
+      hasNode: vi.fn().mockResolvedValue(true),
+      neighbors: vi.fn().mockResolvedValue([]),
+      worldline: vi.fn(() => reader),
+    };
+    const ctx = {
+      ...makeCtx({
+        getGraph: vi.fn().mockResolvedValue(graph),
+      }),
+      opticDomainActionService: {
+        executeAction,
+      },
+    } as CliContext;
+    const program = new Command();
+
+    registerLinkCommands(program, ctx);
+    await program.parseAsync(['move', 'task:MOVE-1', '--campaign', 'campaign:NEW'], { from: 'user' });
+
+    expect(graph.neighbors).not.toHaveBeenCalled();
+    expect(reader.getEdges).toHaveBeenCalled();
+    expect(executeAction).toHaveBeenCalledWith(null, {
+      intentType: 'move',
+      payload: {
+        quest: 'task:MOVE-1',
+        campaignId: 'campaign:NEW',
+        intentId: undefined,
+        existingCampaignEdges: [{ nodeId: 'campaign:OLD' }],
+        existingIntentEdges: [],
+      },
+    });
+    expect(ctx.jsonOut).toHaveBeenCalledWith({
+      success: true,
+      command: 'move',
+      data: {
+        quest: 'task:MOVE-1',
+        campaign: 'campaign:NEW',
+        intent: null,
+        patch: 'patch:optic-move',
       },
     });
   });
