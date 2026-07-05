@@ -27,5 +27,10 @@ export interface EdictWasmTargetLowererPort {
   costCompare(ir: EdictCoreIR): Promise<{ valid: boolean; code?: string }>;
 
   /** Produce a deterministic verifier report for the lowered intent descriptor. */
-  verify(ir: EdictCoreIR): Promise<{ reportDigest: string; wasmDigest: string; verified: boolean }>;
+  verify(ir: EdictCoreIR): Promise<{
+    reportDigest: string;
+    wasmDigest: string;
+    coreHash: string;
+    verified: boolean;
+  }>;
 }

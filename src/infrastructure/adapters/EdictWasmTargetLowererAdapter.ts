@@ -32,17 +32,20 @@ function sha256Digest(value: Json): string {
   return `sha256:${createHash('sha256').update(canonicalize(value)).digest('hex')}`;
 }
 
+function coreHashFor(ir: EdictCoreIR): string {
+  return sha256Digest({
+    schema: 'edict.core-ir/v1',
+    ir: jsonValue(ir),
+  });
+}
+
 export class EdictWasmTargetLowererAdapter implements EdictWasmTargetLowererPort {
   private static readonly MAX_FOOTPRINT = 500000;
   private static readonly MAX_BUDGET = 5000;
   private static readonly WASM_DIGEST = 'sha256:7f8a9b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a';
 
   async lower(ir: EdictCoreIR): Promise<Uint8Array> {
-    const canonicalIr = jsonValue(ir);
-    const coreHash = sha256Digest({
-      schema: 'edict.core-ir/v1',
-      ir: canonicalIr,
-    });
+    const coreHash = coreHashFor(ir);
     const bundleHash = sha256Digest({
       schema: 'xyph.warp-intent-ir.bundle/v1',
       coreHash,
@@ -80,16 +83,23 @@ export class EdictWasmTargetLowererAdapter implements EdictWasmTargetLowererPort
     return { valid: true };
   }
 
-  async verify(ir: EdictCoreIR): Promise<{ reportDigest: string; wasmDigest: string; verified: boolean }> {
+  async verify(ir: EdictCoreIR): Promise<{
+    reportDigest: string;
+    wasmDigest: string;
+    coreHash: string;
+    verified: boolean;
+  }> {
+    const coreHash = coreHashFor(ir);
     const reportPayload = {
       schema: 'xyph.edict-lowering-report/v1',
-      ir: jsonValue(ir),
+      coreHash,
       wasmDigest: EdictWasmTargetLowererAdapter.WASM_DIGEST,
       result: 'verified',
     };
     return {
       reportDigest: sha256Digest(reportPayload),
       wasmDigest: EdictWasmTargetLowererAdapter.WASM_DIGEST,
+      coreHash,
       verified: true,
     };
   }

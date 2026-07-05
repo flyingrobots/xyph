@@ -1,6 +1,8 @@
+import { createHash } from 'node:crypto';
 import type { OpticActionOutcome } from '../../domain/services/OpticDomainActionService.js';
 import type { ClockPort } from '../../ports/ClockPort.js';
 import type { GraphPort } from '../../ports/GraphPort.js';
+import { canonicalize, type Json } from '../../validation/crypto.js';
 import { SystemClockAdapter } from '../adapters/SystemClockAdapter.js';
 import { createPatchSession } from '../helpers/createPatchSession.js';
 
@@ -13,6 +15,10 @@ interface WarpPatchBuilder {
 
 interface WasmIntentDescriptor {
   intentId: string;
+  nutritionLabel?: {
+    coreHash?: string;
+    bundleHash?: string;
+  };
   precommitGuards?: readonly {
     op?: string;
     nodeId?: string;
@@ -27,6 +33,9 @@ interface WasmIntentDescriptor {
 
 interface WasmVerifierReport {
   verified?: boolean;
+  reportDigest?: string;
+  wasmDigest?: string;
+  coreHash?: string;
 }
 
 type SupportedOperation =
@@ -130,6 +139,12 @@ function descriptorFrom(value: unknown): WasmIntentDescriptor {
 
   return {
     intentId: stringField(value, 'intentId') ?? 'missing-intent-id',
+    nutritionLabel: isRecord(value['nutritionLabel'])
+      ? {
+          coreHash: stringField(value['nutritionLabel'], 'coreHash') ?? undefined,
+          bundleHash: stringField(value['nutritionLabel'], 'bundleHash') ?? undefined,
+        }
+      : undefined,
     precommitGuards,
     suffixTransform: suffix,
   };
@@ -137,7 +152,12 @@ function descriptorFrom(value: unknown): WasmIntentDescriptor {
 
 function reportFrom(value: unknown): WasmVerifierReport {
   if (!isRecord(value)) return {};
-  return { verified: value['verified'] === true };
+  return {
+    verified: value['verified'] === true,
+    reportDigest: stringField(value, 'reportDigest') ?? undefined,
+    wasmDigest: stringField(value, 'wasmDigest') ?? undefined,
+    coreHash: stringField(value, 'coreHash') ?? undefined,
+  };
 }
 
 function stringField(record: Record<string, unknown>, key: string): string | null {
@@ -170,6 +190,23 @@ function optionalEdgeRefs(record: Record<string, unknown>, key: string): readonl
   return refs;
 }
 
+function isSha256Digest(value: string | undefined): value is string {
+  return typeof value === 'string' && /^sha256:[0-9a-f]{64}$/u.test(value);
+}
+
+function sha256Digest(value: Json): string {
+  return `sha256:${createHash('sha256').update(canonicalize(value)).digest('hex')}`;
+}
+
+function verifierReportDigest(rep: Required<Pick<WasmVerifierReport, 'coreHash' | 'wasmDigest'>>): string {
+  return sha256Digest({
+    schema: 'xyph.edict-lowering-report/v1',
+    coreHash: rep.coreHash,
+    wasmDigest: rep.wasmDigest,
+    result: 'verified',
+  });
+}
+
 export class WarpOpticActionAdmissionAdapter {
   constructor(
     private readonly graphPort: GraphPort,
@@ -182,10 +219,11 @@ export class WarpOpticActionAdmissionAdapter {
   ): Promise<OpticActionOutcome> {
     const desc = descriptorFrom(descriptor);
     const rep = reportFrom(report);
-    if (!rep.verified) {
+    const verifierObstruction = this.validateVerifierReport(desc, rep);
+    if (verifierObstruction !== null) {
       return {
         admitted: false,
-        obstruction: { tag: 'UntrustedWasmVerifierReport', actual: 'invalid' },
+        obstruction: verifierObstruction,
         intentId: desc.intentId,
       };
     }
@@ -413,6 +451,36 @@ export class WarpOpticActionAdmissionAdapter {
     const body = stringField(payload, 'body');
     if (body === null) return { ok: false, actual: 'missing body' };
     return { ok: true, payload: { op, id, kind, title, agentId, now, on, supersedes, body } };
+  }
+
+  private validateVerifierReport(
+    desc: WasmIntentDescriptor,
+    rep: WasmVerifierReport,
+  ): OpticActionOutcome['obstruction'] | null {
+    if (!rep.verified) {
+      return { tag: 'UntrustedWasmVerifierReport', actual: 'invalid' };
+    }
+    const { reportDigest, wasmDigest, coreHash } = rep;
+    if (
+      !isSha256Digest(reportDigest)
+      || !isSha256Digest(wasmDigest)
+      || !isSha256Digest(coreHash)
+    ) {
+      return { tag: 'UntrustedWasmVerifierReport', actual: 'missing-report-binding' };
+    }
+    if (
+      !isSha256Digest(desc.nutritionLabel?.coreHash)
+      || !isSha256Digest(desc.nutritionLabel?.bundleHash)
+    ) {
+      return { tag: 'UntrustedWasmVerifierReport', actual: 'missing-descriptor-binding' };
+    }
+    if (desc.nutritionLabel.coreHash !== coreHash) {
+      return { tag: 'UntrustedWasmVerifierReport', actual: 'descriptor-report-mismatch' };
+    }
+    if (reportDigest !== verifierReportDigest({ coreHash, wasmDigest })) {
+      return { tag: 'UntrustedWasmVerifierReport', actual: 'report-digest-mismatch' };
+    }
+    return null;
   }
 
   private async evaluatePrecommitGuards(
