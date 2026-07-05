@@ -161,6 +161,12 @@ describe('substrate boundary', () => {
     expect(kernel).not.toContain('projectState');
   });
 
+  it('keeps causal mutation topology projection typed at the git-warp boundary', () => {
+    const adapter = source('src/infrastructure/warp/CausalMutationAdapter.ts');
+
+    expect(adapter).not.toContain('as unknown as Parameters<typeof projectState>[0]');
+  });
+
   it('keeps WARP admission mutation mechanics out of CLI context composition', () => {
     const cliContext = source('src/cli/context.ts');
     const body = functionBody(cliContext, 'createCliContext');

@@ -1,4 +1,4 @@
-import { projectState } from '@git-stunts/git-warp';
+import { createStateReader, type SnapshotWarpState } from '@git-stunts/git-warp';
 import type { GraphPort } from '../../ports/GraphPort.js';
 import type {
   CausalContentPayload,
@@ -32,6 +32,14 @@ interface PatchWriter {
   ): Promise<unknown>;
 }
 
+function projectMaterializedTopology(state: SnapshotWarpState): VisibleCausalTopology {
+  const projection = createStateReader(state).project();
+  return {
+    entities: projection.nodes,
+    relations: projection.edges,
+  };
+}
+
 export class WarpCausalMutationAdapter implements CausalMutationPort {
   constructor(private readonly graphPort: GraphPort) {}
 
@@ -46,11 +54,7 @@ export class WarpCausalMutationAdapter implements CausalMutationPort {
     }
 
     const state = await graph.materializeStrand(options.workingSetId);
-    const projection = projectState(state as unknown as Parameters<typeof projectState>[0]);
-    return {
-      entities: projection.nodes,
-      relations: projection.edges,
-    };
+    return projectMaterializedTopology(state);
   }
 
   public async commit(
