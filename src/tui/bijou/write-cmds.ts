@@ -15,9 +15,11 @@ import type { DashboardMsg } from './DashboardApp.js';
 import type { IntakePort } from '../../ports/IntakePort.js';
 import type { XYPHWriter } from '../../ports/XYPHWriter.js';
 import type { SubmissionPort } from '../../ports/SubmissionPort.js';
+import type {
+  CommandIntentDescriptor,
+  CommandIntentExecutorPort,
+} from '../../ports/CommandIntentExecutorPort.js';
 import type { AiSuggestionAdoptionKind } from '../../domain/entities/AiSuggestion.js';
-import { OpticDomainActionService } from '../../domain/services/OpticDomainActionService.js';
-import { EdictWasmTargetLowererAdapter } from '../../infrastructure/adapters/EdictWasmTargetLowererAdapter.js';
 import { RecordComment } from '../../writings/RecordComment.js';
 import {
   AdoptAiSuggestion,
@@ -38,7 +40,7 @@ export interface WriteDeps {
   intake: IntakePort;
   submissionPort: SubmissionPort;
   agentId: string;
-  opticDomainActionService?: OpticDomainActionService;
+  commandIntentExecutor?: CommandIntentExecutorPort;
   writer?: XYPHWriter;
 }
 
@@ -62,68 +64,31 @@ export interface CaseDecisionInput {
   followOnKind?: 'quest' | 'proposal' | 'none';
 }
 
-interface WasmIntentDescriptor {
-  intentId: string;
-  suffixTransform?: {
-    op?: string;
-    payload?: Record<string, unknown>;
-  };
-}
-
-interface WasmVerifierReport {
-  verified?: boolean;
-}
-
 async function executeTuiIntent(
   deps: WriteDeps,
+  descriptor: CommandIntentDescriptor,
   op: string,
   payload: Record<string, unknown>,
   handler: () => Promise<unknown>,
 ): Promise<void> {
-  const fallbackService = new OpticDomainActionService(
-    new EdictWasmTargetLowererAdapter(),
-    {
-      async admitWasmIntent(descriptor: unknown, report: unknown): Promise<import('../../domain/services/OpticDomainActionService.js').OpticActionOutcome> {
-        const desc = descriptor as WasmIntentDescriptor;
-        const rep = report as WasmVerifierReport;
-        if (!rep.verified) {
-          return {
-            admitted: false,
-            obstruction: { tag: 'UntrustedWasmVerifierReport', actual: 'invalid' },
-            intentId: desc.intentId,
-          };
-        }
-        const opName = desc.suffixTransform?.op;
-        let sha = '';
-        if (opName !== op) {
-          return {
-            admitted: false,
-            obstruction: {
-              tag: 'IntentOperationMismatch',
-              actual: opName ?? 'missing-op',
-            },
-            intentId: desc.intentId,
-          };
-        }
-        const res = await handler();
-        sha = typeof res === 'string' ? res : '';
-        return { admitted: true, sha, intentId: desc.intentId };
-      },
-    },
-  );
-  const service = op === 'claimQuest' && deps.opticDomainActionService
-    ? deps.opticDomainActionService
-    : fallbackService;
+  if (!deps.commandIntentExecutor) {
+    throw new Error('Command intent executor is not configured');
+  }
 
-  const outcome = await service.executeAction({}, {
-    op,
-    payload,
-    declaredFootprint: 1024,
-    declaredBudget: 50,
+  const outcome = await deps.commandIntentExecutor.execute({
+    descriptor,
+    expectedOperation: op,
+    intent: {
+      op,
+      payload,
+      declaredFootprint: 1024,
+      declaredBudget: 50,
+    },
+    run: handler,
   });
 
   if (!outcome.admitted) {
-    throw new Error(`Intent rejected by OpticDomainActionService: ${outcome.obstruction?.tag ?? 'Unknown'}`);
+    throw new Error(`Intent rejected by command executor: ${outcome.obstruction?.tag ?? 'Unknown'}`);
   }
 }
 
@@ -135,26 +100,25 @@ function writerOrThrow(deps: WriteDeps): XYPHWriter {
 }
 
 export const claimQuestUiIntent: CommandIntent<{ questId: string }> = commandIntent('ui:intent:claim');
-export const claimQuestIntentRoute: RuntimeCommandIntentRoute<{ questId: string }, WasmIntentDescriptor> = runtimeCommandIntentRoute({
+export const claimQuestIntentRoute: RuntimeCommandIntentRoute<{ questId: string }, CommandIntentDescriptor> = runtimeCommandIntentRoute({
   intent: claimQuestUiIntent,
   toCommand: (emission) => ({
-    intentId: `intent:xyph:claimQuest:${Date.now()}`,
+    intentId: `intent:xyph:claimQuest:${generateId()}`,
     suffixTransform: {
       op: 'claimQuest',
       payload: {
         questId: emission.payload.questId,
         agentId: emission.owner?.id ?? 'operator:local',
-        basis: 'sha256:basis123',
       },
     },
   }),
 });
 
 export const promoteQuestUiIntent: CommandIntent<{ questId: string; intentId: string; campaignId?: string }> = commandIntent('ui:intent:promote');
-export const promoteQuestIntentRoute: RuntimeCommandIntentRoute<{ questId: string; intentId: string; campaignId?: string }, WasmIntentDescriptor> = runtimeCommandIntentRoute({
+export const promoteQuestIntentRoute: RuntimeCommandIntentRoute<{ questId: string; intentId: string; campaignId?: string }, CommandIntentDescriptor> = runtimeCommandIntentRoute({
   intent: promoteQuestUiIntent,
   toCommand: (emission) => ({
-    intentId: `intent:xyph:promoteQuest:${Date.now()}`,
+    intentId: `intent:xyph:promoteQuest:${generateId()}`,
     suffixTransform: {
       op: 'promoteQuest',
       payload: { ...emission.payload, agentId: emission.owner?.id ?? 'operator:local' },
@@ -163,10 +127,10 @@ export const promoteQuestIntentRoute: RuntimeCommandIntentRoute<{ questId: strin
 });
 
 export const rejectQuestUiIntent: CommandIntent<{ questId: string; rationale: string }> = commandIntent('ui:intent:reject');
-export const rejectQuestIntentRoute: RuntimeCommandIntentRoute<{ questId: string; rationale: string }, WasmIntentDescriptor> = runtimeCommandIntentRoute({
+export const rejectQuestIntentRoute: RuntimeCommandIntentRoute<{ questId: string; rationale: string }, CommandIntentDescriptor> = runtimeCommandIntentRoute({
   intent: rejectQuestUiIntent,
   toCommand: (emission) => ({
-    intentId: `intent:xyph:rejectQuest:${Date.now()}`,
+    intentId: `intent:xyph:rejectQuest:${generateId()}`,
     suffixTransform: {
       op: 'rejectQuest',
       payload: { ...emission.payload, agentId: emission.owner?.id ?? 'operator:local' },
@@ -175,10 +139,10 @@ export const rejectQuestIntentRoute: RuntimeCommandIntentRoute<{ questId: string
 });
 
 export const reopenQuestUiIntent: CommandIntent<{ questId: string }> = commandIntent('ui:intent:reopen');
-export const reopenQuestIntentRoute: RuntimeCommandIntentRoute<{ questId: string }, WasmIntentDescriptor> = runtimeCommandIntentRoute({
+export const reopenQuestIntentRoute: RuntimeCommandIntentRoute<{ questId: string }, CommandIntentDescriptor> = runtimeCommandIntentRoute({
   intent: reopenQuestUiIntent,
   toCommand: (emission) => ({
-    intentId: `intent:xyph:reopenQuest:${Date.now()}`,
+    intentId: `intent:xyph:reopenQuest:${generateId()}`,
     suffixTransform: {
       op: 'reopenQuest',
       payload: { ...emission.payload, agentId: emission.owner?.id ?? 'operator:local' },
@@ -187,10 +151,10 @@ export const reopenQuestIntentRoute: RuntimeCommandIntentRoute<{ questId: string
 });
 
 export const commentOnEntityUiIntent: CommandIntent<{ targetId: string; message: string }> = commandIntent('ui:intent:comment');
-export const commentOnEntityIntentRoute: RuntimeCommandIntentRoute<{ targetId: string; message: string }, WasmIntentDescriptor> = runtimeCommandIntentRoute({
+export const commentOnEntityIntentRoute: RuntimeCommandIntentRoute<{ targetId: string; message: string }, CommandIntentDescriptor> = runtimeCommandIntentRoute({
   intent: commentOnEntityUiIntent,
   toCommand: (emission) => ({
-    intentId: `intent:xyph:commentOnEntity:${Date.now()}`,
+    intentId: `intent:xyph:commentOnEntity:${generateId()}`,
     suffixTransform: {
       op: 'commentOnEntity',
       payload: { ...emission.payload, agentId: emission.owner?.id ?? 'operator:local' },
@@ -199,10 +163,10 @@ export const commentOnEntityIntentRoute: RuntimeCommandIntentRoute<{ targetId: s
 });
 
 export const reviewSubmissionUiIntent: CommandIntent<{ patchsetId: string; verdict: 'approve' | 'request-changes'; comment: string }> = commandIntent('ui:intent:review');
-export const reviewSubmissionIntentRoute: RuntimeCommandIntentRoute<{ patchsetId: string; verdict: 'approve' | 'request-changes'; comment: string }, WasmIntentDescriptor> = runtimeCommandIntentRoute({
+export const reviewSubmissionIntentRoute: RuntimeCommandIntentRoute<{ patchsetId: string; verdict: 'approve' | 'request-changes'; comment: string }, CommandIntentDescriptor> = runtimeCommandIntentRoute({
   intent: reviewSubmissionUiIntent,
   toCommand: (emission) => ({
-    intentId: `intent:xyph:reviewSubmission:${Date.now()}`,
+    intentId: `intent:xyph:reviewSubmission:${generateId()}`,
     suffixTransform: {
       op: 'reviewSubmission',
       payload: { ...emission.payload, agentId: emission.owner?.id ?? 'operator:local' },
@@ -211,10 +175,10 @@ export const reviewSubmissionIntentRoute: RuntimeCommandIntentRoute<{ patchsetId
 });
 
 export const queueAskAiJobUiIntent: CommandIntent<{ input: AskAiJobInput }> = commandIntent('ui:intent:queueAskAiJob');
-export const queueAskAiJobIntentRoute: RuntimeCommandIntentRoute<{ input: AskAiJobInput }, WasmIntentDescriptor> = runtimeCommandIntentRoute({
+export const queueAskAiJobIntentRoute: RuntimeCommandIntentRoute<{ input: AskAiJobInput }, CommandIntentDescriptor> = runtimeCommandIntentRoute({
   intent: queueAskAiJobUiIntent,
   toCommand: (emission) => ({
-    intentId: `intent:xyph:queueAskAiJob:${Date.now()}`,
+    intentId: `intent:xyph:queueAskAiJob:${generateId()}`,
     suffixTransform: {
       op: 'queueAskAiJob',
       payload: { input: emission.payload.input, agentId: emission.owner?.id ?? 'operator:local' },
@@ -223,10 +187,10 @@ export const queueAskAiJobIntentRoute: RuntimeCommandIntentRoute<{ input: AskAiJ
 });
 
 export const decideCaseUiIntent: CommandIntent<{ input: CaseDecisionInput }> = commandIntent('ui:intent:decideCase');
-export const decideCaseIntentRoute: RuntimeCommandIntentRoute<{ input: CaseDecisionInput }, WasmIntentDescriptor> = runtimeCommandIntentRoute({
+export const decideCaseIntentRoute: RuntimeCommandIntentRoute<{ input: CaseDecisionInput }, CommandIntentDescriptor> = runtimeCommandIntentRoute({
   intent: decideCaseUiIntent,
   toCommand: (emission) => ({
-    intentId: `intent:xyph:decideCase:${Date.now()}`,
+    intentId: `intent:xyph:decideCase:${generateId()}`,
     suffixTransform: {
       op: 'decideCase',
       payload: { input: emission.payload.input, agentId: emission.owner?.id ?? 'operator:local' },
@@ -235,10 +199,10 @@ export const decideCaseIntentRoute: RuntimeCommandIntentRoute<{ input: CaseDecis
 });
 
 export const adoptSuggestionUiIntent: CommandIntent<{ suggestionId: string; adoptedArtifactKind: AiSuggestionAdoptionKind; rationale?: string }> = commandIntent('ui:intent:adoptSuggestion');
-export const adoptSuggestionIntentRoute: RuntimeCommandIntentRoute<{ suggestionId: string; adoptedArtifactKind: AiSuggestionAdoptionKind; rationale?: string }, WasmIntentDescriptor> = runtimeCommandIntentRoute({
+export const adoptSuggestionIntentRoute: RuntimeCommandIntentRoute<{ suggestionId: string; adoptedArtifactKind: AiSuggestionAdoptionKind; rationale?: string }, CommandIntentDescriptor> = runtimeCommandIntentRoute({
   intent: adoptSuggestionUiIntent,
   toCommand: (emission) => ({
-    intentId: `intent:xyph:adoptSuggestion:${Date.now()}`,
+    intentId: `intent:xyph:adoptSuggestion:${generateId()}`,
     suffixTransform: {
       op: 'adoptSuggestion',
       payload: { ...emission.payload, agentId: emission.owner?.id ?? 'operator:local' },
@@ -247,10 +211,10 @@ export const adoptSuggestionIntentRoute: RuntimeCommandIntentRoute<{ suggestionI
 });
 
 export const dismissSuggestionUiIntent: CommandIntent<{ suggestionId: string; rationale: string }> = commandIntent('ui:intent:dismissSuggestion');
-export const dismissSuggestionIntentRoute: RuntimeCommandIntentRoute<{ suggestionId: string; rationale: string }, WasmIntentDescriptor> = runtimeCommandIntentRoute({
+export const dismissSuggestionIntentRoute: RuntimeCommandIntentRoute<{ suggestionId: string; rationale: string }, CommandIntentDescriptor> = runtimeCommandIntentRoute({
   intent: dismissSuggestionUiIntent,
   toCommand: (emission) => ({
-    intentId: `intent:xyph:dismissSuggestion:${Date.now()}`,
+    intentId: `intent:xyph:dismissSuggestion:${generateId()}`,
     suffixTransform: {
       op: 'dismissSuggestion',
       payload: { ...emission.payload, agentId: emission.owner?.id ?? 'operator:local' },
@@ -259,10 +223,10 @@ export const dismissSuggestionIntentRoute: RuntimeCommandIntentRoute<{ suggestio
 });
 
 export const supersedeSuggestionUiIntent: CommandIntent<{ input: SuggestionSupersedeInput }> = commandIntent('ui:intent:supersedeSuggestion');
-export const supersedeSuggestionIntentRoute: RuntimeCommandIntentRoute<{ input: SuggestionSupersedeInput }, WasmIntentDescriptor> = runtimeCommandIntentRoute({
+export const supersedeSuggestionIntentRoute: RuntimeCommandIntentRoute<{ input: SuggestionSupersedeInput }, CommandIntentDescriptor> = runtimeCommandIntentRoute({
   intent: supersedeSuggestionUiIntent,
   toCommand: (emission) => ({
-    intentId: `intent:xyph:supersedeSuggestion:${Date.now()}`,
+    intentId: `intent:xyph:supersedeSuggestion:${generateId()}`,
     suffixTransform: {
       op: 'supersedeSuggestion',
       payload: { input: emission.payload.input, agentId: emission.owner?.id ?? 'operator:local' },
@@ -271,21 +235,17 @@ export const supersedeSuggestionIntentRoute: RuntimeCommandIntentRoute<{ input: 
 });
 
 /**
- * Claim a quest via CQRS Block Binding Intent Route and OpticDomainActionService.
+ * Claim a quest via CQRS Block Binding Intent Route.
  */
 export function claimQuest(deps: WriteDeps, questId: string): Cmd<DashboardMsg> {
   return async (emit) => {
     try {
-      if (!deps.opticDomainActionService) {
-        throw new Error('OpticDomainActionService is not configured');
-      }
-
       const owner = defineBindingLifecycleOwner({ id: deps.agentId, kind: 'view', label: deps.agentId });
       const emission = runtimeCommandIntentEmission(claimQuestUiIntent, { questId }, { owner });
       const descriptor = claimQuestIntentRoute.toCommand(emission);
 
-      await executeTuiIntent(deps, descriptor.suffixTransform?.op ?? 'claimQuest', descriptor.suffixTransform?.payload ?? { questId, agentId: deps.agentId }, async () => {
-        throw new Error('OpticDomainActionService is not configured');
+      await executeTuiIntent(deps, descriptor, descriptor.suffixTransform?.op ?? 'claimQuest', descriptor.suffixTransform?.payload ?? { questId, agentId: deps.agentId }, async () => {
+        throw new Error('Command intent executor is not configured');
       });
       emit({ type: 'write-success', message: `Claimed ${questId}` });
     } catch (err: unknown) {
@@ -308,7 +268,7 @@ export function promoteQuest(deps: WriteDeps, questId: string, intentId: string,
       const emission = runtimeCommandIntentEmission(promoteQuestUiIntent, { questId, intentId, campaignId }, { owner });
       const descriptor = promoteQuestIntentRoute.toCommand(emission);
 
-      await executeTuiIntent(deps, descriptor.suffixTransform?.op ?? 'promoteQuest', descriptor.suffixTransform?.payload ?? { questId, intentId, campaignId, agentId: deps.agentId }, async () => {
+      await executeTuiIntent(deps, descriptor, descriptor.suffixTransform?.op ?? 'promoteQuest', descriptor.suffixTransform?.payload ?? { questId, intentId, campaignId, agentId: deps.agentId }, async () => {
         await deps.intake.promote(questId, intentId, campaignId);
       });
       emit({ type: 'write-success', message: `Promoted ${questId} → PLANNED` });
@@ -332,7 +292,7 @@ export function rejectQuest(deps: WriteDeps, questId: string, rationale: string)
       const emission = runtimeCommandIntentEmission(rejectQuestUiIntent, { questId, rationale }, { owner });
       const descriptor = rejectQuestIntentRoute.toCommand(emission);
 
-      await executeTuiIntent(deps, descriptor.suffixTransform?.op ?? 'rejectQuest', descriptor.suffixTransform?.payload ?? { questId, rationale, agentId: deps.agentId }, async () => {
+      await executeTuiIntent(deps, descriptor, descriptor.suffixTransform?.op ?? 'rejectQuest', descriptor.suffixTransform?.payload ?? { questId, rationale, agentId: deps.agentId }, async () => {
         await deps.intake.reject(questId, rationale);
       });
       emit({ type: 'write-success', message: `Rejected ${questId}` });
@@ -352,7 +312,7 @@ export function reopenQuest(deps: WriteDeps, questId: string): Cmd<DashboardMsg>
       const emission = runtimeCommandIntentEmission(reopenQuestUiIntent, { questId }, { owner });
       const descriptor = reopenQuestIntentRoute.toCommand(emission);
 
-      await executeTuiIntent(deps, descriptor.suffixTransform?.op ?? 'reopenQuest', descriptor.suffixTransform?.payload ?? { questId, agentId: deps.agentId }, async () => {
+      await executeTuiIntent(deps, descriptor, descriptor.suffixTransform?.op ?? 'reopenQuest', descriptor.suffixTransform?.payload ?? { questId, agentId: deps.agentId }, async () => {
         await deps.intake.reopen(questId);
       });
       emit({ type: 'write-success', message: `Reopened ${questId}` });
@@ -377,7 +337,7 @@ export function commentOnEntity(deps: WriteDeps, targetId: string, message: stri
       const emission = runtimeCommandIntentEmission(commentOnEntityUiIntent, { targetId, message: trimmed }, { owner });
       const descriptor = commentOnEntityIntentRoute.toCommand(emission);
 
-      await executeTuiIntent(deps, descriptor.suffixTransform?.op ?? 'commentOnEntity', descriptor.suffixTransform?.payload ?? { targetId, message: trimmed, agentId: deps.agentId }, async () => {
+      await executeTuiIntent(deps, descriptor, descriptor.suffixTransform?.op ?? 'commentOnEntity', descriptor.suffixTransform?.payload ?? { targetId, message: trimmed, agentId: deps.agentId }, async () => {
         await writerOrThrow(deps).write(RecordComment({
           targetId,
           message: trimmed,
@@ -406,7 +366,7 @@ export function reviewSubmission(
       const emission = runtimeCommandIntentEmission(reviewSubmissionUiIntent, { patchsetId, verdict, comment }, { owner });
       const descriptor = reviewSubmissionIntentRoute.toCommand(emission);
 
-      await executeTuiIntent(deps, descriptor.suffixTransform?.op ?? 'reviewSubmission', descriptor.suffixTransform?.payload ?? { patchsetId, verdict, comment, agentId: deps.agentId }, async () => {
+      await executeTuiIntent(deps, descriptor, descriptor.suffixTransform?.op ?? 'reviewSubmission', descriptor.suffixTransform?.payload ?? { patchsetId, verdict, comment, agentId: deps.agentId }, async () => {
         const reviewId = `review:${generateId()}`;
         await deps.submissionPort.review({ patchsetId, reviewId, verdict, comment });
       });
@@ -443,7 +403,7 @@ export function queueAskAiJob(
       const descriptor = queueAskAiJobIntentRoute.toCommand(emission);
 
       let createdId = '';
-      await executeTuiIntent(deps, descriptor.suffixTransform?.op ?? 'queueAskAiJob', descriptor.suffixTransform?.payload ?? { input, agentId: deps.agentId }, async () => {
+      await executeTuiIntent(deps, descriptor, descriptor.suffixTransform?.op ?? 'queueAskAiJob', descriptor.suffixTransform?.payload ?? { input, agentId: deps.agentId }, async () => {
         const receipt = await writerOrThrow(deps).write(RecordAiSuggestion({
           title,
           summary,
@@ -480,7 +440,7 @@ export function decideCase(
       const descriptor = decideCaseIntentRoute.toCommand(emission);
 
       let msg = '';
-      await executeTuiIntent(deps, descriptor.suffixTransform?.op ?? 'decideCase', descriptor.suffixTransform?.payload ?? { input, agentId: deps.agentId }, async () => {
+      await executeTuiIntent(deps, descriptor, descriptor.suffixTransform?.op ?? 'decideCase', descriptor.suffixTransform?.payload ?? { input, agentId: deps.agentId }, async () => {
         const receipt = await writerOrThrow(deps).write(DecideCase({
           ...input,
           decidedBy: deps.agentId,
@@ -519,7 +479,7 @@ export function adoptSuggestion(
       const descriptor = adoptSuggestionIntentRoute.toCommand(emission);
 
       let msg = '';
-      await executeTuiIntent(deps, descriptor.suffixTransform?.op ?? 'adoptSuggestion', descriptor.suffixTransform?.payload ?? { suggestionId, adoptedArtifactKind, rationale: trimmedRationale, agentId: deps.agentId }, async () => {
+      await executeTuiIntent(deps, descriptor, descriptor.suffixTransform?.op ?? 'adoptSuggestion', descriptor.suffixTransform?.payload ?? { suggestionId, adoptedArtifactKind, rationale: trimmedRationale, agentId: deps.agentId }, async () => {
         const receipt = await writerOrThrow(deps).write(AdoptAiSuggestion({
           suggestionId,
           resolvedBy: deps.agentId,
@@ -555,7 +515,7 @@ export function dismissSuggestion(
       const descriptor = dismissSuggestionIntentRoute.toCommand(emission);
 
       let msg = '';
-      await executeTuiIntent(deps, descriptor.suffixTransform?.op ?? 'dismissSuggestion', descriptor.suffixTransform?.payload ?? { suggestionId, rationale: trimmed, agentId: deps.agentId }, async () => {
+      await executeTuiIntent(deps, descriptor, descriptor.suffixTransform?.op ?? 'dismissSuggestion', descriptor.suffixTransform?.payload ?? { suggestionId, rationale: trimmed, agentId: deps.agentId }, async () => {
         const receipt = await writerOrThrow(deps).write(DismissAiSuggestion({
           suggestionId,
           resolvedBy: deps.agentId,
@@ -594,7 +554,7 @@ export function supersedeSuggestion(
       const descriptor = supersedeSuggestionIntentRoute.toCommand(emission);
 
       let msg = '';
-      await executeTuiIntent(deps, descriptor.suffixTransform?.op ?? 'supersedeSuggestion', descriptor.suffixTransform?.payload ?? { input, agentId: deps.agentId }, async () => {
+      await executeTuiIntent(deps, descriptor, descriptor.suffixTransform?.op ?? 'supersedeSuggestion', descriptor.suffixTransform?.payload ?? { input, agentId: deps.agentId }, async () => {
         const receipt = await writerOrThrow(deps).write(SupersedeAiSuggestion({
           suggestionId: input.suggestionId,
           supersededById: replacementId,

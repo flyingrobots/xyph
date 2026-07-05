@@ -46,10 +46,10 @@ import type {
   SubmissionNode,
 } from '../../domain/models/dashboard.js';
 import type { IntakePort } from '../../ports/IntakePort.js';
-import type { OpticDomainActionService } from '../../domain/services/OpticDomainActionService.js';
 import type { XYPHReader } from '../../ports/XYPHReader.js';
 import type { XYPHWriter } from '../../ports/XYPHWriter.js';
 import type { SubmissionPort } from '../../ports/SubmissionPort.js';
+import type { CommandIntentExecutorPort } from '../../ports/CommandIntentExecutorPort.js';
 import { noopDashboardRuntimePort, type DashboardRuntimePort } from '../../ports/DashboardRuntimePort.js';
 import {
   ReadDashboardEntityDetail,
@@ -374,7 +374,7 @@ export interface DashboardDeps {
   runtime?: DashboardRuntimePort;
   observerWatermarkStore: ObserverWatermarkStore;
   observerWatermarkScope: ObserverWatermarkScope;
-  opticDomainActionService?: OpticDomainActionService;
+  commandIntentExecutor?: CommandIntentExecutorPort;
   writer?: XYPHWriter;
   logger?: {
     debug(message: string, context?: Record<string, unknown>): void;
@@ -1981,7 +1981,7 @@ export function createDashboardApp(deps: DashboardDeps): App<DashboardModel, Das
     intake: deps.intake,
     submissionPort: deps.submissionPort,
     agentId: deps.agentId,
-    opticDomainActionService: deps.opticDomainActionService,
+    commandIntentExecutor: deps.commandIntentExecutor,
     writer: deps.writer,
   };
 

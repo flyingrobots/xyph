@@ -50,6 +50,7 @@ import { WarpRecordCommentIntentAdapter } from './src/infrastructure/warp/intent
 import { WarpXYPHWriterAdapter } from './src/infrastructure/warp/WarpXYPHWriterAdapter.js';
 import { EdictWasmTargetLowererAdapter } from './src/infrastructure/adapters/EdictWasmTargetLowererAdapter.js';
 import { WarpOpticActionAdmissionAdapter } from './src/infrastructure/warp/WarpOpticActionAdmissionAdapter.js';
+import { TuiCommandIntentExecutorAdapter } from './src/infrastructure/warp/TuiCommandIntentExecutorAdapter.js';
 import { OpticDomainActionService } from './src/domain/services/OpticDomainActionService.js';
 import { RecordService } from './src/domain/services/RecordService.js';
 import { createDashboardApp } from './src/tui/bijou/DashboardApp.js';
@@ -104,6 +105,7 @@ const opticDomainActionService = new OpticDomainActionService(
   new EdictWasmTargetLowererAdapter(),
   new WarpOpticActionAdmissionAdapter(graphPort),
 );
+const commandIntentExecutor = new TuiCommandIntentExecutorAdapter(opticDomainActionService);
 const observerWatermarkStore = createFileObserverWatermarkStore();
 
 logger.info('dashboard session starting', {
@@ -119,7 +121,7 @@ const app = createDashboardApp({
   intake,
   submissionPort,
   writer,
-  opticDomainActionService,
+  commandIntentExecutor,
   runtime: dashboardRuntime,
   style,
   agentId,

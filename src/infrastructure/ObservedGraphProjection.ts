@@ -224,9 +224,7 @@ function hasWorldlineProjection(graph: ObservedProjectionGraph): graph is Observ
 }
 
 function contentOidFromReadableProps(props: unknown): string | null {
-  if (typeof props !== 'object' || props === null) return null;
-  const value = (props as Record<string, unknown>)['_content'];
-  return typeof value === 'string' ? value : null;
+  return contentOidFromProps(props);
 }
 
 interface RuntimeBlobStorage {
@@ -236,13 +234,13 @@ interface RuntimeBlobStorage {
 const runtimeBlobStorageCache = new WeakMap<object, Promise<RuntimeBlobStorage | null>>();
 
 async function runtimeBlobStorageFor(source: unknown): Promise<RuntimeBlobStorage | null> {
+  if (typeof source !== 'object' || source === null) {
+    return null;
+  }
   const storageSource = source as {
     persistence?: { createRuntimeBlobStorage?(): Promise<RuntimeBlobStorage> };
   };
   if (typeof storageSource.persistence?.createRuntimeBlobStorage !== 'function') {
-    return null;
-  }
-  if (typeof source !== 'object' || source === null) {
     return null;
   }
   const key = source;
@@ -255,6 +253,9 @@ async function runtimeBlobStorageFor(source: unknown): Promise<RuntimeBlobStorag
 }
 
 export async function readObservedContentByOid(source: unknown, oid: string): Promise<Uint8Array | null> {
+  if (typeof source !== 'object' || source === null) {
+    return null;
+  }
   const storage = source as {
     _blobStorage?: { retrieve?(oid: string): Promise<Uint8Array | null> };
     _persistence?: { readBlob?(oid: string): Promise<Uint8Array | null> };
@@ -450,7 +451,7 @@ function matchToPrefixes(match: string | string[]): string[] {
   return patterns.map((p) => (p.endsWith('*') ? p.slice(0, -1) : p));
 }
 
-function contentOidFromProps(props: unknown): string | null {
+export function contentOidFromProps(props: unknown): string | null {
   if (typeof props !== 'object' || props === null) return null;
   const value = (props as Record<string, unknown>)['_content'];
   return typeof value === 'string' ? value : null;

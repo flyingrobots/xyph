@@ -21,6 +21,9 @@ export class WarpGraphAdapter implements GraphPort {
   private graphPromise: Promise<WarpGraph> | null = null;
   private static readonly memoryBackends = new Map<string, InMemoryGraphAdapter>();
   private static readonly memoryBlobBackends = new Map<string, BlobStoragePort>();
+  private static readonly memoryRuntimeBackends = new Map<string, InMemoryGraphAdapter & {
+    createRuntimeBlobStorage(): Promise<BlobStoragePort>;
+  }>();
 
   constructor(
     private readonly cwd: string,
@@ -114,10 +117,20 @@ export class WarpGraphAdapter implements GraphPort {
         memBlobStorage = new InMemoryBlobStorageAdapter();
         WarpGraphAdapter.memoryBlobBackends.set(backendKey, memBlobStorage);
       }
-      Object.assign(memPersistence, {
-        createRuntimeBlobStorage: async (): Promise<BlobStoragePort> => memBlobStorage,
-      });
-      persistence = memPersistence;
+      let runtimePersistence = WarpGraphAdapter.memoryRuntimeBackends.get(backendKey);
+      if (!runtimePersistence) {
+        runtimePersistence = Object.create(memPersistence) as InMemoryGraphAdapter & {
+          createRuntimeBlobStorage(): Promise<BlobStoragePort>;
+        };
+        Object.defineProperty(runtimePersistence, 'createRuntimeBlobStorage', {
+          value: async (): Promise<BlobStoragePort> => memBlobStorage,
+          enumerable: false,
+          configurable: false,
+          writable: false,
+        });
+        WarpGraphAdapter.memoryRuntimeBackends.set(backendKey, runtimePersistence);
+      }
+      persistence = runtimePersistence;
     } else {
       const plumbing = await Plumbing.createDefault({ cwd: this.cwd });
       persistence = new GitGraphAdapter({ plumbing });

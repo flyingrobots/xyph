@@ -3,8 +3,8 @@ import type {
   DashboardReviewLaneData,
   DashboardReviewPageData,
   DashboardSuggestionLaneData,
+  DashboardOperationalView,
   EntityDetail,
-  GraphSnapshot,
 } from '../domain/models/dashboard.js';
 import type { XYPHReading } from '../ports/XYPHReader.js';
 
@@ -24,7 +24,7 @@ export type DashboardObservationView =
   | 'case-page'
   | 'doctor-page';
 
-export type DashboardOperationalSnapshot = GraphSnapshot;
+export type DashboardOperationalSnapshot = DashboardOperationalView;
 
 export interface ReadDashboardOperationalSnapshotInput {
   readonly view: DashboardObservationView;

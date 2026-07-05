@@ -6,6 +6,8 @@ import { SystemClockAdapter } from '../../infrastructure/adapters/SystemClockAda
 import type { CanonicalArtifactKind } from '../models/controlPlane.js';
 import { MutationKernelService } from './MutationKernelService.js';
 import { WarpCausalMutationAdapter } from '../../infrastructure/warp/CausalMutationAdapter.js';
+import { contentOidFromProps } from '../../infrastructure/ObservedGraphProjection.js';
+import { toNeighborEntries } from '../../infrastructure/helpers/isNeighborEntry.js';
 import type {
   AiSuggestionAdoptionKind,
   AiSuggestionAudience,
@@ -190,17 +192,19 @@ function caseDecisionExpectedDelta(
   return 'Return the case to preparation for more evidence';
 }
 
-function contentOidFromProps(props: unknown): string | null {
-  if (typeof props !== 'object' || props === null) return null;
-  const value = (props as Record<string, unknown>)['_content'];
-  return typeof value === 'string' ? value : null;
-}
-
 async function readContentOid(
   reader: { worldline(): { getNodeProps(nodeId: string): Promise<Record<string, unknown> | null> } },
   nodeId: string,
 ): Promise<string | null> {
   return await reader.worldline().getNodeProps(nodeId).then(contentOidFromProps);
+}
+
+interface BoundedNeighborReader {
+  neighbors?: (
+    nodeId: string,
+    direction?: 'outgoing' | 'incoming' | 'both',
+    edgeLabel?: string,
+  ) => Promise<unknown>;
 }
 
 export class RecordService {
@@ -445,10 +449,11 @@ export class RecordService {
       : typeof caseProps['decision_question'] === 'string'
         ? caseProps['decision_question']
         : title;
-    const allEdges = await graph.worldline().getEdges();
-    const concernEdges = allEdges
-      .filter((edge) => edge.from === input.caseId && edge.label === 'concerns');
-    const subjectIds = concernEdges.map((edge) => edge.to);
+    const worldline = graph.worldline() as BoundedNeighborReader;
+    const concernNeighbors = typeof worldline.neighbors === 'function'
+      ? toNeighborEntries(await worldline.neighbors(input.caseId, 'outgoing', 'concerns'))
+      : [];
+    const subjectIds = concernNeighbors.map((edge) => edge.nodeId);
     const primarySubjectId = subjectIds[0];
 
     let followOnArtifactId: string | undefined;

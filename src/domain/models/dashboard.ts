@@ -566,3 +566,5 @@ export interface GraphSnapshot {
   /** Per-task count of non-DONE nodes transitively downstream via depends-on edges, computed by git-warp's BFS. */
   transitiveDownstream: Map<string, number>;
 }
+
+export type DashboardOperationalView = GraphSnapshot;

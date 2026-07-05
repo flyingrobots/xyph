@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
   createObservedGraphProjectionFromGraph,
+  readObservedContentByOid,
   type ObservedProjectionGraph,
 } from '../../src/infrastructure/ObservedGraphProjection.js';
 
@@ -17,6 +18,11 @@ function makeQueryBuilder(nodes: { id: string; props: Record<string, unknown> }[
 }
 
 describe('ObservedGraphProjection read path', () => {
+  it('returns null for observed content reads when no blob source exists', async () => {
+    await expect(readObservedContentByOid(null, 'oid:missing')).resolves.toBeNull();
+    await expect(readObservedContentByOid(undefined, 'oid:missing')).resolves.toBeNull();
+  });
+
   it('does not call materialize() when building a live snapshot', async () => {
     const materialize = vi.fn(async () => null);
     const graph: ObservedProjectionGraph = {

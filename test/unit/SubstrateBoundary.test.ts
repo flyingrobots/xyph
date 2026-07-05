@@ -67,6 +67,37 @@ describe('substrate boundary', () => {
     expect(tuiWrites).not.toContain('getNodeProps');
   });
 
+  it('keeps TUI command intent execution behind the command executor port', () => {
+    const tuiWrites = source('src/tui/bijou/write-cmds.ts');
+
+    expect(tuiWrites).toContain('CommandIntentExecutorPort');
+    expect(tuiWrites).not.toContain('OpticDomainActionService');
+    expect(tuiWrites).not.toContain('EdictWasmTargetLowererAdapter');
+    expect(tuiWrites).not.toContain('sha256:basis123');
+    expect(tuiWrites).not.toContain('WasmIntentDescriptor');
+    expect(tuiWrites).not.toMatch(/intentId:\s*`[^`]*\$\{Date\.now\(\)\}/);
+  });
+
+  it('keeps dashboard reading ports from exposing graph-shaped snapshots', () => {
+    const dashboardReadings = source('src/readings/DashboardReadings.ts');
+    const dashboardReadPort = source('src/ports/DashboardReadPort.ts');
+
+    expect(dashboardReadings).toContain('DashboardOperationalView');
+    expect(dashboardReadPort).toContain('DashboardOperationalView');
+    expect(dashboardReadings).not.toContain('GraphSnapshot');
+    expect(dashboardReadPort).not.toContain('GraphSnapshot');
+    expect(dashboardReadPort).not.toContain('worldline');
+    expect(dashboardReadPort).not.toContain('WARP');
+  });
+
+  it('does not mutate cached in-memory WARP persistence when wiring runtime blob storage', () => {
+    const warpGraphAdapter = source('src/infrastructure/adapters/WarpGraphAdapter.ts');
+
+    expect(warpGraphAdapter).toContain('Object.create(memPersistence)');
+    expect(warpGraphAdapter).not.toContain('Object.assign(memPersistence');
+    expect(warpGraphAdapter).not.toContain('Object.defineProperty(memPersistence');
+  });
+
   it('keeps the dashboard app on product ports instead of substrate runtime APIs', () => {
     const dashboardApp = source('src/tui/bijou/DashboardApp.ts');
 

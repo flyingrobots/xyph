@@ -9,6 +9,7 @@ import type {
 import { SystemClockAdapter } from '../../adapters/SystemClockAdapter.js';
 import { MutationKernelService } from '../../../domain/services/MutationKernelService.js';
 import { WarpCausalMutationAdapter } from '../CausalMutationAdapter.js';
+import { contentOidFromProps } from '../../ObservedGraphProjection.js';
 
 function deriveId(prefix: string, explicitId: string | undefined, idempotencyKey: string | undefined, clock: ClockPort): string {
   if (explicitId) return explicitId;
@@ -18,12 +19,6 @@ function deriveId(prefix: string, explicitId: string | undefined, idempotencyKey
   }
   const ts = clock.now().toString(36);
   return `${prefix}${ts}${randomUUID().replace(/-/g, '').slice(0, 8)}`;
-}
-
-function contentOidFromProps(props: unknown): string | null {
-  if (typeof props !== 'object' || props === null) return null;
-  const value = (props as Record<string, unknown>)['_content'];
-  return typeof value === 'string' ? value : null;
 }
 
 export class WarpRecordCommentIntentAdapter implements RecordCommentIntentPort {
@@ -70,7 +65,9 @@ export class WarpRecordCommentIntentAdapter implements RecordCommentIntentPort {
     });
 
     if (!result.executed || !result.patch) {
-      throw new Error(`[INVALID_STATE] Failed to record comment ${id}`);
+      const reasons = result.reasons.length > 0 ? `: ${result.reasons.join('; ')}` : '';
+      const code = result.code ?? 'unknown';
+      throw new Error(`[INVALID_STATE] Failed to record comment ${id} (${code})${reasons}`);
     }
 
     return {
