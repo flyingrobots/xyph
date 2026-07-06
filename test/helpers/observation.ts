@@ -149,6 +149,70 @@ export function makeObservationSessionDouble(
   });
 
   const suggestionNodes = snapshot.aiSuggestions.map(toSuggestionNode);
+  const planningNodes = [
+    ...snapshot.constraints.map((constraint) => ({
+      id: constraint.id,
+      props: {
+        type: 'constraint',
+        description: constraint.description,
+        threshold: constraint.threshold,
+        unit: constraint.unit,
+      },
+    })),
+    ...snapshot.assumptions.map((assumption) => ({
+      id: assumption.id,
+      props: {
+        type: 'assumption',
+        description: assumption.description,
+        validated: assumption.validated,
+        validated_at: assumption.validatedAt,
+      },
+    })),
+    ...snapshot.risks.map((risk) => ({
+      id: risk.id,
+      props: {
+        type: 'risk',
+        description: risk.description,
+        likelihood: risk.likelihood,
+        impact: risk.impact,
+        mitigation: risk.mitigation,
+      },
+    })),
+    ...snapshot.spikes.map((spike) => ({
+      id: spike.id,
+      props: {
+        type: 'spike',
+        timebox_hours: spike.timeboxHours,
+        outcome: spike.outcome,
+      },
+    })),
+  ];
+  for (const constraint of snapshot.constraints) {
+    generatedOutgoing[constraint.id] = constraint.targetIds.map((targetId) => ({
+      nodeId: targetId,
+      label: 'constrains' as const,
+    }));
+  }
+  for (const assumption of snapshot.assumptions) {
+    generatedOutgoing[assumption.id] = assumption.targetIds.map((targetId) => ({
+      nodeId: targetId,
+      label: 'assumes' as const,
+    }));
+  }
+  for (const risk of snapshot.risks) {
+    generatedOutgoing[risk.id] = risk.targetIds.map((targetId) => ({
+      nodeId: targetId,
+      label: 'threatens' as const,
+    }));
+  }
+  for (const spike of snapshot.spikes) {
+    generatedOutgoing[spike.id] = spike.targetIds.map((targetId) => ({
+      nodeId: targetId,
+      label: targetId.startsWith('risk:') || targetId.startsWith('assumption:')
+        ? 'investigates' as const
+        : 'informs' as const,
+    }));
+  }
 
   const fetchEntityDetail = opts?.fetchEntityDetail ?? vi.fn();
   const outgoing = {
@@ -162,6 +226,10 @@ export function makeObservationSessionDouble(
     'review:*': reviewNodes,
     'decision:*': decisionNodes,
     'suggestion:*': suggestionNodes,
+    'constraint:*': planningNodes.filter((node) => node.props.type === 'constraint'),
+    'assumption:*': planningNodes.filter((node) => node.props.type === 'assumption'),
+    'risk:*': planningNodes.filter((node) => node.props.type === 'risk'),
+    'spike:*': planningNodes.filter((node) => node.props.type === 'spike'),
     ...(opts?.extraNodesByPattern ?? {}),
   };
 

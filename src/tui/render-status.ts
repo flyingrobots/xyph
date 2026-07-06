@@ -7,18 +7,26 @@ import {
   getDefaultContext, surfaceToString, type Surface,
 } from '@flyingrobots/bijou';
 import type {
+  AssumptionNode,
   CriterionNode,
   ComputedCompletionSummary,
+  ConstraintNode,
   EvidenceNode,
   GraphSnapshot,
   PolicyNode,
+  RiskNode,
   RequirementNode,
   StoryNode,
   SuggestionNode,
   AiSuggestionNode,
+  SpikeNode,
 } from '../domain/models/dashboard.js';
 import type { BlockerInfo } from '../domain/services/DepAnalysis.js';
-import type { UnmetRequirement, CoverageResult } from '../domain/services/TraceabilityAnalysis.js';
+import type {
+  UnmetRequirement,
+  CoverageResult,
+  PlanningGapSummary,
+} from '../domain/services/TraceabilityAnalysis.js';
 import type { StylePort } from '../ports/StylePort.js';
 import { statusVariant, sliceDate, groupBy } from './view-helpers.js';
 
@@ -794,10 +802,15 @@ export interface TraceViewData {
   criteria: CriterionNode[];
   evidence: EvidenceNode[];
   policies: PolicyNode[];
+  constraints: ConstraintNode[];
+  assumptions: AssumptionNode[];
+  risks: RiskNode[];
+  spikes: SpikeNode[];
   unmetRequirements: UnmetRequirement[];
   untestedCriteria: string[];
   failingCriteria: string[];
   coverage: CoverageResult;
+  planningGaps: PlanningGapSummary;
   questCompletion: {
     id: string;
     title: string;
@@ -838,7 +851,7 @@ export function renderTrace(data: TraceViewData, style: StylePort): string {
 
   lines.push(snapshotHeader(style,
     'Traceability',
-    `${data.stories.length} stories  ${data.requirements.length} reqs  ${data.criteria.length} criteria  ${data.policies.length} policies  coverage: ${pct}`,
+    `${data.stories.length} stories  ${data.requirements.length} reqs  ${data.criteria.length} criteria  ${data.policies.length} policies  ${data.constraints.length} constraints  ${data.assumptions.length} assumptions  ${data.risks.length} risks  ${data.spikes.length} spikes  coverage: ${pct}`,
     'secondary',
   ));
 
@@ -964,6 +977,148 @@ export function renderTrace(data: TraceViewData, style: StylePort): string {
     }));
   }
 
+  if (data.constraints.length > 0) {
+    lines.push('');
+    lines.push(separator({ label: 'Constraints', borderToken: style.theme.border.secondary }));
+    const rows = data.constraints.map((constraint) => [
+      style.styled(style.theme.semantic.muted, constraint.id.slice(0, 20)),
+      constraint.description.slice(0, 34),
+      constraint.threshold.slice(0, 18),
+      constraint.unit.slice(0, 12),
+      String(constraint.targetIds.length),
+    ]);
+    lines.push(table({
+      columns: [
+        { header: 'Constraint', width: 22 },
+        { header: 'Description', width: 36 },
+        { header: 'Threshold', width: 20 },
+        { header: 'Unit', width: 14 },
+        { header: 'Targets', width: 8 },
+      ],
+      rows,
+      headerToken: style.theme.ui.tableHeader,
+      borderToken: style.theme.border.primary,
+    }));
+  }
+
+  if (data.assumptions.length > 0) {
+    lines.push('');
+    lines.push(separator({ label: 'Assumptions', borderToken: style.theme.border.secondary }));
+    const rows = data.assumptions.map((assumption) => [
+      style.styled(style.theme.semantic.muted, assumption.id.slice(0, 20)),
+      assumption.description.slice(0, 34),
+      badge(assumption.validated ? 'validated' : 'open', { variant: assumption.validated ? 'success' : 'warning' }),
+      assumption.validatedAt ? sliceDate(assumption.validatedAt) : '—',
+      String(assumption.targetIds.length),
+    ]);
+    lines.push(table({
+      columns: [
+        { header: 'Assumption', width: 22 },
+        { header: 'Description', width: 36 },
+        { header: 'State', width: 12 },
+        { header: 'Validated At', width: 16 },
+        { header: 'Targets', width: 8 },
+      ],
+      rows,
+      headerToken: style.theme.ui.tableHeader,
+      borderToken: style.theme.border.primary,
+    }));
+  }
+
+  if (data.risks.length > 0) {
+    lines.push('');
+    lines.push(separator({ label: 'Risks', borderToken: style.theme.border.secondary }));
+    const rows = data.risks.map((risk) => [
+      style.styled(style.theme.semantic.muted, risk.id.slice(0, 20)),
+      risk.description.slice(0, 34),
+      risk.likelihood.toFixed(2),
+      risk.impact.toFixed(2),
+      Math.round(risk.likelihood * risk.impact * 100).toString(),
+      risk.mitigation?.slice(0, 20) ?? '—',
+    ]);
+    lines.push(table({
+      columns: [
+        { header: 'Risk', width: 22 },
+        { header: 'Description', width: 36 },
+        { header: 'Likely', width: 8 },
+        { header: 'Impact', width: 8 },
+        { header: 'Score', width: 8 },
+        { header: 'Mitigation', width: 22 },
+      ],
+      rows,
+      headerToken: style.theme.ui.tableHeader,
+      borderToken: style.theme.border.primary,
+    }));
+  }
+
+  if (data.spikes.length > 0) {
+    lines.push('');
+    lines.push(separator({ label: 'Spikes', borderToken: style.theme.border.secondary }));
+    const rows = data.spikes.map((spike) => [
+      style.styled(style.theme.semantic.muted, spike.id.slice(0, 20)),
+      `${spike.timeboxHours}h`,
+      spike.outcome.slice(0, 40),
+      String(spike.targetIds.length),
+    ]);
+    lines.push(table({
+      columns: [
+        { header: 'Spike', width: 22 },
+        { header: 'Timebox', width: 10 },
+        { header: 'Outcome', width: 44 },
+        { header: 'Targets', width: 8 },
+      ],
+      rows,
+      headerToken: style.theme.ui.tableHeader,
+      borderToken: style.theme.border.primary,
+    }));
+  }
+
+  if (
+    data.planningGaps.unvalidatedAssumptionIds.length > 0 ||
+    data.planningGaps.unmitigatedRiskIds.length > 0 ||
+    data.planningGaps.riskHotspots.length > 0
+  ) {
+    lines.push('');
+    lines.push(separator({ label: 'Planning Gaps', borderToken: style.theme.border.warning }));
+
+    if (data.planningGaps.unvalidatedAssumptionIds.length > 0) {
+      const items = data.planningGaps.unvalidatedAssumptionIds.map((id) => {
+        const assumption = data.assumptions.find((entry) => entry.id === id);
+        return `${id}  ${assumption?.description.slice(0, 48) ?? '—'}`;
+      });
+      lines.push(style.styled(style.theme.semantic.warning, '  Unvalidated assumptions'));
+      lines.push(enumeratedList(items, { style: 'arabic', indent: 6 }));
+    }
+
+    if (data.planningGaps.unmitigatedRiskIds.length > 0) {
+      const items = data.planningGaps.unmitigatedRiskIds.map((id) => {
+        const risk = data.risks.find((entry) => entry.id === id);
+        return `${id}  ${risk?.description.slice(0, 48) ?? '—'}`;
+      });
+      lines.push(style.styled(style.theme.semantic.warning, '  Unmitigated risks'));
+      lines.push(enumeratedList(items, { style: 'arabic', indent: 6 }));
+    }
+
+    if (data.planningGaps.riskHotspots.length > 0) {
+      const rows = data.planningGaps.riskHotspots.slice(0, 5).map((risk) => [
+        style.styled(style.theme.semantic.muted, risk.id.slice(0, 20)),
+        risk.score.toFixed(2),
+        risk.mitigation?.slice(0, 20) ?? '—',
+      ]);
+      lines.push(style.styled(style.theme.semantic.warning, '  Risk hotspots'));
+      lines.push(table({
+        columns: [
+          { header: 'Risk', width: 22 },
+          { header: 'Score', width: 8 },
+          { header: 'Mitigation', width: 22 },
+        ],
+        rows,
+        headerToken: style.theme.ui.tableHeader,
+        borderToken: style.theme.border.primary,
+      }));
+    }
+  }
+
   if (data.questCompletion.length > 0) {
     lines.push('');
     lines.push(separator({ label: 'Quest Completion', borderToken: style.theme.border.secondary }));
@@ -1041,12 +1196,18 @@ export function renderTrace(data: TraceViewData, style: StylePort): string {
   lines.push(`    ${style.styled(style.theme.semantic.muted, 'Requirements:')} ${data.requirements.length}`);
   lines.push(`    ${style.styled(style.theme.semantic.muted, 'Criteria:')} ${data.criteria.length}`);
   lines.push(`    ${style.styled(style.theme.semantic.muted, 'Policies:')} ${data.policies.length}`);
+  lines.push(`    ${style.styled(style.theme.semantic.muted, 'Constraints:')} ${data.constraints.length}`);
+  lines.push(`    ${style.styled(style.theme.semantic.muted, 'Assumptions:')} ${data.assumptions.length}`);
+  lines.push(`    ${style.styled(style.theme.semantic.muted, 'Risks:')} ${data.risks.length}`);
+  lines.push(`    ${style.styled(style.theme.semantic.muted, 'Spikes:')} ${data.spikes.length}`);
   lines.push(`    ${style.styled(style.theme.semantic.muted, 'Observed:')} ${data.coverage.evidenced} / ${data.coverage.total}`);
   lines.push(`    ${style.styled(style.theme.semantic.muted, 'Satisfied:')} ${data.coverage.satisfied}`);
   lines.push(`    ${style.styled(style.theme.semantic.muted, 'Failing:')} ${data.coverage.failing}`);
   lines.push(`    ${style.styled(style.theme.semantic.muted, 'Linked Only:')} ${data.coverage.linkedOnly}`);
   lines.push(`    ${style.styled(style.theme.semantic.muted, 'Unevidenced:')} ${data.coverage.unevidenced}`);
   lines.push(`    ${style.styled(style.theme.semantic.muted, 'Coverage:')} ${pct}`);
+  lines.push(`    ${style.styled(style.theme.semantic.muted, 'Unvalidated assumptions:')} ${data.planningGaps.unvalidatedAssumptionIds.length}`);
+  lines.push(`    ${style.styled(style.theme.semantic.muted, 'Unmitigated risks:')} ${data.planningGaps.unmitigatedRiskIds.length}`);
   lines.push(`    ${style.styled(style.theme.semantic.muted, 'Quest Discrepancies:')} ${data.questDiscrepancies.length}`);
   lines.push(`    ${style.styled(style.theme.semantic.muted, 'Campaign Discrepancies:')} ${data.campaignDiscrepancies.length}`);
 

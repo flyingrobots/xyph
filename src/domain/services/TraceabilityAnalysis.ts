@@ -22,6 +22,32 @@ export interface RequirementSummary {
   criterionIds: string[];
 }
 
+export interface ConstraintSummary {
+  id: string;
+  targetIds: string[];
+}
+
+export interface AssumptionSummary {
+  id: string;
+  validated: boolean;
+  validatedAt?: number;
+  targetIds: string[];
+}
+
+export interface RiskSummary {
+  id: string;
+  likelihood: number;
+  impact: number;
+  mitigation?: string;
+  targetIds: string[];
+}
+
+export interface SpikeSummary {
+  id: string;
+  timeboxHours: number;
+  targetIds: string[];
+}
+
 export interface CriterionEvidenceSummary {
   id: string;
   result: EvidenceResult;
@@ -189,6 +215,21 @@ export interface CoverageResult {
   ratio: number;
 }
 
+export interface RiskHotspot {
+  id: string;
+  likelihood: number;
+  impact: number;
+  score: number;
+  targetIds: string[];
+  mitigation?: string;
+}
+
+export interface PlanningGapSummary {
+  unvalidatedAssumptionIds: string[];
+  unmitigatedRiskIds: string[];
+  riskHotspots: RiskHotspot[];
+}
+
 /**
  * Computes the fraction of criteria that have at least one piece of evidence.
  * Returns { evidenced, total, ratio } where ratio ∈ [0, 1].
@@ -314,5 +355,49 @@ export function computeCompletionSummary(
     missingCriterionIds,
     policyId: policy?.id,
     discrepancy: tracked ? computeDiscrepancy(manualComplete, complete) : undefined,
+  };
+}
+
+export function computeUnvalidatedAssumptions(
+  assumptions: AssumptionSummary[],
+): string[] {
+  return assumptions
+    .filter((assumption) => !assumption.validated)
+    .map((assumption) => assumption.id);
+}
+
+export function computeRiskHotspots(
+  risks: RiskSummary[],
+): RiskHotspot[] {
+  return risks
+    .map((risk) => ({
+      id: risk.id,
+      likelihood: risk.likelihood,
+      impact: risk.impact,
+      score: risk.likelihood * risk.impact,
+      targetIds: risk.targetIds,
+      ...(typeof risk.mitigation === 'string' && risk.mitigation.trim().length > 0
+        ? { mitigation: risk.mitigation }
+        : {}),
+    }))
+    .sort((left, right) =>
+      right.score - left.score ||
+      right.impact - left.impact ||
+      right.likelihood - left.likelihood ||
+      left.id.localeCompare(right.id),
+    );
+}
+
+export function computePlanningGapSummary(
+  assumptions: AssumptionSummary[],
+  risks: RiskSummary[],
+): PlanningGapSummary {
+  const riskHotspots = computeRiskHotspots(risks);
+  return {
+    unvalidatedAssumptionIds: computeUnvalidatedAssumptions(assumptions),
+    unmitigatedRiskIds: riskHotspots
+      .filter((risk) => risk.mitigation === undefined)
+      .map((risk) => risk.id),
+    riskHotspots,
   };
 }

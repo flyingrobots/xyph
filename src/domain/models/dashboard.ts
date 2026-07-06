@@ -193,6 +193,42 @@ export interface PolicyNode {
 }
 
 // ---------------------------------------------------------------------------
+// Planning qualifier node types (M11 Phase 3)
+// ---------------------------------------------------------------------------
+
+export interface ConstraintNode {
+  id: string;
+  description: string;
+  threshold: string;
+  unit: string;
+  targetIds: string[];
+}
+
+export interface AssumptionNode {
+  id: string;
+  description: string;
+  validated: boolean;
+  validatedAt?: number;
+  targetIds: string[];
+}
+
+export interface RiskNode {
+  id: string;
+  description: string;
+  likelihood: number;
+  impact: number;
+  mitigation?: string;
+  targetIds: string[];
+}
+
+export interface SpikeNode {
+  id: string;
+  timeboxHours: number;
+  outcome: string;
+  targetIds: string[];
+}
+
+// ---------------------------------------------------------------------------
 // Suggestion node type (M11 Phase 4)
 // ---------------------------------------------------------------------------
 
@@ -553,6 +589,10 @@ export interface GraphSnapshot {
   criteria: CriterionNode[];
   evidence: EvidenceNode[];
   policies: PolicyNode[];
+  constraints: ConstraintNode[];
+  assumptions: AssumptionNode[];
+  risks: RiskNode[];
+  spikes: SpikeNode[];
   // Auto-linking suggestions (M11 Phase 4)
   suggestions: SuggestionNode[];
   aiSuggestions: AiSuggestionNode[];

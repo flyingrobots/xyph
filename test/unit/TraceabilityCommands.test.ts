@@ -200,6 +200,201 @@ describe('traceability policy commands', () => {
     });
   });
 
+  it('creates a constraint node with constrains edges', async () => {
+    const patchBuilder = createPatchBuilder();
+    const graph = {
+      hasNode: vi.fn().mockResolvedValue(true),
+      patch: vi.fn(async (fn: (builder: typeof patchBuilder) => void) => {
+        fn(patchBuilder);
+        return 'patch:constraint';
+      }),
+    };
+    const ctx = makeCtx(graph);
+    const program = new Command();
+    registerTraceabilityCommands(program, ctx);
+
+    await program.parseAsync(
+      [
+        'constraint',
+        'constraint:TRACE',
+        '--description',
+        'Builds must stay within a tight memory budget',
+        '--threshold',
+        '512MB',
+        '--unit',
+        'memory',
+        '--requirement',
+        'req:TRACE',
+        '--campaign',
+        'campaign:TRACE',
+      ],
+      { from: 'user' },
+    );
+
+    expect(patchBuilder.addNode).toHaveBeenCalledWith('constraint:TRACE');
+    expect(patchBuilder.addEdge).toHaveBeenCalledWith('constraint:TRACE', 'req:TRACE', 'constrains');
+    expect(patchBuilder.addEdge).toHaveBeenCalledWith('constraint:TRACE', 'campaign:TRACE', 'constrains');
+    expect(ctx.jsonOut).toHaveBeenCalledWith({
+      success: true,
+      command: 'constraint',
+      data: {
+        id: 'constraint:TRACE',
+        description: 'Builds must stay within a tight memory budget',
+        threshold: '512MB',
+        unit: 'memory',
+        requirement: 'req:TRACE',
+        campaign: 'campaign:TRACE',
+        patch: 'patch:constraint',
+      },
+    });
+  });
+
+  it('creates an assumption node with an optional validation timestamp', async () => {
+    const patchBuilder = createPatchBuilder();
+    const graph = {
+      hasNode: vi.fn().mockResolvedValue(true),
+      patch: vi.fn(async (fn: (builder: typeof patchBuilder) => void) => {
+        fn(patchBuilder);
+        return 'patch:assumption';
+      }),
+    };
+    const ctx = makeCtx(graph);
+    const program = new Command();
+    registerTraceabilityCommands(program, ctx);
+
+    await program.parseAsync(
+      [
+        'assumption',
+        'assumption:TRACE',
+        '--description',
+        'The cache remains warm during the demo',
+        '--validated',
+        '--validated-at',
+        '1700000000001',
+        '--task',
+        'task:TRACE',
+      ],
+      { from: 'user' },
+    );
+
+    expect(patchBuilder.addNode).toHaveBeenCalledWith('assumption:TRACE');
+    expect(patchBuilder.setProperty).toHaveBeenCalledWith('assumption:TRACE', 'validated_at', 1700000000001);
+    expect(patchBuilder.addEdge).toHaveBeenCalledWith('assumption:TRACE', 'task:TRACE', 'assumes');
+    expect(ctx.jsonOut).toHaveBeenCalledWith({
+      success: true,
+      command: 'assumption',
+      data: {
+        id: 'assumption:TRACE',
+        description: 'The cache remains warm during the demo',
+        validated: true,
+        validatedAt: 1700000000001,
+        task: 'task:TRACE',
+        requirement: null,
+        patch: 'patch:assumption',
+      },
+    });
+  });
+
+  it('creates a risk node with threatens edges and mitigation', async () => {
+    const patchBuilder = createPatchBuilder();
+    const graph = {
+      hasNode: vi.fn().mockResolvedValue(true),
+      patch: vi.fn(async (fn: (builder: typeof patchBuilder) => void) => {
+        fn(patchBuilder);
+        return 'patch:risk';
+      }),
+    };
+    const ctx = makeCtx(graph);
+    const program = new Command();
+    registerTraceabilityCommands(program, ctx);
+
+    await program.parseAsync(
+      [
+        'risk',
+        'risk:TRACE',
+        '--description',
+        'The deployment path may stall under load',
+        '--likelihood',
+        '0.75',
+        '--impact',
+        '0.9',
+        '--mitigation',
+        'Add queue backpressure',
+        '--requirement',
+        'req:TRACE',
+      ],
+      { from: 'user' },
+    );
+
+    expect(patchBuilder.addNode).toHaveBeenCalledWith('risk:TRACE');
+    expect(patchBuilder.setProperty).toHaveBeenCalledWith('risk:TRACE', 'mitigation', 'Add queue backpressure');
+    expect(patchBuilder.addEdge).toHaveBeenCalledWith('risk:TRACE', 'req:TRACE', 'threatens');
+    expect(ctx.jsonOut).toHaveBeenCalledWith({
+      success: true,
+      command: 'risk',
+      data: {
+        id: 'risk:TRACE',
+        description: 'The deployment path may stall under load',
+        likelihood: 0.75,
+        impact: 0.9,
+        mitigation: 'Add queue backpressure',
+        task: null,
+        requirement: 'req:TRACE',
+        patch: 'patch:risk',
+      },
+    });
+  });
+
+  it('creates a spike node with informs and investigates edges', async () => {
+    const patchBuilder = createPatchBuilder();
+    const graph = {
+      hasNode: vi.fn().mockResolvedValue(true),
+      patch: vi.fn(async (fn: (builder: typeof patchBuilder) => void) => {
+        fn(patchBuilder);
+        return 'patch:spike';
+      }),
+    };
+    const ctx = makeCtx(graph);
+    const program = new Command();
+    registerTraceabilityCommands(program, ctx);
+
+    await program.parseAsync(
+      [
+        'spike',
+        'spike:TRACE',
+        '--timebox-hours',
+        '4',
+        '--outcome',
+        'Spike confirmed the missing guard is a real gap',
+        '--requirement',
+        'req:TRACE',
+        '--risk',
+        'risk:TRACE',
+        '--assumption',
+        'assumption:TRACE',
+      ],
+      { from: 'user' },
+    );
+
+    expect(patchBuilder.addNode).toHaveBeenCalledWith('spike:TRACE');
+    expect(patchBuilder.addEdge).toHaveBeenCalledWith('spike:TRACE', 'req:TRACE', 'informs');
+    expect(patchBuilder.addEdge).toHaveBeenCalledWith('spike:TRACE', 'risk:TRACE', 'investigates');
+    expect(patchBuilder.addEdge).toHaveBeenCalledWith('spike:TRACE', 'assumption:TRACE', 'investigates');
+    expect(ctx.jsonOut).toHaveBeenCalledWith({
+      success: true,
+      command: 'spike',
+      data: {
+        id: 'spike:TRACE',
+        timeboxHours: 4,
+        outcome: 'Spike confirmed the missing guard is a real gap',
+        requirement: 'req:TRACE',
+        risk: 'risk:TRACE',
+        assumption: 'assumption:TRACE',
+        patch: 'patch:spike',
+      },
+    });
+  });
+
   it('packet creates a minimal story→req→criterion chain for a quest', async () => {
     const patchBuilder = createPatchBuilder();
     const graph = {

@@ -127,6 +127,10 @@ export interface DoctorCounts {
   criteria: number;
   evidence: number;
   policies: number;
+  constraints: number;
+  assumptions: number;
+  risks: number;
+  spikes: number;
   suggestions: number;
   documents: number;
   comments: number;
@@ -199,7 +203,7 @@ export class DoctorService {
 
     onProgress({
       stage: 'neighbors',
-      message: 'Scanning workflow, narrative, and comment node families.',
+      message: 'Scanning workflow, narrative, planning, and comment node families.',
     });
 
     const [patchsetNodes, specNodes, adrNodes, noteNodes, commentNodes] = await Promise.all([
@@ -312,6 +316,10 @@ export class DoctorService {
       criteria: snapshot.criteria.length,
       evidence: snapshot.evidence.length,
       policies: snapshot.policies.length,
+      constraints: snapshot.constraints.length,
+      assumptions: snapshot.assumptions.length,
+      risks: snapshot.risks.length,
+      spikes: snapshot.spikes.length,
       suggestions: snapshot.suggestions.length,
       documents: specNodes.length + adrNodes.length + noteNodes.length,
       comments: commentNodes.length,

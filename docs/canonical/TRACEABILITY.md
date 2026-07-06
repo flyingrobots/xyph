@@ -9,7 +9,9 @@ ROADMAP_PROTOCOL.md states: DONE means "acceptance criteria met, evidence attach
 DATA_CONTRACTS.md specifies `userStory` on every task.
 VISION_NORTH_STAR.md declares: "trust, tests, and deployment safety are cryptographically provable."
 
-None of this is implemented. This document specifies the graph model that makes it real.
+The core chain is already implemented in the product. This document now
+specifies the canonical graph model, including the planning qualifiers that
+frame readiness and risk analysis.
 
 ## 2. The Traceability Chain
 
@@ -44,7 +46,7 @@ criteria are modeled.
 | `evidence:` | Evidence | Proof or linkage for a criterion | `kind` (test / benchmark / manual / screenshot), `result` (pass / fail / linked), `produced_at`, `produced_by`, `artifact_hash` |
 | `constraint:` | Constraint | Non-functional boundary (perf, security, compat) | `description`, `threshold`, `unit` |
 | `assumption:` | Assumption | Believed-true condition that could invalidate work | `description`, `validated` (bool), `validated_at` |
-| `risk:` | Risk | Known unknown with impact assessment | `description`, `likelihood`, `impact`, `mitigation` |
+| `risk:` | Risk | Known unknown with impact assessment | `description`, `likelihood` (0..1), `impact` (0..1), `mitigation` |
 | `spike:` | Spike | Time-boxed investigation producing knowledge | `timebox_hours`, `outcome` |
 | `policy:` | Policy | Definition of Done / campaign-level rules | `conditions[]` |
 
@@ -60,6 +62,7 @@ criteria are modeled.
 | `assumes` | Assumption → Task or Requirement | Validity dependency |
 | `threatens` | Risk → Task or Requirement | Known danger |
 | `informs` | Spike → Requirement | Investigation produces spec |
+| `investigates` | Spike → Risk or Assumption | Investigation informs planning risk or hypothesis |
 | `governs` | Policy → Campaign | Definition of Done scope |
 
 ## 5. Computed Queries
