@@ -1,0 +1,1 @@
+This is no longer hypothetical: we hit the identity-override loophole during workflow execution. The item should carry explicit heat now, because it blocks trustworthy approval provenance. Consider promoting this sooner and, longer term, turning heat into a first-class scheduling signal.
