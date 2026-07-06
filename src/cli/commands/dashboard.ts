@@ -218,6 +218,7 @@ export function registerDashboardCommands(program: Command, ctx: CliContext): vo
             computeFailingCriteria,
             computeUntestedCriteria,
             computeCoverageRatio,
+            computePlanningGapSummary,
           } = await import('../../domain/services/TraceabilityAnalysis.js');
 
           const reqSummaries = snapshot.requirements.map((r) => ({
@@ -241,6 +242,21 @@ export function registerDashboardCommands(program: Command, ctx: CliContext): vo
           const untestedCriteria = computeUntestedCriteria(critSummaries);
           const failingCriteria = computeFailingCriteria(critSummaries);
           const coverage = computeCoverageRatio(critSummaries);
+          const planningGaps = computePlanningGapSummary(
+            snapshot.assumptions.map((assumption) => ({
+              id: assumption.id,
+              validated: assumption.validated,
+              validatedAt: assumption.validatedAt,
+              targetIds: assumption.targetIds,
+            })),
+            snapshot.risks.map((risk) => ({
+              id: risk.id,
+              likelihood: risk.likelihood,
+              impact: risk.impact,
+              mitigation: risk.mitigation,
+              targetIds: risk.targetIds,
+            })),
+          );
           const questCompletion = snapshot.quests
             .filter((quest) => quest.computedCompletion?.tracked || quest.computedCompletion?.discrepancy)
             .map((quest) => ({
@@ -287,17 +303,27 @@ export function registerDashboardCommands(program: Command, ctx: CliContext): vo
                 criteria: snapshot.criteria,
                 evidence: snapshot.evidence,
                 policies: snapshot.policies,
+                constraints: snapshot.constraints,
+                assumptions: snapshot.assumptions,
+                risks: snapshot.risks,
+                spikes: snapshot.spikes,
                 summary: {
                   stories: snapshot.stories.length,
                   requirements: snapshot.requirements.length,
                   criteria: snapshot.criteria.length,
                   policies: snapshot.policies.length,
+                  constraints: snapshot.constraints.length,
+                  assumptions: snapshot.assumptions.length,
+                  risks: snapshot.risks.length,
+                  spikes: snapshot.spikes.length,
                   evidenced: coverage.evidenced,
                   satisfied: coverage.satisfied,
                   failing: coverage.failing,
                   linkedOnly: coverage.linkedOnly,
                   unevidenced: coverage.unevidenced,
                   coverageRatio: coverage.ratio,
+                  unvalidatedAssumptions: planningGaps.unvalidatedAssumptionIds.length,
+                  unmitigatedRisks: planningGaps.unmitigatedRiskIds.length,
                   computedCompleteQuests: questCompletion.filter((entry) => entry.computedCompletion?.complete).length,
                   computedTrackedQuests: questCompletion.filter((entry) => entry.computedCompletion?.tracked).length,
                   computedCompleteCampaigns: campaignCompletion.filter((entry) => entry.computedCompletion?.complete).length,
@@ -308,6 +334,7 @@ export function registerDashboardCommands(program: Command, ctx: CliContext): vo
                 unmetRequirements: unmetReqs,
                 untestedCriteria,
                 failingCriteria,
+                planningGaps,
                 questCompletion,
                 campaignCompletion,
                 questDiscrepancies,
@@ -324,10 +351,15 @@ export function registerDashboardCommands(program: Command, ctx: CliContext): vo
             criteria: snapshot.criteria,
             evidence: snapshot.evidence,
             policies: snapshot.policies,
+            constraints: snapshot.constraints,
+            assumptions: snapshot.assumptions,
+            risks: snapshot.risks,
+            spikes: snapshot.spikes,
             unmetRequirements: unmetReqs,
             untestedCriteria,
             failingCriteria,
             coverage,
+            planningGaps,
             questCompletion,
             campaignCompletion,
             questDiscrepancies,

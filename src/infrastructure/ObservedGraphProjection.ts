@@ -47,10 +47,12 @@ import {
 import type {
   ApprovalGateStatus,
   ApprovalNode,
+  AssumptionNode,
   CampaignNode,
   CampaignStatus,
   ComparisonArtifactGovernanceDetail,
   CommentNode,
+  ConstraintNode,
   CriterionNode,
   DecisionNode,
   EntityDetail,
@@ -62,6 +64,7 @@ import type {
   GovernanceDetail,
   NarrativeNode,
   PolicyNode,
+  RiskNode,
   QuestDetail,
   QuestTimelineEntry,
   QuestNode,
@@ -72,6 +75,7 @@ import type {
   SubmissionNode,
   SuggestionNode,
   AiSuggestionNode,
+  SpikeNode,
   CollapseProposalGovernanceDetail,
   AttestationGovernanceDetail,
   GovernanceArtifactNode,
@@ -468,15 +472,16 @@ class UnifiedStateReader {
   static async create(
     graph: ObservedProjectionGraph,
     _profile: SnapshotProfile,
-    includeFlags: {
-      includeStoryModels: boolean;
-      includeRequirementModels: boolean;
-      includeCriterionModels: boolean;
-      includeEvidenceModels: boolean;
-      includePolicyModels: boolean;
-      includeCaseNodes: boolean;
-      includeGovernanceArtifacts: boolean;
-    },
+      includeFlags: {
+        includeStoryModels: boolean;
+        includeRequirementModels: boolean;
+        includeCriterionModels: boolean;
+        includeEvidenceModels: boolean;
+        includePlanningModels: boolean;
+        includePolicyModels: boolean;
+        includeCaseNodes: boolean;
+        includeGovernanceArtifacts: boolean;
+      },
   ): Promise<UnifiedStateReader> {
     let state = null;
     try {
@@ -501,6 +506,7 @@ class UnifiedStateReader {
       scrollNodes, approvalNodes, submissionNodes,
       patchsetNodes, reviewNodes, decisionNodes,
       storyNodes, requirementNodes, criterionNodes, evidenceNodes, policyNodes,
+      planningConstraintNodes, planningAssumptionNodes, planningRiskNodes, planningSpikeNodes,
       suggestionNodes,
       caseNodes,
       comparisonArtifactNodes, collapseProposalNodes, attestationNodes,
@@ -528,6 +534,18 @@ class UnifiedStateReader {
       includeFlags.includeEvidenceModels
         ? graph.query().match('evidence:*').select(['id', 'props']).run().then(extractNodes)
         : Promise.resolve([]),
+      includeFlags.includePlanningModels
+        ? graph.query().match('constraint:*').select(['id', 'props']).run().then(extractNodes)
+        : Promise.resolve([]),
+      includeFlags.includePlanningModels
+        ? graph.query().match('assumption:*').select(['id', 'props']).run().then(extractNodes)
+        : Promise.resolve([]),
+      includeFlags.includePlanningModels
+        ? graph.query().match('risk:*').select(['id', 'props']).run().then(extractNodes)
+        : Promise.resolve([]),
+      includeFlags.includePlanningModels
+        ? graph.query().match('spike:*').select(['id', 'props']).run().then(extractNodes)
+        : Promise.resolve([]),
       includeFlags.includePolicyModels
         ? graph.query().match('policy:*').select(['id', 'props']).run().then(extractNodes)
         : Promise.resolve([]),
@@ -553,6 +571,7 @@ class UnifiedStateReader {
       ...scrollNodes, ...approvalNodes, ...submissionNodes,
       ...patchsetNodes, ...reviewNodes, ...decisionNodes,
       ...storyNodes, ...requirementNodes, ...criterionNodes, ...evidenceNodes, ...policyNodes,
+      ...planningConstraintNodes, ...planningAssumptionNodes, ...planningRiskNodes, ...planningSpikeNodes,
       ...suggestionNodes, ...caseNodes,
       ...comparisonArtifactNodes, ...collapseProposalNodes, ...attestationNodes,
     ];
@@ -596,6 +615,26 @@ class UnifiedStateReader {
         }
       } else if (id.startsWith('policy:')) {
         if (includeFlags.includePolicyModels) {
+          include = true;
+          needsNeighbor = true;
+        }
+      } else if (id.startsWith('constraint:')) {
+        if (includeFlags.includePlanningModels) {
+          include = true;
+          needsNeighbor = true;
+        }
+      } else if (id.startsWith('assumption:')) {
+        if (includeFlags.includePlanningModels) {
+          include = true;
+          needsNeighbor = true;
+        }
+      } else if (id.startsWith('risk:')) {
+        if (includeFlags.includePlanningModels) {
+          include = true;
+          needsNeighbor = true;
+        }
+      } else if (id.startsWith('spike:')) {
+        if (includeFlags.includePlanningModels) {
           include = true;
           needsNeighbor = true;
         }
@@ -809,6 +848,7 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
     const includeRequirementModels = includeFullTraceability || includeAnalysisTraceability || includeAuditTraceability;
     const includeCriterionModels = includeFullTraceability || includeAnalysisTraceability || includeAuditTraceability;
     const includeEvidenceModels = includeFullTraceability || includeAnalysisTraceability || includeAuditTraceability;
+    const includePlanningModels = includeFullTraceability || includeAnalysisTraceability || includeAuditTraceability;
     const includeLegacySuggestions = includeFullTraceability || includeAnalysisTraceability || includeAuditTraceability;
     const includeStoryModels = includeFullTraceability || includeAuditTraceability;
     const includePolicyModels = includeFullTraceability || includeAuditTraceability;
@@ -856,6 +896,7 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
       includeRequirementModels,
       includeCriterionModels,
       includeEvidenceModels,
+      includePlanningModels,
       includePolicyModels,
       includeCaseNodes,
       includeGovernanceArtifacts,
@@ -865,7 +906,7 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
       taskNodes, campaignNodes, milestoneNodes, intentNodes,
       scrollNodes, approvalNodes, submissionNodes,
       patchsetNodes, reviewNodes, decisionNodes,
-      storyNodes, requirementNodes, criterionNodes, evidenceNodes, policyNodes,
+      storyNodes, requirementNodes, criterionNodes, evidenceNodes, planningConstraintNodes, planningAssumptionNodes, planningRiskNodes, planningSpikeNodes, policyNodes,
       suggestionNodes,
       caseNodes,
       comparisonArtifactNodes, collapseProposalNodes, attestationNodes,
@@ -884,6 +925,10 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
       includeRequirementModels ? reader.queryNodesByPrefix('req') : Promise.resolve([]),
       includeCriterionModels ? reader.queryNodesByPrefix('criterion') : Promise.resolve([]),
       includeEvidenceModels ? reader.queryNodesByPrefix('evidence') : Promise.resolve([]),
+      includePlanningModels ? reader.queryNodesByPrefix('constraint') : Promise.resolve([]),
+      includePlanningModels ? reader.queryNodesByPrefix('assumption') : Promise.resolve([]),
+      includePlanningModels ? reader.queryNodesByPrefix('risk') : Promise.resolve([]),
+      includePlanningModels ? reader.queryNodesByPrefix('spike') : Promise.resolve([]),
       includePolicyModels ? reader.queryNodesByPrefix('policy') : Promise.resolve([]),
       reader.queryNodesByPrefix('suggestion'),
       includeCaseNodes ? reader.queryNodesByPrefix('case') : Promise.resolve([]),
@@ -908,6 +953,10 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
       ...(includeStoryModels ? storyNodes.map((n) => n.id) : []),
       ...(includeRequirementModels ? requirementNodes.map((n) => n.id) : []),
       ...(includeEvidenceModels ? evidenceNodes.map((n) => n.id) : []),
+      ...(includePlanningModels ? planningConstraintNodes.map((n) => n.id) : []),
+      ...(includePlanningModels ? planningAssumptionNodes.map((n) => n.id) : []),
+      ...(includePlanningModels ? planningRiskNodes.map((n) => n.id) : []),
+      ...(includePlanningModels ? planningSpikeNodes.map((n) => n.id) : []),
       ...(includePolicyModels ? policyNodes.map((n) => n.id) : []),
       ...caseNodes.map((n) => n.id),
     ];
@@ -1097,6 +1146,10 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
     const evidence: EvidenceNode[] = [];
     const criteria: CriterionNode[] = [];
     const policies: PolicyNode[] = [];
+    const constraints: ConstraintNode[] = [];
+    const assumptions: AssumptionNode[] = [];
+    const risks: RiskNode[] = [];
+    const spikes: SpikeNode[] = [];
     if (includeFullTraceability) {
       log('Building traceability models…');
 
@@ -1861,6 +1914,94 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
       }
     }
 
+    if (includePlanningModels) {
+      log('Building planning qualifier models…');
+
+      const extractTargetIds = (nodeId: string, labels: ReadonlySet<string>): string[] => {
+        const neighbors = neighborsCache.get(nodeId) ?? [];
+        const targetIds = neighbors
+          .filter((nb) => labels.has(nb.label) && (
+            nb.nodeId.startsWith('task:') ||
+            nb.nodeId.startsWith('campaign:') ||
+            nb.nodeId.startsWith('milestone:') ||
+            nb.nodeId.startsWith('req:') ||
+            nb.nodeId.startsWith('story:') ||
+            nb.nodeId.startsWith('assumption:') ||
+            nb.nodeId.startsWith('risk:')
+          ))
+          .map((nb) => nb.nodeId);
+        return [...new Set(targetIds)];
+      };
+
+      for (const n of planningConstraintNodes) {
+        if (n.props['type'] !== 'constraint') continue;
+        const description = n.props['description'];
+        const threshold = n.props['threshold'];
+        const unit = n.props['unit'];
+        if (typeof description !== 'string' || typeof threshold !== 'string' || typeof unit !== 'string') continue;
+        constraints.push({
+          id: n.id,
+          description,
+          threshold,
+          unit,
+          targetIds: extractTargetIds(n.id, new Set(['constrains'])),
+        });
+      }
+
+      for (const n of planningAssumptionNodes) {
+        if (n.props['type'] !== 'assumption') continue;
+        const description = n.props['description'];
+        const validated = n.props['validated'];
+        const validatedAt = n.props['validated_at'];
+        if (typeof description !== 'string' || typeof validated !== 'boolean') continue;
+        assumptions.push({
+          id: n.id,
+          description,
+          validated,
+          validatedAt: typeof validatedAt === 'number' ? validatedAt : undefined,
+          targetIds: extractTargetIds(n.id, new Set(['assumes'])),
+        });
+      }
+
+      for (const n of planningRiskNodes) {
+        if (n.props['type'] !== 'risk') continue;
+        const description = n.props['description'];
+        const likelihood = n.props['likelihood'];
+        const impact = n.props['impact'];
+        const mitigation = n.props['mitigation'];
+        if (
+          typeof description !== 'string' ||
+          typeof likelihood !== 'number' ||
+          !Number.isFinite(likelihood) ||
+          typeof impact !== 'number' ||
+          !Number.isFinite(impact)
+        ) {
+          continue;
+        }
+        risks.push({
+          id: n.id,
+          description,
+          likelihood,
+          impact,
+          mitigation: typeof mitigation === 'string' ? mitigation : undefined,
+          targetIds: extractTargetIds(n.id, new Set(['threatens'])),
+        });
+      }
+
+      for (const n of planningSpikeNodes) {
+        if (n.props['type'] !== 'spike') continue;
+        const timeboxHours = n.props['timebox_hours'];
+        const outcome = n.props['outcome'];
+        if (typeof timeboxHours !== 'number' || !Number.isFinite(timeboxHours) || timeboxHours < 0 || typeof outcome !== 'string') continue;
+        spikes.push({
+          id: n.id,
+          timeboxHours,
+          outcome,
+          targetIds: extractTargetIds(n.id, new Set(['informs', 'investigates'])),
+        });
+      }
+    }
+
     // --- Build suggestions (M11 Phase 4) ---
     log('Building suggestion models…');
     const suggestions: SuggestionNode[] = [];
@@ -2104,6 +2245,7 @@ class ObservedGraphProjectionImpl implements ObservedGraphProjection {
       campaigns, quests, intents, scrolls, approvals,
       submissions, reviews, decisions,
       stories, requirements, criteria, evidence, policies, suggestions, aiSuggestions,
+      constraints, assumptions, risks, spikes,
       governanceArtifacts,
       asOf: Date.now(), graphMeta, sortedTaskIds, sortedCampaignIds,
       transitiveDownstream,

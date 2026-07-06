@@ -40,6 +40,36 @@ function parseCoverageThreshold(value: string): number {
   return parsed;
 }
 
+function parseNonNegativeNumber(optionName: string): (value: string) => number {
+  return (value: string): number => {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      throw new InvalidArgumentError(`${optionName} must be a non-negative number. Got: '${value}'`);
+    }
+    return parsed;
+  };
+}
+
+function parseEpochMillis(optionName: string): (value: string) => number {
+  return (value: string): number => {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      throw new InvalidArgumentError(`${optionName} must be a valid Unix epoch timestamp. Got: '${value}'`);
+    }
+    return parsed;
+  };
+}
+
+function parseRatio(optionName: string): (value: string) => number {
+  return (value: string): number => {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1) {
+      throw new InvalidArgumentError(`${optionName} must be a number between 0 and 1. Got: '${value}'`);
+    }
+    return parsed;
+  };
+}
+
 function derivePacketId(prefix: 'story:' | 'req:' | 'criterion:', questId: string): string {
   return `${prefix}${questId.slice('task:'.length)}`;
 }
@@ -299,6 +329,294 @@ export function registerTraceabilityCommands(program: Command, ctx: CliContext):
       }
 
       ctx.ok(`[OK] Evidence ${id} created → verifies ${opts.criterion}. Patch: ${sha}`);
+    }));
+
+  // --- constraint: create a planning boundary node ---
+  program
+    .command('constraint <id>')
+    .description('Create a constraint node (constraint:*)')
+    .requiredOption('--description <text>', 'Constraint description (min 5 chars)')
+    .requiredOption('--threshold <text>', 'Human-readable threshold or boundary')
+    .requiredOption('--unit <text>', 'Boundary unit or label')
+    .option('--requirement <id>', 'Attach to a requirement (adds constrains edge)')
+    .option('--campaign <id>', 'Attach to a campaign or milestone (adds constrains edge)')
+    .action(withErrorHandler(async (id: string, opts: {
+      description: string;
+      threshold: string;
+      unit: string;
+      requirement?: string;
+      campaign?: string;
+    }) => {
+      assertPrefix(id, 'constraint:', 'Constraint ID');
+      assertMinLength(opts.description, 5, '--description');
+
+      if (opts.requirement) {
+        assertPrefix(opts.requirement, 'req:', '--requirement');
+      }
+      if (opts.campaign) {
+        assertGovernCampaign(opts.campaign);
+      }
+
+      const graph = await ctx.graphPort.getGraph();
+      const targetChecks = [
+        opts.requirement ? assertNodeExists(graph, opts.requirement, 'Requirement') : Promise.resolve(),
+        opts.campaign ? assertNodeExists(graph, opts.campaign, 'Campaign') : Promise.resolve(),
+      ];
+      await Promise.all(targetChecks);
+
+      const sha = await graph.patch((p) => {
+        p.addNode(id)
+          .setProperty(id, 'type', 'constraint')
+          .setProperty(id, 'description', opts.description)
+          .setProperty(id, 'threshold', opts.threshold)
+          .setProperty(id, 'unit', opts.unit);
+
+        if (opts.requirement) {
+          p.addEdge(id, opts.requirement, 'constrains');
+        }
+        if (opts.campaign) {
+          p.addEdge(id, opts.campaign, 'constrains');
+        }
+      });
+
+      if (ctx.json) {
+        ctx.jsonOut({
+          success: true,
+          command: 'constraint',
+          data: {
+            id,
+            description: opts.description,
+            threshold: opts.threshold,
+            unit: opts.unit,
+            requirement: opts.requirement ?? null,
+            campaign: opts.campaign ?? null,
+            patch: sha,
+          },
+        });
+        return;
+      }
+
+      ctx.ok(`[OK] Constraint ${id} created. Patch: ${sha}`);
+      ctx.muted(`  Description: ${opts.description}`);
+    }));
+
+  // --- assumption: create a planning premise node ---
+  program
+    .command('assumption <id>')
+    .description('Create an assumption node (assumption:*)')
+    .requiredOption('--description <text>', 'Assumption description (min 5 chars)')
+    .option('--validated', 'Mark the assumption as validated')
+    .option('--validated-at <timestamp>', 'Validation timestamp', parseEpochMillis('--validated-at'))
+    .option('--task <id>', 'Attach to a quest (adds assumes edge)')
+    .option('--requirement <id>', 'Attach to a requirement (adds assumes edge)')
+    .action(withErrorHandler(async (id: string, opts: {
+      description: string;
+      validated: boolean;
+      validatedAt?: number;
+      task?: string;
+      requirement?: string;
+    }) => {
+      assertPrefix(id, 'assumption:', 'Assumption ID');
+      assertMinLength(opts.description, 5, '--description');
+
+      if (opts.task) {
+        assertPrefix(opts.task, 'task:', '--task');
+      }
+      if (opts.requirement) {
+        assertPrefix(opts.requirement, 'req:', '--requirement');
+      }
+
+      const graph = await ctx.graphPort.getGraph();
+      await Promise.all([
+        opts.task ? assertNodeExists(graph, opts.task, 'Quest') : Promise.resolve(),
+        opts.requirement ? assertNodeExists(graph, opts.requirement, 'Requirement') : Promise.resolve(),
+      ]);
+
+      const validatedAt = opts.validated ? (opts.validatedAt ?? Date.now()) : undefined;
+      const sha = await graph.patch((p) => {
+        p.addNode(id)
+          .setProperty(id, 'type', 'assumption')
+          .setProperty(id, 'description', opts.description)
+          .setProperty(id, 'validated', opts.validated);
+
+        if (validatedAt !== undefined) {
+          p.setProperty(id, 'validated_at', validatedAt);
+        }
+        if (opts.task) {
+          p.addEdge(id, opts.task, 'assumes');
+        }
+        if (opts.requirement) {
+          p.addEdge(id, opts.requirement, 'assumes');
+        }
+      });
+
+      if (ctx.json) {
+        ctx.jsonOut({
+          success: true,
+          command: 'assumption',
+          data: {
+            id,
+            description: opts.description,
+            validated: opts.validated,
+            validatedAt: validatedAt ?? null,
+            task: opts.task ?? null,
+            requirement: opts.requirement ?? null,
+            patch: sha,
+          },
+        });
+        return;
+      }
+
+      ctx.ok(`[OK] Assumption ${id} created. Patch: ${sha}`);
+      ctx.muted(`  Description: ${opts.description}`);
+    }));
+
+  // --- risk: create a planning danger node ---
+  program
+    .command('risk <id>')
+    .description('Create a risk node (risk:*)')
+    .requiredOption('--description <text>', 'Risk description (min 5 chars)')
+    .requiredOption('--likelihood <ratio>', 'Normalized likelihood between 0 and 1', parseRatio('--likelihood'))
+    .requiredOption('--impact <ratio>', 'Normalized impact between 0 and 1', parseRatio('--impact'))
+    .option('--mitigation <text>', 'Optional mitigation note')
+    .option('--task <id>', 'Attach to a quest (adds threatens edge)')
+    .option('--requirement <id>', 'Attach to a requirement (adds threatens edge)')
+    .action(withErrorHandler(async (id: string, opts: {
+      description: string;
+      likelihood: number;
+      impact: number;
+      mitigation?: string;
+      task?: string;
+      requirement?: string;
+    }) => {
+      assertPrefix(id, 'risk:', 'Risk ID');
+      assertMinLength(opts.description, 5, '--description');
+
+      if (opts.task) {
+        assertPrefix(opts.task, 'task:', '--task');
+      }
+      if (opts.requirement) {
+        assertPrefix(opts.requirement, 'req:', '--requirement');
+      }
+
+      const graph = await ctx.graphPort.getGraph();
+      await Promise.all([
+        opts.task ? assertNodeExists(graph, opts.task, 'Quest') : Promise.resolve(),
+        opts.requirement ? assertNodeExists(graph, opts.requirement, 'Requirement') : Promise.resolve(),
+      ]);
+
+      const sha = await graph.patch((p) => {
+        p.addNode(id)
+          .setProperty(id, 'type', 'risk')
+          .setProperty(id, 'description', opts.description)
+          .setProperty(id, 'likelihood', opts.likelihood)
+          .setProperty(id, 'impact', opts.impact);
+
+        if (opts.mitigation) {
+          p.setProperty(id, 'mitigation', opts.mitigation);
+        }
+        if (opts.task) {
+          p.addEdge(id, opts.task, 'threatens');
+        }
+        if (opts.requirement) {
+          p.addEdge(id, opts.requirement, 'threatens');
+        }
+      });
+
+      if (ctx.json) {
+        ctx.jsonOut({
+          success: true,
+          command: 'risk',
+          data: {
+            id,
+            description: opts.description,
+            likelihood: opts.likelihood,
+            impact: opts.impact,
+            mitigation: opts.mitigation ?? null,
+            task: opts.task ?? null,
+            requirement: opts.requirement ?? null,
+            patch: sha,
+          },
+        });
+        return;
+      }
+
+      ctx.ok(`[OK] Risk ${id} created. Patch: ${sha}`);
+      ctx.muted(`  Description: ${opts.description}`);
+    }));
+
+  // --- spike: create a time-boxed investigation node ---
+  program
+    .command('spike <id>')
+    .description('Create a spike node (spike:*)')
+    .requiredOption('--timebox-hours <hours>', 'Investigation timebox in hours', parseNonNegativeNumber('--timebox-hours'))
+    .requiredOption('--outcome <text>', 'Investigation outcome or summary')
+    .option('--requirement <id>', 'Inform a requirement (adds informs edge)')
+    .option('--risk <id>', 'Investigate a risk (adds investigates edge)')
+    .option('--assumption <id>', 'Investigate an assumption (adds investigates edge)')
+    .action(withErrorHandler(async (id: string, opts: {
+      timeboxHours: number;
+      outcome: string;
+      requirement?: string;
+      risk?: string;
+      assumption?: string;
+    }) => {
+      assertPrefix(id, 'spike:', 'Spike ID');
+      assertMinLength(opts.outcome, 5, '--outcome');
+
+      if (opts.requirement) {
+        assertPrefix(opts.requirement, 'req:', '--requirement');
+      }
+      if (opts.risk) {
+        assertPrefix(opts.risk, 'risk:', '--risk');
+      }
+      if (opts.assumption) {
+        assertPrefix(opts.assumption, 'assumption:', '--assumption');
+      }
+
+      const graph = await ctx.graphPort.getGraph();
+      await Promise.all([
+        opts.requirement ? assertNodeExists(graph, opts.requirement, 'Requirement') : Promise.resolve(),
+        opts.risk ? assertNodeExists(graph, opts.risk, 'Risk') : Promise.resolve(),
+        opts.assumption ? assertNodeExists(graph, opts.assumption, 'Assumption') : Promise.resolve(),
+      ]);
+
+      const sha = await graph.patch((p) => {
+        p.addNode(id)
+          .setProperty(id, 'type', 'spike')
+          .setProperty(id, 'timebox_hours', opts.timeboxHours)
+          .setProperty(id, 'outcome', opts.outcome);
+
+        if (opts.requirement) {
+          p.addEdge(id, opts.requirement, 'informs');
+        }
+        if (opts.risk) {
+          p.addEdge(id, opts.risk, 'investigates');
+        }
+        if (opts.assumption) {
+          p.addEdge(id, opts.assumption, 'investigates');
+        }
+      });
+
+      if (ctx.json) {
+        ctx.jsonOut({
+          success: true,
+          command: 'spike',
+          data: {
+            id,
+            timeboxHours: opts.timeboxHours,
+            outcome: opts.outcome,
+            requirement: opts.requirement ?? null,
+            risk: opts.risk ?? null,
+            assumption: opts.assumption ?? null,
+            patch: sha,
+          },
+        });
+        return;
+      }
+
+      ctx.ok(`[OK] Spike ${id} created. Patch: ${sha}`);
+      ctx.muted(`  Outcome: ${opts.outcome}`);
     }));
 
   // --- policy: create a Definition of Done policy node ---

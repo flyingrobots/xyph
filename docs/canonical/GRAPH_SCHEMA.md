@@ -30,6 +30,10 @@ Example: `task:BDK-001`, `campaign:BEDROCK`, `submission:abc123`
 | `req` | Requirement | Concrete requirement implemented by work. | `req:TRC-001` |
 | `criterion` | Criterion | Verifiable acceptance criterion for a requirement. | `criterion:TRC-001` |
 | `evidence` | Evidence | Evidence that verifies a criterion or links to a requirement. | `evidence:scan-TRC-001` |
+| `constraint` | Constraint | Planning boundary that constrains delivery or a campaign. | `constraint:TRC-001` |
+| `assumption` | Assumption | Believed-true planning premise that may require validation. | `assumption:TRC-001` |
+| `risk` | Risk | Known unknown with likelihood, impact, and mitigation. | `risk:TRC-001` |
+| `spike` | Spike | Time-boxed investigation or exploratory planning item. | `spike:TRC-001` |
 | `policy` | Policy | Campaign-scoped Definition of Done policy. | `policy:done-default` |
 | `config` | Config | Graph-resident operational configuration singleton. | `config:xyph` |
 | `suggestion` | Suggestion | Advisory intake family; `type` distinguishes trace-link vs AI suggestion semantics. | `suggestion:019xyz` |
@@ -77,6 +81,11 @@ Example: `task:BDK-001`, `campaign:BEDROCK`, `submission:abc123`
 | `implements` | task/evidence → req | Quest-to-requirement lineage is canonical; analyzer-generated evidence may also attach directly to a requirement. |
 | `has-criterion` | req → criterion | Requirement owns one or more acceptance criteria. |
 | `verifies` | evidence → criterion | Evidence verifies a criterion. |
+| `constrains` | constraint → req/campaign | Planning boundary constrains a requirement or campaign. |
+| `assumes` | assumption → task/req | Planning premise depends on a work item or requirement. |
+| `threatens` | risk → task/req | Known danger applies to a quest or requirement. |
+| `informs` | spike → req | Investigation produces spec or requirement truth. |
+| `investigates` | spike → risk/assumption | Investigation refines a planning premise or risk. |
 | `governs` | policy → campaign/milestone | Definition of Done policy governs a campaign or milestone. |
 | `documents` | spec/adr/note/brief → target | Durable narrative or brief context records linked material for a node. |
 | `comments-on` | comment → target | Append-only discussion attached to a node. |
@@ -244,6 +253,55 @@ Legacy: Pre-VOC-001 `INBOX` values are normalized to `BACKLOG` at read time.
 **Edges:**
 - `verifies` → `criterion:` (canonical evidence-to-criterion link)
 - optional `implements` → `req:` (auxiliary requirement-level auto-link produced by analysis/suggestions)
+
+### Constraint (`constraint:*`)
+
+| Property | Type | Set By | Notes |
+|----------|------|--------|-------|
+| `type` | `'constraint'` | constraint command | Required. |
+| `description` | string | constraint command | ≥5 chars. |
+| `threshold` | string | constraint command | Human-readable boundary, for example `250ms` or `no external oracles`. |
+| `unit` | string | constraint command | Unit or boundary label, for example `ms`, `requests/sec`, or `scope`. |
+
+**Edges:**
+- `constrains` → `req:` or `campaign:`/`milestone:`
+
+### Assumption (`assumption:*`)
+
+| Property | Type | Set By | Notes |
+|----------|------|--------|-------|
+| `type` | `'assumption'` | assumption command | Required. |
+| `description` | string | assumption command | ≥5 chars. |
+| `validated` | boolean | assumption command | Whether the assumption has been validated. |
+| `validated_at` | number | assumption command | Optional validation timestamp. |
+
+**Edges:**
+- `assumes` → `task:` or `req:`
+
+### Risk (`risk:*`)
+
+| Property | Type | Set By | Notes |
+|----------|------|--------|-------|
+| `type` | `'risk'` | risk command | Required. |
+| `description` | string | risk command | ≥5 chars. |
+| `likelihood` | number | risk command | Normalized likelihood from `0` to `1`. |
+| `impact` | number | risk command | Normalized impact from `0` to `1`. |
+| `mitigation` | string | risk command | Optional mitigation note. |
+
+**Edges:**
+- `threatens` → `task:` or `req:`
+
+### Spike (`spike:*`)
+
+| Property | Type | Set By | Notes |
+|----------|------|--------|-------|
+| `type` | `'spike'` | spike command | Required. |
+| `timebox_hours` | number | spike command | Investigation timebox. |
+| `outcome` | string | spike command | Summary of the resulting knowledge or decision. |
+
+**Edges:**
+- `informs` → `req:`
+- `investigates` → `risk:` or `assumption:`
 
 ---
 

@@ -72,7 +72,7 @@ This is the product-wide ontology catalog.
 |--------|-------|----------|
 | Execution work | shared plan state | `task`, `campaign`, `milestone`, `intent` |
 | Narrative and specification | durable context and discussion | `spec`, `adr`, `note`, `comment` |
-| Traceability and completion | requirement/evidence truth | `story`, `req`, `criterion`, `evidence`, `policy` |
+| Traceability and completion | requirement/evidence truth | `story`, `req`, `criterion`, `evidence`, `constraint`, `assumption`, `risk`, `spike`, `policy` |
 | Review and settlement | change review and governed completion | `submission`, `patchset`, `review`, `decision`, `approval`, `artifact` |
 | Advisory intake | recommendations and suggestion queues | `suggestion`, `proposal`, `config` |
 | Shape-governance | governed cases and briefs | `case`, `brief`, scoped `decision` |
@@ -107,6 +107,10 @@ This is the product-wide ontology catalog.
 | Requirement | `req:*` | `type: 'requirement'` | Implemented | Concrete requirement implemented by quests. |
 | Criterion | `criterion:*` | `type: 'criterion'` | Implemented | Acceptance criterion attached to a requirement. |
 | Evidence | `evidence:*` | `type: 'evidence'` | Implemented | Proof or linkage that bears on a criterion or requirement. |
+| Constraint | `constraint:*` | `type: 'constraint'` | Implemented | Planning boundary that constrains a quest, requirement, or campaign. |
+| Assumption | `assumption:*` | `type: 'assumption'` | Implemented | Believed-true premise that can be validated or invalidated. |
+| Risk | `risk:*` | `type: 'risk'` | Implemented | Known unknown with likelihood, impact, and mitigation. |
+| Spike | `spike:*` | `type: 'spike'` | Implemented | Time-boxed investigation that informs planning truth. |
 | Policy | `policy:*` | `type: 'policy'` | Implemented | Definition-of-Done policy applied at campaign scope. |
 
 ### Review And Settlement

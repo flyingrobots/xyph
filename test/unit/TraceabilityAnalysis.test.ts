@@ -6,8 +6,11 @@ import {
   computeCoverageRatio,
   computeCompletionSummary,
   computeCriterionVerdicts,
+  computePlanningGapSummary,
   type RequirementSummary,
   type CriterionSummary,
+  type AssumptionSummary,
+  type RiskSummary,
 } from '../../src/domain/services/TraceabilityAnalysis.js';
 
 describe('computeUnmetRequirements', () => {
@@ -305,6 +308,61 @@ describe('computeCompletionSummary', () => {
     expect(result.tracked).toBe(false);
     expect(result.verdict).toBe('UNTRACKED');
     expect(result.discrepancy).toBeUndefined();
+  });
+});
+
+describe('computePlanningGapSummary', () => {
+  it('finds unvalidated assumptions and risk hotspots', () => {
+    const assumptions: AssumptionSummary[] = [
+      {
+        id: 'assumption:A',
+        validated: true,
+        validatedAt: 100,
+        targetIds: ['req:A'],
+      },
+      {
+        id: 'assumption:B',
+        validated: false,
+        targetIds: ['task:B'],
+      },
+    ];
+    const risks: RiskSummary[] = [
+      {
+        id: 'risk:A',
+        likelihood: 0.8,
+        impact: 0.5,
+        mitigation: 'Add a retry budget',
+        targetIds: ['req:A'],
+      },
+      {
+        id: 'risk:B',
+        likelihood: 0.9,
+        impact: 0.9,
+        targetIds: ['task:B'],
+      },
+    ];
+
+    expect(computePlanningGapSummary(assumptions, risks)).toEqual({
+      unvalidatedAssumptionIds: ['assumption:B'],
+      unmitigatedRiskIds: ['risk:B'],
+      riskHotspots: [
+        {
+          id: 'risk:B',
+          likelihood: 0.9,
+          impact: 0.9,
+          score: 0.81,
+          targetIds: ['task:B'],
+        },
+        {
+          id: 'risk:A',
+          likelihood: 0.8,
+          impact: 0.5,
+          score: 0.4,
+          targetIds: ['req:A'],
+          mitigation: 'Add a retry budget',
+        },
+      ],
+    });
   });
 });
 
