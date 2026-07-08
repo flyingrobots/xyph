@@ -363,7 +363,7 @@ function buildAnalysisInputs(
 // ---------------------------------------------------------------------------
 
 async function generateWorkMd(
-  graph: InstanceType<typeof WarpGraph>,
+  graph: InstanceType<typeof WarpCore>,
   tasks: Map<string, TaskNode>,
   summaries: TaskSummary[],
   edges: DepEdge[],

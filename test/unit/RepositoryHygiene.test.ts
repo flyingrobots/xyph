@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const forbiddenRootFiles = [
@@ -18,5 +18,12 @@ describe('repository hygiene', () => {
     const present = forbiddenRootFiles.filter((path) => existsSync(path));
 
     expect(present).toEqual([]);
+  });
+
+  it('keeps the work DAG generator on the current git-warp core name', () => {
+    const source = readFileSync('scripts/generate-work-dag.ts', 'utf8');
+
+    expect(source).toContain('WarpCore');
+    expect(source).not.toContain('WarpGraph');
   });
 });
