@@ -12,7 +12,7 @@
  * Usage: npx tsx scripts/generate-work-dag.ts
  */
 
-import WarpGraph, { GitGraphAdapter } from '@git-stunts/git-warp';
+import { WarpCore, GitGraphAdapter } from '@git-stunts/git-warp';
 import Plumbing from '@git-stunts/plumbing';
 import { execSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -97,7 +97,7 @@ interface DotOptions {
 // ---------------------------------------------------------------------------
 
 async function loadGraph(): Promise<{
-  graph: InstanceType<typeof WarpGraph>;
+  graph: InstanceType<typeof WarpCore>;
   tasks: Map<string, TaskNode>;
   campaigns: Map<string, string>;
   sorted: string[];
@@ -105,7 +105,7 @@ async function loadGraph(): Promise<{
   const plumbing = await Plumbing.createDefault({ cwd: runtime.repoPath });
   const persistence = new GitGraphAdapter({ plumbing });
 
-  const graph = await WarpGraph.open({
+  const graph = await WarpCore.open({
     persistence,
     graphName: runtime.graphName,
     writerId: WRITER_ID,
@@ -363,7 +363,7 @@ function buildAnalysisInputs(
 // ---------------------------------------------------------------------------
 
 async function generateWorkMd(
-  graph: InstanceType<typeof WarpGraph>,
+  graph: InstanceType<typeof WarpCore>,
   tasks: Map<string, TaskNode>,
   summaries: TaskSummary[],
   edges: DepEdge[],
