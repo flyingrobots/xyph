@@ -1,1 +1,0 @@
-Hardened the agent command golden packet tests for briefing, next, context, and submissions. The briefing packet now pins governanceQueue and caseQueue, and the command tests assert shared semantic fields across quest, submission, governance, suggestion, and case packets.

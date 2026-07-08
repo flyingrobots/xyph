@@ -1,0 +1,1 @@
+Tracking PR work: fix/graph-work restores npm run graph:work by importing WarpCore from @git-stunts/git-warp in scripts/generate-work-dag.ts. This is a narrow script compatibility fix, not completion of the broader DAG visualization quest.
