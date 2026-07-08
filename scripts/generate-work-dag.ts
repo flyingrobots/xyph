@@ -12,7 +12,7 @@
  * Usage: npx tsx scripts/generate-work-dag.ts
  */
 
-import WarpGraph, { GitGraphAdapter } from '@git-stunts/git-warp';
+import { WarpCore as WarpGraph, GitGraphAdapter } from '@git-stunts/git-warp';
 import Plumbing from '@git-stunts/plumbing';
 import { execSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
