@@ -241,9 +241,9 @@ export async function runActuator(options: RunActuatorOptions = {}): Promise<num
 
   const program = createActuatorProgram();
   program.exitOverride();
-  await (options.registerCommands ?? defaultRegisterCommands)(program, ctx);
 
   try {
+    await (options.registerCommands ?? defaultRegisterCommands)(program, ctx);
     await program.parseAsync(argv, { from: 'node' });
     logger.info('actuator session ended cleanly');
     return 0;

@@ -209,7 +209,7 @@ command is fast." That means:
 - exactly one final record is emitted, and it is either success or error
 - commands with nothing to stream still comply by emitting a one-record JSONL stream
 
-```
+```console
 $ xyph show task:WVR-003
 {
   "id": "task:WVR-003",
@@ -304,8 +304,8 @@ $ xyph context task:BJU-009
 End-of-session command. Summarizes what was done and writes a handoff node to the graph.
 
 **Interactive (human):**
-```
-$ xyph handoff
+```console
+$ xyph handoff --humanize
   Session summary (auto-detected from patches):
     - Sealed 17 quests (WVR-001–005, BJU-004–008, DSH-005, DSH-007, ...)
     - Added 6 inbox items (tui-toast-watch, tui-chord-commands, ...)
@@ -318,7 +318,7 @@ $ xyph handoff
 ```
 
 **Headless (agent default JSONL):**
-```
+```console
 $ xyph handoff --message "Completed WVR sealing and bijou upgrade"
 { "tick": 158, "patches": 23, "sealed": 17, "added": 6 }
 ```
