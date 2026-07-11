@@ -253,6 +253,11 @@ export async function runActuator(options: RunActuatorOptions = {}): Promise<num
 
   const program = createActuatorProgram();
   program.exitOverride();
+  if (json) {
+    program.configureOutput({
+      writeErr: () => undefined,
+    });
+  }
 
   try {
     await (options.registerCommands ?? defaultRegisterCommands)(program, ctx);

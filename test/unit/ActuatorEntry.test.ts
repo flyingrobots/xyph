@@ -67,6 +67,10 @@ describe('actuator entrypoint', () => {
     .map(([chunk]) => String(chunk))
     .join('\n');
 
+  const stderrText = (): string => stderrSpy.mock.calls
+    .map(([chunk]) => String(chunk))
+    .join('');
+
   it('detects help and human output mode from raw argv', () => {
     expect(parseHumanizeFlagFromArgv(['node', 'xyph-actuator', 'status'])).toBe(false);
     expect(parseHumanizeFlagFromArgv(['node', 'xyph-actuator', 'status', '--humanize'])).toBe(true);
@@ -153,6 +157,7 @@ describe('actuator entrypoint', () => {
       .map((line) => JSON.parse(line) as { success: boolean; error?: string; data?: Record<string, unknown> });
 
     expect(code).toBe(1);
+    expect(stderrText()).toBe('');
     expect(records).toEqual([
       expect.objectContaining({
         success: false,
