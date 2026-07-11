@@ -1,5 +1,5 @@
 import { Command, CommanderError } from 'commander';
-import type { CliContext } from './context.js';
+import type { CliContext, JsonErrorEnvelope } from './context.js';
 import { createCliContext } from './context.js';
 import { parseAsOverrideFromArgv } from './identity.js';
 import { resolveGraphRuntime, type ResolvedGraphRuntime } from './runtimeGraph.js';
@@ -199,6 +199,18 @@ function serializeError(error: unknown): Record<string, unknown> {
     : { message: String(error) };
 }
 
+function emitCommanderJsonError(error: CommanderError): void {
+  const envelope: JsonErrorEnvelope = {
+    success: false,
+    error: error.message,
+    data: {
+      code: error.code,
+      exitCode: error.exitCode,
+    },
+  };
+  console.log(JSON.stringify(envelope));
+}
+
 export async function runActuator(options: RunActuatorOptions = {}): Promise<number> {
   const argv = [...(options.argv ?? process.argv)];
   const cwd = options.cwd ?? process.cwd();
@@ -253,6 +265,9 @@ export async function runActuator(options: RunActuatorOptions = {}): Promise<num
         logger.info('actuator session ended cleanly');
       } else {
         logger.error('actuator session failed', serializeError(error));
+        if (json) {
+          emitCommanderJsonError(error);
+        }
       }
       return error.exitCode;
     }

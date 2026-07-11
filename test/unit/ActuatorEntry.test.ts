@@ -45,17 +45,27 @@ function stubRuntime(cwd: string) {
 describe('actuator entrypoint', () => {
   const tempDirs: string[] = [];
   let stdoutSpy: ReturnType<typeof vi.spyOn>;
+  let stderrSpy: ReturnType<typeof vi.spyOn>;
+  let consoleLogSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
   });
 
   afterEach(() => {
     stdoutSpy.mockRestore();
+    stderrSpy.mockRestore();
+    consoleLogSpy.mockRestore();
     for (const dir of tempDirs.splice(0)) {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  const consoleLogText = (): string => consoleLogSpy.mock.calls
+    .map(([chunk]) => String(chunk))
+    .join('\n');
 
   it('detects help and human output mode from raw argv', () => {
     expect(parseHumanizeFlagFromArgv(['node', 'xyph-actuator', 'status'])).toBe(false);
@@ -117,6 +127,41 @@ describe('actuator entrypoint', () => {
 
     expect(code).toBe(0);
     expect(observedJsonMode).toBe(false);
+  });
+
+  it('emits a terminal JSONL error record for Commander parse failures', async () => {
+    const code = await runActuator({
+      argv: ['node', 'xyph-actuator', 'probe'],
+      cwd: process.cwd(),
+      logger: noopLogger,
+      resolveRuntime: stubRuntime,
+      createContext(options: CreateActuatorContextOptions): CliContext {
+        return makeJsonCliContext({ json: options.json });
+      },
+      registerCommands(program: Command): void {
+        program
+          .command('probe')
+          .requiredOption('--name <name>')
+          .action(() => undefined);
+      },
+    });
+
+    const records = consoleLogText()
+      .trim()
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as { success: boolean; error?: string; data?: Record<string, unknown> });
+
+    expect(code).toBe(1);
+    expect(records).toEqual([
+      expect.objectContaining({
+        success: false,
+        error: expect.stringContaining("required option '--name <name>' not specified"),
+        data: expect.objectContaining({
+          exitCode: 1,
+        }),
+      }),
+    ]);
   });
 
   it('renders help without resolving runtime or creating the full CLI context', async () => {
