@@ -23,7 +23,7 @@ export function registerWizardCommands(program: Command, ctx: CliContext): void 
     .command('quest-wizard')
     .description('Interactive quest creation wizard')
     .action(withErrorHandler(async () => {
-      if (ctx.json) return ctx.fail('Interactive mode not available with --json. Use quest command with flags.');
+      if (ctx.json) return ctx.fail('Interactive mode requires --humanize. Use quest command with flags for JSONL.');
 
       const filter = ctx.bijou?.filter ?? (await import('@flyingrobots/bijou')).filter;
       const bijouInput = ctx.bijou?.input ?? (await import('@flyingrobots/bijou')).input;
@@ -166,7 +166,7 @@ export function registerWizardCommands(program: Command, ctx: CliContext): void 
     .command('review-wizard')
     .description('Interactive review wizard — pick submission, verdict, and comment')
     .action(withErrorHandler(async () => {
-      if (ctx.json) return ctx.fail('Interactive mode not available with --json. Use review command with flags.');
+      if (ctx.json) return ctx.fail('Interactive mode requires --humanize. Use review command with flags for JSONL.');
 
       const filter = ctx.bijou?.filter ?? (await import('@flyingrobots/bijou')).filter;
       const select = ctx.bijou?.select ?? (await import('@flyingrobots/bijou')).select;
@@ -238,7 +238,7 @@ export function registerWizardCommands(program: Command, ctx: CliContext): void 
     .command('promote-wizard <id>')
     .description('Interactive promote wizard — select intent and campaign')
     .action(withErrorHandler(async (id: string) => {
-      if (ctx.json) return ctx.fail('Interactive mode not available with --json. Use promote command with flags.');
+      if (ctx.json) return ctx.fail('Interactive mode requires --humanize. Use promote command with flags for JSONL.');
 
       assertPrefix(id, 'task:', 'Quest ID');
 
@@ -328,7 +328,7 @@ export function registerWizardCommands(program: Command, ctx: CliContext): void 
     .command('triage')
     .description('Interactive triage session — process inbox items one by one')
     .action(withErrorHandler(async () => {
-      if (ctx.json) return ctx.fail('Triage is interactive-only. Use promote/reject with --json instead.');
+      if (ctx.json) return ctx.fail('Triage is interactive-only. Use promote/reject without --humanize for JSONL.');
 
       const filter = ctx.bijou?.filter ?? (await import('@flyingrobots/bijou')).filter;
       const select = ctx.bijou?.select ?? (await import('@flyingrobots/bijou')).select;

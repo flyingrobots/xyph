@@ -2,7 +2,9 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { Command } from 'commander';
+import { runActuator } from '../../../../src/cli/actuatorEntry.js';
 
 describe('Cycle 0022: Durable Diagnostic Logging', () => {
   const tempDirs: string[] = [];
@@ -13,22 +15,34 @@ describe('Cycle 0022: Durable Diagnostic Logging', () => {
     }
   });
 
-  it('writes a durable actuator log even when stdout is not the diagnostic sink', () => {
+  it('writes a durable actuator log even when stdout is not the diagnostic sink', async () => {
     const homeDir = mkdtempSync(join(tmpdir(), 'xyph-acceptance-logging-'));
     tempDirs.push(homeDir);
     const logPath = join(homeDir, '.xyph', 'logs', 'actuator.log');
+    const stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
 
-    const result = spawnSync(
-      'node_modules/.bin/tsx',
-      ['xyph-actuator.ts', '--help'],
-      {
-        cwd: process.cwd(),
-        env: { ...process.env, HOME: homeDir },
-        stdio: 'ignore',
-      },
-    );
+    const result = await (async () => {
+      try {
+        return await runActuator({
+          argv: ['node', 'xyph-actuator', '--help'],
+          cwd: process.cwd(),
+          homeDir,
+          resolveRuntime(): never {
+            throw new Error('help should not resolve graph runtime');
+          },
+          createContext(): never {
+            throw new Error('help should not create CLI context');
+          },
+          registerCommands(program: Command): void {
+            program.command('probe').description('Probe command');
+          },
+        });
+      } finally {
+        stdoutSpy.mockRestore();
+      }
+    })();
 
-    expect(result.status).toBe(0);
+    expect(result).toBe(0);
     expect(existsSync(logPath)).toBe(true);
 
     const log = readFileSync(logPath, 'utf8');

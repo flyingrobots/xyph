@@ -116,7 +116,8 @@ $ xyph show task:WVR-003
     Sealed by agent.prime at tick 156
 ```
 
-With `--json`: returns structured object. This is the foundation for agent context queries.
+By default, returns a structured JSONL object. Use `--humanize` for a display
+rendering. This is the foundation for agent context queries.
 
 ### 2b. `xyph assign <quest> <principal>`
 
@@ -190,24 +191,26 @@ Uses `graph.temporal.*` and patch provenance to reconstruct the timeline.
 
 ### Philosophy
 
-The agent doesn't need a *different* CLI — it needs the *same* CLI with structured I/O. `wizard()` makes the human experience better, `--json` makes the agent experience better, and the underlying graph operations are identical.
+The agent doesn't need a *different* CLI — it needs the *same* CLI with structured I/O. JSONL by default makes the agent experience better, `--humanize` makes the human experience better, and the underlying graph operations are identical.
 
 **One protocol, two interfaces.**
 
-### 3a. `--json` flag (global)
+### 3a. JSONL default with `--humanize` opt-in
 
-Every command gains `--json` output mode. This is the single highest-leverage change for agent support.
+Every command emits JSONL by default. Humans explicitly request visual display
+output with `--humanize`. This is the single highest-leverage change for agent
+support.
 
 The contract should be **JSONL**, not "print one JSON object and hope the
 command is fast." That means:
 
-- every `--json` command writes newline-delimited JSON records
+- every default command writes newline-delimited JSON records
 - records may include non-terminal lifecycle events such as `start` and `progress`
 - exactly one final record is emitted, and it is either success or error
 - commands with nothing to stream still comply by emitting a one-record JSONL stream
 
 ```
-$ xyph show task:WVR-003 --json
+$ xyph show task:WVR-003
 {
   "id": "task:WVR-003",
   "title": "Frontier computation — ready set of tasks",
@@ -228,7 +231,7 @@ Already backlogged as `task:cli-api` but deserves priority — it unlocks MCP, w
 Start-of-session command. Structured summary of what an agent needs to know.
 
 ```
-$ xyph briefing --json
+$ xyph briefing
 {
   "since": { "tick": 140, "timestamp": "2026-02-27T18:00:00Z" },
   "changes": {
@@ -256,7 +259,7 @@ $ xyph briefing --json
 Opinionated single recommendation. Returns ONE task with rationale.
 
 ```
-$ xyph next --json
+$ xyph next
 {
   "recommendation": "task:BJU-009",
   "title": "Wire graph.watch() into TEA loop for live refresh",
@@ -279,7 +282,7 @@ $ xyph next --json
 Full context dump for a quest. Everything an agent needs to *start working*.
 
 ```
-$ xyph context task:BJU-009 --json
+$ xyph context task:BJU-009
 {
   "quest": { "id": "task:BJU-009", "title": "Wire graph.watch()...", "status": "PLANNED", "hours": 2 },
   "intent": { "id": "intent:DASHBOARD", "title": "Build the WARP Dashboard..." },
@@ -294,7 +297,7 @@ $ xyph context task:BJU-009 --json
 }
 ```
 
-**Why this matters:** An agent can call `xyph context task:X --json`, feed the result into its prompt, and have full situational awareness before writing a single line of code.
+**Why this matters:** An agent can call `xyph context task:X`, feed the JSONL result into its prompt, and have full situational awareness before writing a single line of code.
 
 ### 3e. `xyph handoff`
 
@@ -314,9 +317,9 @@ $ xyph handoff
   [OK] Handoff recorded at tick 158.
 ```
 
-**Headless (agent with --json):**
+**Headless (agent default JSONL):**
 ```
-$ xyph handoff --message "Completed WVR sealing and bijou upgrade" --json
+$ xyph handoff --message "Completed WVR sealing and bijou upgrade"
 { "tick": 158, "patches": 23, "sealed": 17, "added": 6 }
 ```
 
@@ -346,11 +349,11 @@ $ xyph batch seal task:A task:B --artifact <sha> --rationale "..."
 | 2 | `xyph move` | `task:cli-move` | — |
 | 2 | `xyph plan <campaign>` | `task:cli-plan` | DepAnalysis |
 | 2 | `xyph diff` | `task:cli-diff` | temporal queries |
-| 3 | `--json` global flag | `task:cli-api` | (exists) |
-| 3 | `xyph briefing` | `task:agent-briefing` | `--json`, temporal |
-| 3 | `xyph next` | `task:agent-next` | `--json`, DepAnalysis |
-| 3 | `xyph context <id>` | `task:agent-context` | `--json` |
-| 3 | `xyph handoff` | `task:agent-handoff` | `--json`, provenance |
+| 3 | JSONL default + `--humanize` | `task:cli-machine-defaults` | `task:cli-api` |
+| 3 | `xyph briefing` | `task:agent-briefing` | JSONL, temporal |
+| 3 | `xyph next` | `task:agent-next` | JSONL, DepAnalysis |
+| 3 | `xyph context <id>` | `task:agent-context` | JSONL |
+| 3 | `xyph handoff` | `task:agent-handoff` | JSONL, provenance |
 | 3 | `xyph batch` | `task:cli-batch` | — |
 
 ---
@@ -359,7 +362,7 @@ $ xyph batch seal task:A task:B --artifact <sha> --rationale "..."
 
 **Phase A — Foundation (do first):**
 1. `xyph show <id>` — everything else builds on entity inspection
-2. `--json` global flag — unlocks agent protocol and scripting
+2. JSONL default + `--humanize` — unlocks agent protocol and scripting
 3. `xyph plan <campaign>` — surfaces existing DepAnalysis per-campaign
 
 **Phase B — Agent Protocol:**

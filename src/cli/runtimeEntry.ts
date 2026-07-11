@@ -18,13 +18,22 @@ export function stripTuiFlag(argv: readonly string[]): string[] {
   return argv.filter((arg) => arg !== '--tui');
 }
 
+function isValueFlag(arg: string): boolean {
+  return arg === '--as';
+}
+
+function isRuntimeModeFlag(arg: string): boolean {
+  return arg === '--tui' || arg === '--humanize';
+}
+
 export function countCommandArgs(argv: readonly string[]): number {
   let count = 0;
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
-    if (arg === '--tui') continue;
-    if (arg === '--as') {
+    if (arg === undefined) continue;
+    if (isRuntimeModeFlag(arg)) continue;
+    if (isValueFlag(arg)) {
       i += 1;
       continue;
     }
