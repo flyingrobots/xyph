@@ -1,1 +1,0 @@
-Follow-up generated diagram commit cbf73a9 refreshed Mermaid SVG/hash outputs after the actuator output-mode docs changed. scripts/check-diagrams.sh passed. render-diagrams.sh rendered 53 diagrams and reported two unrelated render errors for existing vision-layer-stack.mmd and wasm-target-lowerer.mmd; diagram freshness check is green.
