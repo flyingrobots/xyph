@@ -14,18 +14,30 @@ export interface TsxLaunchPlan {
 
 export type RuntimeLaunchPlan = ImportLaunchPlan | TsxLaunchPlan;
 
+/**
+ * Removes the TUI sentinel before forwarding arguments to the selected runtime.
+ */
 export function stripTuiFlag(argv: readonly string[]): string[] {
   return argv.filter((arg) => arg !== '--tui');
 }
 
+/**
+ * Identifies runtime-level flags that consume the next argv token as their value.
+ */
 function isValueFlag(arg: string): boolean {
   return arg === '--as';
 }
 
+/**
+ * Identifies runtime-level mode switches that do not count as command dispatch.
+ */
 function isRuntimeModeFlag(arg: string): boolean {
   return arg === '--tui' || arg === '--humanize';
 }
 
+/**
+ * Counts command-position arguments after removing runtime flags and identity values.
+ */
 export function countCommandArgs(argv: readonly string[]): number {
   let count = 0;
 
@@ -44,10 +56,17 @@ export function countCommandArgs(argv: readonly string[]): number {
   return count;
 }
 
+/**
+ * Decides whether the top-level launcher should open the TUI instead of the actuator.
+ */
 export function shouldLaunchTui(argv: readonly string[]): boolean {
   return argv.includes('--tui') || countCommandArgs(argv) === 0;
 }
 
+/**
+ * Chooses the built JavaScript entrypoint when present, otherwise falls back to
+ * the source TypeScript entrypoint for local development.
+ */
 export function resolveRuntimeLaunchPlan(
   baseDir: string,
   stem: 'xyph-actuator' | 'xyph-dashboard',
@@ -72,6 +91,9 @@ export function resolveRuntimeLaunchPlan(
   throw new Error(`Could not resolve runtime entry for ${stem} in ${baseDir}`);
 }
 
+/**
+ * Resolves the repo-local tsx executable used to launch source entrypoints.
+ */
 export function resolveLocalTsxCliPath(
   baseDir: string,
   fileExists: (path: string) => boolean = existsSync,

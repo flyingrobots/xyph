@@ -32,15 +32,27 @@ export interface RunActuatorOptions {
 
 const HELP_FLAGS = new Set(['--help', '-h']);
 
+/**
+ * Detects the one opt-in human rendering switch before Commander has parsed the
+ * command line, because output mode determines which CLI context is built.
+ */
 export function parseHumanizeFlagFromArgv(argv: readonly string[]): boolean {
   return argv.includes('--humanize');
 }
 
+/**
+ * Identifies help-only invocations so the actuator can render command metadata
+ * without resolving graph runtime or constructing graph-backed adapters.
+ */
 export function isActuatorHelpRequest(argv: readonly string[]): boolean {
   const args = argv.slice(2);
   return args[0] === 'help' || args.some((arg) => HELP_FLAGS.has(arg));
 }
 
+/**
+ * Creates the root Commander program with only process-level actuator options.
+ * Command modules attach domain commands after the output mode is known.
+ */
 export function createActuatorProgram(): Command {
   return new Command()
     .name('xyph-actuator')
@@ -49,6 +61,10 @@ export function createActuatorProgram(): Command {
     .option('--as <principal>', 'Override identity for this invocation');
 }
 
+/**
+ * Builds the smallest context that command registration can safely inspect for
+ * help output, while failing fast if a command tries to touch graph-backed state.
+ */
 function createHelpOnlyContext(options: {
   cwd: string;
   json: boolean;
@@ -119,6 +135,10 @@ function createHelpOnlyContext(options: {
   }) as CliContext;
 }
 
+/**
+ * Loads and registers every actuator command after the CLI context is available.
+ * Dynamic imports keep help-only startup lazy until registration is actually needed.
+ */
 async function defaultRegisterCommands(program: Command, ctx: CliContext): Promise<void> {
   const [
     { registerIngestCommands },
@@ -183,6 +203,9 @@ async function defaultRegisterCommands(program: Command, ctx: CliContext): Promi
   registerSearchCommands(program, ctx);
 }
 
+/**
+ * Creates the full graph-backed CLI context used by executable command paths.
+ */
 function defaultCreateContext(options: CreateActuatorContextOptions): CliContext {
   return createCliContext(options.cwd, options.runtime.repoPath, options.runtime.graphName, {
     json: options.json,
@@ -193,12 +216,19 @@ function defaultCreateContext(options: CreateActuatorContextOptions): CliContext
   });
 }
 
+/**
+ * Normalizes unknown failures for durable diagnostic logs without assuming all
+ * thrown values are Error instances.
+ */
 function serializeError(error: unknown): Record<string, unknown> {
   return error instanceof Error
     ? { name: error.name, message: error.message, stack: error.stack }
     : { message: String(error) };
 }
 
+/**
+ * Emits Commander parse failures as the actuator's terminal JSONL error record.
+ */
 function emitCommanderJsonError(error: CommanderError): void {
   const envelope: JsonErrorEnvelope = {
     success: false,
@@ -211,6 +241,10 @@ function emitCommanderJsonError(error: CommanderError): void {
   console.log(JSON.stringify(envelope));
 }
 
+/**
+ * Runs the actuator entrypoint end to end: resolve output mode, initialize the
+ * right context, register commands, parse argv, and return the process exit code.
+ */
 export async function runActuator(options: RunActuatorOptions = {}): Promise<number> {
   const argv = [...(options.argv ?? process.argv)];
   const cwd = options.cwd ?? process.cwd();
