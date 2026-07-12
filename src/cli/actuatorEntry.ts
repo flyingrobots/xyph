@@ -31,7 +31,91 @@ export interface RunActuatorOptions {
 }
 
 const HELP_FLAGS = new Set(['--help', '-h']);
-const VALUE_FLAGS = new Set(['--as']);
+const BOOLEAN_OPTION_FLAGS = new Set([
+  '--allow-manual-seal',
+  '--backlog-only',
+  '--dry-run',
+  '--global',
+  '--graph',
+  '--humanize',
+  '--include-graveyard',
+  '--local',
+  '--no-require-all-criteria',
+  '--no-require-evidence',
+  '--no-verifiable',
+  '--raw-status',
+  '--stats',
+  '--tui',
+  '--user',
+  '--validated',
+]);
+const VALUE_OPTION_FLAGS = new Set([
+  '--artifact',
+  '--artifact-hash',
+  '--as',
+  '--assumption',
+  '--base',
+  '--benefit',
+  '--body',
+  '--by',
+  '--campaign',
+  '--comment',
+  '--comment-id',
+  '--criterion',
+  '--criterion-description',
+  '--description',
+  '--evidence',
+  '--for',
+  '--glob',
+  '--goal',
+  '--hours',
+  '--id',
+  '--idempotency-key',
+  '--impact',
+  '--intent',
+  '--into',
+  '--kind',
+  '--layers',
+  '--likelihood',
+  '--limit',
+  '--message',
+  '--min-confidence',
+  '--mitigation',
+  '--next',
+  '--on',
+  '--outcome',
+  '--patchset',
+  '--persona',
+  '--priority',
+  '--produced-by',
+  '--rationale',
+  '--related',
+  '--reply-to',
+  '--requested-by',
+  '--requirement',
+  '--requirement-description',
+  '--requirement-kind',
+  '--result',
+  '--risk',
+  '--status',
+  '--story',
+  '--story-title',
+  '--suggested-by',
+  '--summary',
+  '--supersedes',
+  '--target',
+  '--task',
+  '--task-priority',
+  '--threshold',
+  '--timebox-hours',
+  '--title',
+  '--unit',
+  '--validated-at',
+  '--verdict',
+  '--view',
+  '--why',
+  '--workspace',
+]);
 
 /**
  * Detects the one opt-in human rendering switch before Commander has parsed the
@@ -53,7 +137,7 @@ export function isActuatorHelpRequest(argv: readonly string[]): boolean {
     const arg = args[i];
     if (arg === undefined) continue;
     if (arg === '--') return false;
-    if (VALUE_FLAGS.has(arg)) {
+    if (couldConsumeNextToken(arg)) {
       i += 1;
       continue;
     }
@@ -61,6 +145,12 @@ export function isActuatorHelpRequest(argv: readonly string[]): boolean {
   }
 
   return false;
+}
+
+function couldConsumeNextToken(arg: string): boolean {
+  if (!arg.startsWith('-') || arg === '-' || arg.includes('=')) return false;
+  if (HELP_FLAGS.has(arg) || BOOLEAN_OPTION_FLAGS.has(arg)) return false;
+  return VALUE_OPTION_FLAGS.has(arg) || arg.startsWith('--');
 }
 
 /**
