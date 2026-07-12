@@ -256,6 +256,20 @@ function emitCommanderJsonError(error: CommanderError): void {
 }
 
 /**
+ * Keeps process-level deprecation warnings from contaminating JSONL stderr while
+ * preserving the caller's prior warning policy after actuator execution.
+ */
+function suppressDeprecationWarningsForJson(json: boolean): () => void {
+  if (!json) return () => undefined;
+
+  const previousNoDeprecation = process.noDeprecation;
+  process.noDeprecation = true;
+  return () => {
+    process.noDeprecation = previousNoDeprecation;
+  };
+}
+
+/**
  * Runs the actuator entrypoint end to end: resolve output mode, initialize the
  * right context, register commands, parse argv, and return the process exit code.
  */
@@ -306,6 +320,7 @@ export async function runActuator(options: RunActuatorOptions = {}): Promise<num
       writeErr: () => undefined,
     });
   }
+  const restoreDeprecationWarnings = suppressDeprecationWarningsForJson(json);
 
   try {
     await (options.registerCommands ?? defaultRegisterCommands)(program, ctx);
@@ -327,5 +342,7 @@ export async function runActuator(options: RunActuatorOptions = {}): Promise<num
 
     logger.error('actuator session crashed', serializeError(error));
     throw error;
+  } finally {
+    restoreDeprecationWarnings();
   }
 }

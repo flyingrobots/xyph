@@ -71,6 +71,12 @@ describe('actuator entrypoint', () => {
     .map(([chunk]) => String(chunk))
     .join('');
 
+  const flushProcessWarnings = async (): Promise<void> => {
+    await new Promise<void>((resolve) => {
+      setImmediate(resolve);
+    });
+  };
+
   it('detects help and human output mode from raw argv', () => {
     expect(parseHumanizeFlagFromArgv(['node', 'xyph-actuator', 'status'])).toBe(false);
     expect(parseHumanizeFlagFromArgv(['node', 'xyph-actuator', 'status', '--humanize'])).toBe(true);
@@ -206,6 +212,44 @@ describe('actuator entrypoint', () => {
         success: true,
         command: 'probe',
         data: { agentId: '-h' },
+      },
+    ]);
+  });
+
+  it('suppresses process warning stderr in JSONL mode', async () => {
+    const code = await runActuator({
+      argv: ['node', 'xyph-actuator', 'probe'],
+      cwd: process.cwd(),
+      logger: noopLogger,
+      resolveRuntime: stubRuntime,
+      createContext(options: CreateActuatorContextOptions): CliContext {
+        return makeJsonCliContext({ json: options.json }, { emitJson: true });
+      },
+      registerCommands(program: Command, ctx: CliContext): void {
+        program.command('probe').action(() => {
+          process.emitWarning('test actuator warning', {
+            type: 'DeprecationWarning',
+            code: 'XYPH_TEST_JSONL_WARNING',
+          });
+          ctx.jsonOut({ success: true, command: 'probe', data: { mode: 'jsonl' } });
+        });
+      },
+    });
+    await flushProcessWarnings();
+
+    const records = consoleLogText()
+      .trim()
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as { success: boolean; command?: string; data?: Record<string, unknown> });
+
+    expect(code).toBe(0);
+    expect(stderrText()).toBe('');
+    expect(records).toEqual([
+      {
+        success: true,
+        command: 'probe',
+        data: { mode: 'jsonl' },
       },
     ]);
   });
