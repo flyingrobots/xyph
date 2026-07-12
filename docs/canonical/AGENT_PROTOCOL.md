@@ -34,7 +34,8 @@ The agent protocol is therefore a **policy-bounded operating interface**, not a
 second workflow model and not an informal wrapper around raw commands.
 
 The CLI should therefore be judged as a first-class product surface, not only
-as a transport for `--json` payloads. Its human-readable output should be
+as a transport for machine payloads. JSONL is the default actuator output; the
+human-readable renderer is explicitly requested with `--humanize` and should be
 designed with the same seriousness as the TUI while preserving the same graph
 truth.
 
@@ -55,19 +56,19 @@ and observation/worldline coordinate.
 
 3. **JSONL first**
    The canonical machine interface is `xyph api`, which uses versioned JSONL
-   request and result envelopes. The legacy agent-facing CLI still uses `--json`
-   JSONL streams and is a compatibility layer over the same graph-backed domain
-   services.
+   request and result envelopes. The agent-facing CLI now emits JSONL by default
+   and is a compatibility layer over the same graph-backed domain services.
+   Humans opt into display output with `--humanize`.
 
 3a. **JSONL framing**
-   `--json` is a newline-delimited JSON stream, not a single giant blob by
-   contract. Every command emits:
+   The default actuator output is a newline-delimited JSON stream, not a single
+   giant blob by contract. Every command emits:
    - zero or more non-terminal event records such as `start` and `progress`
    - exactly one terminal success or error record
 
    Commands that have nothing meaningful to stream still comply by emitting a
    one-record JSONL stream whose only line is the terminal success or error
-   envelope.
+   envelope. `--humanize` changes presentation, not graph semantics.
 
 4. **Policy-bounded authority**
    Agents may perform routine operations when XYPH gates pass. Sovereignty,
@@ -185,8 +186,9 @@ inventing parallel names.
 
 ## 4. JSON Contracts
 
-All `--json` commands use JSONL framing. Consumers must read records line by
-line until they receive the terminal success or error envelope.
+All default actuator command output uses JSONL framing. Consumers must read
+records line by line until they receive the terminal success or error envelope.
+Use `--humanize` only when a person wants styled display output.
 
 Event record shape:
 
@@ -210,7 +212,7 @@ Terminal error record shape:
 - optional `data`
 - optional `diagnostics`
 
-### 4.1 `briefing --json`
+### 4.1 `briefing`
 
 `briefing` is the start-of-session orientation document. At minimum it returns:
 
@@ -243,7 +245,7 @@ compatible semantic packets built from the shared domain services, including:
 - `recommendationRequests` when the entry implies routed follow-up work rather
   than routine agent execution
 
-### 4.2 `next --json`
+### 4.2 `next`
 
 `next` returns structured action candidates, not prose-only recommendations.
 
@@ -286,7 +288,7 @@ prefer:
 - `missingEvidence`
 - `expectedActor`
 
-### 4.3 `submissions --json`
+### 4.3 `submissions`
 
 `submissions` is the agent-facing queue view. It should group at least:
 
@@ -297,7 +299,7 @@ prefer:
 Each entry should expose enough normalized data for `act review ...` or
 follow-on `context` calls without forcing extra graph archaeology.
 
-### 4.3.1 `context --json`
+### 4.3.1 `context`
 
 `context` remains the target-oriented work packet.
 
@@ -334,15 +336,15 @@ For governance artifacts such as `comparison-artifact:*`,
 Those fields are what make `context` a work packet instead of a fancy `show`
 command.
 
-### 4.4 `act --json`
+### 4.4 `act`
 
 `act` is a generic validated execution wrapper:
 
 ```bash
-xyph act <kind> <target> [action-specific options] [--dry-run] --json
+xyph act <kind> <target> [action-specific options] [--dry-run]
 ```
 
-The `--json` result must include:
+The JSONL result must include:
 
 - `kind`
 - `targetId`
@@ -380,7 +382,7 @@ derived truthfully. That keeps rejected, dry-run, success, and partial-failure
 outcomes aligned with `context`, `briefing`, and `next` instead of inventing a
 second refusal vocabulary.
 
-### 4.5 `handoff --json`
+### 4.5 `handoff`
 
 `handoff` records session closeout as durable graph state. The JSON result must
 include:
