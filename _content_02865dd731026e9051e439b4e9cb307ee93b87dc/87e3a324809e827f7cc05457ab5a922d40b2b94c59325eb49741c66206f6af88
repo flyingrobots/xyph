@@ -1,1 +1,0 @@
-Code Lawyer pass on PR #80 discovered SELF-001: Commander parse failures leaked prose to stderr in JSONL mode. Fixed in commit 28c44fb with regression coverage; local lint, focused tests, full pre-push test suite, diagram checks, and GitHub CI are green. Activity summary posted to PR #80.
