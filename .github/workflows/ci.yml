@@ -125,4 +125,4 @@ jobs:
 
       - run: npm ci
       - name: Analyze test-to-requirement coverage
-        run: npx tsx xyph-actuator.ts analyze --dry-run --json
+        run: npx tsx xyph-actuator.ts analyze --dry-run

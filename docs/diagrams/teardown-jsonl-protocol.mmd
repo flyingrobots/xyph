@@ -1,6 +1,6 @@
 sequenceDiagram
     participant AGENT as AI Agent (tool call)
-    participant XYPH as xyph-actuator --json
+    participant XYPH as xyph-actuator
 
     XYPH->>AGENT: {"event":"start","command":"quest","at":1716800000}
     Note over XYPH: Graph I/O, validation

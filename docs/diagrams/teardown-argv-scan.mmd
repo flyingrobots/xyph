@@ -1,12 +1,14 @@
 flowchart TD
-    A["process.argv"] --> B{"argv.includes\n'--json'?"}
-    B -->|yes| C["jsonFlag = true"]
-    B -->|no| D["jsonFlag = false"]
+    A["process.argv"] --> B{"argv.includes\n'--humanize'?"}
+    B -->|yes| C["json = false"]
+    B -->|no| D["json = true"]
     A --> E["parseAsOverrideFromArgv()"]
     E --> F["asOverride: string | undefined"]
-    A --> G["resolveGraphRuntime()"]
+    A --> M{"help request?"}
+    M -->|no| G["resolveGraphRuntime()"]
+    M -->|yes| N["help-only context"]
     G --> H["runtime: {cwd, repoPath, graphName}"]
     C & D & F & H --> I["createCliContext(...)"]
-    I --> J["CliContext<br />(DI root)"]
+    I & N --> J["CliContext<br />(DI root or help-only proxy)"]
     J --> K["register*Commands × 19"]
     K --> L["program.parseAsync(argv)"]

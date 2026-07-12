@@ -79,7 +79,7 @@ XYPH is in alpha. What works today:
 
 What's next:
 
-- **CLI tooling** — identity resolution, `--json` output, interactive wizards, `xyph show/plan/diff`
+- **CLI tooling** — identity resolution, default JSONL output, `--humanize`, interactive wizards, `xyph show/plan/diff`
 - **Agent protocol** — structured session commands: `xyph briefing`, `xyph next`, `xyph context`, `xyph handoff`
 - **Requirements traceability** — stories, requirements, acceptance criteria, and evidence as graph nodes
 - **MCP server** — AI agents as native graph participants

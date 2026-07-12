@@ -46,8 +46,8 @@ Xyph is deliberately designed for two very different consumers, each with a nati
 
 | | **Human** | **AI Agent** |
 |---|---|---|
-| **Interface** | Terminal UI (Bijou TUI) | CLI with `--json` flag (JSONL stream) |
-| **Entry point** | `xyph-dashboard.ts` | `xyph-actuator.ts --json` |
+| **Interface** | Terminal UI (Bijou TUI) | CLI JSONL stream by default |
+| **Entry point** | `xyph-dashboard.ts` | `xyph-actuator.ts` |
 | **Output format** | Rich ANSI color, tabs, panes | Newline-delimited JSON envelopes |
 | **Interaction model** | Keyboard navigation, modal overlays | Tool-call → parse response → next call |
 | **Identity** | `human.*` principal (e.g. `human.james`) | `agent.*` principal (e.g. `agent.prime`) |
@@ -72,11 +72,13 @@ The dashboard shows campaigns as collapsible sections, quests within them, an in
 
 ### The AI Agent Interface
 
-An agent interacts with Xyph by shelling out to `xyph-actuator --json`. Every command emits structured JSONL:
+An agent interacts with Xyph by shelling out to `xyph-actuator`. Every command
+emits structured JSONL by default. Humans opt into display output with
+`--humanize`:
 
 ```jsonc
 // Tool call: create a quest
-> xyph-actuator --json quest task:api-v2 --title "REST API v2" --intent intent:launch-2026
+> xyph-actuator quest task:api-v2 --title "REST API v2" --intent intent:launch-2026
 
 // Stream output:
 {"event":"start","command":"quest","at":1716800000000}
@@ -90,15 +92,21 @@ The agent reads the terminal JSON record, checks `success`, extracts `data.id`, 
 
 ## 2. The Entry Point: `xyph-actuator.ts`
 
-The first thing the actuator does is **not** hand control to Commander. It scans `process.argv` raw before any framework parses it:
+The first thing the actuator does is **not** hand control to Commander. It scans
+`process.argv` raw before any framework parses it:
 
 ```typescript
-const jsonFlag = process.argv.includes('--json');
+const json = !process.argv.includes('--humanize');
+const helpOnly = isActuatorHelpRequest(process.argv);
 const asOverride = parseAsOverrideFromArgv(process.argv);
-const runtime = resolveGraphRuntime({ cwd: process.cwd() });
+const runtime = helpOnly ? null : resolveGraphRuntime({ cwd: process.cwd() });
 ```
 
-This order matters: `createCliContext()` — called immediately after — builds the **entire dependency injection tree**, including the choice between a rich Bijou-styled output adapter and a plain-text one. That choice depends on `--json`. If the DI container were built *after* Commander parsed args, there would be no clean seam to inject the right adapter before command handlers start running.
+This order matters: executable command paths call `createCliContext()` before
+Commander dispatches actions, and that context chooses between JSONL output and a
+rich human renderer from the raw `--humanize` switch. Help paths are lazy:
+Commander can render command metadata without resolving graph runtime or
+building the full dependency injection tree.
 
 ![teardown-argv-scan](diagrams/teardown-argv-scan.svg)
 
@@ -564,7 +572,7 @@ The `WorldlineSource` in `ObservationRequest` selects whether to read from the l
 
 ## 16. The JSONL Wire Protocol: Agents as First-Class Consumers
 
-Every command that emits `--json` follows a three-phase JSONL stream:
+Every default actuator command follows a three-phase JSONL stream:
 
 ![teardown-jsonl-protocol](diagrams/teardown-jsonl-protocol.svg)
 
@@ -585,9 +593,9 @@ These are the design choices that I found genuinely surprising or clever — thi
 
 ### 17.1 The Pre-Commander Argv Scan Is Load-Bearing
 
-Most CLI tools use a middleware pattern: Commander parses args, then handlers configure output. Xyph inverts this. The `--json` flag and `--as` override are scanned from raw `process.argv` *before Commander runs*, because they affect how the DI container is constructed.
+Most CLI tools use a middleware pattern: Commander parses args, then handlers configure output. Xyph inverts this. The `--humanize` flag and `--as` override are scanned from raw `process.argv` *before Commander runs*, because they affect how the DI container is constructed.
 
-The implication: `--json` is not a command flag — it is a **process-level output mode switch** that changes the behavior of every `ctx.ok()`, `ctx.warn()`, and `ctx.fail()` call system-wide. If this were done post-Commander, the styled output adapter would already be loaded when the first command tries to write anything.
+The implication: `--humanize` is not a command flag — it is a **process-level output mode switch** that changes the behavior of every `ctx.ok()`, `ctx.warn()`, and `ctx.fail()` call system-wide. If this were done post-Commander, the output adapter would already be selected when the first command tries to write anything. In the absence of `--humanize`, the actuator remains agent-first and emits JSONL.
 
 ### 17.2 `computeStatus()` Proves That State Machines Are Optional
 

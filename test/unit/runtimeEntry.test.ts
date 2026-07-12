@@ -9,18 +9,20 @@ import {
 
 describe('runtimeEntry', () => {
   it('strips the tui flag from forwarded argv', () => {
-    expect(stripTuiFlag(['status', '--tui', '--json'])).toEqual(['status', '--json']);
+    expect(stripTuiFlag(['status', '--tui', '--humanize'])).toEqual(['status', '--humanize']);
   });
 
-  it('counts real command args while ignoring tui and identity override flags', () => {
+  it('counts real command args while ignoring runtime mode and identity override flags', () => {
     expect(countCommandArgs(['--tui', '--as', 'agent.hal'])).toBe(0);
-    expect(countCommandArgs(['status', '--as=agent.hal', '--json'])).toBe(2);
+    expect(countCommandArgs(['--humanize', '--as=agent.hal'])).toBe(0);
+    expect(countCommandArgs(['status', '--as=agent.hal', '--humanize'])).toBe(1);
   });
 
   it('launches TUI when explicitly requested or when no command args remain', () => {
     expect(shouldLaunchTui(['--tui', 'status'])).toBe(true);
     expect(shouldLaunchTui(['--as', 'agent.hal'])).toBe(true);
-    expect(shouldLaunchTui(['status', '--json'])).toBe(false);
+    expect(shouldLaunchTui(['--humanize'])).toBe(true);
+    expect(shouldLaunchTui(['status', '--humanize'])).toBe(false);
   });
 
   it('resolves built js entrypoints before falling back to source ts entrypoints', () => {

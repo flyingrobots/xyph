@@ -10,3 +10,13 @@ export { parseAsOverrideFromArgv, resolveIdentity } from './identity.js';
 export type { IdentitySource, ResolvedIdentity } from './identity.js';
 export { DEFAULT_GRAPH_NAME, resolveGraphRuntime } from './runtimeGraph.js';
 export type { GraphRuntimeSource, ResolvedGraphRuntime } from './runtimeGraph.js';
+export {
+  createActuatorProgram,
+  isActuatorHelpRequest,
+  parseHumanizeFlagFromArgv,
+  runActuator,
+} from './actuatorEntry.js';
+export type {
+  CreateActuatorContextOptions,
+  RunActuatorOptions,
+} from './actuatorEntry.js';
