@@ -31,6 +31,7 @@ export interface RunActuatorOptions {
 }
 
 const HELP_FLAGS = new Set(['--help', '-h']);
+const VALUE_FLAGS = new Set(['--as']);
 
 /**
  * Detects the one opt-in human rendering switch before Commander has parsed the
@@ -46,7 +47,20 @@ export function parseHumanizeFlagFromArgv(argv: readonly string[]): boolean {
  */
 export function isActuatorHelpRequest(argv: readonly string[]): boolean {
   const args = argv.slice(2);
-  return args[0] === 'help' || args.some((arg) => HELP_FLAGS.has(arg));
+  if (args[0] === 'help') return true;
+
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if (arg === undefined) continue;
+    if (arg === '--') return false;
+    if (VALUE_FLAGS.has(arg)) {
+      i += 1;
+      continue;
+    }
+    if (HELP_FLAGS.has(arg)) return true;
+  }
+
+  return false;
 }
 
 /**

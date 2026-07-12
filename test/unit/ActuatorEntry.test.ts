@@ -76,6 +76,8 @@ describe('actuator entrypoint', () => {
     expect(parseHumanizeFlagFromArgv(['node', 'xyph-actuator', 'status', '--humanize'])).toBe(true);
     expect(isActuatorHelpRequest(['node', 'xyph-actuator', '--help'])).toBe(true);
     expect(isActuatorHelpRequest(['node', 'xyph-actuator', 'status', '-h'])).toBe(true);
+    expect(isActuatorHelpRequest(['node', 'xyph-actuator', 'whoami', '--as', '-h'])).toBe(false);
+    expect(isActuatorHelpRequest(['node', 'xyph-actuator', 'probe', '--', '--help'])).toBe(false);
     expect(isActuatorHelpRequest(['node', 'xyph-actuator', 'status'])).toBe(false);
   });
 
@@ -166,6 +168,45 @@ describe('actuator entrypoint', () => {
           exitCode: 1,
         }),
       }),
+    ]);
+  });
+
+  it('does not treat identity values as lazy help flags', async () => {
+    const code = await runActuator({
+      argv: ['node', 'xyph-actuator', 'probe', '--as', '-h'],
+      cwd: process.cwd(),
+      logger: noopLogger,
+      resolveRuntime: stubRuntime,
+      createContext(options: CreateActuatorContextOptions): CliContext {
+        return makeJsonCliContext({
+          json: options.json,
+          identity: { agentId: options.asOverride ?? 'agent.test', source: 'flag', origin: '--as' },
+        }, { emitJson: true });
+      },
+      registerCommands(program: Command, ctx: CliContext): void {
+        program.command('probe').action(() => {
+          ctx.jsonOut({
+            success: true,
+            command: 'probe',
+            data: { agentId: ctx.identity.agentId },
+          });
+        });
+      },
+    });
+
+    const records = consoleLogText()
+      .trim()
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as { success: boolean; command?: string; data?: Record<string, unknown> });
+
+    expect(code).toBe(0);
+    expect(records).toEqual([
+      {
+        success: true,
+        command: 'probe',
+        data: { agentId: '-h' },
+      },
     ]);
   });
 
