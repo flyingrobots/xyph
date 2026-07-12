@@ -9,6 +9,23 @@ This guide is for AI agents and human operators recovering context in the Xyph r
 - **NEVER** push to `main` without explicit permission.
 - Always use standard commits and regular pushes.
 
+## Pull Request And Merge Policy
+
+- Treat the live GitHub ruleset as the authority for mechanical merge gates. Check
+  branch rules and required checks before deciding a PR is blocked.
+- The solo-maintainer default is intentionally light: protect the default branch
+  from deletion and non-fast-forward updates, but do not invent a hard-coded
+  two-approval requirement when GitHub does not require one.
+- For owner-maintained PRs, an explicit owner approval or merge request is enough
+  to proceed once CI is green, the worktree is clean, and unresolved blocking
+  review threads have been addressed or intentionally waived.
+- `gh pr merge --admin --merge` is acceptable only when the owner explicitly asks
+  for the admin override and the live ruleset permits bypass. Never use it as a
+  substitute for unresolved code quality, test, or review work.
+- For contributor PRs, follow the live branch protection or ruleset requirements.
+  If GitHub requires approvals, do not bypass them unless the owner explicitly
+  changes the policy for that PR.
+
 ## Architectural Bedrock Boundary (The #1 Priority)
 
 - **XYPH MUST NOT DO GIT-WARP'S JOB.**
