@@ -8,6 +8,11 @@ reviews:
     enabled: true
   # High-level summary of the PR
   high_level_summary: true
+  # Xyph does not enforce blanket docstring coverage. Keep this signal off so
+  # review focuses on behavioral, architectural, and protocol risks.
+  pre_merge_checks:
+    docstrings:
+      mode: "off"
 
 # Chat with CodeRabbit
 chat:
