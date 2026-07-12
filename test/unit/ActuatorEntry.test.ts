@@ -71,6 +71,10 @@ describe('actuator entrypoint', () => {
     .map(([chunk]) => String(chunk))
     .join('');
 
+  const stdoutText = (): string => stdoutSpy.mock.calls
+    .map(([chunk]) => String(chunk))
+    .join('');
+
   const flushProcessWarnings = async (): Promise<void> => {
     await new Promise<void>((resolve) => {
       setImmediate(resolve);
@@ -355,6 +359,43 @@ describe('actuator entrypoint', () => {
     });
 
     expect(code).toBe(0);
+  });
+
+  it('emits default help as a terminal JSONL record', async () => {
+    const code = await runActuator({
+      argv: ['node', 'xyph-actuator', '--help'],
+      cwd: process.cwd(),
+      logger: noopLogger,
+      resolveRuntime(): never {
+        throw new Error('runtime resolution should be lazy for help');
+      },
+      createContext(): never {
+        throw new Error('CLI context should be lazy for help');
+      },
+      registerCommands(program: Command): void {
+        program.command('probe').description('Probe command');
+      },
+    });
+
+    const records = consoleLogText()
+      .trim()
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as { success: boolean; command?: string; data?: Record<string, unknown> });
+
+    expect(code).toBe(0);
+    expect(stdoutText()).toBe('');
+    expect(stderrText()).toBe('');
+    expect(records).toEqual([
+      expect.objectContaining({
+        success: true,
+        command: 'help',
+        data: expect.objectContaining({
+          target: 'xyph-actuator',
+          text: expect.stringContaining('Usage: xyph-actuator'),
+        }),
+      }),
+    ]);
   });
 
   it('writes a durable actuator log for help without full startup', async () => {

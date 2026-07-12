@@ -1,5 +1,5 @@
 import { Command, CommanderError } from 'commander';
-import type { CliContext, JsonErrorEnvelope } from './context.js';
+import type { CliContext, JsonEnvelope, JsonErrorEnvelope } from './context.js';
 import { createCliContext } from './context.js';
 import { parseAsOverrideFromArgv } from './identity.js';
 import { resolveGraphRuntime, type ResolvedGraphRuntime } from './runtimeGraph.js';
@@ -356,6 +356,42 @@ function emitUnexpectedJsonError(error: unknown): void {
   console.log(JSON.stringify(envelope));
 }
 
+function resolveHelpTarget(program: Command, argv: readonly string[]): Command {
+  const args = argv.slice(2);
+  const candidates = args[0] === 'help' ? args.slice(1) : args;
+  let target = program;
+
+  for (let i = 0; i < candidates.length; i += 1) {
+    const arg = candidates[i];
+    if (arg === undefined) continue;
+    if (arg === '--' || HELP_FLAGS.has(arg)) break;
+    if (couldConsumeNextToken(arg)) {
+      i += 1;
+      continue;
+    }
+    if (arg.startsWith('-')) continue;
+
+    const subcommand = target.commands.find((command) => command.name() === arg);
+    if (subcommand === undefined) break;
+    target = subcommand;
+  }
+
+  return target;
+}
+
+function emitHelpJson(program: Command, argv: readonly string[]): void {
+  const target = resolveHelpTarget(program, argv);
+  const envelope: JsonEnvelope = {
+    success: true,
+    command: 'help',
+    data: {
+      target: target.name(),
+      text: target.helpInformation(),
+    },
+  };
+  console.log(JSON.stringify(envelope));
+}
+
 /**
  * Keeps process-level deprecation warnings from contaminating JSONL stderr while
  * preserving the caller's prior warning policy after actuator execution.
@@ -425,6 +461,12 @@ export async function runActuator(options: RunActuatorOptions = {}): Promise<num
     }
 
     await (options.registerCommands ?? defaultRegisterCommands)(program, ctx);
+    if (json && helpOnly) {
+      emitHelpJson(program, argv);
+      logger.info('actuator session ended cleanly');
+      return 0;
+    }
+
     await program.parseAsync(argv, { from: 'node' });
     logger.info('actuator session ended cleanly');
     return 0;
