@@ -187,6 +187,41 @@ describe('actuator entrypoint', () => {
     ]);
   });
 
+  it('emits a terminal JSONL error record for startup failures', async () => {
+    const code = await runActuator({
+      argv: ['node', 'xyph-actuator', 'probe'],
+      cwd: process.cwd(),
+      logger: noopLogger,
+      resolveRuntime(): never {
+        throw new Error('invalid graph runtime');
+      },
+      createContext(): never {
+        throw new Error('context should not be created after runtime failure');
+      },
+      registerCommands(): never {
+        throw new Error('commands should not register after runtime failure');
+      },
+    });
+
+    const records = consoleLogText()
+      .trim()
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as { success: boolean; error?: string; data?: Record<string, unknown> });
+
+    expect(code).toBe(1);
+    expect(stderrText()).toBe('');
+    expect(records).toEqual([
+      expect.objectContaining({
+        success: false,
+        error: 'invalid graph runtime',
+        data: expect.objectContaining({
+          name: 'Error',
+        }),
+      }),
+    ]);
+  });
+
   it('does not treat identity values as lazy help flags', async () => {
     const code = await runActuator({
       argv: ['node', 'xyph-actuator', 'probe', '--as', '-h'],

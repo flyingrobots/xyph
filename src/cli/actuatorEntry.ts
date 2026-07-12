@@ -345,6 +345,17 @@ function emitCommanderJsonError(error: CommanderError): void {
   console.log(JSON.stringify(envelope));
 }
 
+function emitUnexpectedJsonError(error: unknown): void {
+  const data = serializeError(error);
+  const message = typeof data['message'] === 'string' ? data['message'] : String(error);
+  const envelope: JsonErrorEnvelope = {
+    success: false,
+    error: message,
+    data,
+  };
+  console.log(JSON.stringify(envelope));
+}
+
 /**
  * Keeps process-level deprecation warnings from contaminating JSONL stderr while
  * preserving the caller's prior warning policy after actuator execution.
@@ -375,44 +386,44 @@ export async function runActuator(options: RunActuatorOptions = {}): Promise<num
     new FileDiagnosticLogSink(logPath),
     { component: 'xyph-actuator' },
   );
-
-  let runtime: ResolvedGraphRuntime | null = null;
-  if (!helpOnly) {
-    runtime = (options.resolveRuntime ?? ((runtimeCwd: string): ResolvedGraphRuntime => resolveGraphRuntime({ cwd: runtimeCwd })))(cwd);
-  }
-
-  logger.info('actuator session starting', {
-    cwd,
-    repoPath: runtime?.repoPath ?? null,
-    graphName: runtime?.graphName ?? null,
-    argv: argv.slice(2),
-    logPath,
-    outputMode: json ? 'jsonl' : 'human',
-    lazyHelp: helpOnly,
-  });
-
-  const ctx = helpOnly
-    ? createHelpOnlyContext({ cwd, json, logger })
-    : (options.createContext ?? defaultCreateContext)({
-      cwd,
-      runtime: runtime as ResolvedGraphRuntime,
-      json,
-      asOverride,
-      env,
-      homeDir: options.homeDir,
-      logger,
-    });
-
-  const program = createActuatorProgram();
-  program.exitOverride();
-  if (json) {
-    program.configureOutput({
-      writeErr: () => undefined,
-    });
-  }
   const restoreDeprecationWarnings = suppressDeprecationWarningsForJson(json);
 
   try {
+    let runtime: ResolvedGraphRuntime | null = null;
+    if (!helpOnly) {
+      runtime = (options.resolveRuntime ?? ((runtimeCwd: string): ResolvedGraphRuntime => resolveGraphRuntime({ cwd: runtimeCwd })))(cwd);
+    }
+
+    logger.info('actuator session starting', {
+      cwd,
+      repoPath: runtime?.repoPath ?? null,
+      graphName: runtime?.graphName ?? null,
+      argv: argv.slice(2),
+      logPath,
+      outputMode: json ? 'jsonl' : 'human',
+      lazyHelp: helpOnly,
+    });
+
+    const ctx = helpOnly
+      ? createHelpOnlyContext({ cwd, json, logger })
+      : (options.createContext ?? defaultCreateContext)({
+        cwd,
+        runtime: runtime as ResolvedGraphRuntime,
+        json,
+        asOverride,
+        env,
+        homeDir: options.homeDir,
+        logger,
+      });
+
+    const program = createActuatorProgram();
+    program.exitOverride();
+    if (json) {
+      program.configureOutput({
+        writeErr: () => undefined,
+      });
+    }
+
     await (options.registerCommands ?? defaultRegisterCommands)(program, ctx);
     await program.parseAsync(argv, { from: 'node' });
     logger.info('actuator session ended cleanly');
@@ -431,6 +442,10 @@ export async function runActuator(options: RunActuatorOptions = {}): Promise<num
     }
 
     logger.error('actuator session crashed', serializeError(error));
+    if (json) {
+      emitUnexpectedJsonError(error);
+      return 1;
+    }
     throw error;
   } finally {
     restoreDeprecationWarnings();
