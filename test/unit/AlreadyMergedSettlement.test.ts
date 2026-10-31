@@ -130,9 +130,34 @@ function questDetail(): EntityDetail {
 
 const createdDirs: string[] = [];
 
+// Git hooks export these, and they override cwd. Fixtures must never touch the real repository.
+const GIT_LOCATION_VARS = [
+  'GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_OBJECT_DIRECTORY',
+  'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_COMMON_DIR', 'GIT_PREFIX',
+] as const;
+
+function fixtureEnv(): NodeJS.ProcessEnv {
+  const env = { ...process.env };
+  for (const name of GIT_LOCATION_VARS) Reflect.deleteProperty(env, name);
+  return env;
+}
+
+/** Remove the variables from process.env for the GitWorkspaceAdapter calls; returns a restore function. */
+function scrubProcessGitEnv(): () => void {
+  const saved = GIT_LOCATION_VARS.map((name) => [name, process.env[name]] as const);
+  for (const name of GIT_LOCATION_VARS) Reflect.deleteProperty(process.env, name);
+  return () => {
+    for (const [name, value] of saved) {
+      if (value === undefined) Reflect.deleteProperty(process.env, name);
+      else process.env[name] = value;
+    }
+  };
+}
+
 function git(repo: string, args: string[]): string {
   return execFileSync('git', args, {
     cwd: repo,
+    env: fixtureEnv(),
     encoding: 'utf8',
     stdio: ['pipe', 'pipe', 'pipe'],
   }).trim();
@@ -173,7 +198,7 @@ function appendEmptyCommits(repo: string, count: number): string {
     else if (parent !== '') lines.push(`from ${parent}`);
     lines.push('');
   }
-  execFileSync('git', ['fast-import', '--quiet', '--force'], { cwd: repo, input: `${lines.join('\n')}\n` });
+  execFileSync('git', ['fast-import', '--quiet', '--force'], { cwd: repo, env: fixtureEnv(), input: `${lines.join('\n')}\n` });
   return git(repo, ['rev-parse', 'main']);
 }
 
@@ -214,7 +239,10 @@ let logSpy: ReturnType<typeof vi.spyOn>;
 let exitSpy: ReturnType<typeof vi.spyOn>;
 
 describe('merge settlement of an already-merged patchset tip (xyph#85)', () => {
+  let restoreGitEnv: () => void;
+
   beforeEach(() => {
+    restoreGitEnv = scrubProcessGitEnv();
     logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
     mocks.decide.mockResolvedValue({ patchSha: 'patch:decision' });
@@ -223,6 +251,7 @@ describe('merge settlement of an already-merged patchset tip (xyph#85)', () => {
   });
 
   afterEach(() => {
+    restoreGitEnv();
     logSpy.mockRestore();
     exitSpy.mockRestore();
     vi.clearAllMocks();
@@ -329,7 +358,14 @@ describe('merge settlement of an already-merged patchset tip (xyph#85)', () => {
 });
 
 describe('GitWorkspaceAdapter.checkIntegration', () => {
+  let restoreGitEnv: () => void;
+
+  beforeEach(() => {
+    restoreGitEnv = scrubProcessGitEnv();
+  });
+
   afterEach(() => {
+    restoreGitEnv();
     for (const dir of createdDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
   });
 
@@ -367,6 +403,22 @@ describe('GitWorkspaceAdapter.checkIntegration', () => {
       matchesPatchset: false,
       reason: expect.stringContaining('has 3 parents'),
     });
+  });
+
+  it('keeps fixture git commands in the fixture repository when a hook sets GIT_DIR', () => {
+    const decoy = mkdtempSync(join(tmpdir(), 'xyph-decoy-'));
+    createdDirs.push(decoy);
+    execFileSync('git', ['init', '-q', '-b', 'main', decoy], { env: fixtureEnv() });
+    const original = process.env['GIT_DIR'];
+    process.env['GIT_DIR'] = join(decoy, '.git');
+    try {
+      createRepo();
+    } finally {
+      if (original === undefined) Reflect.deleteProperty(process.env, 'GIT_DIR');
+      else process.env['GIT_DIR'] = original;
+    }
+
+    expect(() => execFileSync('git', ['rev-parse', '--verify', '--quiet', 'main'], { cwd: decoy, env: fixtureEnv(), stdio: 'pipe' })).toThrow();
   });
 
   it('reports a git failure in merge-tree as an error, not as a conflict', async () => {
