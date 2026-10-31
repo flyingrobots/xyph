@@ -25,6 +25,7 @@ const mocks = vi.hoisted(() => ({
   getHeadCommit: vi.fn(),
   getCommitsSince: vi.fn(),
   isMerged: vi.fn(),
+  checkIntegration: vi.fn(),
   merge: vi.fn(),
   openSession: vi.fn(),
   fetchEntityDetail: vi.fn(),
@@ -277,6 +278,7 @@ function createTestService(opts?: {
     getHeadCommit: mocks.getHeadCommit,
     getCommitsSince: mocks.getCommitsSince,
     isMerged: mocks.isMerged,
+    checkIntegration: mocks.checkIntegration,
     merge: mocks.merge,
   } as any;
 
@@ -940,6 +942,49 @@ describe('AgentActionService', () => {
       },
     });
     expect(typeof outcome.details?.['decisionId']).toBe('string');
+  });
+
+  it('rejects an already-merged tip whose integrating commit carries unreviewed content', async () => {
+    mocks.isMerged.mockResolvedValue(true);
+    mocks.checkIntegration.mockResolvedValue({
+      integrationCommit: 'rawmerge7654321',
+      matchesPatchset: false,
+      reason: 'rawmerge7654321 differs from merging abc123def456 onto base1234567',
+    });
+
+    const service = createTestService();
+
+    const outcome = await service.execute({
+      kind: 'merge',
+      targetId: 'submission:AGT-001',
+      args: {
+        rationale: 'Independent review is complete and the tip is approved.',
+        intoRef: 'main',
+      },
+    });
+
+    expect(mocks.checkIntegration).toHaveBeenCalledWith('abc123def456', 'main');
+    expect(mocks.merge).not.toHaveBeenCalled();
+    expect(mocks.decide).not.toHaveBeenCalled();
+    expect(mocks.sign).not.toHaveBeenCalled();
+    expect(outcome).toMatchObject({
+      kind: 'merge',
+      targetId: 'submission:AGT-001',
+      allowed: false,
+      result: 'rejected',
+      patch: null,
+      validation: {
+        valid: false,
+        code: 'unreviewed-integration',
+        reasons: [expect.stringContaining('not the approved patchset')],
+      },
+      details: {
+        mergeRef: 'abc123def456',
+        intoRef: 'main',
+        integrationCommit: 'rawmerge7654321',
+        matchesPatchset: false,
+      },
+    });
   });
 
   it('reports merge-decision write failure as a partial failure with reconciliation details', async () => {

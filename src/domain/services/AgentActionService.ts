@@ -41,6 +41,7 @@ import {
   formatMissingSettlementKeyMessage,
   formatUnsignedScrollOverrideWarning,
 } from './SettlementKeyPolicy.js';
+import { formatUnreviewedIntegrationMessage } from './SettlementIntegrationPolicy.js';
 import { createPatchSession } from '../../infrastructure/helpers/createPatchSession.js';
 import { FsKeyringAdapter } from '../../infrastructure/adapters/FsKeyringAdapter.js';
 import { WarpIntakeAdapter } from '../../infrastructure/adapters/WarpIntakeAdapter.js';
@@ -2155,6 +2156,21 @@ export class AgentActionService {
     let mergeCommit: string | undefined;
     const alreadyMerged = await workspace.isMerged(action.mergeRef, action.intoRef);
     if (alreadyMerged) {
+      const integration = await workspace.checkIntegration(action.mergeRef, action.intoRef);
+      if (!integration.matchesPatchset) {
+        return {
+          ...assessment,
+          allowed: false,
+          validation: {
+            valid: false,
+            code: 'unreviewed-integration',
+            reasons: [formatUnreviewedIntegrationMessage(action.mergeRef, action.intoRef, integration)],
+          },
+          result: 'rejected',
+          patch: null,
+          details: { mergeRef: action.mergeRef, intoRef: action.intoRef, ...integration },
+        };
+      }
       mergeCommit = action.mergeRef;
     } else {
       mergeCommit = await workspace.merge(action.mergeRef, action.intoRef);

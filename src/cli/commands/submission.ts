@@ -9,6 +9,7 @@ import {
   formatUnsignedScrollOverrideWarning,
   missingSettlementKeyData,
 } from '../../domain/services/SettlementKeyPolicy.js';
+import { formatUnreviewedIntegrationMessage } from '../../domain/services/SettlementIntegrationPolicy.js';
 import {
   assessSettlementGate,
   formatSettlementGateFailure,
@@ -248,6 +249,13 @@ export function registerSubmissionCommands(program: Command, ctx: CliContext): v
       let mergeCommit: string | undefined;
       const alreadyMerged = await workspace.isMerged(mergeRef, opts.into);
       if (alreadyMerged) {
+        const integration = await workspace.checkIntegration(mergeRef, opts.into);
+        if (!integration.matchesPatchset) {
+          return ctx.failWithData(
+            formatUnreviewedIntegrationMessage(mergeRef, opts.into, integration),
+            { mergeRef, into: opts.into, ...integration },
+          );
+        }
         mergeCommit = mergeRef;
         ctx.muted(`  Patchset tip ${mergeRef.slice(0, 7)} is already merged into ${opts.into}`);
       } else {

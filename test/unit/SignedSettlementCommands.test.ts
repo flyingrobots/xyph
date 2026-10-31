@@ -25,6 +25,7 @@ const mocks = vi.hoisted(() => ({
   getWorkspaceRef: vi.fn(),
   getCommitsSince: vi.fn(),
   isMerged: vi.fn(),
+  checkIntegration: vi.fn(),
   merge: vi.fn(),
   getHeadCommit: vi.fn(),
   fetchEntityDetail: vi.fn(),
@@ -108,6 +109,9 @@ vi.mock('../../src/infrastructure/adapters/GitWorkspaceAdapter.js', () => ({
 
     isMerged(ref: string, into: string): Promise<boolean> {
       return mocks.isMerged(ref, into);
+    }
+    checkIntegration(ref: string, into: string): Promise<unknown> {
+      return mocks.checkIntegration(ref, into);
     }
 
     merge(ref: string, into: string): Promise<string> {
