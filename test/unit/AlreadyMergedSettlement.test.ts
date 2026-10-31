@@ -404,6 +404,23 @@ describe('GitWorkspaceAdapter.checkIntegration', () => {
     });
   });
 
+  it('checks one snapshot of the target even if the branch moves during the check', async () => {
+    const { repo, tip } = createRepo();
+    const base = git(repo, ['rev-parse', 'main~1']);
+    rawMerge(repo, { smuggle: true });
+    class MovingWorkspace extends GitWorkspaceAdapter {
+      public override async isMerged(ref: string, into: string): Promise<boolean> {
+        const merged = await super.isMerged(ref, into);
+        git(repo, ['update-ref', 'refs/heads/main', base]);
+        return merged;
+      }
+    }
+
+    const check = await new MovingWorkspace(repo).checkIntegration(tip, 'main');
+
+    expect(check.matchesPatchset).toBe(false);
+  });
+
   it('rejects an integration commit that is not a two-parent merge', async () => {
     const { repo, tip } = createRepo();
     git(repo, ['checkout', '-q', '-b', 'other', 'HEAD~1']);

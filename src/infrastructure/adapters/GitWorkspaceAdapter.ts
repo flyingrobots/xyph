@@ -43,13 +43,15 @@ export class GitWorkspaceAdapter implements WorkspacePort {
 
   public async checkIntegration(ref: string, into: string): Promise<IntegrationCheck> {
     const tip = this.git(['rev-parse', '--verify', `${ref}^{commit}`]);
-    if (!(await this.isMerged(tip, into))) {
+    // Resolve the target once, so every step below reads the same commit even if the branch moves.
+    const target = this.git(['rev-parse', '--verify', `${into}^{commit}`]);
+    if (!(await this.isMerged(tip, target))) {
       return { integrationCommit: null, matchesPatchset: false, reason: `${into} does not contain ${tip}` };
     }
 
     // The target's first-parent commits that the tip cannot reach, oldest
     // first. History before the tip is never listed.
-    const range = this.git(['rev-list', '--first-parent', '--reverse', into, `^${tip}`])
+    const range = this.git(['rev-list', '--first-parent', '--reverse', target, `^${tip}`])
       .split('\n')
       .filter((sha) => sha !== '');
     const [oldest] = range;
