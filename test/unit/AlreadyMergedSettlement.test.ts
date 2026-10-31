@@ -1,0 +1,291 @@
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { Command } from 'commander';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { EntityDetail } from '../../src/domain/models/dashboard.js';
+import { registerSubmissionCommands } from '../../src/cli/commands/submission.js';
+import { GitWorkspaceAdapter } from '../../src/infrastructure/adapters/GitWorkspaceAdapter.js';
+import { makeJsonCliContext, makeObservationSessionFake, makeReadPortsFromSession } from '../helpers/cliContext.js';
+
+// Settlement through a real git repository: the graph side is mocked, the
+// workspace is not. Covers xyph#85, where the alreadyMerged path sealed a
+// target that carried content outside the approved patchset.
+
+const mocks = vi.hoisted(() => ({
+  getPatchsetMergeRef: vi.fn(),
+  decide: vi.fn(),
+  sign: vi.fn(),
+  patch: vi.fn(),
+}));
+
+vi.mock('../../src/domain/services/GuildSealService.js', () => ({
+  GuildSealService: class GuildSealService {
+    hasPrivateKey(): boolean {
+      return true;
+    }
+    sign(scrollPayload: unknown, agentId: string): Promise<unknown> {
+      return mocks.sign(scrollPayload, agentId);
+    }
+    payloadDigest(): string {
+      return 'blake3:test';
+    }
+  },
+}));
+
+vi.mock('../../src/infrastructure/adapters/FsKeyringAdapter.js', () => ({
+  FsKeyringAdapter: class FsKeyringAdapter {
+    readonly stub = true;
+  },
+}));
+
+vi.mock('../../src/infrastructure/adapters/WarpSubmissionAdapter.js', () => ({
+  WarpSubmissionAdapter: class WarpSubmissionAdapter {
+    getPatchsetWorkspaceRef(): Promise<string> {
+      return Promise.resolve('feature');
+    }
+    getPatchsetMergeRef(id: string): Promise<string | undefined> {
+      return mocks.getPatchsetMergeRef(id);
+    }
+    getSubmissionQuestId(): Promise<string> {
+      return Promise.resolve('task:Q1');
+    }
+    getQuestStatus(): Promise<string> {
+      return Promise.resolve('PLANNED');
+    }
+    decide(input: unknown): Promise<{ patchSha: string }> {
+      return mocks.decide(input);
+    }
+  },
+}));
+
+vi.mock('../../src/domain/services/SubmissionService.js', () => ({
+  SubmissionService: class SubmissionService {
+    validateMerge(): Promise<{ tipPatchsetId: string }> {
+      return Promise.resolve({ tipPatchsetId: 'patchset:tip' });
+    }
+  },
+}));
+
+function questDetail(): EntityDetail {
+  return {
+    id: 'task:Q1',
+    type: 'task',
+    props: {},
+    outgoing: [],
+    incoming: [],
+    questDetail: {
+      id: 'task:Q1',
+      quest: {
+        id: 'task:Q1',
+        title: 'Governed quest',
+        status: 'PLANNED',
+        hours: 1,
+        taskKind: 'delivery',
+        computedCompletion: {
+          tracked: true,
+          complete: true,
+          verdict: 'SATISFIED',
+          requirementCount: 1,
+          criterionCount: 1,
+          coverageRatio: 1,
+          satisfiedCount: 1,
+          failingCriterionIds: [],
+          linkedOnlyCriterionIds: [],
+          missingCriterionIds: [],
+          policyId: 'policy:TRACE',
+        },
+      },
+      submission: {
+        id: 'submission:Q1',
+        questId: 'task:Q1',
+        status: 'APPROVED',
+        tipPatchsetId: 'patchset:tip',
+        headsCount: 1,
+        approvalCount: 1,
+        submittedBy: 'agent.other',
+        submittedAt: Date.UTC(2026, 2, 12, 12, 0, 0),
+      },
+      reviews: [],
+      decisions: [],
+      stories: [],
+      requirements: [],
+      criteria: [],
+      evidence: [],
+      policies: [{
+        id: 'policy:TRACE',
+        campaignId: 'campaign:TRACE',
+        coverageThreshold: 1,
+        requireAllCriteria: true,
+        requireEvidence: true,
+        allowManualSeal: false,
+      }],
+      documents: [],
+      comments: [],
+      timeline: [],
+    },
+  };
+}
+
+const createdDirs: string[] = [];
+
+function git(repo: string, args: string[]): string {
+  return execFileSync('git', args, {
+    cwd: repo,
+    encoding: 'utf8',
+    stdio: ['pipe', 'pipe', 'pipe'],
+  }).trim();
+}
+
+function commitFile(repo: string, name: string, body: string, message: string): string {
+  writeFileSync(join(repo, name), body, 'utf8');
+  git(repo, ['add', name]);
+  git(repo, ['commit', '-q', '-m', message]);
+  return git(repo, ['rev-parse', 'HEAD']);
+}
+
+/** main has a base commit and one later commit; feature branches from base. */
+function createRepo(): { repo: string; tip: string } {
+  const repo = mkdtempSync(join(tmpdir(), 'xyph-already-merged-'));
+  createdDirs.push(repo);
+  git(repo, ['init', '-q', '-b', 'main']);
+  git(repo, ['config', 'user.name', 'Fixture']);
+  git(repo, ['config', 'user.email', 'fixture@example.invalid']);
+  git(repo, ['config', 'commit.gpgsign', 'false']);
+  commitFile(repo, 'base.txt', 'base\n', 'base');
+  git(repo, ['checkout', '-q', '-b', 'feature']);
+  const tip = commitFile(repo, 'feature.txt', 'reviewed\n', 'reviewed change');
+  git(repo, ['checkout', '-q', 'main']);
+  commitFile(repo, 'main.txt', 'unrelated main work\n', 'main work');
+  return { repo, tip };
+}
+
+function rawMerge(repo: string, opts: { smuggle?: boolean } = {}): string {
+  git(repo, ['merge', '-q', '--no-ff', '-m', 'raw merge by the worker', 'feature']);
+  if (opts.smuggle) {
+    writeFileSync(join(repo, 'smuggled.txt'), 'unreviewed\n', 'utf8');
+    git(repo, ['add', 'smuggled.txt']);
+    git(repo, ['commit', '-q', '--amend', '--no-edit']);
+  }
+  return git(repo, ['rev-parse', 'HEAD']);
+}
+
+function createCtx(repo: string) {
+  const session = makeObservationSessionFake({
+    fetchEntityDetail: vi.fn(async () => questDetail()),
+  });
+  return makeJsonCliContext({
+    graphPort: {
+      getGraph: async () => ({ patch: mocks.patch }),
+    } as never,
+    ...makeReadPortsFromSession(session),
+    gitWorkspace: new GitWorkspaceAdapter(repo),
+  }, { emitJson: true });
+}
+
+async function runMerge(repo: string): Promise<Record<string, unknown>> {
+  const program = new Command();
+  registerSubmissionCommands(program, createCtx(repo));
+  await program.parseAsync(
+    ['merge', 'submission:S1', '--rationale', 'settle the approved tip', '--into', 'main'],
+    { from: 'user' },
+  );
+  return JSON.parse(String(logSpy.mock.calls.at(-1)?.[0])) as Record<string, unknown>;
+}
+
+let logSpy: ReturnType<typeof vi.spyOn>;
+let exitSpy: ReturnType<typeof vi.spyOn>;
+
+describe('merge settlement of an already-merged patchset tip (xyph#85)', () => {
+  beforeEach(() => {
+    logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
+    mocks.decide.mockResolvedValue({ patchSha: 'patch:decision' });
+    mocks.sign.mockResolvedValue({ keyId: 'did:key:test', alg: 'ed25519', sig: 'sig' });
+    mocks.patch.mockResolvedValue('patch:seal');
+  });
+
+  afterEach(() => {
+    logSpy.mockRestore();
+    exitSpy.mockRestore();
+    vi.clearAllMocks();
+    for (const dir of createdDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('refuses to settle when the integrating merge commit adds content outside the patchset', async () => {
+    const { repo, tip } = createRepo();
+    mocks.getPatchsetMergeRef.mockResolvedValue(tip);
+    const integration = rawMerge(repo, { smuggle: true });
+
+    const output = await runMerge(repo);
+
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    expect(mocks.decide).not.toHaveBeenCalled();
+    expect(mocks.sign).not.toHaveBeenCalled();
+    expect(mocks.patch).not.toHaveBeenCalled();
+    expect(output).toMatchObject({
+      success: false,
+      error: expect.stringContaining('not the approved patchset'),
+      data: {
+        mergeRef: tip,
+        into: 'main',
+        integrationCommit: integration,
+        matchesPatchset: false,
+      },
+    });
+  });
+
+  it('settles a clean raw merge of the approved tip', async () => {
+    const { repo, tip } = createRepo();
+    mocks.getPatchsetMergeRef.mockResolvedValue(tip);
+    rawMerge(repo);
+
+    const output = await runMerge(repo);
+
+    expect(exitSpy).not.toHaveBeenCalled();
+    expect(output).toMatchObject({
+      success: true,
+      data: { alreadyMerged: true, autoSealed: true, mergeCommit: tip },
+    });
+  });
+
+  it('settles a fast-forwarded tip', async () => {
+    const { repo, tip } = createRepo();
+    git(repo, ['reset', '-q', '--hard', 'HEAD~1']);
+    git(repo, ['merge', '-q', '--ff-only', 'feature']);
+    mocks.getPatchsetMergeRef.mockResolvedValue(tip);
+
+    const output = await runMerge(repo);
+
+    expect(exitSpy).not.toHaveBeenCalled();
+    expect(output).toMatchObject({
+      success: true,
+      data: { alreadyMerged: true, autoSealed: true, mergeCommit: tip },
+    });
+  });
+
+  it('still settles through XYPH\'s own merge, and again once that merge is in place', async () => {
+    const { repo, tip } = createRepo();
+    mocks.getPatchsetMergeRef.mockResolvedValue(tip);
+
+    const first = await runMerge(repo);
+    expect(first).toMatchObject({ success: true, data: { alreadyMerged: false, autoSealed: true } });
+
+    const second = await runMerge(repo);
+    expect(exitSpy).not.toHaveBeenCalled();
+    expect(second).toMatchObject({ success: true, data: { alreadyMerged: true } });
+  });
+
+  it('allows later work on the target after a clean integration', async () => {
+    const { repo, tip } = createRepo();
+    mocks.getPatchsetMergeRef.mockResolvedValue(tip);
+    rawMerge(repo);
+    commitFile(repo, 'later.txt', 'later\n', 'later work on main');
+
+    const output = await runMerge(repo);
+
+    expect(exitSpy).not.toHaveBeenCalled();
+    expect(output).toMatchObject({ success: true, data: { alreadyMerged: true } });
+  });
+});
