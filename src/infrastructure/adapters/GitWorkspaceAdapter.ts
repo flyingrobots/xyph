@@ -13,6 +13,8 @@ export class GitWorkspaceAdapter implements WorkspacePort {
       cwd: this.cwd,
       encoding: 'utf8',
       stdio: ['pipe', 'pipe', 'pipe'],
+      // rev-list output grows with history; Node's 1 MiB default holds about 25,000 commits.
+      maxBuffer: 256 * 1024 * 1024,
     }).trim();
   }
 
@@ -41,22 +43,37 @@ export class GitWorkspaceAdapter implements WorkspacePort {
 
   public async checkIntegration(ref: string, into: string): Promise<IntegrationCheck> {
     const tip = this.git(['rev-parse', '--verify', `${ref}^{commit}`]);
-    const chain = this.git(['rev-list', '--first-parent', '--reverse', into]).split('\n');
-    if (chain.includes(tip)) {
-      return { integrationCommit: tip, matchesPatchset: true, reason: null };
-    }
-
-    // Commits that contain the tip form the newest part of the first-parent
-    // chain; the oldest of them is where the tip entered the target.
-    const descendants = new Set(
-      this.git(['rev-list', '--ancestry-path', `${tip}..${into}`]).split('\n').filter((sha) => sha !== ''),
-    );
-    const integrationCommit = chain.find((sha) => descendants.has(sha)) ?? null;
-    if (integrationCommit === null) {
+    if (!(await this.isMerged(tip, into))) {
       return { integrationCommit: null, matchesPatchset: false, reason: `${into} does not contain ${tip}` };
     }
 
-    const parents = this.git(['rev-list', '--parents', '-n', '1', integrationCommit]).split(' ').slice(1);
+    // The target's first-parent commits that the tip cannot reach, oldest
+    // first. History before the tip is never listed.
+    const range = this.git(['rev-list', '--first-parent', '--reverse', into, `^${tip}`])
+      .split('\n')
+      .filter((sha) => sha !== '');
+    const [oldest] = range;
+    if (oldest === undefined || this.parentsOf(oldest)[0] === tip) {
+      // The tip is on the first-parent chain itself: a fast-forward.
+      return { integrationCommit: tip, matchesPatchset: true, reason: null };
+    }
+
+    // Containment of the tip is monotonic along the chain, and the newest
+    // commit (the target) contains it, so search for the first that does.
+    let low = 0;
+    let high = range.length - 1;
+    while (low < high) {
+      const mid = Math.floor((low + high) / 2);
+      const candidate = range[mid];
+      if (candidate !== undefined && await this.isMerged(tip, candidate)) high = mid;
+      else low = mid + 1;
+    }
+    const integrationCommit = range[low];
+    if (integrationCommit === undefined) {
+      return { integrationCommit: null, matchesPatchset: false, reason: `${into} does not contain ${tip}` };
+    }
+
+    const parents = this.parentsOf(integrationCommit);
     const [firstParent] = parents;
     if (firstParent === undefined || parents.length !== 2) {
       return {
@@ -88,6 +105,10 @@ export class GitWorkspaceAdapter implements WorkspacePort {
       };
     }
     return { integrationCommit, matchesPatchset: true, reason: null };
+  }
+
+  private parentsOf(commit: string): string[] {
+    return this.git(['rev-list', '--parents', '-n', '1', commit]).split(' ').slice(1);
   }
 
   public async merge(ref: string, into: string): Promise<string> {

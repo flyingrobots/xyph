@@ -161,6 +161,22 @@ function createRepo(): { repo: string; tip: string } {
   return { repo, tip };
 }
 
+/** Append `count` empty commits to main with fast-import (fast at any size). */
+function appendEmptyCommits(repo: string, count: number): string {
+  const parent = git(repo, ['rev-parse', '--verify', '--quiet', 'main^{commit}']);
+  const lines: string[] = [];
+  for (let i = 1; i <= count; i += 1) {
+    const message = `commit ${i}`;
+    lines.push('commit refs/heads/main', `mark :${i}`, `committer Fixture <fixture@example.invalid> ${1_700_000_000 + i} +0000`,
+      `data ${message.length}`, message);
+    if (i > 1) lines.push(`from :${i - 1}`);
+    else if (parent !== '') lines.push(`from ${parent}`);
+    lines.push('');
+  }
+  execFileSync('git', ['fast-import', '--quiet', '--force'], { cwd: repo, input: `${lines.join('\n')}\n` });
+  return git(repo, ['rev-parse', 'main']);
+}
+
 function rawMerge(repo: string, opts: { smuggle?: boolean } = {}): string {
   git(repo, ['merge', '-q', '--no-ff', '-m', 'raw merge by the worker', 'feature']);
   if (opts.smuggle) {
@@ -316,6 +332,25 @@ describe('GitWorkspaceAdapter.checkIntegration', () => {
   afterEach(() => {
     for (const dir of createdDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
   });
+
+  it('accepts a fast-forwarded tip on a first-parent history larger than the default output buffer', async () => {
+    const { repo } = createRepo();
+    const head = appendEmptyCommits(repo, 30_000);
+
+    const integration = await new GitWorkspaceAdapter(repo).checkIntegration(head, 'main');
+
+    expect(integration).toEqual({ integrationCommit: head, matchesPatchset: true, reason: null });
+  }, 60_000);
+
+  it('finds a clean integration followed by more first-parent commits than the default output buffer holds', async () => {
+    const { repo, tip } = createRepo();
+    const integration = rawMerge(repo);
+    appendEmptyCommits(repo, 30_000);
+
+    const check = await new GitWorkspaceAdapter(repo).checkIntegration(tip, 'main');
+
+    expect(check).toEqual({ integrationCommit: integration, matchesPatchset: true, reason: null });
+  }, 60_000);
 
   it('rejects an integration commit that is not a two-parent merge', async () => {
     const { repo, tip } = createRepo();
