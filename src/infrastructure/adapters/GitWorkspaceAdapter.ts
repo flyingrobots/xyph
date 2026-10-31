@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { devNull, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { IntegrationCheck, WorkspacePort } from '../../ports/WorkspacePort.js';
@@ -125,7 +125,7 @@ export class GitWorkspaceAdapter implements WorkspacePort {
   /**
    * Merge `tip` onto `base` with Git's built-in merge behavior only, and return
    * the tree OID. The replay runs in a scratch bare repository that borrows this
-   * repository's objects, with no config, attributes, hooks, or inherited GIT_*
+   * repository's objects through objects/info/alternates, with no config, attributes, hooks, or inherited GIT_*
    * variables, so worktree files, .git/info/attributes and configured merge
    * drivers cannot change what counts as a clean merge.
    */
@@ -140,7 +140,6 @@ export class GitWorkspaceAdapter implements WorkspacePort {
       GIT_CONFIG_NOSYSTEM: '1',
       GIT_CONFIG_GLOBAL: devNull,
       GIT_ATTR_NOSYSTEM: '1',
-      GIT_ALTERNATE_OBJECT_DIRECTORIES: objects,
     });
     const scratch = mkdtempSync(join(tmpdir(), 'xyph-merge-replay-'));
     try {
@@ -151,6 +150,9 @@ export class GitWorkspaceAdapter implements WorkspacePort {
         stdio: ['pipe', 'pipe', 'pipe'],
       }).trim();
       run(['init', '-q', '--bare', '--template=', `--object-format=${objectFormat}`, scratch]);
+      mkdirSync(join(scratch, 'objects', 'info'), { recursive: true });
+      // One path per line, so a colon in the path needs no quoting (unlike GIT_ALTERNATE_OBJECT_DIRECTORIES).
+      writeFileSync(join(scratch, 'objects', 'info', 'alternates'), `${objects}\n`, 'utf8');
       // A clean merge prints only the tree OID.
       return run(['--git-dir', scratch, 'merge-tree', '--write-tree', base, tip]);
     } finally {

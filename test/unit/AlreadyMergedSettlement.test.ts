@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Command } from 'commander';
@@ -385,6 +385,18 @@ describe('merge settlement of an already-merged patchset tip (xyph#85)', () => {
 });
 
 describe('GitWorkspaceAdapter.checkIntegration', () => {
+  it('accepts a clean integration when the object directory path contains a colon', async () => {
+    const { repo, tip } = createRepo();
+    rawMerge(repo);
+    const colonRepo = `${repo}:colon`;
+    renameSync(repo, colonRepo);
+    createdDirs.push(colonRepo);
+
+    const check = await new GitWorkspaceAdapter(colonRepo).checkIntegration(tip, 'main');
+
+    expect(check).toMatchObject({ matchesPatchset: true, reason: null });
+  });
+
   it('rejects an unreviewed integration hidden by info/grafts', async () => {
     const { repo, tip } = createRepo();
     git(repo, ['merge', '-q', '--no-ff', '--no-commit', 'feature']);
