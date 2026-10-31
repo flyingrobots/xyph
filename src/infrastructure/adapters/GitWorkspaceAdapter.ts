@@ -68,7 +68,9 @@ export class GitWorkspaceAdapter implements WorkspacePort {
     let expectedTree: string;
     try {
       expectedTree = this.git(['merge-tree', '--write-tree', parents[0] as string, tip]).split('\n')[0] as string;
-    } catch {
+    } catch (err) {
+      // merge-tree exits 1 for a conflicted merge; any other failure is not an answer.
+      if (!(err instanceof Error && 'status' in err && err.status === 1)) throw err;
       return {
         integrationCommit,
         matchesPatchset: false,

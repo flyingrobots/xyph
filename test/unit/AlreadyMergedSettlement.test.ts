@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Command } from 'commander';
@@ -309,5 +309,35 @@ describe('merge settlement of an already-merged patchset tip (xyph#85)', () => {
 
     expect(exitSpy).not.toHaveBeenCalled();
     expect(output).toMatchObject({ success: true, data: { alreadyMerged: true } });
+  });
+});
+
+describe('GitWorkspaceAdapter.checkIntegration', () => {
+  afterEach(() => {
+    for (const dir of createdDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('reports a git failure in merge-tree as an error, not as a conflict', async () => {
+    const { repo, tip } = createRepo();
+    rawMerge(repo);
+    const realGit = execFileSync('sh', ['-c', 'command -v git'], { encoding: 'utf8' }).trim();
+    const binDir = mkdtempSync(join(tmpdir(), 'xyph-fake-git-'));
+    createdDirs.push(binDir);
+    writeFileSync(join(binDir, 'git'), `#!/bin/sh
+if [ "$1" = merge-tree ]; then
+  echo "error: unknown option 'write-tree'" >&2
+  exit 129
+fi
+exec "${realGit}" "$@"
+`, 'utf8');
+    chmodSync(join(binDir, 'git'), 0o755);
+
+    const originalPath = process.env['PATH'];
+    process.env['PATH'] = `${binDir}:${originalPath ?? ''}`;
+    try {
+      await expect(new GitWorkspaceAdapter(repo).checkIntegration(tip, 'main')).rejects.toThrow(/unknown option/);
+    } finally {
+      process.env['PATH'] = originalPath;
+    }
   });
 });
