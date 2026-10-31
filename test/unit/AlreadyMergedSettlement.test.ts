@@ -422,6 +422,38 @@ describe('GitWorkspaceAdapter.checkIntegration', () => {
     expect(check.matchesPatchset).toBe(false);
   });
 
+  /** A conflicting tip, integrated by a worker who resolved the conflict with `body` in main.txt. */
+  function workerResolvedConflict(body: string): { repo: string; tip: string; integration: string } {
+    const { repo } = createRepo();
+    git(repo, ['checkout', '-q', 'feature']);
+    const tip = commitFile(repo, 'main.txt', 'reviewed\n', 'reviewed conflicting change');
+    git(repo, ['checkout', '-q', 'main']);
+    expect(() => git(repo, ['merge', '-q', '--no-ff', '-m', 'raw merge by the worker', 'feature'])).toThrow();
+    writeFileSync(join(repo, 'main.txt'), body, 'utf8');
+    git(repo, ['add', 'main.txt']);
+    git(repo, ['commit', '-q', '--no-edit']);
+    return { repo, tip, integration: git(repo, ['rev-parse', 'HEAD']) };
+  }
+
+  it('ignores untracked .gitattributes when it replays the merge', async () => {
+    const { repo, tip } = workerResolvedConflict('unrelated main work\nreviewed\n');
+    writeFileSync(join(repo, '.gitattributes'), 'main.txt merge=union\n', 'utf8');
+
+    const check = await new GitWorkspaceAdapter(repo).checkIntegration(tip, 'main');
+
+    expect(check.matchesPatchset).toBe(false);
+  });
+
+  it('ignores merge drivers from repository configuration when it replays the merge', async () => {
+    const { repo, tip } = workerResolvedConflict('unreviewed driver payload\n');
+    git(repo, ['config', 'merge.poison.driver', "printf 'unreviewed driver payload\\n' > %A"]);
+    writeFileSync(join(repo, '.git', 'info', 'attributes'), 'main.txt merge=poison\n', 'utf8');
+
+    const check = await new GitWorkspaceAdapter(repo).checkIntegration(tip, 'main');
+
+    expect(check.matchesPatchset).toBe(false);
+  });
+
   it('rejects an integration commit that is not a two-parent merge', async () => {
     const { repo, tip } = createRepo();
     git(repo, ['checkout', '-q', '-b', 'other', 'HEAD~1']);
@@ -462,10 +494,12 @@ describe('GitWorkspaceAdapter.checkIntegration', () => {
     const binDir = mkdtempSync(join(tmpdir(), 'xyph-fake-git-'));
     createdDirs.push(binDir);
     writeFileSync(join(binDir, 'git'), `#!/bin/sh
-if [ "$1" = merge-tree ]; then
-  echo "error: unknown option 'write-tree'" >&2
-  exit 129
-fi
+case " $* " in
+  *" merge-tree "*)
+    echo "error: unknown option 'write-tree'" >&2
+    exit 129
+    ;;
+esac
 exec "${realGit}" "$@"
 `, 'utf8');
     chmodSync(join(binDir, 'git'), 0o755);

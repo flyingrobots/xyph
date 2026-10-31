@@ -1,4 +1,7 @@
 import { execFileSync } from 'node:child_process';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { devNull, tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { IntegrationCheck, WorkspacePort } from '../../ports/WorkspacePort.js';
 
 /**
@@ -94,8 +97,7 @@ export class GitWorkspaceAdapter implements WorkspacePort {
 
     let expectedTree: string;
     try {
-      // A clean merge prints only the tree OID.
-      expectedTree = this.git(['merge-tree', '--write-tree', firstParent, tip]);
+      expectedTree = this.replayMerge(firstParent, tip);
     } catch (err) {
       // merge-tree exits 1 for a conflicted merge; any other failure is not an answer.
       if (!(err instanceof Error && 'status' in err && err.status === 1)) throw err;
@@ -114,6 +116,42 @@ export class GitWorkspaceAdapter implements WorkspacePort {
       };
     }
     return { integrationCommit, matchesPatchset: true, reason: null };
+  }
+
+  /**
+   * Merge `tip` onto `base` with Git's built-in merge behavior only, and return
+   * the tree OID. The replay runs in a scratch bare repository that borrows this
+   * repository's objects, with no config, attributes, hooks, or inherited GIT_*
+   * variables, so worktree files, .git/info/attributes and configured merge
+   * drivers cannot change what counts as a clean merge.
+   */
+  private replayMerge(base: string, tip: string): string {
+    const objects = this.git(['rev-parse', '--path-format=absolute', '--git-path', 'objects']);
+    const objectFormat = this.git(['rev-parse', '--show-object-format']);
+    const env: NodeJS.ProcessEnv = {};
+    for (const [name, value] of Object.entries(process.env)) {
+      if (!name.startsWith('GIT_')) env[name] = value;
+    }
+    Object.assign(env, {
+      GIT_CONFIG_NOSYSTEM: '1',
+      GIT_CONFIG_GLOBAL: devNull,
+      GIT_ATTR_NOSYSTEM: '1',
+      GIT_ALTERNATE_OBJECT_DIRECTORIES: objects,
+    });
+    const scratch = mkdtempSync(join(tmpdir(), 'xyph-merge-replay-'));
+    try {
+      const run = (args: string[]): string => execFileSync('git', args, {
+        cwd: scratch,
+        env,
+        encoding: 'utf8',
+        stdio: ['pipe', 'pipe', 'pipe'],
+      }).trim();
+      run(['init', '-q', '--bare', '--template=', `--object-format=${objectFormat}`, scratch]);
+      // A clean merge prints only the tree OID.
+      return run(['--git-dir', scratch, 'merge-tree', '--write-tree', base, tip]);
+    } finally {
+      rmSync(scratch, { recursive: true, force: true });
+    }
   }
 
   private parentsOf(commit: string): string[] {
