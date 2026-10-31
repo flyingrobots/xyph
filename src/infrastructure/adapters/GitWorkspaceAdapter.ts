@@ -57,7 +57,8 @@ export class GitWorkspaceAdapter implements WorkspacePort {
     }
 
     const parents = this.git(['rev-list', '--parents', '-n', '1', integrationCommit]).split(' ').slice(1);
-    if (parents.length !== 2) {
+    const [firstParent] = parents;
+    if (firstParent === undefined || parents.length !== 2) {
       return {
         integrationCommit,
         matchesPatchset: false,
@@ -67,14 +68,15 @@ export class GitWorkspaceAdapter implements WorkspacePort {
 
     let expectedTree: string;
     try {
-      expectedTree = this.git(['merge-tree', '--write-tree', parents[0] as string, tip]).split('\n')[0] as string;
+      // A clean merge prints only the tree OID.
+      expectedTree = this.git(['merge-tree', '--write-tree', firstParent, tip]);
     } catch (err) {
       // merge-tree exits 1 for a conflicted merge; any other failure is not an answer.
       if (!(err instanceof Error && 'status' in err && err.status === 1)) throw err;
       return {
         integrationCommit,
         matchesPatchset: false,
-        reason: `merging ${tip} onto ${parents[0]} conflicts, so ${integrationCommit} contains resolved content`,
+        reason: `merging ${tip} onto ${firstParent} conflicts, so ${integrationCommit} contains resolved content`,
       };
     }
     const actualTree = this.git(['rev-parse', `${integrationCommit}^{tree}`]);
@@ -82,7 +84,7 @@ export class GitWorkspaceAdapter implements WorkspacePort {
       return {
         integrationCommit,
         matchesPatchset: false,
-        reason: `${integrationCommit} differs from merging ${tip} onto ${parents[0]}`,
+        reason: `${integrationCommit} differs from merging ${tip} onto ${firstParent}`,
       };
     }
     return { integrationCommit, matchesPatchset: true, reason: null };
