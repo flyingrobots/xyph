@@ -317,6 +317,23 @@ describe('GitWorkspaceAdapter.checkIntegration', () => {
     for (const dir of createdDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
   });
 
+  it('rejects an integration commit that is not a two-parent merge', async () => {
+    const { repo, tip } = createRepo();
+    git(repo, ['checkout', '-q', '-b', 'other', 'HEAD~1']);
+    commitFile(repo, 'other.txt', 'other branch\n', 'other work');
+    git(repo, ['checkout', '-q', 'main']);
+    git(repo, ['merge', '-q', '--no-ff', '-m', 'octopus merge', 'feature', 'other']);
+    const octopus = git(repo, ['rev-parse', 'HEAD']);
+
+    const integration = await new GitWorkspaceAdapter(repo).checkIntegration(tip, 'main');
+
+    expect(integration).toEqual({
+      integrationCommit: octopus,
+      matchesPatchset: false,
+      reason: expect.stringContaining('has 3 parents'),
+    });
+  });
+
   it('reports a git failure in merge-tree as an error, not as a conflict', async () => {
     const { repo, tip } = createRepo();
     rawMerge(repo);
