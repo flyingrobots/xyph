@@ -236,6 +236,28 @@ describe('merge settlement of an already-merged patchset tip (xyph#85)', () => {
     });
   });
 
+  it('refuses to settle when the worker resolved a conflict in the integrating merge', async () => {
+    const { repo, tip } = createRepo();
+    git(repo, ['checkout', '-q', 'feature']);
+    const conflictingTip = commitFile(repo, 'main.txt', 'feature side\n', 'reviewed conflicting change');
+    git(repo, ['checkout', '-q', 'main']);
+    mocks.getPatchsetMergeRef.mockResolvedValue(conflictingTip);
+    expect(conflictingTip).not.toBe(tip);
+    expect(() => git(repo, ['merge', '-q', '--no-ff', '-m', 'raw merge by the worker', 'feature'])).toThrow();
+    writeFileSync(join(repo, 'main.txt'), 'resolved by the worker\n', 'utf8');
+    git(repo, ['add', 'main.txt']);
+    git(repo, ['commit', '-q', '--no-edit']);
+
+    const output = await runMerge(repo);
+
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    expect(mocks.decide).not.toHaveBeenCalled();
+    expect(output).toMatchObject({
+      success: false,
+      data: { mergeRef: conflictingTip, matchesPatchset: false, reason: expect.stringContaining('conflicts') },
+    });
+  });
+
   it('settles a clean raw merge of the approved tip', async () => {
     const { repo, tip } = createRepo();
     mocks.getPatchsetMergeRef.mockResolvedValue(tip);

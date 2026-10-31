@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import type { WorkspacePort } from '../../ports/WorkspacePort.js';
+import type { IntegrationCheck, WorkspacePort } from '../../ports/WorkspacePort.js';
 
 /**
  * GitWorkspaceAdapter — implements WorkspacePort using local git plumbing.
@@ -37,6 +37,53 @@ export class GitWorkspaceAdapter implements WorkspacePort {
     } catch {
       return false;
     }
+  }
+
+  public async checkIntegration(ref: string, into: string): Promise<IntegrationCheck> {
+    const tip = this.git(['rev-parse', '--verify', `${ref}^{commit}`]);
+    const chain = this.git(['rev-list', '--first-parent', '--reverse', into]).split('\n');
+    if (chain.includes(tip)) {
+      return { integrationCommit: tip, matchesPatchset: true, reason: null };
+    }
+
+    // Commits that contain the tip form the newest part of the first-parent
+    // chain; the oldest of them is where the tip entered the target.
+    const descendants = new Set(
+      this.git(['rev-list', '--ancestry-path', `${tip}..${into}`]).split('\n').filter((sha) => sha !== ''),
+    );
+    const integrationCommit = chain.find((sha) => descendants.has(sha)) ?? null;
+    if (integrationCommit === null) {
+      return { integrationCommit: null, matchesPatchset: false, reason: `${into} does not contain ${tip}` };
+    }
+
+    const parents = this.git(['rev-list', '--parents', '-n', '1', integrationCommit]).split(' ').slice(1);
+    if (parents.length !== 2) {
+      return {
+        integrationCommit,
+        matchesPatchset: false,
+        reason: `${integrationCommit} has ${parents.length} parents; expected a two-parent merge of ${tip}`,
+      };
+    }
+
+    let expectedTree: string;
+    try {
+      expectedTree = this.git(['merge-tree', '--write-tree', parents[0] as string, tip]).split('\n')[0] as string;
+    } catch {
+      return {
+        integrationCommit,
+        matchesPatchset: false,
+        reason: `merging ${tip} onto ${parents[0]} conflicts, so ${integrationCommit} contains resolved content`,
+      };
+    }
+    const actualTree = this.git(['rev-parse', `${integrationCommit}^{tree}`]);
+    if (actualTree !== expectedTree) {
+      return {
+        integrationCommit,
+        matchesPatchset: false,
+        reason: `${integrationCommit} differs from merging ${tip} onto ${parents[0]}`,
+      };
+    }
+    return { integrationCommit, matchesPatchset: true, reason: null };
   }
 
   public async merge(ref: string, into: string): Promise<string> {
