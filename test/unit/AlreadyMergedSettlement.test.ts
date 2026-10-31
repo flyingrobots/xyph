@@ -388,6 +388,22 @@ describe('GitWorkspaceAdapter.checkIntegration', () => {
     expect(check).toEqual({ integrationCommit: integration, matchesPatchset: true, reason: null });
   }, 60_000);
 
+  it('refuses a merge whose second parent is not the approved tip, even when it adds no content', async () => {
+    const { repo, tip } = createRepo();
+    git(repo, ['checkout', '-q', 'feature']);
+    git(repo, ['commit', '-q', '--allow-empty', '-m', 'unreviewed extra commit']);
+    git(repo, ['checkout', '-q', 'main']);
+    const integration = rawMerge(repo);
+
+    const check = await new GitWorkspaceAdapter(repo).checkIntegration(tip, 'main');
+
+    expect(check).toEqual({
+      integrationCommit: integration,
+      matchesPatchset: false,
+      reason: expect.stringContaining('merged a different tip'),
+    });
+  });
+
   it('rejects an integration commit that is not a two-parent merge', async () => {
     const { repo, tip } = createRepo();
     git(repo, ['checkout', '-q', '-b', 'other', 'HEAD~1']);

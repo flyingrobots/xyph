@@ -82,6 +82,13 @@ export class GitWorkspaceAdapter implements WorkspacePort {
         reason: `${integrationCommit} has ${parents.length} parents; expected a two-parent merge of ${tip}`,
       };
     }
+    if (parents[1] !== tip) {
+      return {
+        integrationCommit,
+        matchesPatchset: false,
+        reason: `${integrationCommit} merged a different tip than the approved ${tip}`,
+      };
+    }
 
     let expectedTree: string;
     try {
