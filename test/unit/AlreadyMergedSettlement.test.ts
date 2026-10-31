@@ -371,11 +371,12 @@ describe('GitWorkspaceAdapter.checkIntegration', () => {
 
   it('accepts a fast-forwarded tip on a first-parent history larger than the default output buffer', async () => {
     const { repo } = createRepo();
-    const head = appendEmptyCommits(repo, 30_000);
+    const tip = git(repo, ['rev-parse', 'main']);
+    appendEmptyCommits(repo, 30_000);
 
-    const integration = await new GitWorkspaceAdapter(repo).checkIntegration(head, 'main');
+    const integration = await new GitWorkspaceAdapter(repo).checkIntegration(tip, 'main');
 
-    expect(integration).toEqual({ integrationCommit: head, matchesPatchset: true, reason: null });
+    expect(integration).toEqual({ integrationCommit: tip, matchesPatchset: true, reason: null });
   }, 60_000);
 
   it('finds a clean integration followed by more first-parent commits than the default output buffer holds', async () => {
