@@ -385,6 +385,18 @@ describe('merge settlement of an already-merged patchset tip (xyph#85)', () => {
 });
 
 describe('GitWorkspaceAdapter.checkIntegration', () => {
+  it('rejects an unreviewed integration hidden by info/grafts', async () => {
+    const { repo, tip } = createRepo();
+    git(repo, ['merge', '-q', '--no-ff', '--no-commit', 'feature']);
+    const dirty = commitFile(repo, 'smuggled.txt', 'unreviewed\n', 'dirty integration');
+    writeFileSync(join(repo, '.git', 'info', 'grafts'), `${dirty} ${tip}\n`);
+    expect(git(repo, ['show', `${dirty}:smuggled.txt`])).toBe('unreviewed');
+
+    const check = await new GitWorkspaceAdapter(repo).checkIntegration(tip, 'main');
+
+    expect(check.matchesPatchset).toBe(false);
+  });
+
   let restoreGitEnv: () => void;
 
   beforeEach(() => {
