@@ -10,5 +10,7 @@ export function formatUnreviewedIntegrationMessage(
     : `${integration.integrationCommit.slice(0, 7)} brought it into ${into}`;
   return `Patchset tip ${mergeRef.slice(0, 7)} is already in ${into}, but what ${into} received is not the approved patchset: `
     + `${where}${integration.reason === null ? '' : ` (${integration.reason})`}. `
-    + 'Refusing to settle; land the approved tip through merge, or resubmit the merged content for review.';
+    + 'Refusing to settle. A retry gives the same result, because the integration is already in the history. '
+    + 'Submit the content that the target actually received as a new patchset for review, '
+    + 'or repair the target branch through your normal recovery process.';
 }
