@@ -165,8 +165,10 @@ export class GitWorkspaceAdapter implements WorkspacePort {
     const currentBranch = this.git(['rev-parse', '--abbrev-ref', 'HEAD']);
     try {
       this.git(['checkout', into]);
+      const tip = this.git(['rev-parse', '--verify', `${ref}^{commit}`]);
+      const before = this.git(['rev-parse', 'HEAD']);
       try {
-        this.git(['merge', '--no-ff', '--no-edit', ref]);
+        this.git(['merge', '--no-ff', '--no-edit', tip]);
       } catch (mergeErr) {
         try {
           this.git(['merge', '--abort']);
@@ -175,7 +177,14 @@ export class GitWorkspaceAdapter implements WorkspacePort {
         }
         throw mergeErr;
       }
-      return this.git(['rev-parse', 'HEAD']);
+      // If someone else merged the tip first, git reports "Already up to date" and
+      // creates nothing; that integration was not made here and was not checked.
+      const mergeCommit = this.git(['rev-parse', 'HEAD']);
+      const parents = this.parentsOf(mergeCommit);
+      if (parents.length !== 2 || parents[0] !== before || parents[1] !== tip) {
+        throw new Error(`git merge of ${tip} into ${into} did not create a merge of it onto ${before}; refusing to settle`);
+      }
+      return mergeCommit;
     } finally {
       try {
         this.git(['checkout', currentBranch]);

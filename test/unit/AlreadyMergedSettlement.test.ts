@@ -258,6 +258,33 @@ describe('merge settlement of an already-merged patchset tip (xyph#85)', () => {
     for (const dir of createdDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
   });
 
+  it('refuses when another actor merges the tip with extra content between the ancestry check and the merge', async () => {
+    const { repo, tip } = createRepo();
+    mocks.getPatchsetMergeRef.mockResolvedValue(tip);
+    class RacingWorkspace extends GitWorkspaceAdapter {
+      public override async isMerged(ref: string, into: string): Promise<boolean> {
+        const result = await super.isMerged(ref, into);
+        if (!result) {
+          git(repo, ['merge', '-q', '--no-ff', '--no-commit', 'feature']);
+          commitFile(repo, 'smuggled.txt', 'unreviewed\n', 'dirty concurrent merge');
+        }
+        return result;
+      }
+    }
+    const ctx = createCtx(repo);
+    Object.assign(ctx, { gitWorkspace: new RacingWorkspace(repo) });
+    const program = new Command();
+    registerSubmissionCommands(program, ctx);
+    await program.parseAsync(
+      ['merge', 'submission:S1', '--rationale', 'settle the approved tip', '--into', 'main'],
+      { from: 'user' },
+    );
+    expect(mocks.decide).not.toHaveBeenCalled();
+    expect(mocks.sign).not.toHaveBeenCalled();
+    expect(mocks.patch).not.toHaveBeenCalled();
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
   it('refuses to settle when the integrating merge commit adds content outside the patchset', async () => {
     const { repo, tip } = createRepo();
     mocks.getPatchsetMergeRef.mockResolvedValue(tip);
