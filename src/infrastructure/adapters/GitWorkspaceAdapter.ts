@@ -14,6 +14,8 @@ export class GitWorkspaceAdapter implements WorkspacePort {
   private git(args: string[]): string {
     return execFileSync('git', args, {
       cwd: this.cwd,
+      // Settlement proofs must inspect the objects identified by their actual OIDs.
+      env: { ...process.env, GIT_NO_REPLACE_OBJECTS: '1' },
       encoding: 'utf8',
       stdio: ['pipe', 'pipe', 'pipe'],
       // rev-list output grows with history; Node's 1 MiB default holds about 25,000 commits.

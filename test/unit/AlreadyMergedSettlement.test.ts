@@ -369,6 +369,22 @@ describe('GitWorkspaceAdapter.checkIntegration', () => {
     for (const dir of createdDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
   });
 
+  it('ignores replacement refs when it reads the integration commit', async () => {
+    const { repo, tip } = createRepo();
+    const firstParent = git(repo, ['rev-parse', 'main']);
+    const clean = rawMerge(repo);
+    commitFile(repo, 'smuggled.txt', 'unreviewed\n', 'unreviewed tree');
+    const dirtyTree = git(repo, ['rev-parse', 'HEAD^{tree}']);
+    const dirty = git(repo, ['commit-tree', dirtyTree, '-p', firstParent, '-p', tip, '-m', 'dirty integration']);
+    git(repo, ['update-ref', 'refs/heads/main', dirty]);
+    git(repo, ['replace', dirty, clean]);
+    expect(git(repo, ['--no-replace-objects', 'show', `${dirty}:smuggled.txt`])).toBe('unreviewed');
+
+    const check = await new GitWorkspaceAdapter(repo).checkIntegration(tip, 'main');
+
+    expect(check.matchesPatchset).toBe(false);
+  });
+
   it('accepts a fast-forwarded tip on a first-parent history larger than the default output buffer', async () => {
     const { repo } = createRepo();
     const tip = git(repo, ['rev-parse', 'main']);
