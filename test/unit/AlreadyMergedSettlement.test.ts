@@ -487,6 +487,30 @@ describe('GitWorkspaceAdapter.checkIntegration', () => {
     expect(() => execFileSync('git', ['rev-parse', '--verify', '--quiet', 'main'], { cwd: decoy, env: fixtureEnv(), stdio: 'pipe' })).toThrow();
   });
 
+  it('reports a git failure in the ancestry check as an error, not as non-containment', async () => {
+    const { repo, tip } = createRepo();
+    rawMerge(repo);
+    const realGit = execFileSync('sh', ['-c', 'command -v git'], { encoding: 'utf8' }).trim();
+    const binDir = mkdtempSync(join(tmpdir(), 'xyph-failed-ancestry-'));
+    createdDirs.push(binDir);
+    writeFileSync(join(binDir, 'git'), `#!/bin/sh
+if [ "$1" = merge-base ]; then
+  echo "fatal: unable to read object" >&2
+  exit 128
+fi
+exec "${realGit}" "$@"
+`, 'utf8');
+    chmodSync(join(binDir, 'git'), 0o755);
+    const originalPath = process.env['PATH'];
+    process.env['PATH'] = `${binDir}:${originalPath ?? ''}`;
+    try {
+      await expect(new GitWorkspaceAdapter(repo).checkIntegration(tip, 'main')).rejects.toThrow(/unable to read object/);
+    } finally {
+      if (originalPath === undefined) Reflect.deleteProperty(process.env, 'PATH');
+      else process.env['PATH'] = originalPath;
+    }
+  });
+
   it('reports a git failure in merge-tree as an error, not as a conflict', async () => {
     const { repo, tip } = createRepo();
     rawMerge(repo);

@@ -39,8 +39,9 @@ export class GitWorkspaceAdapter implements WorkspacePort {
     try {
       this.git(['merge-base', '--is-ancestor', ref, into]);
       return true;
-    } catch {
-      return false;
+    } catch (err) {
+      if (err instanceof Error && 'status' in err && err.status === 1) return false;
+      throw err;
     }
   }
 
